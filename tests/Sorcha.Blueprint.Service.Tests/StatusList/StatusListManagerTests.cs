@@ -87,6 +87,18 @@ public class StatusListManagerTests
     }
 
     [Fact]
+    public async Task AllocateIndexAsync_NullCredentialId_AllocatesNormally()
+    {
+        // #220: pre-allocation happens before the credential is signed, so credentialId is null.
+        // Allocation is keyed by (listId, index) — it must succeed and return a normal allocation.
+        var alloc = await _manager.AllocateIndexAsync("issuer-1", "register-1", credentialId: null);
+
+        alloc.Index.Should().Be(0);
+        alloc.ListId.Should().Be("issuer-1-register-1-revocation-1");
+        alloc.StatusListUrl.Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
     public async Task AllocateIndexAsync_WhenFull_ThrowsInvalidOperationException()
     {
         // Pre-create a list and fill it

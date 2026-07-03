@@ -19,10 +19,14 @@ public interface IStatusListManager
         string issuerWallet, string registerId, string purpose, CancellationToken ct = default);
 
     /// <summary>
-    /// Allocates the next available index in the list. Returns the allocated index.
+    /// Allocates the next available index in the list. Allocation is keyed solely by
+    /// <c>(listId, index)</c> — the returned <see cref="StatusListAllocation"/> is the identity a
+    /// credential's <c>credentialStatus</c> points at. <paramref name="credentialId"/> is optional
+    /// context for logging only and is NOT stored or used as a key; pass <c>null</c> when allocating
+    /// before the credential is signed (pre-allocation), rather than a synthetic placeholder (issue #220).
     /// </summary>
     Task<StatusListAllocation> AllocateIndexAsync(
-        string issuerWallet, string registerId, string credentialId, CancellationToken ct = default);
+        string issuerWallet, string registerId, string? credentialId, CancellationToken ct = default);
 
     /// <summary>
     /// Sets or clears a bit at the given index.
@@ -93,7 +97,7 @@ public class StatusListManager : IStatusListManager, IDisposable
 
     /// <inheritdoc />
     public async Task<StatusListAllocation> AllocateIndexAsync(
-        string issuerWallet, string registerId, string credentialId, CancellationToken ct = default)
+        string issuerWallet, string registerId, string? credentialId, CancellationToken ct = default)
     {
         var list = await GetOrCreateListAsync(issuerWallet, registerId, "revocation", ct);
         var semaphore = _locks.GetOrAdd(list.Id, _ => new SemaphoreSlim(1, 1));
@@ -110,7 +114,7 @@ public class StatusListManager : IStatusListManager, IDisposable
 
             _logger.LogInformation(
                 "Allocated index {Index} in status list {ListId} for credential {CredentialId}",
-                index, list.Id, credentialId);
+                index, list.Id, credentialId ?? "(pre-allocation — not yet signed)");
 
             var url = $"{_baseUrl}/{list.Id}";
             return new StatusListAllocation(list.Id, index, url);
