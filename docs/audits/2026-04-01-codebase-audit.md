@@ -6,7 +6,7 @@ Comprehensive audit of dead code, duplicates, constitution compliance, validatio
 
 ## CRITICAL
 
-- [ ] **SEC-001**: CORS `AllowAnyOrigin()` at service level in `src/Common/Sorcha.ServiceDefaults/CorsExtensions.cs:25-27` — any service accessed directly bypasses gateway CORS. Restrict to specific origins or remove service-level CORS entirely.
+- [x] **SEC-001**: CORS `AllowAnyOrigin()` at service level in `src/Common/Sorcha.ServiceDefaults/CorsExtensions.cs` — resolved (#326): `AddSorchaCors` now honours an optional `Cors:AllowedOrigins` allow-list (with credentials) as defence-in-depth, defaulting to the documented gateway-perimeter model when unset. Blueprint's inline duplicate converged onto the shared extension.
 - [x] **SEC-002**: Peer subscribe endpoint `POST /api/registers/{registerId}/subscribe` is `.AllowAnonymous()` in `src/Services/Sorcha.Peer.Service/Program.cs:660` — tracked as #165, must be resolved.
 - [x] **CODE-001**: ~WONTFIX~ 41 direct `new HttpClient(handler)` in Blazor WASM `ServiceCollectionExtensions.cs` — reviewed: this is idiomatic for Blazor WASM where the browser manages connection pooling. Not a socket exhaustion risk. No refactor needed.
 

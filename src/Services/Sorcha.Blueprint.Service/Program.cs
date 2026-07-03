@@ -657,16 +657,9 @@ builder.Services.AddSingleton<IIetfTokenStatusListSerializer, IetfTokenStatusLis
 builder.AddJwtAuthentication();
 builder.Services.AddBlueprintAuthorization();
 
-// Add CORS policy (SEC-005) - production restriction handled at API Gateway (YARP)
-builder.Services.AddCors(options =>
-{
-    options.AddDefaultPolicy(policy =>
-    {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
-    });
-});
+// Add CORS policy (SEC-001/SEC-005) — shared policy: gateway-perimeter by default, with an optional
+// Cors:AllowedOrigins service-level allow-list for defence-in-depth. See CorsExtensions.
+builder.AddSorchaCors();
 
 var app = builder.Build();
 var logger = app.Logger;
