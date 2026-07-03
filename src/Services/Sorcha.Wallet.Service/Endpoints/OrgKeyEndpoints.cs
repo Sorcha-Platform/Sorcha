@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.ComponentModel.DataAnnotations;
+
+using Microsoft.AspNetCore.Builder;
+
 using Sorcha.Wallet.Core.Domain.Enums;
 using Sorcha.Wallet.Core.Services.Interfaces;
 
@@ -37,6 +41,7 @@ public static class OrgKeyEndpoints
 
         // POST /api/wallets/org/{orgId}/derive-key - Derive user key
         orgKeyGroup.MapPost("/{orgId}/derive-key", DeriveUserKey)
+            .WithRequestValidation()
             .WithName("DeriveOrgUserKey")
             .WithSummary("Derive a user key from the organisation master key")
             .WithDescription(
@@ -244,5 +249,8 @@ public static class OrgKeyEndpoints
     /// <param name="UserId">Subject identifier of the user to derive a key for.</param>
     /// <param name="DepartmentId">Department index in the derivation hierarchy (default 0).</param>
     /// <param name="KeyUsage">Intended key usage purpose (Identity, VCIssuance, Governance, Communications, ServiceAuth).</param>
-    public record DeriveKeyRequest(string UserId, uint DepartmentId = 0, string KeyUsage = "Identity");
+    public record DeriveKeyRequest(
+        [property: Required(AllowEmptyStrings = false)] string UserId,
+        uint DepartmentId = 0,
+        string KeyUsage = "Identity");
 }

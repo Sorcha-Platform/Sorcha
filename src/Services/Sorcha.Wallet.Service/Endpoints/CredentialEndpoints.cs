@@ -3,9 +3,11 @@
 
 #pragma warning disable ASPDEPR002 // WithOpenApi is deprecated; using it for co-located endpoint examples until transformer API stabilizes
 
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using System.Xml;
 
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc;
 
 using Sorcha.Blueprint.Models.Credentials;
@@ -75,6 +77,7 @@ public static class CredentialEndpoints
             .Produces(StatusCodes.Status404NotFound);
 
         credentialGroup.MapPost("/", StoreCredential)
+            .WithRequestValidation()
             .WithName("StoreCredential")
             .WithSummary("Store a credential in a wallet")
             .WithDescription("Stores a pre-issued verifiable credential in the specified wallet.")
@@ -110,6 +113,7 @@ public static class CredentialEndpoints
             });
 
         credentialGroup.MapPatch("/{credentialId}/status", UpdateCredentialStatus)
+            .WithRequestValidation()
             .WithName("UpdateCredentialStatus")
             .WithSummary("Update a credential's status")
             .WithDescription("Updates the status of a credential (e.g., Active \u2192 Revoked).")
@@ -123,6 +127,7 @@ public static class CredentialEndpoints
         // Feature 106 state machine (PendingAcceptance → Active / Declined) without
         // breaking existing SorchaInternal callers.
         credentialGroup.MapPatch("/{credentialId}", PatchCredentialStatus)
+            .WithRequestValidation()
             .WithName("PatchCredentialStatus")
             .WithSummary("Holder accept or decline a pending credential (Feature 106)")
             .WithDescription(
@@ -135,6 +140,7 @@ public static class CredentialEndpoints
             .Produces(StatusCodes.Status409Conflict);
 
         credentialGroup.MapPost("/issue", IssueCredential)
+            .WithRequestValidation()
             .WithName("IssueCredential")
             .WithSummary("Issue a new credential using the wallet's signing key")
             .WithDescription("Creates and signs a new SD-JWT VC credential using the wallet's private key, stores it, and returns the issued credential.")
@@ -827,10 +833,20 @@ public static class CredentialEndpoints
 /// </summary>
 public class StoreCredentialRequest
 {
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(512)]
     public required string CredentialId { get; init; }
+
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(256)]
     public required string Type { get; init; }
+
+    [Required(AllowEmptyStrings = false)]
     public required string IssuerDid { get; init; }
+
+    [Required(AllowEmptyStrings = false)]
     public required string SubjectDid { get; init; }
+
     public required string ClaimsJson { get; init; }
     public required DateTimeOffset IssuedAt { get; init; }
     public DateTimeOffset? ExpiresAt { get; init; }
@@ -844,8 +860,14 @@ public class StoreCredentialRequest
 /// </summary>
 public class IssueCredentialRequest
 {
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(256)]
     public required string CredentialType { get; init; }
+
+    [Required]
     public required Dictionary<string, object> Claims { get; init; }
+
+    [Required(AllowEmptyStrings = false)]
     public required string RecipientWallet { get; init; }
     public string? ExpiryDuration { get; init; }
     public List<string>? DisclosableClaims { get; init; }
@@ -922,6 +944,8 @@ public class IssueCredentialRequest
 /// </summary>
 public class UpdateStatusRequest
 {
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(64)]
     public required string Status { get; init; }
 }
 
