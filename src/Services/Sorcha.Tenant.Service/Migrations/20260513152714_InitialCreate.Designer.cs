@@ -400,6 +400,10 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.HasIndex("PlatformUserId", "Category", "OccurredAt")
                         .HasDatabaseName("IX_InboxEntries_PlatformUserId_Category_OccurredAt");
 
+                    b.HasIndex("PlatformUserId")
+                        .HasDatabaseName("IX_InboxEntries_Unread")
+                        .HasFilter("\"ReadAt\" IS NULL AND \"DismissedAt\" IS NULL");
+
                     b.HasIndex("PlatformUserId", "CorrelationKey", "OccurredAt")
                         .HasDatabaseName("IX_InboxEntries_PlatformUserId_CorrelationKey_OccurredAt");
 
