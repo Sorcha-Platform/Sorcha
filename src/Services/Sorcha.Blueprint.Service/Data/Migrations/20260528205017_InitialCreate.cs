@@ -198,10 +198,11 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                 filter: "\"TransactionHash\" IS NULL");
 
             migrationBuilder.CreateIndex(
-                name: "IX_Actions_Wallet_Register",
+                name: "IX_Actions_Wallet_Register_CreatedAt",
                 schema: "blueprint",
                 table: "Actions",
-                columns: new[] { "WalletAddress", "RegisterAddress" });
+                columns: new[] { "WalletAddress", "RegisterAddress", "CreatedAt" },
+                descending: new[] { false, false, true });
 
             migrationBuilder.CreateIndex(
                 name: "UX_Actions_IdempotencyKey",
@@ -243,22 +244,25 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                 column: "TransactionHash");
 
             migrationBuilder.CreateIndex(
-                name: "IX_Instances_BlueprintId",
+                name: "IX_Instances_BlueprintId_CreatedAt",
                 schema: "blueprint",
                 table: "Instances",
-                column: "BlueprintId");
+                columns: new[] { "BlueprintId", "CreatedAt" },
+                descending: new[] { false, true });
 
             migrationBuilder.CreateIndex(
-                name: "IX_Instances_RegisterId",
+                name: "IX_Instances_RegisterId_CreatedAt",
                 schema: "blueprint",
                 table: "Instances",
-                column: "RegisterId");
+                columns: new[] { "RegisterId", "CreatedAt" },
+                descending: new[] { false, true });
 
             migrationBuilder.CreateIndex(
-                name: "IX_Instances_State",
+                name: "IX_Instances_State_UpdatedAt",
                 schema: "blueprint",
                 table: "Instances",
-                column: "State");
+                columns: new[] { "State", "UpdatedAt" },
+                descending: new[] { false, true });
 
             migrationBuilder.CreateIndex(
                 name: "IX_PublishOverrides_Blueprint_OverriddenAt",

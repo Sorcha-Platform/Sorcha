@@ -76,8 +76,12 @@ public class BlueprintDbContext : DbContext
             entity.ToTable("Actions");
             entity.HasKey(e => e.TransactionHash);
             entity.Property(e => e.Content).HasColumnType("jsonb");
-            entity.HasIndex(e => new { e.WalletAddress, e.RegisterAddress })
-                .HasDatabaseName("IX_Actions_Wallet_Register");
+            // perf audit F11: the by-wallet list query filters (WalletAddress, RegisterAddress) then
+            // ORDER BY CreatedAt DESC — a sort-aligned composite serves filter + sort + page from one index
+            // (the leading columns still serve the plain (WalletAddress, RegisterAddress) lookup).
+            entity.HasIndex(e => new { e.WalletAddress, e.RegisterAddress, e.CreatedAt })
+                .HasDatabaseName("IX_Actions_Wallet_Register_CreatedAt")
+                .IsDescending(false, false, true);
             entity.HasIndex(e => e.IdempotencyKey)
                 .IsUnique()
                 .HasDatabaseName("UX_Actions_IdempotencyKey")
@@ -115,9 +119,18 @@ public class BlueprintDbContext : DbContext
             entity.Property(e => e.ActiveBranches).HasColumnType("jsonb");
             entity.Property(e => e.Metadata).HasColumnType("jsonb");
             entity.Property(e => e.Version).IsConcurrencyToken();
-            entity.HasIndex(e => e.BlueprintId).HasDatabaseName("IX_Instances_BlueprintId");
-            entity.HasIndex(e => e.RegisterId).HasDatabaseName("IX_Instances_RegisterId");
-            entity.HasIndex(e => e.State).HasDatabaseName("IX_Instances_State");
+            // perf audit F11: list/history queries filter on these then ORDER BY CreatedAt/UpdatedAt DESC —
+            // sort-aligned composites serve filter + sort + page from the index (the leading column still
+            // serves the plain lookups the single-column indexes used to).
+            entity.HasIndex(e => new { e.BlueprintId, e.CreatedAt })
+                .HasDatabaseName("IX_Instances_BlueprintId_CreatedAt")
+                .IsDescending(false, true);
+            entity.HasIndex(e => new { e.RegisterId, e.CreatedAt })
+                .HasDatabaseName("IX_Instances_RegisterId_CreatedAt")
+                .IsDescending(false, true);
+            entity.HasIndex(e => new { e.State, e.UpdatedAt })
+                .HasDatabaseName("IX_Instances_State_UpdatedAt")
+                .IsDescending(false, true);
         });
 
         // Feature 142 — RehearsalPass configuration
