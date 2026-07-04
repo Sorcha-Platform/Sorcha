@@ -191,6 +191,13 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                 });
 
             migrationBuilder.CreateIndex(
+                name: "IX_FileMetadata_Orphans",
+                schema: "blueprint",
+                table: "FileMetadata",
+                column: "CreatedAt",
+                filter: "\"TransactionHash\" IS NULL");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Actions_Wallet_Register",
                 schema: "blueprint",
                 table: "Actions",
