@@ -102,6 +102,15 @@ public interface IReadOnlyRegisterRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Counts transactions strictly older than <paramref name="before"/> (by <c>TimeStamp</c>) without
+    /// materialising them — the total for cursor pagination (rides the <c>TimeStamp</c> index).
+    /// </summary>
+    Task<long> CountTransactionsBeforeAsync(
+        string registerId,
+        DateTime before,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets transactions of a given <see cref="TransactionType"/>, sorted and paged, pushed down to
     /// the store (rides the <c>MetaData.TransactionType</c> index). <paramref name="take"/> of 0
     /// returns all matches.
