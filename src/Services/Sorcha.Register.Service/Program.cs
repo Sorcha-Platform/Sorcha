@@ -1184,26 +1184,24 @@ transactionsGroup.MapGet("/graph", async (
         return Results.NotFound(new { error = "Register not found" });
     }
 
-    // Get all transactions for the register
-    var transactionsQuery = await repository.GetTransactionsAsync(registerId);
-    var transactions = transactionsQuery.OrderByDescending(t => t.TimeStamp).AsEnumerable();
-
-    // Cursor-based pagination: if 'before' is specified, find that transaction's timestamp
-    // and filter to transactions older than it
-    if (!string.IsNullOrEmpty(before))
+    // Cursor-based pagination pushed down to the store: resolve the cursor tx by id, then a single
+    // index-backed page of transactions older than it (newest-first) + a count for totalCount/hasMore.
+    // No cursor (or an unknown cursor) → the latest page. Never materialises the whole ledger.
+    long totalCount;
+    IReadOnlyList<TransactionModel> pageTxs;
+    if (!string.IsNullOrEmpty(before)
+        && await repository.GetTransactionAsync(registerId, before) is { } cursorTx)
     {
-        var cursorTx = transactionsQuery.FirstOrDefault(t => t.TxId == before);
-        if (cursorTx is not null)
-        {
-            transactions = transactions.Where(t => t.TimeStamp < cursorTx.TimeStamp);
-        }
+        totalCount = await repository.CountTransactionsBeforeAsync(registerId, cursorTx.TimeStamp);
+        pageTxs = await repository.GetTransactionsBeforeAsync(registerId, cursorTx.TimeStamp, effectiveLimit);
+    }
+    else
+    {
+        totalCount = await repository.CountTransactionsAsync(registerId);
+        pageTxs = await repository.GetLatestTransactionsAsync(registerId, 0, effectiveLimit);
     }
 
-    var allFiltered = transactions.ToList();
-    var totalCount = allFiltered.Count;
-
-    var nodes = allFiltered
-        .Take(effectiveLimit)
+    var nodes = pageTxs
         .Select(t => new TransactionGraphNodeDto(
             t.TxId,
             t.PrevTxId,
@@ -1218,7 +1216,7 @@ transactionsGroup.MapGet("/graph", async (
     return Results.Ok(new TransactionGraphResponse(
         registerId,
         nodes,
-        totalCount,
+        (int)totalCount,
         totalCount > nodes.Length));
 })
 .WithName("GetTransactionGraph")

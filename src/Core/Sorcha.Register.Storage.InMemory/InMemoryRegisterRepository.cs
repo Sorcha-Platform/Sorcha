@@ -184,6 +184,9 @@ public class InMemoryRegisterRepository : IRegisterRepository
     public Task<long> CountTransactionsAsync(string registerId, CancellationToken cancellationToken = default)
         => Task.FromResult((long)RegisterTxs(registerId).Count());
 
+    public Task<long> CountTransactionsBeforeAsync(string registerId, DateTime before, CancellationToken cancellationToken = default)
+        => Task.FromResult((long)RegisterTxs(registerId).Count(t => t.TimeStamp < before));
+
     public Task<IReadOnlyList<TransactionModel>> GetTransactionsByTypeAsync(
         string registerId,
         Sorcha.Register.Models.Enums.TransactionType transactionType,

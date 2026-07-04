@@ -587,6 +587,14 @@ public class MongoRegisterRepository : IRegisterRepository
     }
 
     /// <inheritdoc/>
+    public async Task<long> CountTransactionsBeforeAsync(string registerId, DateTime before, CancellationToken cancellationToken = default)
+    {
+        var transactions = GetTransactionsCollection(registerId);
+        var filter = Builders<TransactionModel>.Filter.Lt(t => t.TimeStamp, before);
+        return await transactions.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
+    }
+
+    /// <inheritdoc/>
     public async Task<IReadOnlyList<TransactionModel>> GetTransactionsByTypeAsync(
         string registerId,
         TransactionType transactionType,

@@ -509,4 +509,19 @@ public abstract class RegisterRepositoryContractTests
         before[0].TxId.Should().StartWith("bf-2"); // newest-first
         before[1].TxId.Should().StartWith("bf-1");
     }
+
+    [Fact]
+    public async Task CountTransactionsBeforeAsync_CountsStrictlyOlder()
+    {
+        var sut = Sut;
+        const string reg = "contract-count-before";
+        await sut.InsertRegisterAsync(CreateRegister(reg));
+        var t0 = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        await sut.InsertTransactionAsync(Tx("cb-1", reg, t0));
+        await sut.InsertTransactionAsync(Tx("cb-2", reg, t0.AddMinutes(1)));
+        await sut.InsertTransactionAsync(Tx("cb-3", reg, t0.AddMinutes(2)));
+
+        (await sut.CountTransactionsBeforeAsync(reg, t0.AddMinutes(2))).Should().Be(2); // cb-1, cb-2
+        (await sut.CountTransactionsBeforeAsync(reg, t0)).Should().Be(0); // strictly before, none
+    }
 }

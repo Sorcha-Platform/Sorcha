@@ -239,6 +239,9 @@ public class CachedRegisterRepository : IRegisterRepository
     public Task<long> CountTransactionsAsync(string registerId, CancellationToken cancellationToken = default)
         => _innerRepository.CountTransactionsAsync(registerId, cancellationToken);
 
+    public Task<long> CountTransactionsBeforeAsync(string registerId, DateTime before, CancellationToken cancellationToken = default)
+        => _innerRepository.CountTransactionsBeforeAsync(registerId, before, cancellationToken);
+
     public Task<IReadOnlyList<TransactionModel>> GetTransactionsByTypeAsync(
         string registerId,
         Sorcha.Register.Models.Enums.TransactionType transactionType,
