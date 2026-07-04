@@ -266,6 +266,13 @@ public class TenantDbContext : DbContext
             entity.HasIndex(e => new { e.PlatformUserId, e.Category, e.OccurredAt })
                 .HasDatabaseName("IX_InboxEntries_PlatformUserId_Category_OccurredAt");
 
+            // perf audit F14: the unread-count + default drawer query filters
+            // PlatformUserId AND ReadAt IS NULL AND DismissedAt IS NULL. A partial index keeps it
+            // O(unread working set) instead of scanning the user's full notification history.
+            entity.HasIndex(e => e.PlatformUserId)
+                .HasDatabaseName("IX_InboxEntries_Unread")
+                .HasFilter("\"ReadAt\" IS NULL AND \"DismissedAt\" IS NULL");
+
             // Cascade delete with PlatformUser.
             entity.HasOne<PlatformUser>()
                 .WithMany()

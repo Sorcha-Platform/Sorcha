@@ -878,6 +878,13 @@ namespace Sorcha.Tenant.Service.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_InboxEntries_Unread",
+                schema: "public",
+                table: "InboxEntries",
+                column: "PlatformUserId",
+                filter: "\"ReadAt\" IS NULL AND \"DismissedAt\" IS NULL");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_InvNonce_Nonce",
                 schema: "public",
                 table: "InvitationNonces",
