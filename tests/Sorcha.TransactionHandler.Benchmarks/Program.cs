@@ -1,4 +1,4 @@
 using BenchmarkDotNet.Running;
-using Sorcha.TransactionHandler.Benchmarks;
 
-BenchmarkRunner.Run<TransactionBenchmarks>();
+// Run any benchmark in this assembly; select with --filter (e.g. --filter *DocketHashOptions*).
+BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);

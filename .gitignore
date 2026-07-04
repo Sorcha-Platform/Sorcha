@@ -290,3 +290,6 @@ deploy/
 /demo-nodes.json
 /state.json
 /demo-citizen-state.json
+
+# BenchmarkDotNet run artifacts
+BenchmarkDotNet.Artifacts/
