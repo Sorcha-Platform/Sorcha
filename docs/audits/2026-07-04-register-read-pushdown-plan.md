@@ -1,7 +1,29 @@
 # Register read pushdown + OData revival — design plan
 
-**Status:** proposed · **Author:** perf initiative (T1 follow-up) · **Date:** 2026-07-04
+**Status:** Part A shipped · **Author:** perf initiative (T1 follow-up) · **Date:** 2026-07-04
 **Prereq shipped:** the three Mongo tx indexes (#1106) that these pushed-down queries seek against.
+
+> **Update 2026-07-04 — Part A complete (#1112 doc, #1113 A1, #1114 A2, #1115 A3).**
+> Every index-able register transaction read is now pushed down to Mongo. The pushed-down methods
+> (`GetLatestTransactions/Transaction`, `CountTransactions`, `CountTransactionsBefore`,
+> `GetTransactionsByType`, `GetTransactionsBefore`) + `TransactionSort` enum live on
+> `IReadOnlyRegisterRepository` (all three impls + cache decorator + `TransactionManager`), with
+> contract tests. **Use these — not the materialise-all `GetTransactionsAsync`** — for new register
+> read paths. `GetTransactionsAsync` (Find(Empty).ToList().AsQueryable()) is now reserved for the three
+> inherent full-scans below.
+>
+> **Remaining (deliberately not done):**
+> - **Inherent full-scans** (§3.3): orphan-transaction detect/purge (`Program.cs`) + register statistics
+>   (`QueryManager.GetTransactionStatistics`) genuinely need every transaction. Follow-up = projection /
+>   `$group`, not elimination.
+> - **Part B (OData revival) — reframed as a small feature, not wiring.** On inspection the OData surface
+>   is dead (`AddOData` registered, no `MapControllers`, no gateway route) AND the Explorer
+>   (`ODataQueryBuilder.razor` → `ODataQueryService`) was built assuming a **single global `Transactions`
+>   collection** — but storage is **per-register databases** (`sorcha_register_{id}`). So B needs a
+>   **per-register-routed** OData controller (`/odata/registers/{registerId}/Transactions`, `[EnableQuery]`
+>   over `collection.AsQueryable()` = `IMongoQueryable`, allowed-field/`$top` constraints) **and** an
+>   Explorer **register-selector UX** (the client must pass `registerId`). Server side is mechanical +
+>   testable; the selector UX is real UI work. Treat B as its own focused piece.
 
 ## 1. Problem
 

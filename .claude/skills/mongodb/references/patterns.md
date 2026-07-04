@@ -226,6 +226,39 @@ var total = await _collection.EstimatedDocumentCountAsync(ct);
 var filtered = await _collection.CountDocumentsAsync(filter, options, ct);
 ```
 
+### Push the query down — never materialise-then-LINQ
+
+The single worst read anti-pattern: load the whole collection, then filter/sort/page/count in memory.
+Every read becomes O(collection) — fetching one document, the latest page, or a count all stream +
+deserialize everything first. On an append-only collection it only gets worse.
+
+```csharp
+// BAD — materialises the entire collection, then LINQ-to-Objects (O(collection) per read).
+// This is exactly the register T1 bottleneck (2026-07-04): GetTransactionsAsync did
+// Find(Empty).ToList().AsQueryable() and ~18 call sites filtered/sorted/paged/counted in memory.
+var all = (await coll.Find(FilterDefinition<T>.Empty).ToListAsync(ct)).AsQueryable();
+var page = all.Where(x => x.Type == t).OrderByDescending(x => x.Ts).Skip(s).Take(n).ToList();
+var total = all.Count();
+
+// GOOD — filter + sort + skip/limit + count all pushed to the server (index-backed).
+var page = await coll.Find(Builders<T>.Filter.Eq(x => x.Type, t))
+    .SortByDescending(x => x.Ts).Skip(s).Limit(n).ToListAsync(ct);
+var total = await coll.CountDocumentsAsync(Builders<T>.Filter.Eq(x => x.Type, t), cancellationToken: ct);
+```
+
+- **Expose intent-revealing repo methods** (`GetLatestTransactions(skip, take)`,
+  `GetTransactionsByType(type, sort, skip, take)`, `CountTransactions`, `CountTransactionsBefore`,
+  cursor `GetTransactionsBefore(before, take)`), not a blanket `Task<IQueryable<T>>` that leaks the
+  materialise-all shape to callers. See `IReadOnlyRegisterRepository` +
+  `docs/audits/2026-07-04-register-read-pushdown-plan.md`.
+- **Cursor pagination:** `Find(Lt(Ts, cursor)).SortByDescending(Ts).Limit(n)` + a `CountDocuments(Lt)`
+  for `hasMore` — no full scan, no offset skip cost.
+- **A pushed-down filter is only cheap on an indexed field** — align the predicate/sort to an existing
+  index or you've just moved the COLLSCAN server-side (see the index section above).
+- **Genuine full-scans** (e.g. "every doc not in set X", cross-doc aggregate) can't be eliminated — but
+  still `.Project(...)` to only the needed fields and stream (`IAsyncCursor`/`IAsyncEnumerable`) rather
+  than building a giant in-memory `List`; or move the aggregate into a `$group` pipeline.
+
 ---
 
 ## Testing with Testcontainers
