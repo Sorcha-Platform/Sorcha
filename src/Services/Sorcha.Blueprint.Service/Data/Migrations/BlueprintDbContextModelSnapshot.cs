@@ -56,8 +56,9 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                         .HasDatabaseName("UX_Actions_IdempotencyKey")
                         .HasFilter("\"IdempotencyKey\" IS NOT NULL");
 
-                    b.HasIndex("WalletAddress", "RegisterAddress")
-                        .HasDatabaseName("IX_Actions_Wallet_Register");
+                    b.HasIndex("WalletAddress", "RegisterAddress", "CreatedAt")
+                        .IsDescending(false, false, true)
+                        .HasDatabaseName("IX_Actions_Wallet_Register_CreatedAt");
 
                     b.ToTable("Actions", "blueprint");
                 });
@@ -291,14 +292,17 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BlueprintId")
-                        .HasDatabaseName("IX_Instances_BlueprintId");
+                    b.HasIndex("BlueprintId", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_Instances_BlueprintId_CreatedAt");
 
-                    b.HasIndex("RegisterId")
-                        .HasDatabaseName("IX_Instances_RegisterId");
+                    b.HasIndex("RegisterId", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_Instances_RegisterId_CreatedAt");
 
-                    b.HasIndex("State")
-                        .HasDatabaseName("IX_Instances_State");
+                    b.HasIndex("State", "UpdatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_Instances_State_UpdatedAt");
 
                     b.ToTable("Instances", "blueprint");
                 });
