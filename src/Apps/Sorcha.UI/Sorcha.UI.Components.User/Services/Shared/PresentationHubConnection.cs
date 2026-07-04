@@ -78,14 +78,12 @@ public sealed class PresentationHubConnection : IAsyncDisposable
                         options.AccessTokenProvider = _accessTokenProvider;
                     }
                 })
-                .WithAutomaticReconnect(new[]
-                {
+                .WithAutomaticReconnect(new Sorcha.ServiceClients.Http.Hub.SorchaHubConnectionBuilder.JitteredRetryPolicy(
                     TimeSpan.FromSeconds(0),
                     TimeSpan.FromSeconds(2),
                     TimeSpan.FromSeconds(5),
                     TimeSpan.FromSeconds(10),
-                    TimeSpan.FromSeconds(30)
-                });
+                    TimeSpan.FromSeconds(30)));
 
             _hubConnection = builder.Build();
 

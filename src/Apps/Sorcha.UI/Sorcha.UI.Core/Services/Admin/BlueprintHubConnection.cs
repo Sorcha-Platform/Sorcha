@@ -141,14 +141,12 @@ public class BlueprintHubConnection : IAsyncDisposable
                         return token;
                     };
                 })
-                .WithAutomaticReconnect(new[]
-                {
+                .WithAutomaticReconnect(new SorchaHubConnectionBuilder.JitteredRetryPolicy(
                     TimeSpan.FromSeconds(0),
                     TimeSpan.FromSeconds(2),
                     TimeSpan.FromSeconds(5),
                     TimeSpan.FromSeconds(10),
-                    TimeSpan.FromSeconds(30)
-                })
+                    TimeSpan.FromSeconds(30)))
                 .Build();
 
             // Register event handlers for server-to-client calls

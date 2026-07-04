@@ -135,4 +135,58 @@ public class SorchaHubConnectionBuilderTests
             TimeSpan.FromMilliseconds(50), random: 0.0);
         floored.Should().Be(SorchaHubConnectionBuilder.InfiniteRetryPolicy.MinDelay);
     }
+
+    // --- Perf audit F6: finite jittered reconnect (hub-client sites) -----------
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void JitteredRetryPolicy_WithinSchedule_ReturnsJitteredNominal(int previousRetryCount)
+    {
+        var delays = new[]
+        {
+            TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5),
+            TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30)
+        };
+        // random=0.5 → multiplier 1.0, so jittered == nominal (except the 0s slot,
+        // which the 100ms floor lifts to MinDelay).
+        var policy = new SorchaHubConnectionBuilder.JitteredRetryPolicy(delays, static () => 0.5);
+
+        var actual = policy.NextRetryDelay(new RetryContext { PreviousRetryCount = previousRetryCount });
+
+        actual.Should().NotBeNull();
+        var expected = delays[previousRetryCount] < SorchaHubConnectionBuilder.InfiniteRetryPolicy.MinDelay
+            ? SorchaHubConnectionBuilder.InfiniteRetryPolicy.MinDelay
+            : delays[previousRetryCount];
+        actual!.Value.Should().Be(expected);
+    }
+
+    [Fact]
+    public void JitteredRetryPolicy_AfterScheduleExhausted_ReturnsNull()
+    {
+        // The distinguishing behaviour vs InfiniteRetryPolicy: it gives up after the
+        // last delay so the hub client's own background-retry loop can take over.
+        var delays = new[] { TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5) };
+        var policy = new SorchaHubConnectionBuilder.JitteredRetryPolicy(delays, static () => 0.5);
+
+        policy.NextRetryDelay(new RetryContext { PreviousRetryCount = 2 }).Should().BeNull();
+        policy.NextRetryDelay(new RetryContext { PreviousRetryCount = 5 }).Should().BeNull();
+    }
+
+    [Fact]
+    public void JitteredRetryPolicy_SpreadsWithin20PercentBand()
+    {
+        var seed = new Random(42);
+        var delays = new[] { TimeSpan.FromSeconds(30) };
+        var policy = new SorchaHubConnectionBuilder.JitteredRetryPolicy(delays, () => seed.NextDouble());
+
+        for (var i = 0; i < 500; i++)
+        {
+            var delay = policy.NextRetryDelay(new RetryContext { PreviousRetryCount = 0 })!.Value;
+            (delay.TotalMilliseconds / 30_000.0).Should().BeInRange(0.80, 1.20);
+        }
+    }
 }
