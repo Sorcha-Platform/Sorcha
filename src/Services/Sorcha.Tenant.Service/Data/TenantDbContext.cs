@@ -517,6 +517,12 @@ public class TenantDbContext : DbContext
                 .IsUnique()
                 .HasDatabaseName("UQ_UserIdentity_Org_Email");  // Email must be unique within organization
 
+            // perf audit F9: GetUserByEmailAsync filters on Email alone, but the unique composite above
+            // leads with OrganizationId so it can't serve an email-only lookup (→ sequential scan on a
+            // login-adjacent path). A standalone Email index makes it an index seek.
+            entity.HasIndex(e => e.Email)
+                .HasDatabaseName("IX_UserIdentity_Email");
+
             entity.HasIndex(e => e.OrganizationId);
             entity.HasIndex(e => e.Status);
 

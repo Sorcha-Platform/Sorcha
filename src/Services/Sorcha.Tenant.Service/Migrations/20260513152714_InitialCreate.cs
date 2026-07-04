@@ -1185,6 +1185,12 @@ namespace Sorcha.Tenant.Service.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_UserIdentity_Email",
+                schema: "public",
+                table: "UserIdentities",
+                column: "Email");
+
+            migrationBuilder.CreateIndex(
                 name: "UQ_UserPreferences_UserId",
                 schema: "public",
                 table: "UserPreferences",
