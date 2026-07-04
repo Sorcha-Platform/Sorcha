@@ -2080,13 +2080,17 @@ app.MapGet("/api/registers/{registerId}/blueprints/published", async (
     // Post-#876 publishes are TransactionType.BlueprintPublish; pre-#876 publishes were
     // TransactionType.Control + TrackingData["transactionType"]="BlueprintPublish".
     // Both eras coexist forever, so this filter must accept either.
-    var allTransactions = (await repository.GetTransactionsAsync(registerId)).ToList();
-    var publishTransactions = allTransactions
+    // Pushed down: two index-backed type queries (BlueprintPublish + pre-#876 Control), then the
+    // BlueprintId filter in memory over that small subset — avoids materialising the whole ledger.
+    var byPublish = await repository.GetTransactionsByTypeAsync(
+        registerId, TransactionType.BlueprintPublish, TransactionSort.TimeStampDescending);
+    var byControl = await repository.GetTransactionsByTypeAsync(
+        registerId, TransactionType.Control, TransactionSort.TimeStampDescending);
+    var publishTransactions = byPublish.Concat(byControl)
         .Where(tx => tx.MetaData != null
-            && (tx.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.BlueprintPublish
-                || tx.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.Control)
             && !string.IsNullOrEmpty(tx.MetaData.BlueprintId)
             && tx.MetaData.BlueprintId != "genesis")
+        .OrderByDescending(tx => tx.TimeStamp)
         .ToList();
 
     var blueprints = publishTransactions.Select(tx =>
@@ -2197,11 +2201,9 @@ governanceGroup.MapGet("/history", async (
         return Results.NotFound(new { error = "Register not found" });
     }
 
-    var transactions = await repository.GetTransactionsAsync(registerId);
-    var controlTxs = transactions
-        .Where(t => t.MetaData != null && t.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.Control)
-        .OrderByDescending(t => t.DocketNumber ?? 0)
-        .ToList();
+    // Pushed down: Control transactions, docket descending (index-backed) — then page in memory.
+    var controlTxs = await repository.GetTransactionsByTypeAsync(
+        registerId, TransactionType.Control, TransactionSort.DocketNumberDescending);
 
     var pagedTxs = controlTxs
         .Skip((page - 1) * pageSize)
@@ -2484,12 +2486,9 @@ governanceGroup.MapGet("/proposals", async (
         return Results.NotFound(new { error = "Register not found" });
     }
 
-    // Get all Control transactions and extract those with governance operations
-    var transactions = await repository.GetTransactionsAsync(registerId);
-    var controlTxs = transactions
-        .Where(t => t.MetaData != null && t.MetaData.TransactionType == TransactionType.Control)
-        .OrderByDescending(t => t.DocketNumber ?? 0)
-        .ToList();
+    // Pushed down: Control transactions, docket descending (index-backed) — then filter/page in memory.
+    var controlTxs = await repository.GetTransactionsByTypeAsync(
+        registerId, TransactionType.Control, TransactionSort.DocketNumberDescending);
 
     // Filter to Control TXs that have governance operation metadata
     var governanceProposals = controlTxs

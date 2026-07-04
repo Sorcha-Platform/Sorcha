@@ -59,20 +59,27 @@ public class QueryManager
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 100) pageSize = 20;
 
-        var query = await _repository.GetTransactionsAsync(registerId, cancellationToken);
-
-        // Apply filter if provided
-        if (filter != null)
+        int total;
+        List<TransactionModel> items;
+        if (filter is null)
         {
-            query = query.Where(filter);
+            // No predicate: count + newest-first page fully pushed down (index-backed, no materialisation).
+            total = (int)await _repository.CountTransactionsAsync(registerId, cancellationToken);
+            items = (await _repository.GetLatestTransactionsAsync(
+                registerId, (page - 1) * pageSize, pageSize, cancellationToken)).ToList();
         }
-
-        var total = query.Count();
-        var items = query
-            .OrderByDescending(t => t.TimeStamp)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToList();
+        else
+        {
+            // Predicate: push it to the store (index-backed where the predicate allows), then count +
+            // page over the matched subset rather than the whole ledger.
+            var matches = (await _repository.QueryTransactionsAsync(registerId, filter, cancellationToken)).ToList();
+            total = matches.Count;
+            items = matches
+                .OrderByDescending(t => t.TimeStamp)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+        }
 
         return new PaginatedResult<TransactionModel>
         {

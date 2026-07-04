@@ -32,6 +32,7 @@ public class SystemRegisterBootstrapperTests
 
     public SystemRegisterBootstrapperTests()
     {
+        RegisterMockHelpers.StubTransactionsByTypeReadThrough(_mockRepository);
         // Default: blueprint queries return existing blueprints (skip seeding which needs template files)
         _mockRepository
             .Setup(r => r.GetTransactionsAsync(SystemRegisterConstants.SystemRegisterId, It.IsAny<CancellationToken>()))

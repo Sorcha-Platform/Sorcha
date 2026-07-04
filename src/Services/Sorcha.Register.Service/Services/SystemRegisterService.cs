@@ -400,22 +400,25 @@ public class SystemRegisterService
             return new List<TransactionModel>();
         }
 
-        var allTransactions = await _transactionManager.GetTransactionsAsync(
-            SystemRegisterConstants.SystemRegisterId, cancellationToken);
+        // Pushed down: two index-backed type queries (post-#876 BlueprintPublish + pre-#876 Control),
+        // then the non-genesis BlueprintId filter in memory over that small subset. TrackingData is not
+        // reliably persisted through the validator pipeline, so we use BlueprintId from MetaData.
+        var byPublish = await _transactionManager.GetTransactionsByTypeAsync(
+            SystemRegisterConstants.SystemRegisterId,
+            Sorcha.Register.Models.Enums.TransactionType.BlueprintPublish,
+            Sorcha.Register.Models.Enums.TransactionSort.TimeStampDescending,
+            cancellationToken: cancellationToken);
+        var byControl = await _transactionManager.GetTransactionsByTypeAsync(
+            SystemRegisterConstants.SystemRegisterId,
+            Sorcha.Register.Models.Enums.TransactionType.Control,
+            Sorcha.Register.Models.Enums.TransactionSort.TimeStampDescending,
+            cancellationToken: cancellationToken);
 
-        // Materialize before filtering — IQueryable expression trees cannot use
-        // null-propagating operators or out variables
-        var materialized = allTransactions.ToList();
-
-        // Filter for blueprint transactions: post-#876 BlueprintPublish OR pre-#876 Control
-        // with a non-genesis BlueprintId. TrackingData is not reliably persisted through the
-        // validator pipeline, so we use BlueprintId from MetaData which IS stored.
-        return materialized
+        return byPublish.Concat(byControl)
             .Where(t => t.MetaData is not null
-                && (t.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.BlueprintPublish
-                    || t.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.Control)
                 && !string.IsNullOrEmpty(t.MetaData.BlueprintId)
                 && t.MetaData.BlueprintId != "genesis")
+            .OrderByDescending(t => t.TimeStamp)
             .ToList();
     }
 
