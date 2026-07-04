@@ -1590,6 +1590,9 @@ namespace Sorcha.Tenant.Service.Migrations
 
                     b.HasIndex("Status");
 
+                    b.HasIndex("Email")
+                        .HasDatabaseName("IX_UserIdentity_Email");
+
                     b.HasIndex("OrganizationId", "Email")
                         .IsUnique()
                         .HasDatabaseName("UQ_UserIdentity_Org_Email");
