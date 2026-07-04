@@ -441,12 +441,8 @@ public class SystemRegisterService
             return null;
         }
 
-        var allTransactions = await _transactionManager.GetTransactionsAsync(
+        var latestTx = await _transactionManager.GetLatestTransactionAsync(
             SystemRegisterConstants.SystemRegisterId, cancellationToken);
-
-        var latestTx = allTransactions
-            .OrderByDescending(t => t.TimeStamp)
-            .FirstOrDefault();
 
         return latestTx?.TxId;
     }

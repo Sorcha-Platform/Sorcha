@@ -138,6 +138,52 @@ public class TransactionManager
         return await _repository.GetTransactionsAsync(registerId, cancellationToken);
     }
 
+    /// <summary>Gets a page of transactions newest-first (store-side, by TimeStamp descending).</summary>
+    public async Task<IReadOnlyList<TransactionModel>> GetLatestTransactionsAsync(
+        string registerId,
+        int skip,
+        int take,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        return await _repository.GetLatestTransactionsAsync(registerId, skip, take, cancellationToken);
+    }
+
+    /// <summary>Gets the single most recent transaction (store-side, by TimeStamp descending), or null.</summary>
+    public async Task<TransactionModel?> GetLatestTransactionAsync(
+        string registerId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        return await _repository.GetLatestTransactionAsync(registerId, cancellationToken);
+    }
+
+    /// <summary>Counts a register's transactions without materialising them (store-side count).</summary>
+    public async Task<long> CountTransactionsAsync(
+        string registerId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        return await _repository.CountTransactionsAsync(registerId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets transactions of a given <see cref="TransactionType"/>, sorted and paged, pushed down to
+    /// the store (rides the <c>MetaData.TransactionType</c> index). <paramref name="take"/> of 0
+    /// returns all matches.
+    /// </summary>
+    public async Task<IReadOnlyList<TransactionModel>> GetTransactionsByTypeAsync(
+        string registerId,
+        TransactionType transactionType,
+        TransactionSort sort,
+        int skip = 0,
+        int take = 0,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        return await _repository.GetTransactionsByTypeAsync(registerId, transactionType, sort, skip, take, cancellationToken);
+    }
+
     /// <summary>
     /// Gets transactions by sender address
     /// </summary>

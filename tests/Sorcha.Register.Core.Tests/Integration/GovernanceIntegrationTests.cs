@@ -89,6 +89,13 @@ public class GovernanceIntegrationTests
         _repositoryMock
             .Setup(r => r.GetTransactionsAsync(RegisterId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(transactions.AsQueryable());
+        // The roster service now reads control txs via the pushed-down GetTransactionsByTypeAsync.
+        _repositoryMock
+            .Setup(r => r.GetTransactionsByTypeAsync(RegisterId, TransactionType.Control, It.IsAny<TransactionSort>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(transactions
+                .Where(t => t.MetaData is not null && t.MetaData.TransactionType == TransactionType.Control)
+                .OrderBy(t => t.DocketNumber ?? 0)
+                .ToList());
     }
 
     [Fact]

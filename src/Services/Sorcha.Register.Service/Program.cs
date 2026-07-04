@@ -601,8 +601,7 @@ registersGroup.MapPost("/{registerId}/disable-dev-mode", async (
         System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(txIdSource)))
         .ToLowerInvariant();
 
-    var allTxs = await transactionManager.GetTransactionsAsync(registerId, ct);
-    var chainHead = allTxs.OrderByDescending(t => t.TimeStamp).FirstOrDefault();
+    var chainHead = await transactionManager.GetLatestTransactionAsync(registerId, ct);
 
     var tx = new Sorcha.Register.Models.TransactionModel
     {
@@ -1140,13 +1139,10 @@ transactionsGroup.MapGet("/", async (
     var odataSkip = skip ?? 0;
     var odataTop = top ?? 20;
 
-    var transactions = await manager.GetTransactionsAsync(registerId);
-    var totalCount = transactions.Count();
-    var paged = transactions
-        .OrderByDescending(t => t.TimeStamp)
-        .Skip(odataSkip)
-        .Take(odataTop)
-        .ToList();
+    // Pushed down to the store: count + newest-first page, index-backed (TimeStamp desc), rather
+    // than materialising the whole ledger to count and page in memory.
+    var totalCount = await manager.CountTransactionsAsync(registerId);
+    var paged = await manager.GetLatestTransactionsAsync(registerId, odataSkip, odataTop);
 
     // OData-style paged response
     var page = odataTop > 0 ? (odataSkip / odataTop) + 1 : 1;
@@ -2605,8 +2601,7 @@ governanceGroup.MapPost("/crypto-policy", async (
     var txId = Convert.ToHexString(txIdBytes).ToLowerInvariant();
 
     // Find chain head
-    var allTxs = await transactionManager.GetTransactionsAsync(registerId, ct);
-    var chainHead = allTxs.OrderByDescending(t => t.TimeStamp).FirstOrDefault();
+    var chainHead = await transactionManager.GetLatestTransactionAsync(registerId, ct);
 
     // Build control transaction
     var tx = new Sorcha.Register.Models.TransactionModel
@@ -3451,8 +3446,7 @@ app.MapGet("/api/stats", async (
             var listedTransactionCount = 0;
             foreach (var id in listed)
             {
-                var transactions = await repository.GetTransactionsAsync(id);
-                listedTransactionCount += transactions.Count();
+                listedTransactionCount += (int)await repository.CountTransactionsAsync(id);
             }
             return Results.Ok(new
             {
@@ -3468,8 +3462,7 @@ app.MapGet("/api/stats", async (
         var transactionCount = 0;
         foreach (var register in registers)
         {
-            var transactions = await repository.GetTransactionsAsync(register.Id);
-            transactionCount += transactions.Count();
+            transactionCount += (int)await repository.CountTransactionsAsync(register.Id);
         }
 
         return Results.Ok(new

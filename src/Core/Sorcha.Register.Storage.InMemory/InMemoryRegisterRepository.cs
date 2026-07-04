@@ -168,6 +168,53 @@ public class InMemoryRegisterRepository : IRegisterRepository
         return Task.FromResult(registerTransactions.Values.AsQueryable());
     }
 
+    private IEnumerable<TransactionModel> RegisterTxs(string registerId) =>
+        _transactions.TryGetValue(registerId, out var t) ? t.Values : Enumerable.Empty<TransactionModel>();
+
+    public Task<IReadOnlyList<TransactionModel>> GetLatestTransactionsAsync(string registerId, int skip, int take, CancellationToken cancellationToken = default)
+    {
+        var q = RegisterTxs(registerId).OrderByDescending(t => t.TimeStamp).Skip(skip);
+        if (take > 0) q = q.Take(take);
+        return Task.FromResult<IReadOnlyList<TransactionModel>>(q.ToList());
+    }
+
+    public Task<TransactionModel?> GetLatestTransactionAsync(string registerId, CancellationToken cancellationToken = default)
+        => Task.FromResult(RegisterTxs(registerId).OrderByDescending(t => t.TimeStamp).FirstOrDefault());
+
+    public Task<long> CountTransactionsAsync(string registerId, CancellationToken cancellationToken = default)
+        => Task.FromResult((long)RegisterTxs(registerId).Count());
+
+    public Task<IReadOnlyList<TransactionModel>> GetTransactionsByTypeAsync(
+        string registerId,
+        Sorcha.Register.Models.Enums.TransactionType transactionType,
+        Sorcha.Register.Models.Enums.TransactionSort sort,
+        int skip = 0,
+        int take = 0,
+        CancellationToken cancellationToken = default)
+    {
+        var filtered = RegisterTxs(registerId).Where(t => t.MetaData != null && t.MetaData.TransactionType == transactionType);
+        var ordered = sort switch
+        {
+            Sorcha.Register.Models.Enums.TransactionSort.TimeStampAscending => filtered.OrderBy(t => t.TimeStamp),
+            Sorcha.Register.Models.Enums.TransactionSort.DocketNumberDescending => filtered.OrderByDescending(t => t.DocketNumber ?? 0),
+            Sorcha.Register.Models.Enums.TransactionSort.DocketNumberAscending => filtered.OrderBy(t => t.DocketNumber ?? 0),
+            _ => filtered.OrderByDescending(t => t.TimeStamp),
+        };
+        IEnumerable<TransactionModel> result = ordered;
+        if (skip > 0) result = result.Skip(skip);
+        if (take > 0) result = result.Take(take);
+        return Task.FromResult<IReadOnlyList<TransactionModel>>(result.ToList());
+    }
+
+    public Task<IReadOnlyList<TransactionModel>> GetTransactionsBeforeAsync(string registerId, DateTime before, int take, CancellationToken cancellationToken = default)
+    {
+        IEnumerable<TransactionModel> result = RegisterTxs(registerId)
+            .Where(t => t.TimeStamp < before)
+            .OrderByDescending(t => t.TimeStamp);
+        if (take > 0) result = result.Take(take);
+        return Task.FromResult<IReadOnlyList<TransactionModel>>(result.ToList());
+    }
+
     public Task<TransactionModel?> GetTransactionAsync(
         string registerId,
         string transactionId,
