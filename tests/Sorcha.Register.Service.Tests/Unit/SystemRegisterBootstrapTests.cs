@@ -43,6 +43,7 @@ public class SystemRegisterBootstrapTests
     public SystemRegisterBootstrapTests()
     {
         _mockRepository = new Mock<IRegisterRepository>();
+        RegisterMockHelpers.StubTransactionsByTypeReadThrough(_mockRepository);
         _mockValidatorClient = new Mock<IValidatorServiceClient>();
         _mockSigningService = new Mock<ISystemWalletSigningService>();
         _mockHashProvider = new Mock<IHashProvider>();

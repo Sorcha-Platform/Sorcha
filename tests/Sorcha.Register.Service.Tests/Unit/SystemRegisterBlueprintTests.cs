@@ -34,6 +34,7 @@ public class SystemRegisterBlueprintTests
     public SystemRegisterBlueprintTests()
     {
         _mockRepository = new Mock<IRegisterRepository>();
+        RegisterMockHelpers.StubTransactionsByTypeReadThrough(_mockRepository);
         var mockEventPublisher = new Mock<IEventPublisher>();
         _mockValidatorClient = new Mock<IValidatorServiceClient>();
         _mockSigningService = new Mock<ISystemWalletSigningService>();
