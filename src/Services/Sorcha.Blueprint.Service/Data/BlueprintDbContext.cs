@@ -94,6 +94,13 @@ public class BlueprintDbContext : DbContext
         {
             entity.ToTable("FileMetadata");
             entity.HasKey(e => e.Id);
+
+            // perf audit F14: the orphan-chunk sweep filters TransactionHash IS NULL AND CreatedAt < cutoff
+            // (EfCoreActionStore). A partial index on CreatedAt over the null-TransactionHash subset keeps
+            // the periodic sweep O(orphan working set) instead of scanning all file metadata.
+            entity.HasIndex(e => e.CreatedAt)
+                .HasDatabaseName("IX_FileMetadata_Orphans")
+                .HasFilter("\"TransactionHash\" IS NULL");
         });
 
         // Instance configuration
