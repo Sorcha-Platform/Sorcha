@@ -1897,7 +1897,12 @@ docketsGroup.MapPost("/", async (
     return Results.Created($"/api/registers/{registerId}/dockets/{inserted.Id}", inserted);
 })
 .Produces(StatusCodes.Status409Conflict)
-.WithRequestValidation()
+// No .WithRequestValidation() here: this is an INTERNAL validator->register endpoint carrying an
+// already hash/signature-verified docket + its ledger transactions. The request-validation seam
+// recurses into WriteDocketRequest.Transactions and runs user-input DataAnnotations over ledger txs —
+// which wrongly rejects a genesis docket (the genesis control tx has an empty PrevTxId, failing
+// TransactionModel's [StringLength(64, MinimumLength=64)]) and 400s new-register sealing. Machine-to-
+// machine ledger writes must not be gated by user-input validation.
 .WithName("WriteDocket")
 .WithSummary("Write a confirmed docket")
 .WithDescription("Writes a consensus-confirmed docket to the register. Used by Validator Service.")
