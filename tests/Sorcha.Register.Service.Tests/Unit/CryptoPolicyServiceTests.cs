@@ -25,6 +25,26 @@ public class CryptoPolicyServiceTests
     public CryptoPolicyServiceTests()
     {
         _repositoryMock = new Mock<IRegisterRepository>();
+
+        // The service now reads control transactions via the pushed-down GetTransactionsByTypeAsync.
+        // Each test stubs the mock via GetTransactionsAsync, so derive the by-type result from that same
+        // stub at call time (filter to Control, TimeStamp ascending, honour skip/take) — one setup covers
+        // every case.
+        _repositoryMock
+            .Setup(x => x.GetTransactionsByTypeAsync(
+                It.IsAny<string>(), TransactionType.Control, It.IsAny<TransactionSort>(),
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (string rid, TransactionType _, TransactionSort _, int skip, int take, CancellationToken ct) =>
+            {
+                var all = await _repositoryMock.Object.GetTransactionsAsync(rid, ct);
+                var q = all
+                    .Where(t => t.MetaData != null && t.MetaData.TransactionType == TransactionType.Control)
+                    .OrderBy(t => t.TimeStamp)
+                    .Skip(skip);
+                if (take > 0) q = q.Take(take);
+                return (IReadOnlyList<TransactionModel>)q.ToList();
+            });
+
         _transactionManager = new TransactionManager(
             _repositoryMock.Object,
             Mock.Of<IEventPublisher>());

@@ -29,6 +29,15 @@ public class GovernanceRosterServiceTests
         _repositoryMock
             .Setup(r => r.GetTransactionsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<TransactionModel>().AsQueryable());
+        _repositoryMock
+            .Setup(r => r.GetTransactionsByTypeAsync(
+                It.IsAny<string>(),
+                It.IsAny<TransactionType>(),
+                It.IsAny<TransactionSort>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<TransactionModel>());
     }
 
     // --- GetCurrentRosterAsync ---
@@ -93,9 +102,7 @@ public class GovernanceRosterServiceTests
             Payloads = []
         };
 
-        _repositoryMock
-            .Setup(r => r.GetTransactionsAsync(TestRegisterId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { controlTx, actionTx }.AsQueryable());
+        SetupControlTransactions(controlTx, actionTx);
 
         var result = await _service.GetCurrentRosterAsync(TestRegisterId);
 
@@ -136,9 +143,7 @@ public class GovernanceRosterServiceTests
             }],
         };
 
-        _repositoryMock
-            .Setup(r => r.GetTransactionsAsync(TestRegisterId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { genesisTx, noiseTx }.AsQueryable());
+        SetupControlTransactions(genesisTx, noiseTx);
 
         var result = await _service.GetCurrentRosterAsync(TestRegisterId);
 
@@ -353,5 +358,26 @@ public class GovernanceRosterServiceTests
         _repositoryMock
             .Setup(r => r.GetTransactionsAsync(TestRegisterId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(transactions.AsQueryable());
+
+        // The service now reads control transactions via the pushed-down GetTransactionsByTypeAsync;
+        // mirror the store contract: filter to Control, docket ascending.
+        StubControlByType(transactions);
+    }
+
+    private void StubControlByType(params TransactionModel[] transactions)
+    {
+        var control = transactions
+            .Where(t => t.MetaData is not null && t.MetaData.TransactionType == TransactionType.Control)
+            .OrderBy(t => t.DocketNumber ?? 0)
+            .ToList();
+        _repositoryMock
+            .Setup(r => r.GetTransactionsByTypeAsync(
+                TestRegisterId,
+                TransactionType.Control,
+                It.IsAny<TransactionSort>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(control);
     }
 }

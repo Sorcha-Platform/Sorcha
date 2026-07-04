@@ -352,15 +352,15 @@ public class GovernanceRosterService : IGovernanceRosterService
     private async Task<List<TransactionModel>> GetControlTransactionsAsync(
         string registerId, CancellationToken cancellationToken)
     {
-        // Query repository directly instead of HTTP calls
-        var allTransactions = await _repository.GetTransactionsAsync(registerId, cancellationToken);
+        // Pushed down to the store: filter to Control + sort by docket ascending (index-backed),
+        // rather than materialising the whole ledger and filtering/sorting in memory.
+        var controlTxs = await _repository.GetTransactionsByTypeAsync(
+            registerId,
+            TransactionType.Control,
+            TransactionSort.DocketNumberAscending, // apply in docket order for correct roster reconstruction
+            cancellationToken: cancellationToken);
 
-        var controlTxs = allTransactions
-            .Where(t => t.MetaData != null && t.MetaData.TransactionType == TransactionType.Control)
-            .OrderBy(t => t.DocketNumber ?? 0)  // Order by docket for correct roster reconstruction
-            .ToList();
-
-        return controlTxs;
+        return controlTxs.ToList();
     }
 
     private ControlTransactionPayload? DeserializeControlPayload(TransactionModel transaction)

@@ -559,6 +559,68 @@ public class MongoRegisterRepository : IRegisterRepository
     }
 
     /// <inheritdoc/>
+    public async Task<IReadOnlyList<TransactionModel>> GetLatestTransactionsAsync(string registerId, int skip, int take, CancellationToken cancellationToken = default)
+    {
+        var transactions = GetTransactionsCollection(registerId);
+        var find = transactions.Find(FilterDefinition<TransactionModel>.Empty)
+            .SortByDescending(t => t.TimeStamp)
+            .Skip(skip > 0 ? skip : null);
+        if (take > 0) find = find.Limit(take);
+        return await find.ToListAsync(cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async Task<TransactionModel?> GetLatestTransactionAsync(string registerId, CancellationToken cancellationToken = default)
+    {
+        var transactions = GetTransactionsCollection(registerId);
+        return await transactions.Find(FilterDefinition<TransactionModel>.Empty)
+            .SortByDescending(t => t.TimeStamp)
+            .Limit(1)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async Task<long> CountTransactionsAsync(string registerId, CancellationToken cancellationToken = default)
+    {
+        var transactions = GetTransactionsCollection(registerId);
+        return await transactions.CountDocumentsAsync(FilterDefinition<TransactionModel>.Empty, cancellationToken: cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<TransactionModel>> GetTransactionsByTypeAsync(
+        string registerId,
+        TransactionType transactionType,
+        TransactionSort sort,
+        int skip = 0,
+        int take = 0,
+        CancellationToken cancellationToken = default)
+    {
+        var transactions = GetTransactionsCollection(registerId);
+        var filter = Builders<TransactionModel>.Filter.Eq("MetaData.TransactionType", transactionType);
+        var find = transactions.Find(filter);
+        find = sort switch
+        {
+            TransactionSort.TimeStampAscending => find.SortBy(t => t.TimeStamp),
+            TransactionSort.DocketNumberDescending => find.SortByDescending(t => t.DocketNumber),
+            TransactionSort.DocketNumberAscending => find.SortBy(t => t.DocketNumber),
+            _ => find.SortByDescending(t => t.TimeStamp),
+        };
+        if (skip > 0) find = find.Skip(skip);
+        if (take > 0) find = find.Limit(take);
+        return await find.ToListAsync(cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<TransactionModel>> GetTransactionsBeforeAsync(string registerId, DateTime before, int take, CancellationToken cancellationToken = default)
+    {
+        var transactions = GetTransactionsCollection(registerId);
+        var filter = Builders<TransactionModel>.Filter.Lt(t => t.TimeStamp, before);
+        IFindFluent<TransactionModel, TransactionModel> find = transactions.Find(filter).SortByDescending(t => t.TimeStamp);
+        if (take > 0) find = find.Limit(take);
+        return await find.ToListAsync(cancellationToken);
+    }
+
+    /// <inheritdoc/>
     public async Task<TransactionModel?> GetTransactionAsync(string registerId, string transactionId, CancellationToken cancellationToken = default)
     {
         var transactions = GetTransactionsCollection(registerId);

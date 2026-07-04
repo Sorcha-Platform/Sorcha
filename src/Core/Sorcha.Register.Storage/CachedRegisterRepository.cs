@@ -229,6 +229,28 @@ public class CachedRegisterRepository : IRegisterRepository
         return _innerRepository.GetTransactionsAsync(registerId, cancellationToken);
     }
 
+    // Pushed-down transaction reads — delegated straight through (store-side query, no caching).
+    public Task<IReadOnlyList<TransactionModel>> GetLatestTransactionsAsync(string registerId, int skip, int take, CancellationToken cancellationToken = default)
+        => _innerRepository.GetLatestTransactionsAsync(registerId, skip, take, cancellationToken);
+
+    public Task<TransactionModel?> GetLatestTransactionAsync(string registerId, CancellationToken cancellationToken = default)
+        => _innerRepository.GetLatestTransactionAsync(registerId, cancellationToken);
+
+    public Task<long> CountTransactionsAsync(string registerId, CancellationToken cancellationToken = default)
+        => _innerRepository.CountTransactionsAsync(registerId, cancellationToken);
+
+    public Task<IReadOnlyList<TransactionModel>> GetTransactionsByTypeAsync(
+        string registerId,
+        Sorcha.Register.Models.Enums.TransactionType transactionType,
+        Sorcha.Register.Models.Enums.TransactionSort sort,
+        int skip = 0,
+        int take = 0,
+        CancellationToken cancellationToken = default)
+        => _innerRepository.GetTransactionsByTypeAsync(registerId, transactionType, sort, skip, take, cancellationToken);
+
+    public Task<IReadOnlyList<TransactionModel>> GetTransactionsBeforeAsync(string registerId, DateTime before, int take, CancellationToken cancellationToken = default)
+        => _innerRepository.GetTransactionsBeforeAsync(registerId, before, take, cancellationToken);
+
     public async Task<TransactionModel?> GetTransactionAsync(
         string registerId,
         string transactionId,

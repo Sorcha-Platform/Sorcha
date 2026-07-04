@@ -71,6 +71,12 @@ public class RosterDeterminismTests
         mockRepository
             .Setup(r => r.GetTransactionsAsync(RegisterId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(transactions.AsQueryable());
+        mockRepository
+            .Setup(r => r.GetTransactionsByTypeAsync(RegisterId, TransactionType.Control, It.IsAny<TransactionSort>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(transactions
+                .Where(t => t.MetaData is not null && t.MetaData.TransactionType == TransactionType.Control)
+                .OrderBy(t => t.DocketNumber ?? 0)
+                .ToList());
 
         var logger = new Mock<ILogger<GovernanceRosterService>>();
         return new GovernanceRosterService(mockRepository.Object, logger.Object);
@@ -143,6 +149,9 @@ public class RosterDeterminismTests
         mockRepository
             .Setup(r => r.GetTransactionsAsync(RegisterId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<TransactionModel>().AsQueryable());
+        mockRepository
+            .Setup(r => r.GetTransactionsByTypeAsync(RegisterId, TransactionType.Control, It.IsAny<TransactionSort>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<TransactionModel>());
 
         var logger = new Mock<ILogger<GovernanceRosterService>>();
         var service = new GovernanceRosterService(mockRepository.Object, logger.Object);

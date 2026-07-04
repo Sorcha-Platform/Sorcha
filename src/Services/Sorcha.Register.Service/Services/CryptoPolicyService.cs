@@ -80,12 +80,11 @@ public class CryptoPolicyService
     private async Task<CryptoPolicy?> ExtractGenesisPolicyAsync(
         string registerId, CancellationToken ct)
     {
-        // Genesis is the first control transaction on the register
-        var queryable = await _transactionManager.GetTransactionsAsync(registerId, ct);
-        var genesis = queryable
-            .Where(tx => tx.MetaData != null && tx.MetaData.TransactionType == TransactionType.Control)
-            .OrderBy(tx => tx.TimeStamp)
-            .FirstOrDefault();
+        // Genesis is the first control transaction on the register — pushed down to the store
+        // (earliest Control by TimeStamp) instead of materialising the whole ledger.
+        var earliestControl = await _transactionManager.GetTransactionsByTypeAsync(
+            registerId, TransactionType.Control, TransactionSort.TimeStampAscending, skip: 0, take: 1, cancellationToken: ct);
+        var genesis = earliestControl.FirstOrDefault();
 
         if (genesis?.Payloads == null || genesis.Payloads.Length == 0)
             return null;
@@ -105,14 +104,11 @@ public class CryptoPolicyService
     {
         var policies = new List<CryptoPolicy>();
 
-        var queryable = await _transactionManager.GetTransactionsAsync(registerId, ct);
-
-        // Materialize control transactions then filter in-memory for policy updates
-        var controlTxs = queryable
-            .Where(tx => tx.MetaData != null && tx.MetaData.TransactionType == TransactionType.Control)
-            .OrderBy(tx => tx.TimeStamp)
-            .AsEnumerable()
-            .Where(IsCryptoPolicyUpdate);
+        // Pushed down to the store: all Control txs, earliest first (index-backed), then the
+        // policy-update filter in memory over that small subset.
+        var allControl = await _transactionManager.GetTransactionsByTypeAsync(
+            registerId, TransactionType.Control, TransactionSort.TimeStampAscending, cancellationToken: ct);
+        var controlTxs = allControl.Where(IsCryptoPolicyUpdate);
 
         foreach (var tx in controlTxs)
         {

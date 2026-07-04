@@ -408,4 +408,105 @@ public abstract class RegisterRepositoryContractTests
         Signature = "test-signature",
         PrevTxId = string.Empty
     };
+
+    // ===========================
+    // Pushed-down transaction reads (perf T1)
+    // ===========================
+
+    private static TransactionModel Tx(
+        string txId, string registerId, DateTime ts,
+        TransactionType type = TransactionType.Action, ulong? docket = null) => new()
+    {
+        TxId = txId.PadRight(64, '0'),
+        RegisterId = registerId,
+        SenderWallet = "sender-wallet",
+        RecipientsWallets = new List<string> { "recipient-wallet" },
+        TimeStamp = ts,
+        DocketNumber = docket,
+        Signature = "sig",
+        PrevTxId = string.Empty,
+        MetaData = new TransactionMetaData { RegisterId = registerId, TransactionType = type },
+    };
+
+    [Fact]
+    public async Task GetLatestTransactionsAsync_ReturnsNewestFirstPage()
+    {
+        var sut = Sut;
+        const string reg = "contract-latest-page";
+        await sut.InsertRegisterAsync(CreateRegister(reg));
+        var t0 = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        await sut.InsertTransactionAsync(Tx("lp-1", reg, t0));
+        await sut.InsertTransactionAsync(Tx("lp-2", reg, t0.AddMinutes(1)));
+        await sut.InsertTransactionAsync(Tx("lp-3", reg, t0.AddMinutes(2)));
+
+        var page = await sut.GetLatestTransactionsAsync(reg, skip: 0, take: 2);
+
+        page.Should().HaveCount(2);
+        page[0].TxId.Should().StartWith("lp-3"); // newest first
+        page[1].TxId.Should().StartWith("lp-2");
+    }
+
+    [Fact]
+    public async Task GetLatestTransactionAsync_ReturnsSingleNewest()
+    {
+        var sut = Sut;
+        const string reg = "contract-latest-one";
+        await sut.InsertRegisterAsync(CreateRegister(reg));
+        var t0 = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        await sut.InsertTransactionAsync(Tx("lo-1", reg, t0));
+        await sut.InsertTransactionAsync(Tx("lo-2", reg, t0.AddMinutes(5)));
+
+        var latest = await sut.GetLatestTransactionAsync(reg);
+
+        latest.Should().NotBeNull();
+        latest!.TxId.Should().StartWith("lo-2");
+    }
+
+    [Fact]
+    public async Task CountTransactionsAsync_ReturnsCount()
+    {
+        var sut = Sut;
+        const string reg = "contract-count-tx";
+        await sut.InsertRegisterAsync(CreateRegister(reg));
+        await sut.InsertTransactionAsync(Tx("ct-1", reg, DateTime.UtcNow));
+        await sut.InsertTransactionAsync(Tx("ct-2", reg, DateTime.UtcNow.AddSeconds(1)));
+
+        (await sut.CountTransactionsAsync(reg)).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task GetTransactionsByTypeAsync_FiltersToTypeAndSortsByDocketAscending()
+    {
+        var sut = Sut;
+        const string reg = "contract-by-type";
+        await sut.InsertRegisterAsync(CreateRegister(reg));
+        var t0 = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        await sut.InsertTransactionAsync(Tx("bt-ctrl-0", reg, t0, TransactionType.Control, docket: 0));
+        await sut.InsertTransactionAsync(Tx("bt-action", reg, t0.AddMinutes(1), TransactionType.Action, docket: 1));
+        await sut.InsertTransactionAsync(Tx("bt-ctrl-2", reg, t0.AddMinutes(2), TransactionType.Control, docket: 2));
+
+        var ctrl = await sut.GetTransactionsByTypeAsync(reg, TransactionType.Control, TransactionSort.DocketNumberAscending);
+
+        ctrl.Should().HaveCount(2, "only Control transactions match");
+        ctrl[0].TxId.Should().StartWith("bt-ctrl-0"); // docket ascending
+        ctrl[1].TxId.Should().StartWith("bt-ctrl-2");
+    }
+
+    [Fact]
+    public async Task GetTransactionsBeforeAsync_ReturnsStrictlyOlderNewestFirst()
+    {
+        var sut = Sut;
+        const string reg = "contract-before";
+        await sut.InsertRegisterAsync(CreateRegister(reg));
+        var t0 = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        await sut.InsertTransactionAsync(Tx("bf-1", reg, t0));
+        await sut.InsertTransactionAsync(Tx("bf-2", reg, t0.AddMinutes(1)));
+        await sut.InsertTransactionAsync(Tx("bf-3", reg, t0.AddMinutes(2)));
+
+        var before = await sut.GetTransactionsBeforeAsync(reg, t0.AddMinutes(2), take: 10);
+
+        before.Should().HaveCount(2, "bf-3 at the cursor is excluded (strictly before)");
+        before[0].TxId.Should().StartWith("bf-2"); // newest-first
+        before[1].TxId.Should().StartWith("bf-1");
+    }
 }

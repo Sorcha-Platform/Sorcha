@@ -3,6 +3,7 @@
 
 using System.Linq.Expressions;
 using Sorcha.Register.Models;
+using Sorcha.Register.Models.Enums;
 
 namespace Sorcha.Register.Core.Storage;
 
@@ -72,6 +73,55 @@ public interface IReadOnlyRegisterRepository
     /// </summary>
     Task<IQueryable<TransactionModel>> GetTransactionsAsync(
         string registerId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a page of transactions ordered newest-first (by <c>TimeStamp</c> descending), pushed down
+    /// to the store — no full-collection materialisation. <paramref name="take"/> of 0 returns all
+    /// from <paramref name="skip"/> onward.
+    /// </summary>
+    Task<IReadOnlyList<TransactionModel>> GetLatestTransactionsAsync(
+        string registerId,
+        int skip,
+        int take,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the single most recent transaction (by <c>TimeStamp</c> descending), or null if the
+    /// register has none. Pushed down to the store.
+    /// </summary>
+    Task<TransactionModel?> GetLatestTransactionAsync(
+        string registerId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Counts the transactions in a register without materialising them (store-side count).
+    /// </summary>
+    Task<long> CountTransactionsAsync(
+        string registerId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets transactions of a given <see cref="TransactionType"/>, sorted and paged, pushed down to
+    /// the store (rides the <c>MetaData.TransactionType</c> index). <paramref name="take"/> of 0
+    /// returns all matches.
+    /// </summary>
+    Task<IReadOnlyList<TransactionModel>> GetTransactionsByTypeAsync(
+        string registerId,
+        TransactionType transactionType,
+        TransactionSort sort,
+        int skip = 0,
+        int take = 0,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets up to <paramref name="take"/> transactions strictly older than <paramref name="before"/>
+    /// (by <c>TimeStamp</c>), newest-first — cursor pagination without materialisation.
+    /// </summary>
+    Task<IReadOnlyList<TransactionModel>> GetTransactionsBeforeAsync(
+        string registerId,
+        DateTime before,
+        int take,
         CancellationToken cancellationToken = default);
 
     /// <summary>

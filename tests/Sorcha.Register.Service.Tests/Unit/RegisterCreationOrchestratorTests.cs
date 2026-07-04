@@ -1078,6 +1078,17 @@ public class RegisterCreationOrchestratorTests
         repositoryMock
             .Setup(r => r.GetTransactionsAsync(initiateResponse.RegisterId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { genesisTxModel }.AsQueryable());
+        // The roster service now reads control txs via the pushed-down GetTransactionsByTypeAsync.
+        repositoryMock
+            .Setup(r => r.GetTransactionsByTypeAsync(
+                initiateResponse.RegisterId,
+                Sorcha.Register.Models.Enums.TransactionType.Control,
+                It.IsAny<Sorcha.Register.Models.Enums.TransactionSort>(),
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { genesisTxModel }
+                .Where(t => t.MetaData is not null && t.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.Control)
+                .OrderBy(t => t.DocketNumber ?? 0)
+                .ToList());
 
         var rosterLogger = new Mock<ILogger<Sorcha.Register.Core.Services.GovernanceRosterService>>();
         var rosterService = new Sorcha.Register.Core.Services.GovernanceRosterService(
