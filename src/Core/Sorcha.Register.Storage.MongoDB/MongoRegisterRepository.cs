@@ -350,7 +350,27 @@ public class MongoRegisterRepository : IRegisterRepository
             new(Builders<TransactionModel>.IndexKeys
                 .Ascending("MetaData.TransactionType")
                 .Ascending("MetaData.TrackingData.originalTxId"),
-                new CreateIndexOptions { Name = "IX_Transactions_Revocation_OriginalTxId" })
+                new CreateIndexOptions { Name = "IX_Transactions_Revocation_OriginalTxId" }),
+
+            // perf (2026-07-04 audit T2): recipient-wallet inbox routing —
+            // GetAllTransactionsByRecipientAddressAsync does AnyEq(RecipientsWallets) sorted by TimeStamp desc.
+            // Multikey on the array + a scalar sort key (Mongo allows one array field per compound index).
+            new(Builders<TransactionModel>.IndexKeys
+                .Ascending(t => t.RecipientsWallets)
+                .Descending(t => t.TimeStamp),
+                new CreateIndexOptions { Name = "IX_Transactions_Recipients_TimeStamp" }),
+
+            // perf (T2): credential verify/revoke — GetCredentialIssuanceTransactionAsync filters
+            // MetaData.TrackingData.type + MetaData.TrackingData.credentialId (previously a COLLSCAN).
+            new(Builders<TransactionModel>.IndexKeys
+                .Ascending("MetaData.TrackingData.type")
+                .Ascending("MetaData.TrackingData.credentialId"),
+                new CreateIndexOptions { Name = "IX_Transactions_TrackingData_CredentialId" }),
+
+            // perf (T2): get-transactions-by-instance filters MetaData.InstanceId ALONE; the
+            // (BlueprintId, InstanceId) compound above can't serve an InstanceId-only predicate (wrong prefix).
+            new(Builders<TransactionModel>.IndexKeys.Ascending("MetaData.InstanceId"),
+                new CreateIndexOptions { Name = "IX_Transactions_InstanceId" })
         };
         await collection.Indexes.CreateManyAsync(transactionIndexes);
     }

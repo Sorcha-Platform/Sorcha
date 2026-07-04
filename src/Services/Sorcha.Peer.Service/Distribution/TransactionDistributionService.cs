@@ -259,10 +259,20 @@ public class TransactionDistributionService
                 cancellationToken);
         }
 
+        // perf audit T4/F2: reuse the pooled gRPC channel for a connected peer rather than building and
+        // tearing down a fresh HTTP/2 connection (TCP+TLS handshake) per gossip message. Only create a
+        // throwaway channel when the peer isn't in the pool; the pool owns (and must not dispose) its own.
+        GrpcChannel? ownedChannel = null;
         try
         {
-            var address = $"http://{peer.Address}:{peer.Port}";
-            using var channel = GrpcChannel.ForAddress(address);
+            var channel = _peerConnectionPool?.GetChannel(peer.PeerId);
+            if (channel is null)
+            {
+                var address = $"http://{peer.Address}:{peer.Port}";
+                ownedChannel = GrpcChannel.ForAddress(address);
+                channel = ownedChannel;
+            }
+
             var client = new Protos.TransactionDistribution.TransactionDistributionClient(channel);
 
             var request = new Protos.TransactionNotification
@@ -288,6 +298,10 @@ public class TransactionDistributionService
             _logger.LogWarning(ex, "Failed to send transaction {TxId} to peer {PeerId}",
                 transaction.TransactionId, peer.PeerId);
             return false;
+        }
+        finally
+        {
+            ownedChannel?.Dispose();
         }
     }
 

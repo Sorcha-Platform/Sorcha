@@ -15,6 +15,9 @@ namespace Sorcha.Wallet.Core.Repositories;
 /// </summary>
 public class EfCoreWalletRepository : IWalletRepository
 {
+    /// <summary>Only re-stamp <c>LastAccessedAt</c> on read when it's staler than this (perf audit T12).</summary>
+    private static readonly TimeSpan LastAccessedBumpThreshold = TimeSpan.FromMinutes(5);
+
     private readonly WalletDbContext _context;
     private readonly ILogger<EfCoreWalletRepository> _logger;
 
@@ -120,9 +123,12 @@ public class EfCoreWalletRepository : IWalletRepository
             .AsNoTracking()
             .FirstOrDefaultAsync(w => w.Address == address, cancellationToken);
 
-        if (wallet != null)
+        if (wallet != null &&
+            DateTime.UtcNow - wallet.LastAccessedAt > LastAccessedBumpThreshold)
         {
-            // Update last accessed time in a separate operation to avoid tracking issues
+            // perf audit T12: GetByAddressAsync is the hottest wallet read; the previous unconditional
+            // bump added a second round-trip to EVERY read. Only bump when the stamp is stale beyond the
+            // threshold — last-accessed is coarse telemetry, so ~5-minute granularity is ample.
             await UpdateLastAccessedAsync(address, cancellationToken);
         }
 

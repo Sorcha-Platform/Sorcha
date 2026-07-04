@@ -14,6 +14,16 @@ namespace Sorcha.Cryptography.Utilities;
 /// </summary>
 public class DocketHasher
 {
+    // Canonical hash-input serialization: exact property names, no whitespace. Hoisted to a single
+    // shared instance (perf audit T10) — a fresh JsonSerializerOptions per call rebuilds an un-shared
+    // converter/metadata cache. Output is byte-identical to the previous per-call options, so docket/
+    // transaction hashes are unchanged (this MUST stay deterministic — it feeds the hash).
+    private static readonly JsonSerializerOptions HashInputJsonOptions = new()
+    {
+        PropertyNamingPolicy = null,
+        WriteIndented = false
+    };
+
     private readonly IHashProvider _hashProvider;
 
     public DocketHasher(IHashProvider hashProvider)
@@ -49,11 +59,7 @@ public class DocketHasher
             Timestamp = timestamp.ToUnixTimeMilliseconds() // Unix timestamp for determinism
         };
 
-        var json = JsonSerializer.Serialize(hashInput, new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = null, // Use exact property names
-            WriteIndented = false // No whitespace
-        });
+        var json = JsonSerializer.Serialize(hashInput, HashInputJsonOptions);
 
         var bytes = Encoding.UTF8.GetBytes(json);
         var hashBytes = _hashProvider.ComputeHash(bytes, hashType);
@@ -97,11 +103,7 @@ public class DocketHasher
             Timestamp = timestamp.ToUnixTimeMilliseconds()
         };
 
-        var json = JsonSerializer.Serialize(hashInput, new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = null,
-            WriteIndented = false
-        });
+        var json = JsonSerializer.Serialize(hashInput, HashInputJsonOptions);
 
         var bytes = Encoding.UTF8.GetBytes(json);
         var hashBytes = _hashProvider.ComputeHash(bytes, hashType);
