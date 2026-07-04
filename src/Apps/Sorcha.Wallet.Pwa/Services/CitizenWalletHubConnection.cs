@@ -83,14 +83,12 @@ public sealed class CitizenWalletHubConnection : IAsyncDisposable
                     return record?.AccessToken;
                 };
             })
-            .WithAutomaticReconnect(new[]
-            {
+            .WithAutomaticReconnect(new Sorcha.ServiceClients.Http.Hub.SorchaHubConnectionBuilder.JitteredRetryPolicy(
                 TimeSpan.Zero,
                 TimeSpan.FromSeconds(2),
                 TimeSpan.FromSeconds(5),
                 TimeSpan.FromSeconds(10),
-                TimeSpan.FromSeconds(30),
-            })
+                TimeSpan.FromSeconds(30)))
             .Build();
 
         _connection.On<string>("CredentialAvailable", credentialId =>

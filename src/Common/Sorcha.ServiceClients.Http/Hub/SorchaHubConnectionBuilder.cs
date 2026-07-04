@@ -106,4 +106,38 @@ public static class SorchaHubConnectionBuilder
             return jittered < MinDelay ? MinDelay : jittered;
         }
     }
+
+    /// <summary>
+    /// Finite reconnection policy that jitters a caller-supplied delay schedule ±20 % and gives up
+    /// after the last delay (returns <c>null</c>). Use this in place of a bare <c>TimeSpan[]</c> in
+    /// <see cref="Microsoft.AspNetCore.SignalR.Client.HubConnectionBuilderExtensions.WithAutomaticReconnect(IHubConnectionBuilder, IRetryPolicy)"/>
+    /// so that many clients don't reconnect in lockstep after a server restart / deploy
+    /// (thundering-herd). Unlike <see cref="InfiniteRetryPolicy"/> it is finite, preserving the
+    /// "then fall back to a background retry loop" semantics some hub clients layer on top.
+    /// The ±20 % jitter and 100 ms floor match <see cref="InfiniteRetryPolicy"/>.
+    /// </summary>
+    public sealed class JitteredRetryPolicy : IRetryPolicy
+    {
+        private readonly TimeSpan[] _nominalDelays;
+        private readonly Func<double> _randomNextDouble;
+
+        /// <summary>Creates a policy over the given nominal reconnect delays (jittered ±20 %).</summary>
+        public JitteredRetryPolicy(params TimeSpan[] nominalDelays)
+            : this(nominalDelays, static () => Random.Shared.NextDouble())
+        {
+        }
+
+        // Constructor for deterministic unit testing.
+        internal JitteredRetryPolicy(TimeSpan[] nominalDelays, Func<double> randomNextDouble)
+        {
+            ArgumentNullException.ThrowIfNull(nominalDelays);
+            _nominalDelays = nominalDelays;
+            _randomNextDouble = randomNextDouble;
+        }
+
+        public TimeSpan? NextRetryDelay(RetryContext retryContext)
+            => retryContext.PreviousRetryCount >= _nominalDelays.Length
+                ? null
+                : InfiniteRetryPolicy.ApplyJitter(_nominalDelays[retryContext.PreviousRetryCount], _randomNextDouble());
+    }
 }
