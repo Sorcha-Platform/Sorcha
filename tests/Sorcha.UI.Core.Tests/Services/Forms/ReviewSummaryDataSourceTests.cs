@@ -147,6 +147,48 @@ public class ReviewSummaryDataSourceTests
     }
 
     [Fact]
+    public void BuildConfig_ComplexRefField_GathersFlattenedLeavesForDisplay()
+    {
+        // The AIAS regression: a section field is the $ref PARENT ("name"), but the renderer stores the
+        // core-primitive value flattened at leaf pointers ("/name/givenName", "/name/familyName"). The
+        // card looks up "/name" — which isn't in the form data — so without gathering it renders empty.
+        var pages = new List<BlueprintPageDefinition>
+        {
+            new() { Title = "About you", Sections = [new BlueprintSectionDefinition { Title = "Your name", Fields = ["name"] }] }
+        };
+        var ctx = new FormContext();
+        ctx.FormData["/name/givenName"] = "Alex";
+        ctx.FormData["/name/familyName"] = "MacLeod";
+
+        var sut = new ReviewSummaryDataSource();
+
+        var cfg = sut.BuildConfig(CitizenReview(), ctx, ActionRuntimeState.CitizenDraft, pages);
+
+        cfg.FieldValues["/name"].Should().Be("Alex MacLeod");
+    }
+
+    [Fact]
+    public void BuildConfig_FlattenedGather_ExcludesLongTokenImageLeaves()
+    {
+        // The portrait section stores both a short display value and a huge base64 token image at
+        // "/portrait/tokenImageBase64" — the token must NOT leak into the card's text (it's the image).
+        var pages = new List<BlueprintPageDefinition>
+        {
+            new() { Title = "Photo", Sections = [new BlueprintSectionDefinition { Title = "Portrait", Fields = ["portrait"] }] }
+        };
+        var ctx = new FormContext();
+        ctx.FormData["/portrait/fileName"] = "portrait.jpg";
+        ctx.FormData["/portrait/tokenImageBase64"] = new string('A', 5000); // base64 blob
+
+        var sut = new ReviewSummaryDataSource();
+
+        var cfg = sut.BuildConfig(CitizenReview(), ctx, ActionRuntimeState.CitizenDraft, pages);
+
+        cfg.FieldValues["/portrait"].Should().Be("portrait.jpg");
+        ((string?)cfg.FieldValues["/portrait"]).Should().NotContain("AAAA");
+    }
+
+    [Fact]
     public void BuildConfig_PagesWithoutSections_SkippedFromSectionList()
     {
         var pages = new List<BlueprintPageDefinition>

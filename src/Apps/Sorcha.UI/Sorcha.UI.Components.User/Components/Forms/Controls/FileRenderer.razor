@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.Extensions.Logging
 @using Sorcha.Blueprint.Models
+@using Sorcha.UI.Components.User.Components.Capture
 @using Sorcha.UI.Core.Models.Forms
 @using Sorcha.UI.Core.Services.Forms
 
@@ -14,10 +15,21 @@
 <MudStack Spacing="1">
     <MudText Typo="Typo.body2">@Control.Title</MudText>
 
-    <InputFile OnChange="OnFileSelected"
-               disabled="@(IsDisabled || FormContext?.IsReadOnly == true)"
-               capture="@_captureAttribute"
-               accept="@_acceptAttribute" />
+    @if (_useCameraCapture)
+    {
+        @* Image-capture fields (embedAs token image) get the camera-first control: a live getUserMedia
+           camera capture with an upload fallback. Desktop browsers ignore <input capture>, so the plain
+           file input below can never open a webcam — this control can. *@
+        <PortraitCaptureControl HelpText="Take a photo with your camera, or upload an image."
+                                OnCaptured="OnPortraitCaptured" />
+    }
+    else
+    {
+        <InputFile OnChange="OnFileSelected"
+                   disabled="@(IsDisabled || FormContext?.IsReadOnly == true)"
+                   capture="@_captureAttribute"
+                   accept="@_acceptAttribute" />
+    }
 
     @if (_resizeInProgress)
     {
@@ -74,6 +86,10 @@
     private string? _acceptAttribute;
     private bool _showPortraitTips;
 
+    // True when this field wants a captured, embed-sized portrait (embedAs token image) — it then
+    // renders the camera-first PortraitCaptureControl instead of the plain file input.
+    private bool _useCameraCapture;
+
     // Platform ceiling — acts as the fallback when the schema doesn't
     // declare an explicit `x-file.maxSizePerFile`. The per-field limit is
     // preferred because it bounds the WASM buffer for camera capture on
@@ -117,6 +133,7 @@
         _captureAttribute = null;
         _acceptAttribute = null;
         _showPortraitTips = false;
+        _useCameraCapture = false;
 
         if (FormContext?.DataSchema is null) return;
 
@@ -129,7 +146,36 @@
             _captureAttribute = FileFieldCaptureHelper.GetCaptureAttribute(ext);
             _acceptAttribute = ext.Accept.Length > 0 ? string.Join(",", ext.Accept) : null;
             _showPortraitTips = FileFieldCaptureHelper.ShouldResizeForEmbed(ext);
+            // Camera-first only for embed-token image fields, and never in read-only mode.
+            _useCameraCapture = _showPortraitTips
+                && !IsDisabled
+                && FormContext?.IsReadOnly != true;
         }
+    }
+
+    /// <summary>
+    /// Handles a portrait produced by <c>PortraitCaptureControl</c> (camera snapshot or uploaded image,
+    /// already resized to the 240×320 embed token). Stores it at the same sibling pointer the file path
+    /// uses (<c>&lt;scope&gt;/tokenImageBase64</c>) and marks the field answered.
+    /// </summary>
+    private void OnPortraitCaptured(string base64Token)
+    {
+        if (string.IsNullOrEmpty(base64Token)) return;
+
+        var scope = Control.Scope;
+        _resizeWarning = null;
+        FormContext?.SetValue(scope, "portrait.jpg");
+        FormContext?.SetValue($"{scope}/tokenImageBase64", base64Token);
+
+        _selectedFile = new FileAttachmentInfo
+        {
+            FileName = "portrait.jpg",
+            ContentType = "image/jpeg",
+            Size = 0,
+            Content = System.Array.Empty<byte>(),
+            Scope = scope,
+        };
+        _fileDisplayText = "Portrait captured";
     }
 
     private async Task OnFileSelected(InputFileChangeEventArgs e)
