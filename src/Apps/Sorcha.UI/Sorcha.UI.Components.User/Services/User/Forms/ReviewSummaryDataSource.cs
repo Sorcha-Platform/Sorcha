@@ -51,13 +51,21 @@ public sealed class ReviewSummaryDataSource
                     // from "filled with null value" — both render as empty
                     // on the card, but the dictionary explicitly lists every
                     // field the citizen was asked about.
-                    if (formContext.FormData.TryGetValue(pointer, out var value))
+                    if (formContext.FormData.TryGetValue(pointer, out var value) && value is not null)
                     {
                         fieldValues[pointer] = value;
                     }
                     else
                     {
-                        fieldValues[pointer] = null;
+                        // Complex core-primitive ($ref) fields — PersonName, PostalAddress,
+                        // DateOfBirth, etc. — are stored FLATTENED at leaf pointers
+                        // ("/name/givenName", "/address/line1"), never at the parent pointer the
+                        // card looks up. Without this the whole id-card renders empty for every
+                        // $ref field. Gather the human-readable leaf values (in encounter order)
+                        // and join them. Long/base64 leaves are excluded: the portrait token
+                        // ("/portrait/tokenImageBase64") is rendered as the card image separately,
+                        // and holder-key material is not display data.
+                        fieldValues[pointer] = GatherFlattenedDisplayValue(formContext.FormData, pointer);
                     }
                 }
 
@@ -93,5 +101,35 @@ public sealed class ReviewSummaryDataSource
     {
         if (string.IsNullOrEmpty(fieldName)) return "/";
         return fieldName.StartsWith('/') ? fieldName : "/" + fieldName;
+    }
+
+    // Longest human-readable leaf we keep on the card. Real display detail (names, dates, emails,
+    // address lines) is short; embedded portrait tokens and holder-key material are far longer, so
+    // this length gate cleanly excludes them from the card's text fields.
+    private const int MaxDisplayLeafLength = 256;
+
+    /// <summary>
+    /// Reconstructs a display value for a complex ($ref) field whose parent pointer isn't in the
+    /// form data because its renderer wrote flattened leaf pointers (e.g. <c>/name/givenName</c>,
+    /// <c>/address/line1</c>). Joins the non-empty, human-readable leaves under
+    /// <paramref name="pointer"/> in encounter order (which follows input/schema order), excluding
+    /// long/base64 leaves (portrait token image, holder-key material). Returns null when nothing
+    /// displayable was captured.
+    /// </summary>
+    internal static string? GatherFlattenedDisplayValue(
+        IReadOnlyDictionary<string, object?> formData,
+        string pointer)
+    {
+        var prefix = pointer + "/";
+        var parts = new List<string>();
+        foreach (var kv in formData)
+        {
+            if (!kv.Key.StartsWith(prefix, StringComparison.Ordinal) || kv.Value is null) continue;
+            var text = kv.Value as string ?? kv.Value.ToString();
+            if (string.IsNullOrWhiteSpace(text) || text.Length > MaxDisplayLeafLength) continue;
+            parts.Add(text);
+        }
+
+        return parts.Count > 0 ? string.Join(" ", parts) : null;
     }
 }

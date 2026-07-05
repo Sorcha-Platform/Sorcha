@@ -4,6 +4,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Sorcha.UI.Components.User.Services.Capture;
 using Sorcha.UI.Components.User.Services.Verification;
 using Sorcha.UI.Core.Services;
 using Sorcha.Verifier.Engine;
@@ -49,6 +50,11 @@ public static class ServiceCollectionExtensions
     {
         // Feature 173: anonymous client for the three social-link step-up endpoints (F168 contract).
         services.AddScoped<IAnonymousSocialLinkClientService, AnonymousSocialLinkClientService>();
+
+        // Feature 174 follow-up: getUserMedia-backed camera for portrait-capture form fields
+        // (backs PortraitCaptureControl). TryAdd so a host stub (e.g. a PWA without the JS module)
+        // can override it.
+        services.TryAddScoped<IWebCameraService, WebCameraService>();
 
         // Verify seams — Feature 163 (PR B2-components).
         // TryAdd* ensures a host override registered before this call wins.
