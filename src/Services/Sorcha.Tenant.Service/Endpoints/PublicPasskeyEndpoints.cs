@@ -239,9 +239,13 @@ public static class PublicPasskeyEndpoints
                     statusCode: StatusCodes.Status500InternalServerError);
             }
 
-            // Issue JWT
+            // Issue JWT. Spec 136: a newly-registered public user has no platform roles, so resolve
+            // by entitlement — the Platform default downgrades to Consumer — rather than minting the
+            // raw Platform default (which would 403 on consumer-tier endpoints).
+            var registrationTier = TierResolver.ResolvePreference(
+                Sorcha.ServiceDefaults.Auth.Tier.Platform, isExplicit: false, userIdentity.Roles).Tier;
             var tokenResponse = await tokenService.GenerateUserTokenAsync(
-                userIdentity, publicOrg, platformUser.Id, cancellationToken: ct);
+                userIdentity, publicOrg, platformUser.Id, registrationTier, cancellationToken: ct);
 
             logger.LogInformation(
                 "Public passkey registration completed for PlatformUser {PlatformUserId}",
@@ -379,11 +383,18 @@ public static class PublicPasskeyEndpoints
                     statusCode: StatusCodes.Status500InternalServerError);
             }
 
-            // Issue JWT. The wallet requests tier:"consumer" (a safe downgrade);
-            // any other value keeps the platform default — no escalation here.
-            var mintTier = string.Equals(request.Tier, "consumer", StringComparison.OrdinalIgnoreCase)
+            // Issue JWT. Spec 136: resolve the effective tier by ENTITLEMENT, exactly like the
+            // password path (LoginService → TierResolver.ResolvePreference). An explicit
+            // tier:"consumer" (the wallet/PWA) is honoured; otherwise the /app default of Platform
+            // downgrades to the holder's entitlement. Without this, a pure Consumer signing in with a
+            // passkey from /app received a Platform token they aren't entitled to, which then 403'd on
+            // every consumer-tier endpoint (e.g. GET /api/v1/wallet/holder-keys during credential
+            // application). The naive "keeps the platform default" behaviour skipped the downgrade.
+            var explicitConsumer = string.Equals(request.Tier, "consumer", StringComparison.OrdinalIgnoreCase);
+            var preferredTier = explicitConsumer
                 ? Sorcha.ServiceDefaults.Auth.Tier.Consumer
                 : Sorcha.ServiceDefaults.Auth.Tier.Platform;
+            var mintTier = TierResolver.ResolvePreference(preferredTier, explicitConsumer, userIdentity.Roles).Tier;
             var tokenResponse = await tokenService.GenerateUserTokenAsync(
                 userIdentity, publicOrg, platformUser.Id, mintTier, platformUser.EmailVerified, ct);
 
