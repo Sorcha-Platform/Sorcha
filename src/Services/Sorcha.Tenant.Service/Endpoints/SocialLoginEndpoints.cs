@@ -418,8 +418,14 @@ public static class SocialLoginEndpoints
                 statusCode: StatusCodes.Status500InternalServerError);
         }
 
-        // Issue JWT — wallet users get Consumer-tier tokens; app users get Platform-tier.
-        var mintTier = isWallet ? Tier.Consumer : Tier.Platform;
+        // Issue JWT. Spec 136: resolve by ENTITLEMENT like the password path. The wallet surface is an
+        // explicit Consumer request; the /app surface's Platform default downgrades to the holder's
+        // entitlement — a pure Consumer must NOT get a Platform token (it 403s on consumer-tier
+        // endpoints such as GET /api/v1/wallet/holder-keys). Previously "app users get Platform-tier"
+        // skipped the downgrade, matching the passkey-login bug.
+        var preferredTier = isWallet ? Tier.Consumer : Tier.Platform;
+        var mintTier = Sorcha.Tenant.Service.Services.TierResolver
+            .ResolvePreference(preferredTier, isExplicit: isWallet, userIdentity.Roles).Tier;
         var tokenResponse = await tokenService.GenerateUserTokenAsync(
             userIdentity, publicOrg, platformUser.Id, mintTier, platformUser.EmailVerified, ct);
 
