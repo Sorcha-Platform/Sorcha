@@ -189,6 +189,29 @@ public class ReviewSummaryDataSourceTests
     }
 
     [Fact]
+    public void BuildConfig_PortraitTokenImage_CarriedIntoFieldValuesForCard()
+    {
+        // The captured portrait's embed token lives at a child pointer ("/portrait/tokenImageBase64"),
+        // which is never a section field. IdCardLayout renders the photo by scanning FieldValues for a
+        // "*/tokenImageBase64" entry, so BuildConfig must carry it through — otherwise the card shows the
+        // placeholder even when a portrait was captured.
+        var pages = new List<BlueprintPageDefinition>
+        {
+            new() { Title = "Photo", Sections = [new BlueprintSectionDefinition { Title = "Portrait", Fields = ["portrait"] }] }
+        };
+        var ctx = new FormContext();
+        ctx.FormData["/portrait"] = "portrait.jpg";
+        ctx.FormData["/portrait/tokenImageBase64"] = "BASE64IMAGEDATA";
+
+        var sut = new ReviewSummaryDataSource();
+
+        var cfg = sut.BuildConfig(CitizenReview(), ctx, ActionRuntimeState.CitizenDraft, pages);
+
+        cfg.FieldValues.Should().ContainKey("/portrait/tokenImageBase64");
+        cfg.FieldValues["/portrait/tokenImageBase64"].Should().Be("BASE64IMAGEDATA");
+    }
+
+    [Fact]
     public void BuildConfig_PagesWithoutSections_SkippedFromSectionList()
     {
         var pages = new List<BlueprintPageDefinition>
