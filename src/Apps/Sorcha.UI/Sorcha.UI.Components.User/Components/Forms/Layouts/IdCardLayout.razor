@@ -151,13 +151,29 @@
         }
     }
 
-    /// <summary>Render a JSON-pointer leaf as a human label ("/givenName" → "Given name").</summary>
+    // User-facing labels for known claim / field keys — "dob"/"dateOfBirth" read "Date of Birth"
+    // rather than the camelCase fallback ("Dob"). Shared by the application review card and the held-
+    // credential card. Unknown keys fall through to the camelCase splitter below.
+    private static readonly Dictionary<string, string> FriendlyLabels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["dob"] = "Date of Birth", ["dateOfBirth"] = "Date of Birth", ["birthDate"] = "Date of Birth",
+        ["fullName"] = "Name", ["name"] = "Name",
+        ["givenName"] = "Given Name", ["familyName"] = "Family Name", ["middleName"] = "Middle Name",
+        ["email"] = "Email", ["emailAddress"] = "Email",
+        ["address"] = "Address", ["postalAddress"] = "Address",
+        ["portrait"] = "Photo", ["holderKeys"] = "Secure Delivery",
+        ["assuranceLevel"] = "Assurance Level",
+    };
+
+    /// <summary>Render a JSON-pointer leaf as a human label ("/dateOfBirth" → "Date of Birth").</summary>
     private static string FormatLabel(string pointer)
     {
         var leaf = pointer.TrimStart('/');
         var lastSlash = leaf.LastIndexOf('/');
         if (lastSlash >= 0) leaf = leaf[(lastSlash + 1)..];
         if (string.IsNullOrEmpty(leaf)) return pointer;
+
+        if (FriendlyLabels.TryGetValue(leaf, out var friendly)) return friendly;
 
         // camelCase → "Camel case"
         var chars = new StringBuilder();
