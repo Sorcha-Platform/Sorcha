@@ -404,6 +404,14 @@ public class FormSchemaService : IFormSchemaService
         {
             controlType = ControlTypes.DateTime;
         }
+        else if (format is "file-reference")
+        {
+            // File-attachment primitive (Feature 085) — routes to FileRenderer, which handles the
+            // x-file extension (accept/capture/embedAs) and, for embed-token image fields, the
+            // camera-first PortraitCaptureControl. Without this the field falls through to a plain
+            // text line and never reaches the file/camera control.
+            controlType = ControlTypes.File;
+        }
         else
         {
             controlType = type switch

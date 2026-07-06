@@ -1037,8 +1037,14 @@
                 bool hasPageErrors = false;
                 foreach (var (scope, fieldErrors) in errors)
                 {
-                    var fieldName = scope.StartsWith('/') ? scope[1..] : scope;
-                    if (pageFields.Contains(fieldName))
+                    var trimmed = scope.StartsWith('/') ? scope[1..] : scope;
+                    // $ref core-primitive fields (PersonName, PostalAddress, ...) surface validation
+                    // errors at nested pointers ("/name/givenName"); the page lists only the top-level
+                    // field ("name"). Match on the first path segment so a missing required nested field
+                    // still blocks the wizard from advancing (otherwise the error is dropped and Next
+                    // proceeds past unfilled required data).
+                    var topLevelField = trimmed.Contains('/') ? trimmed[..trimmed.IndexOf('/')] : trimmed;
+                    if (pageFields.Contains(topLevelField))
                     {
                         _formContext.SetErrors(scope, fieldErrors);
                         hasPageErrors = true;
