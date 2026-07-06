@@ -256,6 +256,28 @@ public class FormSchemaServiceTests
     }
 
     [Fact]
+    public void AutoGenerateForm_StringWithBinaryFormat_DispatchesToFile()
+    {
+        // Document-upload fields use the OpenAPI byte-content convention (type:string, format:binary),
+        // e.g. SelfBuildHouse "Building Specification (PDF)". They must also route to the File control
+        // rather than falling through to a text line.
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "spec": { "type": "string", "format": "binary", "title": "Building Specification (PDF)" }
+            }
+        }
+        """);
+
+        var form = _sut.AutoGenerateForm(new[] { schema });
+
+        var spec = form.Elements.FirstOrDefault(e => e.Scope == "/spec");
+        spec.Should().NotBeNull();
+        spec!.ControlType.Should().Be(Sorcha.Blueprint.Models.ControlTypes.File);
+    }
+
+    [Fact]
     public void AutoGenerateForm_XAddressLookupFalse_RemainsTextLine()
     {
         // Explicit `x-address-lookup: false` should NOT dispatch to postcode lookup.
