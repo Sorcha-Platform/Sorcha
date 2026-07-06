@@ -404,12 +404,13 @@ public class FormSchemaService : IFormSchemaService
         {
             controlType = ControlTypes.DateTime;
         }
-        else if (format is "file-reference")
+        else if (format is "file-reference" or "binary")
         {
-            // File-attachment primitive (Feature 085) — routes to FileRenderer, which handles the
-            // x-file extension (accept/capture/embedAs) and, for embed-token image fields, the
-            // camera-first PortraitCaptureControl. Without this the field falls through to a plain
-            // text line and never reaches the file/camera control.
+            // File-upload primitives — Sorcha's file-attachment format (Feature 085,
+            // "file-reference", carries the x-file extension for accept/capture/embedAs and the
+            // camera-first PortraitCaptureControl) and the OpenAPI byte-content convention
+            // ("binary", used by document-upload fields). Both route to FileRenderer; without this
+            // they fall through to a plain text line and never reach the file/camera control.
             controlType = ControlTypes.File;
         }
         else
