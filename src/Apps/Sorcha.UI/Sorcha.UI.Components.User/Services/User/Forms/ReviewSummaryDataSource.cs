@@ -67,6 +67,16 @@ public sealed class ReviewSummaryDataSource
                         // and holder-key material is not display data.
                         fieldValues[pointer] = GatherFlattenedDisplayValue(formContext.FormData, pointer);
                     }
+
+                    // Carry the embedded portrait token through to the card. IdCardLayout renders the
+                    // photo by scanning FieldValues for a "<field>/tokenImageBase64" entry, but that
+                    // token lives at a child pointer that is never itself a section field — so without
+                    // copying it here the card shows the placeholder even when a portrait was captured.
+                    var tokenPointer = pointer + "/tokenImageBase64";
+                    if (formContext.FormData.TryGetValue(tokenPointer, out var tokenValue) && tokenValue is not null)
+                    {
+                        fieldValues[tokenPointer] = tokenValue;
+                    }
                 }
 
                 sections.Add(new IdCardSection(
