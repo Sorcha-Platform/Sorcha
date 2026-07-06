@@ -47,6 +47,17 @@ public sealed class ReviewSummaryDataSource
 
                 foreach (var pointer in fieldPointers)
                 {
+                    // Secure-delivery / holder-key field (Feature 137): its flattened children are
+                    // cryptographic key material (holderJwk / encryptionPublicKey / algorithm), not
+                    // human-readable detail. Mark it so the card shows a "Secured" tick instead of
+                    // dumping the JWK + keys onto the card.
+                    if (formContext.FormData.ContainsKey(pointer + "/holderJwk")
+                        || formContext.FormData.ContainsKey(pointer + "/encryptionPublicKey"))
+                    {
+                        fieldValues[pointer] = IdCardLayoutConfig.SecuredDeliveryMarker;
+                        continue;
+                    }
+
                     // ContainsKey distinguishes "unfilled" (present as null)
                     // from "filled with null value" — both render as empty
                     // on the card, but the dictionary explicitly lists every
@@ -137,9 +148,20 @@ public sealed class ReviewSummaryDataSource
             if (!kv.Key.StartsWith(prefix, StringComparison.Ordinal) || kv.Value is null) continue;
             var text = kv.Value as string ?? kv.Value.ToString();
             if (string.IsNullOrWhiteSpace(text) || text.Length > MaxDisplayLeafLength) continue;
-            parts.Add(text);
+            parts.Add(text!.Trim());
         }
 
-        return parts.Count > 0 ? string.Join(" ", parts) : null;
+        // Drop leaves wholly contained in a longer sibling. Core primitives often expose overlapping
+        // leaves — PersonName has givenName + familyName AND a computed fullName — which would render
+        // "Stuart Fraser Stuart Fraser". Keeping only the leaves not subsumed by a longer one yields
+        // "Stuart Fraser". Distinct guards exact duplicates. Address lines don't subsume each other,
+        // so they're all kept.
+        var kept = parts
+            .Where(p => !parts.Any(other =>
+                other.Length > p.Length && other.Contains(p, StringComparison.OrdinalIgnoreCase)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return kept.Count > 0 ? string.Join(" ", kept) : null;
     }
 }
