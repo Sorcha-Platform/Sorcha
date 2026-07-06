@@ -228,6 +228,34 @@ public class FormSchemaServiceTests
     }
 
     [Fact]
+    public void AutoGenerateForm_StringWithFileReferenceFormat_DispatchesToFile()
+    {
+        // Feature 085 file-attachment primitive: a string field with format "file-reference"
+        // must route to the File control (FileRenderer, which handles x-file accept/capture/embedAs
+        // and the camera-first portrait control). Without the mapping it fell through to a plain
+        // text line and the file/camera field never rendered.
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "portrait": {
+                    "type": "string",
+                    "title": "Portrait photo",
+                    "format": "file-reference",
+                    "x-file": { "accept": ["image/jpeg"], "capture": "user", "embedAs": "image-token-jpeg-240x320" }
+                }
+            }
+        }
+        """);
+
+        var form = _sut.AutoGenerateForm(new[] { schema });
+
+        var portrait = form.Elements.FirstOrDefault(e => e.Scope == "/portrait");
+        portrait.Should().NotBeNull();
+        portrait!.ControlType.Should().Be(Sorcha.Blueprint.Models.ControlTypes.File);
+    }
+
+    [Fact]
     public void AutoGenerateForm_XAddressLookupFalse_RemainsTextLine()
     {
         // Explicit `x-address-lookup: false` should NOT dispatch to postcode lookup.
