@@ -256,6 +256,35 @@ public class FormSchemaServiceTests
     }
 
     [Fact]
+    public void ValidateData_MissingRequiredRefField_ReportsErrorUnderThatField()
+    {
+        // Guards the wizard's per-page required enforcement (SorchaFormRenderer.HandleNext): a missing
+        // required $ref primitive must surface a validation error under that field — at the field or a
+        // nested pointer ("/name" or "/name/givenName"). HandleNext matches on the top-level field
+        // segment, so as long as the error scope starts with "/name" the wizard blocks advance. Before
+        // the fix, nested-scope errors were dropped and the wizard advanced past unfilled required data.
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "object",
+                    "properties": { "givenName": { "type": "string" }, "familyName": { "type": "string" } },
+                    "required": ["givenName", "familyName"]
+                }
+            },
+            "required": ["name"]
+        }
+        """);
+        var data = new Dictionary<string, object?>(); // nothing filled
+
+        var errors = _sut.ValidateData(schema, data);
+
+        errors.Keys.Should().Contain(k => k.StartsWith("/name", System.StringComparison.Ordinal),
+            "a missing required name must surface an error under /name so the wizard blocks advance");
+    }
+
+    [Fact]
     public void AutoGenerateForm_StringWithBinaryFormat_DispatchesToFile()
     {
         // Document-upload fields use the OpenAPI byte-content convention (type:string, format:binary),
