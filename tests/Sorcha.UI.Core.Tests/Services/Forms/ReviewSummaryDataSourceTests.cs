@@ -212,6 +212,44 @@ public class ReviewSummaryDataSourceTests
     }
 
     [Fact]
+    public void BuildConfig_PersonNameWithComputedFullName_DoesNotDuplicate()
+    {
+        // PersonName exposes givenName + familyName AND a computed fullName. Joining all three read
+        // "Stuart Fraser Stuart Fraser" on the card. Leaves subsumed by a longer sibling are dropped.
+        var pages = new List<BlueprintPageDefinition>
+        {
+            new() { Title = "About you", Sections = [new BlueprintSectionDefinition { Title = "Your name", Fields = ["name"] }] }
+        };
+        var ctx = new FormContext();
+        ctx.FormData["/name/givenName"] = "Stuart";
+        ctx.FormData["/name/familyName"] = "Fraser";
+        ctx.FormData["/name/fullName"] = "Stuart Fraser";
+
+        var cfg = new ReviewSummaryDataSource().BuildConfig(CitizenReview(), ctx, ActionRuntimeState.CitizenDraft, pages);
+
+        cfg.FieldValues["/name"].Should().Be("Stuart Fraser");
+    }
+
+    [Fact]
+    public void BuildConfig_HolderKeyField_RendersSecuredMarkerNotKeyMaterial()
+    {
+        // The holder-key / secure-delivery field's children are JWK + key material, not display data.
+        // The card must show a "Secured" marker, never the raw keys.
+        var pages = new List<BlueprintPageDefinition>
+        {
+            new() { Title = "Contact", Sections = [new BlueprintSectionDefinition { Title = "Secure delivery", Fields = ["holderKeys"] }] }
+        };
+        var ctx = new FormContext();
+        ctx.FormData["/holderKeys/holderJwk"] = "{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"GgmG0...\"}";
+        ctx.FormData["/holderKeys/encryptionPublicKey"] = "G3ZXgJELcFXMizAeE8ChtBVx6u7eAfJH8XAePwxtoSo=";
+        ctx.FormData["/holderKeys/algorithm"] = "ED25519";
+
+        var cfg = new ReviewSummaryDataSource().BuildConfig(CitizenReview(), ctx, ActionRuntimeState.CitizenDraft, pages);
+
+        cfg.FieldValues["/holderKeys"].Should().Be(IdCardLayoutConfig.SecuredDeliveryMarker);
+    }
+
+    [Fact]
     public void BuildConfig_PagesWithoutSections_SkippedFromSectionList()
     {
         var pages = new List<BlueprintPageDefinition>

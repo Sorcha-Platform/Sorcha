@@ -66,7 +66,18 @@
                         {
                             <div class="id-card-field">
                                 <dt>@FormatLabel(pointer)</dt>
-                                <dd>@FormatValue(Config.FieldValues.GetValueOrDefault(pointer))</dd>
+                                @{ var fieldValue = Config.FieldValues.GetValueOrDefault(pointer); }
+                                @if (fieldValue is string marker && marker == IdCardLayoutConfig.SecuredDeliveryMarker)
+                                {
+                                    <dd class="id-card-secured">
+                                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                                        <span>Secured</span>
+                                    </dd>
+                                }
+                                else
+                                {
+                                    <dd>@FormatValue(fieldValue)</dd>
+                                }
                             </div>
                         }
                     </dl>

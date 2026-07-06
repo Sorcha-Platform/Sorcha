@@ -30,7 +30,7 @@
 
     <!-- Package / NuGet version (allows the -dev prerelease suffix locally). -->
     <Version>$(SorchaMajor).$(SorchaMinor).$(SorchaPatch)</Version>
-    <Version Condition="'$(GITHUB_RUN_NUMBER)' == ''">$(SorchaMajor).0.3-dev</Version>
+    <Version Condition="'$(GITHUB_RUN_NUMBER)' == ''">$(SorchaMajor).0.4-dev</Version>
 
     <!-- Assembly identity must be purely numeric (x.x.x.x). -->
     <AssemblyVersion>$(SorchaMajor).$(SorchaMinor).$(SorchaPatch).0</AssemblyVersion>

@@ -55,6 +55,14 @@ public sealed record IdCardSection(
 /// </summary>
 public sealed record IdCardLayoutConfig
 {
+    /// <summary>
+    /// Sentinel <see cref="FieldValues"/> value marking a secure-delivery / holder-key field. Its real
+    /// value is cryptographic key material (JWK + public key), not human-readable, so the card renders
+    /// a "Secured" confirmation tick instead of the keys. Set by <c>ReviewSummaryDataSource</c>,
+    /// rendered by <c>IdCardLayout</c>.
+    /// </summary>
+    public const string SecuredDeliveryMarker = "sorcha-secured";
+
     public required string IssuerName { get; init; }
     public required string CredentialName { get; init; }
     public required XReviewColourTheme ColourTheme { get; init; }
