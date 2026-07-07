@@ -133,6 +133,15 @@ public class RunCommand : Command
                 _ => throw new NotSupportedException($"Mode '{definition.Mode}' not supported")
             };
 
+            // Feature 176 — per-action disclosed-data fetch. Only engines that depend on the disclosed
+            // prior-action payload (rules with external checks) use it; others opt out via
+            // RequiresDisclosedPayload and pay nothing. Uses the agent's own HttpClient/bearer so the
+            // endpoint resolves the agent's wallet as the disclosure recipient.
+            var disclosedDataClient = new HttpDisclosedDataClient(
+                httpClient, authService, loggerFactory.CreateLogger<HttpDisclosedDataClient>());
+            var disclosedPayloadEnricher = new DisclosedPayloadEnricher(
+                disclosedDataClient, loggerFactory.CreateLogger<DisclosedPayloadEnricher>());
+
             // Create audit logger
             using var auditLogger = new AuditLogger(definition.Logging?.ActionLog);
 
@@ -214,14 +223,42 @@ public class RunCommand : Command
             if (!quiet) Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Actor \"{actorName}\" started");
 
             // Main loop
-            await foreach (var action in compositeListener.ListenAsync(cancellationToken))
+            await foreach (var discovered in compositeListener.ListenAsync(cancellationToken))
             {
+                var action = discovered;
+
                 if (!quiet)
                     Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Action \"{action.ActionName}\" discovered (id: {action.ActionId[..Math.Min(8, action.ActionId.Length)]})");
+
+                // Feature 176: fetch the disclosed prior-action data the decision depends on, and hold
+                // (fail-closed) if it cannot be obtained — never decide on a blank view. Retries naturally
+                // on the next poll. Skipped for engines that don't need the payload.
+                if (decisionEngine.RequiresDisclosedPayload)
+                {
+                    var enriched = await disclosedPayloadEnricher.EnrichAsync(action, cancellationToken);
+                    if (enriched.ShouldHold)
+                    {
+                        if (!quiet)
+                            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Action \"{action.ActionName}\" HELD (no data): {enriched.HoldReason}");
+                        continue;
+                    }
+
+                    action = enriched.Action;
+                }
 
                 var decision = await decisionEngine.DecideAsync(action, cancellationToken);
 
                 if (!quiet) Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Decision: {decision.Decision}");
+
+                // A "hold" is a deliberate no-op: the agent submits nothing (no approve/reject) and the
+                // action is left pending for manual review / re-evaluation on a later poll (Feature 176 /
+                // #1077). "skip" is likewise non-submitting.
+                if (decision.Decision == "hold")
+                {
+                    if (!quiet)
+                        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Action \"{action.ActionName}\" HELD: {decision.Reasoning}");
+                    continue;
+                }
 
                 if (decision.Decision != "skip")
                 {

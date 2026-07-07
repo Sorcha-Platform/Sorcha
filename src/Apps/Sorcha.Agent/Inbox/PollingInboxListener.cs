@@ -112,8 +112,14 @@ public class PollingInboxListener : IInboxListener
             RegisterId = GetStringOrToString(item, "registerId") ?? "",
             TransactionId = GetStringOrToString(item, "transactionId") ?? "",
             SenderAddress = GetStringOrToString(item, "senderAddress"),
-            PreviousPayload = item.TryGetProperty("payload", out var payload) ? payload.Clone() : null,
-            Schema = item.TryGetProperty("schema", out var schema) ? schema.Clone() : null
+            // Feature 176: PreviousPayload is NOT sourced from the pending summary. The summary's
+            // "prepopulatedPayload" is a Feature-104 form-prefill seed (empty for the AIAS verify action),
+            // NOT the disclosed prior-action application data — reading it here is what left the agent
+            // deciding on an empty payload (AIAS bad-postcode approved). PreviousPayload is populated
+            // per-action from the disclosed-data endpoint by DisclosedPayloadEnricher before the decision.
+            // The "dataSchema" correction stays (the API serialises the action schema as "dataSchema").
+            PreviousPayload = null,
+            Schema = item.TryGetProperty("dataSchema", out var schema) ? schema.Clone() : null
         };
     }
 

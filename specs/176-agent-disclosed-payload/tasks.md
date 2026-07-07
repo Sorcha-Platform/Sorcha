@@ -18,16 +18,16 @@ real application (bad postcode rejected, clean approved). US2 (fail-closed) and 
 
 ## Phase 1: Setup
 
-- [ ] T001 [P] Record the authoritative disclosed-data contract: read `GetDisclosedDataAsync` route + return type in `src/Common/Sorcha.ServiceClients.Http/Blueprint/IBlueprintServiceClient.cs` and `src/Common/Sorcha.ServiceClients.Http/Blueprint/BlueprintServiceClient.cs`, and the MCP consumer expectations in `src/Apps/Sorcha.McpServer/Tools/Participant/DisclosedDataTool.cs`; note the exact route + DTO the server MUST match into `specs/176-agent-disclosed-payload/contracts/disclosed-data-endpoint.md`.
-- [ ] T002 [P] Define/align the `DisclosedActionData` response model (reuse the existing client DTO if present) in `src/Services/Sorcha.Blueprint.Service/Models/` with XML docs on every member (Constitution III).
+- [x] T001 [P] Record the authoritative disclosed-data contract: read `GetDisclosedDataAsync` route + return type in `src/Common/Sorcha.ServiceClients.Http/Blueprint/IBlueprintServiceClient.cs` and `src/Common/Sorcha.ServiceClients.Http/Blueprint/BlueprintServiceClient.cs`, and the MCP consumer expectations in `src/Apps/Sorcha.McpServer/Tools/Participant/DisclosedDataTool.cs`; note the exact route + DTO the server MUST match into `specs/176-agent-disclosed-payload/contracts/disclosed-data-endpoint.md`.
+- [x] T002 [P] Define/align the `DisclosedActionData` response model (reuse the existing client DTO if present) in `src/Services/Sorcha.Blueprint.Service/Models/` with XML docs on every member (Constitution III).
 
 ## Phase 2: Foundational (blocking prerequisites — MUST complete before user stories)
 
-- [ ] T003 Create the resolver seam `IActionDisclosureResolver` in `src/Services/Sorcha.Blueprint.Service/Services/Interfaces/IActionDisclosureResolver.cs` (per contracts §2).
-- [ ] T004 Extract the disclosure logic from `ActionExecutionService.ApplyDisclosuresAsync` (`src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs:1722-1783`) into `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionDisclosureResolver.cs` (engine `ApplyDisclosures` + participant→wallet resolution), and register it in DI in the service's Program/extensions.
-- [ ] T005 Refactor `ActionExecutionService` to depend on `IActionDisclosureResolver` (no behaviour change) in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs`.
-- [ ] T006 [P] Unit tests for `ActionDisclosureResolver` in `tests/Sorcha.Blueprint.Service.Tests/Services/ActionDisclosureResolverTests.cs`: only-disclosed-fields returned; caller-wallet resolution (incl. multi-wallet); non-recipient → empty/`recipientResolved=false`; identical view for encrypted vs dev-mode payloads.
-- [ ] T007 Regression guard: an existing `ActionExecutionService` disclosure test (or a new one) proves the refactor (T005) did not change disclosure behaviour, in `tests/Sorcha.Blueprint.Service.Tests/Services/ActionExecutionServiceTests.cs`.
+- [x] T003 Create the resolver seam `IActionDisclosureResolver` in `src/Services/Sorcha.Blueprint.Service/Services/Interfaces/IActionDisclosureResolver.cs` (per contracts §2).
+- [x] T004 Extract the disclosure logic from `ActionExecutionService.ApplyDisclosuresAsync` (`src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs:1722-1783`) into `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionDisclosureResolver.cs` (engine `ApplyDisclosures` + participant→wallet resolution), and register it in DI in the service's Program/extensions.
+- [x] T005 Refactor `ActionExecutionService` to depend on `IActionDisclosureResolver` (no behaviour change) in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs`.
+- [x] T006 [P] Unit tests for `ActionDisclosureResolver` in `tests/Sorcha.Blueprint.Service.Tests/Services/ActionDisclosureResolverTests.cs`: only-disclosed-fields returned; caller-wallet resolution (incl. multi-wallet); non-recipient → empty/`recipientResolved=false`; identical view for encrypted vs dev-mode payloads.
+- [x] T007 Regression guard: an existing `ActionExecutionService` disclosure test (or a new one) proves the refactor (T005) did not change disclosure behaviour, in `tests/Sorcha.Blueprint.Service.Tests/Services/ActionExecutionServiceTests.cs`.
 
 **Checkpoint**: shared disclosure resolver exists, tested, and `ActionExecutionService` uses it with no drift.
 
@@ -43,15 +43,15 @@ rejects the second (no credential), unattended (spec US1 / SC-001/002/003).
 
 ### Tests (write first)
 
-- [ ] T008 [P] [US1] Endpoint integration test in `tests/Sorcha.Blueprint.Service.Tests/Endpoints/WorkflowDisclosureEndpointsTests.cs`: authenticated recipient caller → `disclosedFields` populated with only disclosed fields; non-recipient caller → empty/`recipientResolved=false`; caller-wallet resolved via the Wallet-Service fallback (no `wallet_address` claim).
-- [ ] T009 [P] [US1] Agent inbox test in `tests/Sorcha.Agent.Tests/Inbox/DisclosedPayloadFetchTests.cs`: given a pending action, the inbox fetch calls `GetDisclosedDataAsync(instanceId, actionId)` and sets `PendingAction.PreviousPayload` to the disclosed fields.
-- [ ] T010 [P] [US1] Agent decision test in `tests/Sorcha.Agent.Tests/Decision/DecideOnRealDataTests.cs`: with a real disclosed payload, a non-existent postcode yields a `rejected` decision payload and a clean payload yields `approved` (rules over real `checks.*` facts).
+- [x] T008 [P] [US1] Endpoint integration test in `tests/Sorcha.Blueprint.Service.Tests/Endpoints/WorkflowDisclosureEndpointsTests.cs`: authenticated recipient caller → `disclosedFields` populated with only disclosed fields; non-recipient caller → empty/`recipientResolved=false`; caller-wallet resolved via the Wallet-Service fallback (no `wallet_address` claim).
+- [x] T009 [P] [US1] Agent inbox test in `tests/Sorcha.Agent.Tests/Inbox/DisclosedPayloadFetchTests.cs`: given a pending action, the inbox fetch calls `GetDisclosedDataAsync(instanceId, actionId)` and sets `PendingAction.PreviousPayload` to the disclosed fields.
+- [x] T010 [P] [US1] Agent decision test in `tests/Sorcha.Agent.Tests/Decision/DecideOnRealDataTests.cs`: with a real disclosed payload, a non-existent postcode yields a `rejected` decision payload and a clean payload yields `approved` (rules over real `checks.*` facts).
 
 ### Implementation
 
-- [ ] T011 [US1] Implement `GET /api/workflows/{instanceId}/actions/{actionId}/disclosures` (match the T001 contract) in `src/Services/Sorcha.Blueprint.Service/Endpoints/WorkflowDisclosureEndpoints.cs` (or extend `ActionEndpoints.cs`): `.RequireAuthorization()`, resolve caller wallet(s) via the Wallet-Service fallback used in `ActionEndpoints.cs:178-184`, call `IActionDisclosureResolver`, return `DisclosedActionData`; add `.WithName`/`.WithSummary`/`.WithDescription` (Constitution III).
-- [ ] T012 [US1] Confirm/adjust `IBlueprintServiceClient.GetDisclosedDataAsync` + `BlueprintServiceClient` (`src/Common/Sorcha.ServiceClients.Http/Blueprint/`) so route + deserialization match the implemented endpoint.
-- [ ] T013 [US1] Wire the agent inbox to fetch disclosed data per pending action and populate `PreviousPayload`, and finalise the `dataSchema` mapping, in `src/Apps/Sorcha.Agent/Inbox/PollingInboxListener.cs` (+ a small fetch helper/service using `IBlueprintServiceClient`); ensure `PreviousPayload` is sourced from the fetch, not the pending summary.
+- [x] T011 [US1] Implement `GET /api/workflows/{instanceId}/actions/{actionId}/disclosures` (match the T001 contract) in `src/Services/Sorcha.Blueprint.Service/Endpoints/WorkflowDisclosureEndpoints.cs` (or extend `ActionEndpoints.cs`): `.RequireAuthorization()`, resolve caller wallet(s) via the Wallet-Service fallback used in `ActionEndpoints.cs:178-184`, call `IActionDisclosureResolver`, return `DisclosedActionData`; add `.WithName`/`.WithSummary`/`.WithDescription` (Constitution III).
+- [x] T012 [US1] Confirm/adjust `IBlueprintServiceClient.GetDisclosedDataAsync` + `BlueprintServiceClient` (`src/Common/Sorcha.ServiceClients.Http/Blueprint/`) so route + deserialization match the implemented endpoint.
+- [x] T013 [US1] Wire the agent inbox to fetch disclosed data per pending action and populate `PreviousPayload`, and finalise the `dataSchema` mapping, in `src/Apps/Sorcha.Agent/Inbox/PollingInboxListener.cs` (+ a small fetch helper/service using `IBlueprintServiceClient`); ensure `PreviousPayload` is sourced from the fetch, not the pending summary.
 - [ ] T014 [US1] Run the end-to-end regression `demos/AIAS/rehearse.ps1 -Target docker` (valid → approved + credential; invalid `ZZ99 9ZZ` → rejected + no credential) and confirm PASS (SC-001/002/003/006).
 
 **Checkpoint**: US1 independently delivers a working autonomous assessment. This is the MVP.
@@ -68,13 +68,13 @@ no credential, actionable reason); restore → same application decided correctl
 
 ### Tests (write first)
 
-- [ ] T015 [P] [US2] `RulesDecisionEngine` test in `tests/Sorcha.Agent.Tests/Decision/DisclosedPayloadFailClosedTests.cs`: rules require the application payload but it is empty → `hold` (not approve/reject); when the payload is later present → correct approve/reject.
-- [ ] T016 [P] [US2] Agent inbox test in `tests/Sorcha.Agent.Tests/Inbox/DisclosedPayloadFetchTests.cs`: a disclosed-data fetch failure results in a `hold` outcome and no action submission.
+- [x] T015 [P] [US2] `RulesDecisionEngine` test in `tests/Sorcha.Agent.Tests/Decision/DisclosedPayloadFailClosedTests.cs`: rules require the application payload but it is empty → `hold` (not approve/reject); when the payload is later present → correct approve/reject.
+- [x] T016 [P] [US2] Agent inbox test in `tests/Sorcha.Agent.Tests/Inbox/DisclosedPayloadFetchTests.cs`: a disclosed-data fetch failure results in a `hold` outcome and no action submission.
 
 ### Implementation
 
-- [ ] T017 [US2] Extend fail-closed in `src/Apps/Sorcha.Agent/Decision/RulesDecisionEngine.cs`: mirror the #1077 `_rulesRequireChecks` pattern to also hold when the disclosed payload the rules depend on is empty/unavailable, with a distinct logged reason ("Disclosed application data unavailable; held for manual review").
-- [ ] T018 [US2] In the agent inbox fetch path (`src/Apps/Sorcha.Agent/Inbox/…`): on fetch failure or `recipientResolved=false`, route the action to a hold outcome — never proceed to a decision on an empty payload; retry naturally on the next poll (FR-009).
+- [x] T017 [US2] Extend fail-closed in `src/Apps/Sorcha.Agent/Decision/RulesDecisionEngine.cs`: mirror the #1077 `_rulesRequireChecks` pattern to also hold when the disclosed payload the rules depend on is empty/unavailable, with a distinct logged reason ("Disclosed application data unavailable; held for manual review").
+- [x] T018 [US2] In the agent inbox fetch path (`src/Apps/Sorcha.Agent/Inbox/…`): on fetch failure or `recipientResolved=false`, route the action to a hold outcome — never proceed to a decision on an empty payload; retry naturally on the next poll (FR-009).
 
 **Checkpoint**: transient/permanent unavailability can never produce a wrong decision.
 
@@ -89,11 +89,11 @@ retrievable; for a rejection the failing check is identifiable (spec US3 / SC-00
 
 ### Tests (write first)
 
-- [ ] T019 [P] [US3] Test in `tests/Sorcha.Agent.Tests/Decision/CheckFactsObservabilityTests.cs`: after a decision the evaluated `checks.*` facts and their source payload fields are emitted (structured), and a failing check is identifiable for a rejection.
+- [x] T019 [P] [US3] Test in `tests/Sorcha.Agent.Tests/Decision/CheckFactsObservabilityTests.cs`: after a decision the evaluated `checks.*` facts and their source payload fields are emitted (structured), and a failing check is identifiable for a rejection.
 
 ### Implementation
 
-- [ ] T020 [US3] Finalise the structured check-facts log in `src/Apps/Sorcha.Agent/Decision/RulesDecisionEngine.cs` (the diagnostic staged on the branch): log evaluated facts + source fields at an appropriate level, structured (no string interpolation, Constitution VIII); ensure it reflects the real disclosed fields and identifies failing checks.
+- [x] T020 [US3] Finalise the structured check-facts log in `src/Apps/Sorcha.Agent/Decision/RulesDecisionEngine.cs` (the diagnostic staged on the branch): log evaluated facts + source fields at an appropriate level, structured (no string interpolation, Constitution VIII); ensure it reflects the real disclosed fields and identifies failing checks.
 
 **Checkpoint**: a future recurrence is a two-minute diagnosis, not a multi-hour investigation.
 
@@ -101,9 +101,9 @@ retrievable; for a rejection the failing check is identifiable (spec US3 / SC-00
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T021 [P] Docs: add the endpoint to `docs/reference/API-DOCUMENTATION.md` and the blueprint-service `README.md`; update `.claude/skills/sorcha-architecture/SKILL.md` if it catalogs endpoints; note the agent's disclosed-payload consumption.
-- [ ] T022 [P] Verify coverage (>85% new code) for the resolver, endpoint, and agent paths; confirm no new Release warnings (Constitution IV/V).
-- [ ] T023 Reconcile the provisional field-name edit staged on the branch with the new `PreviousPayload` source (the `payload→prepopulatedPayload` change becomes moot for `PreviousPayload`; keep the `schema→dataSchema` correction); remove any purely-diagnostic scaffolding not intended to ship.
+- [x] T021 [P] Docs: add the endpoint to `docs/reference/API-DOCUMENTATION.md` and the blueprint-service `README.md`; update `.claude/skills/sorcha-architecture/SKILL.md` if it catalogs endpoints; note the agent's disclosed-payload consumption.
+- [x] T022 [P] Verify coverage (>85% new code) for the resolver, endpoint, and agent paths; confirm no new Release warnings (Constitution IV/V).
+- [x] T023 Reconcile the provisional field-name edit staged on the branch with the new `PreviousPayload` source (the `payload→prepopulatedPayload` change becomes moot for `PreviousPayload`; keep the `schema→dataSchema` correction); remove any purely-diagnostic scaffolding not intended to ship.
 - [ ] T024 Full suite green: `dotnet test tests/Sorcha.Blueprint.Service.Tests` + `dotnet test tests/Sorcha.Agent.Tests`, and `demos/AIAS/rehearse.ps1` PASS end-to-end.
 
 ---
