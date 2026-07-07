@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Linq;
 using System.Text;
 using Sorcha.Blueprint.Models;
 using Sorcha.UI.Core.Models.Credentials;
@@ -11,7 +12,9 @@ namespace Sorcha.UI.Core.Services.Credentials;
 /// <summary>
 /// Adapts a held credential to the shared <see cref="IdCardLayoutConfig"/> so identity credentials
 /// render as the same styled ID card the citizen saw at application review, rather than a raw claims
-/// table. Non-identity credentials fall back to the tabular detail view.
+/// table. The core <see cref="BuildConfig(string?, string?, string?, IReadOnlyDictionary{string, string?})"/>
+/// is model-agnostic so BOTH the web detail dialog and the wallet PWA detail page produce an identical
+/// card. Non-identity credentials fall back to each host's tabular view.
 /// </summary>
 public static class CredentialIdCard
 {
@@ -23,27 +26,43 @@ public static class CredentialIdCard
 
     /// <summary>
     /// True when the credential type denotes an identity credential (renders as an ID card). Pragmatic
-    /// v1 heuristic — the type name contains "identity" (e.g. AssuredIdentityCredential). A richer
+    /// v1 heuristic — the type/vct name contains "identity" (e.g. AssuredIdentityCredential). A richer
     /// credential-type registry can replace this later without changing callers.
     /// </summary>
     public static bool IsIdentityCredential(string? credentialType)
         => !string.IsNullOrWhiteSpace(credentialType)
            && credentialType.Contains("identity", System.StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Builds an <see cref="IdCardLayoutConfig"/> for a credential's card face.</summary>
+    /// <summary>Builds an <see cref="IdCardLayoutConfig"/> from a web detail view model.</summary>
     public static IdCardLayoutConfig BuildConfig(CredentialDetailViewModel credential)
     {
         System.ArgumentNullException.ThrowIfNull(credential);
+        var claims = credential.Claims.ToDictionary(
+            kv => kv.Key, kv => kv.Value?.ToString(), System.StringComparer.Ordinal);
+        var issuer = string.IsNullOrWhiteSpace(credential.IssuerName) ? null : credential.IssuerName;
+        return BuildConfig(credential.Type, PrettyCredentialName(credential.Type), issuer, claims);
+    }
 
-        var claims = credential.Claims;
+    /// <summary>
+    /// Model-agnostic card builder — used by both the web dialog and the wallet PWA page so the card is
+    /// identical in both. <paramref name="claims"/> is the flat claim map (claimName → value).
+    /// </summary>
+    public static IdCardLayoutConfig BuildConfig(
+        string? credentialType,
+        string? credentialName,
+        string? issuerName,
+        IReadOnlyDictionary<string, string?> claims)
+    {
+        System.ArgumentNullException.ThrowIfNull(claims);
+
         var fieldValues = new Dictionary<string, object?>(System.StringComparer.Ordinal);
         var pointers = new List<string>();
 
         // Prefer a computed fullName; otherwise synthesise "Given Family" from the granular parts so
         // the card always shows a name line rather than three separate name fields.
-        if (!ClaimHasText(claims, "fullName"))
+        if (!HasText(claims, "fullName"))
         {
-            var joined = string.Join(" ", new[] { ClaimText(claims, "givenName"), ClaimText(claims, "familyName") }
+            var joined = string.Join(" ", new[] { Text(claims, "givenName"), Text(claims, "familyName") }
                 .Where(s => !string.IsNullOrWhiteSpace(s)));
             if (!string.IsNullOrWhiteSpace(joined))
             {
@@ -56,14 +75,14 @@ public static class CredentialIdCard
         {
             var pointer = "/" + key;
             if (fieldValues.ContainsKey(pointer)) continue; // already synthesised (fullName)
-            var text = ClaimText(claims, key);
+            var text = Text(claims, key);
             if (string.IsNullOrWhiteSpace(text)) continue;
             fieldValues[pointer] = text;
             pointers.Add(pointer);
         }
 
         // Portrait → the sibling pointer IdCardLayout scans for the card photo.
-        var portrait = ClaimText(claims, PortraitClaim);
+        var portrait = Text(claims, PortraitClaim);
         if (!string.IsNullOrWhiteSpace(portrait))
         {
             fieldValues["/portrait/tokenImageBase64"] = portrait;
@@ -71,13 +90,12 @@ public static class CredentialIdCard
 
         var section = new IdCardSection(Title: "Identity", OriginatingPageIndex: 0, FieldPointers: pointers);
 
+        var name = string.IsNullOrWhiteSpace(credentialName) ? PrettyCredentialName(credentialType) : credentialName;
         return new IdCardLayoutConfig
         {
-            // No friendly issuer name is threaded through the credential model yet (only the DID);
-            // the prettified credential type carries the card identity. Issuer-org-name display is a
-            // follow-up (resolve the DID or carry it at issuance).
-            IssuerName = PrettyCredentialName(credential.Type),
-            CredentialName = PrettyCredentialName(credential.Type),
+            // The issuer org name where known; otherwise the credential name carries the card identity.
+            IssuerName = string.IsNullOrWhiteSpace(issuerName) ? name : issuerName!,
+            CredentialName = name,
             ColourTheme = XReviewColourTheme.IdentityNavy,
             Watermark = IdCardWatermark.Issued,
             FieldValues = fieldValues,
@@ -86,14 +104,14 @@ public static class CredentialIdCard
         };
     }
 
-    private static bool ClaimHasText(IReadOnlyDictionary<string, object> claims, string key)
-        => !string.IsNullOrWhiteSpace(ClaimText(claims, key));
+    private static bool HasText(IReadOnlyDictionary<string, string?> claims, string key)
+        => !string.IsNullOrWhiteSpace(Text(claims, key));
 
-    private static string? ClaimText(IReadOnlyDictionary<string, object> claims, string key)
-        => claims.TryGetValue(key, out var v) ? v?.ToString() : null;
+    private static string? Text(IReadOnlyDictionary<string, string?> claims, string key)
+        => claims.TryGetValue(key, out var v) ? v : null;
 
     // "AssuredIdentityCredential" -> "Assured Identity". Strips a trailing "Credential", splits camelCase.
-    private static string PrettyCredentialName(string type)
+    private static string PrettyCredentialName(string? type)
     {
         if (string.IsNullOrWhiteSpace(type)) return "Credential";
         var trimmed = type.EndsWith("Credential", System.StringComparison.OrdinalIgnoreCase) && type.Length > 10

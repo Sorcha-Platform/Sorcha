@@ -101,6 +101,9 @@ public class CredentialDetailViewModel
     public string CredentialId { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
     public string IssuerDid { get; set; } = string.Empty;
+
+    /// <summary>Friendly issuer name (org name where known, else derived from the DID) for the card header.</summary>
+    public string IssuerName { get; set; } = string.Empty;
     public string SubjectDid { get; set; } = string.Empty;
     public string Status { get; set; } = CredentialStatus.Active;
     public DateTimeOffset IssuedAt { get; set; }

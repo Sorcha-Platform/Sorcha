@@ -466,6 +466,7 @@ public class CredentialApiService : ICredentialApiService
             CredentialId = entity.Id ?? string.Empty,
             Type = entity.Type ?? string.Empty,
             IssuerDid = entity.IssuerDid ?? string.Empty,
+            IssuerName = ExtractIssuerName(entity.IssuerDid),
             SubjectDid = entity.SubjectDid ?? string.Empty,
             Status = entity.Status ?? CredentialStatus.Active,
             IssuedAt = entity.IssuedAt,
