@@ -55,6 +55,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
     private readonly IInstanceStore _instanceStore;
     private readonly IExecutionEngine _executionEngine;
     private readonly IActionDisclosureResolver _actionDisclosureResolver;
+    private readonly IJsonLogicEvaluator? _jsonLogicEvaluator;
     private readonly ICredentialVerifier? _credentialVerifier;
     private readonly IStatusListManager? _statusListManager;
     private readonly IEncryptionPipelineService? _encryptionPipeline;
@@ -107,7 +108,8 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         IPresentationRateLimiter? presentationRateLimiter = null,
         PresentationLifecycleMetrics? presentationMetrics = null,
         IOptions<Configuration.WalletOwnershipSettings>? walletOwnershipSettings = null,
-        IActionDisclosureResolver? actionDisclosureResolver = null)
+        IActionDisclosureResolver? actionDisclosureResolver = null,
+        IJsonLogicEvaluator? jsonLogicEvaluator = null)
     {
         _actionResolver = actionResolver ?? throw new ArgumentNullException(nameof(actionResolver));
         _stateReconstruction = stateReconstruction ?? throw new ArgumentNullException(nameof(stateReconstruction));
@@ -154,6 +156,11 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                 executionEngine,
                 registerClient,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<ActionDisclosureResolver>.Instance);
+
+        // Feature 176 / FR-004: gates credential issuance on the submitted decision so a rejected
+        // application is never issued a credential. Optional — a null evaluator with no configured
+        // issuanceCondition preserves the pre-existing always-issue behaviour.
+        _jsonLogicEvaluator = jsonLogicEvaluator;
     }
 
     /// <inheritdoc/>
@@ -557,8 +564,16 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         // submitter, not only in the server log (issue #340). Threaded to both the HAIP and internal paths.
         var credentialWarnings = new List<string>();
 
+        // Feature 176 / FR-004 / SC-003: an action can carry a credentialIssuanceConfig yet gate the
+        // actual mint on the submitted decision via an optional issuanceCondition. When it evaluates
+        // falsy (e.g. an agent's decision=="rejected"), NO credential is minted or delivered — the
+        // action still routes onward per its routes. Null condition → always issue (pre-existing
+        // behaviour); an unevaluable condition fails closed (no issuance).
+        var credentialIssuanceAllowed = EvaluateIssuanceCondition(actionDef, mergedData!);
+
         CreateOfferResult? haipOfferResult = null;
         if (actionDef.CredentialIssuanceConfig != null
+            && credentialIssuanceAllowed
             && actionDef.CredentialIssuanceConfig.TargetAudience == TargetAudience.HaipExternalWallet)
         {
             if (_haipClient is null)
@@ -634,6 +649,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         // blueprints still resolve to the local-wallet delivery path.
 #pragma warning disable CS0618
         if (actionDef.CredentialIssuanceConfig != null
+            && credentialIssuanceAllowed
             && actionDef.CredentialIssuanceConfig.TargetAudience is TargetAudience.SorchaLocalWallet
                 or TargetAudience.SorchaInternal)
 #pragma warning restore CS0618
@@ -1742,6 +1758,64 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         string registerId)
         => _actionDisclosureResolver.ApplyDisclosuresAsync(
             action, data, blueprint, participantWallets, registerId);
+
+    /// <summary>
+    /// Evaluates the optional credential <c>issuanceCondition</c> (Feature 176 / FR-004) over the
+    /// submitted action data. Returns true (issue) when no condition is configured — the pre-existing
+    /// always-issue behaviour. Returns false (skip issuance) when the condition evaluates falsy, and
+    /// fails closed (false) when a configured condition cannot be evaluated.
+    /// </summary>
+    private bool EvaluateIssuanceCondition(ActionModel actionDef, Dictionary<string, object> data)
+    {
+        var condition = actionDef.CredentialIssuanceConfig?.IssuanceCondition;
+        if (condition is null)
+        {
+            return true;
+        }
+
+        if (_jsonLogicEvaluator is null)
+        {
+            _logger.LogError(
+                "Action {ActionId} declares a credential issuanceCondition but no JSON Logic evaluator is "
+                + "available; failing closed and NOT issuing a credential.", actionDef.Id);
+            return false;
+        }
+
+        try
+        {
+            var result = _jsonLogicEvaluator.Evaluate(condition, data);
+            var allowed = IsConditionTruthy(result);
+            if (!allowed)
+            {
+                _logger.LogInformation(
+                    "Action {ActionId}: credential issuanceCondition evaluated falsy — no credential minted or delivered.",
+                    actionDef.Id);
+            }
+
+            return allowed;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Action {ActionId}: credential issuanceCondition evaluation threw — failing closed, no credential issued.",
+                actionDef.Id);
+            return false;
+        }
+    }
+
+    /// <summary>JSON-Logic truthiness for the issuance-condition result (mirrors jsonlogic.com semantics).</summary>
+    private static bool IsConditionTruthy(object? value) => value switch
+    {
+        null => false,
+        bool b => b,
+        string s => !string.IsNullOrEmpty(s) && !string.Equals(s, "false", StringComparison.OrdinalIgnoreCase),
+        int i => i != 0,
+        long l => l != 0,
+        double d => d != 0,
+        decimal m => m != 0m,
+        System.Text.Json.Nodes.JsonValue jv when jv.TryGetValue<bool>(out var jb) => jb,
+        _ => true,
+    };
 
     private const int MaxConcurrencyRetries = 3;
 

@@ -176,6 +176,7 @@
           "targetAudience": "SorchaLocalWallet",
           "recipientParticipantId": "citizen",
           "holderKeySourceField": "/holderKeys/holderJwk",
+          "issuanceCondition": { "==": [{ "var": "decision" }, "approved"] },
           "claimMappings": [
             { "claimName": "givenName",   "sourceField": "/name/givenName" },
             { "claimName": "middleName",  "sourceField": "/name/middleName" },
