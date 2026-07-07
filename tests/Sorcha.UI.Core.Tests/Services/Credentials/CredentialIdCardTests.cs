@@ -65,4 +65,52 @@ public class CredentialIdCardTests
 
         cfg.FieldValues["/fullName"].Should().Be("Stuart Fraser");
     }
+
+    [Fact]
+    public void BuildConfig_IssuerName_FlowsToCardHeader()
+    {
+        var cred = new CredentialDetailViewModel
+        {
+            Type = "AssuredIdentityCredential",
+            IssuerName = "Acme Identity Assurance Services",
+            Claims = new Dictionary<string, object> { ["fullName"] = "Stuart Fraser" },
+        };
+
+        var cfg = CredentialIdCard.BuildConfig(cred);
+
+        cfg.IssuerName.Should().Be("Acme Identity Assurance Services");
+        cfg.CredentialName.Should().Be("Assured Identity");
+    }
+
+    [Fact]
+    public void BuildConfig_ModelAgnostic_MatchesModelOverload_ForWebPwaParity()
+    {
+        // The web (CredentialDetailViewModel) and the PWA (CachedCredential) feed the SAME
+        // model-agnostic core, so the rendered card is identical. Guard that parity.
+        var cred = new CredentialDetailViewModel
+        {
+            Type = "AssuredIdentityCredential",
+            IssuerName = "AIAS",
+            Claims = new Dictionary<string, object>
+            {
+                ["fullName"] = "Stuart Fraser",
+                ["dateOfBirth"] = "1968-08-19",
+                ["portrait"] = "IMG",
+            },
+        };
+        var claims = new Dictionary<string, string?>
+        {
+            ["fullName"] = "Stuart Fraser",
+            ["dateOfBirth"] = "1968-08-19",
+            ["portrait"] = "IMG",
+        };
+
+        var fromModel = CredentialIdCard.BuildConfig(cred);
+        var fromPrimitives = CredentialIdCard.BuildConfig("AssuredIdentityCredential", "Assured Identity", "AIAS", claims);
+
+        fromPrimitives.IssuerName.Should().Be(fromModel.IssuerName);
+        fromPrimitives.CredentialName.Should().Be(fromModel.CredentialName);
+        fromPrimitives.FieldValues["/fullName"].Should().Be(fromModel.FieldValues["/fullName"]);
+        fromPrimitives.FieldValues["/portrait/tokenImageBase64"].Should().Be(fromModel.FieldValues["/portrait/tokenImageBase64"]);
+    }
 }
