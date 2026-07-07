@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using DataAnnotations = System.ComponentModel.DataAnnotations;
 
@@ -129,6 +130,20 @@ public class CredentialIssuanceConfig
     [JsonPropertyName("holderKeySourceField")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? HolderKeySourceField { get; set; }
+
+    /// <summary>
+    /// Optional JSON Logic condition (evaluated over the submitted action data, e.g.
+    /// <c>{"==": [{"var": "decision"}, "approved"]}</c>) that gates whether the credential is
+    /// actually minted. When null (the default) the credential is always issued on execution
+    /// — the pre-existing behaviour. When set and the condition evaluates falsy, issuance is
+    /// skipped and no credential is minted or delivered. This lets a single decision action carry
+    /// a <c>credentialIssuanceConfig</c> yet issue only on approval — a rejection routes onward
+    /// with no credential (Feature 176 / FR-004 / SC-003). Fails closed: a configured condition
+    /// that cannot be evaluated skips issuance.
+    /// </summary>
+    [JsonPropertyName("issuanceCondition")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public JsonNode? IssuanceCondition { get; set; }
 }
 
 /// <summary>

@@ -1736,5 +1736,16 @@ disclosedFields`. `PollingInboxListener` no longer sources `PreviousPayload` fro
 and the payload is empty (mirrors the #1077 hold). US3 explainability: the structured "External checks
 evaluated … (from payload fields: […])" log identifies the evaluated facts + source fields for any decision.
 
+**Credential issuance gated on the decision (FR-004 / SC-003).** The n1 E2E exposed a second, pre-existing
+gap the now-working reject path reached for the first time: the `SorchaLocalWallet`/HAIP credential mint in
+`ActionExecutionService` fired whenever the action had a `credentialIssuanceConfig`, with no gate on the
+decision — so a `decision:"rejected"` submission still minted + delivered a credential. Fix:
+`CredentialIssuanceConfig.IssuanceCondition` (optional JSON-Logic over the submitted action data). When set
+and falsy, the mint is skipped (both delivery paths share one `credentialIssuanceAllowed` flag evaluated via
+`IJsonLogicEvaluator`); null preserves always-issue; unevaluable fails closed. The AIAS + AssuredIdentity
+action-2 configs carry `"issuanceCondition": {"==":[{"var":"decision"},"approved"]}`. Separately, the agent
+calls the endpoint **through the API gateway**, which needed a `/api/workflows/{**catch-all}` route to
+blueprint-cluster (the MCP tool uses the direct service address, so unit tests didn't catch that gap).
+
 **Witness:** `demos/AIAS/rehearse.ps1` — valid → approved (credential delivered), invalid "ZZ99 9ZZ" → rejected
 (no credential). Spec: `specs/176-agent-disclosed-payload/`.
