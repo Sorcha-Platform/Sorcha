@@ -122,8 +122,9 @@ docker compose restart blueprint-service validator-service
 .\walkthroughs\AssuredIdentity\run.ps1 -Profile gateway -StopAfterPhase 1
 
 # Wait for a presentation to be queued (run Phase 2 step 5 then kill blueprint mid-callback)
-# This requires manual instrumentation — see specs/119-presentation-seal-ordering/quickstart-restart-test.md
-# (Out of scope for the standard quickstart.)
+# Restart-while-pending durability (SC-119-007) is now covered automatically by the real-Redis
+# integration test PresentationSealCoordinatorIntegrationTests.RestartSafety_DrainsAfterReconnect,
+# so no manual instrumentation is required. (Out of scope for the standard quickstart.)
 ```
 
 For the formal SC-119-007 verification (5 consecutive restart-while-pending tests), see the integration test `PresentationSealCoordinatorIntegrationTests.RestartSafety_DrainsAfterReconnect`.
