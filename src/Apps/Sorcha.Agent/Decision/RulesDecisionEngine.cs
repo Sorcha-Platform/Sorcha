@@ -23,6 +23,13 @@ public class RulesDecisionEngine : IDecisionEngine
     private readonly IExternalCheckRunner? _checkRunner;
     private readonly ILogger<RulesDecisionEngine>? _logger;
 
+    // #1077: true when ANY rule condition references a "checks.*" fact. When the rules depend on
+    // external checks we must FAIL CLOSED if no check facts are available (runner absent / no checks
+    // configured / HasChecks false / faulted) — otherwise the "checks.X == false" reject rules
+    // silently no-op (null != false in strict ==) and the catch-all approve fires, issuing a
+    // credential with zero verification. Computed once — the rules are fixed for the engine's life.
+    private readonly bool _rulesRequireChecks;
+
     /// <summary>Creates a rules engine over <paramref name="rules"/> with no external checks.</summary>
     public RulesDecisionEngine(ActorRule[] rules, ILogger<RulesDecisionEngine>? logger = null)
         : this(rules, null, logger)
@@ -39,6 +46,14 @@ public class RulesDecisionEngine : IDecisionEngine
         _rules = rules;
         _checkRunner = checkRunner;
         _logger = logger;
+
+        // A rule "requires checks" if its serialised condition references a "checks." fact path
+        // (e.g. { "var": "checks.postcodeExists" }). Inclusive by design: a false positive only ever
+        // causes a conservative hold (fail-safe), whereas a miss would re-open the zero-verification
+        // hole. Agents with no such rules are entirely unaffected.
+        _rulesRequireChecks = rules.Any(r =>
+            r.Condition is not null
+            && r.Condition.ToJsonString().Contains("checks.", StringComparison.Ordinal));
     }
 
     public async Task<ActionDecision> DecideAsync(PendingAction action, CancellationToken cancellationToken = default)
@@ -60,6 +75,23 @@ public class RulesDecisionEngine : IDecisionEngine
                     action.ActionName);
                 return new ActionDecision("hold", null, "External checks unavailable; application held for manual review");
             }
+        }
+
+        // #1077: fail closed when the rules DEPEND on external checks but no check facts are available.
+        // This covers the absence modes the block above does NOT: a null runner, a runner with
+        // HasChecks == false, or no ChecksFile configured (e.g. a stale agent build) — any of which
+        // leaves checksFacts null while the reject rules reference checks.*. Without this guard those
+        // rejects silently no-op and the catch-all approve issues a credential with zero verification
+        // (observed live: fake postcode "ZZ99 9ZZ" approved). Agents whose rules don't reference
+        // checks.* have _rulesRequireChecks == false and are unaffected.
+        if (checksFacts is null && _rulesRequireChecks)
+        {
+            _logger?.LogError(
+                "Rules for action {ActionName} reference external checks but no check facts are available "
+                + "(no check runner configured/available); holding for manual review (fail-closed, #1077).",
+                action.ActionName);
+            return new ActionDecision("hold", null,
+                "External checks are required by policy but were unavailable; application held for manual review");
         }
 
         foreach (var rule in _rules)

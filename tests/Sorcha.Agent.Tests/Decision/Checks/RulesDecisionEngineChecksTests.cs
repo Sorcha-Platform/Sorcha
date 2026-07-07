@@ -153,6 +153,57 @@ public class RulesDecisionEngineChecksTests
         decision.Reasoning.Should().Contain("manual review");
     }
 
+    [Fact]
+    public async Task Decide_RulesRequireChecks_RunnerAbsent_HoldsFailClosed()
+    {
+        // #1077 — the exact live bug: no check runner is wired (e.g. a stale agent build predating the
+        // external-check hook), yet the rules reference checks.*. Previously the checks block was
+        // skipped entirely, the reject rules no-op'd (null != false), and the catch-all approve fired —
+        // issuing a credential with zero verification (fake postcode ZZ99 9ZZ approved). Must hold.
+        var engine = new RulesDecisionEngine(AiasRules()); // no runner at all
+
+        var decision = await engine.DecideAsync(Action());
+
+        decision.Decision.Should().Be("hold", "rules requiring checks must fail closed when no runner is wired");
+        decision.Payload.Should().BeNull();
+        decision.Reasoning.Should().Contain("manual review");
+    }
+
+    [Fact]
+    public async Task Decide_RulesRequireChecks_RunnerHasNoChecks_HoldsFailClosed()
+    {
+        // Runner present but empty (HasChecks == false — e.g. an unresolved/empty ChecksFile). Same
+        // absence hole as a null runner: checksFacts stays null while rules reference checks.*.
+        var engine = new RulesDecisionEngine(AiasRules(), new ExternalCheckRunner([]));
+
+        var decision = await engine.DecideAsync(Action());
+
+        decision.Decision.Should().Be("hold", "an empty runner (HasChecks false) must also fail closed");
+        decision.Payload.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Decide_RulesDoNotReferenceChecks_RunnerAbsent_ApprovesNormally_NoForcedHold()
+    {
+        // Regression guard: an agent whose rules do NOT reference checks.* must be unaffected — no
+        // runner, no forced hold. The fail-closed guard is scoped to rules that actually depend on checks.
+        var noCheckRules = new[]
+        {
+            new ActorRule
+            {
+                ActionName = ActionName,
+                Condition = JsonNode.Parse("""{ "==": [ true, true ] }"""),
+                Decision = "approve",
+                Payload = JsonNode.Parse("""{ "decision": "approved", "verificationNotes": "No checks needed." }""")!.AsObject(),
+            },
+        };
+        var engine = new RulesDecisionEngine(noCheckRules); // no runner, no checks references
+
+        var decision = await engine.DecideAsync(Action());
+
+        decision.Decision.Should().Be("approve", "agents without checks.* rules must not be force-held");
+    }
+
     /// <summary>
     /// Runner stub that throws at the runner level, bypassing per-check fault containment.
     /// Exercises the null-checksFacts path in <see cref="RulesDecisionEngine.DecideAsync"/>.
