@@ -6,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Sorcha.Register.Core.Events;
 using Sorcha.ServiceClients.Register;
+using Sorcha.Validator.Service.Services.Interfaces;
 
 namespace Sorcha.Validator.Service.Services;
 
@@ -29,6 +30,7 @@ public sealed class RegisterMonitoringBootstrap : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IRegisterMonitoringRegistry _registry;
     private readonly IValidatorKeyProvider _keyProvider;
+    private readonly ValidatorMempoolMetrics _metrics;
     private readonly IEventSubscriber? _eventSubscriber;
     private readonly ILogger<RegisterMonitoringBootstrap> _logger;
 
@@ -36,12 +38,14 @@ public sealed class RegisterMonitoringBootstrap : BackgroundService
         IServiceScopeFactory scopeFactory,
         IRegisterMonitoringRegistry registry,
         IValidatorKeyProvider keyProvider,
+        ValidatorMempoolMetrics metrics,
         ILogger<RegisterMonitoringBootstrap> logger,
         IEventSubscriber? eventSubscriber = null)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _keyProvider = keyProvider ?? throw new ArgumentNullException(nameof(keyProvider));
+        _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _eventSubscriber = eventSubscriber;
     }
@@ -171,10 +175,7 @@ public sealed class RegisterMonitoringBootstrap : BackgroundService
             // Remove no-longer-rostered (drain-on-remove semantics live in ValidationEngineService).
             foreach (var remove in toRemove)
             {
-                _registry.UnregisterFromMonitoring(remove);
-                _logger.LogInformation(
-                    "Monitoring released for register {RegisterId} — validator key no longer on roster",
-                    remove);
+                await ReleaseDerosteredRegisterAsync(remove, ct);
             }
 
             return true;
@@ -184,6 +185,51 @@ public sealed class RegisterMonitoringBootstrap : BackgroundService
             _logger.LogWarning(ex, "Monitoring reconcile failed");
             return false;
         }
+    }
+
+    /// <summary>
+    /// Issue #787 Gap A: releases a register this validator is no longer on the roster for. Before
+    /// un-monitoring, we query the per-register unverified pool count so that releasing a register
+    /// with still-pending transactions is observable and alertable rather than silent. This validator
+    /// can't seal those transactions (it's off the roster) — they must be handled by the register's
+    /// current roster (via replication) or be evicted by the pool retry limit (Gap B, #1092).
+    /// </summary>
+    /// <remarks>
+    /// The pending-count query is guarded: a pool-count failure must NEVER prevent the release, which
+    /// always happens. This method does not throw.
+    /// </remarks>
+    internal async Task ReleaseDerosteredRegisterAsync(string registerId, CancellationToken ct)
+    {
+        long? pendingCount = null;
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var poller = scope.ServiceProvider.GetRequiredService<ITransactionPoolPoller>();
+            pendingCount = await poller.GetUnverifiedCountAsync(registerId, ct);
+        }
+        catch (Exception countEx)
+        {
+            _logger.LogWarning(countEx,
+                "Failed to read unverified pool count for register {RegisterId} while releasing a de-rostered register — count unknown",
+                registerId);
+        }
+
+        if (pendingCount is > 0)
+        {
+            _logger.LogWarning(
+                "Monitoring released for register {RegisterId} — validator key no longer on roster — while {PendingCount} unverified transaction(s) are still pending. " +
+                "This validator cannot seal them; they must be handled by the register's current roster or evicted by the pool retry limit.",
+                registerId, pendingCount);
+            _metrics.RecordUnregisteredWithPending(registerId, "roster-change", pendingCount.Value);
+        }
+        else
+        {
+            _logger.LogInformation(
+                "Monitoring released for register {RegisterId} — validator key no longer on roster{PendingSuffix}",
+                registerId, pendingCount is null ? " (pending count unknown)" : string.Empty);
+        }
+
+        _registry.UnregisterFromMonitoring(registerId);
     }
 
     private async Task HandleRelationshipChangedAsync(RegisterRelationshipChangedEvent evt, CancellationToken ct)

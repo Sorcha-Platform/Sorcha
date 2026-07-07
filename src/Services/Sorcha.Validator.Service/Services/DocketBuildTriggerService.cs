@@ -23,6 +23,7 @@ public class DocketBuildTriggerService : BackgroundService
     private readonly DocketBuildConfiguration _config;
     private readonly ValidatorConfiguration _validatorConfig;
     private readonly ISystemWalletProvider _systemWalletProvider;
+    private readonly ValidatorMempoolMetrics _metrics;
     private readonly ILogger<DocketBuildTriggerService> _logger;
 
     // Track last build time per register
@@ -53,6 +54,7 @@ public class DocketBuildTriggerService : BackgroundService
         IOptions<DocketBuildConfiguration> config,
         IOptions<ValidatorConfiguration> validatorConfig,
         ISystemWalletProvider systemWalletProvider,
+        ValidatorMempoolMetrics metrics,
         ILogger<DocketBuildTriggerService> logger)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
@@ -60,6 +62,7 @@ public class DocketBuildTriggerService : BackgroundService
         _config = config?.Value ?? throw new ArgumentNullException(nameof(config));
         _validatorConfig = validatorConfig?.Value ?? throw new ArgumentNullException(nameof(validatorConfig));
         _systemWalletProvider = systemWalletProvider ?? throw new ArgumentNullException(nameof(systemWalletProvider));
+        _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -355,10 +358,7 @@ public class DocketBuildTriggerService : BackgroundService
                         var retryCount = _genesisRetryCount.AddOrUpdate(registerId, 1, (_, count) => count + 1);
                         if (retryCount >= 3)
                         {
-                            _logger.LogWarning(
-                                "Genesis docket write failed {RetryCount} times for register {RegisterId}. Unmonitoring register. Admin attention needed. Error: {Message}",
-                                retryCount, registerId, ex.Message);
-                            _registry.UnregisterFromMonitoring(registerId);
+                            await UnmonitorAfterGenesisFailureAsync(scope, registerId, retryCount, ex.Message, cancellationToken);
                         }
                         else
                         {
@@ -395,10 +395,7 @@ public class DocketBuildTriggerService : BackgroundService
                     var retryCount = _genesisRetryCount.AddOrUpdate(registerId, 1, (_, count) => count + 1);
                     if (retryCount >= 3)
                     {
-                        _logger.LogWarning(
-                            "Genesis docket write failed {RetryCount} times for register {RegisterId}. Unmonitoring register. Admin attention needed. Error: {Message}",
-                            retryCount, registerId, ex.Message);
-                        _registry.UnregisterFromMonitoring(registerId);
+                        await UnmonitorAfterGenesisFailureAsync(scope, registerId, retryCount, ex.Message, cancellationToken);
                     }
                     else
                     {
@@ -413,6 +410,62 @@ public class DocketBuildTriggerService : BackgroundService
         {
             _logger.LogDebug("No docket built for register {RegisterId} (verified queue empty or not ready)", registerId);
         }
+    }
+
+    /// <summary>
+    /// Issue #787 Gap A: after a genesis docket-0 write has failed the retry limit, this validator
+    /// cannot bootstrap the register, so it must stop monitoring it. Before releasing, we query the
+    /// per-register unverified pool count so an orphaning of pending transactions is observable and
+    /// alertable rather than silent. Any pending transactions cannot be sealed here (genesis is
+    /// unwritable) — they will be evicted by the pool retry limit (Gap B, #1092).
+    /// </summary>
+    /// <remarks>
+    /// The pending-count query is guarded: a pool-count failure must NEVER prevent the unregister,
+    /// which always happens. This method does not throw.
+    /// </remarks>
+    internal async Task UnmonitorAfterGenesisFailureAsync(
+        IServiceScope scope,
+        string registerId,
+        int retryCount,
+        string error,
+        CancellationToken ct)
+    {
+        long? pendingCount = null;
+        try
+        {
+            var poller = scope.ServiceProvider.GetRequiredService<ITransactionPoolPoller>();
+            pendingCount = await poller.GetUnverifiedCountAsync(registerId, ct);
+        }
+        catch (Exception countEx)
+        {
+            _logger.LogWarning(countEx,
+                "Failed to read unverified pool count for register {RegisterId} while un-monitoring after genesis failure — count unknown",
+                registerId);
+        }
+
+        if (pendingCount is > 0)
+        {
+            _logger.LogCritical(
+                "Genesis docket write failed {RetryCount} times for register {RegisterId}; un-monitoring while {PendingCount} unverified transaction(s) are still pending. " +
+                "The register cannot bootstrap and the orphaned transactions will be evicted by the pool retry limit. ADMIN ATTENTION NEEDED. Error: {Message}",
+                retryCount, registerId, pendingCount, error);
+            _metrics.RecordUnregisteredWithPending(registerId, "genesis-failure", pendingCount.Value);
+        }
+        else if (pendingCount is null)
+        {
+            _logger.LogCritical(
+                "Genesis docket write failed {RetryCount} times for register {RegisterId}; un-monitoring register (pending count unknown). " +
+                "The register cannot bootstrap. ADMIN ATTENTION NEEDED. Error: {Message}",
+                retryCount, registerId, error);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Genesis docket write failed {RetryCount} times for register {RegisterId}. Un-monitoring register (no pending transactions). Admin attention needed. Error: {Message}",
+                retryCount, registerId, error);
+        }
+
+        _registry.UnregisterFromMonitoring(registerId);
     }
 
     /// <summary>
