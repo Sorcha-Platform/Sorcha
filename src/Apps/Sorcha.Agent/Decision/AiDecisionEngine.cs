@@ -31,6 +31,12 @@ public partial class AiDecisionEngine : IDecisionEngine
             ?? throw new InvalidOperationException("ANTHROPIC_API_KEY environment variable is not set");
     }
 
+    /// <summary>
+    /// AI persona mode reads the action context it is given and does not depend on the disclosed
+    /// prior-action payload being pre-fetched, so it opts out of the Feature 176 fetch/fail-closed path.
+    /// </summary>
+    public bool RequiresDisclosedPayload => false;
+
     public async Task<ActionDecision> DecideAsync(PendingAction action, CancellationToken cancellationToken = default)
     {
         // Load persona prompt on first use

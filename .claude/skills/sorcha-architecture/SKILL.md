@@ -1687,3 +1687,54 @@ A credential **cannot embed its own issuance txId** (the SD-JWT is built before 
 Three screens: **Ask** (`Index.razor` — `QuestionPresets`: "Age over 18?" requests only `age_over_18`+`portrait`, "Confirm identity", "Custom"), **QR session** (unchanged OID4VP `direct_post` transport), **Verdict** (`Outcome.razor` — `IdCardLayout`-style header + the four-layer trail via `MudExpansionPanels`, label-left/status-right, disclosed-vs-withheld block proving minimal disclosure, register-anchor as a "tap to verify inclusion proof" beat). PWA shell: `wwwroot/manifest.webmanifest` (scope `/verify/`), `service-worker.js` (shell + `offline.html`; circuit not cached), `js/pwa-install.js` (`beforeinstallprompt`), wired in `App.razor` + an install button in `MainLayout.razor`. Trust runs `requireIssuerSignature:true` with the composite DID-backed resolver — the issuing org **must have an org master key** or its `iss` is the unresolvable bare-wallet form (the [[org-vc-issuer-did-anchoring]] split-brain).
 
 **Out of scope (roadmap):** WASM/offline verifier (path B), hard issuer allowlist, ZK age predicates, the external X.509/EUDI rail + Ed25519 certs, mdoc presentation.
+
+---
+
+## Agent-disclosed prior-action data (Feature 176)
+
+Closes a fail-open hole found live on n1 (2026-07-07): the autonomous `Sorcha.Agent` decided on an **empty**
+payload — it mapped `PendingAction.PreviousPayload` from the `/api/actions/pending` summary's
+`prepopulatedPayload` (a Feature-104 form-prefill seed, empty for the AIAS verify action), which does **not**
+carry the disclosed prior-action application data. Every external check defaulted (missing fields resolve to
+false/null), so a fake postcode "ZZ99 9ZZ" was **approved** and a credential issued. The blueprint grants the
+agent's `verification-analyst` participant `/*` disclosure, but the agent never fetched the disclosed view.
+
+**The endpoint (read-side of the DAD model).** `GET /api/workflows/{instanceId}/actions/{actionId}/disclosures`
+(+ instance-wide `GET /api/workflows/{instanceId}/disclosures`) in `WorkflowDisclosureEndpoints.cs`, filling a
+route the client (`IBlueprintServiceClient.GetDisclosedDataAsync`) and MCP `DisclosedDataTool` already targeted
+but no server implemented. `.RequireAuthorization()`; resolves the **caller's** wallet(s) via the same
+Wallet-Service fallback `ActionEndpoints.ResolveUserWalletAddressesAsync` uses (consumer/service tokens omit
+`wallet_address` under F136 — resolved by `platform_user_id`→owner, #912). Returns `DisclosedActionData`
+(`Models/DisclosedActionData.cs`): `recipientResolved` + merged `disclosedFields` (agent) + a per-prior-action
+`disclosures[]` list `{actionId, actionTitle, disclosedAt, data}` (MCP-compatible wire shape). Non-recipient →
+`200` with `recipientResolved:false` + empty view (distinguishes "no disclosure" from auth failure). No new JWT
+claim.
+
+**The shared resolver (`IActionDisclosureResolver`).** The disclosure logic was extracted from the previously
+private `ActionExecutionService.ApplyDisclosuresAsync` into `ActionDisclosureResolver` so the execution
+(submit) path and the query (read) path share **one** authority (`ActionExecutionService` now delegates to it —
+regression-guarded by the existing DevMode disclosure test). Two methods:
+- **Submit-side** `ApplyDisclosuresAsync(action, data, blueprint, participantWallets, registerId)` — engine
+  `ApplyDisclosures` (per-action JSON-Pointer rules) + participant→wallet resolution → `{wallet → fields}`.
+- **Read-side** `ResolveDisclosedDataAsync(instanceId, actionId, callerWallets, delegationToken)` —
+  **reconstruct-then-clamp**: `IStateReconstructionService.ReconstructAsync` scoped to the caller's wallets
+  yields each required prior action's caller-decryptable view (encrypted **and** dev-mode paths are normalised
+  by StateReconstruction), then the submit-side primitive **clamps** each action's data to the caller
+  participant's entitlement — a belt-and-braces guarantee that the dev-mode merge-everything fallback can never
+  widen disclosure to a non-recipient. `registerId` is derived from the instance (not a param). Fails closed to
+  an empty view on any reconstruction fault.
+
+**Agent consumption (`Sorcha.Agent`).** `IDecisionEngine.RequiresDisclosedPayload` gates the fetch:
+`RulesDecisionEngine` returns `_rulesRequireChecks` (rules referencing `checks.*`), `AiDecisionEngine` returns
+`false` — so only check-dependent agents fetch, and existing simple/persona agents are unaffected (no
+hold-forever regression). Per pending action `RunCommand` calls `DisclosedPayloadEnricher` (over
+`HttpDisclosedDataClient`, a raw GET with the agent's **user** bearer + `X-Delegation-Token` — NOT
+`BlueprintServiceClient`, which mints a service token and would resolve the wrong identity); on a fetch
+failure / non-recipient it **holds** (no submission, retries next poll), else sets `PreviousPayload =
+disclosedFields`. `PollingInboxListener` no longer sources `PreviousPayload` from the summary (kept only the
+`schema→dataSchema` correction). Defense-in-depth: `RulesDecisionEngine` also holds when `_rulesRequireChecks`
+and the payload is empty (mirrors the #1077 hold). US3 explainability: the structured "External checks
+evaluated … (from payload fields: […])" log identifies the evaluated facts + source fields for any decision.
+
+**Witness:** `demos/AIAS/rehearse.ps1` — valid → approved (credential delivered), invalid "ZZ99 9ZZ" → rejected
+(no credential). Spec: `specs/176-agent-disclosed-payload/`.

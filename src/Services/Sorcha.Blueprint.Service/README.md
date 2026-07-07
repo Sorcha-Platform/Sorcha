@@ -275,6 +275,24 @@ OPENTELEMETRY__ZIPKINENDPOINT="https://zipkin.yourcompany.com"
 
 **EventsHubNotificationBridge Enhancements:** The bridge now enriches inbound action notifications with summary text, urgency level, and deadline information before delivery. It also persists `ActivityEvent` records for notification history tracking.
 
+### Disclosed Prior-Action Data Query (Feature 176)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/workflows/{instanceId}/actions/{actionId}/disclosures` | Prior-action data disclosed to the calling participant, for the action being decided |
+| GET | `/api/workflows/{instanceId}/disclosures` | Instance-wide form (anchored on the instance's current action) |
+
+The read-side of the DAD disclosure model. Reconstructs each required prior action's caller-decryptable
+view from the instance's sealed transactions (identical for encrypted and dev-mode registers) and clamps
+it to exactly the caller participant's entitlement — no undisclosed field is ever returned. Authenticated;
+the caller's wallet(s) are resolved from the `wallet_address` claim or the Wallet Service fallback (the
+same path `/api/actions/pending` uses), and `X-Delegation-Token` (when supplied) unwraps disclosure-group
+keys on encrypted registers. Returns `recipientResolved: false` with an empty view when the caller is not a
+recipient. Backed by the shared `IActionDisclosureResolver` (also used by `ActionExecutionService`), so the
+execution and query paths share one disclosure implementation. Consumed by the autonomous `Sorcha.Agent`
+(it sets each pending action's previous payload from `disclosedFields` before running its checks, and holds
+fail-closed when the fetch is unavailable) and by the MCP `sorcha_disclosed_data` participant tool.
+
 ### File Chunk Submission (Feature 085)
 
 | Method | Endpoint | Description |

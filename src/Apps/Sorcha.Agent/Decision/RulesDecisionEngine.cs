@@ -56,8 +56,30 @@ public class RulesDecisionEngine : IDecisionEngine
             && r.Condition.ToJsonString().Contains("checks.", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// True when the rules reference external-check facts (which are derived from the disclosed
+    /// prior-action payload). The host uses this to fetch the disclosed data before deciding and to hold
+    /// when it is unavailable (Feature 176) — the same condition that drives the fail-closed guard below.
+    /// </summary>
+    public bool RequiresDisclosedPayload => _rulesRequireChecks;
+
     public async Task<ActionDecision> DecideAsync(PendingAction action, CancellationToken cancellationToken = default)
     {
+        // #176 fail-closed: rules that depend on external checks derive those checks from the disclosed
+        // prior-action payload. If that payload is empty/unavailable, every check evaluates against
+        // nothing (missing fields resolve to their safe default) and the decision is meaningless — the
+        // exact AIAS blank-data defect (fake postcode "ZZ99 9ZZ" approved). Hold for manual review rather
+        // than approve/reject on blanks. Mirrors the #1077 shape; scoped to rules that reference checks.*
+        // so agents whose rules don't depend on the payload are unaffected.
+        if (_rulesRequireChecks && IsPreviousPayloadEmpty(action))
+        {
+            _logger?.LogError(
+                "Rules for action {ActionName} require the disclosed application data but it is empty/unavailable; "
+                + "holding for manual review (fail-closed, #176).", action.ActionName);
+            return new ActionDecision("hold", null,
+                "Disclosed application data unavailable; held for manual review");
+        }
+
         // Run configured external checks once and expose them as the "checks" fact object. Skipped
         // entirely when no runner/checks are configured, so non-AIAS agents pay nothing.
         JsonObject? checksFacts = null;
@@ -163,7 +185,33 @@ public class RulesDecisionEngine : IDecisionEngine
             };
         }
 
+        // Observability: the decision hinges on these facts, so make them visible. Silent checks were
+        // exactly what hid the #1077 fail-open and made the #814/AIAS decisions impossible to diagnose.
+        _logger?.LogInformation(
+            "External checks evaluated for {ActionName}: {Facts} (from payload fields: [{Fields}])",
+            action.ActionName, obj.ToJsonString(), string.Join(", ", payload.Keys));
+
         return obj;
+    }
+
+    /// <summary>
+    /// True when the action carries no usable disclosed prior-action payload — null, a non-object, or an
+    /// object with no properties. Drives the Feature 176 fail-closed hold (the checks would otherwise run
+    /// against nothing).
+    /// </summary>
+    private static bool IsPreviousPayloadEmpty(PendingAction action)
+    {
+        if (action.PreviousPayload is not { } element || element.ValueKind != JsonValueKind.Object)
+        {
+            return true;
+        }
+
+        foreach (var _ in element.EnumerateObject())
+        {
+            return false;
+        }
+
+        return true;
     }
 
     /// <summary>Projects the action's submitted (previous) payload into the top-level dictionary the checks consume.</summary>

@@ -2125,6 +2125,51 @@ POST /api/execution/disclose
 }
 ```
 
+#### 5. Query Disclosed Prior-Action Data (Feature 176)
+
+Returns the prior-action data of a workflow instance **disclosed to the calling participant**, for the
+action being decided. This is the read-side of the DAD disclosure model — the autonomous agent reads it
+to decide on the applicant's real submitted data (rather than a blank view), and the MCP participant tool
+`sorcha_disclosed_data` consumes the same route. Only fields disclosed to the caller's participant are
+ever returned; the disclosure model is never widened.
+
+```http
+GET /api/workflows/{instanceId}/actions/{actionId}/disclosures
+GET /api/workflows/{instanceId}/disclosures          # instance-wide (anchored on the current action)
+```
+
+**Auth:** authenticated (`.RequireAuthorization()`). The caller's wallet(s) are resolved from the
+`wallet_address` JWT claim when present, else via a Wallet Service lookup keyed by the caller's identity
+(consumer/service-tier tokens omit the wallet binding under Feature 136). Supply the `X-Delegation-Token`
+header to enable disclosure-group decryption on encrypted (non dev-mode) registers.
+
+**Response:** `200 OK`
+```json
+{
+  "instanceId": "59ad957b-…",
+  "actionId": 2,
+  "registerId": "a4f3ac58…",
+  "recipientResolved": true,
+  "disclosures": [
+    {
+      "actionId": 1,
+      "actionTitle": "Submit Assured Identity Application",
+      "disclosedAt": null,
+      "data": { "name": { "fullName": "Ada Lovelace" }, "address": { "postcode": "SW1A 2AA" } }
+    }
+  ],
+  "disclosedFields": {
+    "name": { "fullName": "Ada Lovelace" },
+    "address": { "postcode": "SW1A 2AA" }
+  }
+}
+```
+
+When the caller is **not** a disclosure recipient the endpoint returns `200 OK` with
+`recipientResolved: false` and empty `disclosures` / `disclosedFields` (so a consumer can distinguish
+"nothing disclosed" from an auth failure). A consuming agent treats that — and any fetch failure — as a
+fail-closed hold.
+
 ---
 
 ## Encrypted Action Flow

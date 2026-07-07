@@ -264,6 +264,10 @@ else
 // Add Orchestration services (Sprint 6)
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IStateReconstructionService,
     Sorcha.Blueprint.Service.Services.Implementation.StateReconstructionService>();
+// Feature 176 — shared disclosure authority. Backs the execution path's submit-side disclosure and the
+// disclosed-data query endpoint's read-side reconstruction from one implementation.
+builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IActionDisclosureResolver,
+    Sorcha.Blueprint.Service.Services.Implementation.ActionDisclosureResolver>();
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IActionExecutionService,
     Sorcha.Blueprint.Service.Services.Implementation.ActionExecutionService>();
 // Feature 145 US6 — ActionExecutionService also builds the signed RoutingDecision a successful
@@ -1048,6 +1052,8 @@ app.MapStatusListEndpoints();
 
 // Map pending action endpoints (Feature 062)
 app.MapActionEndpoints();
+// Feature 176 — disclosed prior-action data query (agent + MCP participant tools consume this).
+app.MapWorkflowDisclosureEndpoints();
 
 // Map file chunk submission endpoints (Feature 085 — Stored Data Transactions)
 app.MapFileChunkEndpoints();

@@ -54,6 +54,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
     private readonly INotificationService _notificationService;
     private readonly IInstanceStore _instanceStore;
     private readonly IExecutionEngine _executionEngine;
+    private readonly IActionDisclosureResolver _actionDisclosureResolver;
     private readonly ICredentialVerifier? _credentialVerifier;
     private readonly IStatusListManager? _statusListManager;
     private readonly IEncryptionPipelineService? _encryptionPipeline;
@@ -105,7 +106,8 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         IPresentationLifecycleService? presentationLifecycle = null,
         IPresentationRateLimiter? presentationRateLimiter = null,
         PresentationLifecycleMetrics? presentationMetrics = null,
-        IOptions<Configuration.WalletOwnershipSettings>? walletOwnershipSettings = null)
+        IOptions<Configuration.WalletOwnershipSettings>? walletOwnershipSettings = null,
+        IActionDisclosureResolver? actionDisclosureResolver = null)
     {
         _actionResolver = actionResolver ?? throw new ArgumentNullException(nameof(actionResolver));
         _stateReconstruction = stateReconstruction ?? throw new ArgumentNullException(nameof(stateReconstruction));
@@ -142,6 +144,16 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
 
         _walletOwnershipSettings = walletOwnershipSettings?.Value
             ?? new Configuration.WalletOwnershipSettings();
+
+        // Feature 176: disclosure resolution is now a shared authority (IActionDisclosureResolver) so the
+        // execution path and the disclosed-data query endpoint use one implementation. Constructed with a
+        // NullLogger fallback for direct (non-DI) test construction; the submit-side primitive needs only
+        // the engine + register client (its read-side deps stay null here).
+        _actionDisclosureResolver = actionDisclosureResolver
+            ?? new ActionDisclosureResolver(
+                executionEngine,
+                registerClient,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<ActionDisclosureResolver>.Instance);
     }
 
     /// <inheritdoc/>
@@ -1719,68 +1731,17 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         }
     }
 
-    private async Task<Dictionary<string, Dictionary<string, object>>> ApplyDisclosuresAsync(
+    // Feature 176: disclosure resolution moved to the shared IActionDisclosureResolver so the execution
+    // path and the disclosed-data query endpoint share one authority (no behaviour fork). This thin
+    // delegation preserves the original call shape at the single call site (step 9b).
+    private Task<Dictionary<string, Dictionary<string, object>>> ApplyDisclosuresAsync(
         ActionModel action,
         Dictionary<string, object> data,
         BlueprintModel blueprint,
         Dictionary<string, string> participantWallets,
         string registerId)
-    {
-        // Delegate to the Blueprint Engine for JSON Pointer disclosure filtering
-        var engineResults = _executionEngine.ApplyDisclosures(data, action);
-
-        var disclosedPayloads = new Dictionary<string, Dictionary<string, object>>();
-
-        foreach (var result in engineResults)
-        {
-            // Resolve participant ID to wallet address (2-tier: instance bindings → register)
-            var recipientAddress = result.ParticipantId;
-            if (participantWallets.TryGetValue(recipientAddress, out var walletAddress))
-            {
-                recipientAddress = walletAddress;
-            }
-            else
-            {
-                // Tier 2: Try resolving from register participant index
-                var participant = blueprint.Participants.FirstOrDefault(p =>
-                    string.Equals(p.Id, recipientAddress, StringComparison.OrdinalIgnoreCase));
-
-                if (participant != null)
-                {
-                    try
-                    {
-                        var resolvedRecord = await _registerClient.ResolveParticipantAsync(
-                            registerId, participant.Id, participant.Organisation);
-
-                        if (resolvedRecord?.Addresses.Count > 0)
-                        {
-                            var primaryAddr = resolvedRecord.Addresses.FirstOrDefault(a => a.Primary)
-                                              ?? resolvedRecord.Addresses.First();
-                            recipientAddress = primaryAddr.WalletAddress;
-                            _logger.LogDebug(
-                                "Resolved disclosure recipient {ParticipantId} to wallet {Wallet} from register",
-                                result.ParticipantId, recipientAddress);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to resolve participant {ParticipantId} from register",
-                            result.ParticipantId);
-                    }
-                }
-            }
-
-            if (string.IsNullOrEmpty(recipientAddress))
-            {
-                _logger.LogWarning("No wallet address for disclosure recipient {ParticipantId}", result.ParticipantId);
-                continue;
-            }
-
-            disclosedPayloads[recipientAddress] = result.DisclosedData;
-        }
-
-        return disclosedPayloads;
-    }
+        => _actionDisclosureResolver.ApplyDisclosuresAsync(
+            action, data, blueprint, participantWallets, registerId);
 
     private const int MaxConcurrencyRetries = 3;
 
