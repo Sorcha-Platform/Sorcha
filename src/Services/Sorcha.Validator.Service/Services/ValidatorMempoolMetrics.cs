@@ -27,6 +27,8 @@ public sealed class ValidatorMempoolMetrics : IDisposable
     private readonly Meter _meter;
     private readonly Counter<long> _leaseExpired;
     private readonly Counter<long> _unregisteredWithPending;
+    private readonly Counter<long> _validationCycleTimeout;
+    private readonly Counter<long> _validationSlotReclaimed;
 
     /// <summary>Creates the meter and registers the counter instrument.</summary>
     public ValidatorMempoolMetrics(IMeterFactory meterFactory)
@@ -43,6 +45,16 @@ public sealed class ValidatorMempoolMetrics : IDisposable
             name: "sorcha_validator_monitoring_unregistered_with_pending_total",
             unit: "{register}",
             description: "Registers un-monitored (genesis-failure or roster-change) while unverified transactions were still pending — the orphans are left to the pool retry-limit eviction (Gap B). Non-zero values need admin attention (issue #787 Gap A).");
+
+        _validationCycleTimeout = _meter.CreateCounter<long>(
+            name: "sorcha_validator_validation_cycle_timeout_total",
+            unit: "{register}",
+            description: "Per-register validation cycles aborted for exceeding ValidationTimeout — the guard that stops a stale Redis/gRPC connection after idle from hanging and wedging the whole validation loop (issue #814). Sustained non-zero values mean a backend connection is unhealthy.");
+
+        _validationSlotReclaimed = _meter.CreateCounter<long>(
+            name: "sorcha_validator_validation_slot_reclaimed_total",
+            unit: "{register}",
+            description: "Stuck per-register validation slots reclaimed because a prior cycle never released the in-memory flag (a hung await that outlived its timeout). Belt-and-braces recovery for the issue #814 wedge; any non-zero value means the timeout guard was itself bypassed and needs investigation.");
     }
 
     /// <summary>
@@ -74,6 +86,26 @@ public sealed class ValidatorMempoolMetrics : IDisposable
             new KeyValuePair<string, object?>("reason", reason),
             new KeyValuePair<string, object?>("register_id", registerId),
             new KeyValuePair<string, object?>("pending_count", pendingCount));
+    }
+
+    /// <summary>
+    /// Records that a per-register validation cycle was aborted for exceeding ValidationTimeout
+    /// (issue #814 — the stale-connection hang guard fired). Increments once, tagged with the register.
+    /// </summary>
+    public void RecordValidationCycleTimeout(string registerId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        _validationCycleTimeout.Add(1, new KeyValuePair<string, object?>("register_id", registerId));
+    }
+
+    /// <summary>
+    /// Records that a stuck per-register validation slot was reclaimed because a prior cycle never
+    /// released it (issue #814 belt-and-braces recovery). Increments once, tagged with the register.
+    /// </summary>
+    public void RecordValidationSlotReclaimed(string registerId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        _validationSlotReclaimed.Add(1, new KeyValuePair<string, object?>("register_id", registerId));
     }
 
     /// <inheritdoc />

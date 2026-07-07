@@ -48,6 +48,11 @@ public class DocketBuildTriggerService : BackgroundService
     // Used when we haven't resolved the actual TTL yet.
     private const int DefaultOperationalTtlSeconds = 60;
 
+    // Upper bound on a single register's docket-build cycle. A stale register-service/Redis
+    // connection after long idle must make the cycle THROW (caught → loop continues) rather than
+    // hang and freeze the whole docket-build loop (issue #814 defense-in-depth for stage 2).
+    private static readonly TimeSpan DocketBuildCycleTimeout = TimeSpan.FromSeconds(30);
+
     public DocketBuildTriggerService(
         IServiceScopeFactory scopeFactory,
         IRegisterMonitoringRegistry registry,
@@ -133,7 +138,17 @@ public class DocketBuildTriggerService : BackgroundService
                 {
                     try
                     {
-                        await CheckAndBuildDocketAsync(registerId, stoppingToken);
+                        // Bound each register's cycle so a stale backend connection after idle cannot
+                        // hang and freeze the docket-build loop (issue #814 defense-in-depth).
+                        using var buildCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                        buildCts.CancelAfter(DocketBuildCycleTimeout);
+                        await CheckAndBuildDocketAsync(registerId, buildCts.Token);
+                    }
+                    catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
+                    {
+                        _logger.LogError(
+                            "Docket-build cycle for register {RegisterId} exceeded {TimeoutSeconds:F0}s and was aborted to keep the docket-build loop alive (issue #814)",
+                            registerId, DocketBuildCycleTimeout.TotalSeconds);
                     }
                     catch (Exception ex)
                     {

@@ -48,7 +48,20 @@ public static class VerifiedQueueExtensions
             {
                 var connectionString = configuration.GetSorchaRedisConnectionString("Validator");
                 services.AddSingleton<IConnectionMultiplexer>(_ =>
-                    ConnectionMultiplexer.Connect(connectionString));
+                {
+                    // Harden against stale connections after long idle (issue #814): KeepAlive PINGs
+                    // detect a dead socket, AbortOnConnectFail=false + ConnectRetry auto-reconnect,
+                    // and explicit sync/async timeouts ensure a wedged connection makes operations
+                    // THROW (callers catch and retry) rather than hang and freeze the validation loop.
+                    var options = ConfigurationOptions.Parse(connectionString);
+                    options.AbortOnConnectFail = false;
+                    options.KeepAlive = 30;        // seconds between PINGs to detect a dead socket
+                    options.ConnectRetry = 5;
+                    options.ConnectTimeout = 5000;
+                    options.SyncTimeout = 5000;
+                    options.AsyncTimeout = 5000;
+                    return ConnectionMultiplexer.Connect(options);
+                });
             }
             services.AddSingleton<IVerifiedTransactionQueue, RedisVerifiedTransactionQueue>();
             storageLog.RegisterPersistent(
