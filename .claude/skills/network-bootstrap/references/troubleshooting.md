@@ -297,3 +297,32 @@ the health gate). wallet-service running ALONE cannot auto-generate a `validator
 window. Just bring up the rest of the stack (`docker compose … up -d`) and verify the system
 register seals. (A 409 with NO prior import attempt is the real "validator raced ahead and
 auto-generated the wrong wallet" case — see "Genesis ingested but docket never seals".)
+
+## Validator stops sealing after long idle — healthy but silent (#814)
+
+**Symptom:** After a node sits idle for a long time (hours→days), the validator **stops persisting
+sealed dockets**. New submissions "succeed" at the API (register id / tx id returned) but Mongo shows
+`dockets=0 tx=0` for the register, and workflow action-execute calls time out at ~60s
+(`TimeoutException … not confirmed within 60s`). The validator container is **`running` / `healthy`,
+`RestartCount=0`** — nothing looks wrong. `docker restart sorcha-validator-service` fixes it
+immediately (sealing returns to ~0.1s).
+
+**Root cause:** a keep-alive connection (Redis or the wallet-service gRPC channel) goes stale after
+idle; an `await` in `ValidationEngineService.ProcessRegisterAsync` hangs, its in-memory "already
+processing" flag is never released, and every later batch skips that register forever. Restart clears
+the in-memory flag + runs the startup pool drain, which is why it recovers. Full analysis:
+[[814-validator-idle-stall]].
+
+**Diagnose:** confirm the register DB exists but is empty
+(`db.getSiblingDB("sorcha_register_<id>").dockets.countDocuments({})` → 0) while the Redis monitoring
+set still lists it (`docker exec sorcha-redis redis-cli SMEMBERS validator:monitoring:registers`) — a
+still-monitored-but-not-processed register is the signature. NB the validator logs to **OTLP/Aspire,
+not `docker logs`** on the docker stacks, so `docker logs sorcha-validator-service` is empty — use the
+Mongo/Redis state, not logs.
+
+**Immediate fix:** `docker restart sorcha-validator-service`.
+**Permanent fix (#814):** cycle timeouts + self-healing slot reclaim + Redis keep-alive/reconnect.
+Watch `sorcha_validator_validation_cycle_timeout_total` and
+`sorcha_validator_validation_slot_reclaimed_total` (a non-zero reclaim counter means the timeout guard
+was bypassed and needs a look). **Reproducing on demand is impractical** — it needed a ~16-day idle;
+65 min is not enough (onset depends on when a socket actually dies).

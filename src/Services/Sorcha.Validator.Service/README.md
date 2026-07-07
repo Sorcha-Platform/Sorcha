@@ -464,6 +464,36 @@ message HealthStatusResponse {
 - `IsGenesis` = true
 - Special validation rules (no previous hash required)
 
+### Sealing pipeline & idle-stall resilience (issue #814)
+
+Sealing runs as a **two-stage pipeline**, each a `BackgroundService` loop over the Redis-backed
+`RegisterMonitoringRegistry` (`GetAll()`):
+
+1. **Validation** — `ValidationEngineService` polls each monitored register's **unverified pool**,
+   validates, and enqueues to the **verified queue**.
+2. **Docket build** — `DocketBuildTriggerService` drains the verified queue and seals a docket.
+
+**The failure mode (#814):** after a long idle a keep-alive connection (Redis or the wallet-service
+gRPC channel) goes stale. An `await` inside `ValidationEngineService.ProcessRegisterAsync` then *hangs*
+instead of throwing; the in-memory "already processing" flag (released only in a `finally`) is never
+released, so every later batch **skips that register forever** — the validator stays healthy but stops
+sealing. A restart recovered only because it cleared the in-memory flag and ran the startup pool drain.
+
+**The guards now in place:**
+- Each per-register cycle (both stages) is bounded by a linked `CancellationTokenSource`
+  (`ValidationTimeout` / 30 s), so a stale connection **throws** (caught → loop continues → the flag
+  is released) rather than hanging.
+- `_activeRegisters` is keyed by start time; a slot held past `StuckReclaimAfter`
+  (`max(3× ValidationTimeout, 90 s)`) is **reclaimed** — belt-and-braces for an await that ignores
+  cancellation and outlives its timeout.
+- The Redis multiplexer uses `KeepAlive` PINGs, `AbortOnConnectFail=false` + `ConnectRetry`
+  auto-reconnect, and explicit sync/async timeouts so a dead socket surfaces as a throw.
+
+**Observability** — the condition is no longer silent. Watch these counters
+(`Sorcha.Validator.Mempool` meter): `sorcha_validator_validation_cycle_timeout_total` (a cycle hit the
+stale-connection guard) and `sorcha_validator_validation_slot_reclaimed_total` (a stuck slot was
+reclaimed — any non-zero value means the timeout guard was itself bypassed and needs investigation).
+
 ---
 
 ## Configuration
