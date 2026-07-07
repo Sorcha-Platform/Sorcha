@@ -52,7 +52,7 @@ rejects the second (no credential), unattended (spec US1 / SC-001/002/003).
 - [x] T011 [US1] Implement `GET /api/workflows/{instanceId}/actions/{actionId}/disclosures` (match the T001 contract) in `src/Services/Sorcha.Blueprint.Service/Endpoints/WorkflowDisclosureEndpoints.cs` (or extend `ActionEndpoints.cs`): `.RequireAuthorization()`, resolve caller wallet(s) via the Wallet-Service fallback used in `ActionEndpoints.cs:178-184`, call `IActionDisclosureResolver`, return `DisclosedActionData`; add `.WithName`/`.WithSummary`/`.WithDescription` (Constitution III).
 - [x] T012 [US1] Confirm/adjust `IBlueprintServiceClient.GetDisclosedDataAsync` + `BlueprintServiceClient` (`src/Common/Sorcha.ServiceClients.Http/Blueprint/`) so route + deserialization match the implemented endpoint.
 - [x] T013 [US1] Wire the agent inbox to fetch disclosed data per pending action and populate `PreviousPayload`, and finalise the `dataSchema` mapping, in `src/Apps/Sorcha.Agent/Inbox/PollingInboxListener.cs` (+ a small fetch helper/service using `IBlueprintServiceClient`); ensure `PreviousPayload` is sourced from the fetch, not the pending summary.
-- [ ] T014 [US1] Run the end-to-end regression `demos/AIAS/rehearse.ps1 -Target docker` (valid → approved + credential; invalid `ZZ99 9ZZ` → rejected + no credential) and confirm PASS (SC-001/002/003/006).
+- [x] T014 [US1] Run the end-to-end regression `demos/AIAS/rehearse.ps1 -Target docker` (valid → approved + credential; invalid `ZZ99 9ZZ` → rejected + no credential) and confirm PASS (SC-001/002/003/006).
 
 **Checkpoint**: US1 independently delivers a working autonomous assessment. This is the MVP.
 
@@ -104,7 +104,7 @@ retrievable; for a rejection the failing check is identifiable (spec US3 / SC-00
 - [x] T021 [P] Docs: add the endpoint to `docs/reference/API-DOCUMENTATION.md` and the blueprint-service `README.md`; update `.claude/skills/sorcha-architecture/SKILL.md` if it catalogs endpoints; note the agent's disclosed-payload consumption.
 - [x] T022 [P] Verify coverage (>85% new code) for the resolver, endpoint, and agent paths; confirm no new Release warnings (Constitution IV/V).
 - [x] T023 Reconcile the provisional field-name edit staged on the branch with the new `PreviousPayload` source (the `payload→prepopulatedPayload` change becomes moot for `PreviousPayload`; keep the `schema→dataSchema` correction); remove any purely-diagnostic scaffolding not intended to ship.
-- [ ] T024 Full suite green: `dotnet test tests/Sorcha.Blueprint.Service.Tests` + `dotnet test tests/Sorcha.Agent.Tests`, and `demos/AIAS/rehearse.ps1` PASS end-to-end.
+- [x] T024 Full suite green: `dotnet test tests/Sorcha.Blueprint.Service.Tests` + `dotnet test tests/Sorcha.Agent.Tests`, and `demos/AIAS/rehearse.ps1` PASS end-to-end.
 
 ---
 

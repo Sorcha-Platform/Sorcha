@@ -135,20 +135,29 @@ function Wait-AiasDecision {
     while ((Get-Date) -lt $deadline) {
         try {
             $inst = Invoke-SorchaApi -Method GET -Uri "$api/instances/$InstanceId" -Headers $Headers
-            # A rejected instance terminates; an approved one routes to the citizen
-            # Claim action (Action 3). Inspect the recorded decision payload first,
-            # then fall back to the action-flow shape.
-            $decision = $null
-            if ($inst.PSObject.Properties.Name -contains 'data' -and $inst.data) {
-                if ($inst.data.PSObject.Properties.Name -contains 'decision') { $decision = [string]$inst.data.decision }
-            }
-            if (-not $decision -and ($inst.PSObject.Properties.Name -contains 'status')) {
-                if ([string]$inst.status -match 'reject') { $decision = 'rejected' }
-            }
+
             $currentActions = @()
             if ($inst.PSObject.Properties.Name -contains 'currentActionIds') { $currentActions = @($inst.currentActionIds) }
-            if (-not $decision -and ($currentActions -contains 3 -or $currentActions -contains '3')) { $decision = 'approved' }
-            if ($decision) { return $decision }
+
+            # Approval routes to the citizen Claim action (Action 3); the instance parks there awaiting
+            # the claim, so a pending Action 3 is the unambiguous approved signal.
+            if ($currentActions -contains 3 -or $currentActions -contains '3') { return 'approved' }
+
+            # Explicit decision payload, when the projection surfaces it (disclosed to the applicant).
+            if ($inst.PSObject.Properties.Name -contains 'data' -and $inst.data -and
+                ($inst.data.PSObject.Properties.Name -contains 'decision')) {
+                $d = [string]$inst.data.decision
+                if ($d) { return $d }
+            }
+
+            # Rejection routes to a terminal route (nextActionIds: []). Under the Feature-145
+            # ledger-derived projection that folds as a COMPLETED instance with no current actions and
+            # the claim action (3) never reached — distinct from an approval, which parks at Action 3.
+            # (InstanceState: 1 = Completed, 2 = Rejected.) accumulatedData is not surfaced on the
+            # projection, so the terminal shape — not a decision string — is the reliable reject signal.
+            $state = if ($inst.PSObject.Properties.Name -contains 'state') { "$($inst.state)" } else { '' }
+            $terminal = ($state -match '^(1|2)$') -or ($state -match 'complete|reject')
+            if ($terminal -and $currentActions.Count -eq 0) { return 'rejected' }
         } catch { }
         Start-Sleep -Seconds 3
     }
