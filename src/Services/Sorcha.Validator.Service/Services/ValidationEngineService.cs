@@ -19,11 +19,24 @@ public class ValidationEngineService : BackgroundService
     private readonly IVerifiedTransactionQueue _verifiedQueue;
     private readonly IRegisterMonitoringRegistry _monitoringRegistry;
     private readonly ValidationEngineConfiguration _config;
+    private readonly ValidatorMempoolMetrics _metrics;
     private readonly ILogger<ValidationEngineService> _logger;
 
-    // Track active registers being validated
-    private readonly HashSet<string> _activeRegisters = [];
+    // Track active registers being validated, keyed by when processing STARTED (issue #814).
+    // The value is the start time so a flag that was never released (a processing await that hung
+    // and outlived its timeout, e.g. a call that ignores cancellation on a stale connection) can be
+    // reclaimed instead of skipping the register forever. A HashSet with a finally-only release was
+    // the original wedge: one hung await stranded the flag and every later batch skipped the register.
+    private readonly Dictionary<string, DateTimeOffset> _activeRegisters = new(StringComparer.Ordinal);
     private readonly object _registersLock = new();
+
+    // A register whose processing flag has been held longer than this is treated as STUCK and
+    // reclaimed. Comfortably longer than the per-register ValidationTimeout so a genuinely-in-flight
+    // register (bounded by that timeout) is never falsely reclaimed.
+    private TimeSpan StuckReclaimAfter => TimeSpan.FromTicks(Math.Max(_config.ValidationTimeout.Ticks * 3, TimeSpan.FromSeconds(90).Ticks));
+
+    // Testable clock seam (avoids taking a new IClock dependency across every call site).
+    internal Func<DateTimeOffset> Now { get; set; } = () => DateTimeOffset.UtcNow;
 
     public ValidationEngineService(
         IServiceScopeFactory scopeFactory,
@@ -31,6 +44,7 @@ public class ValidationEngineService : BackgroundService
         IVerifiedTransactionQueue verifiedQueue,
         IRegisterMonitoringRegistry monitoringRegistry,
         IOptions<ValidationEngineConfiguration> config,
+        ValidatorMempoolMetrics metrics,
         ILogger<ValidationEngineService> logger)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
@@ -38,6 +52,7 @@ public class ValidationEngineService : BackgroundService
         _verifiedQueue = verifiedQueue ?? throw new ArgumentNullException(nameof(verifiedQueue));
         _monitoringRegistry = monitoringRegistry ?? throw new ArgumentNullException(nameof(monitoringRegistry));
         _config = config?.Value ?? throw new ArgumentNullException(nameof(config));
+        _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -104,22 +119,42 @@ public class ValidationEngineService : BackgroundService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
 
-        // Check if already processing this register
+        // Admission guard (issue #814): skip a register only while it is GENUINELY in flight. A flag
+        // held past StuckReclaimAfter means a prior cycle never released it (a hung await that
+        // outlived its timeout / ignored cancellation) — reclaim it so validation resumes rather than
+        // skipping this register forever. The original HashSet + finally-only release was the wedge:
+        // one hung await stranded the flag and every later batch skipped the register permanently.
         lock (_registersLock)
         {
-            if (_activeRegisters.Contains(registerId))
+            if (_activeRegisters.TryGetValue(registerId, out var startedAt))
             {
-                _logger.LogDebug("Already processing register {RegisterId}, skipping", registerId);
-                return 0;
+                var heldFor = Now() - startedAt;
+                if (heldFor < StuckReclaimAfter)
+                {
+                    _logger.LogDebug("Already processing register {RegisterId}, skipping", registerId);
+                    return 0;
+                }
+
+                _logger.LogWarning(
+                    "Register {RegisterId} validation slot held {HeldSeconds:F0}s (> {ThresholdSeconds:F0}s) — reclaiming a stuck slot so validation can resume (issue #814)",
+                    registerId, heldFor.TotalSeconds, StuckReclaimAfter.TotalSeconds);
+                _metrics.RecordValidationSlotReclaimed(registerId);
             }
-            _activeRegisters.Add(registerId);
+            _activeRegisters[registerId] = Now();
         }
+
+        // Bound the whole cycle: after a long idle a stale Redis/gRPC connection must make the awaits
+        // THROW (caught below → loop continues, finally releases the flag), never hang forever and
+        // wedge the validation loop. This is the core #814 fix.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(_config.ValidationTimeout);
+        var opCt = timeoutCts.Token;
 
         try
         {
             // Poll transactions from unverified pool
             var transactions = await _poolPoller.PollTransactionsAsync(
-                registerId, _config.BatchSize, ct);
+                registerId, _config.BatchSize, opCt);
 
             if (transactions.Count == 0)
             {
@@ -133,7 +168,7 @@ public class ValidationEngineService : BackgroundService
             // Validate the batch (create scope for scoped IValidationEngine)
             using var scope = _scopeFactory.CreateScope();
             var validationEngine = scope.ServiceProvider.GetRequiredService<IValidationEngine>();
-            var results = await validationEngine.ValidateBatchAsync(transactions, ct);
+            var results = await validationEngine.ValidateBatchAsync(transactions, opCt);
 
             var validCount = 0;
             var invalidCount = 0;
@@ -181,7 +216,7 @@ public class ValidationEngineService : BackgroundService
             // Return any transactions that couldn't be queued
             if (transactionsToReturn.Count > 0)
             {
-                await _poolPoller.ReturnTransactionsAsync(registerId, transactionsToReturn, ct);
+                await _poolPoller.ReturnTransactionsAsync(registerId, transactionsToReturn, opCt);
             }
 
             _logger.LogInformation(
@@ -189,6 +224,18 @@ public class ValidationEngineService : BackgroundService
                 registerId, validCount, invalidCount);
 
             return validCount;
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            // The processing cycle exceeded ValidationTimeout (a stale connection after idle, most
+            // likely). Abort THIS cycle and return — the finally releases the slot and the next batch
+            // retries. Pending transactions stay in the unverified pool. Without this, the await would
+            // hang forever and wedge the entire validation loop (issue #814).
+            _logger.LogError(
+                "Register {RegisterId} validation cycle exceeded {TimeoutSeconds:F0}s and was aborted to keep the validation loop alive (issue #814); pending transactions remain in the pool for the next cycle",
+                registerId, _config.ValidationTimeout.TotalSeconds);
+            _metrics.RecordValidationCycleTimeout(registerId);
+            return 0;
         }
         finally
         {
