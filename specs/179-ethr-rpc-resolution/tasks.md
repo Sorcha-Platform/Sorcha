@@ -55,16 +55,16 @@ signed by any current authority → Pass; by a former owner / expired delegate �
 
 ### Tests for User Story 1 ⚠️ (write first, must FAIL)
 
-- [ ] T008 [P] [US1] `Erc1056Registry` tests (`tests/Sorcha.ServiceClients.Tests/Evm/Erc1056RegistryTests.cs`, fake `IEvmRpcClient`): `changed==0` → `NoHistory`; a `DIDOwnerChanged` → new `OwnerAddress`; an active `veriKey` `DIDDelegateChanged` → one delegate, an **expired** one → none; `did/pub/Secp256k1/veriKey/hex` → one Secp256k1 attr, `did/pub/Ed25519/veriKey/base64` → one Ed25519 attr, `did/svc/*` + `did/pub/X25519/enc/*` → ignored; supersession keeps newest; `previousChange` walk terminates at 0.
-- [ ] T009 [P] [US1] `EthrDidResolver` RPC-path tests (`tests/Sorcha.ServiceClients.Tests/Did/EthrDidResolverRpcTests.cs`, fake RPC): rotated DID → `{did}#controller` recovery VM with the **current** owner's `blockchainAccountId` in `assertionMethod`; `veriKey` delegate → `#delegate-n` recovery VM in `assertionMethod`; Secp256k1 attr → `publicKeyJwk` EC VM; `Ok` state → multi-VM document.
-- [ ] T010 [P] [US1] End-to-end verify tests (Verifier + Blueprint engine suites, fake RPC): ES256K credential signed by the **current owner** → **Pass**; by the **former owner** → **Reject**; by an unexpired **`veriKey` delegate** → **Pass**; by an **expired** delegate → **Reject**; by a published **Secp256k1** key → **Pass**.
+- [X] T008 [P] [US1] `Erc1056Registry` tests (`tests/Sorcha.ServiceClients.Tests/Evm/Erc1056RegistryTests.cs`, fake `IEvmRpcClient`): `changed==0` → `NoHistory`; a `DIDOwnerChanged` → new `OwnerAddress`; an active `veriKey` `DIDDelegateChanged` → one delegate, an **expired** one → none; `did/pub/Secp256k1/veriKey/hex` → one Secp256k1 attr, `did/pub/Ed25519/veriKey/base64` → one Ed25519 attr, `did/svc/*` + `did/pub/X25519/enc/*` → ignored; supersession keeps newest; `previousChange` walk terminates at 0.
+- [X] T009 [P] [US1] `EthrDidResolver` RPC-path tests (`tests/Sorcha.ServiceClients.Tests/Did/EthrDidResolverRpcTests.cs`, fake RPC): rotated DID → `{did}#controller` recovery VM with the **current** owner's `blockchainAccountId` in `assertionMethod`; `veriKey` delegate → `#delegate-n` recovery VM in `assertionMethod`; Secp256k1 attr → `publicKeyJwk` EC VM; `Ok` state → multi-VM document.
+- [X] T010 [P] [US1] End-to-end verify tests (Verifier + Blueprint engine suites, fake RPC): ES256K credential signed by the **current owner** → **Pass**; by the **former owner** → **Reject**; by an unexpired **`veriKey` delegate** → **Pass**; by an **expired** delegate → **Reject**; by a published **Secp256k1** key → **Pass**.
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Implement `Evm/Erc1056Registry.cs` — `ReadAsync(chainId, identity)`: `changed` → `identityOwner` → `eth_getLogs` walk by `previousChange`; decode `DIDOwnerChanged`/`DIDDelegateChanged`/`DIDAttributeChanged` via `AbiCodec`; newest-first fold with `validTo >= now`; `MaxHistoryHops` guard; return `Erc1056State`. Make T008 pass.
-- [ ] T012 [US1] Edit `Did/EthrDidResolver.cs` — add the `IEvmRpcClient? rpc = null` ctor seam; when `rpc != null` and `Ok`, build the multi-VM current document (owner `#controller` recovery VM in auth+assertion; `veriKey`→assertion, `sigAuth`→auth recovery VMs; Secp256k1→EC `publicKeyJwk`, Ed25519→OKP `publicKeyJwk`, relationship per purpose). Make T009 pass.
-- [ ] T013 [US1] Confirm the resolved multi-VM document flows unchanged through `DidResolverBackedIssuerKeyResolver`/`DidX5cIssuerKeyResolver` + the ES256K verify branches (kid-match → key-match / recover-then-match; assertionMethod gate filters). Wire the fake-RPC harness in the end-to-end tests. Make T010 pass.
-- [ ] T014 [US1] Run the ServiceClients + Verifier + Blueprint engine suites — US1 green. **Commit** ("feat: [179] ERC-1056 registry read + EthrDidResolver current-document builder (US1)").
+- [X] T011 [US1] Implement `Evm/Erc1056Registry.cs` — `ReadAsync(chainId, identity)`: `changed` → `identityOwner` → `eth_getLogs` walk by `previousChange`; decode `DIDOwnerChanged`/`DIDDelegateChanged`/`DIDAttributeChanged` via `AbiCodec`; newest-first fold with `validTo >= now`; `MaxHistoryHops` guard; return `Erc1056State`. Make T008 pass.
+- [X] T012 [US1] Edit `Did/EthrDidResolver.cs` — add the `IEvmRpcClient? rpc = null` ctor seam; when `rpc != null` and `Ok`, build the multi-VM current document (owner `#controller` recovery VM in auth+assertion; `veriKey`→assertion, `sigAuth`→auth recovery VMs; Secp256k1→EC `publicKeyJwk`, Ed25519→OKP `publicKeyJwk`, relationship per purpose). Make T009 pass.
+- [X] T013 [US1] Confirm the resolved multi-VM document flows unchanged through `DidResolverBackedIssuerKeyResolver`/`DidX5cIssuerKeyResolver` + the ES256K verify branches (kid-match → key-match / recover-then-match; assertionMethod gate filters). Wire the fake-RPC harness in the end-to-end tests. Make T010 pass.
+- [X] T014 [US1] Run the ServiceClients + Verifier + Blueprint engine suites — US1 green. **Commit** ("feat: [179] ERC-1056 registry read + EthrDidResolver current-document builder (US1)").
 
 **Checkpoint**: A rotated/delegate-signed `did:ethr` credential verifies against currently-authorised keys end-to-end.
 
@@ -79,9 +79,9 @@ default document. No stale-document acceptance, ever.
 
 ### Tests for User Story 2 ⚠️ (write first, must FAIL / then confirm)
 
-- [ ] T015 [P] [US2] Safety tests (`EthrDidResolverRpcTests` + `Erc1056RegistryTests`): a **configured** RPC returning `Error` (from `changed`, `identityOwner`, or a `getLogs` hop) → `Erc1056State.RpcError` → resolver returns **null** (reject); an **unconfigured** chain → `NoHistory` → default document; `changed==0` → default document; `MaxHistoryHops` exceeded → `RpcError` → reject.
-- [ ] T016 [US2] Ensure `EthrDidResolver` maps `RpcError → null` and `NoHistory → default document` (add/verify the branch; the two outcomes must be provably distinct). Make T015 pass.
-- [ ] T017 [US2] Run the safety tests + full ServiceClients/Verifier/Blueprint suites — US2 green, no regression. **Commit** ("feat: [179] fail-closed-on-RPC-error vs offline-when-unconfigured (US2)").
+- [X] T015 [P] [US2] Safety tests (`EthrDidResolverRpcTests` + `Erc1056RegistryTests`): a **configured** RPC returning `Error` (from `changed`, `identityOwner`, or a `getLogs` hop) → `Erc1056State.RpcError` → resolver returns **null** (reject); an **unconfigured** chain → `NoHistory` → default document; `changed==0` → default document; `MaxHistoryHops` exceeded → `RpcError` → reject.
+- [X] T016 [US2] Ensure `EthrDidResolver` maps `RpcError → null` and `NoHistory → default document` (add/verify the branch; the two outcomes must be provably distinct). Make T015 pass.
+- [X] T017 [US2] Run the safety tests + full ServiceClients/Verifier/Blueprint suites — US2 green, no regression. **Commit** ("feat: [179] fail-closed-on-RPC-error vs offline-when-unconfigured (US2)").
 
 **Checkpoint**: The provider-unavailable path never trusts a stale key; the unconfigured path stays offline.
 
@@ -96,9 +96,9 @@ network calls; `did:pkh` unchanged.
 
 ### Tests for User Story 3 ⚠️ (write first, must FAIL / then confirm)
 
-- [ ] T018 [P] [US3] Offline test: `new EthrDidResolver(logger, rpc: null).ResolveAsync(did:ethr…)` → Phase-2 default document; a spy `IEvmRpcClient` records **zero** calls; `did:pkh` resolution unchanged.
-- [ ] T019 [US3] Register `IEvmRpcClient` + bind `EvmRpcOptions` in a **server-only** path (e.g. within `AddServiceClients`/a new `AddEvmRpc`, **not** inside `AddDidResolvers` which the WASM PWA also calls); register `EthrDidResolver` via a factory that resolves `sp.GetService<IEvmRpcClient>()` (null in WASM). Confirm the WASM composition leaves `rpc` null. Make T018 pass.
-- [ ] T020 [US3] Run US3 + regression. **Commit** ("feat: [179] server-only EVM RPC registration; offline PWA path preserved (US3)").
+- [X] T018 [P] [US3] Offline test: `new EthrDidResolver(logger, rpc: null).ResolveAsync(did:ethr…)` → Phase-2 default document; a spy `IEvmRpcClient` records **zero** calls; `did:pkh` resolution unchanged.
+- [X] T019 [US3] Register `IEvmRpcClient` + bind `EvmRpcOptions` in a **server-only** path (e.g. within `AddServiceClients`/a new `AddEvmRpc`, **not** inside `AddDidResolvers` which the WASM PWA also calls); register `EthrDidResolver` via a factory that resolves `sp.GetService<IEvmRpcClient>()` (null in WASM). Confirm the WASM composition leaves `rpc` null. Make T018 pass.
+- [X] T020 [US3] Run US3 + regression. **Commit** ("feat: [179] server-only EVM RPC registration; offline PWA path preserved (US3)").
 
 **Checkpoint**: All three stories pass; the offline invariant holds.
 
