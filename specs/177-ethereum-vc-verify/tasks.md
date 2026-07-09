@@ -15,7 +15,7 @@ user-story task. Line numbers in referenced files are indicative (see research.m
 
 - [x] T001 Create new pure-managed project `src/Common/Sorcha.Cryptography.Secp256k1/Sorcha.Cryptography.Secp256k1.csproj` (net10.0, C# 14, nullable enabled, MIT SPDX header policy) with a single `<PackageReference Include="BouncyCastle.Cryptography" />`; add it to the solution.
 - [x] T002 Create test project `tests/Sorcha.Cryptography.Secp256k1.Tests/Sorcha.Cryptography.Secp256k1.Tests.csproj` (xUnit v3 + FluentAssertions, per repo test conventions); add to solution and reference the new project.
-- [ ] T003 [P] Add `ProjectReference` → `Sorcha.Cryptography.Secp256k1` to each consumer csproj: `src/Common/Sorcha.Cryptography/Sorcha.Cryptography.csproj`, `src/Common/Sorcha.ServiceClients.Http/Sorcha.ServiceClients.Http.csproj`, `src/Common/Sorcha.Verifier.Engine/Sorcha.Verifier.Engine.csproj`, `src/Services/Sorcha.Blueprint.Service/Sorcha.Blueprint.Service.csproj`. Confirm `Sorcha.Verifier.Engine` still builds native-dep-free (WASM-safe).
+- [x] T003 [P] Add `ProjectReference` → `Sorcha.Cryptography.Secp256k1` to each consumer csproj: `src/Common/Sorcha.Cryptography/Sorcha.Cryptography.csproj`, `src/Common/Sorcha.ServiceClients.Http/Sorcha.ServiceClients.Http.csproj`, `src/Common/Sorcha.Verifier.Engine/Sorcha.Verifier.Engine.csproj`, `src/Services/Sorcha.Blueprint.Service/Sorcha.Blueprint.Service.csproj`. Confirm `Sorcha.Verifier.Engine` still builds native-dep-free (WASM-safe).
 
 **Checkpoint**: solution builds; the new leaf project is referenced by all four consumers.
 
@@ -63,14 +63,14 @@ issuer → Pass; tamper one signature byte → Reject.
 
 ### Tests first
 
-- [ ] T015 [P] [US1] ES256K issuer-JWS verify unit test in `tests/Sorcha.Cryptography.Tests/SdJwt/SdJwtEs256kTests.cs`: valid ES256K token verifies; tampered → SignatureInvalid.
+- [x] T015 [P] [US1] ES256K issuer-JWS verify unit test in `tests/Sorcha.Cryptography.Tests/SdJwt/SdJwtEs256kTests.cs`: valid ES256K token verifies; tampered → SignatureInvalid.
 - [ ] T016 [P] [US1] Integration test (blueprint/verifier engine) asserting an allowlisted `did:key`(secp256k1) ES256K credential → **Pass** and a tampered copy → **Reject**; add Veramo-style ES256K SD-JWT fixture + a `did:jwk`(secp256k1) EU/EUDI-style fixture under the test project.
 
 ### Implementation
 
-- [ ] T017 [US1] Add `ES256K`/`SECP256K1` branch to `SdJwtService.Verify` and `MapAlgorithm` in `src/Common/Sorcha.Cryptography/SdJwt/SdJwtService.cs`, delegating to `ISecp256k1Verifier` (covers issuer JWS + request-object paths).
-- [ ] T018 [US1] Add a `crv` switch to `ExtractPublicKeyFromJwk` in `src/Services/Sorcha.Blueprint.Service/Credentials/DidX5cIssuerKeyResolver.cs` so `crv:"secp256k1"` parses via the primitive (not hard-coded `nistP256`).
-- [ ] T019 [US1] Add `"ES256K" => VerifyEs256k(...)` to `VerifyJwsSignature` + a `VerifyEs256k` sibling (delegating to the primitive) in `src/Common/Sorcha.Verifier.Engine/VerifiablePresentationValidator.cs`.
+- [x] T017 [US1] Add `ES256K`/`SECP256K1` branch to `SdJwtService.Verify` and `MapAlgorithm` in `src/Common/Sorcha.Cryptography/SdJwt/SdJwtService.cs`, delegating to `ISecp256k1Verifier` (covers issuer JWS + request-object paths).
+- [x] T018 [US1] Add a `crv` switch to `ExtractPublicKeyFromJwk` in `src/Services/Sorcha.Blueprint.Service/Credentials/DidX5cIssuerKeyResolver.cs` so `crv:"secp256k1"` parses via the primitive (not hard-coded `nistP256`).
+- [x] T019 [US1] Add `"ES256K" => VerifyEs256k(...)` to `VerifyJwsSignature` + a `VerifyEs256k` sibling (delegating to the primitive) in `src/Common/Sorcha.Verifier.Engine/VerifiablePresentationValidator.cs`.
 
 **Checkpoint**: US1 independently testable — a foreign Ethereum-issued credential verifies end-to-end. **This is the MVP.**
 
@@ -87,11 +87,11 @@ ES256K branch (shared).
 
 ### Tests first
 
-- [ ] T020 [P] [US2] KB-JWT holder-binding test in `tests/Sorcha.Cryptography.Tests/SdJwt/SdJwtEs256kKeyBindingTests.cs`: secp256k1 `cnf` + valid ES256K KB-JWT → verified; wrong-key KB-JWT → fail. Add a fixture with a secp256k1 `cnf.jwk`.
+- [x] T020 [P] [US2] KB-JWT holder-binding test in `tests/Sorcha.Cryptography.Tests/SdJwt/SdJwtEs256kKeyBindingTests.cs`: secp256k1 `cnf` + valid ES256K KB-JWT → verified; wrong-key KB-JWT → fail. Add a fixture with a secp256k1 `cnf.jwk`.
 
 ### Implementation
 
-- [ ] T021 [US2] Add a `crv == "secp256k1"` arm to `ExportPublicKeyFromJwk` in `src/Common/Sorcha.Cryptography/SdJwt/SdJwtService.cs` (returns holder key bytes + `algorithm = "ES256K"` so the shared `Verify` handles the KB-JWT).
+- [x] T021 [US2] Add a `crv == "secp256k1"` arm to `ExportPublicKeyFromJwk` in `src/Common/Sorcha.Cryptography/SdJwt/SdJwtService.cs` (returns holder key bytes + `algorithm = "ES256K"` so the shared `Verify` handles the KB-JWT).
 
 **Checkpoint**: US2 independently testable — an Ethereum-key holder binding verifies (and fails correctly).
 

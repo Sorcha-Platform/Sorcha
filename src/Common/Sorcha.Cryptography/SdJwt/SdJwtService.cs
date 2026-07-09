@@ -11,6 +11,8 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Sorcha.Cryptography.Secp256k1;
+
 namespace Sorcha.Cryptography.SdJwt;
 
 /// <summary>
@@ -851,10 +853,24 @@ public class SdJwtService : ISdJwtService
             case "EC":
             {
                 var crv = jwk.TryGetProperty("crv", out var crvEl) ? crvEl.GetString() : null;
+                if (crv == "secp256k1")
+                {
+                    // secp256k1 holder key-binding: return the 65-byte SEC1 point that the ES256K
+                    // branch of Verify parses (System.Security.Cryptography cannot import it on Windows).
+                    if (Secp256k1Jwk.TryParse(jwk, out var secp))
+                    {
+                        algorithm = "ES256K";
+                        return secp!.ToSec1Uncompressed();
+                    }
+
+                    algorithm = string.Empty;
+                    return null;
+                }
+
                 if (crv != "P-256")
                 {
                     algorithm = string.Empty;
-                    return null; // Only P-256 supported for holder binding
+                    return null; // Only P-256 and secp256k1 supported for holder binding
                 }
 
                 algorithm = "ES256";
@@ -991,6 +1007,7 @@ public class SdJwtService : ISdJwtService
         {
             "EDDSA" or "ED25519" => "EdDSA",
             "ES256" or "P-256" or "P256" => "ES256",
+            "ES256K" or "SECP256K1" => "ES256K",
             "RS256" or "RSA" or "RSA-4096" => "RS256",
             _ => algorithm
         };
@@ -1037,6 +1054,21 @@ public class SdJwtService : ISdJwtService
             using var ecdsa = ECDsa.Create();
             ecdsa.ImportSubjectPublicKeyInfo(publicKey, out _);
             return ecdsa.VerifyData(data, signature, HashAlgorithmName.SHA256);
+        }
+
+        if (alg is "ES256K" or "SECP256K1")
+        {
+            // secp256k1 is not reliably supported by System.Security.Cryptography.ECDsa on Windows/WASM,
+            // so verification is delegated to the pure-managed BouncyCastle primitive. The public key is
+            // the 65-byte SEC1 uncompressed point produced by the issuer-key resolver for secp256k1.
+            try
+            {
+                return Secp256k1Verifier.VerifyEs256k(data, signature, Secp256k1PublicKey.FromSec1(publicKey));
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         if (alg is "RS256" or "RSA" or "RSA-4096")

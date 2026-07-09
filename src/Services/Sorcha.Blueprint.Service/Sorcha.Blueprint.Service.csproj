@@ -40,6 +40,7 @@
     <ProjectReference Include="..\..\Core\Sorcha.Register.Core\Sorcha.Register.Core.csproj" />
     <ProjectReference Include="..\..\Core\Sorcha.Register.Storage.Redis\Sorcha.Register.Storage.Redis.csproj" />
     <ProjectReference Include="..\..\Core\Sorcha.Register.Storage.InMemory\Sorcha.Register.Storage.InMemory.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.Cryptography.Secp256k1\Sorcha.Cryptography.Secp256k1.csproj" />
   </ItemGroup>
 
 </Project>
