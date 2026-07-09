@@ -92,9 +92,11 @@ public sealed class DidX5cIssuerKeyResolver : IIssuerKeyResolver
                             VerificationMethod? matched = null;
                             if (!string.IsNullOrEmpty(kid))
                                 matched = document.VerificationMethod.FirstOrDefault(v => string.Equals(v.Id, kid, StringComparison.Ordinal));
-                            matched ??= document.VerificationMethod.FirstOrDefault(v => v.PublicKeyJwk.HasValue);
+                            // Accept a key-bearing VM or an address-form recovery VM (Feature 178).
+                            matched ??= document.VerificationMethod.FirstOrDefault(
+                                v => v.PublicKeyJwk.HasValue || v.BlockchainAccountId is not null);
 
-                            if (matched?.PublicKeyJwk is null)
+                            if (matched is null || (matched.PublicKeyJwk is null && matched.BlockchainAccountId is null))
                             {
                                 _logger.LogWarning("DID {Did} resolved but no verification method matched kid {Kid}", issuerDid, kid);
                                 return null;
@@ -108,6 +110,19 @@ public sealed class DidX5cIssuerKeyResolver : IIssuerKeyResolver
                                     "Issuer key matched but is not in assertionMethod (rotated/revoked): iss={Did} kid={Kid}",
                                     issuerDid, matched.Id);
                                 return null;
+                            }
+
+                            // Address-form issuer (did:pkh / address-form did:ethr): no published key —
+                            // carry the CAIP-10 account id forward for recover-then-match verification.
+                            if (matched.PublicKeyJwk is null)
+                            {
+                                return new IssuerKeyResolution
+                                {
+                                    PublicKey = [],
+                                    BlockchainAccountId = matched.BlockchainAccountId,
+                                    Algorithm = "ES256K",
+                                    SigningKeyId = matched.Id
+                                };
                             }
 
                             var keyBytes = ExtractPublicKeyFromJwk(matched.PublicKeyJwk.Value);

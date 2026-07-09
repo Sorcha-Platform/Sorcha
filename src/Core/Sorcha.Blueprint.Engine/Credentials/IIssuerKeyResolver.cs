@@ -28,6 +28,14 @@ public class IssuerKeyResolution
 
     /// <summary>The leaf-first X.509 certificate chain (DER) the credential carried, when present.</summary>
     public IReadOnlyList<byte[]>? X5cChain { get; set; }
+
+    /// <summary>
+    /// The CAIP-10 blockchain account id (e.g. <c>eip155:1:0x…</c>) of an <b>address-form</b> issuer
+    /// (<c>did:pkh</c> / address-form <c>did:ethr</c>, Feature 178) that publishes no key. When set,
+    /// <see cref="PublicKey"/> is empty and <see cref="Algorithm"/> is <c>"ES256K"</c>; the issuer
+    /// signature is verified by public-key recovery against this address rather than a key-match.
+    /// </summary>
+    public string? BlockchainAccountId { get; set; }
 }
 
 /// <summary>

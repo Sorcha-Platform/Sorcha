@@ -57,23 +57,23 @@ one whose signature maps to a different address → Reject. Runs on both verify 
 
 ### Tests for User Story 1 ⚠️ (write first, must FAIL)
 
-- [ ] T009 [P] [US1] `PkhDidResolver` tests (DID-resolver test project): `did:pkh:eip155:1:0x…` → one `EcdsaSecp256k1RecoveryMethod2020` VM with `id=#blockchainAccountId`, correct `blockchainAccountId`, VM id in `assertionMethod`; malformed/other-namespace → null.
-- [ ] T010 [P] [US1] `EthrDidResolver` tests: bare, named-network (`mainnet`/`sepolia`), and hex-chain-id (`0x89`) forms → `#controller` VM with normalised decimal `blockchainAccountId` in `assertionMethod`; unknown network / non-default-doc → null.
-- [ ] T011 [P] [US1] Verifier-engine integration test (`Sorcha.Verifier.Tests`): an ES256K credential with `iss` = allow-listed `did:pkh` → issuer signature verified (Pass); a credential whose signature maps to a different address → Reject. Uses `DidResolverBackedIssuerKeyResolver` + `VerifyEs256k`.
-- [ ] T012 [P] [US1] Blueprint-engine integration test: an ES256K SD-JWT VC from an allow-listed address-form issuer → accepted via `DidX5cIssuerKeyResolver` → `SdJwtVcFormatHandler` → `SdJwtService`; address-mismatch → reject.
+- [X] T009 [P] [US1] `PkhDidResolver` tests (DID-resolver test project): `did:pkh:eip155:1:0x…` → one `EcdsaSecp256k1RecoveryMethod2020` VM with `id=#blockchainAccountId`, correct `blockchainAccountId`, VM id in `assertionMethod`; malformed/other-namespace → null.
+- [X] T010 [P] [US1] `EthrDidResolver` tests: bare, named-network (`mainnet`/`sepolia`), and hex-chain-id (`0x89`) forms → `#controller` VM with normalised decimal `blockchainAccountId` in `assertionMethod`; unknown network / non-default-doc → null.
+- [X] T011 [P] [US1] Verifier-engine integration test (`Sorcha.Verifier.Tests`): an ES256K credential with `iss` = allow-listed `did:pkh` → issuer signature verified (Pass); a credential whose signature maps to a different address → Reject. Uses `DidResolverBackedIssuerKeyResolver` + `VerifyEs256k`.
+- [X] T012 [P] [US1] Blueprint-engine integration test: an ES256K SD-JWT VC from an allow-listed address-form issuer → accepted via `DidX5cIssuerKeyResolver` → `SdJwtVcFormatHandler` → `SdJwtService`; address-mismatch → reject.
 
 ### Implementation for User Story 1
 
-- [ ] T013 [P] [US1] Implement `PkhDidResolver` in `src/Common/Sorcha.ServiceClients.Http/Did/PkhDidResolver.cs` per contracts/did-resolvers.md (offline, `eip155` only, emit recovery VM in authentication+assertionMethod). Make T009 pass.
-- [ ] T014 [P] [US1] Implement `EthrDidResolver` in `src/Common/Sorcha.ServiceClients.Http/Did/EthrDidResolver.cs` — address-form variants, decimal chain-id normalisation (known-network table + hex parse), default document only, optional `IEvmRpcClient? rpc = null` seam (unused this phase). Make T010 pass.
-- [ ] T015 [US1] Register both resolvers in `src/Common/Sorcha.ServiceClients.Http/Extensions/HttpServiceCollectionExtensions.cs::AddDidResolvers` (alongside `KeyDidResolver`/`JwkDidResolver`).
-- [ ] T016 [US1] Verifier engine — in `DidResolverBackedIssuerKeyResolver.cs`, relax the VM fallback + null-guard to accept a `BlockchainAccountId` VM (keep the assertionMethod gate) and return a synthesised recovery-JWK `JsonElement` (`{kty:EC,crv:secp256k1,blockchainAccountId}`).
-- [ ] T017 [US1] Verifier engine — in `VerifiablePresentationValidator.cs::VerifyEs256k`, branch: JWK has x/y → key-match (unchanged); JWK has `blockchainAccountId` → `Secp256k1Verifier.VerifyByAddress(signingInput, signature, address)`. Make T011 pass.
-- [ ] T018 [US1] Blueprint engine — add `string? BlockchainAccountId` to `IssuerKeyResolution` in `src/Core/Sorcha.Blueprint.Engine/Credentials/IIssuerKeyResolver.cs` (XML summary; invariant: set ⇒ `PublicKey` empty, `Algorithm="ES256K"`).
-- [ ] T019 [US1] Blueprint service — in `src/Services/Sorcha.Blueprint.Service/Credentials/DidX5cIssuerKeyResolver.cs`, accept a `BlockchainAccountId` VM (relax the `PublicKeyJwk is null` return, keep assertionMethod gate) and return `IssuerKeyResolution{ PublicKey=[], BlockchainAccountId=…, Algorithm="ES256K", SigningKeyId=vm.Id }`.
-- [ ] T020 [US1] `SdJwtService` — add optional `string? issuerRecoveryAddress = null` to `VerifyTokenAsync`/`VerifyPresentationAsync` and thread to the private `Verify`; ES256K branch: address set → `Secp256k1Verifier.VerifyByAddress(data, signature, address)`, else Phase-1 key-match (`src/Common/Sorcha.Cryptography/SdJwt/SdJwtService.cs`). Backward-compatible.
-- [ ] T021 [US1] `SdJwtVcFormatHandler` — pass `key.BlockchainAccountId` as `issuerRecoveryAddress` into the verify call (`src/Core/Sorcha.Blueprint.Engine/Credentials/SdJwtVcFormatHandler.cs`). Make T012 pass.
-- [ ] T022 [US1] Run the DID-resolver, Verifier, and Blueprint-engine test projects — US1 green. **Commit** ("feat: [178] address-form DID resolvers + recover-then-match verify seam (US1)").
+- [X] T013 [P] [US1] Implement `PkhDidResolver` in `src/Common/Sorcha.ServiceClients.Http/Did/PkhDidResolver.cs` per contracts/did-resolvers.md (offline, `eip155` only, emit recovery VM in authentication+assertionMethod). Make T009 pass.
+- [X] T014 [P] [US1] Implement `EthrDidResolver` in `src/Common/Sorcha.ServiceClients.Http/Did/EthrDidResolver.cs` — address-form variants, decimal chain-id normalisation (known-network table + hex parse), default document only, optional `IEvmRpcClient? rpc = null` seam (unused this phase). Make T010 pass.
+- [X] T015 [US1] Register both resolvers in `src/Common/Sorcha.ServiceClients.Http/Extensions/HttpServiceCollectionExtensions.cs::AddDidResolvers` (alongside `KeyDidResolver`/`JwkDidResolver`).
+- [X] T016 [US1] Verifier engine — in `DidResolverBackedIssuerKeyResolver.cs`, relax the VM fallback + null-guard to accept a `BlockchainAccountId` VM (keep the assertionMethod gate) and return a synthesised recovery-JWK `JsonElement` (`{kty:EC,crv:secp256k1,blockchainAccountId}`).
+- [X] T017 [US1] Verifier engine — in `VerifiablePresentationValidator.cs::VerifyEs256k`, branch: JWK has x/y → key-match (unchanged); JWK has `blockchainAccountId` → `Secp256k1Verifier.VerifyByAddress(signingInput, signature, address)`. Make T011 pass.
+- [X] T018 [US1] Blueprint engine — add `string? BlockchainAccountId` to `IssuerKeyResolution` in `src/Core/Sorcha.Blueprint.Engine/Credentials/IIssuerKeyResolver.cs` (XML summary; invariant: set ⇒ `PublicKey` empty, `Algorithm="ES256K"`).
+- [X] T019 [US1] Blueprint service — in `src/Services/Sorcha.Blueprint.Service/Credentials/DidX5cIssuerKeyResolver.cs`, accept a `BlockchainAccountId` VM (relax the `PublicKeyJwk is null` return, keep assertionMethod gate) and return `IssuerKeyResolution{ PublicKey=[], BlockchainAccountId=…, Algorithm="ES256K", SigningKeyId=vm.Id }`.
+- [X] T020 [US1] `SdJwtService` — add optional `string? issuerRecoveryAddress = null` to `VerifyTokenAsync`/`VerifyPresentationAsync` and thread to the private `Verify`; ES256K branch: address set → `Secp256k1Verifier.VerifyByAddress(data, signature, address)`, else Phase-1 key-match (`src/Common/Sorcha.Cryptography/SdJwt/SdJwtService.cs`). Backward-compatible.
+- [X] T021 [US1] `SdJwtVcFormatHandler` — pass `key.BlockchainAccountId` as `issuerRecoveryAddress` into the verify call (`src/Core/Sorcha.Blueprint.Engine/Credentials/SdJwtVcFormatHandler.cs`). Make T012 pass.
+- [X] T022 [US1] Run the DID-resolver, Verifier, and Blueprint-engine test projects — US1 green. **Commit** ("feat: [178] address-form DID resolvers + recover-then-match verify seam (US1)").
 
 **Checkpoint**: End-to-end MVP — a trusted address-form Ethereum issuer verifies to Pass offline on both surfaces; address-mismatch rejects.
 
@@ -90,13 +90,13 @@ flag unset (Reject) and set (Warn).
 
 ### Tests for User Story 2 ⚠️ (write first, must FAIL until behaviour confirmed)
 
-- [ ] T023 [P] [US2] Governance test: unlisted address-form issuer, `WarnOnUnlistedVerifiedIssuer` **unset** → Reject (fail-closed) — asserted on the trust/verify path used by the engine.
-- [ ] T024 [P] [US2] Governance test: same credential, flag **set** → Warn (reduced assurance), reduced assurance recorded in the trust evidence.
+- [X] T023 [P] [US2] Governance test: unlisted address-form issuer, `WarnOnUnlistedVerifiedIssuer` **unset** → Reject (fail-closed) — asserted on the trust/verify path used by the engine.
+- [X] T024 [P] [US2] Governance test: same credential, flag **set** → Warn (reduced assurance), reduced assurance recorded in the trust evidence.
 
 ### Implementation for User Story 2
 
-- [ ] T025 [US2] Confirm no new trust code is needed — the Phase-1 `TrustPolicy.WarnOnUnlistedVerifiedIssuer` / `AssuranceLevel.None` / `TrustDecision.ReducedAssurance` path already governs a verified address-form issuer identically. If a test reveals a gap (e.g. the recovery-verified signal not reaching `IssuerContext.SignatureVerified`), fix at that seam only. Make T023/T024 pass.
-- [ ] T026 [US2] Run the governance tests + the full Verifier/Blueprint-engine suites — US2 green, no regression. **Commit** ("test: [178] address-form issuer trust governance (US2)").
+- [X] T025 [US2] Confirm no new trust code is needed — the Phase-1 `TrustPolicy.WarnOnUnlistedVerifiedIssuer` / `AssuranceLevel.None` / `TrustDecision.ReducedAssurance` path already governs a verified address-form issuer identically. If a test reveals a gap (e.g. the recovery-verified signal not reaching `IssuerContext.SignatureVerified`), fix at that seam only. Make T023/T024 pass.
+- [X] T026 [US2] Run the governance tests + the full Verifier/Blueprint-engine suites — US2 green, no regression. **Commit** ("test: [178] address-form issuer trust governance (US2)").
 
 **Checkpoint**: Address-form issuers honour the fail-closed default and the reduced-assurance opt-in exactly as key-form issuers do.
 
@@ -112,13 +112,13 @@ without a network call.
 
 ### Tests for User Story 3 ⚠️ (write first, must FAIL / then confirm)
 
-- [ ] T027 [P] [US3] Resolver negative tests: malformed address length, non-hex, wrong namespace, unknown `did:ethr` network, and a `did:ethr` shape that implies a registry read → resolver returns null; assert no HTTP/RPC dependency is invoked (offline).
-- [ ] T028 [P] [US3] Engine reject test: an ES256K credential whose issuer DID resolves to null, or to a VM carrying neither `publicKeyJwk` nor `blockchainAccountId` → Reject (unresolved issuer), never Warn.
+- [X] T027 [P] [US3] Resolver negative tests: malformed address length, non-hex, wrong namespace, unknown `did:ethr` network, and a `did:ethr` shape that implies a registry read → resolver returns null; assert no HTTP/RPC dependency is invoked (offline).
+- [X] T028 [P] [US3] Engine reject test: an ES256K credential whose issuer DID resolves to null, or to a VM carrying neither `publicKeyJwk` nor `blockchainAccountId` → Reject (unresolved issuer), never Warn.
 
 ### Implementation for User Story 3
 
-- [ ] T029 [US3] Ensure `PkhDidResolver`/`EthrDidResolver` guard every malformed/unsupported case with a null return (refine the T013/T014 guards if any case slips through). Make T027 pass.
-- [ ] T030 [US3] Confirm both issuer-key resolvers treat a null resolution / neither-key-nor-address VM as reject (existing null handling covers it); add the assertion. Make T028 pass. **Commit** ("test: [178] malformed/unsupported address-form DID rejection (US3)").
+- [X] T029 [US3] Ensure `PkhDidResolver`/`EthrDidResolver` guard every malformed/unsupported case with a null return (refine the T013/T014 guards if any case slips through). Make T027 pass.
+- [X] T030 [US3] Confirm both issuer-key resolvers treat a null resolution / neither-key-nor-address VM as reject (existing null handling covers it); add the assertion. Make T028 pass. **Commit** ("test: [178] malformed/unsupported address-form DID rejection (US3)").
 
 **Checkpoint**: All three user stories independently pass; fail-closed on every malformed/unsupported input.
 

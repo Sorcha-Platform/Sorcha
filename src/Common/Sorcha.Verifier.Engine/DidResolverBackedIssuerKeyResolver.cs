@@ -120,12 +120,14 @@ public sealed class DidResolverBackedIssuerKeyResolver : IIssuerKeyResolver, IDi
             }
         }
 
-        // Fallback: if the credential carries no kid, accept the document's first VM with a JWK.
-        // This is the legacy single-key-per-issuer shape and lets pre-Feature-120 credentials
-        // continue to verify against newly-published DID documents.
-        matched ??= doc.VerificationMethod.FirstOrDefault(v => v.PublicKeyJwk is not null);
+        // Fallback: if the credential carries no kid, accept the document's first usable VM — one
+        // carrying a JWK (legacy single-key-per-issuer) or an address-form recovery method
+        // (blockchainAccountId, Feature 178). Lets pre-Feature-120 and address-form credentials
+        // verify against newly-published DID documents.
+        matched ??= doc.VerificationMethod.FirstOrDefault(
+            v => v.PublicKeyJwk is not null || v.BlockchainAccountId is not null);
 
-        if (matched?.PublicKeyJwk is null)
+        if (matched is null || (matched.PublicKeyJwk is null && matched.BlockchainAccountId is null))
         {
             RecordOutcome(activity, "kid-unmatched", matchMode);
             _logger.LogWarning(
@@ -151,6 +153,20 @@ public sealed class DidResolverBackedIssuerKeyResolver : IIssuerKeyResolver, IDi
         }
 
         RecordOutcome(activity, "success", matchMode);
+
+        // Address-form issuer (did:pkh / address-form did:ethr, Feature 178): no published key —
+        // surface a recovery-JWK envelope carrying the CAIP-10 account id. VerifyEs256k recognises
+        // the absent x/y + present blockchainAccountId and verifies by public-key recovery.
+        if (matched.PublicKeyJwk is null)
+        {
+            return JsonSerializer.SerializeToElement(new
+            {
+                kty = "EC",
+                crv = "secp256k1",
+                blockchainAccountId = matched.BlockchainAccountId
+            });
+        }
+
         return matched.PublicKeyJwk;
     }
 

@@ -100,12 +100,19 @@ public interface ISdJwtService
     /// <param name="issuerPublicKey">Issuer's public key for signature verification.</param>
     /// <param name="algorithm">Expected signing algorithm.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="issuerRecoveryAddress">
+    /// Feature 178 — when the issuer is an address-form DID (<c>did:pkh</c> / address-form
+    /// <c>did:ethr</c>) that publishes no key, the CAIP-10 / <c>0x…</c> address to verify the ES256K
+    /// issuer signature against by public-key recovery. When set, <paramref name="issuerPublicKey"/>
+    /// is empty and <paramref name="algorithm"/> is <c>"ES256K"</c>. Null for key-bearing issuers.
+    /// </param>
     /// <returns>Verification result with extracted claims.</returns>
     Task<SdJwtVerificationResult> VerifyTokenAsync(
         string rawToken,
         byte[] issuerPublicKey,
         string algorithm,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? issuerRecoveryAddress = null);
 
     /// <summary>
     /// Creates a presentation from an SD-JWT token, disclosing only selected claims.
@@ -159,7 +166,8 @@ public interface ISdJwtService
         string rawPresentation,
         byte[] issuerPublicKey,
         string algorithm,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? issuerRecoveryAddress = null);
 
     /// <summary>
     /// Verifies an SD-JWT presentation including KB-JWT validation against the
@@ -178,5 +186,6 @@ public interface ISdJwtService
         string algorithm,
         string expectedAudience,
         string expectedNonce,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? issuerRecoveryAddress = null);
 }

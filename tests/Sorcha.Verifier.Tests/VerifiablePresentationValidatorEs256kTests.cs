@@ -13,6 +13,7 @@ using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto.Signers;
 using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Security;
+using Sorcha.Cryptography.Secp256k1;
 using Sorcha.Verifier.Engine;
 using Xunit;
 
@@ -53,6 +54,60 @@ public class VerifiablePresentationValidatorEs256kTests
         var jws = BuildEs256kJws(priv, """{"a":"b"}""");
 
         VerifiablePresentationValidator.VerifyJwsSignature(jws, otherJwk, out _).Should().BeFalse();
+    }
+
+    // ── Feature 178: address-form issuer (recovery-JWK) branch ──────────────────
+
+    [Fact]
+    public void VerifyJwsSignature_AddressFormEs256k_RecoversAndMatches()
+    {
+        var (priv, address) = NewSecp256k1Address();
+        var recoveryJwk = RecoveryJwk($"eip155:1:{address}");
+        var jws = BuildEs256kJws(priv, """{"iss":"did:pkh:eip155:1"}""");
+
+        VerifiablePresentationValidator.VerifyJwsSignature(jws, recoveryJwk, out var payload).Should().BeTrue();
+        payload.GetProperty("iss").GetString().Should().Be("did:pkh:eip155:1");
+    }
+
+    [Fact]
+    public void VerifyJwsSignature_AddressFormEs256k_WrongAddress_ReturnsFalse()
+    {
+        var (priv, _) = NewSecp256k1Address();
+        var (_, otherAddress) = NewSecp256k1Address();
+        var jws = BuildEs256kJws(priv, """{"a":"b"}""");
+
+        VerifiablePresentationValidator.VerifyJwsSignature(jws, RecoveryJwk($"eip155:1:{otherAddress}"), out _)
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public void VerifyJwsSignature_AddressFormEs256k_TamperedSignature_ReturnsFalse()
+    {
+        var (priv, address) = NewSecp256k1Address();
+        var jws = BuildEs256kJws(priv, """{"a":"b"}""");
+        var segments = jws.Split('.');
+        var signature = Base64Url.DecodeFromChars(segments[2]);
+        signature[7] ^= 0xFF;
+        segments[2] = Base64Url.EncodeToString(signature);
+
+        VerifiablePresentationValidator.VerifyJwsSignature(string.Join('.', segments), RecoveryJwk($"eip155:1:{address}"), out _)
+            .Should().BeFalse();
+    }
+
+    private static JsonElement RecoveryJwk(string blockchainAccountId) =>
+        JsonDocument.Parse($$"""{"kty":"EC","crv":"secp256k1","blockchainAccountId":"{{blockchainAccountId}}"}""")
+            .RootElement.Clone();
+
+    private static (ECPrivateKeyParameters Priv, string Address) NewSecp256k1Address()
+    {
+        var curve = SecNamedCurves.GetByName("secp256k1");
+        var domain = new ECDomainParameters(curve.Curve, curve.G, curve.N, curve.H);
+        var gen = new ECKeyPairGenerator();
+        gen.Init(new ECKeyGenerationParameters(domain, new SecureRandom()));
+        var pair = gen.GenerateKeyPair();
+        var pub = (ECPublicKeyParameters)pair.Public;
+        var address = EthereumAddress.FromPublicKey(Secp256k1PublicKey.FromSec1(pub.Q.GetEncoded(false)));
+        return ((ECPrivateKeyParameters)pair.Private, address);
     }
 
     private static (ECPrivateKeyParameters Priv, JsonElement Jwk) NewSecp256k1Jwk()

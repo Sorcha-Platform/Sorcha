@@ -91,4 +91,43 @@ public class TrustEvaluatorWarnTests
         TrustEvaluator.ComputePolicyDigest(AllowlistPolicy(warn: false))
             .Should().NotBe(TrustEvaluator.ComputePolicyDigest(AllowlistPolicy(warn: true)));
     }
+
+    // ── Feature 178 (US2) — the same governance applies to address-form issuer DIDs. The trust
+    // evaluator sees only the issuer id + SignatureVerified, so a did:pkh / did:ethr issuer whose
+    // ES256K signature was verified by recovery is governed identically to any other verified issuer. ──
+
+    [Theory]
+    [InlineData("did:pkh:eip155:1:0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B")]
+    [InlineData("did:ethr:0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B")]
+    public async Task AddressFormIssuer_Unlisted_FlagOff_Rejects_FailClosed(string issuerDid)
+    {
+        var decision = await Evaluator(vouches: false).EvaluateAsync(SignedIssuer(issuerDid), AllowlistPolicy(warn: false));
+
+        decision.IsTrusted.Should().BeFalse();
+        decision.ReducedAssurance.Should().BeFalse();
+        decision.SignatureValid.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("did:pkh:eip155:1:0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B")]
+    [InlineData("did:ethr:0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B")]
+    public async Task AddressFormIssuer_Unlisted_FlagOn_AcceptsAtReducedAssuranceWarn(string issuerDid)
+    {
+        var decision = await Evaluator(vouches: false).EvaluateAsync(SignedIssuer(issuerDid), AllowlistPolicy(warn: true));
+
+        decision.IsTrusted.Should().BeTrue();
+        decision.ReducedAssurance.Should().BeTrue();
+        decision.EstablishedAssurance.Should().Be(AssuranceLevel.None);
+    }
+
+    [Fact]
+    public async Task AddressFormIssuer_Allowlisted_IsFullTrustNotWarn()
+    {
+        var decision = await Evaluator(vouches: true)
+            .EvaluateAsync(SignedIssuer("did:pkh:eip155:1:0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"), AllowlistPolicy(warn: true));
+
+        decision.IsTrusted.Should().BeTrue();
+        decision.ReducedAssurance.Should().BeFalse();
+        decision.EstablishedAssurance.Should().NotBe(AssuranceLevel.None);
+    }
 }

@@ -621,11 +621,28 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
         return ecdsa.VerifyData(signingInput, signature, HashAlgorithmName.SHA256);
     }
 
-    /// <summary>Verify an ES256K (ECDSA secp256k1, SHA-256) JWS against an EC JWK via the pure-managed primitive.</summary>
+    /// <summary>
+    /// Verify an ES256K (ECDSA secp256k1, SHA-256) JWS. When the JWK carries an <c>x</c>/<c>y</c> key
+    /// it is a direct key-match (Phase 1). When it carries only a <c>blockchainAccountId</c> — an
+    /// address-form issuer (<c>did:pkh</c> / address-form <c>did:ethr</c>, Feature 178) with no
+    /// published key — verification is by public-key recovery against that address.
+    /// </summary>
     private static bool VerifyEs256k(JsonElement publicJwk, byte[] signingInput, byte[] signature)
     {
-        return Secp256k1Jwk.TryParse(publicJwk, out var key)
-            && Secp256k1Verifier.VerifyEs256k(signingInput, signature, key!);
+        if (Secp256k1Jwk.TryParse(publicJwk, out var key))
+        {
+            return Secp256k1Verifier.VerifyEs256k(signingInput, signature, key!);
+        }
+
+        if (publicJwk.ValueKind == JsonValueKind.Object
+            && publicJwk.TryGetProperty("blockchainAccountId", out var accountId)
+            && accountId.ValueKind == JsonValueKind.String
+            && accountId.GetString() is { Length: > 0 } address)
+        {
+            return Secp256k1Verifier.VerifyByAddressStatic(signingInput, signature, address);
+        }
+
+        return false;
     }
 
     /// <summary>

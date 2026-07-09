@@ -113,7 +113,8 @@ public static class HttpServiceCollectionExtensions
 
     /// <summary>
     /// Registers DID resolver infrastructure: IDidResolverRegistry and all built-in resolvers
-    /// (did:sorcha, did:web, did:key), the Feature 120 cross-resolution cache, and OTel meters.
+    /// (did:sorcha, did:web, did:key, did:jwk, and the address-form did:pkh / did:ethr — Feature 178),
+    /// the Feature 120 cross-resolution cache, and OTel meters.
     /// </summary>
     public static IServiceCollection AddDidResolvers(
         this IServiceCollection services,
@@ -124,10 +125,14 @@ public static class HttpServiceCollectionExtensions
         services.AddScoped<SorchaDidResolver>();
         services.AddSingleton<KeyDidResolver>();
         services.AddSingleton<JwkDidResolver>();
+        services.AddSingleton<PkhDidResolver>();
+        services.AddSingleton<EthrDidResolver>();
         services.AddHttpClient<WebDidResolver>();
         services.AddScoped<IDidResolver>(sp => sp.GetRequiredService<SorchaDidResolver>());
         services.AddSingleton<IDidResolver>(sp => sp.GetRequiredService<KeyDidResolver>());
         services.AddSingleton<IDidResolver>(sp => sp.GetRequiredService<JwkDidResolver>());
+        services.AddSingleton<IDidResolver>(sp => sp.GetRequiredService<PkhDidResolver>());
+        services.AddSingleton<IDidResolver>(sp => sp.GetRequiredService<EthrDidResolver>());
 
         // Registry must be Scoped to resolve the Scoped SorchaDidResolver. Production
         // wiring passes the Singleton DidResolverCache + DidResolverMetrics so the
