@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Sorcha.Cryptography.Secp256k1</PackageId>
+    <Description>Pure-managed secp256k1 primitives (JOSE ES256K verification, secp256k1 EC JWK parse/build, keccak256, EIP-55 Ethereum address) for Ethereum-key Verifiable Credential verification (Feature 177 Phase 1). BouncyCastle-only and WASM-safe so both the SD-JWT path (Sorcha.Cryptography) and the verifier-engine path (Sorcha.Verifier.Engine, consumed by the Blazor WASM PWA) can share one implementation. Verify-only: no signing, no native dependency.</Description>
+    <PackageTags>sorcha;ethereum;secp256k1;es256k;keccak;verifiable-credentials;did</PackageTags>
+    <RootNamespace>Sorcha.Cryptography.Secp256k1</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sorcha.Cryptography.Secp256k1.Tests" />
+  </ItemGroup>
+
+</Project>

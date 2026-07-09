@@ -123,9 +123,11 @@ public static class HttpServiceCollectionExtensions
         // KeyDidResolver has no scoped dependencies — Singleton is fine.
         services.AddScoped<SorchaDidResolver>();
         services.AddSingleton<KeyDidResolver>();
+        services.AddSingleton<JwkDidResolver>();
         services.AddHttpClient<WebDidResolver>();
         services.AddScoped<IDidResolver>(sp => sp.GetRequiredService<SorchaDidResolver>());
         services.AddSingleton<IDidResolver>(sp => sp.GetRequiredService<KeyDidResolver>());
+        services.AddSingleton<IDidResolver>(sp => sp.GetRequiredService<JwkDidResolver>());
 
         // Registry must be Scoped to resolve the Scoped SorchaDidResolver. Production
         // wiring passes the Singleton DidResolverCache + DidResolverMetrics so the

@@ -93,6 +93,26 @@ public class TrustEvaluator : ITrustEvaluator
 
         if (!trusted)
         {
+            // Feature 177 — a signature-valid issuer that no source vouches for is accepted at reduced
+            // assurance (a Warn) ONLY when the policy explicitly opts in; the default stays fail-closed.
+            // This block is inert when the flag is false (falls through to the reject below).
+            if (effectivePolicy.WarnOnUnlistedVerifiedIssuer)
+            {
+                _logger.LogWarning(
+                    "Trust reduced-assurance (Warn): signature verified but no source vouched for {Issuer}",
+                    issuer.IssuerId);
+                return new TrustDecision
+                {
+                    IsTrusted = true,
+                    SignatureValid = true,
+                    ReducedAssurance = true,
+                    EstablishedAssurance = AssuranceLevel.None,
+                    Message = "Issuer signature verified but not vouched for by any trust source; " +
+                              "accepted at reduced assurance (feature 177).",
+                    Evidence = BaseEvidence(issuer, policyDigest)
+                };
+            }
+
             var reason = vouches
                 .Where(v => !v.Vouch.Vouched)
                 .Select(v => v.Vouch.Reason)
@@ -228,6 +248,7 @@ public class TrustEvaluator : ITrustEvaluator
         {
             combinator = policy.Combinator.ToString(),
             minAssuranceLevel = policy.MinAssuranceLevel.ToString(),
+            warnOnUnlistedVerifiedIssuer = policy.WarnOnUnlistedVerifiedIssuer,
             sources = policy.Sources
                 .Select(s => new
                 {

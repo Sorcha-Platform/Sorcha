@@ -23,6 +23,14 @@ public class TrustDecision
     /// <summary>The assurance level actually established.</summary>
     public AssuranceLevel EstablishedAssurance { get; set; } = AssuranceLevel.Low;
 
+    /// <summary>
+    /// True when the credential is accepted at reduced assurance (a Warn): the signature verified but
+    /// no trust source vouched, and the policy opted into <c>WarnOnUnlistedVerifiedIssuer</c>. Consumers
+    /// that treat <see cref="IsTrusted"/> as "accept" MUST honour this to distinguish a Warn from a
+    /// full-trust Pass (feature 177).
+    /// </summary>
+    public bool ReducedAssurance { get; set; }
+
     /// <summary>Which source(s) vouched for the issuer.</summary>
     public List<TrustSourceKind> DecidingSources { get; set; } = [];
 

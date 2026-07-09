@@ -24,4 +24,8 @@
     <PackageReference Include="Nethermind.MclBindings" />
     <PackageReference Include="Sodium.Core" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sorcha.Cryptography.Secp256k1\Sorcha.Cryptography.Secp256k1.csproj" />
+  </ItemGroup>
 </Project>

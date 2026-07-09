@@ -8,6 +8,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto.Signers;
+using Sorcha.Cryptography.Secp256k1;
 using Sorcha.Verifier.Engine.Models;
 
 namespace Sorcha.Verifier.Engine;
@@ -585,6 +586,7 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             bool verified = alg switch
             {
                 "ES256" => VerifyEs256(publicJwk, signingInput, signature),
+                "ES256K" => VerifyEs256k(publicJwk, signingInput, signature),
                 "EdDSA" => VerifyEdDsa(publicJwk, signingInput, signature),
                 _ => false,
             };
@@ -617,6 +619,13 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             },
         });
         return ecdsa.VerifyData(signingInput, signature, HashAlgorithmName.SHA256);
+    }
+
+    /// <summary>Verify an ES256K (ECDSA secp256k1, SHA-256) JWS against an EC JWK via the pure-managed primitive.</summary>
+    private static bool VerifyEs256k(JsonElement publicJwk, byte[] signingInput, byte[] signature)
+    {
+        return Secp256k1Jwk.TryParse(publicJwk, out var key)
+            && Secp256k1Verifier.VerifyEs256k(signingInput, signature, key!);
     }
 
     /// <summary>

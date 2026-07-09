@@ -7,6 +7,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 
 using Sorcha.Blueprint.Engine.Credentials;
+using Sorcha.Cryptography.Secp256k1;
 using Sorcha.ServiceClients.Did;
 
 namespace Sorcha.Blueprint.Service.Credentials;
@@ -151,6 +152,14 @@ public sealed class DidX5cIssuerKeyResolver : IIssuerKeyResolver
         var keyType = kty.GetString();
         if (keyType == "EC" && jwk.TryGetProperty("x", out var x) && jwk.TryGetProperty("y", out var y))
         {
+            var crv = jwk.TryGetProperty("crv", out var crvEl) ? crvEl.GetString() : null;
+            if (crv == "secp256k1")
+            {
+                // Return the 65-byte SEC1 uncompressed point; SdJwtService.Verify parses it for ES256K
+                // (System.Security.Cryptography cannot import a secp256k1 SPKI on Windows).
+                return Secp256k1Jwk.TryParse(jwk, out var secp) ? secp!.ToSec1Uncompressed() : null;
+            }
+
             var xBytes = Base64Url.DecodeFromChars(x.GetString()!);
             var yBytes = Base64Url.DecodeFromChars(y.GetString()!);
             using var ecdsa = ECDsa.Create(new ECParameters

@@ -10,6 +10,8 @@ allowed-tools: Read, Edit, Write, Glob, Grep, Bash, mcp__context7__resolve-libra
 
 Sorcha.Cryptography provides multi-algorithm support (ED25519, P-256, RSA-4096), symmetric encryption (AES, ChaCha20), and BIP39/44 HD wallet derivation. All operations return `CryptoResult<T>` for explicit error handling—no exceptions for crypto failures.
 
+**secp256k1 / ES256K lives in a SEPARATE project — `Sorcha.Cryptography.Secp256k1` (Feature 177, verify-only).** Pure-managed (BouncyCastle only): `ISecp256k1Verifier` (JOSE **ES256K**), `Secp256k1Jwk` (parse/build/decompress), `Keccak256`, `EthereumAddress` (EIP-55). It is deliberately **NOT** folded into `Sorcha.Cryptography` — `Sorcha.Verifier.Engine` is consumed by the Blazor **WASM** PWA, so it must stay native-dependency-free and cannot reference `Sorcha.Cryptography` (native `Sodium`/`Mcl`); both verification paths need secp256k1. And **.NET's built-in `ECDsa` does NOT reliably support secp256k1 on Windows/WASM** — BouncyCastle is required. Verify-only: no signing, no new `WalletNetworks` member (recoverable signing + `ecrecover` are Phase 3). Consumed by `SdJwtService.Verify` (`alg:ES256K`, SEC1-uncompressed pubkey bytes) and `VerifiablePresentationValidator.VerifyEs256k`. Design: `docs/superpowers/specs/2026-07-09-ethereum-verify-phase1-design.md`.
+
 ## Quick Start
 
 ### Key Generation

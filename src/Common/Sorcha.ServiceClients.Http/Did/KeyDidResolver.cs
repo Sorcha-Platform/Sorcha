@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using SimpleBase;
+using Sorcha.Cryptography.Secp256k1;
 
 namespace Sorcha.ServiceClients.Did;
 
@@ -10,6 +12,7 @@ namespace Sorcha.ServiceClients.Did;
 /// Resolves did:key DIDs by decoding the multibase/multicodec public key.
 ///   - did:key:z6Mk...  (z = base58btc, 0xed01 = ED25519)
 ///   - did:key:zDn...   (z = base58btc, 0x1200 = P-256)
+///   - did:key:zQ3s...  (z = base58btc, 0xe701 = secp256k1)
 /// No network calls are required -- the public key is embedded in the DID itself.
 /// </summary>
 public class KeyDidResolver : IDidResolver
@@ -22,9 +25,12 @@ public class KeyDidResolver : IDidResolver
     private const byte Ed25519Byte1 = 0x01;
     private const byte P256Byte0 = 0x12;
     private const byte P256Byte1 = 0x00;
+    private const byte Secp256k1Byte0 = 0xe7;
+    private const byte Secp256k1Byte1 = 0x01;
 
     private const int Ed25519PublicKeyLength = 32;
     private const int P256CompressedPublicKeyLength = 33;
+    private const int Secp256k1CompressedPublicKeyLength = 33;
 
     private readonly ILogger<KeyDidResolver> _logger;
 
@@ -90,6 +96,9 @@ public class KeyDidResolver : IDidResolver
         if (codec0 == P256Byte0 && codec1 == P256Byte1)
             return BuildP256Document(did, multibaseValue, keyBytes);
 
+        if (codec0 == Secp256k1Byte0 && codec1 == Secp256k1Byte1)
+            return BuildSecp256k1Document(did, multibaseValue, keyBytes);
+
         _logger.LogWarning(
             "Unsupported multicodec prefix 0x{Byte0:x2}{Byte1:x2} in {Did}",
             codec0, codec1, did);
@@ -148,6 +157,59 @@ public class KeyDidResolver : IDidResolver
                     Id = keyId,
                     Type = "JsonWebKey2020",
                     Controller = did,
+                    PublicKeyMultibase = multibaseValue
+                }
+            ],
+            Authentication = [keyId],
+            AssertionMethod = [keyId]
+        };
+    }
+
+    private DidDocument? BuildSecp256k1Document(string did, string multibaseValue, byte[] keyBytes)
+    {
+        if (keyBytes.Length != Secp256k1CompressedPublicKeyLength)
+        {
+            _logger.LogWarning(
+                "secp256k1 key length mismatch: expected {Expected}, got {Actual} in {Did}",
+                Secp256k1CompressedPublicKeyLength, keyBytes.Length, did);
+            return null;
+        }
+
+        Secp256k1PublicKey key;
+        try
+        {
+            key = Secp256k1PublicKey.FromSec1(keyBytes);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Invalid secp256k1 compressed key in {Did}", did);
+            return null;
+        }
+
+        var (x, y) = Secp256k1Jwk.ToCoordinates(key);
+
+        // The issuer-key resolvers consume publicKeyJwk (not multibase), so it is required here.
+        var publicKeyJwk = JsonSerializer.SerializeToElement(new
+        {
+            kty = "EC",
+            crv = "secp256k1",
+            x,
+            y
+        });
+
+        var keyId = $"{did}#{did[DidKeyPrefix.Length..]}";
+
+        return new DidDocument
+        {
+            Id = did,
+            VerificationMethod =
+            [
+                new VerificationMethod
+                {
+                    Id = keyId,
+                    Type = "JsonWebKey2020",
+                    Controller = did,
+                    PublicKeyJwk = publicKeyJwk,
                     PublicKeyMultibase = multibaseValue
                 }
             ],
