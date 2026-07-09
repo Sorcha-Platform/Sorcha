@@ -128,13 +128,13 @@ without a network call.
 
 **Purpose**: Docs, standards, skills, memory, and the full-solution regression gate.
 
-- [ ] T031 [P] Update `STANDARDS.md` — mark rows for `did:pkh` (CAIP-10), address-form `did:ethr` (ERC-1056), and `EcdsaSecp256k1RecoveryMethod2020` as partial/verify-only under Feature 178.
-- [ ] T032 [P] Update the `cryptography` skill (`.claude/skills/cryptography/`) — append the ecrecover / address-form-DID capability to the Feature 177 notes.
-- [ ] T033 [P] Update the `verifiable-credentials` skill (`.claude/skills/verifiable-credentials/SKILL.md`) — record `did:pkh`/address-form `did:ethr` verify-by-recovery under the Feature 177 block (now F178).
-- [ ] T034 [P] Update the `sorcha-architecture` skill if the DID-resolver/issuer-key-seam surface is catalogued there (add the two resolvers + `blockchainAccountId`).
-- [ ] T035 Update memory: `ethereum-vc-interop-initiative.md` (Phase 2 status + PR#) and the MEMORY.md Active-work line, per the frontmatter convention.
-- [ ] T036 Build the whole solution (Release) — zero new warnings — then run the full touched-suite regression: `Sorcha.Cryptography.Secp256k1.Tests`, ServiceClients DID tests, `Sorcha.Cryptography` tests, `Sorcha.Verifier.Tests`, Blueprint engine/service tests. All green; fail-closed default preserved.
-- [ ] T037 Run `specs/178-ethereum-ecrecover/quickstart.md` validation (the four `dotnet test` invocations) as the acceptance gate. **Commit** ("docs: [178] standards, skills, memory + regression gate").
+- [X] T031 [P] Update `STANDARDS.md` — mark rows for `did:pkh` (CAIP-10), address-form `did:ethr` (ERC-1056), and `EcdsaSecp256k1RecoveryMethod2020` as partial/verify-only under Feature 178.
+- [X] T032 [P] Update the `cryptography` skill (`.claude/skills/cryptography/`) — append the ecrecover / address-form-DID capability to the Feature 177 notes.
+- [X] T033 [P] Update the `verifiable-credentials` skill (`.claude/skills/verifiable-credentials/SKILL.md`) — record `did:pkh`/address-form `did:ethr` verify-by-recovery under the Feature 177 block (now F178).
+- [X] T034 [P] Update the `sorcha-architecture` skill if the DID-resolver/issuer-key-seam surface is catalogued there (add the two resolvers + `blockchainAccountId`).
+- [X] T035 Update memory: `ethereum-vc-interop-initiative.md` (Phase 2 status + PR#) and the MEMORY.md Active-work line, per the frontmatter convention.
+- [X] T036 Build the whole solution (Release) — zero new warnings — then run the full touched-suite regression: `Sorcha.Cryptography.Secp256k1.Tests`, ServiceClients DID tests, `Sorcha.Cryptography` tests, `Sorcha.Verifier.Tests`, Blueprint engine/service tests. All green; fail-closed default preserved.
+- [X] T037 Run `specs/178-ethereum-ecrecover/quickstart.md` validation (the four `dotnet test` invocations) as the acceptance gate. **Commit** ("docs: [178] standards, skills, memory + regression gate").
 
 ---
 
