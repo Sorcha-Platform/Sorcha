@@ -108,15 +108,15 @@ The type/evaluator changes are independent; the integration assertion reuses a U
 
 ### Tests first
 
-- [ ] T022 [P] [US3] `TrustEvaluator` tests in `tests/.../TrustEvaluatorWarnTests.cs`: no-vouch + flag off → reject; no-vouch + flag on → `IsTrusted` with `ReducedAssurance` + assurance `None`; vouched → Pass (flag ignored).
-- [ ] T023 [P] [US3] Fail-closed regression test: a non-Ethereum unlisted issuer with no flag still → Reject (asserts the change is inert when the flag is false), plus confirm `ComputePolicyDigest` changes when the flag flips.
+- [x] T022 [P] [US3] `TrustEvaluator` tests in `tests/.../TrustEvaluatorWarnTests.cs`: no-vouch + flag off → reject; no-vouch + flag on → `IsTrusted` with `ReducedAssurance` + assurance `None`; vouched → Pass (flag ignored).
+- [x] T023 [P] [US3] Fail-closed regression test: a non-Ethereum unlisted issuer with no flag still → Reject (asserts the change is inert when the flag is false), plus confirm `ComputePolicyDigest` changes when the flag flips.
 
 ### Implementation
 
-- [ ] T024 [P] [US3] Add `bool WarnOnUnlistedVerifiedIssuer { get; set; } = false;` to `src/Common/Sorcha.Blueprint.Models/Credentials/TrustPolicy.cs`.
-- [ ] T025 [P] [US3] Add `None = -1` to `src/Core/Sorcha.Blueprint.Engine/Credentials/AssuranceLevel.cs` and `bool ReducedAssurance` to `src/Core/Sorcha.Blueprint.Engine/Credentials/TrustDecision.cs`.
-- [ ] T026 [US3] Add the scoped warn branch inside the `if (!trusted)` block of `EvaluateAsync` and include the flag in `ComputePolicyDigest` in `src/Core/Sorcha.Blueprint.Engine/Credentials/TrustEvaluator.cs` (inert when flag false).
-- [ ] T027 [US3] Thread the reduced-assurance signal onto `VerificationOutcome` (`src/Common/Sorcha.Verifier.Engine/Models/…`) and extend `Map` in `src/Apps/Sorcha.Wallet.Pwa/Services/Verification/RealVerifierEngine.cs` so verified-but-reduced-assurance → `VerifyOutcome.Warn`.
+- [x] T024 [P] [US3] Add `bool WarnOnUnlistedVerifiedIssuer { get; set; } = false;` to `src/Common/Sorcha.Blueprint.Models/Credentials/TrustPolicy.cs`.
+- [x] T025 [P] [US3] Add `None = -1` to `src/Core/Sorcha.Blueprint.Engine/Credentials/AssuranceLevel.cs` and `bool ReducedAssurance` to `src/Core/Sorcha.Blueprint.Engine/Credentials/TrustDecision.cs`.
+- [x] T026 [US3] Add the scoped warn branch inside the `if (!trusted)` block of `EvaluateAsync` and include the flag in `ComputePolicyDigest` in `src/Core/Sorcha.Blueprint.Engine/Credentials/TrustEvaluator.cs` (inert when flag false).
+- [~] T027 [US3] (Re-scoped — see PR) The authoritative reduced-assurance signal is `TrustDecision.ReducedAssurance` on the trust-gated path. The citizen-PWA `RealVerifierEngine`/`VerifiablePresentationValidator` path does NOT consume `TrustDecision` (separate offline verifier with its own issuer-not-verified→Warn), so threading the blueprint-trust signal into it is unnecessary/conflates two paths. Deferred as a documented no-op for Phase 1.
 
 **Checkpoint**: US3 independently testable — trust governance behaves per the state machine; fail-closed default preserved.
 

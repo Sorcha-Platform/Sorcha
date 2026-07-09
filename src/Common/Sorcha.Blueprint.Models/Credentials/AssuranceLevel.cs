@@ -14,6 +14,13 @@ namespace Sorcha.Blueprint.Models.Credentials;
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum AssuranceLevel
 {
+    /// <summary>
+    /// No assurance — a signature-verified but unvouched issuer accepted under a reduced-assurance
+    /// (Warn) policy (feature 177). Below <see cref="Low"/>, so it can never satisfy a minimum-level floor.
+    /// </summary>
+    [JsonStringEnumMemberName("none")]
+    None = -1,
+
     /// <summary>Lowest assurance. The default when no signal is present.</summary>
     [JsonStringEnumMemberName("low")]
     Low = 0,

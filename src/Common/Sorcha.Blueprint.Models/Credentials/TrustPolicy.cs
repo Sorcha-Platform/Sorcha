@@ -24,6 +24,15 @@ public class TrustPolicy
     /// <summary>Minimum assurance level a credential must establish. Default <see cref="AssuranceLevel.Low"/>.</summary>
     [JsonPropertyName("minAssuranceLevel")]
     public AssuranceLevel MinAssuranceLevel { get; set; } = AssuranceLevel.Low;
+
+    /// <summary>
+    /// When <c>true</c>, a signature-valid issuer that no <see cref="Sources"/> vouches for is accepted
+    /// at reduced assurance (a Warn — <see cref="AssuranceLevel.None"/>) instead of being rejected.
+    /// Default <c>false</c>, so the fail-closed posture is preserved. An explicit, per-requirement,
+    /// auditable opt-in — reduced assurance is never a global or implicit default (feature 177).
+    /// </summary>
+    [JsonPropertyName("warnOnUnlistedVerifiedIssuer")]
+    public bool WarnOnUnlistedVerifiedIssuer { get; set; }
 }
 
 /// <summary>
