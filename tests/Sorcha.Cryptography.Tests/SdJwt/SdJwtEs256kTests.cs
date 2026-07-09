@@ -12,6 +12,7 @@ using Org.BouncyCastle.Crypto.Signers;
 using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Security;
 using Sorcha.Cryptography.SdJwt;
+using Sorcha.Cryptography.Secp256k1;
 using Xunit;
 
 namespace Sorcha.Cryptography.Tests.SdJwt;
@@ -57,6 +58,47 @@ public class SdJwtEs256kTests
         var token = BuildEs256kSdJwt(priv, """{"iss":"x"}""");
 
         var result = await new SdJwtService().VerifyTokenAsync(token, otherPub, "ES256K");
+
+        result.IsValid.Should().BeFalse();
+    }
+
+    // ── Feature 178: address-form issuer (verify by public-key recovery, no published key) ──
+
+    [Fact]
+    public async Task VerifyToken_AddressFormIssuer_RecoversAndMatches()
+    {
+        var (priv, sec1Pub) = NewSecp256k1();
+        var address = EthereumAddress.FromPublicKey(Secp256k1PublicKey.FromSec1(sec1Pub));
+        var token = BuildEs256kSdJwt(priv, $$"""{"iss":"did:pkh:eip155:1:{{address}}","vct":"https://sorcha.dev/vc/test/v1"}""");
+
+        // No key bytes — the Blueprint engine seam passes the DID's address instead.
+        var result = await new SdJwtService().VerifyTokenAsync(token, [], "ES256K", default, issuerRecoveryAddress: address);
+
+        result.Errors.Should().BeEmpty();
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task VerifyToken_AddressFormIssuer_Caip10AccountId_Verifies()
+    {
+        var (priv, sec1Pub) = NewSecp256k1();
+        var address = EthereumAddress.FromPublicKey(Secp256k1PublicKey.FromSec1(sec1Pub));
+        var token = BuildEs256kSdJwt(priv, """{"iss":"did:ethr:0x1"}""");
+
+        var result = await new SdJwtService().VerifyTokenAsync(token, [], "ES256K", default, issuerRecoveryAddress: $"eip155:1:{address}");
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task VerifyToken_AddressFormIssuer_WrongAddress_Fails()
+    {
+        var (priv, _) = NewSecp256k1();
+        var (_, otherPub) = NewSecp256k1();
+        var otherAddress = EthereumAddress.FromPublicKey(Secp256k1PublicKey.FromSec1(otherPub));
+        var token = BuildEs256kSdJwt(priv, """{"iss":"did:pkh:eip155:1:0x0"}""");
+
+        var result = await new SdJwtService().VerifyTokenAsync(token, [], "ES256K", default, issuerRecoveryAddress: otherAddress);
 
         result.IsValid.Should().BeFalse();
     }

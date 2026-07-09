@@ -214,6 +214,65 @@ public sealed class DidResolverBackedIssuerKeyResolverTests
         await act.Should().ThrowAsync<ArgumentException>();
     }
 
+    // ── Feature 178 — address-form issuer (did:pkh / did:ethr) resolution ──────────
+
+    [Fact]
+    public async Task ResolveAsync_AddressFormVm_ReturnsRecoveryJwkEnvelope()
+    {
+        const string vmId = "did:pkh:eip155:1:0xabc#blockchainAccountId";
+        var doc = new DidDocument
+        {
+            Id = "did:pkh:eip155:1:0xabc",
+            VerificationMethod =
+            [
+                new VerificationMethod
+                {
+                    Id = vmId,
+                    Type = "EcdsaSecp256k1RecoveryMethod2020",
+                    Controller = "did:pkh:eip155:1:0xabc",
+                    BlockchainAccountId = "eip155:1:0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
+                }
+            ],
+            AssertionMethod = [vmId]
+        };
+        var registry = new Mock<IDidResolverRegistry>();
+        registry.Setup(r => r.ResolveWithAlsoKnownAsAsync("did:pkh:eip155:1:0xabc", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(doc);
+
+        var result = await CreateResolver(registry.Object).ResolveAsync("did:pkh:eip155:1:0xabc", kid: null);
+
+        result.Should().NotBeNull();
+        result!.Value.GetProperty("crv").GetString().Should().Be("secp256k1");
+        result.Value.GetProperty("blockchainAccountId").GetString()
+            .Should().Be("eip155:1:0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B");
+        result.Value.TryGetProperty("x", out _).Should().BeFalse("an address-form VM publishes no key");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_VmWithNeitherKeyNorAddress_ReturnsNull()
+    {
+        // A VM carrying neither publicKeyJwk nor blockchainAccountId is unusable → reject (US3).
+        var doc = new DidDocument
+        {
+            Id = Issuer,
+            VerificationMethod =
+            [
+                new VerificationMethod
+                {
+                    Id = "did:sorcha:org:abc#opaque",
+                    Type = "JsonWebKey2020",
+                    Controller = Issuer,
+                    PublicKeyMultibase = "zPlaceholder"
+                }
+            ]
+        };
+        var registry = new Mock<IDidResolverRegistry>();
+        registry.Setup(r => r.ResolveWithAlsoKnownAsAsync(Issuer, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(doc);
+
+        (await CreateResolver(registry.Object).ResolveAsync(Issuer, kid: null)).Should().BeNull();
+    }
+
     private sealed class TestMeterFactory : IMeterFactory
     {
         private readonly List<Meter> _meters = [];

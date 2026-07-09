@@ -89,6 +89,16 @@ public class VerificationMethod
     [JsonPropertyName("publicKeyMultibase")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? PublicKeyMultibase { get; set; }
+
+    /// <summary>
+    /// CAIP-10 blockchain account id (e.g. <c>eip155:1:0x1234…</c>) for an address-form verification
+    /// method — an <c>EcdsaSecp256k1RecoveryMethod2020</c> from <c>did:pkh</c> / address-form
+    /// <c>did:ethr</c>. Present instead of <see cref="PublicKeyJwk"/> when the DID commits only to an
+    /// address; verification is by public-key recovery (Feature 178). Null for key-bearing methods.
+    /// </summary>
+    [JsonPropertyName("blockchainAccountId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BlockchainAccountId { get; set; }
 }
 
 /// <summary>

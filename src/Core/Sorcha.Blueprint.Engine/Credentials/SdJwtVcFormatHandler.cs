@@ -119,10 +119,13 @@ public class SdJwtVcFormatHandler : ICredentialFormatHandler
         {
             return _sdJwtService.VerifyPresentationAsync(
                 presentation.Raw, key.PublicKey, key.Algorithm,
-                presentation.ExpectedAudience!, presentation.ExpectedNonce!, ct);
+                presentation.ExpectedAudience!, presentation.ExpectedNonce!, ct,
+                issuerRecoveryAddress: key.BlockchainAccountId);
         }
 
-        return _sdJwtService.VerifyPresentationAsync(presentation.Raw, key.PublicKey, key.Algorithm, ct);
+        return _sdJwtService.VerifyPresentationAsync(
+            presentation.Raw, key.PublicKey, key.Algorithm, ct,
+            issuerRecoveryAddress: key.BlockchainAccountId);
     }
 
     /// <summary>

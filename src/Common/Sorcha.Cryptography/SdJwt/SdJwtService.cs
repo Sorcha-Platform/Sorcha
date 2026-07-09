@@ -249,7 +249,8 @@ public class SdJwtService : ISdJwtService
         string rawToken,
         byte[] issuerPublicKey,
         string algorithm,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? issuerRecoveryAddress = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rawToken);
         ArgumentNullException.ThrowIfNull(issuerPublicKey);
@@ -279,7 +280,7 @@ public class SdJwtService : ISdJwtService
             var signingInput = $"{jwtSegments[0]}.{jwtSegments[1]}";
             var signatureBytes = Base64UrlDecode(jwtSegments[2]);
 
-            if (!Verify(Encoding.UTF8.GetBytes(signingInput), signatureBytes, issuerPublicKey, algorithm))
+            if (!Verify(Encoding.UTF8.GetBytes(signingInput), signatureBytes, issuerPublicKey, algorithm, issuerRecoveryAddress))
             {
                 AddError(result, SdJwtErrorKind.SignatureInvalid, "Invalid signature");
                 return Task.FromResult(result);
@@ -388,11 +389,12 @@ public class SdJwtService : ISdJwtService
         string rawPresentation,
         byte[] issuerPublicKey,
         string algorithm,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? issuerRecoveryAddress = null)
     {
         // A presentation is verified the same way as a token —
         // only the selected disclosures are present, so only those claims are extracted.
-        return VerifyTokenAsync(rawPresentation, issuerPublicKey, algorithm, cancellationToken);
+        return VerifyTokenAsync(rawPresentation, issuerPublicKey, algorithm, cancellationToken, issuerRecoveryAddress);
     }
 
     /// <inheritdoc />
@@ -475,7 +477,8 @@ public class SdJwtService : ISdJwtService
         string algorithm,
         string expectedAudience,
         string expectedNonce,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? issuerRecoveryAddress = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rawPresentation);
         ArgumentNullException.ThrowIfNull(issuerPublicKey);
@@ -513,7 +516,7 @@ public class SdJwtService : ISdJwtService
         var presentationPrefix = string.Join("~", presentationPartsWithoutKbJwt) + "~";
 
         // First verify the issuer JWT + disclosures
-        var result = await VerifyTokenAsync(presentationPrefix, issuerPublicKey, algorithm, cancellationToken);
+        var result = await VerifyTokenAsync(presentationPrefix, issuerPublicKey, algorithm, cancellationToken, issuerRecoveryAddress);
         if (!result.IsValid)
             return result;
 
@@ -1040,7 +1043,8 @@ public class SdJwtService : ISdJwtService
         throw new NotSupportedException($"Unsupported signing algorithm: {algorithm}");
     }
 
-    private static bool Verify(byte[] data, byte[] signature, byte[] publicKey, string algorithm)
+    private static bool Verify(byte[] data, byte[] signature, byte[] publicKey, string algorithm,
+        string? issuerRecoveryAddress = null)
     {
         var alg = algorithm.ToUpperInvariant();
 
@@ -1058,6 +1062,13 @@ public class SdJwtService : ISdJwtService
 
         if (alg is "ES256K" or "SECP256K1")
         {
+            // Address-form issuer (did:pkh / address-form did:ethr, Feature 178): no published key —
+            // verify the ES256K signature by public-key recovery against the DID's Ethereum address.
+            if (!string.IsNullOrEmpty(issuerRecoveryAddress))
+            {
+                return Secp256k1Verifier.VerifyByAddressStatic(data, signature, issuerRecoveryAddress);
+            }
+
             // secp256k1 is not reliably supported by System.Security.Cryptography.ECDsa on Windows/WASM,
             // so verification is delegated to the pure-managed BouncyCastle primitive. The public key is
             // the 65-byte SEC1 uncompressed point produced by the issuer-key resolver for secp256k1.

@@ -442,6 +442,14 @@
         <member name="P:Sorcha.Blueprint.Engine.Credentials.IssuerKeyResolution.X5cChain">
             <summary>The leaf-first X.509 certificate chain (DER) the credential carried, when present.</summary>
         </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.IssuerKeyResolution.BlockchainAccountId">
+            <summary>
+            The CAIP-10 blockchain account id (e.g. <c>eip155:1:0x…</c>) of an <b>address-form</b> issuer
+            (<c>did:pkh</c> / address-form <c>did:ethr</c>, Feature 178) that publishes no key. When set,
+            <see cref="P:Sorcha.Blueprint.Engine.Credentials.IssuerKeyResolution.PublicKey"/> is empty and <see cref="P:Sorcha.Blueprint.Engine.Credentials.IssuerKeyResolution.Algorithm"/> is <c>"ES256K"</c>; the issuer
+            signature is verified by public-key recovery against this address rather than a key-match.
+            </summary>
+        </member>
         <member name="T:Sorcha.Blueprint.Engine.Credentials.IIssuerKeyResolver">
             <summary>
             Engine-local seam resolving the issuer public key for a raw SD-JWT VC (feature 135).
@@ -810,6 +818,14 @@
         </member>
         <member name="P:Sorcha.Blueprint.Engine.Credentials.TrustDecision.EstablishedAssurance">
             <summary>The assurance level actually established.</summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.TrustDecision.ReducedAssurance">
+            <summary>
+            True when the credential is accepted at reduced assurance (a Warn): the signature verified but
+            no trust source vouched, and the policy opted into <c>WarnOnUnlistedVerifiedIssuer</c>. Consumers
+            that treat <see cref="P:Sorcha.Blueprint.Engine.Credentials.TrustDecision.IsTrusted"/> as "accept" MUST honour this to distinguish a Warn from a
+            full-trust Pass (feature 177).
+            </summary>
         </member>
         <member name="P:Sorcha.Blueprint.Engine.Credentials.TrustDecision.DecidingSources">
             <summary>Which source(s) vouched for the issuer.</summary>
