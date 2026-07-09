@@ -13,8 +13,8 @@ user-story task. Line numbers in referenced files are indicative (see research.m
 
 ## Phase 1: Setup (shared infrastructure)
 
-- [ ] T001 Create new pure-managed project `src/Common/Sorcha.Cryptography.Secp256k1/Sorcha.Cryptography.Secp256k1.csproj` (net10.0, C# 14, nullable enabled, MIT SPDX header policy) with a single `<PackageReference Include="BouncyCastle.Cryptography" />`; add it to the solution.
-- [ ] T002 Create test project `tests/Sorcha.Cryptography.Secp256k1.Tests/Sorcha.Cryptography.Secp256k1.Tests.csproj` (xUnit v3 + FluentAssertions, per repo test conventions); add to solution and reference the new project.
+- [x] T001 Create new pure-managed project `src/Common/Sorcha.Cryptography.Secp256k1/Sorcha.Cryptography.Secp256k1.csproj` (net10.0, C# 14, nullable enabled, MIT SPDX header policy) with a single `<PackageReference Include="BouncyCastle.Cryptography" />`; add it to the solution.
+- [x] T002 Create test project `tests/Sorcha.Cryptography.Secp256k1.Tests/Sorcha.Cryptography.Secp256k1.Tests.csproj` (xUnit v3 + FluentAssertions, per repo test conventions); add to solution and reference the new project.
 - [ ] T003 [P] Add `ProjectReference` → `Sorcha.Cryptography.Secp256k1` to each consumer csproj: `src/Common/Sorcha.Cryptography/Sorcha.Cryptography.csproj`, `src/Common/Sorcha.ServiceClients.Http/Sorcha.ServiceClients.Http.csproj`, `src/Common/Sorcha.Verifier.Engine/Sorcha.Verifier.Engine.csproj`, `src/Services/Sorcha.Blueprint.Service/Sorcha.Blueprint.Service.csproj`. Confirm `Sorcha.Verifier.Engine` still builds native-dep-free (WASM-safe).
 
 **Checkpoint**: solution builds; the new leaf project is referenced by all four consumers.
@@ -28,15 +28,15 @@ phase is complete.
 
 ### Primitive — tests first
 
-- [ ] T004 [P] KAT tests for `ISecp256k1Verifier` in `tests/Sorcha.Cryptography.Secp256k1.Tests/Secp256k1VerifierTests.cs`: valid JOSE ES256K vector → true; tampered signature → false; malformed key/signature → false (never throws).
-- [ ] T005 [P] Round-trip tests for `Secp256k1Jwk` in `tests/Sorcha.Cryptography.Secp256k1.Tests/Secp256k1JwkTests.cs`: JWK(x,y) parse/build; 33-byte compressed-point decompress → (x,y); off-curve point rejected.
-- [ ] T006 [P] KAT tests for keccak + address in `tests/Sorcha.Cryptography.Secp256k1.Tests/EthereumAddressTests.cs`: keccak256 known vector; known private-key → EIP-55 checksummed address.
+- [x] T004 [P] KAT tests for `ISecp256k1Verifier` in `tests/Sorcha.Cryptography.Secp256k1.Tests/Secp256k1VerifierTests.cs`: valid JOSE ES256K vector → true; tampered signature → false; malformed key/signature → false (never throws).
+- [x] T005 [P] Round-trip tests for `Secp256k1Jwk` in `tests/Sorcha.Cryptography.Secp256k1.Tests/Secp256k1JwkTests.cs`: JWK(x,y) parse/build; 33-byte compressed-point decompress → (x,y); off-curve point rejected.
+- [x] T006 [P] KAT tests for keccak + address in `tests/Sorcha.Cryptography.Secp256k1.Tests/EthereumAddressTests.cs`: keccak256 known vector; known private-key → EIP-55 checksummed address.
 
 ### Primitive — implementation
 
-- [ ] T007 [P] Implement `src/Common/Sorcha.Cryptography.Secp256k1/Secp256k1PublicKey.cs` + `Secp256k1Jwk.cs` (parse/build JOSE EC JWK `crv:secp256k1`; decompress compressed point; on-curve validation).
-- [ ] T008 Implement `src/Common/Sorcha.Cryptography.Secp256k1/ISecp256k1Verifier.cs` + `Secp256k1Verifier.cs` (BouncyCastle ECDSA over SHA-256, 64-byte r‖s, accept high/low-s; return false on malformed input).
-- [ ] T009 [P] Implement `src/Common/Sorcha.Cryptography.Secp256k1/Keccak256.cs` + `EthereumAddress.cs` (BouncyCastle `KeccakDigest(256)`; keccak→last-20→EIP-55). Foundation only — no Phase 1 runtime caller.
+- [x] T007 [P] Implement `src/Common/Sorcha.Cryptography.Secp256k1/Secp256k1PublicKey.cs` + `Secp256k1Jwk.cs` (parse/build JOSE EC JWK `crv:secp256k1`; decompress compressed point; on-curve validation).
+- [x] T008 Implement `src/Common/Sorcha.Cryptography.Secp256k1/ISecp256k1Verifier.cs` + `Secp256k1Verifier.cs` (BouncyCastle ECDSA over SHA-256, 64-byte r‖s, accept high/low-s; return false on malformed input).
+- [x] T009 [P] Implement `src/Common/Sorcha.Cryptography.Secp256k1/Keccak256.cs` + `EthereumAddress.cs` (BouncyCastle `KeccakDigest(256)`; keccak→last-20→EIP-55). Foundation only — no Phase 1 runtime caller.
 
 ### Offline DID resolvers — tests first
 
