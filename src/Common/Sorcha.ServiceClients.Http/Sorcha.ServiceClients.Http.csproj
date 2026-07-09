@@ -22,6 +22,7 @@
     <!-- Feature 114: citizen wallet DTO surface -->
     <ProjectReference Include="..\Sorcha.CitizenWallet.Abstractions\Sorcha.CitizenWallet.Abstractions.csproj" />
     <ProjectReference Include="..\Sorcha.Serialization\Sorcha.Serialization.csproj" />
+    <ProjectReference Include="..\Sorcha.Cryptography.Secp256k1\Sorcha.Cryptography.Secp256k1.csproj" />
   </ItemGroup>
 
   <ItemGroup>

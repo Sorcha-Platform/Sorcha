@@ -40,14 +40,14 @@ phase is complete.
 
 ### Offline DID resolvers — tests first
 
-- [ ] T010 [P] Test in `tests/Sorcha.ServiceClients.Tests/Did/KeyDidResolverSecp256k1Tests.cs`: `did:key`(secp256k1, multicodec `0xe701`) resolves to a VM with `type:"JsonWebKey2020"` and `publicKeyJwk` `crv:"secp256k1"` (x,y present); listed in `assertionMethod`.
-- [ ] T011 [P] Test in `tests/Sorcha.ServiceClients.Tests/Did/JwkDidResolverTests.cs`: `did:jwk` resolves secp256k1, P-256, and Ed25519 JWKs to the expected VM; malformed identifier → null.
+- [x] T010 [P] Test in `tests/Sorcha.ServiceClients.Tests/Did/KeyDidResolverSecp256k1Tests.cs`: `did:key`(secp256k1, multicodec `0xe701`) resolves to a VM with `type:"JsonWebKey2020"` and `publicKeyJwk` `crv:"secp256k1"` (x,y present); listed in `assertionMethod`.
+- [x] T011 [P] Test in `tests/Sorcha.ServiceClients.Tests/Did/JwkDidResolverTests.cs`: `did:jwk` resolves secp256k1, P-256, and Ed25519 JWKs to the expected VM; malformed identifier → null.
 
 ### Offline DID resolvers — implementation
 
-- [ ] T012 Add `0xe701` constants + `BuildSecp256k1Document` (emitting `publicKeyJwk`, 33-byte key length check) to `src/Common/Sorcha.ServiceClients.Http/Did/KeyDidResolver.cs` (delegating point→JWK to `Secp256k1Jwk`).
-- [ ] T013 Create `src/Common/Sorcha.ServiceClients.Http/Did/JwkDidResolver.cs` (`CanResolve("jwk")`, decode base64url JWK → single VM, all curves).
-- [ ] T014 Register `JwkDidResolver` in `src/Common/Sorcha.ServiceClients.Http/Extensions/HttpServiceCollectionExtensions.cs` `AddDidResolvers`.
+- [x] T012 Add `0xe701` constants + `BuildSecp256k1Document` (emitting `publicKeyJwk`, 33-byte key length check) to `src/Common/Sorcha.ServiceClients.Http/Did/KeyDidResolver.cs` (delegating point→JWK to `Secp256k1Jwk`).
+- [x] T013 Create `src/Common/Sorcha.ServiceClients.Http/Did/JwkDidResolver.cs` (`CanResolve("jwk")`, decode base64url JWK → single VM, all curves).
+- [x] T014 Register `JwkDidResolver` in `src/Common/Sorcha.ServiceClients.Http/Extensions/HttpServiceCollectionExtensions.cs` `AddDidResolvers`.
 
 **Checkpoint**: primitive KATs green; both resolvers resolve offline to `publicKeyJwk` VMs. Foundation ready.
 
