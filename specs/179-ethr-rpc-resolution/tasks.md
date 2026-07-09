@@ -24,7 +24,7 @@ Multi-project .NET solution; source under `src/…`, tests under `tests/Sorcha.S
 
 ## Phase 1: Setup
 
-- [ ] T001 Create `src/Common/Sorcha.ServiceClients.Http/Evm/` and confirm `Sorcha.ServiceClients.Http` + `tests/Sorcha.ServiceClients.Tests` build green as the baseline. No new project, no new package (BouncyCastle/Keccak via the existing `Sorcha.Cryptography.Secp256k1` reference; `System.Numerics` in-box).
+- [X] T001 Create `src/Common/Sorcha.ServiceClients.Http/Evm/` and confirm `Sorcha.ServiceClients.Http` + `tests/Sorcha.ServiceClients.Tests` build green as the baseline. No new project, no new package (BouncyCastle/Keccak via the existing `Sorcha.Cryptography.Secp256k1` reference; `System.Numerics` in-box).
 
 ---
 
@@ -34,12 +34,12 @@ Multi-project .NET solution; source under `src/…`, tests under `tests/Sorcha.S
 
 **⚠️ CRITICAL**: ERC-1056 reads are impossible until the ABI machinery and RPC transport are correct.
 
-- [ ] T002 [P] `AbiCodec` KAT tests in `tests/Sorcha.ServiceClients.Tests/Evm/AbiCodecTests.cs`: anchor with `EventTopic("Transfer(address,address,uint256)") == 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef` (canonical ERC-20); assert stable `Selector("changed(address)")` / `Selector("identityOwner(address)")`; compute the three ERC-1056 event topics from their signature strings; address/uint/bytes32 word round-trips; `Pad32Topic`. References `AbiCodec` (not implemented → FAIL).
-- [ ] T003 [P] `EvmRpcClient` tests in `tests/Sorcha.ServiceClients.Tests/Evm/EvmRpcClientTests.cs` (mocked `HttpMessageHandler`): unconfigured chain → `NotConfigured` with **no** HTTP call; private/reserved host → `Error` (SSRF); timeout → `Error`; non-200 / JSON-RPC `error` member → `Error`; canned 200 result → `Ok(hex)`. FAIL.
-- [ ] T004 Implement `Evm/AbiCodec.cs` — `Selector`/`EventTopic` via `Keccak256`; `EncodeAddress`/`DecodeAddress`/`DecodeUInt`(`BigInteger`)/`DecodeBytes32`/`DecodeBytes`/`Pad32Topic`. Make T002 pass.
-- [ ] T005 Implement `Evm/EvmRpcOptions.cs` (bind `DidResolver:Ethr:Rpc:{chainId}`, `…:RegistryAddress:{chainId}` default `0xdca7ef03e98e0dc2b855be647c39abe984fcf21b`, `…:MaxHistoryHops` default 128, shared `DidResolver:AllowPrivateAddresses`) + the 3-outcome result types `EvmCallResult`/`EvmLogsResult` (`NotConfigured` | `Error` | `Ok`).
-- [ ] T006 Implement `Evm/IEvmRpcClient.cs` + `Evm/EvmRpcClient.cs` — `eth_call`/`eth_getLogs` over `HttpClient`, per-chain URL from options, SSRF guard (extract `WebDidResolver.IsPrivateOrReservedAddress` to a shared helper), 5s timeout; every failure → `Error` (never throws). Make T003 pass.
-- [ ] T007 Run `dotnet test tests/Sorcha.ServiceClients.Tests` — foundational green. **Commit** ("feat: [179] ABI codec + read-only EVM RPC client (SSRF-guarded, 3-outcome)").
+- [X] T002 [P] `AbiCodec` KAT tests in `tests/Sorcha.ServiceClients.Tests/Evm/AbiCodecTests.cs`: anchor with `EventTopic("Transfer(address,address,uint256)") == 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef` (canonical ERC-20); assert stable `Selector("changed(address)")` / `Selector("identityOwner(address)")`; compute the three ERC-1056 event topics from their signature strings; address/uint/bytes32 word round-trips; `Pad32Topic`. References `AbiCodec` (not implemented → FAIL).
+- [X] T003 [P] `EvmRpcClient` tests in `tests/Sorcha.ServiceClients.Tests/Evm/EvmRpcClientTests.cs` (mocked `HttpMessageHandler`): unconfigured chain → `NotConfigured` with **no** HTTP call; private/reserved host → `Error` (SSRF); timeout → `Error`; non-200 / JSON-RPC `error` member → `Error`; canned 200 result → `Ok(hex)`. FAIL.
+- [X] T004 Implement `Evm/AbiCodec.cs` — `Selector`/`EventTopic` via `Keccak256`; `EncodeAddress`/`DecodeAddress`/`DecodeUInt`(`BigInteger`)/`DecodeBytes32`/`DecodeBytes`/`Pad32Topic`. Make T002 pass.
+- [X] T005 Implement `Evm/EvmRpcOptions.cs` (bind `DidResolver:Ethr:Rpc:{chainId}`, `…:RegistryAddress:{chainId}` default `0xdca7ef03e98e0dc2b855be647c39abe984fcf21b`, `…:MaxHistoryHops` default 128, shared `DidResolver:AllowPrivateAddresses`) + the 3-outcome result types `EvmCallResult`/`EvmLogsResult` (`NotConfigured` | `Error` | `Ok`).
+- [X] T006 Implement `Evm/IEvmRpcClient.cs` + `Evm/EvmRpcClient.cs` — `eth_call`/`eth_getLogs` over `HttpClient`, per-chain URL from options, SSRF guard (extract `WebDidResolver.IsPrivateOrReservedAddress` to a shared helper), 5s timeout; every failure → `Error` (never throws). Make T003 pass.
+- [X] T007 Run `dotnet test tests/Sorcha.ServiceClients.Tests` — foundational green. **Commit** ("feat: [179] ABI codec + read-only EVM RPC client (SSRF-guarded, 3-outcome)").
 
 **Checkpoint**: Selectors/topics are correct and RPC calls resolve to `NotConfigured`/`Error`/`Ok`.
 
