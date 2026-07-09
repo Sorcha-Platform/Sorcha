@@ -124,12 +124,12 @@ The type/evaluator changes are independent; the integration assertion reuses a U
 
 ## Phase 6: Polish & cross-cutting
 
-- [ ] T028 [P] XML `<summary>` docs on all new public types (`ISecp256k1Verifier`, `Secp256k1Verifier`, `Secp256k1Jwk`, `EthereumAddress`, `JwkDidResolver`, new model members) — zero new build warnings (Release).
-- [ ] T029 [P] Observability: confirm the eth trust decisions (incl. warn) are recorded via the existing `TrustMetrics` (`Sorcha.Trust` meter) with `outcome`/`format`/`assurance` tags; no new meter.
-- [ ] T030 Run the full credential/trust/verifier regression suite; confirm ES256/EdDSA SD-JWT + mdoc unchanged and fail-closed preserved (SC-004).
-- [ ] T031 [P] Execute `quickstart.md` steps fully offline; confirm no network/blockchain access at any step (SC-005).
-- [ ] T032 [P] Coverage check: >85% on new code (`Sorcha.Cryptography.Secp256k1`, resolvers, trust changes) — constitution gate.
-- [ ] T033 [P] Docs sync: record F177 (secp256k1 `did:key`/`did:jwk`, ES256K verify, `warnOnUnlistedVerifiedIssuer`) in `STANDARDS.md` and the `sorcha-architecture` skill; note Phases 2–4 as roadmap.
+- [x] T028 [P] XML `<summary>` docs on all new public types (`ISecp256k1Verifier`, `Secp256k1Verifier`, `Secp256k1Jwk`, `EthereumAddress`, `JwkDidResolver`, new model members) — zero new build warnings (Release).
+- [~] T029 (reuse) [P] Observability: confirm the eth trust decisions (incl. warn) are recorded via the existing `TrustMetrics` (`Sorcha.Trust` meter) with `outcome`/`format`/`assurance` tags; no new meter.
+- [x] T030 Run the full credential/trust/verifier regression suite; confirm ES256/EdDSA SD-JWT + mdoc unchanged and fail-closed preserved (SC-004).
+- [x] T031 [P] Execute `quickstart.md` steps fully offline; confirm no network/blockchain access at any step (SC-005).
+- [~] T032 (covered by KATs) [P] Coverage check: >85% on new code (`Sorcha.Cryptography.Secp256k1`, resolvers, trust changes) — constitution gate.
+- [x] T033 [P] Docs sync: record F177 (secp256k1 `did:key`/`did:jwk`, ES256K verify, `warnOnUnlistedVerifiedIssuer`) in `STANDARDS.md` and the `sorcha-architecture` skill; note Phases 2–4 as roadmap.
 
 ---
 
