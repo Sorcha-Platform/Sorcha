@@ -108,9 +108,9 @@ network calls; `did:pkh` unchanged.
 
 - [X] T021 [P] Update `STANDARDS.md` — `did:ethr` row → "offline default doc (F178) **+ on-chain current document via read-only EVM RPC (F179)**"; note read-only, server-side.
 - [X] T022 [P] Update the `verifiable-credentials` skill — append a Phase-2b note (on-chain `did:ethr` resolution, server-only, fail-closed, `IEvmRpcClient`/`Erc1056Registry`).
-- [ ] T023 Update memory: `ethereum-vc-interop-initiative.md` (Phase 2b status + PR#) and the MEMORY.md Active-work line, per the frontmatter convention.
-- [ ] T024 Whole-solution Release build (zero new warnings) + full touched-suite regression: `Sorcha.ServiceClients.Tests`, `Sorcha.Verifier.Tests`, Blueprint engine/service tests. All green; `did:pkh` + Phase-1/2 unaffected.
-- [ ] T025 Run `specs/179-ethr-rpc-resolution/quickstart.md` validation (the three `dotnet test` invocations) as the acceptance gate. **Commit** ("docs: [179] standards, skill, memory + regression gate").
+- [X] T023 Update memory: `ethereum-vc-interop-initiative.md` (Phase 2b status + PR#) and the MEMORY.md Active-work line, per the frontmatter convention.
+- [X] T024 Whole-solution Release build (zero new warnings) + full touched-suite regression: `Sorcha.ServiceClients.Tests`, `Sorcha.Verifier.Tests`, Blueprint engine/service tests. All green; `did:pkh` + Phase-1/2 unaffected.
+- [X] T025 Run `specs/179-ethr-rpc-resolution/quickstart.md` validation (the three `dotnet test` invocations) as the acceptance gate. **Commit** ("docs: [179] standards, skill, memory + regression gate").
 
 ---
 
