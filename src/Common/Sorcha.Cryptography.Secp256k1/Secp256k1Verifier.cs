@@ -16,6 +16,16 @@ public interface ISecp256k1Verifier
     /// against <paramref name="key"/>. Returns <c>false</c> — never throws — for any malformed input.
     /// </summary>
     bool Verify(ReadOnlySpan<byte> message, ReadOnlySpan<byte> joseSignature, Secp256k1PublicKey key);
+
+    /// <summary>
+    /// Verify a JOSE ES256K signature by <b>public-key recovery</b> against an Ethereum address
+    /// (address-form DIDs — <c>did:pkh</c> / address-form <c>did:ethr</c> — where no public key is
+    /// published). Recovers the candidate signing keys, derives each one's EIP-55 address, and returns
+    /// <c>true</c> iff any matches <paramref name="expectedAddress"/> case-insensitively.
+    /// <paramref name="expectedAddress"/> may be a bare <c>0x…</c> address or a CAIP-10
+    /// <c>eip155:{chainId}:0x…</c> account id. Returns <c>false</c> — never throws — on any malformed input.
+    /// </summary>
+    bool VerifyByAddress(ReadOnlySpan<byte> message, ReadOnlySpan<byte> joseSignature, string expectedAddress);
 }
 
 /// <summary>
@@ -30,6 +40,77 @@ public sealed class Secp256k1Verifier : ISecp256k1Verifier
     /// <inheritdoc />
     public bool Verify(ReadOnlySpan<byte> message, ReadOnlySpan<byte> joseSignature, Secp256k1PublicKey key)
         => VerifyEs256k(message, joseSignature, key);
+
+    /// <inheritdoc />
+    public bool VerifyByAddress(ReadOnlySpan<byte> message, ReadOnlySpan<byte> joseSignature, string expectedAddress)
+        => VerifyByAddressStatic(message, joseSignature, expectedAddress);
+
+    /// <summary>
+    /// Static public-key-recovery verification entry point for the static call sites
+    /// (e.g. <c>SdJwtService.Verify</c>). See <see cref="ISecp256k1Verifier.VerifyByAddress"/>.
+    /// </summary>
+    public static bool VerifyByAddressStatic(
+        ReadOnlySpan<byte> message, ReadOnlySpan<byte> joseSignature, string expectedAddress)
+    {
+        var target = NormalizeAddress(expectedAddress);
+        if (target is null)
+        {
+            return false;
+        }
+
+        foreach (var key in Secp256k1Recovery.TryRecover(message, joseSignature))
+        {
+            var recovered = NormalizeAddress(EthereumAddress.FromPublicKey(key));
+            if (recovered is not null && string.Equals(recovered, target, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Normalise an Ethereum address to 40 lowercase hex chars (no <c>0x</c>), tolerating a CAIP-10
+    /// <c>eip155:{chainId}:0x…</c> prefix and EIP-55 checksummed casing. Returns null if not a valid address.
+    /// </summary>
+    private static string? NormalizeAddress(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var addr = value.Trim();
+
+        // Strip any CAIP-10 namespace/chain prefix (eip155:1:0x…) — keep the trailing account segment.
+        var colon = addr.LastIndexOf(':');
+        if (colon >= 0)
+        {
+            addr = addr[(colon + 1)..];
+        }
+
+        if (addr.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+        {
+            addr = addr[2..];
+        }
+
+        if (addr.Length != 40)
+        {
+            return null;
+        }
+
+        foreach (var c in addr)
+        {
+            var isHex = c is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
+            if (!isHex)
+            {
+                return null;
+            }
+        }
+
+        return addr.ToLowerInvariant();
+    }
 
     /// <summary>
     /// Static verification entry point for the static call sites (e.g. <c>SdJwtService.Verify</c>).

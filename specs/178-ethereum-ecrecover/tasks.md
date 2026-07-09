@@ -25,8 +25,8 @@ added — Phase-1 gotcha).
 
 **Purpose**: Confirm the Phase-1 wiring this feature extends is in place; no new project is created.
 
-- [ ] T001 Verify `src/Common/Sorcha.Cryptography.Secp256k1` is referenced by `Sorcha.Cryptography`, `Sorcha.ServiceClients.Http`, `Sorcha.Verifier.Engine`, and `Sorcha.Blueprint.Service` (Phase-1 ProjectReferences already exist — confirm, add none new); confirm `tests/Sorcha.Cryptography.Secp256k1.Tests` builds green as the baseline.
-- [ ] T002 [P] Locate the DID-resolver test project (where `JwkDidResolver`/`KeyDidResolver` are tested) and the Verifier engine test project (`Sorcha.Verifier.Tests`, InternalsVisibleTo) and the Blueprint issuer-key-resolver test project; record their paths for the phases below.
+- [X] T001 Verify `src/Common/Sorcha.Cryptography.Secp256k1` is referenced by `Sorcha.Cryptography`, `Sorcha.ServiceClients.Http`, `Sorcha.Verifier.Engine`, and `Sorcha.Blueprint.Service` (Phase-1 ProjectReferences already exist — confirm, add none new); confirm `tests/Sorcha.Cryptography.Secp256k1.Tests` builds green as the baseline.
+- [X] T002 [P] Locate the DID-resolver test project (where `JwkDidResolver`/`KeyDidResolver` are tested) and the Verifier engine test project (`Sorcha.Verifier.Tests`, InternalsVisibleTo) and the Blueprint issuer-key-resolver test project; record their paths for the phases below.
 
 ---
 
@@ -36,12 +36,12 @@ added — Phase-1 gotcha).
 
 **⚠️ CRITICAL**: No user story can be verified end-to-end until the primitive recovers correctly.
 
-- [ ] T003 [P] Add ES256K ecrecover **known-answer test** fixtures to `tests/Sorcha.Cryptography.Secp256k1.Tests`: two (private key, message) vectors whose signatures recover under recid 0 and recid 1 respectively, each asserting the recovered key's `EthereumAddress.FromPublicKey` equals the vector's known address. Tests reference `Secp256k1Recovery.TryRecover` (not yet implemented → FAIL).
-- [ ] T004 [P] Add `VerifyByAddress` unit tests (same test project): true for the correct address in **both** lowercase and EIP-55-checksummed form and for a CAIP-10 `eip155:…:0x…`; false for a different address, a tampered signature, a 63/65-byte signature, and a non-hex address. References `Secp256k1Verifier.VerifyByAddress` (not yet implemented → FAIL).
-- [ ] T005 Implement `Secp256k1Recovery.TryRecover(message, joseSignature)` in `src/Common/Sorcha.Cryptography.Secp256k1/Secp256k1Recovery.cs` — SEC1 §4.1.6 recovery for recid 0 and 1 (SHA-256 digest, reconstruct R from r, `Q = r⁻¹(sR − eG)` via BouncyCastle curve math), returning valid non-infinity candidates; never throws. Make T003 pass.
-- [ ] T006 Implement `VerifyByAddress` on `ISecp256k1Verifier`/`Secp256k1Verifier` + a static entry point in `src/Common/Sorcha.Cryptography.Secp256k1/Secp256k1Verifier.cs` (recover → `EthereumAddress.FromPublicKey` → case-insensitive match; extract trailing `0x{40hex}` from a CAIP-10 input). Make T004 pass. Verification-only — no signing API.
-- [ ] T007 Add `string? BlockchainAccountId` to `VerificationMethod` in `src/Common/Sorcha.ServiceClients.Http/Did/DidDocument.cs` (`[JsonPropertyName("blockchainAccountId")]`, `JsonIgnore(WhenWritingNull)`); XML summary. Purely additive.
-- [ ] T008 Run `dotnet test tests/Sorcha.Cryptography.Secp256k1.Tests` — all KATs green. **Commit** ("feat: [178] ecrecover primitive + VerifyByAddress + blockchainAccountId field").
+- [X] T003 [P] Add ES256K ecrecover **known-answer test** fixtures to `tests/Sorcha.Cryptography.Secp256k1.Tests`: two (private key, message) vectors whose signatures recover under recid 0 and recid 1 respectively, each asserting the recovered key's `EthereumAddress.FromPublicKey` equals the vector's known address. Tests reference `Secp256k1Recovery.TryRecover` (not yet implemented → FAIL).
+- [X] T004 [P] Add `VerifyByAddress` unit tests (same test project): true for the correct address in **both** lowercase and EIP-55-checksummed form and for a CAIP-10 `eip155:…:0x…`; false for a different address, a tampered signature, a 63/65-byte signature, and a non-hex address. References `Secp256k1Verifier.VerifyByAddress` (not yet implemented → FAIL).
+- [X] T005 Implement `Secp256k1Recovery.TryRecover(message, joseSignature)` in `src/Common/Sorcha.Cryptography.Secp256k1/Secp256k1Recovery.cs` — SEC1 §4.1.6 recovery for recid 0 and 1 (SHA-256 digest, reconstruct R from r, `Q = r⁻¹(sR − eG)` via BouncyCastle curve math), returning valid non-infinity candidates; never throws. Make T003 pass.
+- [X] T006 Implement `VerifyByAddress` on `ISecp256k1Verifier`/`Secp256k1Verifier` + a static entry point in `src/Common/Sorcha.Cryptography.Secp256k1/Secp256k1Verifier.cs` (recover → `EthereumAddress.FromPublicKey` → case-insensitive match; extract trailing `0x{40hex}` from a CAIP-10 input). Make T004 pass. Verification-only — no signing API.
+- [X] T007 Add `string? BlockchainAccountId` to `VerificationMethod` in `src/Common/Sorcha.ServiceClients.Http/Did/DidDocument.cs` (`[JsonPropertyName("blockchainAccountId")]`, `JsonIgnore(WhenWritingNull)`); XML summary. Purely additive.
+- [X] T008 Run `dotnet test tests/Sorcha.Cryptography.Secp256k1.Tests` — all KATs green. **Commit** ("feat: [178] ecrecover primitive + VerifyByAddress + blockchainAccountId field").
 
 **Checkpoint**: The primitive recovers addresses correctly and the DID model can carry an address.
 
