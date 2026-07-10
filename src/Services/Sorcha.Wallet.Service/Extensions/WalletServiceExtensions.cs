@@ -61,6 +61,9 @@ public static class WalletServiceExtensions
         services.AddScoped<KeyManagementService>();
         services.AddScoped<IKeyManagementService>(sp => sp.GetRequiredService<KeyManagementService>());
 
+        // Feature 180 — wallet auxiliary Ethereum identity (SIWE prove-control).
+        services.AddScoped<IEthereumIdentityService, EthereumIdentityService>();
+
         services.AddScoped<TransactionService>();
         services.AddScoped<ITransactionService>(sp => sp.GetRequiredService<TransactionService>());
 

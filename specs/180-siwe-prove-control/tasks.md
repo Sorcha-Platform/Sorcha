@@ -53,16 +53,16 @@ signer from the signature and confirm it equals the address and the challenge fi
 
 ### Tests for User Story 1 ⚠️ (write first, must FAIL)
 
-- [ ] T008 [P] [US1] `IKeyManagementService.DeriveSecp256k1KeyAtPathAsync` test (`Sorcha.Wallet.Core.Tests`): a known BIP39 seed → deterministic secp256k1 key at `m/44'/60'/0'/0/0`; its EIP-55 address is stable and matches an independently-derived NBitcoin address.
-- [ ] T009 [P] [US1] `EthereumIdentityService` tests (`Sorcha.Wallet.Core.Tests`, fake wallet repo + key mgmt): `GetAddressAsync` deterministic; `SignSiweAsync` returns `{ message, signature, address }` whose signer (via `RecoverFromDigest` over `Eip191`) equals the address; the private key is never in the result.
+- [X] T008 [P] [US1] `IKeyManagementService.DeriveSecp256k1KeyAtPathAsync` test (`Sorcha.Wallet.Core.Tests`): a known BIP39 seed → deterministic secp256k1 key at `m/44'/60'/0'/0/0`; its EIP-55 address is stable and matches an independently-derived NBitcoin address.
+- [X] T009 [P] [US1] `EthereumIdentityService` tests (`Sorcha.Wallet.Core.Tests`, fake wallet repo + key mgmt): `GetAddressAsync` deterministic; `SignSiweAsync` returns `{ message, signature, address }` whose signer (via `RecoverFromDigest` over `Eip191`) equals the address; the private key is never in the result.
 - [ ] T010 [P] [US1] Endpoint tests (`Sorcha.Wallet.Service.Tests`): `GET ethereum-address` returns the address; `POST siwe/sign` returns a message+signature; both require auth.
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Add `DeriveSecp256k1KeyAtPathAsync(seed, path)` to `IKeyManagementService` + `KeyManagementService` (NBitcoin derive → raw secp256k1 scalar + uncompressed pubkey; no `GenerateKeySet`/`WalletNetworks`). Make T008 pass.
-- [ ] T012 [US1] Implement `IEthereumIdentityService`/`EthereumIdentityService` in `Sorcha.Wallet.Core` (decrypt seed via the existing direct-master path, derive `m/44'/60'/0'/0/{index}`, `GetAddressAsync`, `SignPersonalMessageAsync`, `SignSiweAsync`; key never returned). Register in DI. Make T009 pass.
-- [ ] T013 [US1] Add `EthereumEndpoints.cs` to `Sorcha.Wallet.Service` — `GET …/ethereum-address`, `POST …/siwe/sign` (same auth as existing wallet ops; `.WithSummary`/`.WithDescription`); map in Program.cs. Make T010 pass.
-- [ ] T014 [US1] Run Wallet.Core + Wallet.Service suites — US1 green. **Commit** ("feat: [180] wallet Ethereum identity: address + SIWE sign (US1)").
+- [X] T011 [US1] Add `DeriveSecp256k1KeyAtPathAsync(seed, path)` to `IKeyManagementService` + `KeyManagementService` (NBitcoin derive → raw secp256k1 scalar + uncompressed pubkey; no `GenerateKeySet`/`WalletNetworks`). Make T008 pass.
+- [X] T012 [US1] Implement `IEthereumIdentityService`/`EthereumIdentityService` in `Sorcha.Wallet.Core` (decrypt seed via the existing direct-master path, derive `m/44'/60'/0'/0/{index}`, `GetAddressAsync`, `SignPersonalMessageAsync`, `SignSiweAsync`; key never returned). Register in DI. Make T009 pass.
+- [X] T013 [US1] Add `EthereumEndpoints.cs` to `Sorcha.Wallet.Service` — `GET …/ethereum-address`, `POST …/siwe/sign` (same auth as existing wallet ops; `.WithSummary`/`.WithDescription`); map in Program.cs. Make T010 pass.
+- [X] T014 [US1] Run Wallet.Core + Wallet.Service suites — US1 green. **Commit** ("feat: [180] wallet Ethereum identity: address + SIWE sign (US1)").
 
 **Checkpoint**: A wallet exposes its ETH address and produces a verifiable SIWE prove-control signature end-to-end.
 
@@ -83,7 +83,7 @@ freshness/domain/nonce checks — fail-closed.
 ### Implementation for User Story 2
 
 - [X] T017 [US2] Implement `Siwe/SiweVerifier` (+ `SiweValidationOptions`/`SiweVerificationResult`) in the primitive: `TryParse` → `Eip191` digest → `RecoverFromDigest` (recId=v-27) → address-match → nonce/domain/window; never throws. Make T015 pass.
-- [ ] T018 [US2] Add `POST /api/v1/siwe/verify` to `EthereumEndpoints.cs` (delegates to `SiweVerifier`). Make T016 pass.
+- [X] T018 [US2] Add `POST /api/v1/siwe/verify` to `EthereumEndpoints.cs` (delegates to `SiweVerifier`). Make T016 pass.
 - [X] T019 [US2] Run Secp256k1 + Wallet.Service suites — US2 green. **Commit** ("feat: [180] SIWE verification / Sorcha as relying party (US2)").
 
 **Checkpoint**: Sorcha accepts genuine SIWE proofs and rejects tampered/stale/mismatched ones.
@@ -99,13 +99,13 @@ signs a raw digest; the wallet's primary identity is unchanged.
 
 ### Tests for User Story 3 ⚠️ (write first, must FAIL / then confirm)
 
-- [ ] T020 [P] [US3] Transaction-guard test (`Sorcha.Wallet.Core.Tests`): a message that decodes as an RLP transaction (legacy list `0xc0..0xff` + field shape, and a typed-tx `0x01/0x02` envelope) → `SignPersonalMessageAsync`/`SignSiweAsync` refuse (throw/rejected), no signature produced.
-- [ ] T021 [P] [US3] No-leak / no-raw-digest test: the service surface exposes no method to sign an arbitrary 32-byte digest or to return the private key; `SiweSignResult` contains no key material.
-- [ ] T022 [P] [US3] Primary-algorithm-unchanged regression: a wallet's existing derive/sign/address for its primary algorithm is identical before/after (no `WalletNetworks` member added).
+- [X] T020 [P] [US3] Transaction-guard test (`Sorcha.Wallet.Core.Tests`): a message that decodes as an RLP transaction (legacy list `0xc0..0xff` + field shape, and a typed-tx `0x01/0x02` envelope) → `SignPersonalMessageAsync`/`SignSiweAsync` refuse (throw/rejected), no signature produced.
+- [X] T021 [P] [US3] No-leak / no-raw-digest test: the service surface exposes no method to sign an arbitrary 32-byte digest or to return the private key; `SiweSignResult` contains no key material.
+- [X] T022 [P] [US3] Primary-algorithm-unchanged regression: a wallet's existing derive/sign/address for its primary algorithm is identical before/after (no `WalletNetworks` member added).
 
 ### Implementation for User Story 3
 
-- [ ] T023 [US3] Add the RLP-transaction guard to `EthereumIdentityService` (reject a message whose bytes decode as an RLP transaction); keep prove-control (EIP-191-prefixed) text always accepted. Make T020 pass; T021/T022 confirm. **Commit** ("feat: [180] prove-control confinement: transaction guard + no key export (US3)").
+- [X] T023 [US3] Add the RLP-transaction guard to `EthereumIdentityService` (reject a message whose bytes decode as an RLP transaction); keep prove-control (EIP-191-prefixed) text always accepted. Make T020 pass; T021/T022 confirm. **Commit** ("feat: [180] prove-control confinement: transaction guard + no key export (US3)").
 
 **Checkpoint**: All three stories pass; the ETH key cannot authorise a transaction or be exported.
 
