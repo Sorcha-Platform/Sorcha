@@ -10,6 +10,7 @@ using Microsoft.Extensions.Hosting;
 using Sorcha.Blueprint.Models.Credentials;
 using Sorcha.Haip.Service.Models;
 using Sorcha.Haip.Service.Services;
+using Sorcha.Verifier.Engine.Dcql;
 
 namespace Sorcha.Haip.Service.Endpoints;
 
@@ -19,6 +20,13 @@ namespace Sorcha.Haip.Service.Endpoints;
 /// </summary>
 public static class VerifierEndpoints
 {
+    /// <summary>
+    /// The DCQL credential-query id used by the single-ask verifier API (Feature 181 US1).
+    /// Multi-query requests (US2) carry caller-supplied ids; this surface asks for exactly
+    /// one credential, keyed by this constant on both the request and response sides.
+    /// </summary>
+    internal const string DefaultQueryId = "credential";
+
     /// <summary>
     /// Maps verifier endpoints under /api/v1/verifier.
     /// </summary>
@@ -47,7 +55,7 @@ public static class VerifierEndpoints
             .WithTags("HAIP Verifier")
             .WithSummary("Get the signed Request Object JWT")
             .WithDescription(
-                "Returns the signed JWT Request Object containing the presentation_definition, " +
+                "Returns the signed JWT Request Object containing the dcql_query, " +
                 "nonce, and response_mode. Wallets fetch this via the request_uri from the QR code.")
             .Produces(StatusCodes.Status503ServiceUnavailable)
             .Produces(StatusCodes.Status404NotFound)
@@ -138,6 +146,12 @@ public static class VerifierEndpoints
         // iss is the verifier's identifier — same value as client_id for now; spec 096
         // will swap this to the verifier's DID / x509_san_uri.
         var nowSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        // Feature 181 (T010) — the credential ask is expressed in DCQL (OpenID4VP 1.0 final);
+        // Presentation Exchange is retired. Built via the ONE shared builder (FR-008).
+        var dcqlQuery = DcqlRequestBuilder.Build(
+            [DcqlCredentialAsk.SdJwt(DefaultQueryId, request.CredentialType, request.RequiredClaims ?? [])]);
+
         var requestObjectPayload = new Dictionary<string, object>
         {
             ["iss"] = request.ClientId,
@@ -150,32 +164,7 @@ public static class VerifierEndpoints
             ["client_id"] = request.ClientId,
             ["nonce"] = request.Nonce,
             ["state"] = request.Id.ToString(),
-            ["presentation_definition"] = new Dictionary<string, object>
-            {
-                ["id"] = $"pd-{request.Id}",
-                ["input_descriptors"] = new[]
-                {
-                    new Dictionary<string, object>
-                    {
-                        ["id"] = request.CredentialType,
-                        ["format"] = new Dictionary<string, object>
-                        {
-                            ["vc+sd-jwt"] = new Dictionary<string, object>
-                            {
-                                ["alg"] = new[] { "ES256" }
-                            }
-                        },
-                        ["constraints"] = new Dictionary<string, object>
-                        {
-                            ["fields"] = (request.RequiredClaims ?? new List<string>()).Select(c =>
-                                new Dictionary<string, object>
-                                {
-                                    ["path"] = new[] { $"$.{c}" }
-                                }).ToArray()
-                        }
-                    }
-                }
-            }
+            ["dcql_query"] = JsonSerializer.SerializeToElement(dcqlQuery, DcqlJson.Options)
         };
 
         // HAIP 1.0 §6.1 and RFC 9101 §4 require the Request Object to be a signed JWT
@@ -218,15 +207,63 @@ public static class VerifierEndpoints
         if (string.IsNullOrWhiteSpace(vp_token))
             return Results.BadRequest(new { error = "vp_token is required" });
 
-        // Feature 135 — dispatch by vp_token shape: an mso_mdoc DCQL response is a JSON object
-        // ({ "<queryId>": ["<base64url(DeviceResponse)>"] }); an SD-JWT VC vp_token is a compact
-        // ~-delimited string. The mdoc path verifies via the unified ITrustEvaluator (x509-tenant /
-        // trustlist sources over the issuer x5chain).
+        // Feature 181 (T011) — presentation_submission is retired with Presentation Exchange;
+        // its presence marks a legacy-dialect wallet (FR-007).
+        if (!string.IsNullOrEmpty(presentation_submission))
+        {
+            HaipDialectMetrics.RecordRejection("direct-post");
+            return Results.BadRequest(new
+            {
+                error = DcqlErrorCodes.LegacyDialect,
+                error_description = "presentation_submission is the retired Presentation Exchange dialect; submit an OpenID4VP 1.0 object-keyed vp_token."
+            });
+        }
+
+        // Feature 181 (T011) — vp_token is ALWAYS the object-keyed envelope
+        // ({ "<queryId>": ["<presentation>"] }) for both formats. A bare compact string is the
+        // retired dialect (400 LEGACY_DIALECT); an entry keyed to an id the request never
+        // declared fails with DCQL_UNKNOWN_QUERY_ID (FR-003).
+        DcqlVpToken envelope;
+        try
+        {
+            envelope = DcqlVpToken.Parse(vp_token);
+        }
+        catch (DcqlParseException ex)
+        {
+            HaipDialectMetrics.RecordRejection("direct-post");
+            return Results.BadRequest(new { error = ex.Code, error_description = ex.Message });
+        }
+
+        var unknownIds = envelope.Presentations.Keys
+            .Where(k => !string.Equals(k, DefaultQueryId, StringComparison.Ordinal))
+            .ToList();
+        if (unknownIds.Count > 0)
+        {
+            return Results.BadRequest(new
+            {
+                error = DcqlErrorCodes.UnknownQueryId,
+                error_description = $"vp_token entries keyed to undeclared query id(s): {string.Join(", ", unknownIds)}."
+            });
+        }
+
+        if (!envelope.Presentations.TryGetValue(DefaultQueryId, out var presentations))
+        {
+            return Results.BadRequest(new
+            {
+                error = DcqlErrorCodes.Invalid,
+                error_description = $"vp_token carries no entry for query id '{DefaultQueryId}'."
+            });
+        }
+
+        // Per-entry format dispatch: an SD-JWT VC presentation is ~-delimited; an mdoc
+        // presentation is a bare base64url DeviceResponse. The mdoc path verifies via the
+        // unified ITrustEvaluator (x509-tenant / trustlist sources over the issuer x5chain).
+        var presentation = presentations[0];
         VerificationResult result;
-        if (TryExtractMdocDeviceResponse(vp_token, out var mdocVpToken))
+        if (!presentation.Contains('~'))
         {
             result = await mdocVerifier.VerifyAsync(
-                mdocVpToken,
+                presentation,
                 clientId: request.ClientId,
                 nonce: request.Nonce,
                 responseUri: request.ResponseUri,
@@ -237,7 +274,7 @@ public static class VerifierEndpoints
         else
         {
             result = await verifier.VerifyAsync(
-                vp_token,
+                presentation,
                 expectedNonce: request.Nonce,
                 expectedAudience: request.ClientId,
                 requiredCredentialType: request.CredentialType,
@@ -246,9 +283,10 @@ public static class VerifierEndpoints
                 ct: ct);
         }
 
-        // Store the result + the raw submitted presentation (PR B1) so a verifier client can
-        // re-validate locally and build its own rich verdict.
-        await store.MarkCompletedAsync(requestId, result, vp_token, presentation_submission, ct);
+        // Store the result + the raw submitted envelope (PR B1) so a verifier client can
+        // re-validate locally and build its own rich verdict. presentation_submission is
+        // gone with the dialect — the stored column stays null (wire shape unchanged).
+        await store.MarkCompletedAsync(requestId, result, vp_token, presentationSubmission: null, ct);
 
         // Feature 111: relay the outcome to Blueprint Service for lifecycle transaction writing.
         if (callbackRelay is not null)
@@ -307,51 +345,6 @@ public static class VerifierEndpoints
             vpToken = request.SubmittedVpToken,
             presentationSubmission = request.PresentationSubmission
         });
-    }
-
-    /// <summary>
-    /// Detects an mso_mdoc DCQL response and extracts the base64url DeviceResponse. An mdoc
-    /// <c>vp_token</c> is a JSON object keyed by DCQL query id with an array of base64url tokens
-    /// (<c>{ "pid": ["&lt;b64u&gt;"] }</c>); an SD-JWT VC vp_token is a compact <c>~</c>-delimited
-    /// string. Returns false (and the SD-JWT path runs) for anything that isn't the mdoc shape.
-    /// </summary>
-    private static bool TryExtractMdocDeviceResponse(string vpToken, out string deviceResponse)
-    {
-        deviceResponse = string.Empty;
-        var trimmed = vpToken.TrimStart();
-        if (trimmed.Length == 0 || trimmed[0] != '{')
-            return false;
-
-        try
-        {
-            using var doc = JsonDocument.Parse(vpToken);
-            if (doc.RootElement.ValueKind != JsonValueKind.Object)
-                return false;
-
-            foreach (var property in doc.RootElement.EnumerateObject())
-            {
-                if (property.Value.ValueKind == JsonValueKind.Array && property.Value.GetArrayLength() > 0)
-                {
-                    var first = property.Value[0];
-                    if (first.ValueKind == JsonValueKind.String)
-                    {
-                        deviceResponse = first.GetString()!;
-                        return true;
-                    }
-                }
-                else if (property.Value.ValueKind == JsonValueKind.String)
-                {
-                    deviceResponse = property.Value.GetString()!;
-                    return true;
-                }
-            }
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
-
-        return false;
     }
 
     /// <summary>

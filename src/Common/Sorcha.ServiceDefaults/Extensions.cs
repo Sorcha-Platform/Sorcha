@@ -88,6 +88,9 @@ public static class Extensions
                 // Feature 113 — HAIP replay-protection-state consumption outcomes
                 metrics.AddMeter("Sorcha.Haip.Nonces");
 
+                // Feature 181 — retired-dialect (Presentation Exchange) rejection counter
+                metrics.AddMeter("Sorcha.Haip");
+
                 // Feature 113 — Validator mempool depth + lease expiry
                 metrics.AddMeter("Sorcha.Validator.Mempool");
 

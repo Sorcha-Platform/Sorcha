@@ -153,8 +153,8 @@ public sealed class PresentIntakeLayoutTests : ComponentTestFixture
         // Simulate a successful scan
         JSInterop.Setup<string>("SorchaQrScanner.start", VideoElementId())
             .SetResult("openid4vp://verifier-payload");
-        _engine.Setup(e => e.Parse(It.IsAny<string>()))
-               .Throws(new InvalidOperationException("parse error (we just check StartScan was called)"));
+        _engine.Setup(e => e.ParseAsync(It.IsAny<string>(), It.IsAny<Func<string, CancellationToken, Task<string>>>(), It.IsAny<CancellationToken>()))
+               .ThrowsAsync(new InvalidOperationException("parse error (we just check StartScan was called)"));
 
         var cut = Render<PresentPage>();
         // Find inside InvokeAsync to avoid stale handler IDs, then WaitForAssertion
@@ -174,8 +174,8 @@ public sealed class PresentIntakeLayoutTests : ComponentTestFixture
         JSInterop.Setup<bool>("SorchaQrScanner.isSupported").SetResult(true);
         JSInterop.Setup<string>("SorchaQrScanner.start", VideoElementId())
             .SetResult("not-a-verifier-qr-payload");
-        _engine.Setup(e => e.Parse(It.IsAny<string>()))
-               .Throws(new InvalidOperationException("This is a raw exception message that must not be exposed"));
+        _engine.Setup(e => e.ParseAsync(It.IsAny<string>(), It.IsAny<Func<string, CancellationToken, Task<string>>>(), It.IsAny<CancellationToken>()))
+               .ThrowsAsync(new InvalidOperationException("This is a raw exception message that must not be exposed"));
 
         var cut = Render<PresentPage>();
         await cut.InvokeAsync(() => cut.Find("[data-testid=present-scan-with-camera]").Click());
@@ -199,8 +199,8 @@ public sealed class PresentIntakeLayoutTests : ComponentTestFixture
     public void PasteWithScan_PasteAndContinue_ReachesParse()
     {
         SetupProbe(DeviceFormFactor.Desktop, CameraAvailability.Usable);
-        _engine.Setup(e => e.Parse(It.IsAny<string>()))
-               .Returns(new ParsedPresentationRequest
+        _engine.Setup(e => e.ParseAsync(It.IsAny<string>(), It.IsAny<Func<string, CancellationToken, Task<string>>>(), It.IsAny<CancellationToken>()))
+               .ReturnsAsync(new ParsedPresentationRequest
                {
                    ClientId = "verifier1",
                    ResponseUri = "https://example.com/cb",
@@ -221,8 +221,8 @@ public sealed class PresentIntakeLayoutTests : ComponentTestFixture
         var continueBtn = cut.Find("[data-testid=present-continue]");
         continueBtn.Click();
 
-        _engine.Verify(e => e.Parse(It.IsAny<string>()), Times.Once,
-            "paste + Continue reaches ParseAsync and calls IPresentationEngine.Parse");
+        _engine.Verify(e => e.ParseAsync(It.IsAny<string>(), It.IsAny<Func<string, CancellationToken, Task<string>>>(), It.IsAny<CancellationToken>()), Times.Once,
+            "paste + Continue reaches the page handler and calls IPresentationEngine.ParseAsync");
     }
 
     // ── US3: PasteOnly (any FormFactor + Unavailable) ────────────────────────────
@@ -262,8 +262,8 @@ public sealed class PresentIntakeLayoutTests : ComponentTestFixture
     public void PasteOnly_PasteAndContinue_ReachesParse()
     {
         SetupProbe(DeviceFormFactor.Handheld, CameraAvailability.Unavailable);
-        _engine.Setup(e => e.Parse(It.IsAny<string>()))
-               .Returns(new ParsedPresentationRequest
+        _engine.Setup(e => e.ParseAsync(It.IsAny<string>(), It.IsAny<Func<string, CancellationToken, Task<string>>>(), It.IsAny<CancellationToken>()))
+               .ReturnsAsync(new ParsedPresentationRequest
                {
                    ClientId = "verifier1",
                    ResponseUri = "https://example.com/cb",
@@ -281,7 +281,7 @@ public sealed class PresentIntakeLayoutTests : ComponentTestFixture
         cut.Find("[data-testid=present-paste-field]").Change("openid4vp://some-link");
         cut.Find("[data-testid=present-continue]").Click();
 
-        _engine.Verify(e => e.Parse(It.IsAny<string>()), Times.Once,
+        _engine.Verify(e => e.ParseAsync(It.IsAny<string>(), It.IsAny<Func<string, CancellationToken, Task<string>>>(), It.IsAny<CancellationToken>()), Times.Once,
             "PasteOnly paste + Continue reaches ParseAsync (FR-011 convergence)");
     }
 

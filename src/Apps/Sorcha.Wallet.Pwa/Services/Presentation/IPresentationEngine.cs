@@ -16,9 +16,23 @@ namespace Sorcha.Wallet.Pwa.Services.Presentation;
 /// </summary>
 public interface IPresentationEngine
 {
-    /// <summary>Parse an <c>openid4vp://</c> deep link into a structured request.</summary>
-    /// <exception cref="System.FormatException">If the link is not a recognised OID4VP URL.</exception>
-    ParsedPresentationRequest Parse(string openid4vpDeepLink);
+    /// <summary>
+    /// Parse an <c>openid4vp://</c> deep link into a structured request. Feature 181 —
+    /// the link carries a <c>request_uri</c>; the engine fetches the Request Object via
+    /// <paramref name="requestObjectFetcher"/> (the IO-free delegate pattern, like
+    /// <c>deviceSigner</c>), decodes its payload, and parses the <c>dcql_query</c>.
+    /// The retired inline-<c>presentation_definition</c> form is refused.
+    /// </summary>
+    /// <param name="openid4vpDeepLink">The scanned/pasted <c>openid4vp://</c> URI.</param>
+    /// <param name="requestObjectFetcher">Fetches the request-object JWT text from a URL
+    /// (wired to the PWA's HttpClient by the caller).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <exception cref="System.FormatException">If the link or request object is not a
+    /// recognised OpenID4VP 1.0 shape (includes the legacy-dialect refusal).</exception>
+    Task<ParsedPresentationRequest> ParseAsync(
+        string openid4vpDeepLink,
+        Func<string, CancellationToken, Task<string>> requestObjectFetcher,
+        CancellationToken ct = default);
 
     /// <summary>Match a request against the wallet's cached credentials.</summary>
     /// <returns>Empty if no credential satisfies every required claim.</returns>

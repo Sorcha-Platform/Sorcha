@@ -1,5 +1,5 @@
 {
-  "$comment": "POS (point-of-sale) presentation request for the membership credential. Off-register verification via Sorcha.Verifier (PresentationRequestBuilder.CreateAsync). The verifier requests ONLY memberNumber + tier; identity (name, DOB) is withheld by omission because limit_disclosure is 'required'. The discount a tier earns is the verifier's policy (verifierProfile.tierDiscountMap) and is NEVER read from the credential. This file documents both the builder inputs and the exact DIF PEX definition the builder emits.",
+  "$comment": "POS (point-of-sale) presentation request for the membership credential. Off-register verification via Sorcha.Verifier (PresentationRequestBuilder.CreateAsync). The verifier requests ONLY memberNumber + tier; identity (name, DOB) is withheld by omission because DCQL claims list only what may be disclosed. The discount a tier earns is the verifier's policy (verifierProfile.tierDiscountMap) and is NEVER read from the credential. This file documents both the builder inputs and the exact DCQL query the builder emits (Feature 181 — DCQL replaced Presentation Exchange).",
   "verifierRequest": {
     "requiredVct": "MembershipCredential/v1",
     "requiredClaims": ["memberNumber", "tier"],
@@ -7,24 +7,25 @@
     "purpose": "Verify membership at point of sale",
     "$comment": "These are the arguments passed to Sorcha.Verifier PresentationRequestBuilder.CreateAsync. No code change is required — this is pure configuration of the existing reference verifier."
   },
-  "presentationDefinition": {
-    "id": "membership-pos",
-    "input_descriptors": [
+  "dcql_query": {
+    "credentials": [
       {
-        "id": "primary",
-        "name": "MembershipCredential/v1",
-        "purpose": "Verify membership at point of sale",
-        "constraints": {
-          "limit_disclosure": "required",
-          "fields": [
-            {
-              "path": ["$.vct"],
-              "filter": { "type": "string", "const": "MembershipCredential/v1" }
-            },
-            { "path": ["$.memberNumber"], "optional": false },
-            { "path": ["$.tier"], "optional": false }
-          ]
-        }
+        "id": "credential",
+        "format": "dc+sd-jwt",
+        "meta": {
+          "vct_values": ["MembershipCredential/v1"]
+        },
+        "claims": [
+          { "path": ["memberNumber"] },
+          { "path": ["tier"] }
+        ]
+      }
+    ],
+    "credential_sets": [
+      {
+        "options": [["credential"]],
+        "required": true,
+        "purpose": "Verify membership at point of sale"
       }
     ]
   },

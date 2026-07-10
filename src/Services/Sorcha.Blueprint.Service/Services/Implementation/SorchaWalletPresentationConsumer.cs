@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Sorcha.PresentationLifecycle.Abstractions;
 using Sorcha.Verifier.Engine;
+using Sorcha.Verifier.Engine.Dcql;
 using Sorcha.Verifier.Engine.Models;
 
 namespace Sorcha.Blueprint.Service.Services.Implementation;
@@ -204,20 +205,65 @@ public sealed class SorchaWalletPresentationConsumer : IPresentationConsumer
         // the blueprint's owning organisation and supplies it as VerifierClientId.
         // The placeholder is the explicit graceful-degradation fallback for orgs with
         // no published DID document (never issued a credential) — it never blocks the
-        // gate. The request is unsigned in this flow, so client_id is a display
-        // identity; Scope B (signed request objects) makes it cryptographically
-        // load-bearing and resolves it against the same DID via the F120 resolver.
+        // gate. The request object is unsigned in this flow (alg "none"), so client_id
+        // is a display identity; US6 (Feature 181) signs it with the verifier
+        // certificate and makes it cryptographically load-bearing.
         var clientId = context.VerifierClientId ?? "did:sorcha:org:UNKNOWN";
-        var uri =
-            $"openid4vp://?client_id={Uri.EscapeDataString(clientId)}" +
-            $"&response_type=vp_token" +
-            $"&nonce={Uri.EscapeDataString(nonce)}" +
-            $"&request_id={Uri.EscapeDataString(context.PresentationRequestId.ToString("N"))}";
+
+        // Feature 181 (T014) — the ask is expressed in DCQL inside a SERVED request
+        // object (the request_uri form every Sorcha producer converges on), built via
+        // the ONE shared builder (FR-008). The wallet fetches request_uri, parses
+        // dcql_query, and posts its {vpToken, delegation} response to response_uri
+        // (F111's callback route).
+        var requiredClaims = context.RequiredClaimNames ?? [];
+        var dcqlQuery = DcqlRequestBuilder.Build(
+            [DcqlCredentialAsk.SdJwt("credential", context.CredentialType ?? "unknown", requiredClaims)]);
+
+        var baseUrl = context.PublicBaseUrl?.TrimEnd('/') ?? string.Empty;
+        var requestUri = $"{baseUrl}/api/presentations/{context.PresentationRequestId:N}/request-object";
+        var responseUri = $"{baseUrl}/api/presentations/callbacks/{ConsumerNameValue}/{context.PresentationRequestId}";
+
+        var now = DateTimeOffset.UtcNow;
+        var payload = new Dictionary<string, object>
+        {
+            ["iss"] = clientId,
+            ["aud"] = "https://self-issued.me/v2",
+            ["iat"] = now.ToUnixTimeSeconds(),
+            ["response_type"] = "vp_token",
+            ["response_mode"] = "direct_post",
+            ["response_uri"] = responseUri,
+            ["client_id"] = clientId,
+            ["nonce"] = nonce,
+            ["state"] = context.PresentationRequestId.ToString(),
+            ["dcql_query"] = JsonSerializer.SerializeToElement(dcqlQuery, DcqlJson.Options)
+        };
+        var requestObjectJwt = BuildUnsignedJwt(payload);
+
+        var authorizationRequestUri =
+            $"openid4vp://authorize?client_id={Uri.EscapeDataString(clientId)}" +
+            $"&request_uri={Uri.EscapeDataString(requestUri)}";
 
         return Task.FromResult(new ConsumerInitiationDescriptor(
-            AuthorizationRequestUri: uri,
-            RequestUri: null,
-            Nonce: nonce));
+            AuthorizationRequestUri: authorizationRequestUri,
+            RequestUri: requestUri,
+            Nonce: nonce,
+            RequestObjectJwt: requestObjectJwt));
+    }
+
+    /// <summary>
+    /// Build an UNSIGNED request-object JWT (<c>alg: none</c>, empty signature segment).
+    /// The Sorcha wallet decodes the payload without signature verification until US6
+    /// (Feature 181) introduces verifier-certificate signing + wallet-side validation.
+    /// </summary>
+    private static string BuildUnsignedJwt(Dictionary<string, object> payload)
+    {
+        static string B64Url(byte[] bytes) => Convert.ToBase64String(bytes)
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        var header = JsonSerializer.SerializeToUtf8Bytes(
+            new Dictionary<string, object> { ["alg"] = "none", ["typ"] = "oauth-authz-req+jwt" });
+        var body = JsonSerializer.SerializeToUtf8Bytes(payload);
+        return $"{B64Url(header)}.{B64Url(body)}.";
     }
 
     private static PresentationDeclineReason MapDeclineReason(IReadOnlyList<string> errors)

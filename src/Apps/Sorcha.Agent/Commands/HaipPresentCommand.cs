@@ -129,20 +129,17 @@ public class HaipPresentCommand : Command
 
             Console.WriteLine($"[haip present] Presentation built, {presentation.SelectedDisclosures.Count} disclosures, KB-JWT present");
 
-            // Step 5: Submit via direct_post
+            // Step 5: Submit via direct_post. Feature 181 (T017) — the vp_token is the
+            // OpenID4VP 1.0 object envelope keyed by the DCQL query id; the retired
+            // presentation_submission is no longer sent (the verifier 400s on it).
+            var vpTokenEnvelope = JsonSerializer.Serialize(new Dictionary<string, string[]>
+            {
+                ["credential"] = [presentation.RawPresentation]
+            });
             var formContent = new FormUrlEncodedContent(new[]
             {
-                new KeyValuePair<string, string>("vp_token", presentation.RawPresentation),
-                new KeyValuePair<string, string>("state", state),
-                new KeyValuePair<string, string>("presentation_submission", JsonSerializer.Serialize(new
-                {
-                    id = Guid.NewGuid().ToString(),
-                    definition_id = $"pd-{state}",
-                    descriptor_map = new[]
-                    {
-                        new { id = credentialType, format = "vc+sd-jwt", path = "$" }
-                    }
-                }))
+                new KeyValuePair<string, string>("vp_token", vpTokenEnvelope),
+                new KeyValuePair<string, string>("state", state)
             });
 
             Console.WriteLine($"[haip present] Submitting via direct_post to {responseUri}");

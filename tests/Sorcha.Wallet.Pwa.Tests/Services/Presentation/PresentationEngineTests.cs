@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Sorcha.Verifier.Engine.Dcql;
 using Sorcha.Wallet.Pwa.Services.Presentation;
 using Sorcha.UI.Core.Models.Presentation;
 using Xunit;
@@ -19,8 +20,9 @@ using Xunit;
 namespace Sorcha.Wallet.Pwa.Tests.Services.Presentation;
 
 /// <summary>
-/// Tests for <see cref="PresentationEngine"/> (Feature 114, T095). Covers:
-/// parse happy path + error paths, match (success / wrong vct / missing claim),
+/// Tests for <see cref="PresentationEngine"/> (Feature 114 T095, Feature 181 US1). Covers:
+/// ParseAsync happy path + error paths (request_uri + DCQL request-object form, legacy
+/// inline presentation_definition refusal), match (success / wrong vct / missing claim),
 /// build (KB-JWT signature + sd_hash + only-approved-disclosures invariant).
 /// </summary>
 public sealed class PresentationEngineTests
@@ -31,16 +33,17 @@ public sealed class PresentationEngineTests
     private const string Vct = "https://sorcha.dev/vc/test/v1";
     private const string ClientId = "did:sorcha:verifier:00000000000000000000000000000001";
 
-    // ────────────────────────── Parse ──────────────────────────
+    // ────────────────────────── ParseAsync ──────────────────────────
 
     [Fact]
-    public void Parse_ValidDeepLink_ReturnsPopulatedRequest()
+    public async Task ParseAsync_ValidRequestUriDeepLink_ReturnsPopulatedRequest()
     {
-        var pd = MakePresentationDefinition("sess-1", Vct,
-            required: ["givenName"], optional: ["familyName"]);
-        var link = MakeDeepLink(ClientId, "https://verify.test/r/sess-1/response", "n0nce", pd);
+        var query = DcqlRequestBuilder.Build(
+            [DcqlCredentialAsk.SdJwt("cred1", Vct, ["givenName"], ["familyName"])],
+            purpose: "prove your name");
+        var jwt = MakeRequestObjectJwt(query);
 
-        var parsed = _engine.Parse(link);
+        var parsed = await _engine.ParseAsync(MakeDeepLink(), Fetch(jwt));
 
         parsed.ClientId.Should().Be(ClientId);
         parsed.Nonce.Should().Be("n0nce");
@@ -48,35 +51,113 @@ public sealed class PresentationEngineTests
         parsed.RequiredClaims.Should().ContainSingle().Which.Should().Be("givenName");
         parsed.OptionalClaims.Should().ContainSingle().Which.Should().Be("familyName");
         parsed.ResponseUri.Should().Be("https://verify.test/r/sess-1/response");
+        parsed.Purpose.Should().Be("prove your name");
+        parsed.ResponseMode.Should().Be("direct_post");
     }
 
     [Fact]
-    public void Parse_NotOpenid4VpScheme_Throws()
+    public async Task ParseAsync_NotOpenid4VpScheme_ThrowsFormatException()
     {
-        Action act = () => _engine.Parse("https://verify.test/foo");
-        act.Should().Throw<FormatException>();
+        Func<Task> act = () => _engine.ParseAsync("https://verify.test/foo", Fetch("h.p."));
+        await act.Should().ThrowAsync<FormatException>();
     }
 
     [Fact]
-    public void Parse_MissingNonce_Throws()
+    public async Task ParseAsync_MissingRequestUri_ThrowsFormatException()
     {
-        var link = "openid4vp://?client_id=did:test&response_uri=https://x/y" +
+        var link = $"openid4vp://?client_id={Uri.EscapeDataString(ClientId)}&nonce=n";
+        Func<Task> act = () => _engine.ParseAsync(link, Fetch("h.p."));
+        (await act.Should().ThrowAsync<FormatException>())
+            .WithMessage("*request_uri*");
+    }
+
+    [Fact]
+    public async Task ParseAsync_InlinePresentationDefinition_ThrowsLegacyDialect()
+    {
+        var link = $"openid4vp://?client_id={Uri.EscapeDataString(ClientId)}" +
                    "&presentation_definition=" + Uri.EscapeDataString("{}");
-        Action act = () => _engine.Parse(link);
-        act.Should().Throw<FormatException>();
+        Func<Task> act = () => _engine.ParseAsync(link, Fetch("h.p."));
+        (await act.Should().ThrowAsync<DcqlParseException>())
+            .Which.Code.Should().Be(DcqlErrorCodes.LegacyDialect);
     }
 
     [Fact]
-    public void Parse_PresentationDefinitionWithoutVct_Throws()
+    public async Task ParseAsync_FetcherReturnsNonJwt_ThrowsFormatException()
     {
-        var pd = JsonSerializer.Serialize(new
-        {
-            id = "x",
-            input_descriptors = new[] { new { id = "p", constraints = new { fields = Array.Empty<object>() } } }
-        });
-        var link = MakeDeepLink(ClientId, "https://verify.test/r/x/response", "n", pd);
-        Action act = () => _engine.Parse(link);
-        act.Should().Throw<FormatException>();
+        Func<Task> act = () => _engine.ParseAsync(MakeDeepLink(), Fetch("not-a-jwt"));
+        (await act.Should().ThrowAsync<FormatException>())
+            .WithMessage("*not a JWT*");
+    }
+
+    [Fact]
+    public async Task ParseAsync_MissingClientId_ThrowsFormatException()
+    {
+        var query = DcqlRequestBuilder.Build([DcqlCredentialAsk.SdJwt("cred1", Vct, ["givenName"])]);
+        var jwt = MakeRequestObjectJwt(query, clientId: null);
+        Func<Task> act = () => _engine.ParseAsync(MakeDeepLink(), Fetch(jwt));
+        (await act.Should().ThrowAsync<FormatException>())
+            .WithMessage("*client_id*");
+    }
+
+    [Fact]
+    public async Task ParseAsync_MissingNonce_ThrowsFormatException()
+    {
+        var query = DcqlRequestBuilder.Build([DcqlCredentialAsk.SdJwt("cred1", Vct, ["givenName"])]);
+        var jwt = MakeRequestObjectJwt(query, nonce: null);
+        Func<Task> act = () => _engine.ParseAsync(MakeDeepLink(), Fetch(jwt));
+        (await act.Should().ThrowAsync<FormatException>())
+            .WithMessage("*nonce*");
+    }
+
+    [Fact]
+    public async Task ParseAsync_MissingResponseUri_ThrowsFormatException()
+    {
+        var query = DcqlRequestBuilder.Build([DcqlCredentialAsk.SdJwt("cred1", Vct, ["givenName"])]);
+        var jwt = MakeRequestObjectJwt(query, responseUri: null);
+        Func<Task> act = () => _engine.ParseAsync(MakeDeepLink(), Fetch(jwt));
+        (await act.Should().ThrowAsync<FormatException>())
+            .WithMessage("*response_uri*");
+    }
+
+    [Fact]
+    public async Task ParseAsync_NestedClaimPath_UsesSlashPathConvention()
+    {
+        var query = DcqlRequestBuilder.Build(
+            [DcqlCredentialAsk.SdJwt("cred1", Vct, ["/address/street"])]);
+        var jwt = MakeRequestObjectJwt(query);
+
+        var parsed = await _engine.ParseAsync(MakeDeepLink(), Fetch(jwt));
+
+        parsed.RequiredClaims.Should().ContainSingle().Which.Should().Be("/address/street");
+        parsed.OptionalClaims.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ParseAsync_NoPurpose_PurposeIsNull()
+    {
+        var query = DcqlRequestBuilder.Build([DcqlCredentialAsk.SdJwt("cred1", Vct, ["givenName"])]);
+        var jwt = MakeRequestObjectJwt(query);
+
+        var parsed = await _engine.ParseAsync(MakeDeepLink(), Fetch(jwt));
+
+        parsed.Purpose.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ParseAsync_MultiCredentialQuery_FirstCredentialIsUsed()
+    {
+        // US1 consumes the first credential query only (multi-query consent is US2).
+        var query = DcqlRequestBuilder.Build(
+        [
+            DcqlCredentialAsk.SdJwt("cred1", Vct, ["givenName"]),
+            DcqlCredentialAsk.SdJwt("cred2", "https://sorcha.dev/vc/other/v1", ["licenceNumber"]),
+        ]);
+        var jwt = MakeRequestObjectJwt(query);
+
+        var parsed = await _engine.ParseAsync(MakeDeepLink(), Fetch(jwt));
+
+        parsed.RequiredVct.Should().Be(Vct);
+        parsed.RequiredClaims.Should().ContainSingle().Which.Should().Be("givenName");
     }
 
     // ────────────────────────── Match ──────────────────────────
@@ -259,43 +340,39 @@ public sealed class PresentationEngineTests
         }, allDisclosures);
     }
 
-    private static string MakePresentationDefinition(string id, string vct,
-        IReadOnlyList<string> required, IReadOnlyList<string> optional)
+    /// <summary>Feature 181 deep link — carries request_uri only; the payload carries the rest.</summary>
+    private static string MakeDeepLink(string requestUri = "https://verify.test/request/sess-1")
+        => $"openid4vp://?client_id={Uri.EscapeDataString(ClientId)}" +
+           $"&request_uri={Uri.EscapeDataString(requestUri)}";
+
+    /// <summary>Fake request-object fetcher returning a fixed JWT (no IO).</summary>
+    private static Func<string, CancellationToken, Task<string>> Fetch(string requestObjectJwt)
+        => (_, _) => Task.FromResult(requestObjectJwt);
+
+    /// <summary>
+    /// Wrap a <see cref="DcqlQuery"/> in an unsigned request-object JWT
+    /// (header <c>{"alg":"none","typ":"oauth-authz-req+jwt"}</c>, base64url payload).
+    /// Pass <c>null</c> for a field to omit it from the payload.
+    /// </summary>
+    private static string MakeRequestObjectJwt(
+        DcqlQuery query,
+        string? clientId = ClientId,
+        string? responseUri = "https://verify.test/r/sess-1/response",
+        string? nonce = "n0nce",
+        string? responseMode = "direct_post")
     {
-        var fields = new List<object>
-        {
-            new { path = new[] { "$.vct" }, filter = new { type = "string", @const = vct } }
-        };
-        foreach (var c in required) fields.Add(new { path = new[] { "$." + c }, optional = false });
-        foreach (var c in optional) fields.Add(new { path = new[] { "$." + c }, optional = true });
+        var payload = new Dictionary<string, object>();
+        if (clientId is not null) payload["client_id"] = clientId;
+        if (responseUri is not null) payload["response_uri"] = responseUri;
+        if (nonce is not null) payload["nonce"] = nonce;
+        if (responseMode is not null) payload["response_mode"] = responseMode;
+        payload["dcql_query"] = JsonSerializer.Deserialize<JsonElement>(DcqlRequestBuilder.ToJson(query));
 
-        return JsonSerializer.Serialize(new
-        {
-            id,
-            input_descriptors = new[]
-            {
-                new
-                {
-                    id = "primary",
-                    name = vct,
-                    purpose = "test",
-                    constraints = new
-                    {
-                        limit_disclosure = "required",
-                        fields = fields.ToArray()
-                    }
-                }
-            }
-        });
+        var headerSeg = Base64Url.EncodeToString(
+            Encoding.UTF8.GetBytes("{\"alg\":\"none\",\"typ\":\"oauth-authz-req+jwt\"}"));
+        var payloadSeg = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(payload));
+        return $"{headerSeg}.{payloadSeg}.";
     }
-
-    private static string MakeDeepLink(string clientId, string responseUri, string nonce, string presentationDefinitionJson)
-        => "openid4vp://?" +
-           $"client_id={Uri.EscapeDataString(clientId)}" +
-           "&response_mode=direct_post" +
-           $"&response_uri={Uri.EscapeDataString(responseUri)}" +
-           $"&nonce={Uri.EscapeDataString(nonce)}" +
-           $"&presentation_definition={Uri.EscapeDataString(presentationDefinitionJson)}";
 
     private static string JwkOf(ECDsa ecdsa)
     {

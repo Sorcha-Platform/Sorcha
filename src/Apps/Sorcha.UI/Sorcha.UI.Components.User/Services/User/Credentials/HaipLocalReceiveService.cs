@@ -182,7 +182,7 @@ public sealed class HaipLocalReceiveService : IHaipLocalReceiveService
             {
                 Content = JsonContent.Create(new
                 {
-                    format = "vc+sd-jwt",
+                    format = "dc+sd-jwt",
                     proof = new { proof_type = "jwt", jwt = jwtProof }
                 }, options: JsonOptions)
             };

@@ -9,13 +9,17 @@ using System.Text.Json;
 using System.Web;
 using Microsoft.Extensions.Logging;
 using Sorcha.UI.Core.Models.Presentation;
+using Sorcha.Verifier.Engine.Dcql;
 
 namespace Sorcha.Wallet.Pwa.Services.Presentation;
 
 /// <summary>
-/// Default <see cref="IPresentationEngine"/>. v1 understands the unsigned
-/// query-parameter form of <c>openid4vp://</c> the reference verifier emits
-/// (research §R-008). Signed-request mode is a hardening item for a later phase.
+/// Default <see cref="IPresentationEngine"/>. Feature 181 — understands the
+/// <c>request_uri</c> form of <c>openid4vp://</c> every Sorcha producer emits: fetches
+/// the Request Object (via the caller-supplied delegate), decodes its payload, and
+/// parses the <c>dcql_query</c>. The retired inline-<c>presentation_definition</c> form
+/// is refused with <c>LEGACY_DIALECT</c>. Request-object signature verification is
+/// US6 (verifier authentication).
 /// </summary>
 public sealed class PresentationEngine : IPresentationEngine
 {
@@ -30,9 +34,13 @@ public sealed class PresentationEngine : IPresentationEngine
     }
 
     /// <inheritdoc />
-    public ParsedPresentationRequest Parse(string openid4vpDeepLink)
+    public async Task<ParsedPresentationRequest> ParseAsync(
+        string openid4vpDeepLink,
+        Func<string, CancellationToken, Task<string>> requestObjectFetcher,
+        CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(openid4vpDeepLink);
+        ArgumentNullException.ThrowIfNull(requestObjectFetcher);
         if (!openid4vpDeepLink.StartsWith("openid4vp://", StringComparison.OrdinalIgnoreCase))
         {
             throw new FormatException("Deep link must start with openid4vp://");
@@ -46,31 +54,75 @@ public sealed class PresentationEngine : IPresentationEngine
 
         NameValueCollection parsed = HttpUtility.ParseQueryString(openid4vpDeepLink[(queryStart + 1)..]);
 
-        var clientId = parsed["client_id"]
-            ?? throw new FormatException("Deep link is missing client_id.");
-        var responseUri = parsed["response_uri"]
-            ?? throw new FormatException("Deep link is missing response_uri.");
-        var nonce = parsed["nonce"]
-            ?? throw new FormatException("Deep link is missing nonce.");
-        var responseMode = parsed["response_mode"] ?? "direct_post";
-
-        var pdJson = parsed["presentation_definition"]
-            ?? throw new FormatException("Deep link is missing presentation_definition.");
-
-        var (vct, required, optional, purpose) = ParsePresentationDefinition(pdJson);
-
-        return new ParsedPresentationRequest
+        // Feature 181 — the inline presentation_definition form is the retired dialect.
+        if (parsed["presentation_definition"] is not null)
         {
-            ClientId = clientId,
-            ResponseUri = responseUri,
-            Nonce = nonce,
-            RequiredVct = vct,
-            RequiredClaims = required,
-            OptionalClaims = optional,
-            Purpose = purpose,
-            ResponseMode = responseMode,
-        };
+            throw new DcqlParseException(
+                DcqlErrorCodes.LegacyDialect,
+                "This QR uses the retired inline presentation_definition form. Ask the verifier to upgrade.");
+        }
+
+        var requestUri = parsed["request_uri"]
+            ?? throw new FormatException("Deep link is missing request_uri.");
+
+        // Fetch and decode the Request Object. US1: the payload is decoded WITHOUT
+        // signature verification — US6 (verifier authentication) adds JWS validation
+        // against the verifier certificate + trusted-list anchors.
+        var requestObjectJwt = await requestObjectFetcher(requestUri, ct);
+        var payload = DecodeJwtPayload(requestObjectJwt);
+
+        using (payload)
+        {
+            var root = payload.RootElement;
+            var query = DcqlRequestParser.ParseFromRequestObjectPayload(root);
+
+            // US1 consumes the first credential query (multi-query consent is US2).
+            var credential = query.Credentials[0];
+            var (required, optional) = DcqlRequestParser.SplitClaims(credential);
+            var purpose = query.CredentialSets is { Count: > 0 } ? query.CredentialSets[0].Purpose : null;
+
+            return new ParsedPresentationRequest
+            {
+                ClientId = GetRequiredString(root, "client_id"),
+                ResponseUri = GetRequiredString(root, "response_uri"),
+                Nonce = GetRequiredString(root, "nonce"),
+                RequiredVct = credential.Meta.VctValues is { Count: > 0 }
+                    ? credential.Meta.VctValues[0]
+                    : throw new FormatException("Request object's credential query carries no vct_values."),
+                RequiredClaims = required,
+                OptionalClaims = optional,
+                Purpose = purpose,
+                ResponseMode = root.TryGetProperty("response_mode", out var rm) && rm.ValueKind == JsonValueKind.String
+                    ? rm.GetString()!
+                    : "direct_post",
+            };
+        }
     }
+
+    /// <summary>Base64url-decode the payload segment of a (signed or unsigned) JWT.</summary>
+    internal static JsonDocument DecodeJwtPayload(string jwt)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(jwt);
+        var segments = jwt.Split('.');
+        if (segments.Length is not (2 or 3) || segments[1].Length == 0)
+        {
+            throw new FormatException("Request object is not a JWT.");
+        }
+
+        try
+        {
+            return JsonDocument.Parse(Base64Url.DecodeFromChars(segments[1]));
+        }
+        catch (Exception ex) when (ex is JsonException or global::System.FormatException)
+        {
+            throw new FormatException($"Request object payload does not decode: {ex.Message}");
+        }
+    }
+
+    private static string GetRequiredString(JsonElement root, string name)
+        => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()!
+            : throw new FormatException($"Request object is missing {name}.");
 
     /// <inheritdoc />
     public IReadOnlyList<CredentialMatch> Match(
@@ -186,70 +238,6 @@ public sealed class PresentationEngine : IPresentationEngine
     }
 
     // ─────────────────────────── parsing helpers ─────────────────────────────────
-
-    /// <summary>
-    /// Parse the verifier-supplied PEX presentation_definition into the simplified
-    /// shape the engine consumes: required vct, required claim names, optional claim names.
-    /// Mirror image of <c>PresentationRequestBuilder.BuildPresentationDefinitionJson</c>.
-    /// </summary>
-    internal static (string Vct, IReadOnlyList<string> Required, IReadOnlyList<string> Optional, string? Purpose)
-        ParsePresentationDefinition(string json)
-    {
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
-
-        var inputDescriptors = root.GetProperty("input_descriptors");
-        if (inputDescriptors.GetArrayLength() == 0)
-        {
-            throw new FormatException("presentation_definition has no input_descriptors.");
-        }
-        var primary = inputDescriptors[0];
-        var purpose = primary.TryGetProperty("purpose", out var p) && p.ValueKind == JsonValueKind.String
-            ? p.GetString() : null;
-
-        var fields = primary.GetProperty("constraints").GetProperty("fields");
-
-        string? vct = null;
-        var required = new List<string>();
-        var optional = new List<string>();
-
-        foreach (var field in fields.EnumerateArray())
-        {
-            var paths = field.GetProperty("path");
-            if (paths.GetArrayLength() == 0) continue;
-            var path = paths[0].GetString();
-            if (path is null) continue;
-
-            // vct constraint
-            if (path == "$.vct" && field.TryGetProperty("filter", out var filter)
-                && filter.TryGetProperty("const", out var constEl)
-                && constEl.ValueKind == JsonValueKind.String)
-            {
-                vct = constEl.GetString();
-                continue;
-            }
-
-            // claim field — convert "$.givenName" → "givenName", or "$.foo.bar" → "/foo/bar"
-            var claimName = FromJsonPath(path);
-            var isOptional = field.TryGetProperty("optional", out var opt)
-                && opt.ValueKind == JsonValueKind.True;
-            if (isOptional) optional.Add(claimName);
-            else required.Add(claimName);
-        }
-
-        if (vct is null)
-        {
-            throw new FormatException("presentation_definition is missing a vct constraint.");
-        }
-        return (vct, required, optional, purpose);
-    }
-
-    private static string FromJsonPath(string path)
-    {
-        if (!path.StartsWith("$.", StringComparison.Ordinal)) return path;
-        var rest = path[2..];
-        return rest.Contains('.') ? "/" + rest.Replace('.', '/') : rest;
-    }
 
     /// <summary>
     /// Split the SD-JWT compact form into (credentialJwt, disclosures, kbJwt). Mirror

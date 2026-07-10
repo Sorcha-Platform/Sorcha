@@ -52,7 +52,7 @@ public static class MetadataEndpoints
                 new CredentialSupported
                 {
                     Id = "SorchaCredential",
-                    Format = "vc+sd-jwt",
+                    Format = "dc+sd-jwt",
                     CryptographicBindingMethodsSupported = ["jwk"],
                     CredentialSigningAlgValuesSupported = ["ES256"],
                     Display =

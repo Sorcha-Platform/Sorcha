@@ -39,7 +39,7 @@ public class MetadataEndpointTests
                 new CredentialSupported
                 {
                     Id = "TestCredential",
-                    Format = "vc+sd-jwt"
+                    Format = "dc+sd-jwt"
                 }
             ]
         };
@@ -57,11 +57,11 @@ public class MetadataEndpointTests
         var supported = new CredentialSupported
         {
             Id = "TestCredential",
-            Format = "vc+sd-jwt",
+            Format = "dc+sd-jwt",
             CredentialSigningAlgValuesSupported = ["ES256"]
         };
 
-        supported.Format.Should().Be("vc+sd-jwt");
+        supported.Format.Should().Be("dc+sd-jwt");
         supported.CryptographicBindingMethodsSupported.Should().Contain("jwk");
         supported.CredentialSigningAlgValuesSupported.Should().Contain("ES256");
     }

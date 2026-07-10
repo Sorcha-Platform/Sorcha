@@ -26,6 +26,14 @@ public sealed class PresentationLifecycleOptions
     /// </summary>
     public int SealRecoverySweepIntervalSeconds { get; set; } = 5;
 
+    /// <summary>
+    /// Feature 181 — externally-reachable base URL of the presentation surface (the gateway
+    /// origin, e.g. <c>https://sorcha.example</c>). Embedded in the <c>request_uri</c> and
+    /// <c>response_uri</c> of served request objects so cross-device wallets can reach back.
+    /// Null ⇒ relative URIs (same-origin wallets only).
+    /// </summary>
+    public string? PublicBaseUrl { get; set; }
+
     /// <summary>Rate limit settings (per-wallet-per-register).</summary>
     public RateLimitOptions RateLimit { get; set; } = new();
 

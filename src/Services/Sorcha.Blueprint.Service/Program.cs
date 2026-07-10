@@ -422,6 +422,11 @@ builder.Services.AddHttpClient<Sorcha.ServiceClients.OrgDidDocument.IOrgDidDocum
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IClaimsFetchTokenStore,
     Sorcha.Blueprint.Service.Storage.Presentations.RedisClaimsFetchTokenStore>();
 
+// Feature 181 (T014) — served OpenID4VP request objects for the sorcha-wallet
+// consumer's request_uri deep-link form. Same Redis multiplexer as the F111 stores.
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IRequestObjectStore,
+    Sorcha.Blueprint.Service.Storage.Presentations.RedisRequestObjectStore>();
+
 // Feature 127 — short-TTL plaintext stash of disclosed claims, written
 // alongside the outcome tx for the disclosed-claims endpoint to read.
 // Avoids re-decrypting the register tx on every council-page fetch.
