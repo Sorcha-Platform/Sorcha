@@ -8,6 +8,7 @@ using Sorcha.ServiceClients.Blueprint;
 using Sorcha.ServiceClients.CitizenStatusList;
 using Sorcha.ServiceClients.CitizenWallet;
 using Sorcha.ServiceClients.Did;
+using Sorcha.ServiceClients.Evm;
 using Sorcha.ServiceClients.Invitation;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.PlatformUserDevice;
@@ -108,6 +109,12 @@ public static class HttpServiceCollectionExtensions
         // DID resolvers
         services.AddDidResolvers();
 
+        // Feature 179 — read-only EVM RPC for on-chain did:ethr resolution. Server-side only (this
+        // method is not called by the WASM PWA), so EthrDidResolver stays offline in the browser. Safe
+        // to register unconditionally: with no DidResolver:Ethr:Rpc config it resolves NotConfigured and
+        // did:ethr falls back to the offline default document.
+        services.AddEvmRpc(configuration);
+
         return services;
     }
 
@@ -126,7 +133,13 @@ public static class HttpServiceCollectionExtensions
         services.AddSingleton<KeyDidResolver>();
         services.AddSingleton<JwkDidResolver>();
         services.AddSingleton<PkhDidResolver>();
-        services.AddSingleton<EthrDidResolver>();
+        // EthrDidResolver takes an OPTIONAL Erc1056Registry — present only in server hosts that called
+        // AddEvmRpc (Feature 179). GetService returns null in the WASM/offline composition, so
+        // EthrDidResolver falls back to the offline default document. A factory is required because the
+        // built-in DI container does not honour the constructor's default parameter value.
+        services.AddSingleton<EthrDidResolver>(sp => new EthrDidResolver(
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<EthrDidResolver>>(),
+            sp.GetService<Sorcha.ServiceClients.Evm.Erc1056Registry>()));
         services.AddHttpClient<WebDidResolver>();
         services.AddScoped<IDidResolver>(sp => sp.GetRequiredService<SorchaDidResolver>());
         services.AddSingleton<IDidResolver>(sp => sp.GetRequiredService<KeyDidResolver>());
@@ -168,6 +181,29 @@ public static class HttpServiceCollectionExtensions
         }
         services.AddSingleton<DidResolverCache>();
         services.AddSingleton<DidResolverMetrics>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers read-only EVM RPC for on-chain <c>did:ethr</c> resolution (Feature 179) — the
+    /// <see cref="IEvmRpcClient"/> transport and the <see cref="Erc1056Registry"/> reader. Call this
+    /// <b>only from server hosts</b>; the Blazor WASM PWA deliberately omits it so <c>did:ethr</c>
+    /// resolves to the offline default document (the server is authoritative for rotation). Binds
+    /// <c>DidResolver:Ethr</c> plus the shared <c>DidResolver:AllowPrivateAddresses</c> flag.
+    /// </summary>
+    public static IServiceCollection AddEvmRpc(this IServiceCollection services, IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        services.Configure<EvmRpcOptions>(options =>
+        {
+            configuration.GetSection("DidResolver:Ethr").Bind(options);
+            options.AllowPrivateAddresses = configuration.GetValue<bool>("DidResolver:AllowPrivateAddresses");
+        });
+
+        services.AddHttpClient<IEvmRpcClient, EvmRpcClient>();
+        services.AddSingleton<Erc1056Registry>();
 
         return services;
     }
