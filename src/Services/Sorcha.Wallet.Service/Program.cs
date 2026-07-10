@@ -342,6 +342,7 @@ app.MapGrpcService<WalletNotificationGrpcService>();
 // Map Wallet API endpoints
 app.MapWalletEndpoints();
 app.MapDelegationEndpoints();
+app.MapEthereumEndpoints();
 app.MapCredentialEndpoints();
 app.MapPresentationEndpoints();
 app.MapOrgKeyEndpoints();

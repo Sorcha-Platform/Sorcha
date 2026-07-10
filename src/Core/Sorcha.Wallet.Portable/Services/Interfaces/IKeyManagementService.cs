@@ -30,6 +30,19 @@ public interface IKeyManagementService
         string algorithm);
 
     /// <summary>
+    /// Derives the raw secp256k1 key at a BIP32 path for an auxiliary Ethereum identity (Feature 180).
+    /// Unlike <see cref="DeriveKeyAtPathAsync"/> — which re-derives the wallet's primary algorithm key
+    /// from the path — this returns the secp256k1 key itself: the 32-byte private scalar and the 65-byte
+    /// uncompressed SEC1 public key. The wallet's primary algorithm and <c>WalletNetworks</c> are unchanged.
+    /// </summary>
+    /// <param name="seed">The BIP39 seed (or master key) to derive from.</param>
+    /// <param name="derivationPath">The BIP32 path (e.g. <c>m/44'/60'/0'/0/0</c>).</param>
+    /// <returns>The raw secp256k1 private key (32 bytes) and uncompressed public key (65 bytes).</returns>
+    Task<(byte[] PrivateKey, byte[] PublicKey)> DeriveSecp256k1KeyAtPathAsync(
+        byte[] seed,
+        DerivationPath derivationPath);
+
+    /// <summary>
     /// Generates a public address from a public key
     /// </summary>
     /// <param name="publicKey">Public key bytes</param>

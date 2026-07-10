@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using NBitcoin;
 using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
+using Sorcha.Cryptography.Secp256k1;
 using Sorcha.Cryptography.Utilities;
 using Sorcha.Wallet.Core.Domain.ValueObjects;
 using Sorcha.Wallet.Core.Encryption.Configuration;
@@ -143,6 +144,37 @@ public class KeyManagementService : IKeyManagementService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to derive key at path {Path}", derivationPath.Path);
+            throw;
+        }
+    }
+
+    /// <inheritdoc/>
+    public Task<(byte[] PrivateKey, byte[] PublicKey)> DeriveSecp256k1KeyAtPathAsync(
+        byte[] seed,
+        DerivationPath derivationPath)
+    {
+        if (seed == null || seed.Length == 0)
+            throw new ArgumentException("Seed cannot be empty", nameof(seed));
+        ArgumentNullException.ThrowIfNull(derivationPath);
+
+        try
+        {
+            // NBitcoin derives a genuine secp256k1 key at the path. Feature 180 keeps it as the
+            // Ethereum signing key (an auxiliary identity) rather than re-deriving the wallet's primary
+            // algorithm from it — so there is no GenerateKeySet / AlgorithmMapper / WalletNetworks here.
+            var extKey = ExtKey.CreateFromSeed(seed);
+            var derived = extKey.Derive(derivationPath.KeyPath);
+            var privateKey = derived.PrivateKey.ToBytes(); // 32-byte secp256k1 scalar
+            var publicKey = Secp256k1PublicKey
+                .FromSec1(derived.PrivateKey.PubKey.ToBytes()) // 33-byte compressed → decompress
+                .ToSec1Uncompressed();                          // 65-byte uncompressed SEC1
+
+            _logger.LogDebug("Derived secp256k1 (Ethereum) key at path {Path}", derivationPath.Path);
+            return Task.FromResult((privateKey, publicKey));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to derive secp256k1 key at path {Path}", derivationPath.Path);
             throw;
         }
     }
