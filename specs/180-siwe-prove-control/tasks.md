@@ -22,7 +22,7 @@ Multi-project .NET solution; source under `src/…`, tests under `tests/…`.
 
 ## Phase 1: Setup
 
-- [ ] T001 Confirm `tests/Sorcha.Cryptography.Secp256k1.Tests` builds green as baseline; confirm `Sorcha.Wallet.Core` references the primitive + NBitcoin (both already present — no new project, no new package).
+- [X] T001 Confirm `tests/Sorcha.Cryptography.Secp256k1.Tests` builds green as baseline; confirm `Sorcha.Wallet.Core` references the primitive + NBitcoin (both already present — no new project, no new package).
 
 ---
 
@@ -32,12 +32,12 @@ Multi-project .NET solution; source under `src/…`, tests under `tests/…`.
 
 **⚠️ CRITICAL**: Ethereum ECDSA hashes with **keccak** (not SHA-256), so the digest-level recovery + signer must be correct before anything else.
 
-- [ ] T002 [P] Signer + recovery + EIP-191 KAT tests in `tests/Sorcha.Cryptography.Secp256k1.Tests`: `Secp256k1Signer.SignRecoverable(digest, key)` → `Secp256k1Recovery.RecoverFromDigest(digest, r, s, v-27)` equals the signer's key and its EIP-55 address; `s ≤ n/2`; `v ∈ {27,28}`; deterministic (same input → same 65 bytes); `Eip191.PersonalSignDigest("abc")` == independently-built `Keccak256("\x19Ethereum Signed Message:\n3abc")`. FAIL.
-- [ ] T003 [P] SIWE format/parse tests: EIP-4361 **spec example** message round-trips (parse→format byte-identical); `Format`↔`TryParse` for messages with/without each optional field; missing required field → `TryParse` false. FAIL.
-- [ ] T004 Refactor `Secp256k1Recovery` to a shared private `RecoverCore(e, r, s)` and add public `RecoverFromDigest(digest32, r, s, recId)`; keep `TryRecover(message, joseSig)` behaviour identical (Phase-1/2 KATs guard it). In `src/Common/Sorcha.Cryptography.Secp256k1/Secp256k1Recovery.cs`.
-- [ ] T005 Implement `Secp256k1Signer.SignRecoverable` (RFC-6979 `HMacDsaKCalculator`, low-s, recId via `RecoverFromDigest`, `r‖s‖v`) + `Eip191.PersonalSignDigest` in the primitive. Make T002 pass.
-- [ ] T006 Implement `Siwe/SiweMessage` + `Siwe/SiweFormatter` (Format + TryParse, EIP-4361 ABNF per research R4) in the primitive. Make T003 pass.
-- [ ] T007 Run `dotnet test tests/Sorcha.Cryptography.Secp256k1.Tests` — signer/EIP-191/SIWE + Phase-1/2 ES256K regression green. **Commit** ("feat: [180] recoverable secp256k1 signer + EIP-191 + SIWE message").
+- [X] T002 [P] Signer + recovery + EIP-191 KAT tests in `tests/Sorcha.Cryptography.Secp256k1.Tests`: `Secp256k1Signer.SignRecoverable(digest, key)` → `Secp256k1Recovery.RecoverFromDigest(digest, r, s, v-27)` equals the signer's key and its EIP-55 address; `s ≤ n/2`; `v ∈ {27,28}`; deterministic (same input → same 65 bytes); `Eip191.PersonalSignDigest("abc")` == independently-built `Keccak256("\x19Ethereum Signed Message:\n3abc")`. FAIL.
+- [X] T003 [P] SIWE format/parse tests: EIP-4361 **spec example** message round-trips (parse→format byte-identical); `Format`↔`TryParse` for messages with/without each optional field; missing required field → `TryParse` false. FAIL.
+- [X] T004 Refactor `Secp256k1Recovery` to a shared private `RecoverCore(e, r, s)` and add public `RecoverFromDigest(digest32, r, s, recId)`; keep `TryRecover(message, joseSig)` behaviour identical (Phase-1/2 KATs guard it). In `src/Common/Sorcha.Cryptography.Secp256k1/Secp256k1Recovery.cs`.
+- [X] T005 Implement `Secp256k1Signer.SignRecoverable` (RFC-6979 `HMacDsaKCalculator`, low-s, recId via `RecoverFromDigest`, `r‖s‖v`) + `Eip191.PersonalSignDigest` in the primitive. Make T002 pass.
+- [X] T006 Implement `Siwe/SiweMessage` + `Siwe/SiweFormatter` (Format + TryParse, EIP-4361 ABNF per research R4) in the primitive. Make T003 pass.
+- [X] T007 Run `dotnet test tests/Sorcha.Cryptography.Secp256k1.Tests` — signer/EIP-191/SIWE + Phase-1/2 ES256K regression green. **Commit** ("feat: [180] recoverable secp256k1 signer + EIP-191 + SIWE message").
 
 **Checkpoint**: A digest signs to a recoverable low-s `r‖s‖v`; SIWE text round-trips to spec.
 
