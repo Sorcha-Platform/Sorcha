@@ -100,7 +100,7 @@ public class CredentialRequest
 {
     /// <summary>Format identifier for the payload.</summary>
     [JsonPropertyName("format")]
-    public string Format { get; set; } = "vc+sd-jwt";
+    public string Format { get; set; } = "dc+sd-jwt";
 
     /// <summary>The vct.</summary>
     [JsonPropertyName("vct")]
@@ -162,7 +162,7 @@ public class CredentialSupported
 {
     /// <summary>Format identifier for the payload.</summary>
     [JsonPropertyName("format")]
-    public string Format { get; init; } = "vc+sd-jwt";
+    public string Format { get; init; } = "dc+sd-jwt";
 
     /// <summary>Unique identifier for the resource.</summary>
     [JsonPropertyName("id")]

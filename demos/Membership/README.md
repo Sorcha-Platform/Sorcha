@@ -96,8 +96,8 @@ await presentationRequestBuilder.CreateAsync(
     responseBaseUri: posResponseUri);
 ```
 
-`limit_disclosure: "required"` + only `memberNumber`/`tier` in the definition
-means name and DOB are **never disclosed** — the selective-disclosure hero. The
+Only `memberNumber`/`tier` appear in the DCQL `claims` list, so name and DOB
+are **never disclosed** — the selective-disclosure hero. The
 verifier then looks up the discount for the returned `tier` in its own
 `verifierProfile.tierDiscountMap`.
 

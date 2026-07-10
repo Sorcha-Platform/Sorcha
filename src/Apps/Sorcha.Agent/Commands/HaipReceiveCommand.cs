@@ -138,7 +138,7 @@ public class HaipReceiveCommand : Command
             var credentialEndpoint = metadata.GetProperty("credential_endpoint").GetString()!;
             var credentialRequest = new
             {
-                format = "vc+sd-jwt",
+                format = "dc+sd-jwt",
                 proof = new
                 {
                     proof_type = "jwt",

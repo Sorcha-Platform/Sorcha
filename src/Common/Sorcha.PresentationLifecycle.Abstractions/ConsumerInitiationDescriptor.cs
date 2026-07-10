@@ -29,4 +29,5 @@ namespace Sorcha.PresentationLifecycle.Abstractions;
 public sealed record ConsumerInitiationDescriptor(
     string AuthorizationRequestUri,
     string? RequestUri,
-    string? Nonce);
+    string? Nonce,
+    string? RequestObjectJwt = null);

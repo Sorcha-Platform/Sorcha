@@ -25,6 +25,15 @@ namespace Sorcha.PresentationLifecycle.Abstractions;
 /// Null when the org has no published DID document or resolution fails; consumers
 /// fall back to a placeholder. Used as the OID4VP <c>client_id</c> (display identity
 /// in the current unsigned-request flow).</param>
+/// <param name="CredentialType">Required credential type (vct) from the action's
+/// credential requirement. Feature 181 — consumers that build a served request
+/// object need the ask itself, not just its digest, to emit <c>dcql_query</c>.</param>
+/// <param name="RequiredClaimNames">Required claim names from the credential
+/// requirement (Feature 181, rides with <paramref name="CredentialType"/>).</param>
+/// <param name="PublicBaseUrl">Externally-reachable base URL of the Blueprint
+/// presentation surface (gateway origin). Consumers embed it in
+/// <c>request_uri</c> / <c>response_uri</c> so cross-device wallets can reach
+/// back. Null ⇒ consumer falls back to relative URIs (same-origin only).</param>
 public sealed record PresentationInitiationContext(
     Guid PresentationRequestId,
     Guid InstanceId,
@@ -34,4 +43,7 @@ public sealed record PresentationInitiationContext(
     string SubmitterWallet,
     byte[] RequirementsDigest,
     DateTimeOffset InitiatedAt,
-    string? VerifierClientId = null);
+    string? VerifierClientId = null,
+    string? CredentialType = null,
+    IReadOnlyList<string>? RequiredClaimNames = null,
+    string? PublicBaseUrl = null);

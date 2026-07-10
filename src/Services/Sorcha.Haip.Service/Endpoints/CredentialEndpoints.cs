@@ -94,7 +94,7 @@ public static class CredentialEndpoints
         // Validate format — must match the offer (feature 135: SD-JWT VC or mso_mdoc).
         var expectedFormat = offer.Format == Sorcha.Blueprint.Models.Credentials.CredentialFormat.MsoMdoc
             ? "mso_mdoc"
-            : "vc+sd-jwt";
+            : "dc+sd-jwt";
         if (request.Format != expectedFormat)
         {
             return Results.BadRequest(new
@@ -472,7 +472,7 @@ public static class CredentialEndpoints
 
             return Results.Ok(new
             {
-                format = "vc+sd-jwt",
+                format = "dc+sd-jwt",
                 credential,
                 c_nonce = newNonce,
                 c_nonce_expires_in = nonceExpiresIn

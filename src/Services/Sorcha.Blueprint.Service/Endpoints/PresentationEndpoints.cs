@@ -17,6 +17,29 @@ public static class PresentationEndpoints
 {
     public static RouteGroupBuilder MapPresentationEndpoints(this RouteGroupBuilder app)
     {
+        // Feature 181 (T014) — serve the OpenID4VP Request Object for consumers using the
+        // request_uri deep-link form (sorcha-wallet gates). The wallet fetches this from the
+        // QR's request_uri; anonymous by design (mirrors the status route's threat model —
+        // the JWT carries only the ask, never instance/register metadata). Unsigned (alg
+        // "none") until US6 introduces verifier-certificate signing.
+        app.MapGet("/{presentationRequestId:guid}/request-object", async (
+                Guid presentationRequestId,
+                IRequestObjectStore requestObjects,
+                CancellationToken ct) =>
+            {
+                var jwt = await requestObjects.GetAsync(presentationRequestId, ct);
+                return jwt is null
+                    ? Results.NotFound(new { error = "Presentation request not found or expired." })
+                    : Results.Text(jwt, contentType: "application/oauth-authz-req+jwt");
+            })
+            .AllowAnonymous()
+            .WithName("GetPresentationRequestObject")
+            .WithSummary("Get the OpenID4VP Request Object for a presentation attempt")
+            .WithDescription(
+                "Returns the request object JWT carrying the dcql_query, nonce, client_id and " +
+                "response_uri. Wallets fetch this via the request_uri embedded in the QR deep link. " +
+                "Expires with the presentation validity window.");
+
         app.MapGet("/{presentationRequestId:guid}/status", async (
                 Guid presentationRequestId,
                 IPendingPresentationStore store,

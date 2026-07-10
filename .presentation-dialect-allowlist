@@ -11,13 +11,10 @@
 # allowlisted for interop.
 #
 # One relative path per line (forward slashes); trailing # comments allowed.
+#
+# US1 cutover complete — the remaining entries are all PERMANENT rejection
+# guards: they name the legacy tokens specifically to detect and refuse them.
 
-src/Apps/Sorcha.Agent/Commands/HaipPresentCommand.cs                                          # presentation_submission, "vc+sd-jwt"
-src/Apps/Sorcha.Agent/Commands/HaipReceiveCommand.cs                                          # "vc+sd-jwt"
-src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/Credentials/HaipLocalReceiveService.cs  # "vc+sd-jwt"
-src/Apps/Sorcha.Wallet.Pwa/Services/Presentation/PresentationEngine.cs                        # presentation_definition, input_descriptors
-src/Common/Sorcha.Verifier.Engine/Dcql/DcqlRequestParser.cs                                   # presentation_definition, input_descriptors — REJECTION GUARD (probes the legacy keys to refuse them); permanent
-src/Services/Sorcha.Haip.Service/Endpoints/CredentialEndpoints.cs                             # "vc+sd-jwt"
-src/Services/Sorcha.Haip.Service/Endpoints/MetadataEndpoints.cs                               # "vc+sd-jwt"
-src/Services/Sorcha.Haip.Service/Endpoints/VerifierEndpoints.cs                               # presentation_definition, input_descriptors, presentation_submission, "vc+sd-jwt"
-src/Services/Sorcha.Haip.Service/Models/HaipModels.cs                                         # "vc+sd-jwt"
+src/Common/Sorcha.Verifier.Engine/Dcql/DcqlRequestParser.cs                                   # REJECTION GUARD — probes presentation_definition/input_descriptors to refuse them
+src/Services/Sorcha.Haip.Service/Endpoints/VerifierEndpoints.cs                               # REJECTION GUARD — presentation_submission form param must keep its wire name to detect + 400 legacy wallets
+src/Apps/Sorcha.Wallet.Pwa/Services/Presentation/PresentationEngine.cs                        # REJECTION GUARD — probes the inline presentation_definition query param to refuse the retired form

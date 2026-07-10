@@ -239,7 +239,16 @@
         _deepLinkFromScan = false;
         try
         {
-            _request = Engine.Parse(_deepLink.Trim());
+            // Feature 181 — the deep link carries a request_uri; the engine fetches the
+            // request object (anonymous GET) and parses its dcql_query.
+            _request = await Engine.ParseAsync(
+                _deepLink.Trim(),
+                async (url, ct) =>
+                {
+                    var resp = await Http.GetAsync(url, ct);
+                    resp.EnsureSuccessStatusCode();
+                    return await resp.Content.ReadAsStringAsync(ct);
+                });
             var creds = await Credentials.ListAsync();
             _matches = Engine.Match(_request, creds);
             if (_matches.Count == 0) { _phase = Phase.NoMatch; return; }

@@ -113,22 +113,22 @@ Write-Host "  -> blueprint: $outFile" -ForegroundColor Green
 
 # --- POS presentation ---------------------------------------------------------
 $pos = [ordered]@{
-    '$comment' = "POS presentation request for $schemeName. Verifier requests memberNumber + tier only; identity withheld via limit_disclosure=required. Discount is verifier policy (verifierProfile), never minted."
+    '$comment' = "POS presentation request for $schemeName. Verifier requests memberNumber + tier only; identity withheld by omission (DCQL claims list only what may be disclosed — Feature 181 replaced Presentation Exchange). Discount is verifier policy (verifierProfile), never minted."
     verifierRequest = [ordered]@{ requiredVct = $credType; requiredClaims = @('memberNumber','tier'); optionalClaims = @(); purpose = "Verify membership at point of sale" }
-    presentationDefinition = [ordered]@{
-        id = "$($config.schemeSlug)-pos"
-        input_descriptors = @(
+    dcql_query = [ordered]@{
+        credentials = @(
             [ordered]@{
-                id = 'primary'; name = $credType; purpose = 'Verify membership at point of sale'
-                constraints = [ordered]@{
-                    limit_disclosure = 'required'
-                    fields = @(
-                        [ordered]@{ path = @('$.vct'); filter = [ordered]@{ type='string'; const=$credType } },
-                        [ordered]@{ path = @('$.memberNumber'); optional = $false },
-                        [ordered]@{ path = @('$.tier'); optional = $false }
-                    )
-                }
+                id = 'credential'
+                format = 'dc+sd-jwt'
+                meta = [ordered]@{ vct_values = @($credType) }
+                claims = @(
+                    [ordered]@{ path = @('memberNumber') },
+                    [ordered]@{ path = @('tier') }
+                )
             }
+        )
+        credential_sets = @(
+            [ordered]@{ options = @(,@('credential')); required = $true; purpose = 'Verify membership at point of sale' }
         )
     }
     consentSurface = [ordered]@{ disclosedFields = @('memberNumber','tier'); withheldFields = @($reqClaims) }

@@ -40,7 +40,21 @@ public sealed class SorchaWalletPresentationConsumerTests
         BlueprintId: "bp-test",
         SubmitterWallet: "ws11qqtest",
         RequirementsDigest: new byte[32],
-        InitiatedAt: DateTimeOffset.UtcNow);
+        InitiatedAt: DateTimeOffset.UtcNow,
+        VerifierClientId: null,
+        CredentialType: "AssuredIdentityCredential",
+        RequiredClaimNames: ["givenName", "familyName"],
+        PublicBaseUrl: "https://gateway.example");
+
+    /// <summary>Decode the base64url payload (middle segment) of a compact JWT.</summary>
+    private static JsonElement DecodeJwtPayload(string jwt)
+    {
+        var segment = jwt.Split('.')[1];
+        var padded = segment.Replace('-', '+').Replace('_', '/');
+        padded = padded.PadRight(padded.Length + (4 - padded.Length % 4) % 4, '=');
+        var json = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(padded));
+        return JsonSerializer.Deserialize<JsonElement>(json);
+    }
 
     private static VerifierSession NewSession(params string[] requiredClaims) => new()
     {
@@ -240,18 +254,73 @@ public sealed class SorchaWalletPresentationConsumerTests
     }
 
     [Fact]
-    public async Task BuildInitiationAsync_ReturnsOID4VP_UriCarryingRequestIdAndNonce()
+    public async Task BuildInitiationAsync_ReturnsAuthorizeUri_WithRequestUriPointingAtServedRequestObject()
     {
+        // Feature 181 (T014) — the authorize URI is the request_uri form: it carries ONLY
+        // client_id + request_uri; the ask itself lives in the served request object.
         var ctx = NewContext();
 
         var descriptor = await _sut.BuildInitiationAsync(ctx, CancellationToken.None);
 
         descriptor.Should().NotBeNull();
-        descriptor.AuthorizationRequestUri.Should().StartWith("openid4vp://");
-        descriptor.AuthorizationRequestUri.Should().Contain("response_type=vp_token");
-        descriptor.AuthorizationRequestUri.Should().Contain(ctx.PresentationRequestId.ToString("N"));
+        descriptor.AuthorizationRequestUri.Should().StartWith("openid4vp://authorize?client_id=");
+        descriptor.AuthorizationRequestUri.Should().Contain("&request_uri=");
+
+        var expectedRequestUri =
+            $"https://gateway.example/api/presentations/{ctx.PresentationRequestId:N}/request-object";
+        descriptor.RequestUri.Should().Be(expectedRequestUri);
+        descriptor.AuthorizationRequestUri.Should().Contain(Uri.EscapeDataString(expectedRequestUri));
         descriptor.Nonce.Should().NotBeNullOrWhiteSpace();
-        descriptor.AuthorizationRequestUri.Should().Contain(Uri.EscapeDataString(descriptor.Nonce!));
+    }
+
+    [Fact]
+    public async Task BuildInitiationAsync_RequestObjectJwt_CarriesDcqlQueryAndCallbackUris()
+    {
+        var ctx = NewContext();
+
+        var descriptor = await _sut.BuildInitiationAsync(ctx, CancellationToken.None);
+
+        descriptor.RequestObjectJwt.Should().NotBeNullOrWhiteSpace();
+        var payload = DecodeJwtPayload(descriptor.RequestObjectJwt!);
+
+        payload.GetProperty("client_id").GetString().Should().Be("did:sorcha:org:UNKNOWN");
+        payload.GetProperty("response_type").GetString().Should().Be("vp_token");
+        payload.GetProperty("response_mode").GetString().Should().Be("direct_post");
+        payload.GetProperty("response_uri").GetString().Should().EndWith(
+            $"/api/presentations/callbacks/sorcha-wallet/{ctx.PresentationRequestId}");
+        payload.GetProperty("nonce").GetString().Should().Be(descriptor.Nonce);
+        payload.GetProperty("state").GetString().Should().Be(ctx.PresentationRequestId.ToString());
+
+        // dcql_query — single ask keyed "credential" carrying vct + claim paths.
+        var dcql = payload.GetProperty("dcql_query");
+        var credentials = dcql.GetProperty("credentials");
+        credentials.GetArrayLength().Should().Be(1);
+        var credential = credentials[0];
+        credential.GetProperty("id").GetString().Should().Be("credential");
+        credential.GetProperty("format").GetString().Should().Be("dc+sd-jwt");
+        credential.GetProperty("meta").GetProperty("vct_values")[0].GetString()
+            .Should().Be("AssuredIdentityCredential");
+
+        var claimPaths = credential.GetProperty("claims").EnumerateArray()
+            .Select(c => c.GetProperty("path")[0].GetString())
+            .ToList();
+        claimPaths.Should().BeEquivalentTo(new[] { "givenName", "familyName" });
+    }
+
+    [Fact]
+    public async Task BuildInitiationAsync_RequestObjectJwt_IsUnsignedWithAuthzReqType()
+    {
+        var descriptor = await _sut.BuildInitiationAsync(NewContext(), CancellationToken.None);
+
+        descriptor.RequestObjectJwt!.Should().EndWith(".", "the unsigned JWT carries an empty signature segment");
+        var headerSegment = descriptor.RequestObjectJwt!.Split('.')[0];
+        var padded = headerSegment.Replace('-', '+').Replace('_', '/');
+        padded = padded.PadRight(padded.Length + (4 - padded.Length % 4) % 4, '=');
+        var header = JsonSerializer.Deserialize<JsonElement>(
+            System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(padded)));
+
+        header.GetProperty("alg").GetString().Should().Be("none");
+        header.GetProperty("typ").GetString().Should().Be("oauth-authz-req+jwt");
     }
 
     [Fact]
@@ -263,6 +332,10 @@ public sealed class SorchaWalletPresentationConsumerTests
         var second = await _sut.BuildInitiationAsync(ctx, CancellationToken.None);
 
         first.Nonce.Should().NotBe(second.Nonce);
+        DecodeJwtPayload(first.RequestObjectJwt!).GetProperty("nonce").GetString()
+            .Should().Be(first.Nonce);
+        DecodeJwtPayload(second.RequestObjectJwt!).GetProperty("nonce").GetString()
+            .Should().Be(second.Nonce);
     }
 
     [Fact]
@@ -276,6 +349,8 @@ public sealed class SorchaWalletPresentationConsumerTests
         descriptor.AuthorizationRequestUri.Should().Contain(
             "client_id=" + Uri.EscapeDataString("did:sorcha:org:ws11qstrathcarron"));
         descriptor.AuthorizationRequestUri.Should().NotContain("did:sorcha:org:UNKNOWN");
+        DecodeJwtPayload(descriptor.RequestObjectJwt!).GetProperty("client_id").GetString()
+            .Should().Be("did:sorcha:org:ws11qstrathcarron");
     }
 
     [Fact]
@@ -288,5 +363,7 @@ public sealed class SorchaWalletPresentationConsumerTests
 
         descriptor.AuthorizationRequestUri.Should().Contain(
             "client_id=" + Uri.EscapeDataString("did:sorcha:org:UNKNOWN"));
+        DecodeJwtPayload(descriptor.RequestObjectJwt!).GetProperty("client_id").GetString()
+            .Should().Be("did:sorcha:org:UNKNOWN");
     }
 }

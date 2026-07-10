@@ -17,7 +17,7 @@ public class CredentialEndpointTests
     public void CredentialRequest_DefaultFormat_IsVcSdJwt()
     {
         var request = new CredentialRequest();
-        request.Format.Should().Be("vc+sd-jwt");
+        request.Format.Should().Be("dc+sd-jwt");
     }
 
     [Fact]
@@ -25,7 +25,7 @@ public class CredentialEndpointTests
     {
         var request = new CredentialRequest
         {
-            Format = "vc+sd-jwt",
+            Format = "dc+sd-jwt",
             Proof = new CredentialRequestProof
             {
                 ProofType = "jwt",
@@ -36,7 +36,7 @@ public class CredentialEndpointTests
         var json = JsonSerializer.Serialize(request);
         var doc = JsonDocument.Parse(json);
 
-        doc.RootElement.GetProperty("format").GetString().Should().Be("vc+sd-jwt");
+        doc.RootElement.GetProperty("format").GetString().Should().Be("dc+sd-jwt");
         doc.RootElement.GetProperty("proof").GetProperty("proof_type").GetString().Should().Be("jwt");
         doc.RootElement.GetProperty("proof").GetProperty("jwt").GetString().Should().NotBeNullOrWhiteSpace();
     }
@@ -44,11 +44,11 @@ public class CredentialEndpointTests
     [Fact]
     public void CredentialRequest_Deserializes_FromJsonPropertyNames()
     {
-        var json = """{"format":"vc+sd-jwt","proof":{"proof_type":"jwt","jwt":"abc.def.ghi"}}""";
+        var json = """{"format":"dc+sd-jwt","proof":{"proof_type":"jwt","jwt":"abc.def.ghi"}}""";
         var request = JsonSerializer.Deserialize<CredentialRequest>(json);
 
         request.Should().NotBeNull();
-        request!.Format.Should().Be("vc+sd-jwt");
+        request!.Format.Should().Be("dc+sd-jwt");
         request.Proof.Should().NotBeNull();
         request.Proof!.ProofType.Should().Be("jwt");
         request.Proof.Jwt.Should().Be("abc.def.ghi");

@@ -63,6 +63,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
     private readonly IClock _clock;
     private readonly IServiceProvider? _serviceProvider;
     private readonly Sorcha.ServiceClients.OrgDidDocument.IOrgDidDocumentClient? _orgDidClient;
+    private readonly IRequestObjectStore? _requestObjectStore;
     private readonly ILogger<PresentationLifecycleService> _logger;
 
     /// <summary>Constructor — DI-friendly.</summary>
@@ -83,7 +84,8 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         IClaimsFetchTokenStore? claimsFetchTokenStore = null,
         IDisclosedClaimsStore? disclosedClaimsStore = null,
         IHubContext<BlueprintHub, IBlueprintHubClient>? hubContext = null,
-        Sorcha.ServiceClients.OrgDidDocument.IOrgDidDocumentClient? orgDidClient = null)
+        Sorcha.ServiceClients.OrgDidDocument.IOrgDidDocumentClient? orgDidClient = null,
+        IRequestObjectStore? requestObjectStore = null)
     {
         _transactionBuilder = transactionBuilder ?? throw new ArgumentNullException(nameof(transactionBuilder));
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
@@ -102,6 +104,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         _disclosedClaimsStore = disclosedClaimsStore;
         _hubContext = hubContext;
         _orgDidClient = orgDidClient;
+        _requestObjectStore = requestObjectStore;
     }
 
     public async Task<PresentationInitiationResult> InitiateAsync(
@@ -217,9 +220,28 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
                 SubmitterWallet: submitterWallet,
                 RequirementsDigest: digestPreview,
                 InitiatedAt: DateTimeOffset.UtcNow,
-                VerifierClientId: verifierClientId);
+                VerifierClientId: verifierClientId,
+                // Feature 181 (T014) — consumers that serve a request object need the ask
+                // itself (not just its digest) to emit dcql_query, plus the public base
+                // URL for cross-device request_uri/response_uri reachability.
+                CredentialType: credentialRequirement.Type,
+                RequiredClaimNames: credentialRequirement.RequiredClaims?
+                    .Select(c => c.ClaimName).ToList(),
+                PublicBaseUrl: _options.Value.PublicBaseUrl);
 
             var consumerDescriptor = await consumer.BuildInitiationAsync(ctx, cancellationToken);
+
+            // Feature 181 (T014) — stash the served request object for the anonymous
+            // GET /api/presentations/{id}/request-object route. TTL = validity window.
+            if (consumerDescriptor.RequestObjectJwt is not null && _requestObjectStore is not null)
+            {
+                await _requestObjectStore.StoreAsync(
+                    requestId,
+                    consumerDescriptor.RequestObjectJwt,
+                    TimeSpan.FromSeconds(validityWindow),
+                    cancellationToken);
+            }
+
             descriptor = new InitiationDescriptor(
                 PresentationRequestId: requestId,
                 AuthorizationRequestUri: consumerDescriptor.AuthorizationRequestUri,

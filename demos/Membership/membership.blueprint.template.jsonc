@@ -133,7 +133,7 @@
           "claimMappings": {{CLAIM_MAPPINGS_JSON}},
           // Every claim is selectively-disclosable so the POS verifier can
           // request memberNumber+tier and withhold identity. Withholding is
-          // the verifier's request (limit_disclosure), not a credential flag.
+          // the verifier's DCQL claims list, not a credential flag.
           "disclosable": {{DISCLOSABLE_JSON}},
           "expiryDuration": "{{EXPIRY_DURATION}}"
         },
