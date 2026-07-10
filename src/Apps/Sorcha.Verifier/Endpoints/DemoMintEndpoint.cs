@@ -78,7 +78,7 @@ public static class DemoMintEndpoint
             ["cnf"] = new Dictionary<string, object> { ["jwk"] = holderJwkEl },
         };
         var credentialJwt = SignEs256(
-            new Dictionary<string, object> { ["alg"] = "ES256", ["typ"] = "vc+sd-jwt" },
+            new Dictionary<string, object> { ["alg"] = "ES256", ["typ"] = "dc+sd-jwt" },
             credentialPayload, issuer);
 
         // Register the freshly-generated issuer JWK so the validator can verify
@@ -105,7 +105,7 @@ public static class DemoMintEndpoint
             // returns false anyway, and the validator skips status checks when uri/idx absent.
         };
         var delegationJwt = SignEs256(
-            new Dictionary<string, object> { ["alg"] = "ES256", ["typ"] = "vc+sd-jwt" },
+            new Dictionary<string, object> { ["alg"] = "ES256", ["typ"] = "dc+sd-jwt" },
             delegationPayload, holder);
 
         var response = new DemoMintResponse(

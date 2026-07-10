@@ -1,0 +1,117 @@
+openapi: 3.1.0
+info:
+  title: Sorcha Org Certificate Lifecycle (Feature 181, US4/US5)
+  description: >
+    Org-admin certificate surface hosted by Tenant Service under the existing /api/v1/trust prefix.
+    Existing routes (provision, trust-anchor, enrol, cert-chain, revoke, crl) are preserved; enrol
+    gains server-side key resolution (no caller-supplied key) and the typed Ed25519 exclusion.
+    Admin routes: RequireAdministrator + RequirePlatformAudience. Auto-enrol (FR-022) is a
+    server-side hook on org creation + OrgWalletReconciliationService, not an API.
+  version: 1.0.0
+paths:
+  /api/v1/trust/tenants/{tenantId}/orgs/{orgWalletAddress}/certificates:
+    get:
+      summary: List the org's certificates (internal + imported)
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  eligibility:
+                    type: object
+                    properties:
+                      eligible: { type: boolean }
+                      reason: { type: string, nullable: true, description: CERT_KEY_NOT_ELIGIBLE when no P-256 key resolvable (FR-024) }
+                      boundKeySource: { type: string, enum: [Primary, HaipCoKey], nullable: true }
+                  certificates:
+                    type: array
+                    items: { $ref: '#/components/schemas/OrgCertificateView' }
+  /api/v1/trust/tenants/{tenantId}/orgs/{orgWalletAddress}/csr:
+    post:
+      summary: Generate a CSR bound to the org's P-256 signing key
+      description: >
+        Server resolves the key (primary ES256 else HAIP co-key) and signs the CSR via the Wallet
+        Service remote-signing generator (research R10). Private key never leaves custody (FR-018).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subjectDn: { type: string, nullable: true, description: Override CN/O; defaults to org display name }
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  csrPem: { type: string }
+                  boundKeySource: { type: string, enum: [Primary, HaipCoKey] }
+                  boundPublicKeyThumbprint: { type: string }
+        '422': { description: CERT_KEY_NOT_ELIGIBLE }
+  /api/v1/trust/tenants/{tenantId}/orgs/{orgWalletAddress}/certificates/import:
+    post:
+      summary: Import an externally-issued certificate + chain
+      description: >
+        Validates key match / chain consistency / validity / signing suitability (FR-019).
+        Accepts chain-with-root and chain-without-root. Supersedes any prior Active imported cert.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [certificatePem]
+              properties:
+                certificatePem: { type: string, description: Leaf, PEM or base64 DER }
+                chainPem: { type: array, items: { type: string }, description: Intermediates and/or root, any order }
+      responses:
+        '201':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrgCertificateView' }
+        '422':
+          description: CERT_KEY_MISMATCH | CERT_CHAIN_INVALID | CERT_EXPIRED | CERT_UNSUITABLE (problem+json with code)
+  /api/v1/trust/tenants/{tenantId}/orgs/{orgWalletAddress}/certificates/{certificateId}:
+    delete:
+      summary: Retire an imported certificate (Status→Superseded)
+      description: Internal certs use the existing /revoke route (CRL path). Idempotent.
+      responses:
+        '204': { description: Retired }
+  /api/v1/trust/tenants/{tenantId}/orgs/{orgWalletAddress}/enrol:
+    post:
+      summary: (EXISTING route, changed semantics) Issue/re-issue the internal tenant-root certificate
+      description: >
+        Body no longer carries OrgPublicKeyBase64 — the server resolves the org's P-256 key itself
+        (closes the unvalidated-key TODO at TrustEndpoints.cs:228). Re-issue supersedes the prior
+        internal cert with auditable history (FR-023d). Also the backfill action for pre-existing
+        orgs (US5 AS-2).
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrgCertificateView' }
+        '422': { description: CERT_KEY_NOT_ELIGIBLE (typed; replaces the ASN1 500 — FR-024) }
+components:
+  schemas:
+    OrgCertificateView:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        provenance: { type: string, enum: [Internal, Imported] }
+        status: { type: string, enum: [Active, Superseded, Revoked, KeyMismatch] }
+        serialNumber: { type: string }
+        subjectDn: { type: string }
+        san: { type: string, description: DID URI (internal) or as-issued (imported) }
+        notBefore: { type: string, format: date-time }
+        notAfter: { type: string, format: date-time }
+        boundKeySource: { type: string, enum: [Primary, HaipCoKey] }
+        chainSummary:
+          type: array
+          items: { type: string, description: SubjectDn per chain element, leaf→root }
+        certificateBase64: { type: string, description: DER }
+        createdAt: { type: string, format: date-time }

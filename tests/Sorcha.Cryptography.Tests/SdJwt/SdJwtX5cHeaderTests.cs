@@ -57,7 +57,7 @@ public class SdJwtX5cHeaderTests
 
         // Header still carries the standard JWT claims.
         doc.RootElement.GetProperty("alg").GetString().Should().Be("ES256");
-        doc.RootElement.GetProperty("typ").GetString().Should().Be("vc+sd-jwt");
+        doc.RootElement.GetProperty("typ").GetString().Should().Be("dc+sd-jwt");
     }
 
     [Fact]

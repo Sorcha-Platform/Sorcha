@@ -43,7 +43,8 @@ internal static class TestVpFactory
         int statusListIndex = 7,
         DateTimeOffset? kbJwtIssuedAt = null,
         DateTimeOffset? kbJwtExpiresAt = null,
-        bool omitKbJwtExp = false)
+        bool omitKbJwtExp = false,
+        string credentialTyp = "dc+sd-jwt")
     {
         var issuer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var holder = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -76,7 +77,7 @@ internal static class TestVpFactory
             ["cnf"] = new Dictionary<string, object> { ["jwk"] = JsonDocument.Parse(holderJwk).RootElement },
         };
         var credentialJwt = SignEs256(
-            new Dictionary<string, object> { ["alg"] = "ES256", ["typ"] = "vc+sd-jwt" },
+            new Dictionary<string, object> { ["alg"] = "ES256", ["typ"] = credentialTyp },
             credentialPayload, issuer);
 
         // Delegation credential — signed by holder key, cnf=device JWK
@@ -100,7 +101,7 @@ internal static class TestVpFactory
             },
         };
         var delegation = SignEs256(
-            new Dictionary<string, object> { ["alg"] = "ES256", ["typ"] = "vc+sd-jwt" },
+            new Dictionary<string, object> { ["alg"] = "ES256", ["typ"] = "dc+sd-jwt" },
             delegationPayload, holder);
 
         // KB-JWT — signed by device key, audience+nonce binding
@@ -182,7 +183,7 @@ internal static class TestVpFactory
             ["cnf"] = new Dictionary<string, object> { ["jwk"] = JsonDocument.Parse(holderJwk).RootElement },
         };
         var credentialJwt = SignEs256(
-            new Dictionary<string, object> { ["alg"] = "ES256", ["typ"] = "vc+sd-jwt" },
+            new Dictionary<string, object> { ["alg"] = "ES256", ["typ"] = "dc+sd-jwt" },
             credentialPayload, issuer);
 
         var exp = (delegationExpiresAt ?? DateTimeOffset.UtcNow.AddDays(365)).ToUnixTimeSeconds();
@@ -206,7 +207,7 @@ internal static class TestVpFactory
         };
         // Honest EdDSA header — the holder key is Ed25519, so the delegation JWS is an EdDSA signature.
         var delegation = SignEdDsa(
-            new Dictionary<string, object> { ["alg"] = "EdDSA", ["typ"] = "vc+sd-jwt" },
+            new Dictionary<string, object> { ["alg"] = "EdDSA", ["typ"] = "dc+sd-jwt" },
             delegationPayload, holderPriv);
 
         var kbHeader = new Dictionary<string, object>

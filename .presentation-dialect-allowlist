@@ -1,0 +1,23 @@
+# Presentation-dialect allowlist — Feature 181 (EUDI / HAIP conformance).
+#
+# Files still carrying the legacy OpenID4VP Presentation Exchange dialect
+# (presentation_definition / input_descriptors / presentation_submission)
+# or writing the legacy SD-JWT typ "vc+sd-jwt". Enforced by
+# scripts/check-presentation-dialect.ps1 (CI: presentation-dialect-gate).
+#
+# This list is a RATCHET — it may only shrink, never grow. Remove each entry
+# in the same PR that migrates the file to DCQL / dc+sd-jwt. Verify-side
+# ACCEPTANCE of typ "vc+sd-jwt" and legacy-dialect REJECTION guards may stay
+# allowlisted for interop.
+#
+# One relative path per line (forward slashes); trailing # comments allowed.
+
+src/Apps/Sorcha.Agent/Commands/HaipPresentCommand.cs                                          # presentation_submission, "vc+sd-jwt"
+src/Apps/Sorcha.Agent/Commands/HaipReceiveCommand.cs                                          # "vc+sd-jwt"
+src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/Credentials/HaipLocalReceiveService.cs  # "vc+sd-jwt"
+src/Apps/Sorcha.Wallet.Pwa/Services/Presentation/PresentationEngine.cs                        # presentation_definition, input_descriptors
+src/Common/Sorcha.Verifier.Engine/Dcql/DcqlRequestParser.cs                                   # presentation_definition, input_descriptors — REJECTION GUARD (probes the legacy keys to refuse them); permanent
+src/Services/Sorcha.Haip.Service/Endpoints/CredentialEndpoints.cs                             # "vc+sd-jwt"
+src/Services/Sorcha.Haip.Service/Endpoints/MetadataEndpoints.cs                               # "vc+sd-jwt"
+src/Services/Sorcha.Haip.Service/Endpoints/VerifierEndpoints.cs                               # presentation_definition, input_descriptors, presentation_submission, "vc+sd-jwt"
+src/Services/Sorcha.Haip.Service/Models/HaipModels.cs                                         # "vc+sd-jwt"

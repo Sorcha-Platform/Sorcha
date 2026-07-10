@@ -1,0 +1,120 @@
+openapi: 3.1.0
+info:
+  title: Sorcha Trusted-List Snapshot Admin (Feature 181, US3)
+  description: >
+    Operator import + lifecycle of ETSI TS 119 612 trusted-list snapshots, and the internal
+    anchor-distribution read used by verifying services. Replaces the Feature 135 placeholder
+    PUT /trustlists/{id} raw-roots route (clean break). All admin routes:
+    RequireAdministrator + RequirePlatformAudience + RateLimitPolicies.Strict, audited.
+  version: 1.0.0
+paths:
+  /api/v1/trust/trustlists/import:
+    post:
+      summary: Import a trusted-list document (upload or URL fetch-once)
+      description: >
+        Verifies the XMLDSig enveloped signature, extracts CA/QC anchors (granted /
+        recognisedatnationallevel), stores a versioned snapshot. Sequence number must exceed the
+        current Active snapshot for the same trustListId.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [trustListId]
+              properties:
+                trustListId: { type: string, description: Operator-chosen stable list identity (matches TrustSourceRef.trustListId) }
+                document: { type: string, format: binary, description: The trusted-list XML (mutually exclusive with sourceUrl) }
+                sourceUrl: { type: string, format: uri, description: HTTPS URL to fetch once (mutually exclusive with document) }
+      responses:
+        '201':
+          description: Snapshot stored
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrustListSnapshotSummary' }
+        '400':
+          description: TRUSTLIST_MALFORMED | TRUSTLIST_SIGNATURE_INVALID (problem+json with code)
+        '409':
+          description: TRUSTLIST_SEQUENCE_REGRESSION — sequence number not newer than current Active snapshot
+  /api/v1/trust/trustlists:
+    get:
+      summary: List snapshots with freshness state
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TrustListSnapshotSummary' }
+  /api/v1/trust/trustlists/{trustListId}:
+    get:
+      summary: Snapshot detail incl. anchor set + extraction summary
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrustListSnapshotDetail' }
+        '404': { description: Unknown trustListId }
+    delete:
+      summary: Delete a snapshot (all versions of this list identity)
+      description: Subsequent evaluations against this trustListId fail closed TRUSTLIST_UNAVAILABLE (SC-004).
+      responses:
+        '204': { description: Deleted (idempotent) }
+  /api/v1/trust/trustlists/{trustListId}/anchors:
+    get:
+      summary: Anchor distribution read (verifying services)
+      description: >
+        Service-tier (RequireService). Returns the Active snapshot's DER roots + freshness for the
+        caching HTTP ITrustListProvider in Sorcha.ServiceClients.Http (15-min cache). Also consumed
+        (anonymous, cache-control public) by the wallet PWA for verifier-authentication anchors —
+        final auth split decided at implementation (public read exposes only public CA certs).
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trustListId: { type: string }
+                  sequenceNumber: { type: integer, format: int64 }
+                  freshness: { type: string, enum: [Fresh, Stale] }
+                  nextUpdate: { type: string, format: date-time, nullable: true }
+                  rootsDerBase64: { type: array, items: { type: string } }
+        '404': { description: TRUSTLIST_UNAVAILABLE }
+components:
+  schemas:
+    TrustListSnapshotSummary:
+      type: object
+      properties:
+        trustListId: { type: string }
+        sequenceNumber: { type: integer, format: int64 }
+        schemeTerritory: { type: string, nullable: true }
+        schemeOperatorName: { type: string, nullable: true }
+        listIssueDateTime: { type: string, format: date-time }
+        nextUpdate: { type: string, format: date-time, nullable: true }
+        freshness: { type: string, enum: [Fresh, Stale] }
+        anchorCount: { type: integer }
+        signerCertSubject: { type: string }
+        signerCertThumbprint: { type: string }
+        importedAt: { type: string, format: date-time }
+        importedBy: { type: string, format: uuid }
+        status: { type: string, enum: [Active, Superseded] }
+    TrustListSnapshotDetail:
+      allOf:
+        - $ref: '#/components/schemas/TrustListSnapshotSummary'
+        - type: object
+          properties:
+            anchors:
+              type: array
+              items:
+                type: object
+                properties:
+                  subjectDn: { type: string }
+                  thumbprint: { type: string }
+                  serviceTypeIdentifier: { type: string }
+                  serviceStatus: { type: string }
+                  notBefore: { type: string, format: date-time }
+                  notAfter: { type: string, format: date-time }
+            extractionSummary:
+              type: object
+              description: extracted vs skipped service entries (FR-012)

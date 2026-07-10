@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Feature 181 presentation-dialect CI gate. Fails when the legacy OpenID4VP
+# Presentation Exchange dialect (presentation_definition / input_descriptors /
+# presentation_submission) or the legacy SD-JWT typ "vc+sd-jwt" appears in
+# src/ outside the ratchet allowlist (.presentation-dialect-allowlist).
+# DCQL (dcql_query) + typ "dc+sd-jwt" are the replacements.
+#
+# See scripts/check-presentation-dialect.ps1 and specs/181-eudi-conformance/.
+
+name: presentation-dialect-gate
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "scripts/check-presentation-dialect.ps1"
+      - ".presentation-dialect-allowlist"
+      - ".github/workflows/presentation-dialect-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  presentation-dialect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Feature 181 presentation-dialect gate
+        shell: pwsh
+        run: ./scripts/check-presentation-dialect.ps1

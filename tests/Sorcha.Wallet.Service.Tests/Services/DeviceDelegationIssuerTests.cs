@@ -106,7 +106,7 @@ public sealed class DeviceDelegationIssuerTests
         var header = JsonDocument.Parse(Decode(result.CompactJwt.Split('.')[0])).RootElement;
 
         header.GetProperty("alg").GetString().Should().Be("ES256");
-        header.GetProperty("typ").GetString().Should().Be("vc+sd-jwt");
+        header.GetProperty("typ").GetString().Should().Be("dc+sd-jwt");
         header.GetProperty("kid").GetString().Should().StartWith("did:sorcha:holder:");
     }
 
@@ -139,7 +139,7 @@ public sealed class DeviceDelegationIssuerTests
 
         var header = JsonDocument.Parse(Decode(result.CompactJwt.Split('.')[0])).RootElement;
         header.GetProperty("alg").GetString().Should().Be("EdDSA");
-        header.GetProperty("typ").GetString().Should().Be("vc+sd-jwt");
+        header.GetProperty("typ").GetString().Should().Be("dc+sd-jwt");
         header.GetProperty("kid").GetString().Should().StartWith("did:sorcha:holder:");
     }
 

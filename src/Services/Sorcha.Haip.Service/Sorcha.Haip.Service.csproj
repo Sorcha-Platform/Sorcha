@@ -20,6 +20,8 @@
     <ProjectReference Include="..\..\Common\Sorcha.Tenant.Models\Sorcha.Tenant.Models.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.PresentationLifecycle.Abstractions\Sorcha.PresentationLifecycle.Abstractions.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.AtomicCache\Sorcha.AtomicCache.csproj" />
+    <!-- Feature 181 — shared DCQL request builder/parser (Sorcha.Verifier.Engine/Dcql). -->
+    <ProjectReference Include="..\..\Common\Sorcha.Verifier.Engine\Sorcha.Verifier.Engine.csproj" />
   </ItemGroup>
 
   <ItemGroup>
