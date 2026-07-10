@@ -223,7 +223,7 @@ public sealed class PresentationEngineTests
         var headerSeg = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(new
         {
             alg = "ES256",
-            typ = "vc+sd-jwt"
+            typ = "dc+sd-jwt"
         }));
         var payloadSeg = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(new
         {

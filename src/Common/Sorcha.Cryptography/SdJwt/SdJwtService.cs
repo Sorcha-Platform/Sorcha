@@ -195,11 +195,13 @@ public class SdJwtService : ISdJwtService
         if (sdDigests.Count > 0)
             payload["_sd"] = sdDigests;
 
-        // Build the JWT header
+        // Build the JWT header. Feature 181 — the final SD-JWT VC profile media type is
+        // dc+sd-jwt; verify paths accept BOTH dc+sd-jwt and the legacy vc+sd-jwt because
+        // already-issued credentials live in citizen wallets we cannot recall (FR-004).
         var header = new Dictionary<string, object>
         {
             ["alg"] = MapAlgorithm(algorithm),
-            ["typ"] = "vc+sd-jwt"
+            ["typ"] = "dc+sd-jwt"
         };
 
         // Feature 120 — kid header for issuer-key resolution. Production callers pass

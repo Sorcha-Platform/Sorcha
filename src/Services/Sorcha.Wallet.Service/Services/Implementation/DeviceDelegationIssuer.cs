@@ -111,7 +111,7 @@ public sealed class DeviceDelegationIssuer : IDeviceDelegationIssuer
         var header = new
         {
             alg = joseAlg,
-            typ = "vc+sd-jwt",
+            typ = "dc+sd-jwt",
             kid = $"did:sorcha:holder:{holderThumbprint}#0"
         };
         var headerJson = JsonSerializer.SerializeToUtf8Bytes(header);

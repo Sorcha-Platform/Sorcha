@@ -109,6 +109,26 @@ public sealed class VerifiablePresentationValidatorTests
     }
 
     [Fact]
+    public async Task ValidateAsync_LegacyVcSdJwtTyp_StillAccepted()
+    {
+        // Feature 181 FR-004 lock-in: already-issued credentials carry typ "vc+sd-jwt" and live
+        // in citizen wallets we cannot recall — the verify side must accept both media types.
+        var bundle = TestVpFactory.Mint(Vct, Claims(("givenName", "Stuart")), ClientId, Nonce,
+            credentialTyp: "vc+sd-jwt");
+        var resolver = new JwkRegistryIssuerKeyResolver();
+        resolver.Register(
+            "did:sorcha:org:test",
+            System.Text.Json.JsonDocument.Parse(TestVpFactory.ToJwk(bundle.IssuerKey)).RootElement);
+        var validator = new VerifiablePresentationValidator(
+            _statusList.Object, resolver, TimeProvider.System,
+            NullLogger<VerifiablePresentationValidator>.Instance, requireIssuerSignature: false);
+
+        var outcome = await validator.ValidateAsync(Session(), bundle.VpToken, bundle.Delegation);
+
+        outcome.Accepted.Should().BeTrue(string.Join(", ", outcome.Errors));
+    }
+
+    [Fact]
     public async Task ValidateAsync_IssuerKeyUnresolved_Required_Rejects()
     {
         // Authoritative server-gate posture (F120): require the issuer signature → reject when unresolvable.
