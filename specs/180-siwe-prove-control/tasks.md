@@ -77,14 +77,14 @@ freshness/domain/nonce checks — fail-closed.
 
 ### Tests for User Story 2 ⚠️ (write first, must FAIL)
 
-- [ ] T015 [P] [US2] `SiweVerifier` tests (`Secp256k1.Tests`): a message signed by its address's key → `Valid=true`, correct `Address`; reject tampered signature / different-address signature / expired (`NowUtc > ExpirationTime`) / not-before (`NowUtc < NotBefore`) / wrong `ExpectedNonce` / wrong `ExpectedDomain` / malformed message.
+- [X] T015 [P] [US2] `SiweVerifier` tests (`Secp256k1.Tests`): a message signed by its address's key → `Valid=true`, correct `Address`; reject tampered signature / different-address signature / expired (`NowUtc > ExpirationTime`) / not-before (`NowUtc < NotBefore`) / wrong `ExpectedNonce` / wrong `ExpectedDomain` / malformed message.
 - [ ] T016 [P] [US2] Verify endpoint test (`Sorcha.Wallet.Service.Tests`): `POST /siwe/verify` accepts a valid proof (no wallet needed) and rejects a tampered one.
 
 ### Implementation for User Story 2
 
-- [ ] T017 [US2] Implement `Siwe/SiweVerifier` (+ `SiweValidationOptions`/`SiweVerificationResult`) in the primitive: `TryParse` → `Eip191` digest → `RecoverFromDigest` (recId=v-27) → address-match → nonce/domain/window; never throws. Make T015 pass.
+- [X] T017 [US2] Implement `Siwe/SiweVerifier` (+ `SiweValidationOptions`/`SiweVerificationResult`) in the primitive: `TryParse` → `Eip191` digest → `RecoverFromDigest` (recId=v-27) → address-match → nonce/domain/window; never throws. Make T015 pass.
 - [ ] T018 [US2] Add `POST /api/v1/siwe/verify` to `EthereumEndpoints.cs` (delegates to `SiweVerifier`). Make T016 pass.
-- [ ] T019 [US2] Run Secp256k1 + Wallet.Service suites — US2 green. **Commit** ("feat: [180] SIWE verification / Sorcha as relying party (US2)").
+- [X] T019 [US2] Run Secp256k1 + Wallet.Service suites — US2 green. **Commit** ("feat: [180] SIWE verification / Sorcha as relying party (US2)").
 
 **Checkpoint**: Sorcha accepts genuine SIWE proofs and rejects tampered/stale/mismatched ones.
 
