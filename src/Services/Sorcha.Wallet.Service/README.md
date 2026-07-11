@@ -207,6 +207,34 @@ OPENTELEMETRY__ZIPKINENDPOINT="https://zipkin.yourcompany.com"
 | DELETE | `/api/v1/wallets/{walletAddress}/access/{subject}` | Revoke access |
 | GET | `/api/v1/wallets/{walletAddress}/access/{subject}/check` | Check if subject has access |
 
+### Ethereum Auxiliary Identity (Features 180 / 181)
+
+A wallet exposes an **auxiliary Ethereum identity** — a secp256k1 key derived on demand from its existing
+seed at `m/44'/60'/0'/0/{index}` (the primary algorithm is unchanged; the key is never returned).
+
+**Prove-control (Feature 180) — EIP-191 / SIWE:**
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/wallets/{walletAddress}/ethereum-address` | The wallet's EIP-55 Ethereum address |
+| POST | `/api/v1/wallets/{walletAddress}/siwe/sign` | Sign a SIWE (EIP-4361) prove-control message |
+| POST | `/api/v1/siwe/verify` | Verify an inbound SIWE proof (Sorcha as relying party) |
+
+**Transacting (Feature 181) — native ETH transfers, EIP-1559 (type-2), server-side only:**
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/wallets/{walletAddress}/ethereum/transactions` | Send a native ETH transfer; returns the tx hash (`CanTransactEthereum`) |
+| POST | `/api/v1/wallets/{walletAddress}/ethereum/transactions/preview` | Read-only cost preview — nonce/gas/fees/total, no broadcast (`CanTransactEthereum`) |
+| GET | `/api/v1/ethereum/transactions/{chainId}/{txHash}` | Receipt status: `pending` / `success` / `reverted` |
+
+Transacting is **gated** by `Ethereum:Transactions` policy (`EnabledChainIds` — Sepolia + Holešky by
+default, `AllowMainnet` master switch off by default, `MaxValueWei` per-tx cap, `MaxFeePerGasWei` ceiling)
+and the `CanTransactEthereum` authorization policy. Amounts are wei as decimal strings. Encoding is
+pure-managed RLP + EIP-1559 (no Nethereum); the per-chain **write-capable** RPC endpoint is read from the
+shared `DidResolver:Ethr:Rpc:{chainId}` cascade. Fail-closed: any policy/RPC/estimate failure refuses the
+transfer with no broadcast. See `docs/superpowers/specs/2026-07-11-ethereum-verify-phase4-design.md`.
+
 For full API documentation with request/response schemas, open **Scalar UI** at `https://localhost:7084/scalar`.
 
 ---
