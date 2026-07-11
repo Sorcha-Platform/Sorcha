@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json.Serialization;
+using Sorcha.Verifier.Engine.Dcql;
 
 namespace Sorcha.Haip.Service.Models;
 
@@ -19,10 +20,17 @@ public class PresentationRequest
     public required string ClientId { get; set; }
     /// <summary>The response uri.</summary>
     public required string ResponseUri { get; set; }
-    /// <summary>The credential type.</summary>
+    /// <summary>The credential type (single-ask convenience — first credential query's vct).</summary>
     public required string CredentialType { get; set; }
     /// <summary>Collection of required claims associated with this resource.</summary>
     public List<string>? RequiredClaims { get; set; }
+
+    /// <summary>
+    /// Feature 181 US2 — the full declared DCQL query when the request asks for more than one
+    /// credential (or carries <c>credential_sets</c> alternatives). Null ⇒ the single-ask request
+    /// built from <see cref="CredentialType"/> + <see cref="RequiredClaims"/> (back-compatible).
+    /// </summary>
+    public DcqlQuery? DeclaredQuery { get; set; }
     /// <summary>Collection of accepted issuers associated with this resource.</summary>
     public List<string>? AcceptedIssuers { get; set; }
     /// <summary>Server timestamp when the record was created (UTC).</summary>
@@ -71,9 +79,18 @@ public enum PresentationRequestState
 /// </summary>
 public class VerificationResult
 {
-    /// <summary>Indicates whether validation passed.</summary>
+    /// <summary>Indicates whether validation passed (overall: every required query / credential-set satisfied).</summary>
     [JsonPropertyName("isValid")]
     public bool IsValid { get; set; }
+
+    /// <summary>
+    /// Feature 181 US2 — per-credential-query verification outcomes, keyed by DCQL query id. Populated
+    /// for multi-query requests; null for the single-ask flow. The overall <see cref="IsValid"/> applies
+    /// the request's <c>credential_sets</c> (or AND-of-all) rule over these results.
+    /// </summary>
+    [JsonPropertyName("perQuery")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, PerQueryVerification>? PerQuery { get; set; }
 
     // TODO(098-#45): Key by input descriptor ID: Dictionary<string, Dictionary<string, object>>
     /// <summary>Map of verified claims keyed by string.</summary>
@@ -110,4 +127,21 @@ public class VerificationResult
     /// </summary>
     [JsonPropertyName("trustEvidence")]
     public Sorcha.Blueprint.Engine.Credentials.TrustEvidence? TrustEvidence { get; set; }
+}
+
+/// <summary>Feature 181 US2 — the verification outcome for a single DCQL credential query.</summary>
+public sealed class PerQueryVerification
+{
+    /// <summary>Whether the presentation for this query verified.</summary>
+    [JsonPropertyName("isValid")]
+    public bool IsValid { get; set; }
+
+    /// <summary>The verified issuer for this query, when the presentation verified.</summary>
+    [JsonPropertyName("issuer")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Issuer { get; set; }
+
+    /// <summary>Errors for this query when it did not verify (empty when valid).</summary>
+    [JsonPropertyName("errors")]
+    public List<string> Errors { get; set; } = new();
 }

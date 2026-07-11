@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Verifier.Engine.Dcql;
+
 namespace Sorcha.UI.Core.Models.Presentation;
 
 /// <summary>Parsed shape of an <c>openid4vp://</c> cross-device deep link.</summary>
@@ -15,20 +17,93 @@ public sealed record ParsedPresentationRequest
     /// <summary>Verifier-supplied nonce — wallet's KB-JWT must echo it.</summary>
     public required string Nonce { get; init; }
 
-    /// <summary>Required credential type URI from the presentation_definition.</summary>
+    /// <summary>
+    /// The full DCQL query (Feature 181 US2 — the multi-credential source of truth).
+    /// The single-query convenience fields below are derived from <c>Query.Credentials[0]</c>
+    /// for the single-ask flow; the per-query <see cref="Match"/> path consumes <see cref="Query"/> directly.
+    /// </summary>
+    public required DcqlQuery Query { get; init; }
+
+    /// <summary>Required credential type URI (first credential query's vct — single-ask convenience).</summary>
     public required string RequiredVct { get; init; }
 
-    /// <summary>Mandatory claim names the wallet must disclose.</summary>
+    /// <summary>Mandatory claim names the wallet must disclose (first credential query — single-ask convenience).</summary>
     public required IReadOnlyList<string> RequiredClaims { get; init; }
 
-    /// <summary>Optional claim names the wallet may disclose.</summary>
+    /// <summary>Optional claim names the wallet may disclose (first credential query — single-ask convenience).</summary>
     public required IReadOnlyList<string> OptionalClaims { get; init; }
 
-    /// <summary>Display purpose extracted from the presentation_definition.</summary>
+    /// <summary>Display purpose extracted from the request.</summary>
     public string? Purpose { get; init; }
 
     /// <summary>Response mode; v1 supports <c>direct_post</c>.</summary>
     public string ResponseMode { get; init; } = "direct_post";
+}
+
+/// <summary>
+/// Per-credential-query match (Feature 181 US2): a single ask inside the DCQL request plus every
+/// cached credential that can satisfy it. A query is satisfiable when it has at least one candidate.
+/// </summary>
+public sealed record DcqlQueryMatch
+{
+    /// <summary>The DCQL credential-query id (the key the response envelope is keyed by).</summary>
+    public required string QueryId { get; init; }
+
+    /// <summary>The credential type asked for (display).</summary>
+    public required string Vct { get; init; }
+
+    /// <summary>Required claim names for this query.</summary>
+    public required IReadOnlyList<string> RequiredClaims { get; init; }
+
+    /// <summary>Optional claim names for this query.</summary>
+    public required IReadOnlyList<string> OptionalClaims { get; init; }
+
+    /// <summary>Cached credentials that satisfy this query's required claims (may be several — the citizen chooses).</summary>
+    public required IReadOnlyList<CredentialMatch> Candidates { get; init; }
+
+    /// <summary>Whether at least one cached credential satisfies this query.</summary>
+    public bool IsSatisfiable => Candidates.Count > 0;
+}
+
+/// <summary>
+/// A DCQL <c>credential_sets</c> entry projected for the consent surface (Feature 181 US2): the
+/// alternative id-combinations that satisfy the set, and which of them the wallet can actually fulfil.
+/// </summary>
+public sealed record DcqlSetChoice
+{
+    /// <summary>Every option the verifier offered — each is a list of credential-query ids that together satisfy the set.</summary>
+    public required IReadOnlyList<IReadOnlyList<string>> Options { get; init; }
+
+    /// <summary>The subset of <see cref="Options"/> the wallet can satisfy from its cached credentials.</summary>
+    public required IReadOnlyList<IReadOnlyList<string>> SatisfiableOptions { get; init; }
+
+    /// <summary>Whether satisfying this set is required.</summary>
+    public required bool Required { get; init; }
+
+    /// <summary>Consent-surface display text.</summary>
+    public string? Purpose { get; init; }
+
+    /// <summary>A required set is met when at least one of its options is fully satisfiable.</summary>
+    public bool IsMet => !Required || SatisfiableOptions.Count > 0;
+}
+
+/// <summary>
+/// The request-level match verdict (Feature 181 US2). <see cref="Satisfiable"/> is the gate on
+/// submission — no partial presentation is offered when any required query/set is unmet (FR-006d).
+/// </summary>
+public sealed record DcqlMatchResult
+{
+    /// <summary>Whether every required credential query / credential-set is satisfiable.</summary>
+    public required bool Satisfiable { get; init; }
+
+    /// <summary>Per-credential-query candidates, in request order.</summary>
+    public required IReadOnlyList<DcqlQueryMatch> PerQuery { get; init; }
+
+    /// <summary>The required query ids the wallet cannot satisfy (drives the "missing credential" surface).</summary>
+    public required IReadOnlyList<string> UnsatisfiedRequiredQueryIds { get; init; }
+
+    /// <summary>Projected <c>credential_sets</c> alternatives (empty when the request declares none → all queries required).</summary>
+    public required IReadOnlyList<DcqlSetChoice> SetChoices { get; init; }
 }
 
 /// <summary>

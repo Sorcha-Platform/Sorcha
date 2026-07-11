@@ -39,7 +39,7 @@ public class PresentationRequestToolTests
 
         result.Status.Should().Be("Unauthorized");
         _haipClientMock.Verify(c => c.CreatePresentationRequestAsync(
-            It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<List<string>>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<List<string>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public class PresentationRequestToolTests
         var requestId = Guid.NewGuid();
         _haipClientMock
             .Setup(c => c.CreatePresentationRequestAsync("IdCred",
-                It.IsAny<List<string>>(), It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
+                It.IsAny<List<string>>(), It.IsAny<List<string>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CreatePresentationRequestResult(requestId, "openid4vp://authorize", "https://req", "nonce-1", DateTimeOffset.UtcNow.AddMinutes(5)));
 
         var result = await CreateTool().CreateRequestAsync("IdCred", "[\"givenName\"]", "[\"did:sorcha:issuer\"]");

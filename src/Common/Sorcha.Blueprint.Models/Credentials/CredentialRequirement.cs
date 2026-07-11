@@ -59,6 +59,19 @@ public class CredentialRequirement
     public string? Description { get; set; }
 
     /// <summary>
+    /// Optional alternative-group tag (Feature 181 US2). Requirements on the same action
+    /// that share a non-null <c>anyOfGroup</c> value are <em>alternatives</em> — presenting a
+    /// credential for ANY ONE of them satisfies the group. This maps to a DCQL
+    /// <c>credential_sets</c> entry whose <c>options</c> are the grouped queries. Requirements
+    /// with no group tag are each individually required (an AND across the action's asks).
+    /// Null ⇒ this requirement stands alone as a required ask.
+    /// </summary>
+    [DataAnnotations.MaxLength(80)]
+    [JsonPropertyName("anyOfGroup")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? AnyOfGroup { get; set; }
+
+    /// <summary>
     /// Where the presentation should come from. Default: <see cref="PresentationSource.SorchaInternal"/>.
     /// Set to <see cref="PresentationSource.HaipExternalWallet"/> to require presentation via
     /// the HAIP OpenID4VP verifier (spec 098) instead of matching against Sorcha-internal credentials.

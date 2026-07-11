@@ -112,6 +112,9 @@ public static class VerifierEndpoints
             requiredClaims: request.RequiredClaims,
             acceptedIssuers: request.AcceptedIssuers,
             baseUrl: issuerUrl,
+            // Feature 181 US2 — a multi-credential request carries its full declared query; the
+            // per-query verification loop + GetRequestObject both key off DeclaredQuery.
+            declaredQuery: request.DeclaredQuery,
             ct: ct);
 
         var requestUri = $"{issuerUrl}/api/v1/verifier/requests/{presRequest.Id}/request-object";
@@ -149,7 +152,9 @@ public static class VerifierEndpoints
 
         // Feature 181 (T010) — the credential ask is expressed in DCQL (OpenID4VP 1.0 final);
         // Presentation Exchange is retired. Built via the ONE shared builder (FR-008).
-        var dcqlQuery = DcqlRequestBuilder.Build(
+        // Feature 181 US2 — a multi-credential request carries its full declared query; the single-ask
+        // request builds the one-credential query from CredentialType + RequiredClaims (back-compatible).
+        var dcqlQuery = request.DeclaredQuery ?? DcqlRequestBuilder.Build(
             [DcqlCredentialAsk.SdJwt(DefaultQueryId, request.CredentialType, request.RequiredClaims ?? [])]);
 
         var requestObjectPayload = new Dictionary<string, object>
@@ -234,8 +239,14 @@ public static class VerifierEndpoints
             return Results.BadRequest(new { error = ex.Code, error_description = ex.Message });
         }
 
+        // Feature 181 — reject entries keyed to ids the request never declared (FR-003). Single-ask
+        // requests declare just DefaultQueryId; multi-credential requests declare their DCQL ids.
+        var declaredIds = request.DeclaredQuery is { } declared
+            ? declared.Credentials.Select(c => c.Id).ToList()
+            : [DefaultQueryId];
+
         var unknownIds = envelope.Presentations.Keys
-            .Where(k => !string.Equals(k, DefaultQueryId, StringComparison.Ordinal))
+            .Where(k => !declaredIds.Contains(k, StringComparer.Ordinal))
             .ToList();
         if (unknownIds.Count > 0)
         {
@@ -246,41 +257,72 @@ public static class VerifierEndpoints
             });
         }
 
-        if (!envelope.Presentations.TryGetValue(DefaultQueryId, out var presentations))
+        // Per-entry format dispatch: an SD-JWT VC presentation is ~-delimited; an mdoc presentation is a
+        // bare base64url DeviceResponse (verified via the unified ITrustEvaluator over the issuer x5chain).
+        async Task<VerificationResult> VerifyEntryAsync(string presentation, string vct, List<string>? requiredClaims)
         {
-            return Results.BadRequest(new
+            if (!presentation.Contains('~'))
             {
-                error = DcqlErrorCodes.Invalid,
-                error_description = $"vp_token carries no entry for query id '{DefaultQueryId}'."
-            });
+                return await mdocVerifier.VerifyAsync(
+                    presentation, clientId: request.ClientId, nonce: request.Nonce,
+                    responseUri: request.ResponseUri, trustPolicy: BuildMdocTrustPolicy(),
+                    requiredClaims: requiredClaims, ct: ct);
+            }
+            return await verifier.VerifyAsync(
+                presentation, expectedNonce: request.Nonce, expectedAudience: request.ClientId,
+                requiredCredentialType: vct, requiredClaims: requiredClaims,
+                acceptedIssuers: request.AcceptedIssuers, ct: ct);
         }
 
-        // Per-entry format dispatch: an SD-JWT VC presentation is ~-delimited; an mdoc
-        // presentation is a bare base64url DeviceResponse. The mdoc path verifies via the
-        // unified ITrustEvaluator (x509-tenant / trustlist sources over the issuer x5chain).
-        var presentation = presentations[0];
         VerificationResult result;
-        if (!presentation.Contains('~'))
+        if (request.DeclaredQuery is null)
         {
-            result = await mdocVerifier.VerifyAsync(
-                presentation,
-                clientId: request.ClientId,
-                nonce: request.Nonce,
-                responseUri: request.ResponseUri,
-                trustPolicy: BuildMdocTrustPolicy(),
-                requiredClaims: request.RequiredClaims,
-                ct: ct);
+            // Single-ask flow (unchanged): the one declared query is DefaultQueryId.
+            if (!envelope.Presentations.TryGetValue(DefaultQueryId, out var presentations))
+            {
+                return Results.BadRequest(new
+                {
+                    error = DcqlErrorCodes.Invalid,
+                    error_description = $"vp_token carries no entry for query id '{DefaultQueryId}'."
+                });
+            }
+            result = await VerifyEntryAsync(presentations[0], request.CredentialType, request.RequiredClaims);
         }
         else
         {
-            result = await verifier.VerifyAsync(
-                presentation,
-                expectedNonce: request.Nonce,
-                expectedAudience: request.ClientId,
-                requiredCredentialType: request.CredentialType,
-                requiredClaims: request.RequiredClaims,
-                acceptedIssuers: request.AcceptedIssuers,
-                ct: ct);
+            // Multi-query flow (Feature 181 US2): verify each declared query, then apply the
+            // credential_sets (or AND-of-all) rule to the overall verdict.
+            result = new VerificationResult { PerQuery = new(StringComparer.Ordinal) };
+            var validIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var cq in request.DeclaredQuery.Credentials)
+            {
+                var vct = cq.Meta.VctValues is { Count: > 0 } ? cq.Meta.VctValues[0] : cq.Meta.DoctypeValue ?? string.Empty;
+                var (required, _) = DcqlRequestParser.SplitClaims(cq);
+                if (!envelope.Presentations.TryGetValue(cq.Id, out var entries) || entries.Count == 0)
+                {
+                    result.PerQuery[cq.Id] = new PerQueryVerification { IsValid = false, Errors = { $"No presentation provided for query '{cq.Id}'." } };
+                    continue;
+                }
+
+                var one = await VerifyEntryAsync(entries[0], vct, required.ToList());
+                result.PerQuery[cq.Id] = new PerQueryVerification { IsValid = one.IsValid, Issuer = one.Issuer, Errors = one.Errors };
+                if (one.IsValid)
+                {
+                    validIds.Add(cq.Id);
+                    result.Issuer ??= one.Issuer;
+                    result.TrustEvidence ??= one.TrustEvidence;
+                    foreach (var (k, v) in one.VerifiedClaims)
+                    {
+                        result.VerifiedClaims[$"{cq.Id}:{k}"] = v;
+                    }
+                }
+            }
+
+            result.IsValid = AllRequiredSatisfied(request.DeclaredQuery, validIds);
+            if (!result.IsValid)
+            {
+                result.Errors.Add("One or more required credential queries were not satisfied.");
+            }
         }
 
         // Store the result + the raw submitted envelope (PR B1) so a verifier client can
@@ -358,6 +400,26 @@ public static class VerifierEndpoints
         Combinator = TrustCombinator.AnyOf,
         MinAssuranceLevel = AssuranceLevel.Low
     };
+
+    /// <summary>
+    /// Feature 181 US2 — the overall verdict rule: with <c>credential_sets</c>, every required set must
+    /// have one option whose ids all verified; without sets, every declared credential query must verify.
+    /// </summary>
+    internal static bool AllRequiredSatisfied(DcqlQuery query, ISet<string> validIds)
+    {
+        if (query.CredentialSets is { Count: > 0 } sets)
+        {
+            foreach (var set in sets)
+            {
+                if (!set.Required) continue;
+                var met = set.Options.Any(opt => opt.Count > 0 && opt.All(validIds.Contains));
+                if (!met) return false;
+            }
+            return true;
+        }
+
+        return query.Credentials.All(c => validIds.Contains(c.Id));
+    }
 }
 
 /// <summary>Request to create a presentation request.</summary>
@@ -369,4 +431,12 @@ public class CreatePresentationRequestBody
 
     public List<string>? RequiredClaims { get; init; }
     public List<string>? AcceptedIssuers { get; init; }
+
+    /// <summary>
+    /// Feature 181 US2 — optional pre-built DCQL query covering every credential ask (and any
+    /// <c>credential_sets</c> alternatives). When supplied, it is served verbatim as the request
+    /// object's <c>dcql_query</c>; null ⇒ a single-ask query is built from
+    /// <see cref="CredentialType"/> + <see cref="RequiredClaims"/>.
+    /// </summary>
+    public DcqlQuery? DeclaredQuery { get; init; }
 }

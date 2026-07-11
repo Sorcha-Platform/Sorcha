@@ -10,6 +10,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Sorcha.UI.Core.Models.Presentation;
+using Sorcha.Verifier.Engine.Dcql;
 using Sorcha.UI.Testing;
 using Sorcha.Wallet.Pwa.Models.Device;
 using Sorcha.Wallet.Pwa.Services;
@@ -204,6 +205,15 @@ public sealed class PresentIntakeLayoutTests : ComponentTestFixture
                {
                    ClientId = "verifier1",
                    ResponseUri = "https://example.com/cb",
+                   Query = new DcqlQuery
+                   {
+                       Credentials = [new DcqlCredentialQuery
+                       {
+                           Id = "credential",
+                           Format = DcqlFormats.SdJwtVc,
+                           Meta = new DcqlCredentialMeta { VctValues = ["TestCred"] },
+                       }],
+                   },
                    RequiredVct = "TestCred",
                    Nonce = "n1",
                    Purpose = null,
@@ -267,6 +277,15 @@ public sealed class PresentIntakeLayoutTests : ComponentTestFixture
                {
                    ClientId = "verifier1",
                    ResponseUri = "https://example.com/cb",
+                   Query = new DcqlQuery
+                   {
+                       Credentials = [new DcqlCredentialQuery
+                       {
+                           Id = "credential",
+                           Format = DcqlFormats.SdJwtVc,
+                           Meta = new DcqlCredentialMeta { VctValues = ["TestCred"] },
+                       }],
+                   },
                    RequiredVct = "TestCred",
                    Nonce = "n1",
                    Purpose = null,

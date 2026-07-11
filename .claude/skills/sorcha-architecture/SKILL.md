@@ -1749,3 +1749,60 @@ blueprint-cluster (the MCP tool uses the direct service address, so unit tests d
 
 **Witness:** `demos/AIAS/rehearse.ps1` — valid → approved (credential delivered), invalid "ZZ99 9ZZ" → rejected
 (no credential). Spec: `specs/176-agent-disclosed-payload/`.
+
+---
+
+## EUDI conformance — DCQL dialect + multi-credential asks (Feature 181, US1–US2)
+
+Protocol-alignment feature moving every Sorcha presentation surface onto the OpenID4VP 1.0 **final**
+dialect and adding multi-credential / alternative asks. US1 (dialect cutover, merged #1147) + US2
+(multi-credential, PR #1149) are the presentation-track stories; US3–US6 (trusted-list rail, external
+issuance identity, cert lifecycle, verifier authentication) are the trust track. Spec:
+`specs/181-eudi-conformance/`.
+
+### Shared DCQL dialect (US1)
+
+The single owner of the `dcql_query` wire shape is `Sorcha.Verifier.Engine/Dcql/` — `DcqlModels`
+(records with exact spec property names + `Validate()`), `DcqlRequestBuilder` (asks + alternative
+groups → `DcqlQuery`, owns the required/optional → `claims`+`claim_sets` mapping), `DcqlRequestParser`
+(inverse; rejects PE shapes with `LEGACY_DIALECT`), and `DcqlVpToken` (the object-keyed response
+envelope `{ "<queryId>": ["<presentation>"] }`). Presentation Exchange (`presentation_definition` /
+`input_descriptors` / `presentation_submission`) is retired and CI-gated
+(`scripts/check-presentation-dialect.ps1` + `.presentation-dialect-allowlist`, ratcheted empty). SD-JWT
+`typ` is now `dc+sd-jwt` (verify still dual-accepts stored `vc+sd-jwt`). Every producer converges on the
+served `request_uri` form; the inline-`presentation_definition` deep link is refused.
+
+### Multi-credential & alternative asks (US2)
+
+- **`CredentialRequirement.AnyOfGroup`** (`Sorcha.Blueprint.Models/Credentials/`) — the blueprint-author
+  surface for alternatives. Requirements on one action sharing a non-null tag are alternatives (present
+  any one); ungrouped requirements are each AND-required.
+- **`RequirementDcqlMapper`** (`Sorcha.Blueprint.Service`) — THE requirement-set → `DcqlQuery` map
+  (contract §4): one credential query per requirement (id = slugified type), anyOf groups →
+  `credential_sets` options, and — once any group exists — an explicit required singleton set per
+  ungrouped ask so AND-requiredness survives the presence of `credential_sets`.
+- **Plumbing** — `PresentationLifecycleService.InitiateAsync` builds the query from the action's full
+  same-source requirement set and carries it to the two DCQL producer sites: the SorchaWallet consumer
+  via `PresentationInitiationContext.DeclaredDcqlQueryJson` (served verbatim; single-ask fallback), and
+  the HAIP verifier via `IHaipServiceClient.CreatePresentationRequestAsync(declaredQueryJson)` →
+  `CreatePresentationRequestBody.DeclaredQuery` → `PresentationRequestStore.CreateAsync(declaredQuery)`
+  → `GetRequestObject` serves it. `DeclaredDcqlQueryJson` is JSON (not a typed field) to keep the
+  `Sorcha.PresentationLifecycle.Abstractions` assembly free of a DCQL-model dependency.
+- **Wallet side** — `PresentationEngine.MatchQuery` returns a `DcqlMatchResult` (per-query candidates,
+  `credential_sets` solving, unsatisfied-required detection); `BuildVpTokenEnvelopeAsync` builds one
+  SD-JWT presentation per consented query into the object-keyed envelope (shared single-presentation
+  core with `BuildVpTokenAsync`). `Present.razor` gains a multi-credential path (gated on >1 credential
+  query or a multi-option set): alternative-option pick → per-query candidate pick → filtered
+  multi-query consent → envelope build. The proven single-ask flow is preserved verbatim.
+- **Consent UI** (`Sorcha.UI.Components.User/Components/Presentation/`) — `ConsentSheet` renders one
+  section per query (`DcqlMatchResult` + per-query `Selections` + `QueryOptionalToggles`); required
+  claims locked, optional toggleable, unsatisfiable required asks flagged, confirm disabled when any
+  required query/set is unmet (no partial submit). `CredentialPickerDialog` gains an alternative mode
+  (`SetChoice` → offer each satisfiable option, no auto-pick).
+- **Verifier side** — HAIP `HandleDirectPost` runs a per-query verification loop; the overall verdict
+  is `VerifierEndpoints.AllRequiredSatisfied` (with `credential_sets`: every required set has one
+  fully-verified option; without: every declared query verifies). Unknown envelope key →
+  `DCQL_UNKNOWN_QUERY_ID`. `VerificationResult.PerQuery` carries per-query outcomes.
+- **Known gap** — the F127 `SorchaWalletPresentationConsumer.VerifyAsync` is still single-credential, so
+  full multi-credential PWA→SorchaWallet *verification* is a follow-up; the HAIP verifier is the
+  multi-query-capable path (covered by `MultiCredentialPresentationTests`).

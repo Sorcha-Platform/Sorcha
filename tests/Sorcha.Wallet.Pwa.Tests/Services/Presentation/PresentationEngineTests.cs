@@ -273,6 +273,93 @@ public sealed class PresentationEngineTests
         await act.Should().ThrowAsync<InvalidOperationException>();
     }
 
+    // ─────────────────── BuildVpTokenEnvelopeAsync (Feature 181 US2) ───────────────────
+
+    [Fact]
+    public async Task BuildVpTokenEnvelopeAsync_MultipleQueries_ProducesObjectKeyedEnvelope()
+    {
+        const string AddressVct = "https://sorcha.dev/vc/address/v1";
+        var (idCred, _) = MakeRealCredential(Vct, ("givenName", "Stuart"));
+        var (addrCred, _) = MakeRealCredential(AddressVct, ("postcode", "EH1 1AA"));
+
+        var req = MakeRequest(["givenName"], []);
+        using var deviceEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var deviceJwk = JsonSerializer.Deserialize<JsonElement>(JwkOf(deviceEcdsa));
+        Func<byte[], CancellationToken, Task<byte[]>> signer =
+            (data, _) => Task.FromResult(deviceEcdsa.SignData(data, HashAlgorithmName.SHA256));
+
+        var idMatch = new CredentialMatch { Credential = idCred, SatisfiedRequired = ["givenName"], AvailableOptional = [] };
+        var addrMatch = new CredentialMatch { Credential = addrCred, SatisfiedRequired = ["postcode"], AvailableOptional = [] };
+
+        var consented = new List<ConsentedQuery>
+        {
+            new("identity", idMatch, ["givenName"], ["givenName"]),
+            new("address", addrMatch, ["postcode"], ["postcode"]),
+        };
+
+        var json = await _engine.BuildVpTokenEnvelopeAsync(consented, req, deviceJwk, signer);
+
+        // One object-keyed entry per query, each a single SD-JWT presentation.
+        var envelope = DcqlVpToken.Parse(json);
+        envelope.Presentations.Keys.Should().BeEquivalentTo(new[] { "identity", "address" });
+        envelope.Presentations["identity"].Should().ContainSingle();
+        envelope.Presentations["address"].Should().ContainSingle();
+
+        // Each presentation carries a device-signed KB-JWT binding the request nonce + audience.
+        foreach (var vp in envelope.Presentations.Values.Select(v => v[0]))
+        {
+            var (_, _, kbJwt) = PresentationEngine.SplitSdJwt(vp);
+            kbJwt.Should().NotBeNullOrEmpty();
+            var parts = kbJwt!.Split('.');
+            var signingInput = Encoding.ASCII.GetBytes($"{parts[0]}.{parts[1]}");
+            var signature = Base64Url.DecodeFromChars(parts[2]);
+            deviceEcdsa.VerifyData(signingInput, signature, HashAlgorithmName.SHA256).Should().BeTrue();
+            var kbPayload = JsonSerializer.Deserialize<JsonElement>(Base64Url.DecodeFromChars(parts[1]));
+            kbPayload.GetProperty("aud").GetString().Should().Be(req.ClientId);
+            kbPayload.GetProperty("nonce").GetString().Should().Be(req.Nonce);
+        }
+    }
+
+    [Fact]
+    public async Task BuildVpTokenEnvelopeAsync_OnlyApprovedDisclosuresPerQuery()
+    {
+        var (idCred, _) = MakeRealCredential(Vct, ("givenName", "Stuart"), ("familyName", "Fraser"));
+        var req = MakeRequest(["givenName"], ["familyName"]);
+        using var deviceEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var deviceJwk = JsonSerializer.Deserialize<JsonElement>(JwkOf(deviceEcdsa));
+        Func<byte[], CancellationToken, Task<byte[]>> signer =
+            (data, _) => Task.FromResult(deviceEcdsa.SignData(data, HashAlgorithmName.SHA256));
+
+        var match = new CredentialMatch
+        {
+            Credential = idCred,
+            SatisfiedRequired = ["givenName"],
+            AvailableOptional = ["familyName"],
+        };
+        // familyName is optional and NOT approved — only givenName should be disclosed.
+        var consented = new List<ConsentedQuery> { new("identity", match, ["givenName"], ["givenName"]) };
+
+        var json = await _engine.BuildVpTokenEnvelopeAsync(consented, req, deviceJwk, signer);
+
+        var vp = DcqlVpToken.Parse(json).Presentations["identity"][0];
+        var (_, disclosures, _) = PresentationEngine.SplitSdJwt(vp);
+        disclosures.Should().ContainSingle();
+        PresentationEngine.ReadDisclosureName(disclosures[0]).Should().Be("givenName");
+    }
+
+    [Fact]
+    public async Task BuildVpTokenEnvelopeAsync_Empty_Throws()
+    {
+        var req = MakeRequest(["givenName"], []);
+        using var deviceEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var deviceJwk = JsonSerializer.Deserialize<JsonElement>(JwkOf(deviceEcdsa));
+
+        Func<Task> act = async () => await _engine.BuildVpTokenEnvelopeAsync(
+            [], req, deviceJwk, (data, _) => Task.FromResult(deviceEcdsa.SignData(data, HashAlgorithmName.SHA256)));
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
     // ────────────────────────── helpers ──────────────────────────
 
     private static ParsedPresentationRequest MakeRequest(IReadOnlyList<string> required, IReadOnlyList<string> optional)
@@ -281,6 +368,16 @@ public sealed class PresentationEngineTests
             ClientId = ClientId,
             ResponseUri = "https://verify.test/r/x/response",
             Nonce = "abc",
+            Query = new DcqlQuery
+            {
+                Credentials = [new DcqlCredentialQuery
+                {
+                    Id = "credential",
+                    Format = DcqlFormats.SdJwtVc,
+                    Meta = new DcqlCredentialMeta { VctValues = [Vct] },
+                    Claims = required.Concat(optional).Select(c => new DcqlClaimQuery { Path = [c] }).ToList(),
+                }],
+            },
             RequiredVct = Vct,
             RequiredClaims = required,
             OptionalClaims = optional,

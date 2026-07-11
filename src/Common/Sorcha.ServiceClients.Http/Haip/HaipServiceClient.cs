@@ -66,14 +66,22 @@ public class HaipServiceClient : IHaipServiceClient
         string credentialType,
         List<string>? requiredClaims = null,
         List<string>? acceptedIssuers = null,
+        string? declaredQueryJson = null,
         CancellationToken ct = default)
     {
-        var request = new
+        var request = new Dictionary<string, object?>
         {
-            credentialType,
-            requiredClaims,
-            acceptedIssuers
+            ["credentialType"] = credentialType,
+            ["requiredClaims"] = requiredClaims,
+            ["acceptedIssuers"] = acceptedIssuers,
         };
+
+        // Feature 181 US2 — forward the pre-built DCQL query as an object so the verifier
+        // deserializes it into DeclaredQuery and serves it verbatim.
+        if (!string.IsNullOrWhiteSpace(declaredQueryJson))
+        {
+            request["declaredQuery"] = JsonSerializer.Deserialize<JsonElement>(declaredQueryJson);
+        }
 
         await SetAuthHeaderAsync(ct);
         var response = await _httpClient.PostAsJsonAsync("/api/v1/verifier/requests", request, ct);

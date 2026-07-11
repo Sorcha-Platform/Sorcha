@@ -34,9 +34,18 @@ public interface IPresentationEngine
         Func<string, CancellationToken, Task<string>> requestObjectFetcher,
         CancellationToken ct = default);
 
-    /// <summary>Match a request against the wallet's cached credentials.</summary>
+    /// <summary>Match the single-ask (first credential query) against the wallet's cached credentials.</summary>
     /// <returns>Empty if no credential satisfies every required claim.</returns>
     IReadOnlyList<CredentialMatch> Match(
+        ParsedPresentationRequest request,
+        IReadOnlyList<CachedCredential> credentials);
+
+    /// <summary>
+    /// Match the full DCQL query (Feature 181 US2): per-credential-query candidates plus
+    /// <c>credential_sets</c> solving. <see cref="DcqlMatchResult.Satisfiable"/> gates submission —
+    /// no partial presentation when any required query/set is unmet.
+    /// </summary>
+    DcqlMatchResult MatchQuery(
         ParsedPresentationRequest request,
         IReadOnlyList<CachedCredential> credentials);
 
@@ -57,4 +66,39 @@ public interface IPresentationEngine
         System.Text.Json.JsonElement deviceJwk,
         Func<byte[], CancellationToken, Task<byte[]>> deviceSigner,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Feature 181 US2 — build the multi-credential OpenID4VP 1.0 response envelope: one SD-JWT
+    /// presentation per consented credential query, keyed by query id
+    /// (<c>{ "&lt;queryId&gt;": ["&lt;presentation&gt;"] }</c>). Each presentation carries a KB-JWT
+    /// signed by the device key and only the approved disclosure subset for that query.
+    /// </summary>
+    /// <param name="consented">The per-query disclosure plan the citizen approved (one entry per
+    /// query being presented).</param>
+    /// <param name="request">The original request (nonce + audience binding).</param>
+    /// <param name="deviceJwk">Public JWK of the device key.</param>
+    /// <param name="deviceSigner">Async delegate that signs raw bytes with the device key.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The JSON object-keyed <c>vp_token</c> string ready for the direct_post body.</returns>
+    Task<string> BuildVpTokenEnvelopeAsync(
+        IReadOnlyList<ConsentedQuery> consented,
+        ParsedPresentationRequest request,
+        System.Text.Json.JsonElement deviceJwk,
+        Func<byte[], CancellationToken, Task<byte[]>> deviceSigner,
+        CancellationToken ct = default);
 }
+
+/// <summary>
+/// Feature 181 US2 — one consented credential query in a multi-credential presentation: the chosen
+/// credential, the claim names approved for disclosure, and the query's own required-claim set (so
+/// each entry is validated against its own ask, not the request-level single-ask convenience).
+/// </summary>
+/// <param name="QueryId">The DCQL credential-query id — the key of the response envelope entry.</param>
+/// <param name="Match">The credential the citizen chose for this query.</param>
+/// <param name="RequiredClaims">This query's required claim names.</param>
+/// <param name="ApprovedClaims">Claim names approved for disclosure (must cover every required claim).</param>
+public sealed record ConsentedQuery(
+    string QueryId,
+    CredentialMatch Match,
+    IReadOnlyList<string> RequiredClaims,
+    IReadOnlyList<string> ApprovedClaims);

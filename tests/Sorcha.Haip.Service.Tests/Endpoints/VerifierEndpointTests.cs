@@ -27,6 +27,7 @@ using Sorcha.Cryptography.Mdoc.Cbor;
 using Sorcha.Cryptography.SdJwt;
 using Sorcha.Haip.Service.Endpoints;
 using Sorcha.Haip.Service.Models;
+using Sorcha.Verifier.Engine.Dcql;
 using Sorcha.Haip.Service.Services;
 
 using Xunit;
@@ -96,6 +97,23 @@ public class VerifierEndpointTests
             requiredClaims: requiredClaims,
             acceptedIssuers: null,
             baseUrl: IssuerUrl);
+
+    // Feature 181 US2 (T028) — a multi-credential request carrying a full declared DCQL query.
+    private Task<PresentationRequest> CreateMultiRequestAsync(DcqlQuery declaredQuery) =>
+        _store.CreateAsync(
+            clientId: IssuerUrl,
+            credentialType: declaredQuery.Credentials[0].Meta.VctValues![0],
+            requiredClaims: null,
+            acceptedIssuers: null,
+            baseUrl: IssuerUrl,
+            declaredQuery: declaredQuery);
+
+    private static DcqlCredentialQuery Cq(string id, string vct) => new()
+    {
+        Id = id,
+        Format = DcqlFormats.SdJwtVc,
+        Meta = new DcqlCredentialMeta { VctValues = [vct] },
+    };
 
     // --- private static handler invocation (established reflection pattern) ----
 
@@ -263,6 +281,76 @@ public class VerifierEndpointTests
         var json = ParseJson(body);
         json.GetProperty("error").GetString().Should().Be("DCQL_UNKNOWN_QUERY_ID");
         json.GetProperty("error_description").GetString().Should().Contain("other_query");
+    }
+
+    // --- Feature 181 US2 (T028): multi-credential per-query verification -----------
+
+    [Fact]
+    public async Task HandleDirectPost_MultiQuery_IdOutsideDeclaredSet_Returns400UnknownQueryId()
+    {
+        var request = await CreateMultiRequestAsync(new DcqlQuery { Credentials = [Cq("idq", "IdCred"), Cq("ageq", "AgeCred")] });
+
+        var (status, body) = await ExecuteAsync(await InvokeDirectPostAsync(
+            request.Id, vpToken: /*lang=json,strict*/ """{"idq":["a~b~"],"ghost":["a~b~"]}"""));
+
+        status.Should().Be(400);
+        var json = ParseJson(body);
+        json.GetProperty("error").GetString().Should().Be("DCQL_UNKNOWN_QUERY_ID");
+        json.GetProperty("error_description").GetString().Should().Contain("ghost");
+    }
+
+    [Fact]
+    public async Task HandleDirectPost_MultiQuery_MissingRequiredQuery_FailsWithPerQueryDetail()
+    {
+        var request = await CreateMultiRequestAsync(new DcqlQuery { Credentials = [Cq("idq", "IdCred"), Cq("ageq", "AgeCred")] });
+
+        // Only idq is supplied (garbage → invalid); ageq is absent. AND semantics ⇒ overall invalid.
+        var (status, _) = await ExecuteAsync(await InvokeDirectPostAsync(
+            request.Id, vpToken: /*lang=json,strict*/ """{"idq":["garbage~disclosure~"]}"""));
+
+        status.Should().Be(400);
+
+        var stored = await _store.GetAsync(request.Id);
+        stored!.Result!.PerQuery.Should().ContainKeys("idq", "ageq");
+        stored.Result.PerQuery!["ageq"].IsValid.Should().BeFalse();
+        stored.Result.PerQuery["ageq"].Errors.Should().ContainMatch("*No presentation*");
+        stored.Result.IsValid.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(true)]   // both queries verified ⇒ AND satisfied
+    [InlineData(false)]  // one query missing ⇒ AND not satisfied
+    public void AllRequiredSatisfied_AndSemantics(bool bothValid)
+    {
+        var query = new DcqlQuery { Credentials = [Cq("a", "A"), Cq("b", "B")] };
+        var valid = bothValid ? new HashSet<string> { "a", "b" } : new HashSet<string> { "a" };
+
+        VerifierEndpoints.AllRequiredSatisfied(query, valid).Should().Be(bothValid);
+    }
+
+    [Fact]
+    public void AllRequiredSatisfied_RequiredSet_HonoursOptions()
+    {
+        var query = new DcqlQuery
+        {
+            Credentials = [Cq("a", "A"), Cq("b", "B")],
+            CredentialSets = [new DcqlCredentialSetQuery { Options = [["a"], ["b"]], Required = true }],
+        };
+
+        VerifierEndpoints.AllRequiredSatisfied(query, new HashSet<string> { "b" }).Should().BeTrue();   // one option satisfied
+        VerifierEndpoints.AllRequiredSatisfied(query, new HashSet<string>()).Should().BeFalse();         // neither option
+    }
+
+    [Fact]
+    public void AllRequiredSatisfied_OptionalSet_Unmet_StillSatisfied()
+    {
+        var query = new DcqlQuery
+        {
+            Credentials = [Cq("a", "A")],
+            CredentialSets = [new DcqlCredentialSetQuery { Options = [["a"]], Required = false }],
+        };
+
+        VerifierEndpoints.AllRequiredSatisfied(query, new HashSet<string>()).Should().BeTrue();
     }
 
     [Fact]
