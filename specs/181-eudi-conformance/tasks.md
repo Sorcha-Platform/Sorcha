@@ -88,7 +88,7 @@ unsatisfiable indicator; two-option alternative completes with the held option; 
 - [X] T027 [US2] Multi-presentation `vp_token` build (one entry per consented query) + `Present.razor` orchestration in `src/Apps/Sorcha.Wallet.Pwa/Services/Presentation/PresentationEngine.cs` + `Pages/Present.razor`; depends on T024–T026
 - [X] T028 [US2] Verifier side: per-query verification loop + `VerificationResult.perQuery` + overall-success rule (every required query/set satisfied) + `DCQL_UNKNOWN_QUERY_ID` failure in `src/Services/Sorcha.Haip.Service/Endpoints/VerifierEndpoints.cs` and `src/Services/Sorcha.Haip.Service/Models/VerifierModels.cs` (contract §3, FR-003/FR-005); handler tests in `tests/Sorcha.Haip.Service.Tests/Endpoints/VerifierEndpointTests.cs`
 - [X] T029 [US2] Blueprint authoring surface: optional `anyOf` grouping on `credentialRequirements` mapped to `credential_sets` (contract §4) in `src/Common/Sorcha.Blueprint.Models/Credentials/CredentialRequirement.cs` + the requirement→DCQL mapping in `SorchaWalletPresentationConsumer`/request creation; tests in `tests/Sorcha.Blueprint.Service.Tests/`
-- [ ] T030 [US2] End-to-end integration test of quickstart §US2 scenarios (two-query AND, two-option OR, missing-credential block) in `tests/Sorcha.Haip.Service.Tests/Integration/MultiCredentialPresentationTests.cs` (SC-003)
+- [X] T030 [US2] End-to-end integration test of quickstart §US2 scenarios (two-query AND, two-option OR, missing-credential block) in `tests/Sorcha.Haip.Service.Tests/Integration/MultiCredentialPresentationTests.cs` (SC-003)
 
 **Checkpoint**: multi-credential + alternatives work end-to-end; US1 flows unaffected.
 
