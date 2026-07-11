@@ -215,9 +215,12 @@ public sealed class SorchaWalletPresentationConsumer : IPresentationConsumer
         // the ONE shared builder (FR-008). The wallet fetches request_uri, parses
         // dcql_query, and posts its {vpToken, delegation} response to response_uri
         // (F111's callback route).
-        var requiredClaims = context.RequiredClaimNames ?? [];
-        var dcqlQuery = DcqlRequestBuilder.Build(
-            [DcqlCredentialAsk.SdJwt("credential", context.CredentialType ?? "unknown", requiredClaims)]);
+        //
+        // Feature 181 US2 (T029) — when the lifecycle service supplies a pre-built
+        // multi-credential query (every presentation requirement on the action, plus
+        // credential_sets for any anyOfGroup alternatives) it is served verbatim; the
+        // single-ask build is the back-compatible fallback for pre-US2 callers.
+        var dcqlQuery = ResolveDeclaredQuery(context);
 
         var baseUrl = context.PublicBaseUrl?.TrimEnd('/') ?? string.Empty;
         var requestUri = $"{baseUrl}/api/presentations/{context.PresentationRequestId:N}/request-object";
@@ -248,6 +251,43 @@ public sealed class SorchaWalletPresentationConsumer : IPresentationConsumer
             RequestUri: requestUri,
             Nonce: nonce,
             RequestObjectJwt: requestObjectJwt));
+    }
+
+    /// <summary>
+    /// Resolve the DCQL query the request object should carry. Prefers the lifecycle
+    /// service's pre-built multi-credential query (Feature 181 US2); falls back to the
+    /// single-ask build from the context's credential type + required claims. A declared
+    /// query that fails to deserialize falls through to the single-ask build (logged) so a
+    /// serialization mishap can never block the gate.
+    /// </summary>
+    private DcqlQuery ResolveDeclaredQuery(PresentationInitiationContext context)
+    {
+        if (!string.IsNullOrWhiteSpace(context.DeclaredDcqlQueryJson))
+        {
+            try
+            {
+                var declared = JsonSerializer.Deserialize<DcqlQuery>(context.DeclaredDcqlQueryJson, DcqlJson.Options);
+                if (declared is { Credentials.Count: > 0 })
+                {
+                    return declared;
+                }
+
+                _logger.LogWarning(
+                    "Declared DCQL query for requestId {RequestId} was empty; falling back to single-ask build.",
+                    context.PresentationRequestId);
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Declared DCQL query for requestId {RequestId} did not deserialize; falling back to single-ask build.",
+                    context.PresentationRequestId);
+            }
+        }
+
+        var requiredClaims = context.RequiredClaimNames ?? [];
+        return DcqlRequestBuilder.Build(
+            [DcqlCredentialAsk.SdJwt("credential", context.CredentialType ?? "unknown", requiredClaims)]);
     }
 
     /// <summary>

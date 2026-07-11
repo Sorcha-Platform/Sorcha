@@ -112,7 +112,7 @@ public sealed class PresentationRequestTool
         try
         {
             var request = await _haipClient.CreatePresentationRequestAsync(
-                credentialType, requiredClaims, acceptedIssuers, cancellationToken);
+                credentialType, requiredClaims, acceptedIssuers, ct: cancellationToken);
             stopwatch.Stop();
             _availabilityTracker.RecordSuccess(ServiceName);
 

@@ -26,10 +26,17 @@ public interface IHaipServiceClient
     /// Creates a Presentation Request for verification from an external HAIP wallet.
     /// Returns the request ID and an openid4vp://authorize URI for QR rendering.
     /// </summary>
+    /// <param name="declaredQueryJson">Feature 181 US2 — optional pre-built DCQL query
+    /// (serialized <c>dcql_query</c> JSON) covering every credential ask on the action,
+    /// including <c>credential_sets</c> alternatives. When supplied, the HAIP verifier serves
+    /// it verbatim as the request object's <c>dcql_query</c>; null ⇒ the verifier builds a
+    /// single-ask query from <paramref name="credentialType"/> + <paramref name="requiredClaims"/>.
+    /// Passed as JSON so this client stays free of a DCQL-model dependency.</param>
     Task<CreatePresentationRequestResult> CreatePresentationRequestAsync(
         string credentialType,
         List<string>? requiredClaims = null,
         List<string>? acceptedIssuers = null,
+        string? declaredQueryJson = null,
         CancellationToken ct = default);
 
     /// <summary>

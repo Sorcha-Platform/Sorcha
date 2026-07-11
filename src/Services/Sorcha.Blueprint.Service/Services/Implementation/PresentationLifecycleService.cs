@@ -16,6 +16,7 @@ using Sorcha.Blueprint.Service.Services.Infrastructure;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage.Presentations;
 using Sorcha.PresentationLifecycle.Abstractions;
+using Sorcha.Verifier.Engine.Dcql;
 using Sorcha.ServiceClients.Haip;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Validator;
@@ -129,6 +130,12 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         var validityWindow = config.PresentationValidityWindowSeconds
             ?? _options.Value.DefaultValidityWindowSeconds;
 
+        // Feature 181 US2 (T029) — build the multi-credential DCQL query from EVERY presentation
+        // requirement on the action that shares the representative requirement's source
+        // (SorchaWallet / HAIP), folding anyOfGroup alternatives into credential_sets via the ONE
+        // shared mapper (FR-008). A build fault leaves both producers on their single-ask fallback.
+        var declaredQueryJson = BuildDeclaredQueryJson(action, credentialRequirement);
+
         // Feature 127 — dispatch by PresentationSource. HAIP keeps the legacy
         // hardcoded path; SorchaWallet uses the new BuildInitiationAsync
         // extension contract and mints a single-use ClaimsFetchToken for the
@@ -169,6 +176,9 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
                 credentialRequirement.Type,
                 requiredClaimNames,
                 allowedIssuers.Count > 0 ? allowedIssuers.ToList() : null,
+                // Feature 181 US2 (T029) — the multi-credential declared query rides through to the
+                // HAIP verifier, which serves it as the request object's dcql_query (GetRequestObject).
+                declaredQueryJson,
                 cancellationToken);
 
             descriptor = new InitiationDescriptor(
@@ -227,7 +237,10 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
                 CredentialType: credentialRequirement.Type,
                 RequiredClaimNames: credentialRequirement.RequiredClaims?
                     .Select(c => c.ClaimName).ToList(),
-                PublicBaseUrl: _options.Value.PublicBaseUrl);
+                PublicBaseUrl: _options.Value.PublicBaseUrl,
+                // Feature 181 US2 (T029) — the pre-built multi-credential query the consumer serves
+                // verbatim (null ⇒ consumer's single-ask fallback).
+                DeclaredDcqlQueryJson: declaredQueryJson);
 
             var consumerDescriptor = await consumer.BuildInitiationAsync(ctx, cancellationToken);
 
@@ -363,6 +376,36 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         string? RequestUri,
         string? Nonce,
         DateTimeOffset ExpiresAt);
+
+    /// <summary>
+    /// Feature 181 US2 (T029) — serialize the multi-credential DCQL query for the action's
+    /// presentation requirements that share the representative requirement's source. Returns null
+    /// (producers fall back to their single-ask build) if the mapper can't produce a valid query.
+    /// </summary>
+    private string? BuildDeclaredQueryJson(ActionModel action, CredentialRequirementModel representative)
+    {
+        var sameSource = (action.CredentialRequirements ?? [])
+            .Where(r => r.PresentationSource == representative.PresentationSource)
+            .ToList();
+        if (sameSource.Count == 0)
+        {
+            sameSource = [representative];
+        }
+
+        try
+        {
+            var query = RequirementDcqlMapper.Build(sameSource);
+            return DcqlRequestBuilder.ToJson(query);
+        }
+        catch (Exception ex) when (ex is ArgumentException or DcqlParseException)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to build declared DCQL query for action {ActionId}; producers fall back to single-ask.",
+                action.Id);
+            return null;
+        }
+    }
 
     /// <summary>
     /// Feature 127 — high-entropy URL-safe token bound to a single presentation

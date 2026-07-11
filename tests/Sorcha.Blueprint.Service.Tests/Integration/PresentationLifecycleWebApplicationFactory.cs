@@ -169,6 +169,7 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
                 It.IsAny<string>(),
                 It.IsAny<List<string>?>(),
                 It.IsAny<List<string>?>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new CreatePresentationRequestResult(
                 RequestId: Guid.NewGuid(),

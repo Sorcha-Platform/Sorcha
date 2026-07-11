@@ -8,6 +8,7 @@ using Moq;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.PresentationLifecycle.Abstractions;
 using Sorcha.Verifier.Engine;
+using Sorcha.Verifier.Engine.Dcql;
 using Sorcha.Verifier.Engine.Models;
 using Xunit;
 
@@ -365,5 +366,53 @@ public sealed class SorchaWalletPresentationConsumerTests
             "client_id=" + Uri.EscapeDataString("did:sorcha:org:UNKNOWN"));
         DecodeJwtPayload(descriptor.RequestObjectJwt!).GetProperty("client_id").GetString()
             .Should().Be("did:sorcha:org:UNKNOWN");
+    }
+
+    [Fact]
+    public async Task BuildInitiationAsync_ServesDeclaredMultiCredentialQuery_WhenProvided()
+    {
+        // Feature 181 US2 (T029) — when the lifecycle service supplies a pre-built multi-credential
+        // query (two asks + a credential_sets alternative), the consumer serves it verbatim rather
+        // than collapsing to the single-ask build.
+        var declared = DcqlRequestBuilder.Build(
+            [
+                DcqlCredentialAsk.SdJwt("identity", "AssuredIdentityCredential", ["givenName"]),
+                DcqlCredentialAsk.SdJwt("residence", "ProofOfAddressCredential", ["postcode"]),
+            ],
+            alternatives:
+            [
+                new DcqlAlternativeGroup([["identity"], ["residence"]], Required: true, Purpose: "Prove who you are"),
+            ]);
+        var ctx = NewContext() with { DeclaredDcqlQueryJson = DcqlRequestBuilder.ToJson(declared) };
+
+        var descriptor = await _sut.BuildInitiationAsync(ctx, CancellationToken.None);
+
+        var dcql = DecodeJwtPayload(descriptor.RequestObjectJwt!).GetProperty("dcql_query");
+        var ids = dcql.GetProperty("credentials").EnumerateArray()
+            .Select(c => c.GetProperty("id").GetString())
+            .ToList();
+        ids.Should().BeEquivalentTo(new[] { "identity", "residence" });
+
+        var sets = dcql.GetProperty("credential_sets");
+        sets.GetArrayLength().Should().Be(1);
+        sets[0].GetProperty("required").GetBoolean().Should().BeTrue();
+        sets[0].GetProperty("purpose").GetString().Should().Be("Prove who you are");
+    }
+
+    [Fact]
+    public async Task BuildInitiationAsync_FallsBackToSingleAsk_WhenDeclaredQueryMalformed()
+    {
+        // A serialization mishap must never block the gate — the consumer falls back to the
+        // single-ask build from CredentialType + RequiredClaimNames.
+        var ctx = NewContext() with { DeclaredDcqlQueryJson = "{not valid json" };
+
+        var descriptor = await _sut.BuildInitiationAsync(ctx, CancellationToken.None);
+
+        var dcql = DecodeJwtPayload(descriptor.RequestObjectJwt!).GetProperty("dcql_query");
+        var credentials = dcql.GetProperty("credentials");
+        credentials.GetArrayLength().Should().Be(1);
+        credentials[0].GetProperty("id").GetString().Should().Be("credential");
+        credentials[0].GetProperty("meta").GetProperty("vct_values")[0].GetString()
+            .Should().Be("AssuredIdentityCredential");
     }
 }

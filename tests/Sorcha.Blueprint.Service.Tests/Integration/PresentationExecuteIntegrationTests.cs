@@ -165,6 +165,7 @@ public class PresentationExecuteIntegrationTests
             "AssuredIdentityCredential",
             It.IsAny<List<string>?>(),
             It.IsAny<List<string>?>(),
+            It.IsAny<string?>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -258,7 +259,7 @@ public class PresentationExecuteIntegrationTests
         // surface, not transaction accounting.
         _factory.HaipClient.Verify(h => h.CreatePresentationRequestAsync(
             It.IsAny<string>(), It.IsAny<List<string>?>(), It.IsAny<List<string>?>(),
-            It.IsAny<CancellationToken>()), Times.Exactly(2));
+            It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
     [Fact]

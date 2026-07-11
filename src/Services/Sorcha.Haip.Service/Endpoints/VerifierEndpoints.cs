@@ -112,6 +112,9 @@ public static class VerifierEndpoints
             requiredClaims: request.RequiredClaims,
             acceptedIssuers: request.AcceptedIssuers,
             baseUrl: issuerUrl,
+            // Feature 181 US2 — a multi-credential request carries its full declared query; the
+            // per-query verification loop + GetRequestObject both key off DeclaredQuery.
+            declaredQuery: request.DeclaredQuery,
             ct: ct);
 
         var requestUri = $"{issuerUrl}/api/v1/verifier/requests/{presRequest.Id}/request-object";
@@ -428,4 +431,12 @@ public class CreatePresentationRequestBody
 
     public List<string>? RequiredClaims { get; init; }
     public List<string>? AcceptedIssuers { get; init; }
+
+    /// <summary>
+    /// Feature 181 US2 — optional pre-built DCQL query covering every credential ask (and any
+    /// <c>credential_sets</c> alternatives). When supplied, it is served verbatim as the request
+    /// object's <c>dcql_query</c>; null ⇒ a single-ask query is built from
+    /// <see cref="CredentialType"/> + <see cref="RequiredClaims"/>.
+    /// </summary>
+    public DcqlQuery? DeclaredQuery { get; init; }
 }

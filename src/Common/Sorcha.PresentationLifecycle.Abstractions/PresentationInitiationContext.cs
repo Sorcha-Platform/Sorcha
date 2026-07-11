@@ -34,6 +34,16 @@ namespace Sorcha.PresentationLifecycle.Abstractions;
 /// presentation surface (gateway origin). Consumers embed it in
 /// <c>request_uri</c> / <c>response_uri</c> so cross-device wallets can reach
 /// back. Null ⇒ consumer falls back to relative URIs (same-origin only).</param>
+/// <param name="DeclaredDcqlQueryJson">Feature 181 US2 — the pre-built DCQL
+/// query (serialized <c>dcql_query</c> JSON) covering EVERY presentation
+/// requirement on the action, including <c>credential_sets</c> for any
+/// <c>anyOfGroup</c> alternatives. The lifecycle service builds it from the
+/// action's full requirement set (the shared <c>RequirementDcqlMapper</c>) so
+/// the consumer serves a multi-credential request object. Null ⇒ consumer falls
+/// back to the single-ask build from <paramref name="CredentialType"/> +
+/// <paramref name="RequiredClaimNames"/> (back-compatible with pre-US2 callers).
+/// Carried as JSON to keep this abstractions assembly free of a DCQL model
+/// dependency.</param>
 public sealed record PresentationInitiationContext(
     Guid PresentationRequestId,
     Guid InstanceId,
@@ -46,4 +56,5 @@ public sealed record PresentationInitiationContext(
     string? VerifierClientId = null,
     string? CredentialType = null,
     IReadOnlyList<string>? RequiredClaimNames = null,
-    string? PublicBaseUrl = null);
+    string? PublicBaseUrl = null,
+    string? DeclaredDcqlQueryJson = null);
