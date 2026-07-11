@@ -135,6 +135,19 @@ builder.Services.AddSingleton<Sorcha.ServiceClients.Trust.OperatorSnapshotTrustL
 builder.Services.AddSingleton<Sorcha.ServiceClients.Trust.ITrustListProvider>(sp =>
     sp.GetRequiredService<Sorcha.ServiceClients.Trust.OperatorSnapshotTrustListProvider>());
 
+// Feature 181 US3 — authoritative EF-backed store for imported ETSI TS 119 612 trusted-list
+// snapshots. Warn-tier (trust config, reloadable — NOT on the fail-fast audited list, mirroring the
+// F114 presentation-store precedent); recorded via the storage log per pattern #10.
+{
+    var storageLog = builder.Services.GetStorageRegistrationLog();
+    builder.Services.AddScoped<Sorcha.Tenant.Service.Storage.ITrustedListSnapshotStore,
+        Sorcha.Tenant.Service.Storage.EfTrustedListSnapshotStore>();
+    storageLog.RegisterPersistent(
+        typeof(Sorcha.Tenant.Service.Storage.ITrustedListSnapshotStore).FullName!,
+        typeof(Sorcha.Tenant.Service.Storage.EfTrustedListSnapshotStore).FullName!,
+        backend: "postgres");
+}
+
 // Feature 092: Consumer persona — orchestrator + typed HttpClient to Wallet Service
 builder.Services.AddScoped<Sorcha.Tenant.Service.Services.IPersonaService,
     Sorcha.Tenant.Service.Services.PersonaService>();

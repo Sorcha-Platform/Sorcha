@@ -70,6 +70,12 @@ public class TenantDbContext : DbContext
     // Public schema entities for platform-level configuration
     public DbSet<SystemConfiguration> SystemConfigurations => Set<SystemConfiguration>();
 
+    /// <summary>Feature 181 US3 — imported ETSI TS 119 612 trusted-list snapshots.</summary>
+    public DbSet<TrustedListSnapshot> TrustedListSnapshots => Set<TrustedListSnapshot>();
+
+    /// <summary>Feature 181 US3 — CA anchors extracted from trusted-list snapshots.</summary>
+    public DbSet<TrustedListAnchor> TrustedListAnchors => Set<TrustedListAnchor>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -169,6 +175,70 @@ public class TenantDbContext : DbContext
 
         // Configure OrgDidDocument entity (public schema) — Feature 120 US2.
         ConfigureOrgDidDocument(modelBuilder);
+
+        // Configure TrustedListSnapshot + TrustedListAnchor (public schema) — Feature 181 US3.
+        ConfigureTrustedList(modelBuilder);
+    }
+
+    /// <summary>Feature 181 US3 — imported ETSI TS 119 612 trusted-list snapshots + their CA anchors.</summary>
+    private void ConfigureTrustedList(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
+
+        modelBuilder.Entity<TrustedListSnapshot>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("TrustedListSnapshots");
+            else
+                entity.ToTable("TrustedListSnapshots", "public");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.TrustListId).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.SequenceNumber).IsRequired();
+            entity.Property(e => e.SchemeTerritory).HasMaxLength(16);
+            entity.Property(e => e.SchemeOperatorName).HasMaxLength(256);
+            entity.Property(e => e.ListIssueDateTime).IsRequired();
+            entity.Property(e => e.SignerCertSubject).IsRequired().HasMaxLength(512);
+            entity.Property(e => e.SignerCertThumbprint).IsRequired().HasMaxLength(128);
+            entity.Property(e => e.ImportedAt).IsRequired();
+            entity.Property(e => e.ImportedByPlatformUserId).IsRequired();
+            entity.Property(e => e.SourceUrl).HasMaxLength(2048);
+            entity.Property(e => e.RawDocumentSha256).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(16).IsRequired();
+            entity.Property(e => e.ExtractionSummary).IsRequired();
+
+            entity.HasIndex(e => e.TrustListId).HasDatabaseName("IX_TrustedListSnapshots_TrustListId");
+            entity.HasIndex(e => new { e.TrustListId, e.Status })
+                .HasDatabaseName("IX_TrustedListSnapshots_TrustListId_Status");
+
+            entity.HasMany(e => e.Anchors)
+                .WithOne()
+                .HasForeignKey(a => a.SnapshotId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TrustedListAnchor>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("TrustedListAnchors");
+            else
+                entity.ToTable("TrustedListAnchors", "public");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.SnapshotId).IsRequired();
+            entity.Property(e => e.CertificateDer).IsRequired();
+            entity.Property(e => e.SubjectDn).IsRequired().HasMaxLength(512);
+            entity.Property(e => e.Thumbprint).IsRequired().HasMaxLength(128);
+            entity.Property(e => e.ServiceTypeIdentifier).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.ServiceStatus).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.NotBefore).IsRequired();
+            entity.Property(e => e.NotAfter).IsRequired();
+
+            entity.HasIndex(e => e.SnapshotId).HasDatabaseName("IX_TrustedListAnchors_SnapshotId");
+        });
     }
 
     /// <summary>Feature 120 US2 — published per-org DID documents.</summary>
