@@ -148,6 +148,8 @@ builder.Services.AddSingleton<Sorcha.ServiceClients.Trust.ITrustListProvider>(sp
         backend: "postgres");
 }
 builder.Services.AddScoped<Sorcha.Tenant.Service.Trust.TrustedListImportService>();
+// Fetch-once client for trusted-list URL import (operator-attested; admin-only endpoint).
+builder.Services.AddHttpClient("trustlist-fetch", c => c.Timeout = TimeSpan.FromSeconds(30));
 
 // Feature 092: Consumer persona — orchestrator + typed HttpClient to Wallet Service
 builder.Services.AddScoped<Sorcha.Tenant.Service.Services.IPersonaService,

@@ -1,21 +1,28 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
-
 using Microsoft.AspNetCore.Http;
-
-using Sorcha.ServiceClients.Trust;
+using Moq;
 using Sorcha.Tenant.Service.Endpoints;
-
+using Sorcha.Tenant.Service.Storage;
+using Sorcha.Tenant.Service.Tests.Fixtures.TrustLists;
+using Sorcha.Tenant.Service.Trust;
 using Xunit;
 
 namespace Sorcha.Tenant.Service.Tests.Endpoints;
 
 /// <summary>
-/// Feature 135 / T040 — trust-list admin endpoint contract: PUT stores a snapshot and reports the
-/// root count; GET returns metadata (404 when unknown); list returns all snapshots. Handlers are
-/// invoked directly against the operator-snapshot provider.
+/// Feature 181 US3 (T034) — trusted-list admin endpoint contract: import verifies + persists a
+/// snapshot (201) or fails typed (400/409); list/detail read the store; delete is 204 and makes the
+/// anchor read fail closed (404 TRUSTLIST_UNAVAILABLE). Handlers invoked directly against an in-memory
+/// store + real import service.
 /// </summary>
 public class TrustListAdminEndpointTests
 {
@@ -25,79 +32,131 @@ public class TrustListAdminEndpointTests
     private static object? Value(IResult result) =>
         result.GetType().GetProperty("Value")?.GetValue(result);
 
-    private static UploadTrustListRequest Request(params byte[][] roots) => new()
+    private static (ITrustedListSnapshotStore Store, TrustedListImportService Import) NewBackend()
     {
-        Source = "EU LOTL 2026-Q2 manual export",
-        Roots = roots.Select(Convert.ToBase64String).ToList(),
-        Freshness = new DateTimeOffset(2026, 4, 30, 0, 0, 0, TimeSpan.Zero)
-    };
+        var store = new InMemoryTrustedListSnapshotStore();
+        return (store, new TrustedListImportService(store));
+    }
+
+    private static IFormFile FileFrom(string xml)
+    {
+        var bytes = Encoding.UTF8.GetBytes(xml);
+        return new FormFile(new MemoryStream(bytes), 0, bytes.Length, "document", "trustlist.xml");
+    }
+
+    private static Task<IResult> Import(TrustedListImportService import, ITrustedListSnapshotStore _, string trustListId, string xml)
+        => TrustEndpoints.ImportTrustList(
+            trustListId, new DefaultHttpContext(), import, Mock.Of<IHttpClientFactory>(),
+            FileFrom(xml), sourceUrl: null, CancellationToken.None);
 
     [Fact]
-    public async Task Put_ValidRoots_StoresSnapshot_AndReturnsSummary()
+    public async Task Import_ValidList_Returns201WithSummary()
     {
-        var provider = new OperatorSnapshotTrustListProvider();
+        using var fixture = new TrustListFixture();
+        var (store, import) = NewBackend();
 
-        var result = TrustEndpoints.PutTrustList("eu-lotl-2026q2", Request([1, 2, 3], [4, 5, 6]), provider);
+        var result = await Import(import, store, "eu-lotl", fixture.BuildSignedTrustList(fixture.DefaultOptions(5)));
 
-        var summary = Value(result).Should().BeOfType<TrustListSummaryResponse>().Subject;
-        summary.TrustListId.Should().Be("eu-lotl-2026q2");
-        summary.RootCount.Should().Be(2);
-        summary.Freshness.Should().Be(new DateTimeOffset(2026, 4, 30, 0, 0, 0, TimeSpan.Zero));
-
-        var stored = await provider.GetSnapshotAsync("eu-lotl-2026q2");
-        stored.Should().NotBeNull();
-        stored!.Roots.Should().HaveCount(2);
+        Status(result).Should().Be(StatusCodes.Status201Created);
+        var summary = Value(result).Should().BeOfType<TrustListSnapshotSummaryResponse>().Subject;
+        summary.TrustListId.Should().Be("eu-lotl");
+        summary.SequenceNumber.Should().Be(5);
+        summary.AnchorCount.Should().Be(1);
+        summary.Freshness.Should().Be("Fresh");
+        summary.Status.Should().Be("Active");
     }
 
     [Fact]
-    public void Put_NoRoots_ReturnsBadRequest()
+    public async Task Import_TamperedList_Returns400SignatureInvalid()
     {
-        var provider = new OperatorSnapshotTrustListProvider();
-        var result = TrustEndpoints.PutTrustList("x", new UploadTrustListRequest { Roots = [] }, provider);
+        using var fixture = new TrustListFixture();
+        var (store, import) = NewBackend();
+        var tampered = fixture.Tamper(fixture.BuildSignedTrustList(fixture.DefaultOptions()));
+
+        var result = await Import(import, store, "eu-lotl", tampered);
+
         Status(result).Should().Be(StatusCodes.Status400BadRequest);
     }
 
     [Fact]
-    public void Put_InvalidBase64_ReturnsBadRequest()
+    public async Task Import_SequenceRegression_Returns409()
     {
-        var provider = new OperatorSnapshotTrustListProvider();
-        var result = TrustEndpoints.PutTrustList("x",
-            new UploadTrustListRequest { Roots = ["not valid base64 !!!"] }, provider);
+        using var fixture = new TrustListFixture();
+        var (store, import) = NewBackend();
+        await Import(import, store, "eu-lotl", fixture.BuildSignedTrustList(fixture.DefaultOptions(10)));
+
+        var result = await Import(import, store, "eu-lotl", fixture.BuildSignedTrustList(fixture.DefaultOptions(9)));
+
+        Status(result).Should().Be(StatusCodes.Status409Conflict);
+    }
+
+    [Fact]
+    public async Task Import_NoDocumentOrUrl_Returns400()
+    {
+        var (_, import) = NewBackend();
+        var result = await TrustEndpoints.ImportTrustList(
+            "eu-lotl", new DefaultHttpContext(), import, Mock.Of<IHttpClientFactory>(),
+            document: null, sourceUrl: null, CancellationToken.None);
+
         Status(result).Should().Be(StatusCodes.Status400BadRequest);
     }
 
     [Fact]
-    public void Get_KnownSnapshot_ReturnsMetadata()
+    public async Task List_ReturnsActiveSummaries()
     {
-        var provider = new OperatorSnapshotTrustListProvider();
-        TrustEndpoints.PutTrustList("snap-1", Request([1, 2, 3]), provider);
+        using var fixture = new TrustListFixture();
+        var (store, import) = NewBackend();
+        await Import(import, store, "eu-lotl", fixture.BuildSignedTrustList(fixture.DefaultOptions(1)));
+        await Import(import, store, "ie-tl", fixture.BuildSignedTrustList(fixture.DefaultOptions(1)));
 
-        var result = TrustEndpoints.GetTrustList("snap-1", provider);
+        var result = await TrustEndpoints.ListTrustLists(store, CancellationToken.None);
 
-        var summary = Value(result).Should().BeOfType<TrustListSummaryResponse>().Subject;
-        summary.TrustListId.Should().Be("snap-1");
-        summary.RootCount.Should().Be(1);
-        summary.Source.Should().Be("EU LOTL 2026-Q2 manual export");
+        var list = Value(result).Should().BeAssignableTo<System.Collections.Generic.IEnumerable<TrustListSnapshotSummaryResponse>>().Subject;
+        list.Select(s => s.TrustListId).Should().BeEquivalentTo(["eu-lotl", "ie-tl"]);
     }
 
     [Fact]
-    public void Get_UnknownSnapshot_ReturnsNotFound()
+    public async Task GetDetail_ReturnsAnchorsAndExtractionSummary_404WhenUnknown()
     {
-        var provider = new OperatorSnapshotTrustListProvider();
-        var result = TrustEndpoints.GetTrustList("missing", provider);
-        Status(result).Should().Be(StatusCodes.Status404NotFound);
+        using var fixture = new TrustListFixture();
+        var (store, import) = NewBackend();
+        await Import(import, store, "eu-lotl", fixture.BuildSignedTrustList(fixture.DefaultOptions()));
+
+        var ok = await TrustEndpoints.GetTrustList("eu-lotl", store, CancellationToken.None);
+        var detail = Value(ok).Should().BeOfType<TrustListSnapshotDetailResponse>().Subject;
+        detail.Anchors.Should().ContainSingle();
+        detail.ExtractionSummary.Should().Contain("\"extracted\":1");
+
+        var missing = await TrustEndpoints.GetTrustList("nope", store, CancellationToken.None);
+        Status(missing).Should().Be(StatusCodes.Status404NotFound);
     }
 
     [Fact]
-    public void List_ReturnsAllSnapshots()
+    public async Task Anchors_ReturnsDerRoots_AndFreshness()
     {
-        var provider = new OperatorSnapshotTrustListProvider();
-        TrustEndpoints.PutTrustList("a", Request([1]), provider);
-        TrustEndpoints.PutTrustList("b", Request([2]), provider);
+        using var fixture = new TrustListFixture();
+        var (store, import) = NewBackend();
+        await Import(import, store, "eu-lotl", fixture.BuildSignedTrustList(fixture.DefaultOptions()));
 
-        var result = TrustEndpoints.ListTrustLists(provider);
+        var result = await TrustEndpoints.GetTrustListAnchors("eu-lotl", store, CancellationToken.None);
 
-        var list = Value(result).Should().BeAssignableTo<IEnumerable<TrustListSummaryResponse>>().Subject;
-        list.Select(s => s.TrustListId).Should().BeEquivalentTo(["a", "b"]);
+        var anchors = Value(result).Should().BeOfType<TrustListAnchorsResponse>().Subject;
+        anchors.RootsDerBase64.Should().ContainSingle();
+        anchors.Freshness.Should().Be("Fresh");
+    }
+
+    [Fact]
+    public async Task Delete_RemovesSnapshot_AnchorReadThenFailsClosed()
+    {
+        using var fixture = new TrustListFixture();
+        var (store, import) = NewBackend();
+        await Import(import, store, "eu-lotl", fixture.BuildSignedTrustList(fixture.DefaultOptions()));
+
+        var del = await TrustEndpoints.DeleteTrustList("eu-lotl", store, CancellationToken.None);
+        Status(del).Should().Be(StatusCodes.Status204NoContent);
+
+        var anchors = await TrustEndpoints.GetTrustListAnchors("eu-lotl", store, CancellationToken.None);
+        Status(anchors).Should().Be(StatusCodes.Status404NotFound);
+        Value(anchors)!.ToString().Should().Contain(TrustListErrorCodes.Unavailable);
     }
 }
