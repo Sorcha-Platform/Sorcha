@@ -26,6 +26,16 @@ public sealed class TrustListSnapshot
 
     /// <summary>The freshness timestamp recorded in trust evidence.</summary>
     public DateTimeOffset Freshness { get; init; }
+
+    /// <summary>Feature 181 US3 — the list's own sequence number; forms the anchor-set identity
+    /// <c>{trustListId}#{sequenceNumber}</c> carried into trust evidence (FR-015).</summary>
+    public long SequenceNumber { get; init; }
+
+    /// <summary>Feature 181 US3 — the list's declared next-update; null when the list carried none.</summary>
+    public DateTimeOffset? NextUpdate { get; init; }
+
+    /// <summary>Feature 181 US3 — computed freshness state (<c>Fresh</c> / <c>Stale</c>) at read time (FR-016).</summary>
+    public string? FreshnessState { get; init; }
 }
 
 /// <summary>

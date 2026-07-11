@@ -77,6 +77,21 @@ builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResol
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>(sp =>
     new Sorcha.Blueprint.Engine.Credentials.Sources.DidAllowlistTrustSourceResolver(
         sp.GetRequiredService<Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory>()));
+// Feature 181 US3 — trustlist trust source over imported ETSI TS 119 612 snapshots. Constructed with
+// its own TrustListAnchorProvider (distinct from the singleton x509-tenant ConfiguredTenantTrustAnchorProvider).
+builder.Services.AddSingleton<Sorcha.ServiceClients.Trust.ITrustListProvider,
+    Sorcha.ServiceClients.Trust.HttpTrustListProvider>();
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>(sp =>
+    new Sorcha.Blueprint.Engine.Credentials.Sources.TrustListSourceResolver(
+        new Sorcha.Haip.Service.Services.TrustListAnchorProvider(
+            sp.GetRequiredService<Sorcha.ServiceClients.Trust.ITrustListProvider>())));
+builder.Services.AddHttpClient(Sorcha.ServiceClients.Trust.HttpTrustListProvider.HttpClientName, client =>
+{
+    client.BaseAddress = new Uri(
+        builder.Configuration["ServiceClients:TenantService:Address"]
+        ?? builder.Configuration["ServiceClients:Tenant:BaseAddress"]
+        ?? "http://tenant-service:8080");
+});
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustResolverRegistry>(sp =>
     new Sorcha.Blueprint.Engine.Credentials.TrustResolverRegistry(
         sp.GetServices<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>()));
