@@ -20,6 +20,17 @@ public interface IOrgCertChainProvider
         string tenantId,
         string orgWalletAddress,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Feature 181 US4 — returns the org's Active <b>imported external</b> certificate chain (leaf-first,
+    /// full chain to the external root) for issuance on the <c>x509-lotl</c> anchor. Returns null when no
+    /// valid imported certificate exists (absent, expired, or key-mismatched after rotation) — the caller
+    /// MUST fail closed (<c>CERT_EXTERNAL_ANCHOR_UNAVAILABLE</c>), never falling back to the tenant root.
+    /// </summary>
+    Task<IReadOnlyList<byte[]>?> GetImportedChainForAsync(
+        string tenantId,
+        string orgWalletAddress,
+        CancellationToken ct = default);
 }
 
 /// <summary>

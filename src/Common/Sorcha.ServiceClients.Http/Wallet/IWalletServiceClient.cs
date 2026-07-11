@@ -89,6 +89,30 @@ public interface IWalletServiceClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Feature 181 US4 — resolve an org's P-256 certificate-issuing public key (SPKI) + eligibility for
+    /// the external X.509 rail. Never returns the private key.
+    /// </summary>
+    /// <param name="walletAddress">Org wallet address.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Eligibility, bound-key source, and the DER SubjectPublicKeyInfo when eligible.</returns>
+    Task<OrgIssuerCertKeyResolution> ResolveIssuerCertKeyAsync(
+        string walletAddress,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Feature 181 US4 — sign a pre-computed digest with the org's P-256 certificate-issuing key.
+    /// Returns the raw IEEE P1363 <c>r‖s</c> signature; the caller DER-encodes it for a CSR/certificate.
+    /// </summary>
+    /// <param name="walletAddress">Org wallet address.</param>
+    /// <param name="digest">Pre-computed digest bytes to sign.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Raw r‖s signature bytes.</returns>
+    Task<byte[]> SignIssuerCertPreHashedAsync(
+        string walletAddress,
+        byte[] digest,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Verifies a digital signature
     /// </summary>
     /// <param name="publicKey">Public key or wallet address</param>
@@ -189,6 +213,7 @@ public interface IWalletServiceClient
         string? issuerOrgName = null,
         string? tenantId = null,
         JsonElement? holderJwk = null,
+        string? trustAnchor = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -393,6 +418,19 @@ public record WalletSignResult
     /// </summary>
     public required string Algorithm { get; init; }
 }
+
+/// <summary>
+/// Feature 181 US4 — result of resolving an org's P-256 certificate-issuing key (public material only).
+/// </summary>
+/// <param name="Eligible">True when a P-256 key was resolved.</param>
+/// <param name="Reason">Machine-readable reason when not eligible (e.g. <c>CERT_KEY_NOT_ELIGIBLE</c>).</param>
+/// <param name="BoundKeySource"><c>Primary</c> or <c>HaipCoKey</c> when eligible; null otherwise.</param>
+/// <param name="PublicKeySpki">DER SubjectPublicKeyInfo of the P-256 key when eligible; null otherwise.</param>
+public sealed record OrgIssuerCertKeyResolution(
+    bool Eligible,
+    string? Reason,
+    string? BoundKeySource,
+    byte[]? PublicKeySpki);
 
 /// <summary>
 /// Result of a credential issuance operation

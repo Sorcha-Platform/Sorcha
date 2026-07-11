@@ -133,6 +133,62 @@ public static class TrustEndpoints
             .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .RequireRateLimiting(RateLimitPolicies.Strict);
 
+        // Feature 181 US4 — org-certificate lifecycle (CSR out / external cert in). Admin-scoped.
+        group.MapGet("/tenants/{tenantId}/orgs/{orgWalletAddress}/certificates", ListOrgCertificates)
+            .WithName("ListOrgCertificates")
+            .WithSummary("List the org's certificates (internal + imported) with eligibility")
+            .WithDescription(
+                "Returns the org's certificates with status/validity/chain summary, plus the X.509-rail " +
+                "eligibility verdict (CERT_KEY_NOT_ELIGIBLE when no P-256 key resolves).")
+            .Produces<OrgCertificatesResponse>(StatusCodes.Status200OK)
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
+            .RequireRateLimiting(RateLimitPolicies.Strict);
+
+        group.MapPost("/tenants/{tenantId}/orgs/{orgWalletAddress}/csr", GenerateOrgCsr)
+            .WithName("GenerateOrgCsr")
+            .WithSummary("Generate a CSR bound to the org's P-256 issuing key")
+            .WithDescription(
+                "The server resolves the org's P-256 key (primary ES256 else HAIP co-key) and signs the CSR " +
+                "via the Wallet Service remote-signing generator — the private key never leaves custody. " +
+                "422 CERT_KEY_NOT_ELIGIBLE when no P-256 key resolves.")
+            .Produces<CsrResponse>(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status422UnprocessableEntity)
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
+            .RequireRateLimiting(RateLimitPolicies.Strict);
+
+        group.MapPost("/tenants/{tenantId}/orgs/{orgWalletAddress}/certificates/import", ImportOrgCertificate)
+            .WithName("ImportOrgCertificate")
+            .WithSummary("Import an externally-issued certificate + chain")
+            .WithDescription(
+                "Validates key match / chain consistency / validity / signing suitability (FR-019); accepts " +
+                "chain-with-root and chain-without-root. 422 CERT_KEY_MISMATCH | CERT_CHAIN_INVALID | " +
+                "CERT_EXPIRED | CERT_UNSUITABLE.")
+            .Produces<OrgCertificateView>(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status422UnprocessableEntity)
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
+            .RequireRateLimiting(RateLimitPolicies.Strict);
+
+        // Public (x5c chain material is public) — the Wallet Service resolves the external chain here at
+        // issuance time for the x509-lotl anchor. 404 fails closed (never a tenant-root fallback, FR-020).
+        group.MapGet("/tenants/{tenantId}/orgs/{orgWalletAddress}/imported-cert-chain", GetImportedCertChain)
+            .WithName("GetImportedOrgCertChain")
+            .WithSummary("Get the org's Active imported external certificate chain (leaf-first)")
+            .WithDescription(
+                "Returns the imported external chain for x509-lotl issuance. 404 when absent, expired, or " +
+                "key-mismatched after rotation — the caller fails closed CERT_EXTERNAL_ANCHOR_UNAVAILABLE.")
+            .Produces<ImportedChainResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound)
+            .RequireRateLimiting(RateLimitPolicies.Api)
+            .AllowAnonymous();
+
+        group.MapDelete("/tenants/{tenantId}/orgs/{orgWalletAddress}/certificates/{certificateId:guid}", RetireOrgCertificate)
+            .WithName("RetireOrgCertificate")
+            .WithSummary("Retire an imported certificate (Status→Superseded)")
+            .WithDescription("Idempotent. Internal certs use the /revoke route (CRL path).")
+            .Produces(StatusCodes.Status204NoContent)
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
+            .RequireRateLimiting(RateLimitPolicies.Strict);
+
         group.MapGet("/trustlists/{trustListId}/anchors", GetTrustListAnchors)
             .WithName("GetTrustListAnchors")
             .WithSummary("Anchor distribution read for verifying services")
@@ -436,6 +492,153 @@ public static class TrustEndpoints
 
         return Results.Bytes(crl.CrlDer, "application/pkix-crl");
     }
+
+    // ---- Feature 181 US4 — org-certificate lifecycle handlers ----
+
+    internal static async Task<IResult> ListOrgCertificates(
+        string tenantId, string orgWalletAddress,
+        Sorcha.Tenant.Service.Trust.IOrgCertificateService certService, CancellationToken ct)
+    {
+        var eligibility = await certService.GetEligibilityAsync(tenantId, orgWalletAddress, ct);
+        var certificates = await certService.ListAsync(tenantId, orgWalletAddress, ct);
+        return Results.Ok(new OrgCertificatesResponse
+        {
+            Eligibility = new OrgCertEligibilityView
+            {
+                Eligible = eligibility.Eligible,
+                Reason = eligibility.Reason,
+                BoundKeySource = eligibility.BoundKeySource?.ToString(),
+            },
+            Certificates = certificates.Select(ToCertView).ToList(),
+        });
+    }
+
+    internal static async Task<IResult> GenerateOrgCsr(
+        string tenantId, string orgWalletAddress,
+        [FromBody] GenerateCsrRequest? request,
+        HttpContext http,
+        Sorcha.Tenant.Service.Trust.IOrgCertificateService certService, CancellationToken ct)
+    {
+        var createdBy = ResolvePlatformUserId(http.User);
+        var result = await certService.GenerateCsrAsync(tenantId, orgWalletAddress, request?.SubjectDn, createdBy, ct);
+        if (!result.Success)
+        {
+            return Results.Json(new { error = result.ErrorCode }, statusCode: StatusCodes.Status422UnprocessableEntity);
+        }
+        return Results.Created(
+            $"/api/v1/trust/tenants/{tenantId}/orgs/{orgWalletAddress}/csr",
+            new CsrResponse
+            {
+                CsrPem = result.CsrPem!,
+                BoundKeySource = result.BoundKeySource!.ToString()!,
+                BoundPublicKeyThumbprint = result.BoundPublicKeyThumbprint!,
+            });
+    }
+
+    internal static async Task<IResult> ImportOrgCertificate(
+        string tenantId, string orgWalletAddress,
+        [FromBody] ImportCertificateRequest request,
+        HttpContext http,
+        Sorcha.Tenant.Service.Trust.IOrgCertificateService certService, CancellationToken ct)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.CertificatePem))
+        {
+            return Results.BadRequest(new { error = "certificatePem is required" });
+        }
+
+        if (!TryDecodeCertificate(request.CertificatePem, out var leafDer))
+        {
+            return Results.BadRequest(new { error = "certificatePem is not valid PEM or base64 DER" });
+        }
+
+        var chainDer = new List<byte[]>();
+        foreach (var entry in request.ChainPem ?? [])
+        {
+            if (!TryDecodeCertificate(entry, out var der))
+            {
+                return Results.BadRequest(new { error = "a chainPem entry is not valid PEM or base64 DER" });
+            }
+            chainDer.Add(der);
+        }
+
+        var createdBy = ResolvePlatformUserId(http.User);
+        var result = await certService.ImportAsync(tenantId, orgWalletAddress, leafDer, chainDer, createdBy, ct);
+        if (!result.Success)
+        {
+            return Results.Json(
+                new { error = result.ErrorCode, error_description = result.ErrorMessage },
+                statusCode: StatusCodes.Status422UnprocessableEntity);
+        }
+        return Results.Created(
+            $"/api/v1/trust/tenants/{tenantId}/orgs/{orgWalletAddress}/certificates/{result.Certificate!.Id}",
+            ToCertView(result.Certificate!));
+    }
+
+    internal static async Task<IResult> GetImportedCertChain(
+        string tenantId, string orgWalletAddress,
+        Sorcha.Tenant.Service.Trust.IOrgCertificateService certService, CancellationToken ct)
+    {
+        var result = await certService.ResolveActiveImportedChainAsync(tenantId, orgWalletAddress, ct);
+        if (!result.Available || result.Chain is null)
+        {
+            return Results.NotFound(new { error = result.ErrorCode ?? "CERT_EXTERNAL_ANCHOR_UNAVAILABLE" });
+        }
+        return Results.Ok(new ImportedChainResponse
+        {
+            ChainDerBase64 = result.Chain.Select(Convert.ToBase64String).ToList(),
+        });
+    }
+
+    internal static async Task<IResult> RetireOrgCertificate(
+        string tenantId, string orgWalletAddress, Guid certificateId,
+        Sorcha.Tenant.Service.Trust.IOrgCertificateService certService, CancellationToken ct)
+    {
+        await certService.RetireImportedAsync(tenantId, orgWalletAddress, certificateId, ct);
+        return Results.NoContent();
+    }
+
+    private static bool TryDecodeCertificate(string input, out byte[] der)
+    {
+        der = [];
+        var trimmed = input.Trim();
+        try
+        {
+            if (trimmed.Contains("-----BEGIN"))
+            {
+                using var cert = System.Security.Cryptography.X509Certificates.X509Certificate2
+                    .CreateFromPem(trimmed);
+                der = cert.RawData;
+                return true;
+            }
+            der = Convert.FromBase64String(trimmed);
+            return true;
+        }
+        catch (Exception ex) when (ex is FormatException or System.Security.Cryptography.CryptographicException)
+        {
+            return false;
+        }
+    }
+
+    private static OrgCertificateView ToCertView(Sorcha.Tenant.Service.Models.OrgCertificateRecord c) => new()
+    {
+        Id = c.Id,
+        Provenance = c.Provenance.ToString(),
+        Status = c.Status.ToString(),
+        SerialNumber = c.SerialNumber,
+        SubjectDn = c.SubjectDn,
+        San = c.San,
+        NotBefore = c.NotBefore,
+        NotAfter = c.NotAfter,
+        BoundKeySource = c.BoundKeySource.ToString(),
+        ChainSummary = new List<byte[]> { c.CertificateDer }.Concat(c.ChainDer)
+            .Select(der =>
+            {
+                using var x = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadCertificate(der);
+                return x.Subject;
+            }).ToList(),
+        CertificateBase64 = Convert.ToBase64String(c.CertificateDer),
+        CreatedAt = c.CreatedAt,
+    };
 }
 
 /// <summary>Response for trust anchor provisioning.</summary>
@@ -521,6 +724,69 @@ public class TrustListAnchorsResponse
     public required string Freshness { get; init; }
     public DateTimeOffset? NextUpdate { get; init; }
     public required List<string> RootsDerBase64 { get; init; }
+}
+
+/// <summary>Feature 181 US4 — the org's imported external chain (leaf-first, base64 DER).</summary>
+public class ImportedChainResponse
+{
+    public required List<string> ChainDerBase64 { get; init; }
+}
+
+/// <summary>Feature 181 US4 — request to generate a CSR (optional subject-DN override).</summary>
+public class GenerateCsrRequest
+{
+    /// <summary>Optional X.500 subject DN; defaults to a CN derived from the org.</summary>
+    public string? SubjectDn { get; init; }
+}
+
+/// <summary>Feature 181 US4 — CSR generation response.</summary>
+public class CsrResponse
+{
+    public required string CsrPem { get; init; }
+    public required string BoundKeySource { get; init; }
+    public required string BoundPublicKeyThumbprint { get; init; }
+}
+
+/// <summary>Feature 181 US4 — request to import an externally-issued certificate + chain.</summary>
+public class ImportCertificateRequest
+{
+    /// <summary>Leaf certificate — PEM or base64 DER.</summary>
+    public required string CertificatePem { get; init; }
+
+    /// <summary>Intermediates and/or root, any order — PEM or base64 DER each.</summary>
+    public List<string>? ChainPem { get; init; }
+}
+
+/// <summary>Feature 181 US4 — org certificate list + eligibility response.</summary>
+public class OrgCertificatesResponse
+{
+    public required OrgCertEligibilityView Eligibility { get; init; }
+    public required List<OrgCertificateView> Certificates { get; init; }
+}
+
+/// <summary>Feature 181 US4 — X.509-rail eligibility verdict.</summary>
+public class OrgCertEligibilityView
+{
+    public bool Eligible { get; init; }
+    public string? Reason { get; init; }
+    public string? BoundKeySource { get; init; }
+}
+
+/// <summary>Feature 181 US4 — a single org certificate (contract §OrgCertificateView).</summary>
+public class OrgCertificateView
+{
+    public Guid Id { get; init; }
+    public required string Provenance { get; init; }
+    public required string Status { get; init; }
+    public required string SerialNumber { get; init; }
+    public required string SubjectDn { get; init; }
+    public required string San { get; init; }
+    public DateTimeOffset NotBefore { get; init; }
+    public DateTimeOffset NotAfter { get; init; }
+    public required string BoundKeySource { get; init; }
+    public required List<string> ChainSummary { get; init; }
+    public required string CertificateBase64 { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
 }
 
 /// <summary>Request to revoke an organisation certificate.</summary>

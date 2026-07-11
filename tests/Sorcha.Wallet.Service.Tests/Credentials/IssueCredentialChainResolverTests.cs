@@ -140,4 +140,68 @@ public class IssueCredentialChainResolverTests
 
         await act.Should().ThrowAsync<OperationCanceledException>();
     }
+
+    // ---- Feature 181 US4 (T044): anchor-aware chain attach ----
+
+    [Fact]
+    public async Task ResolveChainAsync_RegisterAnchor_AttachesNoChain()
+    {
+        var provider = new Mock<IOrgCertChainProvider>(MockBehavior.Strict);
+
+        var result = await IssueCredentialChainResolver.ResolveChainAsync(
+            provider.Object, TenantId, IssuerWallet, NullLogger.Instance, default, "register");
+
+        result.Should().BeNull();
+        provider.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task ResolveChainAsync_X509Lotl_WithImportedChain_ReturnsIt()
+    {
+        var imported = new byte[][] { new byte[] { 1, 2 }, new byte[] { 3, 4 } };
+        var provider = new Mock<IOrgCertChainProvider>();
+        provider.Setup(p => p.GetImportedChainForAsync(TenantId, IssuerWallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(imported);
+
+        var result = await IssueCredentialChainResolver.ResolveChainAsync(
+            provider.Object, TenantId, IssuerWallet, NullLogger.Instance, default, "x509-lotl");
+
+        result.Should().BeEquivalentTo(imported);
+    }
+
+    [Fact]
+    public async Task ResolveChainAsync_X509Lotl_WithNoImportedChain_FailsClosed()
+    {
+        var provider = new Mock<IOrgCertChainProvider>();
+        provider.Setup(p => p.GetImportedChainForAsync(TenantId, IssuerWallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<byte[]>?)null);
+
+        var act = async () => await IssueCredentialChainResolver.ResolveChainAsync(
+            provider.Object, TenantId, IssuerWallet, NullLogger.Instance, default, "x509-lotl");
+
+        await act.Should().ThrowAsync<ExternalAnchorUnavailableException>();
+    }
+
+    [Fact]
+    public async Task ResolveChainAsync_X509Lotl_NoProvider_FailsClosed()
+    {
+        var act = async () => await IssueCredentialChainResolver.ResolveChainAsync(
+            provider: null, TenantId, IssuerWallet, NullLogger.Instance, default, "x509-lotl");
+
+        await act.Should().ThrowAsync<ExternalAnchorUnavailableException>();
+    }
+
+    [Fact]
+    public async Task ResolveChainAsync_X509Tenant_UsesTenantChain()
+    {
+        var provider = new Mock<IOrgCertChainProvider>();
+        provider.Setup(p => p.GetChainForAsync(TenantId, IssuerWallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrgCertChain(new byte[] { 9 }, new byte[] { 8 }));
+
+        var result = await IssueCredentialChainResolver.ResolveChainAsync(
+            provider.Object, TenantId, IssuerWallet, NullLogger.Instance, default, "x509-tenant");
+
+        result.Should().NotBeNull();
+        result![0].Should().BeEquivalentTo(new byte[] { 9 });
+    }
 }

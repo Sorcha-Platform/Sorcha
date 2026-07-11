@@ -696,12 +696,25 @@ public static class CredentialEndpoints
         // Embed the org cert chain in the JWS x5c header when the caller supplies
         // a tenant id. Absence of either the provider or the tenant id falls back
         // to DID-only verifiability — the existing Sorcha-internal default.
-        var x5cChain = await Credentials.IssueCredentialChainResolver.ResolveChainAsync(
-            orgCertChainProvider,
-            request.TenantId,
-            walletAddress,
-            logger,
-            cancellationToken);
+        IReadOnlyList<byte[]>? x5cChain;
+        try
+        {
+            x5cChain = await Credentials.IssueCredentialChainResolver.ResolveChainAsync(
+                orgCertChainProvider,
+                request.TenantId,
+                walletAddress,
+                logger,
+                cancellationToken,
+                request.TrustAnchor);
+        }
+        catch (Credentials.ExternalAnchorUnavailableException ex)
+        {
+            // FR-020 — external anchor requested but no valid imported cert; fail closed (never tenant fallback).
+            logger.LogWarning(ex, "Credential issuance failed closed on x509-lotl anchor for wallet {Wallet}", walletAddress);
+            return Results.Json(
+                new { error = "CERT_EXTERNAL_ANCHOR_UNAVAILABLE" },
+                statusCode: StatusCodes.Status422UnprocessableEntity);
+        }
 
         // Feature 137 — when the caller supplies the recipient's holder JWK, bind the
         // credential to it via the SD-JWT cnf claim (key confirmation). Absent → unbound
@@ -937,6 +950,16 @@ public class IssueCredentialRequest
     /// material only — never a private key.
     /// </summary>
     public JsonElement? HolderJwk { get; init; }
+
+    /// <summary>
+    /// Feature 181 US4 — the credential's X.509 trust anchor (<c>register</c> | <c>x509-tenant</c> |
+    /// <c>x509-lotl</c>). Drives the x5c chain-attach: <c>x509-lotl</c> resolves the org's imported
+    /// external chain and fails closed (<c>CERT_EXTERNAL_ANCHOR_UNAVAILABLE</c>) when absent/expired/
+    /// key-mismatched — never falling back to the tenant root (FR-020). <c>x509-tenant</c> attaches the
+    /// tenant chain (unchanged, FR-021); <c>register</c>/null attaches no chain (DID-only). Defaults to
+    /// the tenant-chain behaviour that existed before this field.
+    /// </summary>
+    public string? TrustAnchor { get; init; }
 }
 
 /// <summary>
