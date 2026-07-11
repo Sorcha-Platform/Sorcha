@@ -2,52 +2,145 @@
     SPDX-License-Identifier: MIT
     Copyright (c) 2026 Sorcha Contributors
 
-    Consent sheet (Feature 114, T097). The deliberate confirmation surface
-    per FR-015: required claims locked-on, optional claims toggleable, the
-    primary CTA explicitly labelled to convey intent.
+    Consent sheet (Feature 114, T097; Feature 181 US2, T025). The deliberate
+    confirmation surface per FR-015: required claims locked-on, optional claims
+    toggleable, the primary CTA explicitly labelled to convey intent.
+
+    Two modes:
+      • Single-ask (legacy) — driven by Selected/OptionalToggles. Unchanged.
+      • Multi-credential (Feature 181 US2) — driven by Result (a DcqlMatchResult)
+        + Selections (chosen candidate per query) + QueryOptionalToggles. Each ask
+        is a separate section (FR-006a) with per-query claim approval (FR-006b);
+        unsatisfiable required asks are flagged and the confirm CTA is disabled so
+        there is no partial submit (FR-006d).
 *@
 @using Sorcha.UI.Core.Models.Presentation
 
-<MudPaper Elevation="2" Class="pa-4">
+<MudPaper Elevation="2" Class="pa-4" data-testid="consent-sheet">
     <MudText Typo="Typo.subtitle1">@Request.Purpose</MudText>
     <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3 d-block">
         Audience: <code>@Request.ClientId</code>
     </MudText>
 
-    <MudText Typo="Typo.body2" Class="mt-3 mb-1"><strong>Required (always shared):</strong></MudText>
-    @foreach (var name in Selected.SatisfiedRequired)
+    @if (Result is not null)
     {
-        <MudCheckBox T="bool" Value="true" Disabled="true" Label="@name" />
-    }
-
-    @if (Selected.AvailableOptional.Count > 0)
-    {
-        <MudText Typo="Typo.body2" Class="mt-3 mb-1"><strong>Optional:</strong></MudText>
-        @foreach (var name in Selected.AvailableOptional)
+        @* ── Multi-credential mode (Feature 181 US2) ─────────────────────────── *@
+        @foreach (var query in Result.PerQuery)
         {
-            <MudCheckBox T="bool" @bind-Value="OptionalToggles[name]" Label="@name" />
-        }
-    }
+            var unsatisfiable = Result.UnsatisfiedRequiredQueryIds.Contains(query.QueryId)
+                                || (!query.IsSatisfiable && IsQueryRequired(query.QueryId));
+            <div class="consent-query-section mt-3" data-testid="consent-query-section"
+                 data-query-id="@query.QueryId">
+                <MudText Typo="Typo.subtitle2">@query.Vct</MudText>
 
-    <MudButton Class="mt-4 mr-2" Color="Color.Primary" Variant="Variant.Filled"
-               OnClick="OnConfirm" Disabled="@Busy">
-        @(Busy ? "Sharing…" : "Hold to share")
-    </MudButton>
-    <MudButton Variant="Variant.Outlined" OnClick="OnCancel" Disabled="@Busy">Cancel</MudButton>
+                @if (unsatisfiable)
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true" Class="mt-1"
+                              data-testid="consent-unsatisfiable">
+                        You don't have a credential that can satisfy this request.
+                    </MudAlert>
+                }
+                else if (Selections is not null && Selections.TryGetValue(query.QueryId, out var chosen))
+                {
+                    <MudText Typo="Typo.body2" Class="mt-2 mb-1"><strong>Required (always shared):</strong></MudText>
+                    @foreach (var name in chosen.SatisfiedRequired)
+                    {
+                        <MudCheckBox T="bool" Value="true" Disabled="true" Label="@name"
+                                     data-testid="consent-required-claim" />
+                    }
+
+                    @if (chosen.AvailableOptional.Count > 0)
+                    {
+                        var optMap = OptionalToggleFor(query.QueryId);
+                        <MudText Typo="Typo.body2" Class="mt-2 mb-1"><strong>Optional:</strong></MudText>
+                        @foreach (var name in chosen.AvailableOptional)
+                        {
+                            @* Seed the key so the @bind-Value indexer getter never throws on a missing entry. *@
+                            if (!optMap.ContainsKey(name)) { optMap[name] = false; }
+                            <MudCheckBox T="bool" @bind-Value="optMap[name]"
+                                         Label="@name" data-testid="consent-optional-claim" />
+                        }
+                    }
+                }
+                else if (query.IsSatisfiable)
+                {
+                    @* Satisfiable but the parent hasn't recorded a choice yet (picker pending). *@
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1 d-block"
+                             data-testid="consent-awaiting-choice">
+                        Choose a credential to share for this request.
+                    </MudText>
+                }
+            </div>
+        }
+
+        <MudButton Class="mt-4 mr-2" Color="Color.Primary" Variant="Variant.Filled"
+                   OnClick="OnConfirm" Disabled="@(Busy || !Result.Satisfiable)"
+                   data-testid="consent-confirm">
+            @(Busy ? "Sharing…" : "Hold to share")
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" OnClick="OnCancel" Disabled="@Busy"
+                   data-testid="consent-cancel">Cancel</MudButton>
+    }
+    else
+    {
+        @* ── Single-ask mode (Feature 114, unchanged) ────────────────────────── *@
+        <MudText Typo="Typo.body2" Class="mt-3 mb-1"><strong>Required (always shared):</strong></MudText>
+        @foreach (var name in Selected.SatisfiedRequired)
+        {
+            <MudCheckBox T="bool" Value="true" Disabled="true" Label="@name" />
+        }
+
+        @if (Selected.AvailableOptional.Count > 0)
+        {
+            <MudText Typo="Typo.body2" Class="mt-3 mb-1"><strong>Optional:</strong></MudText>
+            @foreach (var name in Selected.AvailableOptional)
+            {
+                <MudCheckBox T="bool" @bind-Value="OptionalToggles[name]" Label="@name" />
+            }
+        }
+
+        <MudButton Class="mt-4 mr-2" Color="Color.Primary" Variant="Variant.Filled"
+                   OnClick="OnConfirm" Disabled="@Busy" data-testid="consent-confirm">
+            @(Busy ? "Sharing…" : "Hold to share")
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" OnClick="OnCancel" Disabled="@Busy"
+                   data-testid="consent-cancel">Cancel</MudButton>
+    }
 </MudPaper>
 
 @code {
-    /// <summary>The credential the citizen chose, with the disclosure plan.</summary>
-    [Parameter, EditorRequired] public CredentialMatch Selected { get; set; } = default!;
+    /// <summary>
+    /// Single-ask mode: the credential the citizen chose, with the disclosure plan.
+    /// Ignored when <see cref="Result"/> is supplied (multi-credential mode).
+    /// </summary>
+    [Parameter] public CredentialMatch Selected { get; set; } = default!;
 
     /// <summary>The verifier's parsed request (purpose, audience, etc.).</summary>
     [Parameter, EditorRequired] public ParsedPresentationRequest Request { get; set; } = default!;
 
     /// <summary>
-    /// Two-way bound dictionary of optional claim names → opt-in flags.
+    /// Single-ask mode: two-way bound dictionary of optional claim names → opt-in flags.
     /// Owner constructs the dictionary so Reset can clear it.
     /// </summary>
-    [Parameter, EditorRequired] public Dictionary<string, bool> OptionalToggles { get; set; } = new();
+    [Parameter] public Dictionary<string, bool> OptionalToggles { get; set; } = new();
+
+    /// <summary>
+    /// Feature 181 US2 — the per-query match verdict. When non-null the sheet renders one section
+    /// per credential query (multi-credential mode). Null ⇒ legacy single-ask mode.
+    /// </summary>
+    [Parameter] public DcqlMatchResult? Result { get; set; }
+
+    /// <summary>
+    /// Feature 181 US2 — the credential chosen for each satisfiable query id (owner-supplied; a
+    /// single-candidate query is auto-selected, a multi-candidate one comes from the picker).
+    /// </summary>
+    [Parameter] public IReadOnlyDictionary<string, CredentialMatch>? Selections { get; set; }
+
+    /// <summary>
+    /// Feature 181 US2 — per-query optional-claim toggles: query id → (optional claim name → opt-in).
+    /// Owner constructs so Reset can clear it; the sheet fills any missing per-query entry lazily.
+    /// </summary>
+    [Parameter] public Dictionary<string, Dictionary<string, bool>> QueryOptionalToggles { get; set; } = new();
 
     /// <summary>True while the parent is in the middle of building / posting the vp_token.</summary>
     [Parameter] public bool Busy { get; set; }
@@ -57,4 +150,27 @@
 
     /// <summary>Invoked when the citizen cancels.</summary>
     [Parameter] public EventCallback OnCancel { get; set; }
+
+    /// <summary>Whether a query id participates in a required credential_set (or, absent sets, is required).</summary>
+    private bool IsQueryRequired(string queryId)
+    {
+        if (Result?.SetChoices is { Count: > 0 } sets)
+        {
+            return sets.Any(s => s.Required && s.Options.Any(o => o.Contains(queryId)));
+        }
+
+        // No credential_sets ⇒ every declared query is required (AND).
+        return true;
+    }
+
+    /// <summary>Get-or-create the optional-toggle map for a query so <c>@bind-Value</c> has a stable target.</summary>
+    private Dictionary<string, bool> OptionalToggleFor(string queryId)
+    {
+        if (!QueryOptionalToggles.TryGetValue(queryId, out var map))
+        {
+            map = new Dictionary<string, bool>();
+            QueryOptionalToggles[queryId] = map;
+        }
+        return map;
+    }
 }
