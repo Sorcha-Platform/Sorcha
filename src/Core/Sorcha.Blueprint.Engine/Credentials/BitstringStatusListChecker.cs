@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Buffers.Text;
 using System.IO.Compression;
 using System.Text.Json;
 
@@ -82,8 +83,11 @@ public class BitstringStatusListChecker : IRevocationChecker, IStatusListChecker
             if (string.IsNullOrEmpty(encodedList))
                 return null;
 
-            // Decode: Base64 → GZip decompress → raw bytes
-            var compressed = Convert.FromBase64String(encodedList);
+            // Decode: (multibase base64url | base64) → GZip decompress → raw bytes.
+            // Feature 181 US3 (R7/FR-010) — the W3C Bitstring Status List v1 canonical form is
+            // multibase base64url ('u' prefix, unpadded); the pre-v1 draft (and current Sorcha
+            // issuance) used plain base64. Accept both so external EUDI status lists decode.
+            var compressed = DecodeEncodedList(encodedList);
             using var ms = new MemoryStream(compressed);
             using var gzip = new GZipStream(ms, CompressionMode.Decompress);
             using var output = new MemoryStream();
@@ -119,6 +123,20 @@ public class BitstringStatusListChecker : IRevocationChecker, IStatusListChecker
             // The caller applies its own policy when null is returned.
             return null;
         }
+    }
+
+    /// <summary>
+    /// Decode a W3C Bitstring Status List <c>encodedList</c> value. Feature 181 US3 (R7/FR-010):
+    /// a leading <c>u</c> is the multibase base64url prefix (v1 canonical form, unpadded) — decode
+    /// the remainder as base64url; any other value is plain base64 (the pre-v1 draft form Sorcha
+    /// issuance still emits). The returned bytes are the GZip-compressed bitstring.
+    /// </summary>
+    internal static byte[] DecodeEncodedList(string encodedList)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(encodedList);
+        return encodedList[0] == 'u'
+            ? Base64Url.DecodeFromChars(encodedList.AsSpan(1))
+            : Convert.FromBase64String(encodedList);
     }
 
     /// <summary>

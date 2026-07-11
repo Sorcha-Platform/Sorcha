@@ -24,6 +24,20 @@ public static class TrustMetrics
         "sorcha_trust_decision_total", unit: "decisions",
         description: "Unified trust decisions by outcome, source, format, assurance, and failure reason.");
 
+    private static readonly Counter<long> StaleEvaluationCounter = Meter.CreateCounter<long>(
+        "sorcha_trustlist_stale_evaluation_total", unit: "evaluations",
+        description: "Feature 181 US3 — trust evaluations that used a stale trusted-list snapshot (warn or strict mode).");
+
+    /// <summary>
+    /// Feature 181 US3 (FR-016) — records a trust evaluation against a stale trusted-list snapshot.
+    /// Tags carry only the list identity + sequence + whether strict mode fail-closed — never subject data.
+    /// </summary>
+    public static void RecordStaleEvaluation(string trustListId, long sequenceNumber, bool strict)
+        => StaleEvaluationCounter.Add(1,
+            new KeyValuePair<string, object?>("trust_list_id", trustListId),
+            new KeyValuePair<string, object?>("sequence", sequenceNumber),
+            new KeyValuePair<string, object?>("mode", strict ? "strict" : "warn"));
+
     /// <summary>
     /// Records one trust decision. Tags carry only non-identifying classification data:
     /// outcome, deciding source, credential format, established assurance, and failure reason.

@@ -1215,11 +1215,92 @@ namespace Sorcha.Tenant.Service.Migrations
                 schema: "public",
                 table: "WalletLinkChallenges",
                 columns: new[] { "ParticipantId", "Status" });
+
+            // Feature 181 US3 — imported ETSI TS 119 612 trusted-list snapshots + their CA anchors.
+            migrationBuilder.CreateTable(
+                name: "TrustedListSnapshots",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    TrustListId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    SequenceNumber = table.Column<long>(type: "bigint", nullable: false),
+                    SchemeTerritory = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: true),
+                    SchemeOperatorName = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
+                    ListIssueDateTime = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    NextUpdate = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    SignerCertSubject = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: false),
+                    SignerCertThumbprint = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
+                    ImportedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    ImportedByPlatformUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    SourceUrl = table.Column<string>(type: "character varying(2048)", maxLength: 2048, nullable: true),
+                    RawDocumentSha256 = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    Status = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    ExtractionSummary = table.Column<string>(type: "text", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TrustedListSnapshots", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "TrustedListAnchors",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    SnapshotId = table.Column<Guid>(type: "uuid", nullable: false),
+                    CertificateDer = table.Column<byte[]>(type: "bytea", nullable: false),
+                    SubjectDn = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: false),
+                    Thumbprint = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
+                    ServiceTypeIdentifier = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
+                    ServiceStatus = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
+                    NotBefore = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    NotAfter = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TrustedListAnchors", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_TrustedListAnchors_TrustedListSnapshots_SnapshotId",
+                        column: x => x.SnapshotId,
+                        principalSchema: "public",
+                        principalTable: "TrustedListSnapshots",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrustedListAnchors_SnapshotId",
+                schema: "public",
+                table: "TrustedListAnchors",
+                column: "SnapshotId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrustedListSnapshots_TrustListId",
+                schema: "public",
+                table: "TrustedListSnapshots",
+                column: "TrustListId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrustedListSnapshots_TrustListId_Status",
+                schema: "public",
+                table: "TrustedListSnapshots",
+                columns: new[] { "TrustListId", "Status" });
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            // Feature 181 US3 — trusted-list snapshots (child anchors first).
+            migrationBuilder.DropTable(
+                name: "TrustedListAnchors",
+                schema: "public");
+
+            migrationBuilder.DropTable(
+                name: "TrustedListSnapshots",
+                schema: "public");
+
             migrationBuilder.DropTable(
                 name: "AuditLogEntries",
                 schema: "public");

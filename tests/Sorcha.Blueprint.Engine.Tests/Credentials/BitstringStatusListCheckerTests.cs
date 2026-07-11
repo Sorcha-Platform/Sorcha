@@ -234,9 +234,52 @@ public class BitstringStatusListCheckerTests
         return new BitstringStatusListChecker(httpClient);
     }
 
-    private static string CreateStatusListJson(byte[] bitstringBytes, string purpose)
+    // Feature 181 US3 (T032 / R7) — the W3C Bitstring Status List v1 canonical encodedList form is
+    // multibase base64url (leading 'u', unpadded). Sorcha issuance still emits plain base64; both must
+    // decode so external EUDI status lists verify.
+
+    [Fact]
+    public async Task CheckBitAsync_MultibaseBase64UrlEncodedList_BitSet_ReturnsRevoked()
     {
-        var encodedList = GZipAndBase64Encode(bitstringBytes);
+        var bytes = new byte[] { 0b10000000 }; // bit 0 set (MSB-first)
+        var json = CreateStatusListJson(bytes, "revocation", multibaseBase64Url: true);
+        var checker = CreateCheckerWithResponse(json);
+
+        var result = await checker.CheckBitAsync("https://example.com/status/1", 0);
+
+        result.Should().Be("Revoked");
+    }
+
+    [Fact]
+    public async Task CheckBitAsync_MultibaseBase64UrlEncodedList_BitNotSet_ReturnsActive()
+    {
+        var bytes = new byte[] { 0b00000000 };
+        var json = CreateStatusListJson(bytes, "revocation", multibaseBase64Url: true);
+        var checker = CreateCheckerWithResponse(json);
+
+        var result = await checker.CheckBitAsync("https://example.com/status/1", 0);
+
+        result.Should().Be("Active");
+    }
+
+    [Fact]
+    public async Task CheckBitAsync_PlainBase64EncodedList_StillDecodes()
+    {
+        // Regression guard — the pre-v1 plain-base64 form must keep working alongside multibase.
+        var bytes = new byte[] { 0b10000000 };
+        var json = CreateStatusListJson(bytes, "revocation", multibaseBase64Url: false);
+        var checker = CreateCheckerWithResponse(json);
+
+        var result = await checker.CheckBitAsync("https://example.com/status/1", 0);
+
+        result.Should().Be("Revoked");
+    }
+
+    private static string CreateStatusListJson(byte[] bitstringBytes, string purpose, bool multibaseBase64Url = false)
+    {
+        var encodedList = multibaseBase64Url
+            ? "u" + GZipAndBase64UrlEncode(bitstringBytes)
+            : GZipAndBase64Encode(bitstringBytes);
 
         return JsonSerializer.Serialize(new
         {
@@ -246,6 +289,16 @@ public class BitstringStatusListCheckerTests
                 encodedList
             }
         });
+    }
+
+    private static string GZipAndBase64UrlEncode(byte[] bytes)
+    {
+        using var output = new MemoryStream();
+        using (var gzip = new GZipStream(output, CompressionMode.Compress))
+        {
+            gzip.Write(bytes, 0, bytes.Length);
+        }
+        return System.Buffers.Text.Base64Url.EncodeToString(output.ToArray());
     }
 
     private static string GZipAndBase64Encode(byte[] bytes)

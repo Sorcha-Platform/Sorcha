@@ -26,6 +26,32 @@ public sealed class TrustListSnapshot
 
     /// <summary>The freshness timestamp recorded in trust evidence.</summary>
     public DateTimeOffset Freshness { get; init; }
+
+    /// <summary>Feature 181 US3 — the list's own sequence number; forms the anchor-set identity
+    /// <c>{trustListId}#{sequenceNumber}</c> carried into trust evidence (FR-015).</summary>
+    public long SequenceNumber { get; init; }
+
+    /// <summary>Feature 181 US3 — the list's declared next-update; null when the list carried none.</summary>
+    public DateTimeOffset? NextUpdate { get; init; }
+
+    /// <summary>Feature 181 US3 — computed freshness state (<c>Fresh</c> / <c>Stale</c>) at read time (FR-016).</summary>
+    public string? FreshnessState { get; init; }
+}
+
+/// <summary>Feature 181 US3 — freshness evaluation over a wire <see cref="TrustListSnapshot"/> (FR-016).</summary>
+public static class TrustListAnchorFreshness
+{
+    /// <summary>
+    /// A snapshot is stale once <paramref name="now"/> reaches its declared <c>NextUpdate</c>; when the
+    /// list carried no next-update, the server-computed <c>FreshnessState</c> is authoritative.
+    /// </summary>
+    public static bool IsStale(TrustListSnapshot snapshot, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        return snapshot.NextUpdate is { } nextUpdate
+            ? now >= nextUpdate
+            : string.Equals(snapshot.FreshnessState, "Stale", StringComparison.OrdinalIgnoreCase);
+    }
 }
 
 /// <summary>

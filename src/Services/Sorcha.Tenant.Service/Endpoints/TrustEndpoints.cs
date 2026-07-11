@@ -93,93 +93,202 @@ public static class TrustEndpoints
             .RequireRateLimiting(RateLimitPolicies.Api)
             .AllowAnonymous();
 
-        // Feature 135 (US2) — operator trust-list snapshot management. Snapshots are consulted by
-        // the `trustlist` trust source (external EUDI anchors). Admin-scoped, strict rate limit.
-        group.MapPut("/trustlists/{trustListId}", PutTrustList)
-            .WithName("PutTrustListSnapshot")
-            .WithSummary("Upload or replace a trust-list snapshot")
+        // Feature 181 US3 — ETSI TS 119 612 trusted-list snapshot import + lifecycle. Replaces the
+        // Feature 135 placeholder PUT raw-roots route (clean break). Admin-scoped, strict rate limit.
+        group.MapPost("/trustlists/import", ImportTrustList)
+            .WithName("ImportTrustListSnapshot")
+            .WithSummary("Import an ETSI TS 119 612 trusted-list document (upload or URL fetch-once)")
             .WithDescription(
-                "Stores an operator-curated set of trusted X.509 root certificates (base64 DER) under " +
-                "the given id. Referenced by a credential requirement's trust policy `trustlist` source; " +
-                "the snapshot id + freshness are copied into the trust evidence on every decision that " +
-                "used the list. A live LOTL feed is a future provider behind the same seam.")
-            .Produces<TrustListSummaryResponse>(StatusCodes.Status200OK)
+                "Verifies the enveloped XMLDSig signature, extracts granted CA/QC anchors, and stores a " +
+                "versioned snapshot. Sequence number must exceed the current Active snapshot for the same " +
+                "trustListId. 400 TRUSTLIST_MALFORMED/_SIGNATURE_INVALID, 409 TRUSTLIST_SEQUENCE_REGRESSION.")
+            .Produces<TrustListSnapshotSummaryResponse>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest)
-            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
-            .RequireRateLimiting(RateLimitPolicies.Strict);
-
-        group.MapGet("/trustlists/{trustListId}", GetTrustList)
-            .WithName("GetTrustListSnapshot")
-            .WithSummary("Get trust-list snapshot metadata")
-            .WithDescription(
-                "Returns the snapshot id, root count, source, and freshness so operators can audit " +
-                "what is loaded. Not used per-verification (the trust source caches the roots).")
-            .Produces<TrustListSummaryResponse>(StatusCodes.Status200OK)
-            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict)
+            .DisableAntiforgery()
             .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .RequireRateLimiting(RateLimitPolicies.Strict);
 
         group.MapGet("/trustlists", ListTrustLists)
             .WithName("ListTrustListSnapshots")
-            .WithSummary("List available trust-list snapshots")
-            .WithDescription("Returns the id + freshness of every loaded trust-list snapshot.")
-            .Produces<IReadOnlyList<TrustListSummaryResponse>>(StatusCodes.Status200OK)
+            .WithSummary("List trusted-list snapshots with freshness state")
+            .WithDescription("Returns every Active snapshot's scheme identity, freshness, and anchor count.")
+            .Produces<IReadOnlyList<TrustListSnapshotSummaryResponse>>(StatusCodes.Status200OK)
             .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .RequireRateLimiting(RateLimitPolicies.Strict);
+
+        group.MapGet("/trustlists/{trustListId}", GetTrustList)
+            .WithName("GetTrustListSnapshot")
+            .WithSummary("Get a trusted-list snapshot's detail, anchors and extraction summary")
+            .Produces<TrustListSnapshotDetailResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound)
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
+            .RequireRateLimiting(RateLimitPolicies.Strict);
+
+        group.MapDelete("/trustlists/{trustListId}", DeleteTrustList)
+            .WithName("DeleteTrustListSnapshot")
+            .WithSummary("Delete every version of a trusted-list snapshot")
+            .WithDescription("Subsequent evaluations against this trustListId fail closed TRUSTLIST_UNAVAILABLE (SC-004).")
+            .Produces(StatusCodes.Status204NoContent)
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
+            .RequireRateLimiting(RateLimitPolicies.Strict);
+
+        group.MapGet("/trustlists/{trustListId}/anchors", GetTrustListAnchors)
+            .WithName("GetTrustListAnchors")
+            .WithSummary("Anchor distribution read for verifying services")
+            .WithDescription(
+                "Service-tier. Returns the Active snapshot's DER roots + sequence + freshness for the " +
+                "caching HTTP ITrustListProvider. 404 TRUSTLIST_UNAVAILABLE when no snapshot exists.")
+            .Produces<TrustListAnchorsResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound)
+            .RequireAuthorization("RequireService")
+            .RequireRateLimiting(RateLimitPolicies.Api);
     }
 
-    internal static IResult PutTrustList(
-        string trustListId,
-        [FromBody] UploadTrustListRequest request,
-        OperatorSnapshotTrustListProvider provider)
+    internal static async Task<IResult> ImportTrustList(
+        [FromForm] string trustListId,
+        HttpContext http,
+        TrustedListImportService importService,
+        IHttpClientFactory httpClientFactory,
+        ILoggerFactory loggerFactory,
+        IFormFile? document,
+        [FromForm] string? sourceUrl,
+        CancellationToken ct)
     {
-        if (request.Roots is null || request.Roots.Count == 0)
-            return Results.BadRequest(new { error = "At least one root certificate is required" });
+        var logger = loggerFactory.CreateLogger("Sorcha.Tenant.Service.Trust.TrustList");
+        if (string.IsNullOrWhiteSpace(trustListId))
+            return Results.BadRequest(new { error = "trustListId is required" });
 
-        var roots = new List<byte[]>(request.Roots.Count);
-        foreach (var base64 in request.Roots)
+        byte[] documentBytes;
+        if (document is not null)
         {
+            using var ms = new MemoryStream();
+            await document.CopyToAsync(ms, ct);
+            documentBytes = ms.ToArray();
+        }
+        else if (!string.IsNullOrWhiteSpace(sourceUrl))
+        {
+            if (!Uri.TryCreate(sourceUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+                return Results.BadRequest(new { error = "sourceUrl must be an absolute HTTPS URL" });
             try
             {
-                roots.Add(Convert.FromBase64String(base64));
+                var client = httpClientFactory.CreateClient("trustlist-fetch");
+                documentBytes = await client.GetByteArrayAsync(uri, ct);
             }
-            catch (FormatException)
+            catch (HttpRequestException ex)
             {
-                return Results.BadRequest(new { error = "A root certificate entry is not valid Base64 DER" });
+                return Results.BadRequest(new { error = TrustListErrorCodes.Malformed, error_description = $"Fetch failed: {ex.Message}" });
             }
         }
-
-        var snapshot = new TrustListSnapshot
+        else
         {
-            Id = trustListId,
-            Roots = roots,
-            Source = request.Source ?? "operator-upload",
-            CreatedAt = DateTimeOffset.UtcNow,
-            Freshness = request.Freshness ?? DateTimeOffset.UtcNow
-        };
-        provider.Upsert(snapshot);
+            return Results.BadRequest(new { error = "Provide either a document file or a sourceUrl" });
+        }
 
-        return Results.Ok(ToSummary(snapshot));
+        var importedBy = ResolvePlatformUserId(http.User);
+        var result = await importService.ImportAsync(trustListId, documentBytes, sourceUrl, importedBy, ct);
+        if (result.Success)
+        {
+            var snapshot = result.Snapshot!;
+            TrustListMetrics.RecordSnapshotActive(snapshot.TrustListId, snapshot.SequenceNumber);
+            logger.LogInformation(
+                "Trusted-list snapshot imported: {TrustListId}#{Sequence} territory={Territory} anchors={AnchorCount} signer={Signer} importedBy={ImportedBy}",
+                snapshot.TrustListId, snapshot.SequenceNumber, snapshot.SchemeTerritory,
+                snapshot.Anchors.Count, snapshot.SignerCertSubject, importedBy);
+            return Results.Created($"/api/v1/trust/trustlists/{trustListId}", ToSummary(snapshot));
+        }
+
+        logger.LogWarning("Trusted-list import rejected for {TrustListId}: {Code} {Message}",
+            trustListId, result.ErrorCode, result.ErrorMessage);
+        var problem = new { error = result.ErrorCode, error_description = result.ErrorMessage };
+        return result.ErrorCode == TrustListErrorCodes.SequenceRegression
+            ? Results.Json(problem, statusCode: StatusCodes.Status409Conflict)
+            : Results.BadRequest(problem);
     }
 
-    internal static IResult GetTrustList(string trustListId, OperatorSnapshotTrustListProvider provider)
+    internal static async Task<IResult> ListTrustLists(
+        Sorcha.Tenant.Service.Storage.ITrustedListSnapshotStore store, CancellationToken ct)
     {
-        var snapshot = provider.List().FirstOrDefault(s => string.Equals(s.Id, trustListId, StringComparison.Ordinal));
+        var snapshots = await store.ListActiveAsync(ct);
+        return Results.Ok(snapshots.Select(ToSummary).ToList());
+    }
+
+    internal static async Task<IResult> GetTrustList(
+        string trustListId, Sorcha.Tenant.Service.Storage.ITrustedListSnapshotStore store, CancellationToken ct)
+    {
+        var snapshot = await store.GetActiveAsync(trustListId, ct);
         return snapshot is null
-            ? Results.NotFound(new { error = $"No trust-list snapshot '{trustListId}'" })
-            : Results.Ok(ToSummary(snapshot));
+            ? Results.NotFound(new { error = $"No trusted-list snapshot '{trustListId}'" })
+            : Results.Ok(ToDetail(snapshot));
     }
 
-    internal static IResult ListTrustLists(OperatorSnapshotTrustListProvider provider)
-        => Results.Ok(provider.List().Select(ToSummary).ToList());
-
-    private static TrustListSummaryResponse ToSummary(TrustListSnapshot s) => new()
+    internal static async Task<IResult> DeleteTrustList(
+        string trustListId, Sorcha.Tenant.Service.Storage.ITrustedListSnapshotStore store,
+        ILoggerFactory loggerFactory, CancellationToken ct)
     {
-        TrustListId = s.Id,
-        RootCount = s.Roots.Count,
-        Source = s.Source,
-        CreatedAt = s.CreatedAt,
-        Freshness = s.Freshness
+        var removed = await store.DeleteAsync(trustListId, ct);
+        TrustListMetrics.RecordSnapshotRemoved(trustListId);
+        loggerFactory.CreateLogger("Sorcha.Tenant.Service.Trust.TrustList")
+            .LogInformation("Trusted-list snapshot deleted: {TrustListId} (existed={Existed})", trustListId, removed);
+        return Results.NoContent();
+    }
+
+    internal static async Task<IResult> GetTrustListAnchors(
+        string trustListId, Sorcha.Tenant.Service.Storage.ITrustedListSnapshotStore store, CancellationToken ct)
+    {
+        var snapshot = await store.GetActiveAsync(trustListId, ct);
+        if (snapshot is null)
+        {
+            return Results.NotFound(new { error = TrustListErrorCodes.Unavailable });
+        }
+
+        var freshness = TrustListFreshness.Compute(snapshot.NextUpdate, snapshot.ListIssueDateTime, DateTimeOffset.UtcNow);
+        return Results.Ok(new TrustListAnchorsResponse
+        {
+            TrustListId = snapshot.TrustListId,
+            SequenceNumber = snapshot.SequenceNumber,
+            Freshness = freshness.ToString(),
+            NextUpdate = snapshot.NextUpdate,
+            RootsDerBase64 = snapshot.Anchors.Select(a => Convert.ToBase64String(a.CertificateDer)).ToList(),
+        });
+    }
+
+    private static Guid ResolvePlatformUserId(System.Security.Claims.ClaimsPrincipal user)
+    {
+        var claim = user.FindFirst("platform_user_id")?.Value;
+        return Guid.TryParse(claim, out var id) ? id : Guid.Empty;
+    }
+
+    private static TrustListSnapshotSummaryResponse ToSummary(Sorcha.Tenant.Service.Models.TrustedListSnapshot s) => new()
+    {
+        TrustListId = s.TrustListId,
+        SequenceNumber = s.SequenceNumber,
+        SchemeTerritory = s.SchemeTerritory,
+        SchemeOperatorName = s.SchemeOperatorName,
+        ListIssueDateTime = s.ListIssueDateTime,
+        NextUpdate = s.NextUpdate,
+        Freshness = TrustListFreshness.Compute(s.NextUpdate, s.ListIssueDateTime, DateTimeOffset.UtcNow).ToString(),
+        AnchorCount = s.Anchors.Count,
+        SignerCertSubject = s.SignerCertSubject,
+        SignerCertThumbprint = s.SignerCertThumbprint,
+        ImportedAt = s.ImportedAt,
+        ImportedBy = s.ImportedByPlatformUserId,
+        Status = s.Status.ToString(),
+    };
+
+    private static TrustListSnapshotDetailResponse ToDetail(Sorcha.Tenant.Service.Models.TrustedListSnapshot s) => new()
+    {
+        Summary = ToSummary(s),
+        Anchors = s.Anchors.Select(a => new TrustListAnchorResponse
+        {
+            SubjectDn = a.SubjectDn,
+            Thumbprint = a.Thumbprint,
+            ServiceTypeIdentifier = a.ServiceTypeIdentifier,
+            ServiceStatus = a.ServiceStatus,
+            NotBefore = a.NotBefore,
+            NotAfter = a.NotAfter,
+        }).ToList(),
+        ExtractionSummary = s.ExtractionSummary,
     };
 
     private static async Task<IResult> ProvisionTrustAnchor(
@@ -367,27 +476,51 @@ public class CertChainResponse
     public required string RootCertBase64 { get; init; }
 }
 
-/// <summary>Request to upload/replace a trust-list snapshot (feature 135 US2).</summary>
-public class UploadTrustListRequest
-{
-    /// <summary>Provenance, e.g. "EU LOTL 2026-Q2 manual export".</summary>
-    public string? Source { get; init; }
-
-    /// <summary>Trusted root certificates, base64-encoded DER.</summary>
-    public required List<string> Roots { get; init; }
-
-    /// <summary>Operator-asserted as-of time copied into trust evidence; defaults to now.</summary>
-    public DateTimeOffset? Freshness { get; init; }
-}
-
-/// <summary>Trust-list snapshot metadata (feature 135 US2).</summary>
-public class TrustListSummaryResponse
+/// <summary>Feature 181 US3 — trusted-list snapshot summary (contract §TrustListSnapshotSummary).</summary>
+public class TrustListSnapshotSummaryResponse
 {
     public required string TrustListId { get; init; }
-    public int RootCount { get; init; }
-    public required string Source { get; init; }
-    public DateTimeOffset CreatedAt { get; init; }
-    public DateTimeOffset Freshness { get; init; }
+    public long SequenceNumber { get; init; }
+    public string? SchemeTerritory { get; init; }
+    public string? SchemeOperatorName { get; init; }
+    public DateTimeOffset ListIssueDateTime { get; init; }
+    public DateTimeOffset? NextUpdate { get; init; }
+    public required string Freshness { get; init; }
+    public int AnchorCount { get; init; }
+    public required string SignerCertSubject { get; init; }
+    public required string SignerCertThumbprint { get; init; }
+    public DateTimeOffset ImportedAt { get; init; }
+    public Guid ImportedBy { get; init; }
+    public required string Status { get; init; }
+}
+
+/// <summary>Feature 181 US3 — trusted-list snapshot detail (summary + anchors + extraction summary).</summary>
+public class TrustListSnapshotDetailResponse
+{
+    public required TrustListSnapshotSummaryResponse Summary { get; init; }
+    public required List<TrustListAnchorResponse> Anchors { get; init; }
+    public required string ExtractionSummary { get; init; }
+}
+
+/// <summary>Feature 181 US3 — one extracted CA anchor.</summary>
+public class TrustListAnchorResponse
+{
+    public required string SubjectDn { get; init; }
+    public required string Thumbprint { get; init; }
+    public required string ServiceTypeIdentifier { get; init; }
+    public required string ServiceStatus { get; init; }
+    public DateTimeOffset NotBefore { get; init; }
+    public DateTimeOffset NotAfter { get; init; }
+}
+
+/// <summary>Feature 181 US3 — anchor distribution read for verifying services.</summary>
+public class TrustListAnchorsResponse
+{
+    public required string TrustListId { get; init; }
+    public long SequenceNumber { get; init; }
+    public required string Freshness { get; init; }
+    public DateTimeOffset? NextUpdate { get; init; }
+    public required List<string> RootsDerBase64 { get; init; }
 }
 
 /// <summary>Request to revoke an organisation certificate.</summary>

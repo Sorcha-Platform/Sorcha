@@ -20,7 +20,7 @@ namespace Sorcha.Tenant.Service.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("public")
-                .HasAnnotation("ProductVersion", "10.0.5")
+                .HasAnnotation("ProductVersion", "10.0.8")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -313,6 +313,10 @@ namespace Sorcha.Tenant.Service.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("PlatformUserId")
+                        .HasDatabaseName("IX_InboxEntries_Unread")
+                        .HasFilter("\"ReadAt\" IS NULL AND \"DismissedAt\" IS NULL");
+
                     b.HasIndex("PlatformUserId", "OccurredAt")
                         .HasDatabaseName("IX_InboxEntries_PlatformUserId_OccurredAt");
 
@@ -322,10 +326,6 @@ namespace Sorcha.Tenant.Service.Migrations
 
                     b.HasIndex("PlatformUserId", "Category", "OccurredAt")
                         .HasDatabaseName("IX_InboxEntries_PlatformUserId_Category_OccurredAt");
-
-                    b.HasIndex("PlatformUserId")
-                        .HasDatabaseName("IX_InboxEntries_Unread")
-                        .HasFilter("\"ReadAt\" IS NULL AND \"DismissedAt\" IS NULL");
 
                     b.HasIndex("PlatformUserId", "CorrelationKey", "OccurredAt")
                         .HasDatabaseName("IX_InboxEntries_PlatformUserId_CorrelationKey_OccurredAt");
@@ -1073,25 +1073,6 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.ToTable("PlatformUsers", "public");
                 });
 
-            modelBuilder.Entity("Sorcha.Tenant.Service.Models.PlatformUserTwoFactor", b =>
-                {
-                    b.Property<Guid>("PlatformUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("EmailOtpEnabled")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("SmsOtpEnabled")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("PlatformUserId");
-
-                    b.ToTable("PlatformUserTwoFactors", "public");
-                });
-
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.PlatformUserDevice", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1236,6 +1217,25 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.HasKey("PlatformUserId", "ContextOrgId");
 
                     b.ToTable("PlatformUserPersonas", "public");
+                });
+
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.PlatformUserTwoFactor", b =>
+                {
+                    b.Property<Guid>("PlatformUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("EmailOtpEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("SmsOtpEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("PlatformUserId");
+
+                    b.ToTable("PlatformUserTwoFactors", "public");
                 });
 
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.PushSubscription", b =>
@@ -1461,6 +1461,126 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.ToTable("TotpConfigurations", "public");
                 });
 
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.TrustedListAnchor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("CertificateDer")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<DateTimeOffset>("NotAfter")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("NotBefore")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ServiceStatus")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ServiceTypeIdentifier")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("SnapshotId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SubjectDn")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("Thumbprint")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SnapshotId")
+                        .HasDatabaseName("IX_TrustedListAnchors_SnapshotId");
+
+                    b.ToTable("TrustedListAnchors", "public");
+                });
+
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.TrustedListSnapshot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExtractionSummary")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("ImportedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ImportedByPlatformUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ListIssueDateTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("NextUpdate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RawDocumentSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("SchemeOperatorName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("SchemeTerritory")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<long>("SequenceNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("SignerCertSubject")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("SignerCertThumbprint")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("SourceUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("TrustListId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TrustListId")
+                        .HasDatabaseName("IX_TrustedListSnapshots_TrustListId");
+
+                    b.HasIndex("TrustListId", "Status")
+                        .HasDatabaseName("IX_TrustedListSnapshots_TrustListId_Status");
+
+                    b.ToTable("TrustedListSnapshots", "public");
+                });
+
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.UserIdentity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1510,15 +1630,15 @@ namespace Sorcha.Tenant.Service.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Email")
+                        .HasDatabaseName("IX_UserIdentity_Email");
+
                     b.HasIndex("OrganizationId");
 
                     b.HasIndex("PlatformUserId")
                         .HasDatabaseName("IX_UserIdentity_PlatformUserId");
 
                     b.HasIndex("Status");
-
-                    b.HasIndex("Email")
-                        .HasDatabaseName("IX_UserIdentity_Email");
 
                     b.HasIndex("OrganizationId", "Email")
                         .IsUnique()
@@ -1750,17 +1870,6 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.Navigation("PlatformUser");
                 });
 
-            modelBuilder.Entity("Sorcha.Tenant.Service.Models.PlatformUserTwoFactor", b =>
-                {
-                    b.HasOne("Sorcha.Tenant.Service.Models.PlatformUser", "PlatformUser")
-                        .WithOne("TwoFactor")
-                        .HasForeignKey("Sorcha.Tenant.Service.Models.PlatformUserTwoFactor", "PlatformUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("PlatformUser");
-                });
-
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.PlatformUserDevice", b =>
                 {
                     b.HasOne("Sorcha.Tenant.Service.Models.PlatformUser", "PlatformUser")
@@ -1802,6 +1911,17 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.Navigation("PlatformUser");
                 });
 
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.PlatformUserTwoFactor", b =>
+                {
+                    b.HasOne("Sorcha.Tenant.Service.Models.PlatformUser", "PlatformUser")
+                        .WithOne("TwoFactor")
+                        .HasForeignKey("Sorcha.Tenant.Service.Models.PlatformUserTwoFactor", "PlatformUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlatformUser");
+                });
+
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.RegisterInvitationRecord", b =>
                 {
                     b.HasOne("Sorcha.Tenant.Service.Models.Organization", "SourceOrganization")
@@ -1811,6 +1931,15 @@ namespace Sorcha.Tenant.Service.Migrations
                         .IsRequired();
 
                     b.Navigation("SourceOrganization");
+                });
+
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.TrustedListAnchor", b =>
+                {
+                    b.HasOne("Sorcha.Tenant.Service.Models.TrustedListSnapshot", null)
+                        .WithMany("Anchors")
+                        .HasForeignKey("SnapshotId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.WalletLinkChallenge", b =>
@@ -1847,6 +1976,11 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.Navigation("SocialLogins");
 
                     b.Navigation("TwoFactor");
+                });
+
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.TrustedListSnapshot", b =>
+                {
+                    b.Navigation("Anchors");
                 });
 #pragma warning restore 612, 618
         }

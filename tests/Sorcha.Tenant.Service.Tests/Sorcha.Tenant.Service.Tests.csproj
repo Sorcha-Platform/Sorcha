@@ -34,6 +34,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Services\Sorcha.Tenant.Service\Sorcha.Tenant.Service.csproj" />
+    <!-- Feature 181 US3 (T038) — the SC-004 integration test drives the engine trust source over imported anchors. -->
+    <ProjectReference Include="..\..\src\Core\Sorcha.Blueprint.Engine\Sorcha.Blueprint.Engine.csproj" />
     <ProjectReference Include="..\..\src\Common\Sorcha.AtomicCache\Sorcha.AtomicCache.csproj" />
     <ProjectReference Include="..\..\src\Common\Sorcha.Tenant.Models\Sorcha.Tenant.Models.csproj" />
     <ProjectReference Include="..\..\src\Common\Sorcha.ServiceClients\Sorcha.ServiceClients.csproj" />

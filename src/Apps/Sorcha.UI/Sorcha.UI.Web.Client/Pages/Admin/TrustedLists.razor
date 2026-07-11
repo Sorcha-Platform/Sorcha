@@ -1,0 +1,206 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@page "/admin/trusted-lists"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize(Roles = "Administrator")]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Sorcha.UI.Core.Services.Admin
+@using Sorcha.UI.Core.Services.Feedback
+@inject ITrustedListAdminService TrustedListService
+@inject IInlineFeedback Feedback
+
+<PageTitle>Trusted Lists - Sorcha Platform</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Class="mr-2" />
+        Trusted Lists
+    </MudText>
+    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+        Import ETSI TS 119 612 trusted lists (the EU LOTL or a member-state list) so credentials issued
+        under recognised certificate authorities verify against the <code>x509-lotl</code> / <code>trustlist</code>
+        trust rail. The document's enveloped signature is verified on import; only granted CA/QC anchors are
+        extracted. Live scheduled refresh is not yet available — re-import when a list rolls.
+    </MudText>
+
+    <MudPaper Elevation="1" Class="pa-4 mb-4" data-testid="trustlist-import-card">
+        <MudText Typo="Typo.h6" Class="mb-2">Import a trusted list</MudText>
+        <MudTextField @bind-Value="_importId" Label="Trusted-list id" Variant="Variant.Outlined"
+                      HelperText="A stable operator-chosen id (e.g. eu-lotl) referenced by a credential requirement's trust policy."
+                      data-testid="trustlist-import-id" Class="mb-3" />
+        <div class="d-flex align-center gap-3">
+            <MudFileUpload T="IBrowserFile" FilesChanged="OnFileChanged" Accept=".xml">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.UploadFile"
+                               data-testid="trustlist-choose-file">
+                        @(_file?.Name ?? "Choose XML file")
+                    </MudButton>
+                </ActivatorContent>
+            </MudFileUpload>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       Disabled="@(_busy || _file is null || string.IsNullOrWhiteSpace(_importId))"
+                       OnClick="ImportAsync" data-testid="trustlist-import-submit">
+                @(_busy ? "Importing…" : "Import")
+            </MudButton>
+        </div>
+    </MudPaper>
+
+    <MudPaper Elevation="1" Class="pa-4">
+        <div class="d-flex align-center mb-2">
+            <MudText Typo="Typo.h6">Imported snapshots</MudText>
+            <MudSpacer />
+            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="ReloadAsync" data-testid="trustlist-refresh">Refresh</MudButton>
+        </div>
+
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="my-3" />
+        }
+        else if (_snapshots.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" data-testid="trustlist-empty">
+                No trusted lists imported yet.
+            </MudAlert>
+        }
+        else
+        {
+            <MudTable Items="_snapshots" Hover="true" Dense="true" data-testid="trustlist-table">
+                <HeaderContent>
+                    <MudTh>List</MudTh>
+                    <MudTh>Seq</MudTh>
+                    <MudTh>Territory</MudTh>
+                    <MudTh>Freshness</MudTh>
+                    <MudTh>Anchors</MudTh>
+                    <MudTh>Next update</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="List">@context.TrustListId</MudTd>
+                    <MudTd DataLabel="Seq">@context.SequenceNumber</MudTd>
+                    <MudTd DataLabel="Territory">@(context.SchemeTerritory ?? "—")</MudTd>
+                    <MudTd DataLabel="Freshness">
+                        <MudChip T="string" Size="Size.Small"
+                                 Color="@(context.IsStale ? Color.Warning : Color.Success)"
+                                 data-testid="trustlist-freshness-chip">@context.Freshness</MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Anchors">@context.AnchorCount</MudTd>
+                    <MudTd DataLabel="Next update">@(context.NextUpdate?.ToString("yyyy-MM-dd") ?? "—")</MudTd>
+                    <MudTd>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleDetailAsync(context.TrustListId))">
+                            @(_expandedId == context.TrustListId ? "Hide" : "Anchors")
+                        </MudButton>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error"
+                                   OnClick="@(() => DeleteAsync(context.TrustListId))"
+                                   data-testid="trustlist-delete">Delete</MudButton>
+                    </MudTd>
+                </RowTemplate>
+                <ChildRowContent>
+                    @if (_expandedId == context.TrustListId && _detail is not null)
+                    {
+                        <MudTr>
+                            <MudTd colspan="7">
+                                <MudText Typo="Typo.subtitle2" Class="mb-1">
+                                    Signer: <code>@_detail.Summary.SignerCertSubject</code>
+                                </MudText>
+                                @foreach (var anchor in _detail.Anchors)
+                                {
+                                    <div class="d-flex align-center gap-2" data-testid="trustlist-anchor">
+                                        <MudIcon Icon="@Icons.Material.Filled.Security" Size="Size.Small" />
+                                        <MudText Typo="Typo.body2"><code>@anchor.SubjectDn</code></MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            (@anchor.NotBefore.ToString("yyyy-MM-dd") → @anchor.NotAfter.ToString("yyyy-MM-dd"))
+                                        </MudText>
+                                    </div>
+                                }
+                            </MudTd>
+                        </MudTr>
+                    }
+                </ChildRowContent>
+            </MudTable>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private readonly List<TrustListSummary> _snapshots = [];
+    private string _importId = string.Empty;
+    private IBrowserFile? _file;
+    private bool _busy;
+    private bool _loading = true;
+    private string? _expandedId;
+    private TrustListDetail? _detail;
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        var list = await TrustedListService.ListAsync();
+        _snapshots.Clear();
+        _snapshots.AddRange(list);
+        _loading = false;
+    }
+
+    private void OnFileChanged(IBrowserFile? file) => _file = file;
+
+    private async Task ImportAsync()
+    {
+        if (_file is null || string.IsNullOrWhiteSpace(_importId)) return;
+        _busy = true;
+        try
+        {
+            // 8 MB ceiling — trusted lists are well under this.
+            await using var stream = _file.OpenReadStream(8 * 1024 * 1024);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            buffer.Position = 0;
+
+            var outcome = await TrustedListService.ImportAsync(_importId.Trim(), buffer, _file.Name);
+            if (outcome.Success)
+            {
+                Feedback.ShowSuccess($"Imported '{outcome.Summary!.TrustListId}' (sequence {outcome.Summary.SequenceNumber}, {outcome.Summary.AnchorCount} anchor(s)).");
+                _importId = string.Empty;
+                _file = null;
+                await ReloadAsync();
+            }
+            else
+            {
+                Feedback.ShowError($"Import failed ({outcome.ErrorCode}): {outcome.ErrorMessage}", autoDismissMs: 0);
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ToggleDetailAsync(string trustListId)
+    {
+        if (_expandedId == trustListId)
+        {
+            _expandedId = null;
+            _detail = null;
+            return;
+        }
+        _detail = await TrustedListService.GetAsync(trustListId);
+        _expandedId = _detail is null ? null : trustListId;
+    }
+
+    private async Task DeleteAsync(string trustListId)
+    {
+        var ok = await TrustedListService.DeleteAsync(trustListId);
+        if (ok)
+        {
+            Feedback.ShowInfo($"Deleted trusted list '{trustListId}'. Verifications against it now fail closed.");
+            if (_expandedId == trustListId) { _expandedId = null; _detail = null; }
+            await ReloadAsync();
+        }
+        else
+        {
+            Feedback.ShowError($"Could not delete trusted list '{trustListId}'.", autoDismissMs: 0);
+        }
+    }
+}

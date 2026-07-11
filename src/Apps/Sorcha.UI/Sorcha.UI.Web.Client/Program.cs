@@ -106,6 +106,13 @@ builder.Services.AddHttpClient<IEnrolPairingSignal, EnrolPairingSignal>(client =
     client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
 });
 
+// Feature 181 US3 (T037) — platform-admin trusted-list snapshot management.
+builder.Services.AddHttpClient<Sorcha.UI.Core.Services.Admin.ITrustedListAdminService,
+    Sorcha.UI.Core.Services.Admin.TrustedListAdminService>(client =>
+{
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+});
+
 // Feature 128 — shared has-any-device probe. Drives the PairingNagBanner
 // on every MainLayout render for signed-in citizens with zero paired
 // devices (FR-024). The same probe is also registered in the PWA
