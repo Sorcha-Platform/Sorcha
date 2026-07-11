@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Sorcha.Blueprint.Engine.Credentials;
 using Sorcha.ServiceClients.Trust;
 
@@ -16,9 +18,21 @@ namespace Sorcha.Haip.Service.Services;
 public sealed class TrustListAnchorProvider : ITenantTrustAnchorProvider
 {
     private readonly ITrustListProvider _provider;
+    private readonly bool _strictFreshness;
+    private readonly TimeProvider _clock;
+    private readonly ILogger<TrustListAnchorProvider>? _logger;
 
-    public TrustListAnchorProvider(ITrustListProvider provider)
-        => _provider = provider ?? throw new ArgumentNullException(nameof(provider));
+    public TrustListAnchorProvider(
+        ITrustListProvider provider,
+        IConfiguration? configuration = null,
+        ILogger<TrustListAnchorProvider>? logger = null,
+        TimeProvider? clock = null)
+    {
+        _provider = provider ?? throw new ArgumentNullException(nameof(provider));
+        _strictFreshness = configuration?.GetValue<bool>("Trust:TrustListStrictFreshness") ?? false;
+        _logger = logger;
+        _clock = clock ?? TimeProvider.System;
+    }
 
     /// <inheritdoc />
     public async Task<TrustAnchorSet?> GetAnchorsAsync(string? anchorId, CancellationToken cancellationToken = default)
@@ -32,6 +46,23 @@ public sealed class TrustListAnchorProvider : ITenantTrustAnchorProvider
         if (snapshot is null || snapshot.Roots.Count == 0)
         {
             return null;
+        }
+
+        // Feature 181 US3 (T036 / FR-016) — warn (default) flags + vouches; strict fails closed on stale.
+        if (TrustListAnchorFreshness.IsStale(snapshot, _clock.GetUtcNow()))
+        {
+            TrustMetrics.RecordStaleEvaluation(snapshot.Id, snapshot.SequenceNumber, _strictFreshness);
+            if (_strictFreshness)
+            {
+                _logger?.LogWarning(
+                    "Trusted-list snapshot {TrustListId}#{Sequence} is stale and strict freshness is enabled — failing closed (TRUSTLIST_STALE).",
+                    snapshot.Id, snapshot.SequenceNumber);
+                return null;
+            }
+
+            _logger?.LogWarning(
+                "Trusted-list snapshot {TrustListId}#{Sequence} is stale (warn mode) — vouching with a stale-flagged evidence trail.",
+                snapshot.Id, snapshot.SequenceNumber);
         }
 
         return new TrustAnchorSet

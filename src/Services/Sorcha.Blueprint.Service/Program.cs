@@ -173,7 +173,9 @@ builder.Services.AddSingleton<Sorcha.ServiceClients.Trust.ITrustListProvider,
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>(sp =>
     new Sorcha.Blueprint.Engine.Credentials.Sources.TrustListSourceResolver(
         new Sorcha.Blueprint.Service.Credentials.TrustListAnchorProvider(
-            sp.GetRequiredService<Sorcha.ServiceClients.Trust.ITrustListProvider>())));
+            sp.GetRequiredService<Sorcha.ServiceClients.Trust.ITrustListProvider>(),
+            sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>(),
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Sorcha.Blueprint.Service.Credentials.TrustListAnchorProvider>>())));
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustResolverRegistry>(sp =>
     new Sorcha.Blueprint.Engine.Credentials.TrustResolverRegistry(
         sp.GetServices<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>()));

@@ -84,7 +84,9 @@ builder.Services.AddSingleton<Sorcha.ServiceClients.Trust.ITrustListProvider,
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>(sp =>
     new Sorcha.Blueprint.Engine.Credentials.Sources.TrustListSourceResolver(
         new Sorcha.Haip.Service.Services.TrustListAnchorProvider(
-            sp.GetRequiredService<Sorcha.ServiceClients.Trust.ITrustListProvider>())));
+            sp.GetRequiredService<Sorcha.ServiceClients.Trust.ITrustListProvider>(),
+            sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>(),
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Sorcha.Haip.Service.Services.TrustListAnchorProvider>>())));
 builder.Services.AddHttpClient(Sorcha.ServiceClients.Trust.HttpTrustListProvider.HttpClientName, client =>
 {
     client.BaseAddress = new Uri(

@@ -38,6 +38,22 @@ public sealed class TrustListSnapshot
     public string? FreshnessState { get; init; }
 }
 
+/// <summary>Feature 181 US3 — freshness evaluation over a wire <see cref="TrustListSnapshot"/> (FR-016).</summary>
+public static class TrustListAnchorFreshness
+{
+    /// <summary>
+    /// A snapshot is stale once <paramref name="now"/> reaches its declared <c>NextUpdate</c>; when the
+    /// list carried no next-update, the server-computed <c>FreshnessState</c> is authoritative.
+    /// </summary>
+    public static bool IsStale(TrustListSnapshot snapshot, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        return snapshot.NextUpdate is { } nextUpdate
+            ? now >= nextUpdate
+            : string.Equals(snapshot.FreshnessState, "Stale", StringComparison.OrdinalIgnoreCase);
+    }
+}
+
 /// <summary>
 /// Resolves trust-list snapshots by id (feature 135). The trust-list trust source loads the returned
 /// roots into the X.509 chain's custom trust store.
