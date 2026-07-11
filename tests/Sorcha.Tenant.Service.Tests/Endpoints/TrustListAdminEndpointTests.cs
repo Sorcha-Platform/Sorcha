@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Sorcha.Tenant.Service.Endpoints;
 using Sorcha.Tenant.Service.Storage;
@@ -47,7 +48,7 @@ public class TrustListAdminEndpointTests
     private static Task<IResult> Import(TrustedListImportService import, ITrustedListSnapshotStore _, string trustListId, string xml)
         => TrustEndpoints.ImportTrustList(
             trustListId, new DefaultHttpContext(), import, Mock.Of<IHttpClientFactory>(),
-            FileFrom(xml), sourceUrl: null, CancellationToken.None);
+            NullLoggerFactory.Instance, FileFrom(xml), sourceUrl: null, CancellationToken.None);
 
     [Fact]
     public async Task Import_ValidList_Returns201WithSummary()
@@ -96,7 +97,7 @@ public class TrustListAdminEndpointTests
         var (_, import) = NewBackend();
         var result = await TrustEndpoints.ImportTrustList(
             "eu-lotl", new DefaultHttpContext(), import, Mock.Of<IHttpClientFactory>(),
-            document: null, sourceUrl: null, CancellationToken.None);
+            NullLoggerFactory.Instance, document: null, sourceUrl: null, CancellationToken.None);
 
         Status(result).Should().Be(StatusCodes.Status400BadRequest);
     }
@@ -152,7 +153,7 @@ public class TrustListAdminEndpointTests
         var (store, import) = NewBackend();
         await Import(import, store, "eu-lotl", fixture.BuildSignedTrustList(fixture.DefaultOptions()));
 
-        var del = await TrustEndpoints.DeleteTrustList("eu-lotl", store, CancellationToken.None);
+        var del = await TrustEndpoints.DeleteTrustList("eu-lotl", store, NullLoggerFactory.Instance, CancellationToken.None);
         Status(del).Should().Be(StatusCodes.Status204NoContent);
 
         var anchors = await TrustEndpoints.GetTrustListAnchors("eu-lotl", store, CancellationToken.None);

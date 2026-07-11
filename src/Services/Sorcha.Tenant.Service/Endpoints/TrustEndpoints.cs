@@ -150,10 +150,12 @@ public static class TrustEndpoints
         HttpContext http,
         TrustedListImportService importService,
         IHttpClientFactory httpClientFactory,
+        ILoggerFactory loggerFactory,
         IFormFile? document,
         [FromForm] string? sourceUrl,
         CancellationToken ct)
     {
+        var logger = loggerFactory.CreateLogger("Sorcha.Tenant.Service.Trust.TrustList");
         if (string.IsNullOrWhiteSpace(trustListId))
             return Results.BadRequest(new { error = "trustListId is required" });
 
@@ -187,9 +189,17 @@ public static class TrustEndpoints
         var result = await importService.ImportAsync(trustListId, documentBytes, sourceUrl, importedBy, ct);
         if (result.Success)
         {
-            return Results.Created($"/api/v1/trust/trustlists/{trustListId}", ToSummary(result.Snapshot!));
+            var snapshot = result.Snapshot!;
+            TrustListMetrics.RecordSnapshotActive(snapshot.TrustListId, snapshot.SequenceNumber);
+            logger.LogInformation(
+                "Trusted-list snapshot imported: {TrustListId}#{Sequence} territory={Territory} anchors={AnchorCount} signer={Signer} importedBy={ImportedBy}",
+                snapshot.TrustListId, snapshot.SequenceNumber, snapshot.SchemeTerritory,
+                snapshot.Anchors.Count, snapshot.SignerCertSubject, importedBy);
+            return Results.Created($"/api/v1/trust/trustlists/{trustListId}", ToSummary(snapshot));
         }
 
+        logger.LogWarning("Trusted-list import rejected for {TrustListId}: {Code} {Message}",
+            trustListId, result.ErrorCode, result.ErrorMessage);
         var problem = new { error = result.ErrorCode, error_description = result.ErrorMessage };
         return result.ErrorCode == TrustListErrorCodes.SequenceRegression
             ? Results.Json(problem, statusCode: StatusCodes.Status409Conflict)
@@ -213,9 +223,13 @@ public static class TrustEndpoints
     }
 
     internal static async Task<IResult> DeleteTrustList(
-        string trustListId, Sorcha.Tenant.Service.Storage.ITrustedListSnapshotStore store, CancellationToken ct)
+        string trustListId, Sorcha.Tenant.Service.Storage.ITrustedListSnapshotStore store,
+        ILoggerFactory loggerFactory, CancellationToken ct)
     {
-        await store.DeleteAsync(trustListId, ct);
+        var removed = await store.DeleteAsync(trustListId, ct);
+        TrustListMetrics.RecordSnapshotRemoved(trustListId);
+        loggerFactory.CreateLogger("Sorcha.Tenant.Service.Trust.TrustList")
+            .LogInformation("Trusted-list snapshot deleted: {TrustListId} (existed={Existed})", trustListId, removed);
         return Results.NoContent();
     }
 
