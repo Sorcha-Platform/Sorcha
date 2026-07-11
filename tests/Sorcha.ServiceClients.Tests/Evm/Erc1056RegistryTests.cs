@@ -215,5 +215,14 @@ public class Erc1056RegistryTests
             if (LogsError) return Task.FromResult(EvmLogsResult.Error);
             return Task.FromResult(Logs.TryGetValue(block, out var l) ? l : EvmLogsResult.Ok([]));
         }
+
+        // Feature 182 write/query methods — not exercised by the read-only ERC-1056 resolution tests.
+        public Task<EvmSendResult> SendRawTransactionAsync(long chainId, string rawTxHex, CancellationToken ct = default) => Task.FromResult(EvmSendResult.Error);
+        public Task<EvmUIntResult> GetTransactionCountAsync(long chainId, string address, CancellationToken ct = default) => Task.FromResult(EvmUIntResult.Error);
+        public Task<EvmUIntResult> EstimateGasAsync(long chainId, string from, string to, string valueHex, string dataHex, CancellationToken ct = default) => Task.FromResult(EvmUIntResult.Error);
+        public Task<EvmUIntResult> GetMaxPriorityFeePerGasAsync(long chainId, CancellationToken ct = default) => Task.FromResult(EvmUIntResult.Error);
+        public Task<EvmUIntResult> GetBaseFeePerGasAsync(long chainId, CancellationToken ct = default) => Task.FromResult(EvmUIntResult.Error);
+        public Task<EvmReceiptResult> GetTransactionReceiptAsync(long chainId, string txHash, CancellationToken ct = default) => Task.FromResult(EvmReceiptResult.Error);
+        public Task<EvmUIntResult> GetChainIdAsync(long chainId, CancellationToken ct = default) => Task.FromResult(EvmUIntResult.Error);
     }
 }

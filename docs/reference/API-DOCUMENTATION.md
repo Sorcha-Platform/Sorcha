@@ -1446,6 +1446,48 @@ Server-authoritative delete: removes the entry from the citizen's history across
 
 ---
 
+### Ethereum Transacting (Feature 182, Phase 4)
+
+Native ETH transfers from a wallet's auxiliary secp256k1 identity, signed server-side with a pure-managed
+EIP-1559 (type-2) encoder and broadcast over a write-capable EVM RPC. Testnet-first and gated by the
+`Ethereum:Transactions` policy (chain allowlist, `AllowMainnet` master switch, per-tx value cap, fee
+ceiling) plus the `CanTransactEthereum` authorization policy. Amounts are wei as decimal strings. Fire-and-
+report-hash: the send returns immediately; poll the status endpoint for the receipt. Fail-closed — any
+policy/RPC/estimate failure refuses the transfer with a machine-readable `reason` and no broadcast.
+
+#### Send a native ETH transfer
+
+```http
+POST /api/v1/wallets/{walletAddress}/ethereum/transactions
+```
+
+**Request:** `{ "chainId": 11155111, "to": "0x…", "valueWei": "1000000000000000", "index": 0 }`
+
+**Response:** `200 OK` — `{ "txHash": "0x…", "from": "0x…", "chainId": 11155111, "nonce": 3, "status": "submitted" }`
+
+Refusals: `400` (`chain-not-enabled` / `mainnet-not-allowed` / `value-over-cap` / `fee-over-ceiling` /
+`invalid-address` / `invalid-amount`), `403` (missing `CanTransactEthereum`), `404` (`wallet-not-found`),
+`502` (`rpc-error` / `estimate-failed` / `broadcast-failed`).
+
+#### Preview the cost (read-only)
+
+```http
+POST /api/v1/wallets/{walletAddress}/ethereum/transactions/preview
+```
+
+Same request body. **Response:** `200 OK` — `{ chainId, from, nonce, gasLimit, maxFeePerGasWei,
+maxPriorityFeePerGasWei, valueWei, estimatedTotalCostWei }`. Nothing is signed or broadcast.
+
+#### Get transfer status
+
+```http
+GET /api/v1/ethereum/transactions/{chainId}/{txHash}
+```
+
+**Response:** `200 OK` — `{ "txHash": "0x…", "status": "pending" | "success" | "reverted", "blockNumber": …, "gasUsed": … }`
+
+---
+
 ## Register Service API
 
 ### Base Path: `/api/registers`

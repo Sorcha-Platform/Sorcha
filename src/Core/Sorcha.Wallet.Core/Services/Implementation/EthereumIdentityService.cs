@@ -13,12 +13,15 @@ namespace Sorcha.Wallet.Core.Services.Implementation;
 
 /// <summary>
 /// Derives a wallet's auxiliary Ethereum identity on demand from its encrypted seed and signs EIP-191 /
-/// SIWE prove-control messages (Feature 180). Reuses the wallet's existing seed-decryption and derives at
-/// <c>m/44'/60'/0'/0/{index}</c> — the wallet's primary algorithm is untouched. The private key is
-/// derived, used, and cleared; it is never returned. Payloads that decode as a blockchain transaction
-/// are refused (prove-control only).
+/// SIWE prove-control messages (Feature 180) and — through the separate <see cref="IEthereumTransactionSigner"/>
+/// surface — native ETH transactions (Feature 182, Phase 4). Reuses the wallet's existing seed-decryption
+/// and derives at <c>m/44'/60'/0'/0/{index}</c> — the wallet's primary algorithm is untouched. The private
+/// key is derived, used, and cleared; it is never returned. The prove-control message signers still refuse
+/// any payload that decodes as a blockchain transaction; transactions are produced <b>only</b> through the
+/// gated <see cref="SignTransactionAsync"/> path. This whole class is wired server-side only (the WASM PWA
+/// never registers it), so value-moving signing never runs on-device.
 /// </summary>
-public sealed class EthereumIdentityService : IEthereumIdentityService
+public sealed class EthereumIdentityService : IEthereumIdentityService, IEthereumTransactionSigner
 {
     private readonly IWalletRepository _repository;
     private readonly IKeyManagementService _keyManagement;
@@ -90,6 +93,59 @@ public sealed class EthereumIdentityService : IEthereumIdentityService
         finally
         {
             Array.Clear(privateKey);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<SignedEthereumTransaction> SignTransactionAsync(
+        string walletAddress, EthereumTransactionRequest request, int index = 0, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var to = ParseAddress(request.To);
+        if (request.ValueWei.Sign < 0)
+            throw new ArgumentException("Transfer value must be non-negative.", nameof(request));
+        if (request.MaxPriorityFeePerGasWei > request.MaxFeePerGasWei)
+            throw new ArgumentException("Priority fee cannot exceed the max fee per gas.", nameof(request));
+
+        var (privateKey, publicKey) = await DeriveAsync(walletAddress, index, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var from = EthereumAddress.FromPublicKey(Secp256k1PublicKey.FromSec1(publicKey));
+
+            // Native transfer: empty call data. This is the ONLY sanctioned transaction-producing path;
+            // the EIP-191/SIWE prove-control guard is deliberately not applied here.
+            var transaction = new EthereumTransaction(
+                request.ChainId, request.Nonce, request.MaxPriorityFeePerGasWei, request.MaxFeePerGasWei,
+                request.GasLimit, to, request.ValueWei, ReadOnlySpan<byte>.Empty);
+
+            var signature = Secp256k1Signer.SignRecoverable(transaction.SigningHash(), privateKey);
+            var signed = transaction.AssembleSigned(signature);
+
+            return new SignedEthereumTransaction(signed.RawTransactionHex, signed.TransactionHash, from);
+        }
+        finally
+        {
+            Array.Clear(privateKey);
+        }
+    }
+
+    private static byte[] ParseAddress(string address)
+    {
+        if (string.IsNullOrWhiteSpace(address))
+            throw new ArgumentException("Recipient address is required.");
+
+        var hex = address.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? address[2..] : address;
+        if (hex.Length != 40)
+            throw new ArgumentException("Recipient must be a 20-byte (0x + 40 hex) address.", nameof(address));
+
+        try
+        {
+            return Convert.FromHexString(hex);
+        }
+        catch (FormatException ex)
+        {
+            throw new ArgumentException("Recipient address is not valid hex.", nameof(address), ex);
         }
     }
 
