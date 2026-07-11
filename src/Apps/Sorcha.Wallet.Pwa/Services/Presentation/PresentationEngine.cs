@@ -86,6 +86,7 @@ public sealed class PresentationEngine : IPresentationEngine
                 ClientId = GetRequiredString(root, "client_id"),
                 ResponseUri = GetRequiredString(root, "response_uri"),
                 Nonce = GetRequiredString(root, "nonce"),
+                Query = query,
                 RequiredVct = credential.Meta.VctValues is { Count: > 0 }
                     ? credential.Meta.VctValues[0]
                     : throw new FormatException("Request object's credential query carries no vct_values."),
@@ -131,25 +132,119 @@ public sealed class PresentationEngine : IPresentationEngine
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(credentials);
+        return MatchCandidates(request.RequiredVct, request.RequiredClaims, request.OptionalClaims, credentials);
+    }
 
+    /// <inheritdoc />
+    public DcqlMatchResult MatchQuery(
+        ParsedPresentationRequest request,
+        IReadOnlyList<CachedCredential> credentials)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(credentials);
+
+        // 1. Per-credential-query candidates.
+        var perQuery = new List<DcqlQueryMatch>(request.Query.Credentials.Count);
+        var unsatisfiable = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var cq in request.Query.Credentials)
+        {
+            var vct = cq.Meta.VctValues is { Count: > 0 } ? cq.Meta.VctValues[0] : string.Empty;
+            var (required, optional) = DcqlRequestParser.SplitClaims(cq);
+            var candidates = MatchCandidates(vct, required, optional, credentials);
+            perQuery.Add(new DcqlQueryMatch
+            {
+                QueryId = cq.Id,
+                Vct = vct,
+                RequiredClaims = required,
+                OptionalClaims = optional,
+                Candidates = candidates,
+            });
+            if (candidates.Count == 0)
+            {
+                unsatisfiable.Add(cq.Id);
+            }
+        }
+
+        // 2. Solve credential_sets. Absent ⇒ every credential query is required (AND).
+        var setChoices = new List<DcqlSetChoice>();
+        var unsatisfiedRequired = new List<string>();
+        bool satisfiable;
+
+        if (request.Query.CredentialSets is { Count: > 0 } sets)
+        {
+            satisfiable = true;
+            foreach (var set in sets)
+            {
+                var satisfiableOptions = set.Options
+                    .Where(opt => opt.Count > 0 && opt.All(id => !unsatisfiable.Contains(id)))
+                    .Select(opt => (IReadOnlyList<string>)opt.ToArray())
+                    .ToList();
+
+                setChoices.Add(new DcqlSetChoice
+                {
+                    Options = set.Options.Select(o => (IReadOnlyList<string>)o.ToArray()).ToList(),
+                    SatisfiableOptions = satisfiableOptions,
+                    Required = set.Required,
+                    Purpose = set.Purpose,
+                });
+
+                if (set.Required && satisfiableOptions.Count == 0)
+                {
+                    satisfiable = false;
+                    foreach (var id in set.Options.SelectMany(o => o).Distinct(StringComparer.Ordinal))
+                    {
+                        if (unsatisfiable.Contains(id) && !unsatisfiedRequired.Contains(id))
+                        {
+                            unsatisfiedRequired.Add(id);
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            foreach (var cq in request.Query.Credentials)
+            {
+                if (unsatisfiable.Contains(cq.Id))
+                {
+                    unsatisfiedRequired.Add(cq.Id);
+                }
+            }
+            satisfiable = unsatisfiedRequired.Count == 0;
+        }
+
+        return new DcqlMatchResult
+        {
+            Satisfiable = satisfiable,
+            PerQuery = perQuery,
+            UnsatisfiedRequiredQueryIds = unsatisfiedRequired,
+            SetChoices = setChoices,
+        };
+    }
+
+    private static IReadOnlyList<CredentialMatch> MatchCandidates(
+        string vct,
+        IReadOnlyList<string> requiredClaims,
+        IReadOnlyList<string> optionalClaims,
+        IReadOnlyList<CachedCredential> credentials)
+    {
         var matches = new List<CredentialMatch>();
         foreach (var credential in credentials)
         {
-            if (!string.Equals(credential.Vct, request.RequiredVct, StringComparison.Ordinal)) continue;
+            if (!string.Equals(credential.Vct, vct, StringComparison.Ordinal)) continue;
 
             var availableNames = new HashSet<string>(credential.AvailableClaimNames, StringComparer.Ordinal);
-            var satisfied = request.RequiredClaims.Where(c => availableNames.Contains(c)).ToList();
-            if (satisfied.Count != request.RequiredClaims.Count)
+            var satisfied = requiredClaims.Where(availableNames.Contains).ToList();
+            if (satisfied.Count != requiredClaims.Count)
             {
                 continue;
             }
 
-            var optional = request.OptionalClaims.Where(c => availableNames.Contains(c)).ToList();
             matches.Add(new CredentialMatch
             {
                 Credential = credential,
                 SatisfiedRequired = satisfied,
-                AvailableOptional = optional,
+                AvailableOptional = optionalClaims.Where(availableNames.Contains).ToList(),
             });
         }
 

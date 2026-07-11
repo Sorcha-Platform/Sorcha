@@ -34,9 +34,18 @@ public interface IPresentationEngine
         Func<string, CancellationToken, Task<string>> requestObjectFetcher,
         CancellationToken ct = default);
 
-    /// <summary>Match a request against the wallet's cached credentials.</summary>
+    /// <summary>Match the single-ask (first credential query) against the wallet's cached credentials.</summary>
     /// <returns>Empty if no credential satisfies every required claim.</returns>
     IReadOnlyList<CredentialMatch> Match(
+        ParsedPresentationRequest request,
+        IReadOnlyList<CachedCredential> credentials);
+
+    /// <summary>
+    /// Match the full DCQL query (Feature 181 US2): per-credential-query candidates plus
+    /// <c>credential_sets</c> solving. <see cref="DcqlMatchResult.Satisfiable"/> gates submission —
+    /// no partial presentation when any required query/set is unmet.
+    /// </summary>
+    DcqlMatchResult MatchQuery(
         ParsedPresentationRequest request,
         IReadOnlyList<CachedCredential> credentials);
 

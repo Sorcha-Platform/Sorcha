@@ -281,6 +281,16 @@ public sealed class PresentationEngineTests
             ClientId = ClientId,
             ResponseUri = "https://verify.test/r/x/response",
             Nonce = "abc",
+            Query = new DcqlQuery
+            {
+                Credentials = [new DcqlCredentialQuery
+                {
+                    Id = "credential",
+                    Format = DcqlFormats.SdJwtVc,
+                    Meta = new DcqlCredentialMeta { VctValues = [Vct] },
+                    Claims = required.Concat(optional).Select(c => new DcqlClaimQuery { Path = [c] }).ToList(),
+                }],
+            },
             RequiredVct = Vct,
             RequiredClaims = required,
             OptionalClaims = optional,
