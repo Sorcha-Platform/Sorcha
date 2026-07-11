@@ -155,6 +155,31 @@
                       OnConfirm="ConfirmAsync"
                       OnCancel="Reset" />
     }
+    else if (_phase == Phase.PickAlternative && _currentAlternative is not null && _result is not null)
+    {
+        @* US2 — the citizen picks which alternative to provide (Passport OR Driving Licence). *@
+        <CredentialPickerDialog SetChoice="_currentAlternative"
+                                PerQuery="_result.PerQuery"
+                                OnOptionChosen="OnAlternativeChosen"
+                                OnCancel="Reset" />
+    }
+    else if (_phase == Phase.PickQueryCredential && _currentPickMatches is not null)
+    {
+        @* US2 — the active query matched several credentials; the citizen picks one. *@
+        <CredentialPickerDialog Matches="_currentPickMatches"
+                                OnChosen="OnQueryCredentialChosen"
+                                OnCancel="Reset" />
+    }
+    else if (_phase == Phase.MultiConsent && _consentResult is not null && _request is not null)
+    {
+        <ConsentSheet Request="_request"
+                      Result="_consentResult"
+                      Selections="_selections"
+                      QueryOptionalToggles="_queryOptionalToggles"
+                      Busy="_busy"
+                      OnConfirm="ConfirmMultiAsync"
+                      OnCancel="Reset" />
+    }
     else if (_phase == Phase.Done)
     {
         <MudAlert Severity="@(_responseStatus == "ok" ? Severity.Success : Severity.Error)" Class="mb-3">
@@ -172,7 +197,7 @@
 @code {
     private const string VideoElementId = "sorcha-qr-scan-video";
 
-    private enum Phase { AwaitingDeepLink, NoMatch, PickCredential, Consent, Done }
+    private enum Phase { AwaitingDeepLink, NoMatch, PickCredential, Consent, PickAlternative, PickQueryCredential, MultiConsent, Done }
 
     private Phase _phase = Phase.AwaitingDeepLink;
     private string _deepLink = string.Empty;
@@ -184,6 +209,20 @@
     private Dictionary<string, bool> _optionalToggles = new();
     private string _responseStatus = string.Empty;
     private string _responseMessage = string.Empty;
+
+    // Feature 181 US2 — multi-credential orchestration state (active only when the request
+    // carries more than one credential query or a multi-option credential_set).
+    private IReadOnlyList<CachedCredential> _cachedCreds = [];
+    private DcqlMatchResult? _result;
+    private DcqlMatchResult? _consentResult;
+    private readonly Dictionary<string, CredentialMatch> _selections = new(StringComparer.Ordinal);
+    private Dictionary<string, Dictionary<string, bool>> _queryOptionalToggles = new();
+    private readonly List<string> _activeQueryIds = new();
+    private readonly Dictionary<int, IReadOnlyList<string>> _chosenOptionBySetIndex = new();
+    private DcqlSetChoice? _currentAlternative;
+    private int _currentAlternativeSetIndex = -1;
+    private IReadOnlyList<CredentialMatch>? _currentPickMatches;
+    private string? _currentPickQueryId;
 
     // Feature 159 — intake layout state.
     private IntakeMode _intakeMode = IntakeMode.PasteOnly;
@@ -249,8 +288,18 @@
                     resp.EnsureSuccessStatusCode();
                     return await resp.Content.ReadAsStringAsync(ct);
                 });
-            var creds = await Credentials.ListAsync();
-            _matches = Engine.Match(_request, creds);
+            _cachedCreds = await Credentials.ListAsync();
+
+            // Feature 181 US2 — multi-credential requests (>1 credential query, or a credential_set
+            // offering alternatives) take the per-query orchestration path; the proven single-ask
+            // flow is preserved verbatim for the common single-credential request.
+            if (IsMultiCredential(_request))
+            {
+                BeginMultiFlow();
+                return;
+            }
+
+            _matches = Engine.Match(_request, _cachedCreds);
             if (_matches.Count == 0) { _phase = Phase.NoMatch; return; }
             if (_matches.Count == 1)
             {
@@ -350,6 +399,218 @@
         }
     }
 
+    // ─────────────────── Feature 181 US2 — multi-credential orchestration ───────────────────
+
+    /// <summary>A request needs the per-query flow when it carries more than one credential query
+    /// or a credential_set that offers alternatives (more than one option).</summary>
+    private static bool IsMultiCredential(ParsedPresentationRequest request)
+        => request.Query.Credentials.Count > 1
+           || (request.Query.CredentialSets?.Any(s => s.Options.Count > 1) ?? false);
+
+    private void BeginMultiFlow()
+    {
+        _result = Engine.MatchQuery(_request!, _cachedCreds);
+        ContinueMultiFlow();
+    }
+
+    /// <summary>
+    /// Drive the per-query flow to the next decision: resolve any alternative choice, then any
+    /// multi-candidate query, then land on the consent surface. Re-entrant after each pick.
+    /// </summary>
+    private void ContinueMultiFlow()
+    {
+        // 1. A required set with more than one satisfiable option needs an explicit citizen pick
+        //    (no auto-pick — FR edge case).
+        for (var i = 0; i < _result!.SetChoices.Count; i++)
+        {
+            var set = _result.SetChoices[i];
+            if (set.Required && set.SatisfiableOptions.Count > 1 && !_chosenOptionBySetIndex.ContainsKey(i))
+            {
+                _currentAlternative = set;
+                _currentAlternativeSetIndex = i;
+                _phase = Phase.PickAlternative;
+                return;
+            }
+        }
+
+        // 2. Which queries are we presenting?
+        ComputeActiveQueryIds();
+
+        // 3. Auto-pick single-candidate active queries; a multi-candidate one needs a pick.
+        foreach (var id in _activeQueryIds)
+        {
+            if (_selections.ContainsKey(id)) continue;
+            var qm = _result.PerQuery.First(q => q.QueryId == id);
+            if (qm.Candidates.Count == 1)
+            {
+                _selections[id] = qm.Candidates[0];
+            }
+            else if (qm.Candidates.Count > 1)
+            {
+                _currentPickQueryId = id;
+                _currentPickMatches = qm.Candidates;
+                _phase = Phase.PickQueryCredential;
+                return;
+            }
+        }
+
+        // 4. Consent.
+        BuildConsentView();
+        _phase = Phase.MultiConsent;
+    }
+
+    /// <summary>Resolve which query ids the wallet will present: the chosen alternative options plus
+    /// every AND-required query (no sets ⇒ all; with sets ⇒ singleton/auto sets + unreferenced asks).</summary>
+    private void ComputeActiveQueryIds()
+    {
+        _activeQueryIds.Clear();
+        var active = new List<string>();
+
+        if (_result!.SetChoices.Count == 0)
+        {
+            active.AddRange(_result.PerQuery.Select(q => q.QueryId));
+        }
+        else
+        {
+            var referenced = new HashSet<string>(
+                _result.SetChoices.SelectMany(s => s.Options.SelectMany(o => o)), StringComparer.Ordinal);
+            // Queries not referenced by any set are AND-required.
+            active.AddRange(_result.PerQuery.Select(q => q.QueryId).Where(id => !referenced.Contains(id)));
+
+            for (var i = 0; i < _result.SetChoices.Count; i++)
+            {
+                var set = _result.SetChoices[i];
+                if (!set.Required) continue;
+                if (_chosenOptionBySetIndex.TryGetValue(i, out var chosen)) active.AddRange(chosen);
+                else if (set.SatisfiableOptions.Count == 1) active.AddRange(set.SatisfiableOptions[0]);
+                // 0 satisfiable options ⇒ unsatisfiable; flagged in consent, nothing to add.
+            }
+        }
+
+        foreach (var id in active)
+        {
+            if (!_activeQueryIds.Contains(id)) _activeQueryIds.Add(id);
+        }
+    }
+
+    /// <summary>Build the filtered consent view (active + unsatisfiable-required sections) and seed
+    /// per-query optional toggles for the selected credentials.</summary>
+    private void BuildConsentView()
+    {
+        var showIds = new HashSet<string>(_activeQueryIds, StringComparer.Ordinal);
+        foreach (var id in _result!.UnsatisfiedRequiredQueryIds) showIds.Add(id);
+
+        _consentResult = _result with
+        {
+            PerQuery = _result.PerQuery.Where(q => showIds.Contains(q.QueryId)).ToList()
+        };
+
+        _queryOptionalToggles = new();
+        foreach (var id in _activeQueryIds)
+        {
+            if (_selections.TryGetValue(id, out var sel))
+            {
+                _queryOptionalToggles[id] = sel.AvailableOptional.ToDictionary(n => n, _ => false);
+            }
+        }
+    }
+
+    private void OnAlternativeChosen(IReadOnlyList<string> option)
+    {
+        if (_currentAlternativeSetIndex >= 0) _chosenOptionBySetIndex[_currentAlternativeSetIndex] = option;
+        _currentAlternative = null;
+        _currentAlternativeSetIndex = -1;
+        ContinueMultiFlow();
+    }
+
+    private void OnQueryCredentialChosen(CredentialMatch? match)
+    {
+        if (match is null || _currentPickQueryId is null) return;
+        _selections[_currentPickQueryId] = match;
+        _currentPickQueryId = null;
+        _currentPickMatches = null;
+        ContinueMultiFlow();
+    }
+
+    private async Task ConfirmMultiAsync()
+    {
+        if (_request is null || _result is null) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var consented = new List<ConsentedQuery>();
+            foreach (var id in _activeQueryIds)
+            {
+                if (!_selections.TryGetValue(id, out var sel)) continue;
+                var qm = _result.PerQuery.First(q => q.QueryId == id);
+                var optional = _queryOptionalToggles.TryGetValue(id, out var toggles)
+                    ? toggles.Where(kv => kv.Value).Select(kv => kv.Key)
+                    : Enumerable.Empty<string>();
+                var approved = sel.SatisfiedRequired.Concat(optional).ToList();
+                consented.Add(new ConsentedQuery(id, sel, qm.RequiredClaims, approved));
+            }
+
+            if (consented.Count == 0)
+            {
+                _error = "No credentials selected to present.";
+                return;
+            }
+
+            var deviceJwk = await DeviceKey.GetPublicJwkAsync();
+            // One SD-JWT presentation per consented query, assembled into the object-keyed
+            // OpenID4VP 1.0 vp_token envelope.
+            var vpTokenEnvelope = await Engine.BuildVpTokenEnvelopeAsync(
+                consented, _request, deviceJwk, DeviceKey.SignAsync);
+
+            var delegationJwt = await Delegation.GetCurrentAsync();
+            var body = new { vpToken = vpTokenEnvelope, delegation = delegationJwt };
+            var resp = await Http.PostAsJsonAsync(_request.ResponseUri, body);
+            if (resp.IsSuccessStatusCode)
+            {
+                _responseStatus = "ok";
+                _responseMessage = "Verifier accepted the presentation.";
+            }
+            else
+            {
+                _responseStatus = "fail";
+                _responseMessage = $"Verifier returned {(int)resp.StatusCode} {resp.StatusCode}.";
+            }
+
+            await TryLogMultiPresentationAsync(consented, resp.IsSuccessStatusCode);
+            _phase = Phase.Done;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task TryLogMultiPresentationAsync(IReadOnlyList<ConsentedQuery> consented, bool accepted)
+    {
+        if (_request is null) return;
+        foreach (var c in consented)
+        {
+            try
+            {
+                var entry = new PresentationLogEntry(
+                    Id: Guid.NewGuid(),
+                    PresentedAt: DateTimeOffset.UtcNow,
+                    CredentialType: c.Match.Credential.Vct,
+                    CredentialLabel: c.Match.Credential.DisplayLabel,
+                    VerifierLabel: string.IsNullOrWhiteSpace(_request.Purpose)
+                        ? _request.ClientId
+                        : _request.Purpose!,
+                    DisclosedClaims: c.ApprovedClaims,
+                    Outcome: accepted ? PresentationLogOutcome.Sent : PresentationLogOutcome.Rejected,
+                    CredentialId: c.Match.Credential.Id);
+                await PresentationLog.AppendAsync(entry);
+            }
+            catch
+            {
+                // Activity log is a convenience surface; never let it break the flow.
+            }
+        }
+    }
+
     private void Reset()
     {
         _phase = Phase.AwaitingDeepLink;
@@ -358,6 +619,17 @@
         _matches = null;
         _selected = null;
         _optionalToggles = new();
+        _cachedCreds = [];
+        _result = null;
+        _consentResult = null;
+        _selections.Clear();
+        _queryOptionalToggles = new();
+        _activeQueryIds.Clear();
+        _chosenOptionBySetIndex.Clear();
+        _currentAlternative = null;
+        _currentAlternativeSetIndex = -1;
+        _currentPickMatches = null;
+        _currentPickQueryId = null;
         _error = null;
         _responseMessage = string.Empty;
         _responseStatus = string.Empty;

@@ -252,7 +252,7 @@ public sealed class PresentationEngine : IPresentationEngine
     }
 
     /// <inheritdoc />
-    public async Task<string> BuildVpTokenAsync(
+    public Task<string> BuildVpTokenAsync(
         CredentialMatch match,
         IReadOnlyList<string> approvedClaims,
         ParsedPresentationRequest request,
@@ -260,13 +260,68 @@ public sealed class PresentationEngine : IPresentationEngine
         Func<byte[], CancellationToken, Task<byte[]>> deviceSigner,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(request);
+        // Single-ask flow: validate the approved set against the request-level required claims.
+        return BuildSinglePresentationAsync(
+            match, approvedClaims, request.RequiredClaims, request, deviceJwk, deviceSigner, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<string> BuildVpTokenEnvelopeAsync(
+        IReadOnlyList<ConsentedQuery> consented,
+        ParsedPresentationRequest request,
+        JsonElement deviceJwk,
+        Func<byte[], CancellationToken, Task<byte[]>> deviceSigner,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(consented);
+        ArgumentNullException.ThrowIfNull(request);
+        if (consented.Count == 0)
+        {
+            throw new InvalidOperationException("A presentation must carry at least one consented query.");
+        }
+
+        // One SD-JWT presentation per query, each validated against its own required-claim set.
+        var presentations = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        foreach (var c in consented)
+        {
+            if (presentations.ContainsKey(c.QueryId))
+            {
+                throw new InvalidOperationException($"Duplicate query id '{c.QueryId}' in the consented set.");
+            }
+            var vp = await BuildSinglePresentationAsync(
+                c.Match, c.ApprovedClaims, c.RequiredClaims, request, deviceJwk, deviceSigner, ct);
+            presentations[c.QueryId] = [vp];
+        }
+
+        var envelope = new DcqlVpToken { Presentations = presentations };
+        _logger.LogInformation(
+            "Built multi-credential vp_token envelope: queries={Count}, audience={Aud}",
+            presentations.Count, request.ClientId);
+        return envelope.ToJson();
+    }
+
+    /// <summary>
+    /// Build one SD-JWT presentation (credentialJwt~selected disclosures~KB-JWT) for a single query,
+    /// disclosing only the approved subset and binding nonce + audience via a device-signed KB-JWT.
+    /// Shared by the single-ask and multi-credential (envelope) build paths.
+    /// </summary>
+    private async Task<string> BuildSinglePresentationAsync(
+        CredentialMatch match,
+        IReadOnlyList<string> approvedClaims,
+        IReadOnlyList<string> requiredClaims,
+        ParsedPresentationRequest request,
+        JsonElement deviceJwk,
+        Func<byte[], CancellationToken, Task<byte[]>> deviceSigner,
+        CancellationToken ct)
+    {
         ArgumentNullException.ThrowIfNull(match);
         ArgumentNullException.ThrowIfNull(approvedClaims);
-        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(requiredClaims);
         ArgumentNullException.ThrowIfNull(deviceSigner);
 
         // Sanity check: every required claim must be in the approved set.
-        foreach (var required in request.RequiredClaims)
+        foreach (var required in requiredClaims)
         {
             if (!approvedClaims.Contains(required, StringComparer.Ordinal))
             {
