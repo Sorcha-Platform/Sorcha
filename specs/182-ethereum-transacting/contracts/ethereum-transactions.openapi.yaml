@@ -1,0 +1,176 @@
+openapi: 3.0.3
+info:
+  title: Sorcha Wallet — Ethereum Transacting (Phase 4)
+  version: "1.0.0"
+  description: >
+    Native ETH transfer endpoints (Feature 182). Server-side only. A wallet's auxiliary secp256k1 identity
+    signs an EIP-1559 (type-2) transfer; the service broadcasts it and reports the hash (fire-and-report-hash).
+    Sends are gated by policy (chain allowlist, AllowMainnet master switch, per-tx value cap, fee ceiling) and
+    the CanTransactEthereum authorization policy. Amounts are wei as decimal strings (BigInteger-safe).
+servers:
+  - url: /api/v1
+paths:
+  /wallets/{walletAddress}/ethereum/transactions:
+    post:
+      operationId: SendEthereumTransfer
+      summary: Send a native ETH transfer
+      description: >
+        Prepares (nonce/gas/fees), signs, and broadcasts a native ETH transfer from the wallet's Ethereum
+        identity. Returns the transaction hash immediately without waiting for confirmation. Refuses
+        (broadcasts nothing) on any policy violation or network/estimation failure. Requires CanTransactEthereum.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/WalletAddress'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SendTransferRequest' }
+      responses:
+        '200':
+          description: Transfer submitted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SendTransferResponse' }
+        '400':
+          description: Validation or policy refusal (reason distinguishes the cause).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RefusalProblem' }
+        '401': { description: Unauthenticated }
+        '403': { description: Missing CanTransactEthereum permission }
+        '404': { description: Wallet not found }
+        '502':
+          description: Network/RPC failure — nothing was broadcast.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RefusalProblem' }
+  /wallets/{walletAddress}/ethereum/transactions/preview:
+    post:
+      operationId: PreviewEthereumTransfer
+      summary: Preview the cost of a native ETH transfer
+      description: >
+        Read-only. Computes nonce, gas, fees, and estimated total cost for the intended transfer WITHOUT
+        signing or broadcasting. Requires CanTransactEthereum.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/WalletAddress'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SendTransferRequest' }
+      responses:
+        '200':
+          description: Cost projection (no on-chain effect).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PreviewResponse' }
+        '400':
+          description: Validation or policy refusal.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RefusalProblem' }
+        '401': { description: Unauthenticated }
+        '403': { description: Missing CanTransactEthereum permission }
+        '404': { description: Wallet not found }
+        '502':
+          description: Network/RPC failure computing the preview.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RefusalProblem' }
+  /ethereum/transactions/{chainId}/{txHash}:
+    get:
+      operationId: GetEthereumTransferStatus
+      summary: Get the status of a submitted transfer
+      description: >
+        Reports the receipt status of a transaction hash on a network: pending, success, or reverted (with
+        block number and gas used once mined). Authenticated.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: chainId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - name: txHash
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Transfer status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransferStatusResponse' }
+        '400':
+          description: Malformed hash or disabled/unknown chain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RefusalProblem' }
+        '401': { description: Unauthenticated }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    WalletAddress:
+      name: walletAddress
+      in: path
+      required: true
+      schema: { type: string }
+  schemas:
+    SendTransferRequest:
+      type: object
+      required: [chainId, to, valueWei]
+      properties:
+        chainId: { type: integer, format: int64, example: 11155111 }
+        to: { type: string, example: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e" }
+        valueWei: { type: string, description: "Amount in wei (decimal string).", example: "1000000000000000" }
+        index: { type: integer, default: 0, description: "Ethereum identity index." }
+    SendTransferResponse:
+      type: object
+      required: [txHash, from, chainId, nonce, status]
+      properties:
+        txHash: { type: string }
+        from: { type: string }
+        chainId: { type: integer, format: int64 }
+        nonce: { type: integer, format: int64 }
+        status: { type: string, enum: [submitted] }
+    PreviewResponse:
+      type: object
+      required: [chainId, from, nonce, gasLimit, maxFeePerGasWei, maxPriorityFeePerGasWei, valueWei, estimatedTotalCostWei]
+      properties:
+        chainId: { type: integer, format: int64 }
+        from: { type: string }
+        nonce: { type: integer, format: int64 }
+        gasLimit: { type: integer, format: int64 }
+        maxFeePerGasWei: { type: string }
+        maxPriorityFeePerGasWei: { type: string }
+        valueWei: { type: string }
+        estimatedTotalCostWei: { type: string }
+    TransferStatusResponse:
+      type: object
+      required: [txHash, status]
+      properties:
+        txHash: { type: string }
+        status: { type: string, enum: [pending, success, reverted] }
+        blockNumber: { type: integer, format: int64, nullable: true }
+        gasUsed: { type: integer, format: int64, nullable: true }
+    RefusalProblem:
+      type: object
+      description: RFC7807-style problem details with a machine-readable refusal reason.
+      properties:
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        reason:
+          type: string
+          enum:
+            - chain-not-enabled
+            - mainnet-not-allowed
+            - value-over-cap
+            - fee-over-ceiling
+            - invalid-address
+            - invalid-amount
+            - rpc-error
+            - estimate-failed
+            - broadcast-failed
