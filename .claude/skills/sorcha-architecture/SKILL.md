@@ -1806,3 +1806,41 @@ served `request_uri` form; the inline-`presentation_definition` deep link is ref
 - **Known gap** — the F127 `SorchaWalletPresentationConsumer.VerifyAsync` is still single-credential, so
   full multi-credential PWA→SorchaWallet *verification* is a follow-up; the HAIP verifier is the
   multi-query-capable path (covered by `MultiCredentialPresentationTests`).
+
+### US3 — Trusted-list snapshot rail (ETSI TS 119 612)
+
+Adds the external-EUDI trust rail: operators import signed trusted lists; verifying services (Blueprint
++ HAIP) resolve CA anchors from the imported snapshot for the `x509-lotl` / `trustlist` trust source.
+
+- **Model + store** — `TrustedListSnapshot` + `TrustedListAnchor` (Tenant EF, `public` schema, cascade
+  delete; folded into the InitialCreate migration). `ITrustedListSnapshotStore` (EF + in-memory): import
+  supersedes the prior Active version, newest-per-`trustListId` is authoritative, delete removes all
+  versions. Warn-tier storage-log registration (not audited). A `TenantDbContextDesignTimeFactory` lets
+  `dotnet ef` build the model.
+- **Import** — `TrustedListImportService` (Tenant): enveloped XMLDSig **core** verify (`SignedXml`,
+  `verifySignatureOnly` — tamper protection per R5/D3; XAdES + LOTL pivot-chain deferred), TS 119 612
+  parse (sequence/dates/territory/operator/signer identity), granted **CA/QC** anchor extraction +
+  extracted-vs-skipped summary, sequence-monotonicity. Typed failures `TRUSTLIST_MALFORMED` /
+  `_SIGNATURE_INVALID` / `_SEQUENCE_REGRESSION`. Registers an ECDSA XMLDSig `SignatureDescription` so
+  ECDSA-signed lists verify (EU LOTL is RSA).
+- **Admin surface** (`TrustEndpoints`, replaces the F135 placeholder PUT — clean break): `POST
+  /api/v1/trust/trustlists/import` (multipart | HTTPS fetch-once), `GET /trustlists`, `GET
+  /trustlists/{id}` (detail + anchors + summary), `DELETE /trustlists/{id}`, service-tier `GET
+  /trustlists/{id}/anchors` (DER roots + freshness, 404 `TRUSTLIST_UNAVAILABLE`). Admin UI:
+  `Sorcha.UI.Web.Client/Pages/Admin/TrustedLists.razor` + `ITrustedListAdminService`.
+- **Verifying-services read path** — `HttpTrustListProvider` (`Sorcha.ServiceClients.Http`, singleton):
+  service-tier read of the anchors endpoint with a 15-min in-process cache, fail-closed null on 404.
+  Service-layer adapter `TrustListAnchorProvider` (one per service — Blueprint + HAIP) maps the snapshot
+  to a `TrustAnchorSet` with **`AnchorSetId = {trustListId}#{sequenceNumber}`** so the snapshot identity
+  flows into `TrustEvidence.TrustListId` (FR-015). Both services register the trustlist
+  `ITrustSourceResolver` + a named Tenant client.
+- **Freshness** (`TrustListFreshness.Compute`, boundary-deterministic via `TimeProvider`): Fresh strictly
+  before the effective next-update (list `NextUpdate`, else `ListIssue + 90d`). The adapter gates on it —
+  **warn mode** (default) vouches with a stale-flagged evidence trail + metric + log; **strict mode**
+  (`Trust:TrustListStrictFreshness`) fails closed (`TRUSTLIST_STALE`). Multibase base64url (`u`-prefix)
+  Bitstring Status List `encodedList` now decodes beside plain base64 (R7).
+- **Metrics** (`Sorcha.Trust` meter): `sorcha_trustlist_stale_evaluation_total{trust_list_id,sequence,mode}`
+  + `sorcha_trustlist_snapshot_info` gauge (one series per Active snapshot). Structured import/delete audit
+  logs.
+- **SC-004 proof** — `TrustListVerificationTests`: import fixture list → verify a credential issued under
+  the fixture CA (vouched, evidence `eu-lotl#3`) → delete → fail closed.
