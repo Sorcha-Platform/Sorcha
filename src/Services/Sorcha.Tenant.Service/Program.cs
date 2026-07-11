@@ -147,6 +147,7 @@ builder.Services.AddSingleton<Sorcha.ServiceClients.Trust.ITrustListProvider>(sp
         typeof(Sorcha.Tenant.Service.Storage.EfTrustedListSnapshotStore).FullName!,
         backend: "postgres");
 }
+builder.Services.AddScoped<Sorcha.Tenant.Service.Trust.TrustedListImportService>();
 
 // Feature 092: Consumer persona — orchestrator + typed HttpClient to Wallet Service
 builder.Services.AddScoped<Sorcha.Tenant.Service.Services.IPersonaService,
