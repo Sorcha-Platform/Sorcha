@@ -41,6 +41,7 @@ public class PresentationRequestStore
         List<string>? requiredClaims,
         List<string>? acceptedIssuers,
         string baseUrl,
+        Sorcha.Verifier.Engine.Dcql.DcqlQuery? declaredQuery = null,
         CancellationToken ct = default)
     {
         var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
@@ -55,6 +56,7 @@ public class PresentationRequestStore
             CredentialType = credentialType,
             RequiredClaims = requiredClaims,
             AcceptedIssuers = acceptedIssuers,
+            DeclaredQuery = declaredQuery,
             ResponseUri = $"{baseUrl}/api/v1/verifier/requests/{id}/direct-post",
             ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(_ttlSeconds),
             StateToken = id.ToString()
