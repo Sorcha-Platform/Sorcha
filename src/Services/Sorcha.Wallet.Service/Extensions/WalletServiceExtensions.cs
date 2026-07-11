@@ -62,7 +62,18 @@ public static class WalletServiceExtensions
         services.AddScoped<IKeyManagementService>(sp => sp.GetRequiredService<KeyManagementService>());
 
         // Feature 180 — wallet auxiliary Ethereum identity (SIWE prove-control).
-        services.AddScoped<IEthereumIdentityService, EthereumIdentityService>();
+        // Feature 182 (Phase 4) — the same server-side implementation also provides the sanctioned
+        // native ETH transaction signer (IEthereumTransactionSigner); resolve both to one instance.
+        services.AddScoped<EthereumIdentityService>();
+        services.AddScoped<IEthereumIdentityService>(sp => sp.GetRequiredService<EthereumIdentityService>());
+        services.AddScoped<IEthereumTransactionSigner>(sp => sp.GetRequiredService<EthereumIdentityService>());
+
+        // Feature 182 (Phase 4) — native ETH transacting orchestrator + policy. Server-side only; the
+        // write-capable IEvmRpcClient comes from AddServiceClients (registered in Program.cs).
+        services.Configure<Configuration.EthereumTransactionOptions>(
+            configuration.GetSection(Configuration.EthereumTransactionOptions.SectionName));
+        services.AddScoped<Services.Interfaces.IEthereumTransactionService,
+            Services.Implementation.EthereumTransactionService>();
 
         services.AddScoped<TransactionService>();
         services.AddScoped<ITransactionService>(sp => sp.GetRequiredService<TransactionService>());

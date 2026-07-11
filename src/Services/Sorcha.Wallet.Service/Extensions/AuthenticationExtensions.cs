@@ -51,6 +51,18 @@ public static class AuthenticationExtensions
             options.AddPolicy("CanUseWallet", policy =>
                 policy.RequireAuthenticatedUser());
 
+            // Feature 182 (Phase 4): native ETH transacting (send / preview). A distinct, separately
+            // tunable gate for the value-moving surface — currently the same requirement as
+            // CanManageWallets (org-scoped user or service token) so it can be tightened independently
+            // without touching other wallet operations.
+            options.AddPolicy("CanTransactEthereum", policy =>
+                policy.RequireAssertion(context =>
+                {
+                    var hasOrgId = context.User.Claims.Any(c => c.Type == TokenClaimConstants.OrgId && !string.IsNullOrEmpty(c.Value));
+                    var isService = context.User.Claims.Any(c => c.Type == TokenClaimConstants.TokenType && c.Value == TokenClaimConstants.TokenTypeService);
+                    return hasOrgId || isService;
+                }));
+
             // Persona crypto (internal S2S only) — requires a service token
             // that additionally carries the `persona:crypto` scope. Only the
             // Tenant Service is issued this scope, so a stray Blueprint /

@@ -3,6 +3,7 @@
 
 using System.Net;
 using System.Net.Http.Json;
+using System.Numerics;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -81,6 +82,126 @@ public sealed class EvmRpcClient : IEvmRpcClient
             _logger.LogWarning(ex, "EVM eth_getLogs response could not be parsed for chain {ChainId}", chainId);
             return EvmLogsResult.Error;
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<EvmSendResult> SendRawTransactionAsync(long chainId, string rawTxHex, CancellationToken ct = default)
+    {
+        var result = await SendAsync(chainId, "eth_sendRawTransaction", [rawTxHex], ct).ConfigureAwait(false);
+        return result.Outcome switch
+        {
+            EvmRpcOutcome.NotConfigured => EvmSendResult.NotConfigured,
+            EvmRpcOutcome.Ok when result.Result.ValueKind == JsonValueKind.String
+                => EvmSendResult.Ok(result.Result.GetString()!),
+            _ => EvmSendResult.Error
+        };
+    }
+
+    /// <inheritdoc />
+    public Task<EvmUIntResult> GetTransactionCountAsync(long chainId, string address, CancellationToken ct = default)
+        => QuantityAsync(chainId, "eth_getTransactionCount", [address, "pending"], ct);
+
+    /// <inheritdoc />
+    public Task<EvmUIntResult> EstimateGasAsync(long chainId, string from, string to, string valueHex, string dataHex, CancellationToken ct = default)
+        => QuantityAsync(chainId, "eth_estimateGas", [new { from, to, value = valueHex, data = dataHex }], ct);
+
+    /// <inheritdoc />
+    public Task<EvmUIntResult> GetMaxPriorityFeePerGasAsync(long chainId, CancellationToken ct = default)
+        => QuantityAsync(chainId, "eth_maxPriorityFeePerGas", [], ct);
+
+    /// <inheritdoc />
+    public Task<EvmUIntResult> GetChainIdAsync(long chainId, CancellationToken ct = default)
+        => QuantityAsync(chainId, "eth_chainId", [], ct);
+
+    /// <inheritdoc />
+    public async Task<EvmUIntResult> GetBaseFeePerGasAsync(long chainId, CancellationToken ct = default)
+    {
+        var result = await SendAsync(chainId, "eth_getBlockByNumber", ["pending", false], ct).ConfigureAwait(false);
+        if (result.Outcome == EvmRpcOutcome.NotConfigured)
+        {
+            return EvmUIntResult.NotConfigured;
+        }
+
+        if (result.Outcome != EvmRpcOutcome.Ok
+            || result.Result.ValueKind != JsonValueKind.Object
+            || !result.Result.TryGetProperty("baseFeePerGas", out var baseFee)
+            || baseFee.ValueKind != JsonValueKind.String
+            || !TryParseQuantity(baseFee.GetString(), out var value))
+        {
+            return EvmUIntResult.Error;
+        }
+
+        return EvmUIntResult.Ok(value);
+    }
+
+    /// <inheritdoc />
+    public async Task<EvmReceiptResult> GetTransactionReceiptAsync(long chainId, string txHash, CancellationToken ct = default)
+    {
+        var result = await SendAsync(chainId, "eth_getTransactionReceipt", [txHash], ct).ConfigureAwait(false);
+        if (result.Outcome == EvmRpcOutcome.NotConfigured)
+        {
+            return EvmReceiptResult.NotConfigured;
+        }
+
+        if (result.Outcome != EvmRpcOutcome.Ok)
+        {
+            return EvmReceiptResult.Error;
+        }
+
+        // null result ⇒ not yet mined (pending).
+        if (result.Result.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return EvmReceiptResult.Pending;
+        }
+
+        try
+        {
+            var success = result.Result.TryGetProperty("status", out var status)
+                && TryParseQuantity(status.GetString(), out var s) && s == BigInteger.One;
+            var blockNumber = result.Result.TryGetProperty("blockNumber", out var bn)
+                && TryParseQuantity(bn.GetString(), out var b) ? (long)b : 0L;
+            var gasUsed = result.Result.TryGetProperty("gasUsed", out var gu)
+                && TryParseQuantity(gu.GetString(), out var g) ? (long)g : 0L;
+            return EvmReceiptResult.Mined(new EvmReceipt(success, blockNumber, gasUsed));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "EVM receipt for chain {ChainId} could not be parsed", chainId);
+            return EvmReceiptResult.Error;
+        }
+    }
+
+    private async Task<EvmUIntResult> QuantityAsync(long chainId, string method, object[] parameters, CancellationToken ct)
+    {
+        var result = await SendAsync(chainId, method, parameters, ct).ConfigureAwait(false);
+        return result.Outcome switch
+        {
+            EvmRpcOutcome.NotConfigured => EvmUIntResult.NotConfigured,
+            EvmRpcOutcome.Ok when result.Result.ValueKind == JsonValueKind.String
+                && TryParseQuantity(result.Result.GetString(), out var value) => EvmUIntResult.Ok(value),
+            _ => EvmUIntResult.Error
+        };
+    }
+
+    /// <summary>Parse a <c>0x</c>-prefixed JSON-RPC quantity into a non-negative <see cref="BigInteger"/>.</summary>
+    private static bool TryParseQuantity(string? hex, out BigInteger value)
+    {
+        value = BigInteger.Zero;
+        if (string.IsNullOrWhiteSpace(hex))
+        {
+            return false;
+        }
+
+        var span = hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? hex.AsSpan(2) : hex.AsSpan();
+        if (span.IsEmpty)
+        {
+            return false;
+        }
+
+        // Left-pad to even length and prefix 0x00 so BigInteger.Parse treats it as unsigned.
+        var normalized = (span.Length % 2 == 1 ? "0" + span.ToString() : span.ToString());
+        return BigInteger.TryParse("0" + normalized, System.Globalization.NumberStyles.HexNumber, null, out value)
+            && value.Sign >= 0;
     }
 
     private async Task<(EvmRpcOutcome Outcome, JsonElement Result)> SendAsync(
