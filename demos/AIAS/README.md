@@ -92,6 +92,16 @@ credential is issued**:
 (The reasons live in `agent/assure-id.rules.json`; a catch-all rule approves
 clean applications.)
 
+**The applicant sees the reason (Feature 183).** A reject is no longer a black
+hole: the reject route carries an `x-decision-notice` so, when AIAS declines, a
+durable **bell/inbox** entry lands for the applicant carrying the on-brand reason
+— it survives reload, logout, and a device switch. (Approval is already visible:
+a "claim your credential" action appears, then a credential-received notice on
+delivery.) The email gate is now genuine too: the web form carries the citizen's
+*real* verified status via `x-claim-source: email_verified`, so a verified
+applicant is approved and an unverified one is really rejected — not a hardcoded
+pass. `rehearse.ps1` exercises both directions.
+
 ---
 
 ## Offline behaviour
