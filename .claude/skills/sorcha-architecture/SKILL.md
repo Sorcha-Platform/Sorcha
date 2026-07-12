@@ -1752,13 +1752,13 @@ blueprint-cluster (the MCP tool uses the direct service address, so unit tests d
 
 ---
 
-## EUDI conformance — DCQL dialect + multi-credential asks (Feature 181, US1–US2)
+## EUDI conformance — DCQL dialect, trust rail, verifier auth (Feature 181, US1–US6)
 
 Protocol-alignment feature moving every Sorcha presentation surface onto the OpenID4VP 1.0 **final**
-dialect and adding multi-credential / alternative asks. US1 (dialect cutover, merged #1147) + US2
-(multi-credential, PR #1149) are the presentation-track stories; US3–US6 (trusted-list rail, external
-issuance identity, cert lifecycle, verifier authentication) are the trust track. Spec:
-`specs/181-eudi-conformance/`.
+dialect and adding multi-credential / alternative asks. **All six user stories are shipped.** US1
+(dialect cutover, #1147) + US2 (multi-credential, #1149) are the presentation track; US3 (trusted-list
+rail, #1150), US4 (external issuance identity), US5 (cert lifecycle), US6 (verifier authentication) are
+the trust track. Spec: `specs/181-eudi-conformance/`.
 
 ### Shared DCQL dialect (US1)
 
@@ -1844,3 +1844,74 @@ Adds the external-EUDI trust rail: operators import signed trusted lists; verify
   logs.
 - **SC-004 proof** — `TrustListVerificationTests`: import fixture list → verify a credential issued under
   the fixture CA (vouched, evidence `eu-lotl#3`) → delete → fail closed.
+
+### US4 — Externally-verifiable issuance identity (external X.509 rail)
+
+An org generates a CSR bound to its P-256 issuing key, imports an externally-issued cert+chain, and
+issues credentials that chain to the **external** root — failing closed when the cert is absent, expired,
+or key-mismatched. This is the missing outbound half of the `x509-lotl` rail (US3 was the inbound
+verify half).
+
+- **Org P-256 key resolution** — the org's issuing key is its **primary** key when that is ES256, else a
+  derived HAIP co-key under `sorcha:haip-issuer-signing` (`boundKeySource` ∈ `Primary` | `HaipCoKey`).
+  Wallet Service exposes the internal seam `IOrgIssuerCertKeyService` — resolve the org P-256 SPKI +
+  pre-hashed ES256 sign — over `GET/POST /api/internal/wallets/{address}/issuer-cert-key[/sign]`; client
+  methods `IWalletServiceClient.ResolveIssuerCertKeyAsync` / `SignIssuerCertPreHashedAsync`. Private key
+  never leaves custody (CSR/cert signing is remote pre-hashed signing).
+- **Tenant org-cert endpoints** (`TrustEndpoints`, under `/api/v1/trust/tenants/{tenantId}/orgs/{orgWalletAddress}`,
+  `RequireAdministrator` + `RequirePlatformAudience` except the public chain reader):
+
+  | Method | Route | Purpose |
+  |---|---|---|
+  | `GET` | `certificates` | List internal + imported certs with status/validity/chain summary + `eligibility` (`eligible`, `reason` = `CERT_KEY_NOT_ELIGIBLE`, `boundKeySource`) |
+  | `POST` | `csr` | Generate a CSR bound to the org's P-256 key (server-resolved; optional `subjectDn`) → `csrPem` + `boundKeySource` + `boundPublicKeyThumbprint` |
+  | `POST` | `certificates/import` | Import leaf `certificatePem` + `chainPem[]` (with/without root); supersedes prior Active imported cert |
+  | `DELETE` | `certificates/{certificateId}` | Retire an imported cert (Status→Superseded); idempotent. Internal certs use the `revoke`/CRL path |
+  | `GET` | `imported-cert-chain` | **Public** — imported chain for x5c resolution |
+
+  Typed failure codes (`CertErrorCodes`, `422` problem+json): `CERT_KEY_NOT_ELIGIBLE`, `CERT_KEY_MISMATCH`,
+  `CERT_CHAIN_INVALID`, `CERT_EXPIRED`, `CERT_UNSUITABLE`, `CERT_EXTERNAL_ANCHOR_UNAVAILABLE`.
+- **Persistence** (Tenant Postgres, folded into InitialCreate) — `TenantRootCaRecord` (CA key AES-256-GCM
+  encrypted), `OrgCertificateRecord`, `CsrRecord`; `InternalCaTrustProvider` is now a write-through cache
+  over `ICertificateStore`.
+- **Chain-attach** — `CredentialIssuanceConfig.TrustAnchor` (`register` | `x509-tenant` | `x509-lotl`)
+  drives the x5c the issuer attaches. `x509-lotl` resolves the imported external chain and **fails closed
+  `CERT_EXTERNAL_ANCHOR_UNAVAILABLE`** if absent; `x509-tenant` (per-tenant self-signed root) and
+  `register` (DID-native, no x5c) are unchanged. Metric
+  `sorcha_org_cert_issuance_total{provenance,outcome,reason}`.
+
+### US5 — Certificate lifecycle
+
+- **Typed eligibility guard** — `X509CertificateBuilder.BuildOrgCert` throws
+  `CertKeyNotEligibleException` for a non-P-256 key (kills the prior ASN.1 500), so enrol returns
+  `422 CERT_KEY_NOT_ELIGIBLE` for an Ed25519-primary org.
+- **Enrol** (`POST .../orgs/{wallet}/enrol`, existing route, changed semantics) — body no longer carries
+  a caller-supplied key; the server resolves the org P-256 key itself and **re-issues the internal
+  tenant-root cert with auditable history** (`ITrustProvider.ReissueInternalCertAsync` supersede). Doubles
+  as the **backfill** action for pre-existing orgs.
+- **Auto-enrol** — best-effort server-side hook after wallet provisioning (org creation +
+  `OrgWalletReconciliationService` ride-along), **not an API**. Failure never fails org creation.
+- **Admin UI** — certificates panel in `OrgSettings.razor` backed by `IOrgCertificateAdminService`.
+  `Organization.WalletAddress` is now exposed on `OrganizationResponse`.
+
+### US6 — Verifier authentication
+
+The HAIP verifier signs its OpenID4VP request object; the wallet cryptographically authenticates the
+verifier before showing consent.
+
+- **Verifier side** (HAIP) — `RequestObjectSigner` signs the request object (ES256) with an X.509
+  **verifier certificate** (SAN dNSName = `Haip:PublicHost`), embeds the **`x5c`** chain, and uses a
+  prefixed **`x509_san_dns:{host}`** `client_id`. Config: `Haip:VerifierCertificate` (PFX path or base64)
+  + `Haip:VerifierCertificatePassword?` + `Haip:PublicHost`. Dev fallback = self-signed cert;
+  **prod/staging fail-fast** when unconfigured. (`VerifierCertificate.cs`.)
+- **Wallet side** — `RequestObjectValidator` (`Sorcha.Verifier.Engine`, pure BouncyCastle / WASM-safe):
+  ES256 JWS verify over the x5c leaf → leaf SAN == `client_id` host → chain-walk to a trusted anchor,
+  yielding a three-state `VerifierAuthState`: `TrustedListVerified` / `AuthenticUntrusted` /
+  `Unverifiable`. Tampered signature / SAN mismatch = **hard refusal** (`REQUEST_OBJECT_INVALID` /
+  `REQUEST_HOST_MISMATCH`); **absent anchors never block** (FR-027). `ConsentSheet` renders the three
+  states. KB-JWT `aud` = the full prefixed `client_id` on both sides. Metric
+  `sorcha_request_auth_total{state}` on `Sorcha.Trust`.
+- **Scope notes** — the anchor-fetch → `TrustedListVerified` path needs a **public** anchors read
+  endpoint (US3's is service-tier); a documented follow-up, so v1 renders valid signed requests as
+  `AuthenticUntrusted`. The F127 `SorchaWallet` consumer keeps its **DID** `client_id` (register-native
+  rail) — it renders `Unverifiable` under the x509 validator and is never blocked.

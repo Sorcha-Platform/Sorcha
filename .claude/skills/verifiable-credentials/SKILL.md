@@ -210,7 +210,7 @@ A single credential-issuing org has **three distinct identities**, and `did:sorc
 |---|---|
 | F120 DID path (`iss`=did, kid-matched `assertionMethod` VM, `cnf`+KB-JWT) | **conformant** profile choice — DID is a sanctioned `iss` form; `assertionMethod` is the right relationship for issuer keys |
 | **`iss` = bare wallet address** (no-master-key fallback) | **divergence** — not a URI/DID, no `kid`/`jwk`; unresolvable by any conformant verifier. Should fail *closed at issuance* rather than mint an unverifiable credential |
-| `typ = "vc+sd-jwt"` | **drift** — the current SD-JWT VC draft renamed the media subtype to **`dc+sd-jwt`**. Plan a `typ` migration (accept both on verify during transition) |
+| `typ = "vc+sd-jwt"` → **`dc+sd-jwt`** | **resolved (Feature 181 US1)** — issuance now emits the final `dc+sd-jwt` media subtype; verify **dual-accepts** the legacy `vc+sd-jwt` during transition |
 | embedded-`jwk` dev resolver path | off-spec (self-certifying issuer); acceptable only if strictly non-prod |
 | `.well-known/jwt-vc-issuer` metadata path | not implemented — legitimately substituted by DID resolution |
 
@@ -221,7 +221,25 @@ Credential trust runs on **two distinct rails**; reaching for the wrong one ("us
 - **Rail 1 — register/DID-native (intra-ecosystem).** Verifiers *inside* Sorcha (engine `CredentialVerifier`, HAIP verifier, another Sorcha node) anchor on the **register** (wallet signatures + validator roster) + `did:sorcha:org:` resolution. **No X.509, no external CA.** The register is the trust root (DAD model). This is the correct rail whenever the verifier is itself a Sorcha participant (e.g. an insurer org consuming an assessor's credential).
 - **Rail 2 — X.509/x5c (EUDI/external bridge).** Verifiers *outside* Sorcha that only speak PKI (EUDI wallets, third parties) need a cert chain to a root **they already trust**. F135's `CredentialIssuanceConfig.TrustAnchor` = `x509-tenant` (per-tenant **self-signed** root, `InternalCaTrustProvider`) vs `x509-lotl` (external trusted-list anchor).
 
-**Current-state gap:** the X.509 rail is **intra-ecosystem only** today. The internal CA is *self-signed*, so no external party trusts it without planting Sorcha's root. Genuine external interop needs `x509-lotl` (chain to a CA on a recognised List of Trusted Lists) — and **LOTL is deferred**. Plus two stacked blockers: `X509CertificateBuilder` is **P-256-only** (Ed25519 org keys → `ASN1 corrupted data` enrol 500), and org-cert enrol (`POST /api/v1/trust/tenants/{id}/orgs/{wallet}/enrol`) is an explicit admin API invoked only by HAIP walkthrough setup — no auto-enrol on org creation, no admin UI. So "the org has an externally-usable X.509 identity" is not a state any normal org reaches. Full F135 detail: `sorcha-architecture` skill → "Two trust rails: register/DID-native vs X.509/EUDI-external".
+**Current-state (post Feature 181 US3/US4/US5):** the external X.509 rail now exists end to end. **US3**
+lets operators import a signed ETSI TS 119 612 trusted-list snapshot; verifying services resolve CA
+anchors from it for `x509-lotl` / `trustlist` (live LOTL refresh still deferred). **US4** adds the
+outbound half: an org generates a CSR bound to its P-256 issuing key (primary ES256 key, else a derived
+HAIP co-key), imports an externally-issued cert+chain, and issues with `TrustAnchor=x509-lotl` chaining
+to the external root — failing closed `CERT_EXTERNAL_ANCHOR_UNAVAILABLE`. **US5** removes the two prior
+blockers: the `X509CertificateBuilder` P-256-only limit is now a **typed `CERT_KEY_NOT_ELIGIBLE` 422**
+(no more ASN.1 500), enrol server-resolves the org key (no caller-supplied key) and re-issues with
+auditable history, and **auto-enrol** runs best-effort after wallet provisioning plus an `OrgSettings`
+admin certificates panel — so a normal org does reach an externally-usable X.509 identity. Full detail:
+`sorcha-architecture` skill → "EUDI conformance — DCQL dialect, trust rail, verifier auth (Feature 181)".
+
+**Verifier authentication (Feature 181 US6):** presentations now flow over the OpenID4VP 1.0 **DCQL**
+dialect (`dcql_query`; Presentation Exchange retired). The HAIP verifier signs its request object (ES256)
+with an X.509 verifier certificate carrying an `x5c` chain and a prefixed `x509_san_dns:{host}`
+`client_id`; the wallet authenticates it via `RequestObjectValidator` (`Sorcha.Verifier.Engine`, pure
+BouncyCastle / WASM-safe) into a three-state `VerifierAuthState` (`TrustedListVerified` /
+`AuthenticUntrusted` / `Unverifiable`). Tampered signature / SAN mismatch is a hard refusal; absent
+anchors never block. See the `sorcha-architecture` skill US6 subsection.
 
 ## Selective Disclosure (SD-JWT)
 
