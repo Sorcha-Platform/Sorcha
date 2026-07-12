@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
-using Sorcha.ServiceClients.Wallet.Models;
+using Sorcha.Wallet.Contracts.Models;
 using Sorcha.Wallet.Service.IntegrationTests.Fixtures;
 using Sorcha.Wallet.Service.Models;
 using Xunit;

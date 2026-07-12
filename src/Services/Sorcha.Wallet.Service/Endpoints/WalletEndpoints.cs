@@ -21,7 +21,7 @@ using Sorcha.Wallet.Core.Domain.ValueObjects;
 using Sorcha.Wallet.Core.Services.Implementation;
 using Sorcha.Wallet.Service.Services.Interfaces;
 using Sorcha.ServiceClients.Participant;
-using Sorcha.ServiceClients.Wallet.Models;
+using Sorcha.Wallet.Contracts.Models;
 using Sorcha.Wallet.Service.Mappers;
 using Sorcha.Wallet.Service.Models;
 
@@ -450,23 +450,19 @@ public static class WalletEndpoints
                 }
             }
 
-            var response = new CreateWalletResponse
-            {
-                Wallet = wallet.ToDto(),
-                MnemonicWords = mnemonic.Phrase.Split(' ')
-            };
-
-            // Generate PQC key pair and ws2 address for hybrid wallets
+            // Generate PQC key pair and ws2 address for hybrid wallets (computed before building the
+            // immutable response so the fields can be set via the object initializer).
+            string? pqcWalletAddress = null;
+            string? pqcAlgorithm = null;
             if (request.EnableHybrid && !string.IsNullOrEmpty(request.PqcAlgorithm))
             {
                 var pqcNetwork = AlgorithmMapper.ParseAlgorithm(request.PqcAlgorithm);
                 var pqcKeyResult = await cryptoModule.GenerateKeySetAsync(pqcNetwork, cancellationToken: cancellationToken);
                 if (pqcKeyResult.IsSuccess)
                 {
-                    var pqcAddress = walletUtilities.PublicKeyToWallet(pqcKeyResult.Value.PublicKey.Key!, (byte)pqcNetwork);
-                    response.PqcWalletAddress = pqcAddress;
-                    response.PqcAlgorithm = request.PqcAlgorithm;
-                    logger.LogInformation("Hybrid wallet created with PQC address {PqcAddress}", pqcAddress);
+                    pqcWalletAddress = walletUtilities.PublicKeyToWallet(pqcKeyResult.Value.PublicKey.Key!, (byte)pqcNetwork);
+                    pqcAlgorithm = request.PqcAlgorithm;
+                    logger.LogInformation("Hybrid wallet created with PQC address {PqcAddress}", pqcWalletAddress);
                 }
                 else
                 {
@@ -474,6 +470,14 @@ public static class WalletEndpoints
                         pqcKeyResult.ErrorMessage);
                 }
             }
+
+            var response = new CreateWalletResponse
+            {
+                Wallet = wallet.ToDto(),
+                MnemonicWords = mnemonic.Phrase.Split(' '),
+                PqcWalletAddress = pqcWalletAddress,
+                PqcAlgorithm = pqcAlgorithm
+            };
 
             // T012: Fire-and-forget auto-link — register participant + link wallet in Tenant Service.
             // Failures don't block wallet creation (FR-004).
