@@ -112,7 +112,8 @@
                 "title": "Email verified",
                 "description": "Whether the applicant's email was verified at signup. Carried automatically from the platform's email-verification state so the Assure-ID agent can rely on it (FR-005a). Read-only.",
                 "default": true,
-                "readOnly": true
+                "readOnly": true,
+                "x-claim-source": "email_verified"
               },
               "holderKeys": {
                 "type": "object",

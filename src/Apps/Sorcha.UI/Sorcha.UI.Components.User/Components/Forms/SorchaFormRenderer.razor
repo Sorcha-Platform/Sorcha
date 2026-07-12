@@ -10,6 +10,7 @@
 @using Sorcha.UI.Core.Models.Forms
 @using Sorcha.UI.Core.Services.Forms
 @using Sorcha.UI.Core.Services.Persona
+@using Microsoft.AspNetCore.Components.Authorization
 @implements IDisposable
 
 @inject IFormSchemaService SchemaService
@@ -430,6 +431,10 @@
     private bool _personaLoadKicked;
     private CancellationTokenSource? _personaLoadCts;
 
+    // Feature 183 (US1) — whether we've kicked off the fire-and-forget claim-source
+    // seed for the current Action. Reset on action change.
+    private bool _claimSeedKicked;
+
     protected override void OnParametersSet()
     {
         if (Action is null) return;
@@ -475,6 +480,7 @@
             _personaLoadCts?.Cancel();
             _personaLoadCts?.Dispose();
             _personaLoadCts = null;
+            _claimSeedKicked = false;
         }
 
         if (actionChanged)
@@ -565,6 +571,15 @@
             _personaLoadCts = new CancellationTokenSource();
             _ = LoadPersonaAndApplyAsync(_personaLoadCts.Token);
         }
+
+        // Feature 183 (US1) — seed x-claim-source fields from the authenticated
+        // principal's JWT claims. Fire-and-forget like persona; completes well before
+        // the multi-page wizard reaches submit. Read-only / replay forms skip it.
+        if (actionChanged && !_claimSeedKicked && !IsReadOnly)
+        {
+            _claimSeedKicked = true;
+            _ = SeedClaimSourcesAsync();
+        }
     }
 
     /// <summary>
@@ -623,6 +638,48 @@
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "Persona autofill failed for action {ActionTitle}", Action?.Title);
+        }
+    }
+
+    /// <summary>
+    /// Feature 183 (US1) — seeds <c>x-claim-source</c> form fields from the authenticated
+    /// principal's JWT claims at form init, so a page-less read-only field (e.g. the AIAS
+    /// <c>emailVerified</c> signal) is carried onto the wallet-signed submission. Runs
+    /// fire-and-forget from <see cref="OnParametersSet"/>. Graceful no-op when the seeder or
+    /// auth-state provider is not registered (e.g. a bUnit context). Never overwrites a value
+    /// the user has already entered.
+    /// </summary>
+    private async Task SeedClaimSourcesAsync()
+    {
+        try
+        {
+            if (ServiceProvider.GetService(typeof(IClaimSourceSeeder)) is not IClaimSourceSeeder seeder ||
+                ServiceProvider.GetService(typeof(AuthenticationStateProvider)) is not AuthenticationStateProvider authProvider ||
+                _formContext.DataSchema is null)
+            {
+                return;
+            }
+
+            var authState = await authProvider.GetAuthenticationStateAsync().ConfigureAwait(false);
+            var seeds = seeder.Resolve(_formContext.DataSchema, authState.User);
+            if (seeds.Count == 0)
+                return;
+
+            await InvokeAsync(() =>
+            {
+                foreach (var (pointer, value) in seeds)
+                {
+                    // Never clobber a value the user has already entered.
+                    if (_formContext.FormData.TryGetValue(pointer, out var existing) && !IsEmpty(existing))
+                        continue;
+                    _formContext.FormData[pointer] = value;
+                }
+                StateHasChanged();
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Claim-source seeding failed for action {ActionTitle}", Action?.Title);
         }
     }
 

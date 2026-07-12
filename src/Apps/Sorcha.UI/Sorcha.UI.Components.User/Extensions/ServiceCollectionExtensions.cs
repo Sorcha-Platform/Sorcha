@@ -56,6 +56,12 @@ public static class ServiceCollectionExtensions
         // can override it.
         services.TryAddScoped<IWebCameraService, WebCameraService>();
 
+        // Feature 183 (US1): seeds x-claim-source form fields from the authenticated principal's
+        // JWT claims at form init (SorchaFormRenderer), so a page-less read-only field like the AIAS
+        // emailVerified signal is carried onto the wallet-signed submission. Pure/stateless singleton.
+        services.TryAddSingleton<Sorcha.UI.Core.Services.Forms.IClaimSourceSeeder,
+                                 Sorcha.UI.Core.Services.Forms.ClaimSourceSeeder>();
+
         // Verify seams — Feature 163 (PR B2-components).
         // TryAdd* ensures a host override registered before this call wins.
         services.TryAddSingleton<IVerificationPresetCatalogue, DefaultPresetCatalogue>();
