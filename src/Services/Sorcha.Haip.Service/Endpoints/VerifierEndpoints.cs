@@ -97,6 +97,7 @@ public static class VerifierEndpoints
         [FromBody] CreatePresentationRequestBody request,
         PresentationRequestStore store,
         IConfiguration configuration,
+        RequestObjectSigner signer,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.CredentialType))
@@ -105,9 +106,12 @@ public static class VerifierEndpoints
         var issuerUrl = configuration.GetValue<string>("Haip:IssuerUrl")
             ?? "https://sorcha.example/haip";
 
-        // TODO(098): client_id should be the verifier's DID or x509_san_uri, not the base URL
+        // Feature 181 US6 (T053) — client_id is the verifier's prefixed x509_san_dns identity, backed by
+        // the verifier certificate's SAN dNSName (retires TODO(098)). The wallet authenticates the verifier
+        // by verifying the request-object JWS against the x5c leaf whose SAN matches this host.
+        var clientId = signer.ClientId;
         var presRequest = await store.CreateAsync(
-            clientId: issuerUrl,
+            clientId: clientId,
             credentialType: request.CredentialType,
             requiredClaims: request.RequiredClaims,
             acceptedIssuers: request.AcceptedIssuers,
@@ -118,7 +122,7 @@ public static class VerifierEndpoints
             ct: ct);
 
         var requestUri = $"{issuerUrl}/api/v1/verifier/requests/{presRequest.Id}/request-object";
-        var authzRequestUri = $"openid4vp://authorize?client_id={Uri.EscapeDataString(issuerUrl)}&request_uri={Uri.EscapeDataString(requestUri)}";
+        var authzRequestUri = $"openid4vp://authorize?client_id={Uri.EscapeDataString(clientId)}&request_uri={Uri.EscapeDataString(requestUri)}";
 
         return Results.Created($"/api/v1/verifier/requests/{presRequest.Id}", new
         {

@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Web;
 using Microsoft.Extensions.Logging;
 using Sorcha.UI.Core.Models.Presentation;
+using Sorcha.Verifier.Engine;
 using Sorcha.Verifier.Engine.Dcql;
 
 namespace Sorcha.Wallet.Pwa.Services.Presentation;
@@ -65,15 +66,31 @@ public sealed class PresentationEngine : IPresentationEngine
         var requestUri = parsed["request_uri"]
             ?? throw new FormatException("Deep link is missing request_uri.");
 
-        // Fetch and decode the Request Object. US1: the payload is decoded WITHOUT
-        // signature verification — US6 (verifier authentication) adds JWS validation
-        // against the verifier certificate + trusted-list anchors.
+        // Fetch and decode the Request Object.
         var requestObjectJwt = await requestObjectFetcher(requestUri, ct);
         var payload = DecodeJwtPayload(requestObjectJwt);
 
         using (payload)
         {
             var root = payload.RootElement;
+            var clientId = GetRequiredString(root, "client_id");
+
+            // Feature 181 US6 — verifier authentication. Validate the signed request object against
+            // the client_id host. A present-but-invalid signature (tampering) or a SAN/host mismatch
+            // is a HARD refusal — the flow stops here, no consent is shown. Everything else renders a
+            // three-state VerifierAuthState on the consent surface. v1 passes null anchors, so a valid
+            // signed request caps at AuthenticUntrusted (FR-027: absent anchors never block).
+            var auth = new RequestObjectValidator().Validate(requestObjectJwt, clientId, anchors: null);
+            RequestAuthMetrics.Record(auth); // T058 — count every verifier-auth outcome (refused + rendered)
+            if (auth.Refused)
+            {
+                throw new DcqlParseException(
+                    auth.RefusalCode!,
+                    auth.RefusalCode == RequestObjectErrorCodes.RequestHostMismatch
+                        ? "The verifier's identity did not match its request."
+                        : "This request could not be verified and was refused.");
+            }
+
             var query = DcqlRequestParser.ParseFromRequestObjectPayload(root);
 
             // US1 consumes the first credential query (multi-query consent is US2).
@@ -83,7 +100,7 @@ public sealed class PresentationEngine : IPresentationEngine
 
             return new ParsedPresentationRequest
             {
-                ClientId = GetRequiredString(root, "client_id"),
+                ClientId = clientId,
                 ResponseUri = GetRequiredString(root, "response_uri"),
                 Nonce = GetRequiredString(root, "nonce"),
                 Query = query,
@@ -96,6 +113,7 @@ public sealed class PresentationEngine : IPresentationEngine
                 ResponseMode = root.TryGetProperty("response_mode", out var rm) && rm.ValueKind == JsonValueKind.String
                     ? rm.GetString()!
                     : "direct_post",
+                VerifierAuthentication = auth.AuthState,
             };
         }
     }

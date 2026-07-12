@@ -63,7 +63,7 @@ public class VerifierEndpointTests
             Mock.Of<ILogger<PresentationRequestStore>>(),
             config,
             new InMemoryAtomicDistributedCache());
-        _signer = new RequestObjectSigner(config, NullLogger<RequestObjectSigner>.Instance);
+        _signer = new RequestObjectSigner(Sorcha.Haip.Service.Services.VerifierCertificate.CreateSelfSigned("verifier.test"));
     }
 
     private sealed class FakeAnchors(byte[]? root) : ITenantTrustAnchorProvider

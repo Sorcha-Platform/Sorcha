@@ -104,7 +104,7 @@ public class DcqlRequestSchemaTests
             Mock.Of<ILogger<PresentationRequestStore>>(),
             config,
             new InMemoryAtomicDistributedCache());
-        var signer = new RequestObjectSigner(config, NullLogger<RequestObjectSigner>.Instance);
+        var signer = new RequestObjectSigner(Sorcha.Haip.Service.Services.VerifierCertificate.CreateSelfSigned("verifier.test"));
 
         var request = await store.CreateAsync(
             clientId: "https://test.example/haip",

@@ -128,6 +128,10 @@ builder.Services.AddSingleton<Sorcha.Cryptography.Mdoc.IMdocService, Sorcha.Cryp
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.MdocFormatHandler>();
 builder.Services.AddScoped<MdocPresentationVerifier>();
 
+// Feature 181 US6 (T052) — the verifier's request-signing certificate (SAN dNSName = Haip:PublicHost).
+// Resolved (or dev-fallback generated) once at startup; fail-fast in Production/Staging if unconfigured.
+builder.Services.AddSingleton(sp => Sorcha.Haip.Service.Services.VerifierCertificate.Resolve(
+    sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>()));
 builder.Services.AddSingleton<RequestObjectSigner>();
 
 // Feature 095 US4: status list fetch for the verifier. Registered as HttpClient-
