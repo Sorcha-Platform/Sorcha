@@ -8,10 +8,14 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Admin
 @using Sorcha.UI.Core.Services.Feedback
+@using Sorcha.UI.Core.Components.Forms
 
 @inject IOrganizationAdminService OrgService
 @inject IAuditService AuditService
+@inject IOrgCertificateAdminService CertService
+@inject IDialogService DialogService
 @inject IInlineFeedback Feedback
 
 <PageTitle>Organization Settings - Sorcha Platform</PageTitle>
@@ -74,6 +78,159 @@
                 </MudItem>
             </MudGrid>
         </MudPaper>
+
+        <!-- Feature 181 US5 — Organisation certificates (X.509 rail) -->
+        <MudPaper Class="pa-4 mb-4" Elevation="2" data-testid="org-cert-card">
+            <div class="d-flex align-center mb-2">
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Class="mr-2" />
+                    Certificates
+                </MudText>
+                <MudSpacer />
+                @if (!string.IsNullOrWhiteSpace(_orgWalletAddress))
+                {
+                    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Refresh"
+                               OnClick="ReloadCertificatesAsync" data-testid="org-cert-refresh">Refresh</MudButton>
+                }
+            </div>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                Manage this organisation's X.509 certificates — the internal certificate signed by the platform
+                root CA, and any externally-issued certificates imported for the <code>x509-lotl</code> trust rail.
+            </MudText>
+
+            @if (string.IsNullOrWhiteSpace(_orgWalletAddress))
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" data-testid="org-cert-no-wallet">
+                    This organisation has no signing wallet in the current session context, so certificate
+                    management is unavailable here. Certificates are bound to the org's issuing key — provision
+                    the org signing wallet first.
+                </MudAlert>
+            }
+            else
+            {
+                <!-- Eligibility banner -->
+                @if (_eligibility is not null)
+                {
+                    @if (_eligibility.Eligible)
+                    {
+                        <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3" data-testid="org-cert-eligible">
+                            Eligible for the X.509 rail@(string.IsNullOrWhiteSpace(_eligibility.BoundKeySource) ? "." : $" — bound key: {_eligibility.BoundKeySource}.")
+                        </MudAlert>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3" data-testid="org-cert-ineligible">
+                            Not eligible for the X.509 rail@(string.IsNullOrWhiteSpace(_eligibility.Reason) ? "." : $": {_eligibility.Reason}")
+                        </MudAlert>
+                    }
+                }
+
+                <!-- Action buttons -->
+                <div class="d-flex flex-wrap align-center gap-2 mb-3">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Autorenew"
+                               Disabled="@_certBusy" OnClick="EnrolAsync" data-testid="org-cert-enrol">
+                        Re-issue internal
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Description"
+                               Disabled="@_certBusy" OnClick="GenerateCsrAsync" data-testid="org-cert-csr">
+                        Download CSR
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.UploadFile"
+                               Disabled="@_certBusy" OnClick="OpenImportDialogAsync" data-testid="org-cert-import">
+                        Import certificate
+                    </MudButton>
+                </div>
+
+                <!-- Generated CSR (copyable block) -->
+                @if (_csr is not null)
+                {
+                    <MudPaper Outlined="true" Class="pa-3 mb-3" data-testid="org-cert-csr-result">
+                        <div class="d-flex align-center mb-2">
+                            <MudText Typo="Typo.subtitle2">
+                                Certificate Signing Request (bound key: <code>@_csr.BoundKeySource</code>)
+                            </MudText>
+                            <MudSpacer />
+                            <CopyButton Value="@_csr.CsrPem" Label="Copy PEM" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                           OnClick="@(() => { _csr = null; })" aria-label="Dismiss CSR" />
+                        </div>
+                        <MudTextField Value="@_csr.CsrPem" ReadOnly="true" Variant="Variant.Outlined"
+                                      Lines="6" AutoGrow="true" T="string" />
+                    </MudPaper>
+                }
+
+                @if (_certLoading)
+                {
+                    <MudProgressLinear Indeterminate="true" Class="my-3" />
+                }
+                else if (_certs.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" data-testid="org-cert-empty">
+                        No certificates yet. Re-issue the internal certificate or import an external one.
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudTable Items="_certs" Hover="true" Dense="true" data-testid="org-cert-table">
+                        <HeaderContent>
+                            <MudTh>Provenance</MudTh>
+                            <MudTh>Status</MudTh>
+                            <MudTh>Subject</MudTh>
+                            <MudTh>Serial</MudTh>
+                            <MudTh>Validity</MudTh>
+                            <MudTh>Chain</MudTh>
+                            <MudTh></MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Provenance">
+                                <MudChip T="string" Size="Size.Small"
+                                         Color="@(context.IsImported ? Color.Info : Color.Default)">@context.Provenance</MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Status">
+                                <MudChip T="string" Size="Size.Small"
+                                         Color="@(context.IsActive ? Color.Success : Color.Warning)"
+                                         data-testid="org-cert-status-chip">@context.Status</MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Subject"><code>@context.SubjectDn</code></MudTd>
+                            <MudTd DataLabel="Serial"><code>@context.SerialNumber</code></MudTd>
+                            <MudTd DataLabel="Validity">
+                                @context.NotBefore.ToString("yyyy-MM-dd") → @context.NotAfter.ToString("yyyy-MM-dd")
+                                @if (context.IsExpired)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Class="ml-2"
+                                             data-testid="org-cert-expiry-chip">Expired</MudChip>
+                                }
+                                else if (context.IsExpiringSoon)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-2"
+                                             data-testid="org-cert-expiry-chip">Expiring soon</MudChip>
+                                }
+                            </MudTd>
+                            <MudTd DataLabel="Chain">
+                                @if (context.ChainSummary.Count == 0)
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">—</MudText>
+                                }
+                                else
+                                {
+                                    <MudTooltip Text="@ChainTooltip(context)">
+                                        <MudText Typo="Typo.caption">@context.ChainSummary.Count element(s)</MudText>
+                                    </MudTooltip>
+                                }
+                            </MudTd>
+                            <MudTd>
+                                @if (context.IsImported)
+                                {
+                                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error"
+                                               Disabled="@_certBusy" OnClick="@(() => DeleteCertificateAsync(context))"
+                                               data-testid="org-cert-delete">Delete</MudButton>
+                                }
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            }
+        </MudPaper>
     }
 </MudContainer>
 
@@ -101,6 +258,18 @@
 
     // Audit retention
     private int _retentionMonths = 12;
+
+    // Feature 181 US5 — certificates (X.509 rail)
+    private string _orgWalletAddress = "";
+    private bool _certLoading;
+    private bool _certBusy;
+    private OrgCertEligibilityView? _eligibility;
+    private OrgCsrResult? _csr;
+    private readonly List<OrgCertificateSummary> _certs = [];
+
+    private string TenantId => _organizationId.ToString();
+
+    private static string ChainTooltip(OrgCertificateSummary cert) => string.Join("  →  ", cert.ChainSummary);
 
     protected override async Task OnInitializedAsync()
     {
@@ -133,6 +302,10 @@
                 _orgSubdomain = org.Subdomain;
                 _orgStatus = org.Status;
                 _orgCreatedAt = org.CreatedAt.LocalDateTime.ToString("g");
+                // Feature 181 US5 — the org's signing wallet (the wallet that holds the P-256 issuing key
+                // certificates bind to), NOT the admin user's wallet. Absent → the certificates section
+                // renders a "no signing wallet" guard state.
+                _orgWalletAddress = org.WalletAddress ?? "";
             }
 
             var retention = await retentionTask;
@@ -145,6 +318,113 @@
         finally
         {
             _loading = false;
+        }
+
+        await ReloadCertificatesAsync();
+    }
+
+    private async Task ReloadCertificatesAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_orgWalletAddress)) return;
+
+        _certLoading = true;
+        try
+        {
+            var result = await CertService.ListAsync(TenantId, _orgWalletAddress);
+            _eligibility = result.Eligibility;
+            _certs.Clear();
+            _certs.AddRange(result.Certificates);
+        }
+        finally
+        {
+            _certLoading = false;
+        }
+    }
+
+    private async Task EnrolAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_orgWalletAddress)) return;
+        _certBusy = true;
+        try
+        {
+            var outcome = await CertService.EnrolAsync(TenantId, _orgWalletAddress, _orgName);
+            if (outcome.Success)
+            {
+                Feedback.ShowSuccess($"Internal certificate re-issued (serial {outcome.Certificate!.SerialNumber}).");
+                await ReloadCertificatesAsync();
+            }
+            else
+            {
+                Feedback.ShowError($"Re-issue failed ({outcome.ErrorCode}). The org is not eligible for the X.509 rail.", autoDismissMs: 0);
+            }
+        }
+        finally
+        {
+            _certBusy = false;
+        }
+    }
+
+    private async Task GenerateCsrAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_orgWalletAddress)) return;
+        _certBusy = true;
+        try
+        {
+            var outcome = await CertService.GenerateCsrAsync(TenantId, _orgWalletAddress, subjectDn: null);
+            if (outcome.Success)
+            {
+                _csr = outcome.Result;
+                Feedback.ShowSuccess("CSR generated — copy the PEM below and submit it to your certificate authority.");
+            }
+            else
+            {
+                Feedback.ShowError($"CSR generation failed ({outcome.ErrorCode}). The org is not eligible for the X.509 rail.", autoDismissMs: 0);
+            }
+        }
+        finally
+        {
+            _certBusy = false;
+        }
+    }
+
+    private async Task OpenImportDialogAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_orgWalletAddress)) return;
+
+        var parameters = new DialogParameters
+        {
+            { nameof(OrgCertificateImportDialog.TenantId), TenantId },
+            { nameof(OrgCertificateImportDialog.OrgWalletAddress), _orgWalletAddress },
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<OrgCertificateImportDialog>("Import external certificate", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: OrgCertificateSummary cert })
+        {
+            Feedback.ShowSuccess($"Imported certificate (serial {cert.SerialNumber}).");
+            await ReloadCertificatesAsync();
+        }
+    }
+
+    private async Task DeleteCertificateAsync(OrgCertificateSummary cert)
+    {
+        _certBusy = true;
+        try
+        {
+            var ok = await CertService.DeleteAsync(TenantId, _orgWalletAddress, cert.Id);
+            if (ok)
+            {
+                Feedback.ShowInfo($"Retired imported certificate (serial {cert.SerialNumber}).");
+                await ReloadCertificatesAsync();
+            }
+            else
+            {
+                Feedback.ShowError($"Could not retire certificate (serial {cert.SerialNumber}).", autoDismissMs: 0);
+            }
+        }
+        finally
+        {
+            _certBusy = false;
         }
     }
 

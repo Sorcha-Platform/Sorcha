@@ -115,6 +115,13 @@ public record OrganizationResponse
     public DateTimeOffset CreatedAt { get; init; }
 
     /// <summary>
+    /// The organisation's signing wallet address (the wallet holding the P-256 issuing key that
+    /// certificates bind to). Null until the wallet is provisioned. Feature 181 US5 — the admin
+    /// certificates panel needs this to address the org-cert endpoints; it is public org metadata.
+    /// </summary>
+    public string? WalletAddress { get; init; }
+
+    /// <summary>
     /// Branding configuration.
     /// </summary>
     public BrandingConfigurationDto? Branding { get; init; }
@@ -129,6 +136,7 @@ public record OrganizationResponse
         Subdomain = org.Subdomain,
         Status = org.Status,
         CreatedAt = org.CreatedAt,
+        WalletAddress = org.WalletAddress,
         Branding = org.Branding != null ? new BrandingConfigurationDto
         {
             LogoUrl = org.Branding.LogoUrl,

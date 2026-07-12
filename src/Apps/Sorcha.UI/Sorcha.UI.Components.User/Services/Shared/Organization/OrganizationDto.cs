@@ -21,4 +21,10 @@ public record OrganizationDto
     public string Status { get; init; } = "Active";
     public DateTimeOffset CreatedAt { get; init; }
     public BrandingDto? Branding { get; init; }
+
+    /// <summary>
+    /// Feature 181 US5 — the org's signing wallet address (holds the P-256 issuing key). Null until the
+    /// wallet is provisioned. Used by the admin certificates panel to address the org-cert endpoints.
+    /// </summary>
+    public string? WalletAddress { get; init; }
 }
