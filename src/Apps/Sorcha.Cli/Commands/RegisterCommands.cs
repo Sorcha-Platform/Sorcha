@@ -632,11 +632,11 @@ public class RegisterCreateCommand : Command
                         return ExitCodes.NotFound;
                     }
 
-                    // Parse algorithm
-                    if (!Enum.TryParse<SignatureAlgorithm>(signResponse.Algorithm, true, out var algorithm))
-                    {
-                        algorithm = SignatureAlgorithm.ED25519; // Default
-                    }
+                    // The wallet sign endpoint does not return a signature algorithm, so ED25519 (the
+                    // platform default for register attestations) is used. This is unchanged behaviour:
+                    // the former SignTransactionResponse.Algorithm field was never populated by the
+                    // server, so the previous Enum.TryParse always fell through to this default.
+                    var algorithm = SignatureAlgorithm.ED25519;
 
                     signedAttestations.Add(new SignedAttestation
                     {

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Sorcha.Wallet.Contracts</PackageId>
+    <Description>Immutable wire contracts for the Sorcha Wallet HTTP surface (requests, responses, DTOs). Consumed by the Wallet Service, UI, PWA, CLI, and service clients. No transport, no IO, no Sorcha runtime dependencies — pure contract.</Description>
+    <PackageTags>sorcha;wallet;contracts;dto</PackageTags>
+    <RootNamespace>Sorcha.Wallet.Contracts</RootNamespace>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sorcha.Wallet.Contracts.Tests" />
+  </ItemGroup>
+
+</Project>

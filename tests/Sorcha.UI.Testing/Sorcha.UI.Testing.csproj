@@ -25,6 +25,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Using Include="Sorcha.Wallet.Contracts.Models" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Apps\Sorcha.UI\Sorcha.UI.Core\Sorcha.UI.Core.csproj" />
   </ItemGroup>
 

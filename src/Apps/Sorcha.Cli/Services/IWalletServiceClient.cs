@@ -23,7 +23,7 @@ public interface IWalletServiceClient
     /// Recovers a wallet from mnemonic phrase.
     /// </summary>
     [Post("/api/v1/wallets/recover")]
-    Task<Wallet> RecoverWalletAsync(
+    Task<WalletDto> RecoverWalletAsync(
         [Body] RecoverWalletRequest request,
         [Header("Authorization")] string authorization);
 
@@ -41,14 +41,14 @@ public interface IWalletServiceClient
     /// Lists all wallets for the current user.
     /// </summary>
     [Get("/api/v1/wallets")]
-    Task<List<Wallet>> ListWalletsAsync(
+    Task<List<WalletDto>> ListWalletsAsync(
         [Header("Authorization")] string authorization);
 
     /// <summary>
     /// Gets a wallet by address.
     /// </summary>
     [Get("/api/v1/wallets/{address}")]
-    Task<Wallet> GetWalletAsync(
+    Task<WalletDto> GetWalletAsync(
         string address,
         [Header("Authorization")] string authorization);
 
@@ -56,7 +56,7 @@ public interface IWalletServiceClient
     /// Updates wallet metadata.
     /// </summary>
     [Patch("/api/v1/wallets/{address}")]
-    Task<Wallet> UpdateWalletAsync(
+    Task<WalletDto> UpdateWalletAsync(
         string address,
         [Body] UpdateWalletRequest request,
         [Header("Authorization")] string authorization);

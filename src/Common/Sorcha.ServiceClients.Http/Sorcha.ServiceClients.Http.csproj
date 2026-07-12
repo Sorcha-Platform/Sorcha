@@ -21,6 +21,8 @@
     <ProjectReference Include="..\Sorcha.Register.Models\Sorcha.Register.Models.csproj" />
     <!-- Feature 114: citizen wallet DTO surface -->
     <ProjectReference Include="..\Sorcha.CitizenWallet.Abstractions\Sorcha.CitizenWallet.Abstractions.csproj" />
+    <!-- Canonical Wallet HTTP contracts (CreateWalletRequest, Bip39WordCountAttribute, …) -->
+    <ProjectReference Include="..\Sorcha.Wallet.Contracts\Sorcha.Wallet.Contracts.csproj" />
     <ProjectReference Include="..\Sorcha.Serialization\Sorcha.Serialization.csproj" />
     <ProjectReference Include="..\Sorcha.Cryptography.Secp256k1\Sorcha.Cryptography.Secp256k1.csproj" />
   </ItemGroup>

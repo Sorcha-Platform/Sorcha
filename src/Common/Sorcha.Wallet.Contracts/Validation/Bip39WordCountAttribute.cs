@@ -3,11 +3,11 @@
 
 using System.ComponentModel.DataAnnotations;
 
-namespace Sorcha.ServiceClients.Wallet.Models;
+namespace Sorcha.Wallet.Contracts.Validation;
 
 /// <summary>
-/// Validates that a word count is a valid BIP-39 mnemonic length (12, 15, 18, 21, or 24).
-/// These correspond to entropy sizes of 128, 160, 192, 224, and 256 bits respectively.
+/// Validates that a word count is a valid BIP-39 mnemonic length (12, 15, 18, 21, or 24). These correspond
+/// to entropy sizes of 128, 160, 192, 224, and 256 bits respectively.
 /// </summary>
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field | AttributeTargets.Parameter)]
 public sealed class Bip39WordCountAttribute : ValidationAttribute

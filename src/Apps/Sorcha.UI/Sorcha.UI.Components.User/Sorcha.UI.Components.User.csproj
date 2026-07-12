@@ -6,6 +6,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Canonical Wallet contracts, globally available to .cs and Razor components. -->
+    <Using Include="Sorcha.Wallet.Contracts.Models" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Sorcha.UI.Components.User.Tests" />
     <InternalsVisibleTo Include="Sorcha.UI.Core" />
     <InternalsVisibleTo Include="Sorcha.UI.Core.Tests" />
@@ -29,6 +34,7 @@
     <ProjectReference Include="..\..\..\Common\Sorcha.Blueprint.Models\Sorcha.Blueprint.Models.csproj" />
     <ProjectReference Include="..\..\..\Common\Sorcha.Register.Models\Sorcha.Register.Models.csproj" />
     <ProjectReference Include="..\..\..\Common\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />
+    <ProjectReference Include="..\..\..\Common\Sorcha.Wallet.Contracts\Sorcha.Wallet.Contracts.csproj" />
     <ProjectReference Include="..\..\..\Common\Sorcha.Tenant.Models\Sorcha.Tenant.Models.csproj" />
     <ProjectReference Include="..\..\..\Core\Sorcha.Blueprint.Schemas.Client\Sorcha.Blueprint.Schemas.Client.csproj" />
     <ProjectReference Include="..\..\..\Common\Sorcha.Serialization\Sorcha.Serialization.csproj" />

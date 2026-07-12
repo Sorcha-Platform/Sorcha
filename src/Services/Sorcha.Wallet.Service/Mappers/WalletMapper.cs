@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
+using Sorcha.Wallet.Contracts.Models;
 using Sorcha.Wallet.Service.Models;
 using WalletEntity = Sorcha.Wallet.Core.Domain.Entities.Wallet;
 using WalletAccessEntity = Sorcha.Wallet.Core.Domain.Entities.WalletAccess;

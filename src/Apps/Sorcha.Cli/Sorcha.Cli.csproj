@@ -20,6 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Canonical Wallet contracts. -->
+    <Using Include="Sorcha.Wallet.Contracts.Models" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Package README -->
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
@@ -72,6 +77,7 @@
     <ProjectReference Include="..\..\Common\Sorcha.Cryptography\Sorcha.Cryptography.csproj" />
     <!-- Feature 118 Phase 10 — SorchaHubConnectionBuilder for shared jittered reconnect on the events watcher. -->
     <ProjectReference Include="..\..\Common\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.Wallet.Contracts\Sorcha.Wallet.Contracts.csproj" />
   </ItemGroup>
 
 </Project>
