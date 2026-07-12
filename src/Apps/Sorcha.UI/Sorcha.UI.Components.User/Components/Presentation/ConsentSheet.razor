@@ -15,12 +15,46 @@
         there is no partial submit (FR-006d).
 *@
 @using Sorcha.UI.Core.Models.Presentation
+@using Sorcha.Verifier.Engine
 
 <MudPaper Elevation="2" Class="pa-4" data-testid="consent-sheet">
     <MudText Typo="Typo.subtitle1">@Request.Purpose</MudText>
-    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3 d-block">
-        Audience: <code>@Request.ClientId</code>
-    </MudText>
+
+    @* Feature 181 US6 — three-state verifier identity. Never present an unverifiable or
+       merely-authentic verifier as "verified". Falls back to the bare audience when no
+       verifier-auth state is available (pre-US6 requests). *@
+    @{
+        var auth = Request.VerifierAuthentication;
+    }
+    <div class="mb-3 d-block" data-testid="consent-verifier-identity"
+         data-verifier-status="@(auth?.Status.ToString() ?? "None")">
+        @if (auth is { Status: VerifierAuthStatus.TrustedListVerified })
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text"
+                     Icon="@Icons.Material.Filled.VerifiedUser" data-testid="consent-verifier-trusted">
+                Verified verifier: @auth.VerifierHost
+            </MudChip>
+        }
+        else if (auth is { Status: VerifierAuthStatus.AuthenticUntrusted })
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-flex align-center"
+                     data-testid="consent-verifier-untrusted">
+                <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Class="mr-1" />
+                Verifier: <code class="mx-1">@auth.VerifierHost</code> — authentic, but not on a trusted list.
+            </MudText>
+        }
+        else
+        {
+            <MudText Typo="Typo.caption" Color="Color.Warning" Class="d-flex align-center"
+                     data-testid="consent-verifier-unverifiable">
+                <MudIcon Icon="@Icons.Material.Filled.GppMaybe" Size="Size.Small" Class="mr-1" />
+                @{
+                    var reason = auth?.Reason;
+                }
+                Verifier identity could not be verified@(string.IsNullOrWhiteSpace(reason) ? "" : $": {reason}").
+            </MudText>
+        }
+    </div>
 
     @if (Result is not null)
     {

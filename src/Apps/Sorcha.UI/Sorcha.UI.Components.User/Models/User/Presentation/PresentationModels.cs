@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Verifier.Engine;
 using Sorcha.Verifier.Engine.Dcql;
 
 namespace Sorcha.UI.Core.Models.Presentation;
@@ -38,6 +39,15 @@ public sealed record ParsedPresentationRequest
 
     /// <summary>Response mode; v1 supports <c>direct_post</c>.</summary>
     public string ResponseMode { get; init; } = "direct_post";
+
+    /// <summary>
+    /// Feature 181 US6 — the three-state verifier-authentication verdict rendered on the consent
+    /// surface. Set by the presentation engine after validating the signed request object; a HARD
+    /// refusal (tampered signature / host mismatch) stops the parse before this is ever populated,
+    /// so a non-refused request always carries a state (Trusted / AuthenticUntrusted / Unverifiable).
+    /// Null only for requests parsed before US6 wiring.
+    /// </summary>
+    public VerifierAuthState? VerifierAuthentication { get; init; }
 }
 
 /// <summary>
