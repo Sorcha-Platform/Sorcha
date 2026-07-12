@@ -234,6 +234,80 @@ public class InternalCaTrustProvider : ITrustProvider
     }
 
     /// <inheritdoc />
+    public async Task<OrgCertEnrolment> ReissueInternalCertAsync(
+        string tenantId,
+        string orgWalletAddress,
+        byte[] orgP256Spki,
+        string orgDisplayName,
+        OrgCertificateKeySource boundKeySource,
+        Guid createdBy,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(orgWalletAddress);
+        ArgumentNullException.ThrowIfNull(orgP256Spki);
+
+        // Ensure the tenant trust anchor exists (idempotent).
+        await ProvisionTrustAnchorAsync(tenantId, ct: ct);
+
+        var cacheKey = OrgKey(tenantId, orgWalletAddress);
+        using var scope = _scopeFactory.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<ICertificateStore>();
+
+        var rootRecord = await store.GetRootAsync(tenantId, ct)
+            ?? throw new InvalidOperationException(
+                $"Tenant {tenantId} has no provisioned trust anchor. Call ProvisionTrustAnchorAsync first.");
+
+        // Supersede any existing Active internal cert (auditable history, FR-023d).
+        var existingActive = await store.GetActiveAsync(
+            tenantId, orgWalletAddress, OrgCertificateProvenance.Internal, ct);
+        if (existingActive is not null)
+        {
+            existingActive.Status = OrgCertificateStatus.Superseded;
+            await store.UpdateAsync(existingActive, ct);
+        }
+
+        var rootPrivateKey = await GetRootPrivateKeyAsync(rootRecord, ct);
+
+        var subjectDn = $"CN={orgDisplayName}, O=Sorcha Org, C=IE";
+        var sanUri = $"did:sorcha:org:{orgWalletAddress}";
+        var crlDp = $"{_trustBaseUrl}/tenants/{tenantId}/crl";
+
+        // BuildOrgCert throws a typed CertKeyNotEligibleException if the key is not P-256 (T047).
+        var (certDer, serialNumber) = X509CertificateBuilder.BuildOrgCert(
+            rootRecord.CertificateDer, rootPrivateKey, orgP256Spki,
+            subjectDn, sanUri, crlDp, _defaultOrgCertValidityYears);
+
+        var now = DateTimeOffset.UtcNow;
+        var record = new OrgCertificateRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            OrgWalletAddress = orgWalletAddress,
+            Provenance = OrgCertificateProvenance.Internal,
+            Status = OrgCertificateStatus.Active,
+            CertificateDer = certDer,
+            ChainDer = [rootRecord.CertificateDer],
+            BoundPublicKeySpki = orgP256Spki,
+            BoundKeySource = boundKeySource,
+            SerialNumber = serialNumber,
+            SubjectDn = subjectDn,
+            San = sanUri,
+            NotBefore = now,
+            NotAfter = now.AddYears(_defaultOrgCertValidityYears),
+            CreatedAt = now,
+            CreatedByPlatformUserId = createdBy,
+        };
+        await store.AddAsync(record, ct);
+
+        _logger.LogInformation(
+            "(Re)issued internal cert for {OrgWallet} under tenant {TenantId}: serial={Serial} boundKeySource={Source} superseded={Superseded}",
+            orgWalletAddress, tenantId, serialNumber, boundKeySource, existingActive is not null);
+
+        return CacheOrgCert(cacheKey, MapOrgCert(record));
+    }
+
+    /// <inheritdoc />
     public async Task<(byte[] OrgCertDer, byte[] RootCertDer)?> GetOrgCertChainAsync(
         string tenantId,
         string orgWalletAddress,

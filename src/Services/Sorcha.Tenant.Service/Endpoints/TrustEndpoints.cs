@@ -47,10 +47,11 @@ public static class TrustEndpoints
             .WithName("EnrolOrgCert")
             .WithSummary("Issue an organisation certificate signed by the tenant root CA")
             .WithDescription(
-                "Issues an X.509 certificate for the organisation's HAIP classical co-key, " +
-                "signed by the tenant's root CA. Binds the org's DID to the certificate via SAN URI.")
-            .Produces<OrgCertEnrolmentResponse>(StatusCodes.Status200OK)
-            .Produces(StatusCodes.Status400BadRequest)
+                "Feature 181 US5 — the server resolves the org's P-256 key itself (primary ES256 else HAIP " +
+                "co-key), signs the internal cert with the tenant root, binds the org DID via SAN URI, and " +
+                "re-issues with auditable history. Doubles as backfill. 422 CERT_KEY_NOT_ELIGIBLE for non-P-256 orgs.")
+            .Produces<OrgCertificateView>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status422UnprocessableEntity)
             .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         // Org cert chain — public
@@ -381,47 +382,26 @@ public static class TrustEndpoints
     private static async Task<IResult> EnrolOrgCert(
         string tenantId,
         string orgWalletAddress,
-        [FromBody] EnrolOrgCertRequest request,
-        ITrustProvider trustProvider,
+        [FromBody] EnrolOrgCertRequest? request,
+        HttpContext http,
+        Sorcha.Tenant.Service.Trust.IOrgCertificateService certService,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.OrgPublicKeyBase64))
-            return Results.BadRequest(new { error = "OrgPublicKeyBase64 is required" });
-        if (string.IsNullOrWhiteSpace(request.OrgDisplayName))
-            return Results.BadRequest(new { error = "OrgDisplayName is required" });
+        // Feature 181 US5 (T048) — the server resolves the org's P-256 key itself (primary ES256 else HAIP
+        // co-key); the caller no longer supplies a key (closes the unvalidated-key TODO). Doubles as the
+        // backfill action for pre-existing orgs and re-issues with auditable history (FR-023d).
+        var displayName = string.IsNullOrWhiteSpace(request?.OrgDisplayName)
+            ? orgWalletAddress
+            : request!.OrgDisplayName!;
+        var createdBy = ResolvePlatformUserId(http.User);
 
-        // TODO(096-#15): Verify the submitted public key matches the org wallet's
-        // HaipIssuerCoKey via IHaipIssuerCoKeyService. Currently accepts any key.
-        byte[] orgPublicKey;
-        try
+        var result = await certService.EnrolInternalAsync(tenantId, orgWalletAddress, displayName, createdBy, ct);
+        if (!result.Success)
         {
-            orgPublicKey = Convert.FromBase64String(request.OrgPublicKeyBase64);
+            // FR-024 — typed ineligibility replaces the ASN.1 500.
+            return Results.Json(new { error = result.ErrorCode }, statusCode: StatusCodes.Status422UnprocessableEntity);
         }
-        catch (FormatException)
-        {
-            return Results.BadRequest(new { error = "OrgPublicKeyBase64 is not valid Base64" });
-        }
-
-        try
-        {
-            var enrolment = await trustProvider.IssueOrgCertAsync(
-                tenantId, orgWalletAddress, orgPublicKey, request.OrgDisplayName, ct);
-
-            return Results.Ok(new OrgCertEnrolmentResponse
-            {
-                OrgWalletAddress = enrolment.OrgWalletAddress,
-                SerialNumber = enrolment.SerialNumber,
-                SubjectDn = enrolment.SubjectDn,
-                SanUri = enrolment.SanUri,
-                NotBefore = enrolment.NotBefore,
-                NotAfter = enrolment.NotAfter,
-                CertificateBase64 = Convert.ToBase64String(enrolment.CertificateDer)
-            });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return Results.BadRequest(new { error = ex.Message });
-        }
+        return Results.Ok(ToCertView(result.Certificate!));
     }
 
     private static async Task<IResult> GetOrgCertChain(
@@ -653,11 +633,11 @@ public class TrustAnchorResponse
     public required string CertificateBase64 { get; init; }
 }
 
-/// <summary>Request to enrol an organisation certificate.</summary>
+/// <summary>Request to enrol an organisation certificate (Feature 181 US5 — key resolved server-side).</summary>
 public class EnrolOrgCertRequest
 {
-    public required string OrgPublicKeyBase64 { get; init; }
-    public required string OrgDisplayName { get; init; }
+    /// <summary>Optional display name for the certificate subject CN; defaults to the org wallet address.</summary>
+    public string? OrgDisplayName { get; init; }
 }
 
 /// <summary>Response for org cert enrolment.</summary>

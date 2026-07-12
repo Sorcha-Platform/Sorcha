@@ -26,6 +26,7 @@ public class OrgCertificateServiceTests
 
     private readonly InMemoryCertificateStore _store = new();
     private readonly Mock<IWalletServiceClient> _wallet = new();
+    private readonly Mock<ITrustProvider> _trustProvider = new();
     private readonly OrgCertificateService _service;
 
     // The org's real P-256 key, exposed so tests can build matching leaves + verify the CSR.
@@ -46,7 +47,8 @@ public class OrgCertificateServiceTests
                 return s.SignHash(digest);
             });
 
-        _service = new OrgCertificateService(_store, _wallet.Object, Mock.Of<ILogger<OrgCertificateService>>());
+        _service = new OrgCertificateService(
+            _store, _wallet.Object, _trustProvider.Object, Mock.Of<ILogger<OrgCertificateService>>());
     }
 
     // ---- eligibility + CSR ----

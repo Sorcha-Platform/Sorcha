@@ -21,6 +21,15 @@ public interface IOrgCertificateService
     /// <summary>Whether a P-256 key resolves for the org (X.509-rail eligibility, FR-024).</summary>
     Task<OrgCertEligibility> GetEligibilityAsync(string tenantId, string orgWalletAddress, CancellationToken ct = default);
 
+    /// <summary>
+    /// Feature 181 US5 — enrol (or re-issue / backfill) the org's internal tenant-root certificate bound to
+    /// its resolved P-256 key. Idempotent when an Active internal cert already binds the current key; a key
+    /// change (or absent cert) re-issues with auditable history (FR-022/FR-023). Returns a typed
+    /// <see cref="CertErrorCodes.KeyNotEligible"/> for non-P-256 orgs (FR-024) — never an unhandled error.
+    /// </summary>
+    Task<EnrolResult> EnrolInternalAsync(
+        string tenantId, string orgWalletAddress, string orgDisplayName, Guid createdBy, CancellationToken ct = default);
+
     /// <summary>Generate a CSR bound to the org's P-256 key (FR-018). Fails typed when ineligible.</summary>
     Task<CsrResult> GenerateCsrAsync(
         string tenantId, string orgWalletAddress, string? subjectDn, Guid createdBy, CancellationToken ct = default);
@@ -61,21 +70,64 @@ public sealed record CertImportResult(
 /// <summary>Result of resolving the active imported chain for issuance.</summary>
 public sealed record ImportedChainResult(bool Available, string? ErrorCode, IReadOnlyList<byte[]>? Chain);
 
+/// <summary>Result of an internal-cert enrol / re-issue / backfill.</summary>
+public sealed record EnrolResult(
+    bool Success, string? ErrorCode, OrgCertificateRecord? Certificate, bool Reissued);
+
 /// <inheritdoc />
 public sealed class OrgCertificateService : IOrgCertificateService
 {
     private readonly ICertificateStore _store;
     private readonly IWalletServiceClient _walletClient;
+    private readonly ITrustProvider _trustProvider;
     private readonly ILogger<OrgCertificateService> _logger;
 
     public OrgCertificateService(
         ICertificateStore store,
         IWalletServiceClient walletClient,
+        ITrustProvider trustProvider,
         ILogger<OrgCertificateService> logger)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
+        _trustProvider = trustProvider ?? throw new ArgumentNullException(nameof(trustProvider));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    /// <inheritdoc />
+    public async Task<EnrolResult> EnrolInternalAsync(
+        string tenantId, string orgWalletAddress, string orgDisplayName, Guid createdBy, CancellationToken ct = default)
+    {
+        var resolve = await _walletClient.ResolveIssuerCertKeyAsync(orgWalletAddress, ct);
+        if (!resolve.Eligible || resolve.PublicKeySpki is null)
+        {
+            OrgCertMetrics.RecordIssuance("internal", "failure", CertErrorCodes.KeyNotEligible);
+            return new EnrolResult(false, CertErrorCodes.KeyNotEligible, null, false);
+        }
+
+        // Idempotent when the current Active internal cert already binds the resolved key (no churn).
+        var existing = await _store.GetActiveAsync(tenantId, orgWalletAddress, OrgCertificateProvenance.Internal, ct);
+        if (existing is not null && existing.BoundPublicKeySpki.SequenceEqual(resolve.PublicKeySpki))
+        {
+            return new EnrolResult(true, null, existing, false);
+        }
+
+        try
+        {
+            await _trustProvider.ReissueInternalCertAsync(
+                tenantId, orgWalletAddress, resolve.PublicKeySpki, orgDisplayName,
+                MapKeySource(resolve.BoundKeySource) ?? OrgCertificateKeySource.HaipCoKey, createdBy, ct);
+        }
+        catch (CertKeyNotEligibleException)
+        {
+            OrgCertMetrics.RecordIssuance("internal", "failure", CertErrorCodes.KeyNotEligible);
+            return new EnrolResult(false, CertErrorCodes.KeyNotEligible, null, false);
+        }
+
+        // Re-read the freshly-persisted Active record to return the full OrgCertificateRecord shape.
+        var record = await _store.GetActiveAsync(tenantId, orgWalletAddress, OrgCertificateProvenance.Internal, ct);
+        OrgCertMetrics.RecordIssuance("internal", "success", existing is null ? "enrol" : "reissue");
+        return new EnrolResult(true, null, record, existing is not null);
     }
 
     /// <inheritdoc />

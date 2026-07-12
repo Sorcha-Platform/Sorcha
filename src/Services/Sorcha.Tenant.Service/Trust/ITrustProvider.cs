@@ -37,6 +37,22 @@ public interface ITrustProvider
         CancellationToken ct = default);
 
     /// <summary>
+    /// Feature 181 US5 (T048) — (re)issues the org's internal (tenant-root) certificate bound to
+    /// <paramref name="orgP256Spki"/>, superseding any existing Active internal certificate with auditable
+    /// history (FR-023d). Unlike <see cref="IssueOrgCertAsync"/> this is NOT idempotent — it always mints a
+    /// fresh certificate — so callers gate on their own "key unchanged" check to avoid churn. Provisions the
+    /// tenant trust anchor on first use.
+    /// </summary>
+    Task<OrgCertEnrolment> ReissueInternalCertAsync(
+        string tenantId,
+        string orgWalletAddress,
+        byte[] orgP256Spki,
+        string orgDisplayName,
+        Sorcha.Tenant.Service.Models.OrgCertificateKeySource boundKeySource,
+        Guid createdBy,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Returns the cert chain (leaf + root) for a given org wallet.
     /// </summary>
     Task<(byte[] OrgCertDer, byte[] RootCertDer)?> GetOrgCertChainAsync(

@@ -24,6 +24,9 @@ public partial class OrganizationService : IOrganizationService
     private readonly ITenantMembershipInboxWriter _membershipInbox;
     private readonly ILogger<OrganizationService> _logger;
     private readonly bool _allowAdminVerifiedUserCreation;
+    // Feature 181 US5 — optional so existing test constructions of OrganizationService keep compiling
+    // (the F143 optional-ctor-param pattern); production DI always supplies it.
+    private readonly Sorcha.Tenant.Service.Trust.IOrgCertificateService? _orgCertService;
 
     // Reserved subdomains that cannot be used
     private static readonly HashSet<string> ReservedSubdomains = new(StringComparer.OrdinalIgnoreCase)
@@ -42,7 +45,8 @@ public partial class OrganizationService : IOrganizationService
         IWalletServiceClient walletClient,
         ITenantMembershipInboxWriter membershipInbox,
         ILogger<OrganizationService> logger,
-        Microsoft.Extensions.Configuration.IConfiguration configuration)
+        Microsoft.Extensions.Configuration.IConfiguration configuration,
+        Sorcha.Tenant.Service.Trust.IOrgCertificateService? orgCertService = null)
     {
         _organizationRepository = organizationRepository ?? throw new ArgumentNullException(nameof(organizationRepository));
         _identityRepository = identityRepository ?? throw new ArgumentNullException(nameof(identityRepository));
@@ -50,6 +54,7 @@ public partial class OrganizationService : IOrganizationService
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
         _membershipInbox = membershipInbox ?? throw new ArgumentNullException(nameof(membershipInbox));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _orgCertService = orgCertService;
         // Same deployment-level gate as OrgProvisioningService: emailVerified bypass is off by
         // default (incl. production). See Platform:AllowAdminVerifiedUserCreation (spec 136 follow-up).
         _allowAdminVerifiedUserCreation =
@@ -112,6 +117,10 @@ public partial class OrganizationService : IOrganizationService
             _logger.LogInformation(
                 "Organization wallet provisioned: {OrganizationId} -> {WalletAddress}",
                 created.Id, walletInfo.Address);
+
+            // Feature 181 US5 (T049) — auto-enrol the org's internal X.509 certificate. Best-effort: a
+            // failure MUST NOT fail org creation (FR-022); the reconciliation service retries it.
+            await TryAutoEnrolCertificateAsync(created, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -122,6 +131,44 @@ public partial class OrganizationService : IOrganizationService
         }
 
         return OrganizationResponse.FromEntity(created);
+    }
+
+    /// <summary>
+    /// Feature 181 US5 (T049) — best-effort auto-enrol of an org's internal X.509 certificate immediately
+    /// after wallet provisioning. Never throws: an eligibility miss or transient failure is logged and left
+    /// to the reconciliation ride-along (FR-022). Uses the org id as the tenant (org-as-tenant model) and
+    /// the system principal (<see cref="Guid.Empty"/>) as the creator.
+    /// </summary>
+    private async Task TryAutoEnrolCertificateAsync(Organization org, CancellationToken ct)
+    {
+        if (_orgCertService is null || string.IsNullOrWhiteSpace(org.WalletAddress))
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await _orgCertService.EnrolInternalAsync(
+                org.Id.ToString(), org.WalletAddress!, org.Name, Guid.Empty, ct);
+            if (result.Success)
+            {
+                _logger.LogInformation(
+                    "Auto-enrolled internal certificate for organization {OrganizationId} ({Reissued})",
+                    org.Id, result.Reissued ? "reissued" : "new");
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Auto-enrol skipped for organization {OrganizationId}: {Reason} (X.509 rail not eligible)",
+                    org.Id, result.ErrorCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Auto-enrol failed for organization {OrganizationId}; reconciliation will retry.",
+                org.Id);
+        }
     }
 
     /// <inheritdoc />
