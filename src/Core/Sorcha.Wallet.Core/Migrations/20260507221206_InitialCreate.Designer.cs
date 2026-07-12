@@ -128,6 +128,55 @@ namespace Sorcha.Wallet.Core.Migrations
                     b.ToTable("CitizenHolderIndex", "wallet");
                 });
 
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.CitizenPresentationRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CredentialId")
+                        .HasColumnType("uuid");
+
+                    b.PrimitiveCollection<string>("DisclosedClaims")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("EntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Outcome")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("PlatformUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("PresentedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ReportedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("VerifierDid")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("VerifierLabel")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlatformUserId", "EntryId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_CitizenPresentationRecords_User_Entry");
+
+                    b.HasIndex("PlatformUserId", "PresentedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_CitizenPresentationRecords_User_PresentedAt");
+
+                    b.ToTable("CitizenPresentationRecords", "wallet");
+                });
+
             modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.CitizenWalletSyncCursor", b =>
                 {
                     b.Property<Guid>("Id")
