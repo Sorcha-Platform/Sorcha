@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Wallet-contracts consolidation CI gate. Fails when a canonical Wallet DTO
+# (WalletDto, CreateWalletRequest/Response, SignTransactionRequest/Response,
+# WalletAddressDto, AddressListResponse) is re-declared outside
+# Sorcha.Wallet.Contracts. Keeps the single-source-of-truth from regressing.
+#
+# See scripts/check-wallet-contracts-clean-break.ps1 and .wallet-contracts-allowlist.
+
+name: wallet-contracts-gate
+
+on:
+  pull_request:
+    paths:
+      - "src/**/*.cs"
+      - "tests/**/*.cs"
+      - "scripts/check-wallet-contracts-clean-break.ps1"
+      - ".wallet-contracts-allowlist"
+      - ".github/workflows/wallet-contracts-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  wallet-contracts-clean-break:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Wallet-contracts clean-break gate
+        shell: pwsh
+        run: ./scripts/check-wallet-contracts-clean-break.ps1

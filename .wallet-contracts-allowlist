@@ -1,0 +1,10 @@
+# Wallet-contracts clean-break allowlist (ratchet — may only shrink).
+#
+# Each line is a repo-relative path (forward slashes) that is permitted to declare one of
+# the canonical Wallet DTO names outside Sorcha.Wallet.Contracts. See
+# scripts/check-wallet-contracts-clean-break.ps1.
+#
+# Sorcha.Demo is an isolated sample app whose wallet shapes diverge from the canonical
+# contracts (bespoke WalletResponse / SignatureResponse). Its retirement is a documented
+# follow-up; until then its CreateWalletResponse copy is tolerated here.
+src/Apps/Sorcha.Demo/Services/Api/WalletApiClient.cs

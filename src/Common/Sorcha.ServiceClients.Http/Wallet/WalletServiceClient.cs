@@ -629,7 +629,7 @@ public class WalletServiceClient : IWalletServiceClient
                 "/api/v1/wallets", requestBody, JsonOptions, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var createResponse = await response.Content.ReadFromJsonAsync<CreateWalletResponse>(SorchaJson.Options, cancellationToken)
+            var createResponse = await response.Content.ReadFromJsonAsync<CreateWalletResult>(SorchaJson.Options, cancellationToken)
                 ?? throw new InvalidOperationException("Create wallet response was null");
             return createResponse.Wallet
                 ?? throw new InvalidOperationException("Create wallet response had no wallet data");
@@ -777,7 +777,10 @@ public class WalletServiceClient : IWalletServiceClient
     // Response DTOs
     // =========================================================================
 
-    private sealed class CreateWalletResponse
+    // Minimal client-internal envelope for deserialising the create-wallet response — deliberately
+    // captures only the nested wallet (as the internal WalletInfo). Named to avoid colliding with the
+    // canonical Sorcha.Wallet.Contracts.Models.CreateWalletResponse.
+    private sealed class CreateWalletResult
     {
         /// <summary>The wallet.</summary>
         [JsonPropertyName("wallet")]
