@@ -144,27 +144,104 @@ wallet-signed → register. The agent's `EmailVerifiedCheck` now reads a real bo
 
   Proves the value lands even though the field is on no page — the exact regression.
 
+## Decision notification — making the reject route visible
+
+A genuine reject route the applicant cannot see is a black hole. Today, when the AIAS agent
+rejects (submits action 2 `decision: rejected` → **terminal** route `nextActionIds: []`), the
+`ReactionDispatcher` fires `NotifyWorkflowCompletedAsync`, which sends **only an ephemeral
+SignalR `WorkflowCompleted` signal — no durable inbox entry and no reason**. The on-brand
+`verificationNotes` is disclosed to the citizen in the ledger but no surface reads it, and
+`/my-workflows` is a legacy redirect stub — so a rejected applicant sees nothing (exactly the
+reported experience). Approval, by contrast, is *already* durably notified: the claim action
+becoming available fires `BlueprintInboxWriter.WriteActionAvailableAsync`, and delivery fires
+`WalletInboxWriter.WriteCredentialReceivedAsync`.
+
+**Scope (confirmed): reject notification in this PR; a "My Applications" history page + email
+are a follow-up issue.** Approval needs no new writer — it is already surfaced; adding one
+would only double-notify.
+
+### Design — a blueprint-declared terminal-decision notice
+
+Reuse the F118 durable-inbox pattern. The reason is in hand only at route-selection time, so
+the hook is `ActionExecutionService`, guarded and fail-safe (an inbox-write failure must never
+affect sealing/routing — matches every existing inbox writer).
+
+1. **Route annotation `x-decision-notice`** (reusable, blueprint-declared — mirrors the
+   `credentialIssuanceConfig` shape already on this action):
+
+   ```jsonc
+   // aias-assured-identity.template.json, action 2, "rejected-terminal" route:
+   "x-decision-notice": {
+     "recipientParticipantId": "citizen",
+     "reasonField": "/verificationNotes",
+     "title": "AIAS could not assure your identity",
+     "severity": "Warning"
+   }
+   ```
+
+2. **`BlueprintInboxWriter.WriteDecisionAsync(...)`** (new method on the existing writer) —
+   reuses the same wallet → participant (`IParticipantServiceClient`) → `PlatformUserId`
+   (`IPlatformInboxClient`) resolution and deterministic-idempotency helper. Writes an inbox
+   entry: `Category: "Workflow"`, `Severity` from the annotation, `Title` from the annotation,
+   **`Summary` = the resolved reason string** (the on-brand `verificationNotes`),
+   `DetailHref: /api/instances/{instanceId}`, idempotency `SourceEventId` derived from
+   `(recipientWallet, instanceId, actionId, "decision-notice")`.
+
+3. **Hook** — in `ActionExecutionService`, after routes are resolved for a submitted action:
+   for any selected route carrying `x-decision-notice`, resolve the recipient participant's
+   wallet from the instance participants (the same participant→wallet resolution the credential
+   delivery already uses for `recipientParticipantId`), resolve the reason from the just-merged
+   payload at `reasonField`, and call `WriteDecisionAsync`. Wrapped in `try` / `LogError` /
+   swallow.
+
+The F118 bell drawer renders inbox entries generically, so **no client change is needed** for
+the reject entry (and its reason) to appear — durable, cross-session, cross-device. The
+existing ephemeral `WorkflowCompleted` signal is unchanged; this adds the durable record.
+
+### Notification tests
+
+- **`BlueprintInboxWriter` decision-write test** — resolves recipient, carries the reason as
+  the summary, and is idempotent on retry; short-circuits on unresolved wallet/user.
+- **`ActionExecutionService` routing test** — a terminal route carrying `x-decision-notice`
+  triggers exactly one decision write with the resolved reason; a route without the annotation
+  writes nothing; an inbox-write throw does not fail the submission.
+
 ## Deployment (n1)
 
-Both artifacts must ship together for the live gate to work:
+All artifacts must ship together for the live gate + reject visibility to work:
 
 1. **Web client image** — the `ClaimSourceSeeder` + renderer wiring build into `sorcha-ui-web`.
-2. **Live blueprint** — the seeder only fires if the *provisioned* AIAS blueprint schema
-   carries `x-claim-source`. The current live blueprint
-   (`aias-assured-identity-20260712152806`) predates this, so the AIAS demo blueprint must be
-   **re-provisioned** from the updated template (new blueprint id → update `state.json` +
-   `assure-id.config.json` + restart the local agent). No `down -v` / no re-genesis.
+2. **Blueprint Service image** — the `x-decision-notice` hook in `ActionExecutionService` +
+   `BlueprintInboxWriter.WriteDecisionAsync` build into the blueprint service image.
+3. **Live blueprint** — the seeder only fires if the *provisioned* AIAS blueprint schema
+   carries `x-claim-source`, and the reject notice only fires if the reject route carries
+   `x-decision-notice`. The current live blueprint (`aias-assured-identity-20260712152806`)
+   predates both, so the AIAS demo blueprint must be **re-provisioned** from the updated
+   template (new blueprint id → update `state.json` + `assure-id.config.json` + restart the
+   local agent). No `down -v` / no re-genesis.
+
+Code-only deploy per the n1-deploy skill: build the changed images → push/pull `:latest`
+(Docker Publish) or `docker save`/`scp`/`load` the two changed services → `up -d
+--force-recreate --no-deps <svc>`. Standing `up` must keep `-f docker-compose.smtp.yml`.
 
 ## Verification bar (SC)
 
-Drive the real web app on `https://n1.sorcha.dev/app` with Chrome DevTools: sign up a fresh
-citizen, verify email (ACS or admin-confirm), submit the AIAS application with a real UK
-postcode (e.g. `EH9 1JA`) + a photo. Confirm via the captured action-1 network request that
-**`emailVerified: true` is now on the wire**, the agent **approves**, and the
-`AssuredIdentityCredential` is delivered into the wallet.
+Drive the real web app on `https://n1.sorcha.dev/app` with Chrome DevTools.
 
-## Out of scope
+1. **Happy path** — sign up a fresh citizen, verify email (ACS or admin-confirm), submit the
+   AIAS application with a real UK postcode (e.g. `EH9 1JA`) + a photo. Confirm via the captured
+   action-1 network request that **`emailVerified: true` is now on the wire**, the agent
+   **approves**, and the `AssuredIdentityCredential` is delivered into the wallet.
+2. **Reject visibility** — drive (or, via the API, submit) an application that the gate rejects,
+   and confirm a **durable bell/inbox entry carrying the on-brand reason** appears for the
+   applicant (survives reload / re-login) — no longer a silent black hole.
 
-- Nested (non-top-level) `x-claim-source` pointers.
-- Reworking the agent/rules or the two already-working reject routes (postcode, profanity).
+## Out of scope (follow-up issue)
+
+- A citizen-facing **"My Applications" status/history page** (list of submitted applications with
+  status + reason). Tracked as a follow-up.
+- **Transactional email** on decision (F112).
+- Nested (non-top-level) `x-claim-source` pointers; generalising `x-decision-notice` recipient
+  resolution beyond an explicit `recipientParticipantId`.
+- The two already-working reject routes (postcode, profanity) and the agent/rules.
 - PWA parity (AIAS is a web-`/app` demo; the shared component picks up the fix regardless).
