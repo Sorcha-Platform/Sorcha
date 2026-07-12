@@ -76,6 +76,15 @@ public class TenantDbContext : DbContext
     /// <summary>Feature 181 US3 — CA anchors extracted from trusted-list snapshots.</summary>
     public DbSet<TrustedListAnchor> TrustedListAnchors => Set<TrustedListAnchor>();
 
+    /// <summary>Feature 181 US4 — persisted tenant self-signed root CAs (research R8).</summary>
+    public DbSet<TenantRootCaRecord> TenantRootCas => Set<TenantRootCaRecord>();
+
+    /// <summary>Feature 181 US4 — persisted org certificates (internal + imported).</summary>
+    public DbSet<OrgCertificateRecord> OrgCertificates => Set<OrgCertificateRecord>();
+
+    /// <summary>Feature 181 US4 — CSR audit records.</summary>
+    public DbSet<CsrRecord> CsrRecords => Set<CsrRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -178,6 +187,112 @@ public class TenantDbContext : DbContext
 
         // Configure TrustedListSnapshot + TrustedListAnchor (public schema) — Feature 181 US3.
         ConfigureTrustedList(modelBuilder);
+
+        // Configure certificate-persistence entities (public schema) — Feature 181 US4.
+        ConfigureOrgCertificates(modelBuilder);
+    }
+
+    /// <summary>Feature 181 US4 — persisted CA / org-certificate / CSR records (data-model §3, research R8).</summary>
+    private void ConfigureOrgCertificates(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
+
+        // List<byte[]> ⇄ jsonb array-of-base64. The InMemory provider can't store a List<byte[]> directly,
+        // so both providers use a value converter; Postgres additionally types the column jsonb.
+        var chainConverter = new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<List<byte[]>, string>(
+            v => System.Text.Json.JsonSerializer.Serialize(
+                v.Select(Convert.ToBase64String).ToList(), (System.Text.Json.JsonSerializerOptions?)null),
+            v => (System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new())
+                .Select(Convert.FromBase64String).ToList());
+        var chainComparer = new Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<List<byte[]>>(
+            (a, b) => a != null && b != null && a.Count == b.Count && a.Zip(b, (x, y) => x.SequenceEqual(y)).All(eq => eq),
+            v => v.Aggregate(0, (acc, bytes) => HashCode.Combine(acc, bytes.Aggregate(0, (h, x) => HashCode.Combine(h, x)))),
+            v => v.Select(b => (byte[])b.Clone()).ToList());
+
+        modelBuilder.Entity<TenantRootCaRecord>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("TenantRootCas");
+            else
+                entity.ToTable("TenantRootCas", "public");
+
+            entity.HasKey(e => e.TenantId);
+
+            entity.Property(e => e.TenantId).HasMaxLength(200);
+            entity.Property(e => e.CertificateDer).IsRequired();
+            entity.Property(e => e.PrivateKeyCiphertext).IsRequired();
+            entity.Property(e => e.PrivateKeyNonce).IsRequired();
+            entity.Property(e => e.SerialNumber).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.SubjectDn).IsRequired().HasMaxLength(512);
+            entity.Property(e => e.Algorithm).IsRequired().HasMaxLength(16);
+            entity.Property(e => e.NotBefore).IsRequired();
+            entity.Property(e => e.NotAfter).IsRequired();
+            entity.Property(e => e.CreatedAt).IsRequired();
+            entity.Property(e => e.CrlNumber).IsRequired();
+        });
+
+        modelBuilder.Entity<OrgCertificateRecord>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("OrgCertificates");
+            else
+                entity.ToTable("OrgCertificates", "public");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.TenantId).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.OrgWalletAddress).IsRequired().HasMaxLength(128);
+            entity.Property(e => e.Provenance).HasConversion<string>().HasMaxLength(16).IsRequired();
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(16).IsRequired();
+            entity.Property(e => e.CertificateDer).IsRequired();
+
+            var chainProp = entity.Property(e => e.ChainDer)
+                .HasConversion(chainConverter)
+                .Metadata;
+            chainProp.SetValueComparer(chainComparer);
+            if (!isInMemory)
+            {
+                entity.Property(e => e.ChainDer).HasColumnType("jsonb");
+            }
+
+            entity.Property(e => e.BoundPublicKeySpki).IsRequired();
+            entity.Property(e => e.BoundKeySource).HasConversion<string>().HasMaxLength(16).IsRequired();
+            entity.Property(e => e.SerialNumber).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.SubjectDn).IsRequired().HasMaxLength(512);
+            entity.Property(e => e.San).IsRequired().HasMaxLength(512);
+            entity.Property(e => e.NotBefore).IsRequired();
+            entity.Property(e => e.NotAfter).IsRequired();
+            entity.Property(e => e.CreatedAt).IsRequired();
+            entity.Property(e => e.CreatedByPlatformUserId).IsRequired();
+            entity.Property(e => e.RevocationReason).HasMaxLength(256);
+
+            entity.HasIndex(e => new { e.TenantId, e.OrgWalletAddress })
+                .HasDatabaseName("IX_OrgCertificates_Tenant_Org");
+            entity.HasIndex(e => new { e.TenantId, e.OrgWalletAddress, e.Provenance, e.Status })
+                .HasDatabaseName("IX_OrgCertificates_Tenant_Org_Provenance_Status");
+        });
+
+        modelBuilder.Entity<CsrRecord>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("CsrRecords");
+            else
+                entity.ToTable("CsrRecords", "public");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.TenantId).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.OrgWalletAddress).IsRequired().HasMaxLength(128);
+            entity.Property(e => e.CsrPem).IsRequired();
+            entity.Property(e => e.BoundPublicKeySpki).IsRequired();
+            entity.Property(e => e.BoundKeySource).HasConversion<string>().HasMaxLength(16).IsRequired();
+            entity.Property(e => e.CreatedAt).IsRequired();
+            entity.Property(e => e.CreatedByPlatformUserId).IsRequired();
+
+            entity.HasIndex(e => new { e.TenantId, e.OrgWalletAddress })
+                .HasDatabaseName("IX_CsrRecords_Tenant_Org");
+        });
     }
 
     /// <summary>Feature 181 US3 — imported ETSI TS 119 612 trusted-list snapshots + their CA anchors.</summary>

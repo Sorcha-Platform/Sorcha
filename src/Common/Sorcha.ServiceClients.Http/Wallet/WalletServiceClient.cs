@@ -201,6 +201,60 @@ public class WalletServiceClient : IWalletServiceClient
         }
     }
 
+    /// <inheritdoc />
+    public async Task<OrgIssuerCertKeyResolution> ResolveIssuerCertKeyAsync(
+        string walletAddress,
+        CancellationToken cancellationToken = default)
+    {
+        await SetAuthHeaderAsync(cancellationToken);
+
+        var response = await _httpClient.GetAsync(
+            $"/api/internal/wallets/{Uri.EscapeDataString(walletAddress)}/issuer-cert-key", cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var body = await response.Content.ReadFromJsonAsync<IssuerCertKeyResolutionResponse>(
+            SorchaJson.Options, cancellationToken)
+            ?? throw new InvalidOperationException("Issuer-cert-key resolve response was null");
+
+        return new OrgIssuerCertKeyResolution(
+            body.Eligible,
+            body.Reason,
+            body.BoundKeySource,
+            string.IsNullOrEmpty(body.PublicKeySpkiBase64) ? null : Convert.FromBase64String(body.PublicKeySpkiBase64));
+    }
+
+    /// <inheritdoc />
+    public async Task<byte[]> SignIssuerCertPreHashedAsync(
+        string walletAddress,
+        byte[] digest,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(digest);
+        await SetAuthHeaderAsync(cancellationToken);
+
+        var requestBody = new { digestBase64 = Convert.ToBase64String(digest) };
+        var response = await _httpClient.PostAsJsonAsync(
+            $"/api/internal/wallets/{Uri.EscapeDataString(walletAddress)}/issuer-cert-key/sign",
+            requestBody, JsonOptions, cancellationToken);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity)
+        {
+            throw new InvalidOperationException(
+                $"No P-256 certificate-issuing key resolvable for wallet {walletAddress} (CERT_KEY_NOT_ELIGIBLE).");
+        }
+        response.EnsureSuccessStatusCode();
+
+        var body = await response.Content.ReadFromJsonAsync<IssuerCertKeySignResponse>(
+            SorchaJson.Options, cancellationToken)
+            ?? throw new InvalidOperationException("Issuer-cert-key sign response was null");
+        return Convert.FromBase64String(body.SignatureBase64);
+    }
+
+    private sealed record IssuerCertKeyResolutionResponse(
+        bool Eligible, string? Reason, string? BoundKeySource, string? PublicKeySpkiBase64);
+
+    private sealed record IssuerCertKeySignResponse(string SignatureBase64);
+
     public async Task<bool> VerifySignatureAsync(
         string publicKey,
         string data,
@@ -338,6 +392,7 @@ public class WalletServiceClient : IWalletServiceClient
         string? issuerOrgName = null,
         string? tenantId = null,
         JsonElement? holderJwk = null,
+        string? trustAnchor = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -362,7 +417,8 @@ public class WalletServiceClient : IWalletServiceClient
                 skipRecipientStore,
                 issuerOrgName,
                 tenantId,
-                holderJwk
+                holderJwk,
+                trustAnchor
             };
 
             var response = await _httpClient.PostAsJsonAsync(

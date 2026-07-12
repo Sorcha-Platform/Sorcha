@@ -147,6 +147,10 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHolderBind
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHaipIssuerCoKeyService,
     Sorcha.Wallet.Service.Services.Implementation.HaipIssuerCoKeyService>();
 
+// Feature 181 US4: org P-256 cert-issuing key resolve + pre-hashed sign for the external X.509 rail.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IOrgIssuerCertKeyService,
+    Sorcha.Wallet.Service.Services.Implementation.OrgIssuerCertKeyService>();
+
 // Feature 114: Citizen wallet holder key (per-citizen identity for offline OID4VP wallets)
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHolderKeyService,
     Sorcha.Wallet.Service.Services.Implementation.HolderKeyService>();
@@ -357,6 +361,9 @@ app.MapCitizenStatusListEndpoints();
 // Feature 114: Citizen wallet PWA endpoints (device enrolment, sync, etc.)
 app.MapCitizenWalletEndpoints();
 app.MapCitizenStatusListInternalEndpoints();
+
+// Feature 181 US4: org P-256 cert-issuing key resolve + sign (Tenant Service consumes these).
+app.MapIssuerCertKeyInternalEndpoints();
 
 // Feature 124: Pending-application notice endpoints (Set / Get / Clear)
 app.MapPendingApplicationEndpoints();

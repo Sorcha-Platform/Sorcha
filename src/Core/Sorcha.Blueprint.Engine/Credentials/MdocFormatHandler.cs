@@ -143,8 +143,15 @@ public sealed class MdocFormatHandler : ICredentialFormatHandler
             throw new InvalidOperationException(
                 "mso_mdoc issuance requires an X.509 trust anchor (x509-tenant or x509-lotl); the register anchor has no verifiable issuer key for mdoc.");
         if (x5cChain is null || x5cChain.Count == 0)
+        {
+            // FR-020 — x509-lotl requires a valid imported external chain; the caller resolves it and must
+            // never fall back to the tenant root, so surface the specific typed code here.
+            var reason = config.TrustAnchor == TrustAnchor.X509Lotl
+                ? "CERT_EXTERNAL_ANCHOR_UNAVAILABLE: "
+                : string.Empty;
             throw new InvalidOperationException(
-                $"mso_mdoc issuance under the '{config.TrustAnchor}' anchor requires a certificate chain — failing closed.");
+                $"{reason}mso_mdoc issuance under the '{config.TrustAnchor}' anchor requires a certificate chain — failing closed.");
+        }
 
         var validFrom = DateTimeOffset.UtcNow;
         var validUntil = string.IsNullOrWhiteSpace(config.ExpiryDuration)

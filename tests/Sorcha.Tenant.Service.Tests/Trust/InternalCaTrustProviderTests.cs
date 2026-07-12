@@ -5,8 +5,11 @@ using System.Numerics;
 using System.Security.Cryptography;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Sorcha.Tenant.Service.Services;
+using Sorcha.Tenant.Service.Storage;
 using Sorcha.Tenant.Service.Trust;
 using Xunit;
 
@@ -31,9 +34,33 @@ public class InternalCaTrustProviderTests
             })
             .Build();
 
+        // ICertificateStore is scoped in production (EF DbContext); register the in-memory store as
+        // a SINGLETON here so state persists across the provider's per-operation scopes.
+        var services = new ServiceCollection();
+        services.AddSingleton<ICertificateStore, InMemoryCertificateStore>();
+        var scopeFactory = services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+
         _provider = new InternalCaTrustProvider(
             Mock.Of<ILogger<InternalCaTrustProvider>>(),
-            config);
+            config,
+            scopeFactory,
+            new RoundTripSecretProtectionProvider());
+    }
+
+    /// <summary>
+    /// Test double for <see cref="ISecretProtectionProvider"/> — round-trips the plaintext as the
+    /// ciphertext under a fixed key id so encrypt/decrypt of the root CA private key is exercised
+    /// without real crypto (the provider's own contract is covered elsewhere).
+    /// </summary>
+    private sealed class RoundTripSecretProtectionProvider : ISecretProtectionProvider
+    {
+        public string ProviderName => "TestRoundTrip";
+
+        public Task<(byte[] Ciphertext, string KeyId)> EncryptAsync(byte[] plaintext, CancellationToken ct = default)
+            => Task.FromResult((plaintext, "test-key"));
+
+        public Task<byte[]> DecryptAsync(byte[] ciphertext, string keyId, CancellationToken ct = default)
+            => Task.FromResult(ciphertext);
     }
 
     [Fact]

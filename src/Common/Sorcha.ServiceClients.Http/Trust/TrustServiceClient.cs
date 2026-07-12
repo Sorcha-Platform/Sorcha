@@ -142,5 +142,81 @@ public sealed class TrustServiceClient : IOrgCertChainProvider
         }
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<byte[]>?> GetImportedChainForAsync(
+        string tenantId,
+        string orgWalletAddress,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(orgWalletAddress);
+
+        // Not cached — issuance on the external anchor is a cold path and stale-imported-chain correctness
+        // (fail-closed on absent/expired/rotated) matters more than shaving a lookup.
+        var path = $"/api/v1/trust/tenants/{Uri.EscapeDataString(tenantId)}/orgs/{Uri.EscapeDataString(orgWalletAddress)}/imported-cert-chain";
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.GetAsync(path, ct);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex,
+                "Imported cert chain fetch failed for tenant {TenantId} org {OrgWallet}",
+                tenantId, orgWalletAddress);
+            return null;
+        }
+
+        try
+        {
+            if (response.StatusCode == HttpStatusCode.NotFound || !response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            JsonElement body;
+            try
+            {
+                body = await response.Content.ReadFromJsonAsync<JsonElement>(SorchaJson.Options, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Malformed imported cert chain response for tenant {TenantId} org {OrgWallet}",
+                    tenantId, orgWalletAddress);
+                return null;
+            }
+
+            if (!body.TryGetProperty("chainDerBase64", out var chainEl) || chainEl.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            var chain = new List<byte[]>();
+            foreach (var el in chainEl.EnumerateArray())
+            {
+                var b64 = el.GetString();
+                if (string.IsNullOrWhiteSpace(b64))
+                {
+                    return null;
+                }
+                try
+                {
+                    chain.Add(Convert.FromBase64String(b64));
+                }
+                catch (FormatException)
+                {
+                    return null;
+                }
+            }
+            return chain.Count > 0 ? chain : null;
+        }
+        finally
+        {
+            response.Dispose();
+        }
+    }
+
     private sealed record CacheEntry(OrgCertChain? Chain, DateTimeOffset ExpiresAt);
 }

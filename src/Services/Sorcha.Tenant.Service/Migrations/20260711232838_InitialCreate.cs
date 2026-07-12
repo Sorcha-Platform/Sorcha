@@ -39,6 +39,25 @@ namespace Sorcha.Tenant.Service.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "CsrRecords",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    TenantId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    OrgWalletAddress = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
+                    CsrPem = table.Column<string>(type: "text", nullable: false),
+                    BoundPublicKeySpki = table.Column<byte[]>(type: "bytea", nullable: false),
+                    BoundKeySource = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    CreatedByPlatformUserId = table.Column<Guid>(type: "uuid", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_CsrRecords", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "CustomDomainMappings",
                 schema: "public",
                 columns: table => new
@@ -118,6 +137,35 @@ namespace Sorcha.Tenant.Service.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Organizations", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "OrgCertificates",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    TenantId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    OrgWalletAddress = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
+                    Provenance = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    Status = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    CertificateDer = table.Column<byte[]>(type: "bytea", nullable: false),
+                    ChainDer = table.Column<string>(type: "jsonb", nullable: false),
+                    BoundPublicKeySpki = table.Column<byte[]>(type: "bytea", nullable: false),
+                    BoundKeySource = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    SerialNumber = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    SubjectDn = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: false),
+                    San = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: false),
+                    NotBefore = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    NotAfter = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    CreatedByPlatformUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    RevokedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    RevocationReason = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_OrgCertificates", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -248,29 +296,6 @@ namespace Sorcha.Tenant.Service.Migrations
                     table.PrimaryKey("PK_PlatformUsers", x => x.Id);
                 });
 
-            // Feature 150 — account-wide Email/SMS OTP enablement, 1:1 with PlatformUsers (PK = FK).
-            migrationBuilder.CreateTable(
-                name: "PlatformUserTwoFactors",
-                schema: "public",
-                columns: table => new
-                {
-                    PlatformUserId = table.Column<Guid>(type: "uuid", nullable: false),
-                    EmailOtpEnabled = table.Column<bool>(type: "boolean", nullable: false),
-                    SmsOtpEnabled = table.Column<bool>(type: "boolean", nullable: false),
-                    UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_PlatformUserTwoFactors", x => x.PlatformUserId);
-                    table.ForeignKey(
-                        name: "FK_PlatformUserTwoFactors_PlatformUsers_PlatformUserId",
-                        column: x => x.PlatformUserId,
-                        principalSchema: "public",
-                        principalTable: "PlatformUsers",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
             migrationBuilder.CreateTable(
                 name: "PushSubscriptions",
                 schema: "public",
@@ -322,6 +347,28 @@ namespace Sorcha.Tenant.Service.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "TenantRootCas",
+                schema: "public",
+                columns: table => new
+                {
+                    TenantId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    CertificateDer = table.Column<byte[]>(type: "bytea", nullable: false),
+                    PrivateKeyCiphertext = table.Column<byte[]>(type: "bytea", nullable: false),
+                    PrivateKeyNonce = table.Column<byte[]>(type: "bytea", nullable: false),
+                    SerialNumber = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    SubjectDn = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: false),
+                    Algorithm = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    NotBefore = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    NotAfter = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    CrlNumber = table.Column<int>(type: "integer", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TenantRootCas", x => x.TenantId);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "TotpConfigurations",
                 schema: "public",
                 columns: table => new
@@ -339,6 +386,32 @@ namespace Sorcha.Tenant.Service.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_TotpConfigurations", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "TrustedListSnapshots",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    TrustListId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    SequenceNumber = table.Column<long>(type: "bigint", nullable: false),
+                    SchemeTerritory = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: true),
+                    SchemeOperatorName = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
+                    ListIssueDateTime = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    NextUpdate = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    SignerCertSubject = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: false),
+                    SignerCertThumbprint = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
+                    ImportedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    ImportedByPlatformUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    SourceUrl = table.Column<string>(type: "character varying(2048)", maxLength: 2048, nullable: true),
+                    RawDocumentSha256 = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    Status = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    ExtractionSummary = table.Column<string>(type: "text", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TrustedListSnapshots", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -752,9 +825,7 @@ namespace Sorcha.Tenant.Service.Migrations
                 columns: table => new
                 {
                     PlatformUserId = table.Column<Guid>(type: "uuid", nullable: false),
-                    // Feature 125 — per-context persona scoping. Guid.Empty
-                    // (all-zero) represents the Personal context.
-                    ContextOrgId = table.Column<Guid>(type: "uuid", nullable: false, defaultValue: Guid.Empty),
+                    ContextOrgId = table.Column<Guid>(type: "uuid", nullable: false),
                     CiphertextBlob = table.Column<byte[]>(type: "bytea", nullable: false),
                     Nonce = table.Column<byte[]>(type: "bytea", maxLength: 24, nullable: false),
                     WrappedKeyRef = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
@@ -770,6 +841,55 @@ namespace Sorcha.Tenant.Service.Migrations
                         column: x => x.PlatformUserId,
                         principalSchema: "public",
                         principalTable: "PlatformUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "PlatformUserTwoFactors",
+                schema: "public",
+                columns: table => new
+                {
+                    PlatformUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    EmailOtpEnabled = table.Column<bool>(type: "boolean", nullable: false),
+                    SmsOtpEnabled = table.Column<bool>(type: "boolean", nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PlatformUserTwoFactors", x => x.PlatformUserId);
+                    table.ForeignKey(
+                        name: "FK_PlatformUserTwoFactors_PlatformUsers_PlatformUserId",
+                        column: x => x.PlatformUserId,
+                        principalSchema: "public",
+                        principalTable: "PlatformUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "TrustedListAnchors",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    SnapshotId = table.Column<Guid>(type: "uuid", nullable: false),
+                    CertificateDer = table.Column<byte[]>(type: "bytea", nullable: false),
+                    SubjectDn = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: false),
+                    Thumbprint = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
+                    ServiceTypeIdentifier = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
+                    ServiceStatus = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
+                    NotBefore = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    NotAfter = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TrustedListAnchors", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_TrustedListAnchors_TrustedListSnapshots_SnapshotId",
+                        column: x => x.SnapshotId,
+                        principalSchema: "public",
+                        principalTable: "TrustedListSnapshots",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
@@ -824,6 +944,12 @@ namespace Sorcha.Tenant.Service.Migrations
                 table: "AuthChallengeTokens",
                 column: "TokenHash",
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_CsrRecords_Tenant_Org",
+                schema: "public",
+                table: "CsrRecords",
+                columns: new[] { "TenantId", "OrgWalletAddress" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_CustomDomainMappings_Domain",
@@ -944,6 +1070,18 @@ namespace Sorcha.Tenant.Service.Migrations
                 table: "Organizations",
                 column: "Subdomain",
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OrgCertificates_Tenant_Org",
+                schema: "public",
+                table: "OrgCertificates",
+                columns: new[] { "TenantId", "OrgWalletAddress" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OrgCertificates_Tenant_Org_Provenance_Status",
+                schema: "public",
+                table: "OrgCertificates",
+                columns: new[] { "TenantId", "OrgWalletAddress", "Provenance", "Status" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_OrgDidDocuments_FederatedDid",
@@ -1167,6 +1305,24 @@ namespace Sorcha.Tenant.Service.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_TrustedListAnchors_SnapshotId",
+                schema: "public",
+                table: "TrustedListAnchors",
+                column: "SnapshotId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrustedListSnapshots_TrustListId",
+                schema: "public",
+                table: "TrustedListSnapshots",
+                column: "TrustListId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrustedListSnapshots_TrustListId_Status",
+                schema: "public",
+                table: "TrustedListSnapshots",
+                columns: new[] { "TrustListId", "Status" });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_UserIdentities_OrganizationId",
                 schema: "public",
                 table: "UserIdentities",
@@ -1177,6 +1333,12 @@ namespace Sorcha.Tenant.Service.Migrations
                 schema: "public",
                 table: "UserIdentities",
                 column: "Status");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserIdentity_Email",
+                schema: "public",
+                table: "UserIdentities",
+                column: "Email");
 
             migrationBuilder.CreateIndex(
                 name: "IX_UserIdentity_PlatformUserId",
@@ -1190,12 +1352,6 @@ namespace Sorcha.Tenant.Service.Migrations
                 table: "UserIdentities",
                 columns: new[] { "OrganizationId", "Email" },
                 unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_UserIdentity_Email",
-                schema: "public",
-                table: "UserIdentities",
-                column: "Email");
 
             migrationBuilder.CreateIndex(
                 name: "UQ_UserPreferences_UserId",
@@ -1215,98 +1371,21 @@ namespace Sorcha.Tenant.Service.Migrations
                 schema: "public",
                 table: "WalletLinkChallenges",
                 columns: new[] { "ParticipantId", "Status" });
-
-            // Feature 181 US3 — imported ETSI TS 119 612 trusted-list snapshots + their CA anchors.
-            migrationBuilder.CreateTable(
-                name: "TrustedListSnapshots",
-                schema: "public",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    TrustListId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    SequenceNumber = table.Column<long>(type: "bigint", nullable: false),
-                    SchemeTerritory = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: true),
-                    SchemeOperatorName = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
-                    ListIssueDateTime = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    NextUpdate = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    SignerCertSubject = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: false),
-                    SignerCertThumbprint = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
-                    ImportedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    ImportedByPlatformUserId = table.Column<Guid>(type: "uuid", nullable: false),
-                    SourceUrl = table.Column<string>(type: "character varying(2048)", maxLength: 2048, nullable: true),
-                    RawDocumentSha256 = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
-                    Status = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
-                    ExtractionSummary = table.Column<string>(type: "text", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_TrustedListSnapshots", x => x.Id);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "TrustedListAnchors",
-                schema: "public",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    SnapshotId = table.Column<Guid>(type: "uuid", nullable: false),
-                    CertificateDer = table.Column<byte[]>(type: "bytea", nullable: false),
-                    SubjectDn = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: false),
-                    Thumbprint = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
-                    ServiceTypeIdentifier = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
-                    ServiceStatus = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
-                    NotBefore = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    NotAfter = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_TrustedListAnchors", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_TrustedListAnchors_TrustedListSnapshots_SnapshotId",
-                        column: x => x.SnapshotId,
-                        principalSchema: "public",
-                        principalTable: "TrustedListSnapshots",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_TrustedListAnchors_SnapshotId",
-                schema: "public",
-                table: "TrustedListAnchors",
-                column: "SnapshotId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_TrustedListSnapshots_TrustListId",
-                schema: "public",
-                table: "TrustedListSnapshots",
-                column: "TrustListId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_TrustedListSnapshots_TrustListId_Status",
-                schema: "public",
-                table: "TrustedListSnapshots",
-                columns: new[] { "TrustListId", "Status" });
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            // Feature 181 US3 — trusted-list snapshots (child anchors first).
-            migrationBuilder.DropTable(
-                name: "TrustedListAnchors",
-                schema: "public");
-
-            migrationBuilder.DropTable(
-                name: "TrustedListSnapshots",
-                schema: "public");
-
             migrationBuilder.DropTable(
                 name: "AuditLogEntries",
                 schema: "public");
 
             migrationBuilder.DropTable(
                 name: "AuthChallengeTokens",
+                schema: "public");
+
+            migrationBuilder.DropTable(
+                name: "CsrRecords",
                 schema: "public");
 
             migrationBuilder.DropTable(
@@ -1335,6 +1414,10 @@ namespace Sorcha.Tenant.Service.Migrations
 
             migrationBuilder.DropTable(
                 name: "OrganizationRegisterSubscriptions",
+                schema: "public");
+
+            migrationBuilder.DropTable(
+                name: "OrgCertificates",
                 schema: "public");
 
             migrationBuilder.DropTable(
@@ -1398,7 +1481,15 @@ namespace Sorcha.Tenant.Service.Migrations
                 schema: "public");
 
             migrationBuilder.DropTable(
+                name: "TenantRootCas",
+                schema: "public");
+
+            migrationBuilder.DropTable(
                 name: "TotpConfigurations",
+                schema: "public");
+
+            migrationBuilder.DropTable(
+                name: "TrustedListAnchors",
                 schema: "public");
 
             migrationBuilder.DropTable(
@@ -1419,6 +1510,10 @@ namespace Sorcha.Tenant.Service.Migrations
 
             migrationBuilder.DropTable(
                 name: "Organizations",
+                schema: "public");
+
+            migrationBuilder.DropTable(
+                name: "TrustedListSnapshots",
                 schema: "public");
 
             migrationBuilder.DropTable(

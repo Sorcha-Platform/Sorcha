@@ -126,6 +126,49 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.ToTable("AuthChallengeTokens", "public");
                 });
 
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.CsrRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BoundKeySource")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<byte[]>("BoundPublicKeySpki")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByPlatformUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CsrPem")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("OrgWalletAddress")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "OrgWalletAddress")
+                        .HasDatabaseName("IX_CsrRecords_Tenant_Org");
+
+                    b.ToTable("CsrRecords", "public");
+                });
+
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.CustomDomainMapping", b =>
                 {
                     b.Property<Guid>("Id")
@@ -427,6 +470,94 @@ namespace Sorcha.Tenant.Service.Migrations
                         .HasFilter("\"Status\" = 'Active'");
 
                     b.ToTable("LinkedWalletAddresses", "public");
+                });
+
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.OrgCertificateRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BoundKeySource")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<byte[]>("BoundPublicKeySpki")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<byte[]>("CertificateDer")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("ChainDer")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByPlatformUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("NotAfter")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("NotBefore")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OrgWalletAddress")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Provenance")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("RevocationReason")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("San")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("SerialNumber")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("SubjectDn")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "OrgWalletAddress")
+                        .HasDatabaseName("IX_OrgCertificates_Tenant_Org");
+
+                    b.HasIndex("TenantId", "OrgWalletAddress", "Provenance", "Status")
+                        .HasDatabaseName("IX_OrgCertificates_Tenant_Org_Provenance_Status");
+
+                    b.ToTable("OrgCertificates", "public");
                 });
 
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.OrgDidDocument", b =>
@@ -1415,6 +1546,56 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.HasKey("Key");
 
                     b.ToTable("SystemConfigurations", "public");
+                });
+
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.TenantRootCaRecord", b =>
+                {
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Algorithm")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<byte[]>("CertificateDer")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CrlNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("NotAfter")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("NotBefore")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("PrivateKeyCiphertext")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<byte[]>("PrivateKeyNonce")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("SerialNumber")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("SubjectDn")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("TenantRootCas", "public");
                 });
 
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.TotpConfiguration", b =>

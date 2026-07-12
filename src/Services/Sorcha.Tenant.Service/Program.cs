@@ -151,6 +151,22 @@ builder.Services.AddScoped<Sorcha.Tenant.Service.Trust.TrustedListImportService>
 // Fetch-once client for trusted-list URL import (operator-attested; admin-only endpoint).
 builder.Services.AddHttpClient("trustlist-fetch", c => c.Timeout = TimeSpan.FromSeconds(30));
 
+// Feature 181 US4 — durable certificate persistence (tenant roots, org certs, CSR audit) so issued-
+// credential x5c chains survive restart (research R8). Warn-tier (trust config; the write-through
+// InternalCaTrustProvider caches it) — NOT on the fail-fast audited list.
+{
+    var storageLog = builder.Services.GetStorageRegistrationLog();
+    builder.Services.AddScoped<Sorcha.Tenant.Service.Storage.ICertificateStore,
+        Sorcha.Tenant.Service.Storage.EfCertificateStore>();
+    storageLog.RegisterPersistent(
+        typeof(Sorcha.Tenant.Service.Storage.ICertificateStore).FullName!,
+        typeof(Sorcha.Tenant.Service.Storage.EfCertificateStore).FullName!,
+        backend: "postgres");
+}
+// Feature 181 US4 — org-certificate lifecycle (eligibility, CSR, import validation, chain resolution).
+builder.Services.AddScoped<Sorcha.Tenant.Service.Trust.IOrgCertificateService,
+    Sorcha.Tenant.Service.Trust.OrgCertificateService>();
+
 // Feature 092: Consumer persona — orchestrator + typed HttpClient to Wallet Service
 builder.Services.AddScoped<Sorcha.Tenant.Service.Services.IPersonaService,
     Sorcha.Tenant.Service.Services.PersonaService>();

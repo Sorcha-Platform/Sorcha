@@ -2302,6 +2302,13 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                 issuerOrgName: issuerOrgName,
                 tenantId: issuerTenantId,
                 holderJwk: holderJwk,
+                // Feature 181 US4 — carry the credential's X.509 trust anchor so the Wallet Service attaches
+                // the imported external chain (x509-lotl, fail-closed). register/x509-tenant pass null to
+                // preserve the exact pre-181 chain-attach behaviour (FR-021): tenant chain when a tenant id
+                // is present, DID-only otherwise.
+                trustAnchor: config.TrustAnchor == Sorcha.Blueprint.Models.Credentials.TrustAnchor.X509Lotl
+                    ? "x509-lotl"
+                    : null,
                 cancellationToken: cancellationToken);
 
             return result;
