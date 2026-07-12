@@ -142,6 +142,9 @@ public class OrgWalletReconciliationService : BackgroundService
                 _logger.LogInformation(
                     "Reconciliation: provisioned wallet for organization {OrgId} ({Subdomain}) -> {WalletAddress}",
                     org.Id, org.Subdomain, walletInfo.Address);
+
+                // Feature 181 US5 (T049) — auto-enrol ride-along. Best-effort: never fails reconciliation.
+                await TryAutoEnrolAsync(scope, org, walletInfo.Address, cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -167,6 +170,34 @@ public class OrgWalletReconciliationService : BackgroundService
                         org.Id, org.Subdomain, newRetryCount, MaxRetries, nextBackoff);
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Feature 181 US5 (T049) — best-effort auto-enrol of the org's internal certificate after a
+    /// reconciliation-provisioned wallet. Never throws (FR-022). Resolves <c>IOrgCertificateService</c> from
+    /// the current scope; a null resolution (not registered in a test host) is a no-op.
+    /// </summary>
+    private async Task TryAutoEnrolAsync(IServiceScope scope, Models.Organization org, string walletAddress, CancellationToken ct)
+    {
+        var certService = scope.ServiceProvider.GetService<Trust.IOrgCertificateService>();
+        if (certService is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await certService.EnrolInternalAsync(org.Id.ToString(), walletAddress, org.Name, Guid.Empty, ct);
+            if (!result.Success)
+            {
+                _logger.LogWarning(
+                    "Reconciliation auto-enrol skipped for organization {OrgId}: {Reason}", org.Id, result.ErrorCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Reconciliation auto-enrol failed for organization {OrgId}", org.Id);
         }
     }
 }

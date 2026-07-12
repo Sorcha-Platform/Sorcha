@@ -1,0 +1,121 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Services.Admin
+@inject IOrgCertificateAdminService CertService
+
+@*
+    Feature 181 US5 (T050) — external-certificate import dialog for the org-admin
+    certificates panel. Takes a leaf PEM plus optional chain PEMs and calls the
+    import endpoint. Per notification pattern #12, dialog errors render inline as a
+    MudAlert inside DialogContent (dialogs never call IInlineFeedback, and toast
+    surfaces are retired); on success the dialog closes with the stored certificate
+    and the parent page surfaces the feedback via IInlineFeedback.
+*@
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.UploadFile" Class="mr-2" />
+            Import external certificate
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+            Paste the externally-issued leaf certificate (PEM or base64 DER) that is bound to this org's
+            issuing key, plus any intermediates and/or the root — one certificate per box, any order. The
+            server validates key match, chain consistency, validity, and signing suitability before storing.
+        </MudText>
+
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-2" data-testid="cert-import-error">
+                Import failed@(_errorCode is null ? "" : $" ({_errorCode})")@(string.IsNullOrWhiteSpace(_errorMessage) ? "." : $": {_errorMessage}")
+            </MudAlert>
+        }
+
+        <MudTextField @bind-Value="_leafPem" Label="Leaf certificate (PEM)" Variant="Variant.Outlined"
+                      Lines="6" AutoGrow="true" data-testid="cert-import-leaf"
+                      HelperText="Begins with -----BEGIN CERTIFICATE----- (or base64 DER)." Class="mb-3" />
+
+        @for (var i = 0; i < _chainPems.Count; i++)
+        {
+            var index = i;
+            <div class="d-flex align-start gap-2 mb-2">
+                <MudTextField @bind-Value="_chainPems[index]" Label="@($"Chain certificate {index + 1} (optional)")"
+                              Variant="Variant.Outlined" Lines="4" AutoGrow="true"
+                              data-testid="cert-import-chain" Class="flex-grow-1" />
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Error"
+                               OnClick="@(() => RemoveChain(index))" aria-label="Remove chain certificate" />
+            </div>
+        }
+
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="AddChain"
+                   data-testid="cert-import-add-chain">Add chain certificate</MudButton>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync"
+                   Disabled="@(_busy || string.IsNullOrWhiteSpace(_leafPem))" data-testid="cert-import-submit">
+            @(_busy ? "Importing…" : "Import")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter, EditorRequired] public string TenantId { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string OrgWalletAddress { get; set; } = string.Empty;
+
+    private string _leafPem = string.Empty;
+    private readonly List<string> _chainPems = [];
+    private bool _busy;
+    private string? _error;
+    private string? _errorCode;
+    private string? _errorMessage;
+
+    private void AddChain() => _chainPems.Add(string.Empty);
+
+    private void RemoveChain(int index)
+    {
+        if (index >= 0 && index < _chainPems.Count)
+        {
+            _chainPems.RemoveAt(index);
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_leafPem)) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var chain = _chainPems
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Select(p => p.Trim())
+                .ToList();
+
+            var outcome = await CertService.ImportAsync(
+                TenantId, OrgWalletAddress, _leafPem.Trim(), chain.Count == 0 ? null : chain);
+
+            if (outcome.Success)
+            {
+                MudDialog.Close(DialogResult.Ok(outcome.Certificate));
+            }
+            else
+            {
+                _error = outcome.ErrorCode;
+                _errorCode = outcome.ErrorCode;
+                _errorMessage = outcome.ErrorMessage;
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

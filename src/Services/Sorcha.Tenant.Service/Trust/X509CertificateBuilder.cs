@@ -72,9 +72,20 @@ public static class X509CertificateBuilder
         using var rootEcdsa = ECDsa.Create();
         rootEcdsa.ImportECPrivateKey(rootPrivateKey, out _);
 
-        // Import the org's public key
+        // Import the org's public key. Feature 181 US5 (T047) — the X.509 rail is P-256-only, so a
+        // non-EC (e.g. Ed25519) SPKI throws "ASN1 corrupted data" here. Surface a TYPED exception the
+        // enrol path maps to CERT_KEY_NOT_ELIGIBLE (FR-024) rather than leaking a raw CryptographicException
+        // as a 500. Callers should gate on eligibility first; this is defence-in-depth.
         using var orgEcdsa = ECDsa.Create();
-        orgEcdsa.ImportSubjectPublicKeyInfo(orgPublicKey, out _);
+        try
+        {
+            orgEcdsa.ImportSubjectPublicKeyInfo(orgPublicKey, out _);
+        }
+        catch (CryptographicException ex)
+        {
+            throw new CertKeyNotEligibleException(
+                "Organisation public key is not a P-256 key; the X.509 rail requires P-256 (EUDI).", ex);
+        }
 
         var request = new CertificateRequest(
             new X500DistinguishedName(subjectDn),

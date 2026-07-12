@@ -27,3 +27,15 @@ public static class CertErrorCodes
     /// <summary>Issuance requested the external anchor but no valid imported cert exists (FR-020).</summary>
     public const string ExternalAnchorUnavailable = "CERT_EXTERNAL_ANCHOR_UNAVAILABLE";
 }
+
+/// <summary>
+/// Feature 181 US5 (T047) — thrown when a certificate operation is attempted for an organisation whose
+/// issuing key is not P-256 (not eligible for the X.509 rail). Replaces the raw
+/// <see cref="System.Security.Cryptography.CryptographicException"/> ("ASN1 corrupted data") 500 with a
+/// typed failure the enrol path maps to <see cref="CertErrorCodes.KeyNotEligible"/> (FR-024).
+/// </summary>
+public sealed class CertKeyNotEligibleException : Exception
+{
+    public CertKeyNotEligibleException(string message) : base(message) { }
+    public CertKeyNotEligibleException(string message, Exception inner) : base(message, inner) { }
+}

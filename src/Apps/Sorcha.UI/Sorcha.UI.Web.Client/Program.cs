@@ -113,6 +113,13 @@ builder.Services.AddHttpClient<Sorcha.UI.Core.Services.Admin.ITrustedListAdminSe
     client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
 });
 
+// Feature 181 US5 (T050) — org-admin X.509 certificate lifecycle management.
+builder.Services.AddHttpClient<Sorcha.UI.Core.Services.Admin.IOrgCertificateAdminService,
+    Sorcha.UI.Core.Services.Admin.OrgCertificateAdminService>(client =>
+{
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+});
+
 // Feature 128 — shared has-any-device probe. Drives the PairingNagBanner
 // on every MainLayout render for signed-in citizens with zero paired
 // devices (FR-024). The same probe is also registered in the PWA
