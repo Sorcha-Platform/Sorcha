@@ -7,8 +7,9 @@ standards:
   - HAIP 1.0
   - W3C Verifiable Credentials Data Model 2.0
   - IETF Token Status List 2024 (RFC 9972)
+  - ETSI TS 119 612 (Trusted Lists)
   - ML-DSA (FIPS 204)
-last_updated: 2026-05-04
+last_updated: 2026-07-12
 ---
 
 # Sorcha and the OpenID4VC / HAIP Wallet Ecosystem
@@ -45,13 +46,20 @@ The credential format is **SD-JWT VC** with selective disclosure encoded as JSON
 
 ## The Verifier Path — OpenID4VP
 
-The HAIP Service also runs the OpenID4VP verifier endpoint. The supported flow is the **cross-device same-origin profile** that HAIP mandates: a verifier presents a QR encoding an `openid4vp://` URL; the holder wallet on a separate device authenticates, gathers consent, and POSTs a signed presentation back to the verifier.
+The HAIP Service also runs the OpenID4VP verifier endpoint. The supported flow is the **cross-device same-origin profile** that HAIP mandates: a verifier presents a QR encoding an `openid4vp://` URL; the holder wallet on a separate device authenticates the verifier, gathers consent, and POSTs a signed presentation back to the verifier.
+
+Sorcha tracks the **OpenID4VP 1.0 final** wire shape (Feature 181):
+
+- **DCQL query dialect.** The authorization request carries a `dcql_query` (query id, `format`, `claims`, `claim_sets`, and `credential_sets` for alternatives). The legacy Presentation Exchange `presentation_definition` / `input_descriptors` shape is retired; the shared model lives in `src/Common/Sorcha.Verifier.Engine/Dcql`. A single request can ask for multiple credentials, and `credential_sets` expresses "present any one of these" alternatives.
+- **Signed request objects + `x509_san_dns` client_id.** The verifier signs its request object (ES256) with an X.509 verifier certificate, embeds the `x5c` chain, and identifies itself with a prefixed `x509_san_dns:{host}` `client_id` whose host equals the certificate's SAN dNSName. Verifier config: `Haip:VerifierCertificate` (+ optional `Haip:VerifierCertificatePassword`) and `Haip:PublicHost`; dev falls back to a self-signed certificate, prod/staging fail fast when unconfigured.
+- **Holder-side verifier authentication.** Before showing consent the wallet runs `RequestObjectValidator` (`src/Common/Sorcha.Verifier.Engine/RequestObjectValidator.cs`, BouncyCastle, WASM-safe): ES256 JWS verify over the x5c leaf, leaf SAN equals the `client_id` host, then a chain-walk to a trusted-list anchor. The result is a three-state `VerifierAuthState` — `TrustedListVerified`, `AuthenticUntrusted`, or `Unverifiable`. A tampered signature or SAN mismatch is a hard refusal; absent trust anchors never block a valid signed request.
 
 | Phase | What happens |
 |---|---|
-| Authorization request | Verifier builds the OpenID4VP request with a presentation definition (which disclosures it needs) and a nonce |
-| QR handover | The request is encoded as a QR; the holder wallet scans or deep-links from another device |
-| Presentation | The holder wallet returns a Verifiable Presentation containing the SD-JWT VC and a Key-Bound JWT signing the nonce + verifier audience |
+| Authorization request | Verifier builds the OpenID4VP request with a `dcql_query` (which credentials and disclosures it needs) and a nonce, and signs the request object with its X.509 verifier certificate |
+| QR handover | The request is encoded as a QR; the holder wallet scans or deep-links from another device and fetches the signed request object |
+| Verifier authentication | The wallet validates the request-object signature, the SAN-to-`client_id` binding, and the anchor chain into a `VerifierAuthState` shown on the consent sheet |
+| Presentation | The holder wallet returns a Verifiable Presentation containing the SD-JWT VC(s) and a Key-Bound JWT signing the nonce + the full prefixed `client_id` audience |
 | Verification | Verifier checks the issuer signature, the holder key-binding, the nonce match, and the IETF status list — every check is independent |
 
 The verifier reference UI lives in `src/Apps/Sorcha.Verifier.Web` (Blazor Server). It is an integration-test surface and a demo — production verifiers in customer deployments are expected to embed the verification logic into their own application.
@@ -90,11 +98,17 @@ Issuer keys must be resolvable by every verifier. Sorcha uses two key resolution
 
 The system register genesis (spec 099) defines how the very first set of trust anchors is seeded — the public ceremony, the validator key import, the publication of the genesis docket. A production deployment cannot bypass this; trust must be anchored in something a third party can audit.
 
+For interop with parties that only speak PKI, Sorcha runs a second, X.509 trust rail (Feature 181):
+
+- **Inbound (US3).** An operator imports a signed **ETSI TS 119 612** trusted-list snapshot through the Tenant Service (`POST /api/v1/trust/trustlists/import`); verifying services resolve CA anchors from it for the `x509-lotl` / `trustlist` trust source. Live List-of-Trusted-Lists refresh is deferred — the snapshot is imported, not polled.
+- **Outbound (US4/US5).** An org generates a CSR bound to its P-256 issuing key, imports an externally-issued certificate + chain (`/api/v1/trust/tenants/{tenantId}/orgs/{orgWalletAddress}/{csr,certificates/import}`), and issues credentials with `CredentialIssuanceConfig.TrustAnchor = x509-lotl` so the `x5c` chains to the external root. Issuance fails closed (`CERT_EXTERNAL_ANCHOR_UNAVAILABLE`) when the external chain is unavailable. A non-P-256 org key is a typed `CERT_KEY_NOT_ELIGIBLE` refusal, not a runtime error.
+
 ## Where the Implementation Stops
 
 Honest gaps named explicitly:
 
-- **mdoc / ISO 18013-5** — planned, not implemented. `STANDARDS.md` rows the mdoc credential format as `planned`. The codebase has no mdoc encoder or verifier today.
+- **mdoc / ISO 18013-5** — `partial` (Feature 135). `mso_mdoc` issuance and online OpenID4VP verification are implemented (ES256/P-256 only); proximity transport and MAC-based device auth are deferred. `STANDARDS.md` carries the authoritative status.
+- **Live trusted-list refresh** — the ETSI TS 119 612 rail imports a signed snapshot but does not yet poll a live List of Trusted Lists; XAdES and LOTL pivot-chain validation are deferred.
 - **mTLS at internal hops** — not yet enforced. The constitutional principle is in place; the wire enforcement is on the roadmap.
 - **DID method registry** — `did:sorcha:org:` and `did:sorcha:holder:` are implemented but not registered with the W3C DID method registry. Inter-platform DID resolution requires bilateral agreement today.
 

@@ -2612,12 +2612,61 @@ Operator-facing management of external trust-anchor snapshots consulted by the `
 
 Snapshot `id` + `freshness` are copied into `TrustEvidence` on every decision that used the list. A live LOTL feed is a future provider behind the same `ITrustListProvider` seam.
 
+> **Superseded by Feature 181 US3.** The placeholder `PUT /trustlists/{id}` above is replaced (clean break) by the ETSI TS 119 612 import surface documented under "EUDI Conformance API (Feature 181)" below — `POST /trustlists/import`, `GET /trustlists`, `GET /trustlists/{id}`, `DELETE /trustlists/{id}`, and the service-tier `GET /trustlists/{id}/anchors`.
+
 ### Trust models (request bodies)
 
 - **`CredentialRequirement`** carries `format` (`sd-jwt-vc` | `mso_mdoc`) + `trustPolicy` (replaced the flat `acceptedIssuers`). **`CredentialIssuanceConfig`** carries `format` + `trustAnchor` (`register` | `x509-tenant` | `x509-lotl`).
 - **`TrustPolicy`** = `{ sources: [{ kind, confersAssurance?, allowedIssuers?, trustListId? }], combinator: anyOf|allOf, minAssuranceLevel: Low|Substantial|High }`.
 
 mdoc is ES256/P-256-only at the format layer (additive — Sorcha-native + PQC signing unchanged). Full design: `specs/135-eudi-credential-format-trust/` and the `sorcha-architecture` skill.
+
+---
+
+## EUDI Conformance API (Feature 181)
+
+Moves every presentation surface onto the OpenID4VP 1.0 **final** dialect (DCQL, `dc+sd-jwt`) and adds the external X.509 trust rail. All six user stories are shipped. Full design: `specs/181-eudi-conformance/` and the `sorcha-architecture` skill.
+
+### Presentation dialect (US1/US2)
+
+- **DCQL wire shape.** Authorization requests carry a `dcql_query` (Presentation Exchange `presentation_definition` / `input_descriptors` retired and CI-gated). The `vp_token` response is the object-keyed envelope `{ "<queryId>": ["<presentation>"] }`.
+- **`dc+sd-jwt`.** SD-JWT VC issuance emits the final `dc+sd-jwt` media type; verification dual-accepts stored `vc+sd-jwt`.
+- **Multi-credential / alternatives.** A single request may declare multiple credential queries and `credential_sets` "present any one of" alternatives. Blueprint authors express alternatives via `CredentialRequirement.AnyOfGroup`. Verdict at `direct_post`: every required set has one fully-verified option; unknown envelope key → `DCQL_UNKNOWN_QUERY_ID`.
+
+### Trusted-list snapshot admin (Tenant Service, US3) — `/api/v1/trust/trustlists`
+
+Operators import a signed ETSI TS 119 612 trusted list; Blueprint + HAIP resolve CA anchors from it for the `x509-lotl` / `trustlist` trust source. Admin routes are `RequireAdministrator` + `RequirePlatformAudience`, `RateLimitPolicies.Strict`, Scalar-documented.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/v1/trust/trustlists/import` | Import a snapshot — `multipart` upload or HTTPS fetch-once. Enveloped XMLDSig core verify + TS 119 612 parse + granted CA/QC anchor extraction. Failures: `TRUSTLIST_MALFORMED` / `_SIGNATURE_INVALID` / `_SEQUENCE_REGRESSION` |
+| GET | `/api/v1/trust/trustlists` | List loaded snapshots + freshness |
+| GET | `/api/v1/trust/trustlists/{trustListId}` | Detail — anchors + extracted-vs-skipped summary |
+| DELETE | `/api/v1/trust/trustlists/{trustListId}` | Remove all versions |
+| GET | `/api/v1/trust/trustlists/{trustListId}/anchors` | **Service-tier** — DER roots + freshness for verifying services; 404 `TRUSTLIST_UNAVAILABLE` |
+
+Snapshot identity flows into `TrustEvidence.TrustListId` as `{trustListId}#{sequenceNumber}`. Freshness gating: warn mode (default) vouches with a stale-flagged trail; strict mode (`Trust:TrustListStrictFreshness`) fails closed `TRUSTLIST_STALE`.
+
+### Org certificate lifecycle (Tenant Service, US4/US5) — `/api/v1/trust/tenants/{tenantId}/orgs/{orgWalletAddress}`
+
+An org generates a CSR bound to its P-256 issuing key, imports an externally-issued cert+chain, and issues credentials that chain to the external root. Admin routes are `RequireAdministrator` + `RequirePlatformAudience` (the chain reader is public).
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `.../certificates` | List internal + imported certs with status/validity/chain summary + `eligibility` (`eligible`, `reason`, `boundKeySource` ∈ `Primary`\|`HaipCoKey`) |
+| POST | `.../csr` | Generate a CSR bound to the server-resolved org P-256 key (optional `subjectDn`) → `csrPem`, `boundKeySource`, `boundPublicKeyThumbprint` |
+| POST | `.../certificates/import` | Import leaf `certificatePem` + `chainPem[]` (with/without root); supersedes the prior Active imported cert |
+| DELETE | `.../certificates/{certificateId}` | Retire an imported cert (Status→Superseded); idempotent. Internal certs use `.../revoke` (CRL) |
+| GET | `.../imported-cert-chain` | **Public** — imported chain for x5c resolution |
+| POST | `.../enrol` | (existing route, changed semantics) Issue/re-issue the internal tenant-root cert; server resolves the key (no caller-supplied key); doubles as backfill for pre-existing orgs |
+
+Typed failures (`422`, problem+json): `CERT_KEY_NOT_ELIGIBLE` (non-P-256 org key — replaces the prior ASN.1 500), `CERT_KEY_MISMATCH`, `CERT_CHAIN_INVALID`, `CERT_EXPIRED`, `CERT_UNSUITABLE`, `CERT_EXTERNAL_ANCHOR_UNAVAILABLE`. The org P-256 key is its primary key when ES256, else a derived HAIP co-key under `sorcha:haip-issuer-signing`. Auto-enrol runs best-effort after wallet provisioning (org creation + reconciliation ride-along) — it is a server-side hook, not an API. Wallet Service internal seam: `GET/POST /api/internal/wallets/{address}/issuer-cert-key[/sign]` (`IOrgIssuerCertKeyService`). `CredentialIssuanceConfig.TrustAnchor = x509-lotl` attaches the imported external chain and fails closed `CERT_EXTERNAL_ANCHOR_UNAVAILABLE` when unavailable. Metric `sorcha_org_cert_issuance_total{provenance,outcome,reason}`.
+
+### Verifier authentication (HAIP Service, US6)
+
+The HAIP verifier signs its OpenID4VP request object (ES256) with an X.509 **verifier certificate**, embeds the `x5c` chain, and identifies itself with a prefixed **`x509_san_dns:{host}`** `client_id` whose host equals the certificate SAN dNSName. Config: `Haip:VerifierCertificate` (PFX path or base64) + optional `Haip:VerifierCertificatePassword` + `Haip:PublicHost`; dev falls back to a self-signed certificate, prod/staging fail fast when unconfigured.
+
+The wallet authenticates the verifier before consent via `RequestObjectValidator` (`Sorcha.Verifier.Engine`, BouncyCastle / WASM-safe): ES256 JWS verify over the x5c leaf → leaf SAN equals the `client_id` host → chain-walk to a trusted-list anchor → three-state `VerifierAuthState` (`TrustedListVerified` / `AuthenticUntrusted` / `Unverifiable`). Tampered signature / SAN mismatch is a hard refusal (`REQUEST_OBJECT_INVALID` / `REQUEST_HOST_MISMATCH`); absent anchors never block. KB-JWT `aud` is the full prefixed `client_id`. Metric `sorcha_request_auth_total{state}` on `Sorcha.Trust`. Note: the anchor-fetch → `TrustedListVerified` path awaits a public anchors read endpoint (US3's is service-tier), so v1 renders valid signed requests as `AuthenticUntrusted`.
 
 ---
 

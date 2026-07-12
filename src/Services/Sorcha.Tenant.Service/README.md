@@ -599,6 +599,58 @@ over any `ValidateOnly` provider for the same postcode.
 
 ---
 
+## Trust: Org Certificates & Trusted Lists (Feature 181)
+
+The Tenant Service hosts the platform's X.509 trust rail under `/api/v1/trust`, alongside the
+DID-native register rail. Two capabilities landed with the EUDI conformance feature (US3–US5):
+an ETSI TS 119 612 **trusted-list** import surface, and per-org **certificate lifecycle** (CSR,
+external cert import, internal-cert enrol/re-issue). Admin routes require `RequireAdministrator`
+**and** `RequirePlatformAudience`; the imported-chain reader is public for x5c resolution.
+
+Implementation: `Trust/OrgCertificateService.cs`, `Trust/X509CertificateBuilder.cs`,
+`Trust/TrustedListImportService.cs`, `Endpoints/TrustEndpoints.cs`, storage in `Storage/CertificateStore.cs`
++ `Storage/TrustedListSnapshotStore.cs` (Postgres, `public` schema).
+
+### Trusted-list snapshots (US3) — `/api/v1/trust/trustlists`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/trustlists/import` | Import a signed ETSI TS 119 612 list (`multipart` or HTTPS fetch-once). Enveloped XMLDSig core verify + parse + granted CA/QC anchor extraction. Newest per `trustListId` is authoritative; import supersedes the prior Active version |
+| GET | `/trustlists` | List loaded snapshots + freshness |
+| GET | `/trustlists/{trustListId}` | Detail — anchors + extracted-vs-skipped summary |
+| DELETE | `/trustlists/{trustListId}` | Remove all versions |
+| GET | `/trustlists/{trustListId}/anchors` | **Service-tier** — DER roots + freshness for Blueprint/HAIP; 404 `TRUSTLIST_UNAVAILABLE` |
+
+Typed import failures: `TRUSTLIST_MALFORMED` / `TRUSTLIST_SIGNATURE_INVALID` / `TRUSTLIST_SEQUENCE_REGRESSION`.
+Snapshot identity flows into `TrustEvidence.TrustListId` as `{trustListId}#{sequenceNumber}`. Freshness is
+warn-by-default; `Trust:TrustListStrictFreshness` fails closed `TRUSTLIST_STALE`. Metrics on the
+`Sorcha.Trust` meter: `sorcha_trustlist_stale_evaluation_total`, `sorcha_trustlist_snapshot_info`. Live
+LOTL / XAdES / pivot-chain refresh is deferred.
+
+### Org certificates (US4/US5) — `/api/v1/trust/tenants/{tenantId}/orgs/{orgWalletAddress}`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `.../certificates` | List internal + imported certs + `eligibility` (`eligible`, `reason`, `boundKeySource` ∈ `Primary`\|`HaipCoKey`) |
+| POST | `.../csr` | CSR bound to the server-resolved org P-256 key (optional `subjectDn`) |
+| POST | `.../certificates/import` | Import leaf `certificatePem` + `chainPem[]`; supersedes the prior Active imported cert |
+| DELETE | `.../certificates/{certificateId}` | Retire an imported cert (Status→Superseded); idempotent |
+| GET | `.../imported-cert-chain` | **Public** — imported chain for x5c resolution |
+| POST | `.../enrol` | Issue/re-issue the internal tenant-root cert; server resolves the key (no caller-supplied key); backfill for pre-existing orgs |
+
+Typed failures (`422`, problem+json, `Trust/CertErrorCodes.cs`): `CERT_KEY_NOT_ELIGIBLE` (non-P-256 org
+key — replaces the prior ASN.1 500), `CERT_KEY_MISMATCH`, `CERT_CHAIN_INVALID`, `CERT_EXPIRED`,
+`CERT_UNSUITABLE`, `CERT_EXTERNAL_ANCHOR_UNAVAILABLE`. The org's P-256 key is its primary key when ES256,
+else a derived HAIP co-key under `sorcha:haip-issuer-signing`; CSR/cert signing is remote pre-hashed ES256
+via the Wallet Service seam `IOrgIssuerCertKeyService`, so the private key never leaves custody. **Auto-enrol**
+runs best-effort after wallet provisioning (org creation + `OrgWalletReconciliationService` ride-along) — a
+server-side hook, not an API; failure never fails org creation. CA keys are AES-256-GCM encrypted at rest
+(`TenantRootCaRecord`); `InternalCaTrustProvider` is a write-through cache over `ICertificateStore`. Admin UI:
+the certificates panel in `OrgSettings.razor` (`IOrgCertificateAdminService`). Metric
+`sorcha_org_cert_issuance_total{provenance,outcome,reason}`.
+
+---
+
 ## Development
 
 ### Project Structure
