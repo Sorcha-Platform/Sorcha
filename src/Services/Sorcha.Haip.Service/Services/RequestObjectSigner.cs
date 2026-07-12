@@ -2,7 +2,6 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Buffers.Text;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -15,29 +14,26 @@ namespace Sorcha.Haip.Service.Services;
 /// unsigned JSON bodies.
 /// </summary>
 /// <remarks>
-/// Supports ES256 (P-256) and EdDSA (Ed25519). The verifier's public key is
-/// embedded as a <c>jwk</c> header so wallets can self-resolve the signing key
-/// without a DID or x5c lookup. When spec 096 (x.509 Org Trust) ships this can
-/// be replaced by an <c>x5c</c> chain without changing the request shape.
+/// Feature 181 US6 (T053 / R12) — signs with the verifier's X.509 certificate (ES256) and embeds its
+/// <c>x5c</c> chain so a wallet can authenticate the verifier: verify the JWS against the leaf key, check
+/// the leaf SAN dNSName against the <c>x509_san_dns:{host}</c> client_id, and chain to a trusted anchor.
+/// The previous embedded-<c>jwk</c> (self-certifying) header is retired.
 /// </remarks>
 public sealed class RequestObjectSigner
 {
-    private readonly string? _signingKeyBase64;
-    private readonly string _algorithm;
-    private readonly ILogger<RequestObjectSigner> _logger;
+    private readonly VerifierCertificate _certificate;
 
-    public RequestObjectSigner(IConfiguration configuration, ILogger<RequestObjectSigner> logger)
+    public RequestObjectSigner(VerifierCertificate certificate)
     {
-        _signingKeyBase64 = configuration.GetValue<string>("Haip:IssuerSigningKey");
-        var configuredAlg = configuration.GetValue<string>("Haip:IssuerSigningAlgorithm") ?? "ES256";
-        _algorithm = NormaliseAlgorithm(configuredAlg);
-        _logger = logger;
+        _certificate = certificate ?? throw new ArgumentNullException(nameof(certificate));
     }
 
+    /// <summary>The verifier's prefixed client identifier (<c>x509_san_dns:{PublicHost}</c>).</summary>
+    public string ClientId => _certificate.ClientId;
+
     /// <summary>
-    /// Signs <paramref name="payload"/> with the configured issuer key and
-    /// returns a compact-serialised JWT ready to be served as
-    /// <c>application/oauth-authz-req+jwt</c>.
+    /// Signs <paramref name="payload"/> with the verifier certificate key and returns a compact-serialised
+    /// JWT (ES256, <c>x5c</c> header) ready to be served as <c>application/oauth-authz-req+jwt</c>.
     /// </summary>
     public string Sign(Dictionary<string, object> payload)
     {
@@ -45,88 +41,15 @@ public sealed class RequestObjectSigner
 
         var header = new Dictionary<string, object>
         {
-            ["alg"] = _algorithm,
+            ["alg"] = "ES256",
             ["typ"] = "oauth-authz-req+jwt",
+            ["x5c"] = _certificate.X5cChain.Select(Convert.ToBase64String).ToList(),
         };
 
-        if (_algorithm == "ES256")
-        {
-            using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-            if (!string.IsNullOrWhiteSpace(_signingKeyBase64))
-            {
-                ecdsa.ImportECPrivateKey(Convert.FromBase64String(_signingKeyBase64), out _);
-            }
-            else
-            {
-                _logger.LogWarning(
-                    "Request Object signing using ephemeral ES256 key — set Haip:IssuerSigningKey for production");
-            }
-
-            var parameters = ecdsa.ExportParameters(includePrivateParameters: false);
-            header["jwk"] = new Dictionary<string, string>
-            {
-                ["kty"] = "EC",
-                ["crv"] = "P-256",
-                ["x"] = Base64Url.EncodeToString(parameters.Q.X!),
-                ["y"] = Base64Url.EncodeToString(parameters.Q.Y!),
-            };
-
-            var (signingInput, h, p) = BuildSigningInput(header, payload);
-            var signature = ecdsa.SignData(
-                signingInput, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
-            return $"{h}.{p}.{Base64Url.EncodeToString(signature)}";
-        }
-
-        // EdDSA / Ed25519
-        byte[] edPrivateKey;
-        byte[] edPublicKey;
-        if (!string.IsNullOrWhiteSpace(_signingKeyBase64))
-        {
-            var seedOrPrivate = Convert.FromBase64String(_signingKeyBase64);
-            if (seedOrPrivate.Length == 32)
-            {
-                var kp = Sodium.PublicKeyAuth.GenerateKeyPair(seedOrPrivate);
-                edPrivateKey = kp.PrivateKey;
-                edPublicKey = kp.PublicKey;
-            }
-            else if (seedOrPrivate.Length == 64)
-            {
-                edPrivateKey = seedOrPrivate;
-                edPublicKey = Sodium.PublicKeyAuth.ExtractEd25519PublicKeyFromEd25519SecretKey(seedOrPrivate);
-            }
-            else
-            {
-                throw new InvalidOperationException(
-                    $"Haip:IssuerSigningKey for EdDSA must be a 32-byte seed or 64-byte secret key (got {seedOrPrivate.Length})");
-            }
-        }
-        else
-        {
-            _logger.LogWarning(
-                "Request Object signing using ephemeral EdDSA key — set Haip:IssuerSigningKey for production");
-            var kp = Sodium.PublicKeyAuth.GenerateKeyPair();
-            edPrivateKey = kp.PrivateKey;
-            edPublicKey = kp.PublicKey;
-        }
-
-        header["jwk"] = new Dictionary<string, string>
-        {
-            ["kty"] = "OKP",
-            ["crv"] = "Ed25519",
-            ["x"] = Base64Url.EncodeToString(edPublicKey),
-        };
-
-        var (signingInputEd, hEd, pEd) = BuildSigningInput(header, payload);
-        var signatureEd = Sodium.PublicKeyAuth.SignDetached(signingInputEd, edPrivateKey);
-        return $"{hEd}.{pEd}.{Base64Url.EncodeToString(signatureEd)}";
+        var (signingInput, h, p) = BuildSigningInput(header, payload);
+        var signature = _certificate.SignData(signingInput);
+        return $"{h}.{p}.{Base64Url.EncodeToString(signature)}";
     }
-
-    private static string NormaliseAlgorithm(string raw) => raw.ToUpperInvariant() switch
-    {
-        "ES256" or "P-256" or "P256" => "ES256",
-        "EDDSA" or "ED25519" => "EdDSA",
-        _ => "ES256",
-    };
 
     private static (byte[] SigningInput, string HeaderB64, string PayloadB64) BuildSigningInput(
         Dictionary<string, object> header,
