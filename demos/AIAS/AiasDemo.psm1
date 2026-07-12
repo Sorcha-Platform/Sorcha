@@ -80,9 +80,12 @@ function Test-AiasRegisterReadable {
     Return the blueprint ids currently published on a register (or @()).
 #>
 function Get-AiasPublishedBlueprintIds {
-    param([string]$Api, [string]$RegisterId)
+    # The register-scoped published-blueprints endpoint requires auth (401 anonymous), so callers MUST
+    # pass an authenticated session's headers. Omitting them makes the request 401 and the catch swallow
+    # it to @(), which surfaces as a false 'blueprint-not-published' / NotReady even when it IS published.
+    param([string]$Api, [string]$RegisterId, [hashtable]$Headers)
     try {
-        $r = Invoke-SorchaApi -Method GET -Uri "$Api/registers/$RegisterId/blueprints/published"
+        $r = Invoke-SorchaApi -Method GET -Uri "$Api/registers/$RegisterId/blueprints/published" -Headers $Headers
         return @($r.blueprints | ForEach-Object { $_.blueprintId })
     } catch { return @() }
 }
@@ -152,7 +155,7 @@ function New-AiasOrg {
     }
     $blueprintPublished = $false
     if ($existing -and $registerReadable -and ($existing.PSObject.Properties.Name -contains 'blueprintId')) {
-        $blueprintPublished = (@(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $existing.registerId) -contains $existing.blueprintId)
+        $blueprintPublished = (@(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $existing.registerId -Headers $sysAdmin.Headers) -contains $existing.blueprintId)
     }
     $action = Resolve-AuthorityAction `
         -HasOrg ([bool]($existing -and $existing.organizationId)) `
@@ -291,16 +294,18 @@ function Publish-AiasBlueprint {
 
     Write-WtBanner "AIAS demo — publish blueprint (issuerName='$script:AiasName')"
 
+    # Connect the verification-admin up front so the idempotency probe below can authenticate the
+    # register-scoped published-blueprints read (it 401s anonymously). Needed for the publish call anyway.
+    $vAdmin = Connect-SorchaUser -TenantUrl $api -Email $vAdminEmail -Password $pw -OrganizationId $state.organizationId
+
     # idempotency: already published + recorded?
     if (-not $Force -and $state.blueprintId) {
-        $pub = @(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $state.registerId)
+        $pub = @(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $state.registerId -Headers $vAdmin.Headers)
         if ($pub -contains $state.blueprintId) {
             Write-WtSuccess "blueprint '$($state.blueprintId)' already published — reuse"
             return $state
         }
     }
-
-    $vAdmin = Connect-SorchaUser -TenantUrl $api -Email $vAdminEmail -Password $pw -OrganizationId $state.organizationId
 
     Write-WtStep "render template -> {{issuerName}} = '$script:AiasName'"
     $templateRaw = Get-Content -LiteralPath (Join-Path $script:DemoRoot "blueprints/aias-assured-identity.template.json") -Raw
@@ -322,7 +327,7 @@ function Publish-AiasBlueprint {
     $sealDeadline = (Get-Date).AddSeconds(90)
     $bpSealed = $false
     while ((Get-Date) -lt $sealDeadline) {
-        if (@(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $state.registerId) -contains $bpId) { $bpSealed = $true; break }
+        if (@(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $state.registerId -Headers $vAdmin.Headers) -contains $bpId) { $bpSealed = $true; break }
         Start-Sleep -Seconds 3
     }
     if ($bpSealed) { Write-WtSuccess "blueprint sealed + visible in register's published list" }
@@ -537,7 +542,7 @@ function Get-AiasDemoStatus {
     } catch { }
     if (-not $registerReadable) { $reasons += 'register-not-readable' }
     if ($registerReadable -and $state.blueprintId) {
-        $blueprintPublished = (@(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $state.registerId) -contains $state.blueprintId)
+        $blueprintPublished = (@(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $state.registerId -Headers $admin.Headers) -contains $state.blueprintId)
     }
     if (-not $blueprintPublished) { $reasons += 'blueprint-not-published' }
 
