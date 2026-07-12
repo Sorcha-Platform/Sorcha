@@ -427,6 +427,7 @@ Documentation debt compounds quickly. A 2-minute doc update now prevents 30 minu
 ### DON'T
 - Use Swagger/Swashbuckle (use Scalar)
 - Create duplicate service clients
+- Re-declare Wallet HTTP DTOs — the canonical `WalletDto` / `CreateWallet*` / `SignTransaction*` / `WalletAddressDto` / `AddressListResponse` live only in `Sorcha.Wallet.Contracts` (CI-gated by `wallet-contracts-gate`)
 - Use `JsonNode` with JsonSchema.Net (use `JsonElement`)
 - Commit secrets or credentials
 - Skip documentation updates when changing code (see Documentation Sync Policy above)
