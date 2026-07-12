@@ -85,6 +85,23 @@ public class NotificationService : INotificationService
     }
 
     /// <inheritdoc />
+    public Task NotifyDecisionAsync(
+        string recipientWalletAddress,
+        string instanceId,
+        string actionId,
+        string title,
+        string reason,
+        string severity = "Warning",
+        CancellationToken ct = default)
+    {
+        // Feature 183 (US2) — durable-only notice (no thin SignalR signal): the reject-visibility
+        // requirement is the persistent bell/inbox entry carrying the reason. The writer resolves
+        // wallet -> participant -> platform user and is itself fail-safe.
+        return _inboxWriter.WriteDecisionAsync(
+            recipientWalletAddress, instanceId, actionId, title, reason, severity, ct);
+    }
+
+    /// <inheritdoc />
     public async Task NotifyActionRejectedAsync(
         string instanceId, string? walletAddress, string? actionId = null, CancellationToken ct = default)
     {

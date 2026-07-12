@@ -39,6 +39,28 @@ public interface INotificationService
     Task NotifyWorkflowCompletedAsync(string instanceId, IEnumerable<string> participantWalletAddresses, CancellationToken ct = default);
 
     /// <summary>
+    /// Write a durable "decision" inbox notice to a participant (Feature 183). Backs the
+    /// <c>x-decision-notice</c> route annotation — the on-brand reason is carried so a rejected
+    /// applicant can see WHY, durably, across sessions and devices. Best-effort: a write failure
+    /// is swallowed and never affects sealing or routing.
+    /// </summary>
+    /// <param name="recipientWalletAddress">The recipient participant's wallet address.</param>
+    /// <param name="instanceId">The workflow instance ID.</param>
+    /// <param name="actionId">The action that produced the decision.</param>
+    /// <param name="title">Notification title.</param>
+    /// <param name="reason">On-brand reason surfaced as the notification summary.</param>
+    /// <param name="severity">Inbox severity (defaults to <c>Warning</c>).</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task NotifyDecisionAsync(
+        string recipientWalletAddress,
+        string instanceId,
+        string actionId,
+        string title,
+        string reason,
+        string severity = "Warning",
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Signal encryption progress to the submitting wallet.
     /// </summary>
     /// <param name="walletAddress">The submitting wallet address</param>

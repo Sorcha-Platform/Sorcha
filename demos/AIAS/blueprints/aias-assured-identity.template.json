@@ -217,7 +217,13 @@
             "nextActionIds": [],
             "isDefault": true,
             "condition": { "==": [{ "var": "decision" }, "rejected"] },
-            "description": "Rejected by AIAS — workflow ends with the on-brand reason surfaced to the applicant and no credential issued"
+            "description": "Rejected by AIAS — workflow ends with the on-brand reason surfaced to the applicant and no credential issued",
+            "x-decision-notice": {
+              "recipientParticipantId": "citizen",
+              "reasonField": "/verificationNotes",
+              "title": "AIAS could not assure your identity",
+              "severity": "Warning"
+            }
           }
         ]
       },
