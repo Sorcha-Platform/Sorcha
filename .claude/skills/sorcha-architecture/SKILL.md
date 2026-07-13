@@ -1356,11 +1356,11 @@ Two coupled capabilities, shipped across three merged PRs (US1 #806, US2 #807, U
 
 ### mdoc (mso_mdoc) — ISO 18013-5 on the BCL
 
-`Sorcha.Cryptography/Mdoc` (BCL only — `System.Formats.Cbor` + `System.Security.Cryptography.Cose`, pinned 10.0.8):
+`Sorcha.Mdoc` (extracted from `Sorcha.Cryptography` in F185 so the WASM wallet can use it; BCL + BouncyCastle — `System.Formats.Cbor` + `System.Security.Cryptography.Cose`, pinned 10.0.8):
 - `MdocCbor` — tag-24 (`#6.24(bstr .cbor X)`) wrap/unwrap **verbatim** (digests/signatures are over the tagged outer bytes; capture via `CborReader.ReadEncodedValue()`, splice via `CborWriter.WriteEncodedValue`). `CoseX5Chain` — x5chain on COSE label 33 (RFC 9360). Models: `IssuerSigned(Item(Bytes))`, `MobileSecurityObject`(+`MsoStatus`/`ValidityInfo`), `DeviceResponse`/`Document`/`DeviceSigned`/`DeviceAuth`. `MdocCodec` — encode/decode + the OpenID4VP 1.x hash-based `SessionTranscript` + `DeviceAuthentication` builders.
 - `MdocService.Verify` — issuer COSE_Sign1 over the MSO (key from x5chain leaf), value-digest integrity (fixed-time), holder binding over the reconstructed `DeviceAuthentication`, validity window.
 - `MdocIssuer.IssueIssuerSigned` — builds + signs an mdoc credential (ES256/P-256 only; throws otherwise).
-- **MAC-based device auth (`deviceMac`) is NOT verified** in v1 (BCL has no `COSE_Mac0`; OpenID4VP uses `deviceSignature`).
+- ~~**MAC-based device auth (`deviceMac`) is NOT verified** in v1 (BCL has no `COSE_Mac0`; OpenID4VP uses `deviceSignature`).~~ **Superseded by Feature 185**, which added `CoseMac0` (the BCL still has no such type — we hand-rolled it) and now verifies `deviceMac`. Online OpenID4VP still uses `deviceSignature`; a `deviceMac` presented with no `EMacKey` is **rejected**, not waved through.
 
 ### Format handlers + verifier wiring
 
@@ -1388,13 +1388,13 @@ Credential trust runs on **two distinct rails**, and which one applies depends o
 
 ### Key files
 
-`src/Common/Sorcha.Cryptography/Mdoc/**` (codec, models, MdocService, MdocIssuer), `src/Core/Sorcha.Blueprint.Engine/Credentials/**` (TrustEvaluator, resolvers, format handlers, seams, TrustMetrics), `src/Common/Sorcha.ServiceClients.Http/Trust/TrustListProvider.cs`, `src/Services/Sorcha.Haip.Service/Services/{HaipPresentationVerifier,MdocPresentationVerifier,IetfTokenStatusListChecker,HaipTrustAdapters}.cs`, `src/Services/Sorcha.Blueprint.Service/Credentials/{DidIssuerDirectory,DidX5cIssuerKeyResolver}.cs`, `src/Services/Sorcha.Tenant.Service/Endpoints/TrustEndpoints.cs`. Clean-break gate: `scripts/check-trust-clean-break.ps1`. Spec: `specs/135-eudi-credential-format-trust/`.
+`src/Common/Sorcha.Mdoc/**` (codec, models, MdocService, MdocIssuer — moved out of Sorcha.Cryptography by F185), `src/Core/Sorcha.Blueprint.Engine/Credentials/**` (TrustEvaluator, resolvers, format handlers, seams, TrustMetrics), `src/Common/Sorcha.ServiceClients.Http/Trust/TrustListProvider.cs`, `src/Services/Sorcha.Haip.Service/Services/{HaipPresentationVerifier,MdocPresentationVerifier,IetfTokenStatusListChecker,HaipTrustAdapters}.cs`, `src/Services/Sorcha.Blueprint.Service/Credentials/{DidIssuerDirectory,DidX5cIssuerKeyResolver}.cs`, `src/Services/Sorcha.Tenant.Service/Endpoints/TrustEndpoints.cs`. Clean-break gate: `scripts/check-trust-clean-break.ps1`. Spec: `specs/135-eudi-credential-format-trust/`.
 
 ### Clean-break notes (no shims)
 
 - `CredentialRequirement.AcceptedIssuers` and `HaipPresentationVerifier._trustedRoots`/`AddTrustedRoot` are **removed** (gate-enforced). Seven unrelated presentation-request/verifier DTOs keep their own `AcceptedIssuers` — left untouched.
 - mdoc is **ES256/P-256-only at the format layer** and additive — it does not touch Sorcha-native signing or the PQC `Multicodec` fallback (SC-009). Register-anchored mdoc is rejected at issuance (mdoc's issuer key is x5chain-resolved; no DID path in `MdocService`).
-- **Deferred follow-ups**: HAIP trustlist-source *consumption* (verifier root distribution — the admin GET returns metadata not roots; x509-tenant is the working mdoc anchor), a real external EUDI PID known-answer vector (vectors are generated end-to-end in tests), and MAC-based device auth.
+- **Deferred follow-ups**: HAIP trustlist-source *consumption* (verifier root distribution — the admin GET returns metadata not roots; x509-tenant is the working mdoc anchor). ~~a real external EUDI PID known-answer vector (vectors are generated end-to-end in tests), and MAC-based device auth~~ — **both closed by Feature 185**: `deviceMac`/`COSE_Mac0` is implemented, and real ISO 18013-5 Annex D reference data now pins the codec (see the Feature 185 section).
 
 ---
 
