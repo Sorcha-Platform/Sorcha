@@ -61,7 +61,7 @@ public sealed class ProximityFixture : IAsyncDisposable
 
         var (holderTransport, readerTransport) = LoopbackProximityTransport.CreatePair();
 
-        var holder = new ProximityHolderSession(holderTransport, [mdoc], new HolderDeviceKey(key.Private));
+        var holder = new ProximityHolderSession(holderTransport, [mdoc], HolderDeviceKey.FromInMemoryKey(key.Private));
         var reader = new ProximityReaderSession(readerTransport);
 
         return new ProximityFixture(holderTransport, readerTransport, holder, reader, mdoc, key);
