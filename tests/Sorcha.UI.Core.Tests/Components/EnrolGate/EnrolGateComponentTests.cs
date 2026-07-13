@@ -9,6 +9,7 @@ using Moq;
 using Sorcha.UI.Core.Components.EnrolGate;
 using Sorcha.UI.Core.Services;
 using Sorcha.UI.Core.Services.User.Enrolment;
+using Sorcha.UI.Core.Services.User.Pairing;
 using Xunit;
 
 namespace Sorcha.UI.Core.Tests.Components.EnrolGate;
@@ -24,6 +25,7 @@ public sealed class EnrolGateComponentTests : BunitContext
     private readonly Mock<ITierProbeService> _probe = new();
     private readonly Mock<IEnrolPairingSignal> _signal = new();
     private readonly Mock<IQrPresentationService> _qr = new();
+    private readonly Mock<IPairingClient> _pairing = new();
 
     public EnrolGateComponentTests()
     {
@@ -31,6 +33,13 @@ public sealed class EnrolGateComponentTests : BunitContext
         Services.AddSingleton(_probe.Object);
         Services.AddSingleton(_signal.Object);
         Services.AddSingleton(_qr.Object);
+
+        // WalletPairingSurface mints the enrol-session through IPairingClient — a typed client the
+        // HOST registers with its auth handler, so the mint carries the citizen's bearer token.
+        Services.AddSingleton(_pairing.Object);
+        _pairing.Setup(c => c.MintAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EnrolSessionMint("jwt", "http://x/?session=jwt",
+                DateTimeOffset.Parse("2030-01-01T00:00:00Z"), null));
         // HttpClient that immediately returns a synthetic whoami payload —
         // EnrolGateComponent.ResolveBoundPlatformUserIdAsync calls
         // GET /api/auth/whoami when tier != ColdStart.
@@ -233,16 +242,15 @@ public sealed class WalletPairingSurfaceCopyTests : BunitContext
 {
     private readonly Mock<IEnrolPairingSignal> _signal = new();
     private readonly Mock<IQrPresentationService> _qr = new();
+    private readonly Mock<IPairingClient> _pairing = new();
 
     public WalletPairingSurfaceCopyTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
         Services.AddSingleton(_signal.Object);
         Services.AddSingleton(_qr.Object);
-        Services.AddSingleton(new HttpClient(new StubHandler())
-        {
-            BaseAddress = new Uri("http://test.local")
-        });
+        Services.AddSingleton(_pairing.Object);
+        MintExpiring(DateTimeOffset.Parse("2030-01-01T00:00:00Z"));
 
         _qr.Setup(q => q.GenerateSvgFromUri(It.IsAny<string>(), It.IsAny<int>()))
             .Returns("<svg/>");
@@ -284,18 +292,9 @@ public sealed class WalletPairingSurfaceCopyTests : BunitContext
     [Fact]
     public void Expired_Token_Surfaces_Regenerate_Affordance()
     {
-        // Mint handler returns a token whose ExpiresAt is in the past.
-        // The component's WatchForExpiryAsync sees delta <= TimeSpan.Zero
-        // and flips _expired immediately. Strip every registered HttpClient
-        // first (bunit's TestContext can register more than one).
-        foreach (var desc in Services.Where(s => s.ServiceType == typeof(HttpClient)).ToList())
-        {
-            Services.Remove(desc);
-        }
-        Services.AddSingleton(new HttpClient(new ExpiredStubHandler())
-        {
-            BaseAddress = new Uri("http://test.local")
-        });
+        // The mint returns a token whose ExpiresAt is already in the past; the component's
+        // WatchForExpiryAsync sees delta <= TimeSpan.Zero and flips _expired immediately.
+        MintExpiring(DateTimeOffset.Parse("2020-01-01T00:00:00Z"));
 
         var cut = Render<WalletPairingSurface>(parameters => parameters
             .Add(p => p.PlatformUserId, Guid.NewGuid())
@@ -309,29 +308,8 @@ public sealed class WalletPairingSurfaceCopyTests : BunitContext
         });
     }
 
-    private sealed class StubHandler : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
-            {
-                Content = new StringContent(
-                    "{\"sessionToken\":\"jwt\",\"qrUrl\":\"http://x/?session=jwt\",\"expiresAt\":\"2030-01-01T00:00:00Z\"}",
-                    System.Text.Encoding.UTF8, "application/json")
-            });
-        }
-    }
-
-    private sealed class ExpiredStubHandler : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
-            {
-                Content = new StringContent(
-                    "{\"sessionToken\":\"jwt\",\"qrUrl\":\"http://x/?session=jwt\",\"expiresAt\":\"2020-01-01T00:00:00Z\"}",
-                    System.Text.Encoding.UTF8, "application/json")
-            });
-        }
-    }
+    /// <summary>Stubs the enrol-session mint with a token expiring at the given instant.</summary>
+    private void MintExpiring(DateTimeOffset expiresAt) =>
+        _pairing.Setup(c => c.MintAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EnrolSessionMint("jwt", "http://x/?session=jwt", expiresAt, null));
 }

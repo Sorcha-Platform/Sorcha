@@ -9,6 +9,7 @@ using MudBlazor.Services;
 using Sorcha.Sample.StrathcarronPortal;
 using Sorcha.UI.Core.Services;
 using Sorcha.UI.Core.Services.User.Enrolment;
+using Sorcha.UI.Core.Services.User.Pairing;
 using Sorcha.UI.Core.Services.User.Presentation;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
@@ -46,6 +47,15 @@ builder.Services.AddScoped<TenantHubConnection>(sp =>
         inboxApi: null);
 });
 builder.Services.AddHttpClient<IEnrolPairingSignal, EnrolPairingSignal>(client =>
+{
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+});
+
+// WalletPairingSurface mints the enrol-session through this typed client. A host with its own token
+// store registers it with that host's auth handler (see Sorcha.UI.Web.Client); this sample portal has
+// no user session of its own, so it registers the plain client — the same anonymous shape it used
+// before the seam existed.
+builder.Services.AddHttpClient<IPairingClient, PairingClient>(client =>
 {
     client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
 });
