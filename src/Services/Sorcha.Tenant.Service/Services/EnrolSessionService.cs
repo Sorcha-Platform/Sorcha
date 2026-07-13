@@ -66,8 +66,26 @@ public sealed class EnrolSessionService : IEnrolSessionService
     private readonly SigningCredentials _signingCreds;
     private readonly SorchaAudiences _audiences;
 
-    /// <summary>Configuration key for the QR-URL council origin template.</summary>
+    /// <summary>
+    /// Configuration key overriding the origin the enrolment QR points at. Rarely needed: the QR opens
+    /// the <b>wallet PWA</b>, which this installation serves at <c>/wallet/enrol</c>, so the platform's
+    /// own public origin (<see cref="PublicOriginFallbackConfigKey"/>) is the right answer almost
+    /// everywhere — including when the citizen scans it from a third-party council page.
+    /// </summary>
     public const string CouncilOriginConfigKey = "EnrolSession:CouncilOrigin";
+
+    /// <summary>
+    /// The installation's public origin, already configured on every real deployment (it is what
+    /// verification and invitation links are built from). Used as the QR origin when
+    /// <see cref="CouncilOriginConfigKey"/> is not set.
+    /// </summary>
+    public const string PublicOriginFallbackConfigKey = "Email:BaseUrl";
+
+    /// <summary>
+    /// Last-resort origin for a dev box that has configured neither key. It is a <b>fictional</b>
+    /// council domain, so a QR built from it goes nowhere — hence the loud warning at startup.
+    /// </summary>
+    private const string DemoOriginOfLastResort = "https://strathcarron.gov";
 
     private readonly string _councilOrigin;
 
@@ -110,8 +128,22 @@ public sealed class EnrolSessionService : IEnrolSessionService
         _signingKey = new SymmetricSecurityKey(keyBytes);
         _signingCreds = new SigningCredentials(_signingKey, SecurityAlgorithms.HmacSha256);
 
+        // The QR sends the citizen's phone to THIS installation's wallet PWA, so default to the
+        // installation's public origin rather than a council's. Falling through to the demo domain
+        // means the deployment configured neither key — the QR would point at a domain the operator
+        // does not own, so say so loudly rather than shipping a dead QR silently.
         _councilOrigin = configuration[CouncilOriginConfigKey]
-            ?? "https://strathcarron.gov";
+            ?? configuration[PublicOriginFallbackConfigKey]
+            ?? DemoOriginOfLastResort;
+
+        if (string.Equals(_councilOrigin, DemoOriginOfLastResort, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning(
+                "Enrolment QR codes will point at {Origin} — a fictional demo domain — because neither "
+                + "{OverrideKey} nor {FallbackKey} is configured. Scanning such a QR will go nowhere. "
+                + "Set {FallbackKey} to this installation's public origin.",
+                DemoOriginOfLastResort, CouncilOriginConfigKey, PublicOriginFallbackConfigKey);
+        }
     }
 
     /// <inheritdoc />

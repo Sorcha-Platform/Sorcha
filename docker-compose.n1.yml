@@ -83,6 +83,11 @@ services:
       # redirect_uri_mismatch errors. Set the public origin explicitly per
       # feature 115 FR-021.
       OAuth__CallbackBaseUrl: https://n1.sorcha.dev
+      # The enrolment QR sends the citizen's phone to THIS installation's wallet PWA
+      # (/wallet/enrol), so it must carry n1's origin. Unset, the service falls back to
+      # Email:BaseUrl — which the smtp override supplies — but pin it here so a standing
+      # `up` without the smtp override can never emit a QR pointing at the demo domain.
+      EnrolSession__CouncilOrigin: https://n1.sorcha.dev
       # Social login providers — feature 115. ClientId/ClientSecret are
       # interpolated from the host's /opt/sorcha/.env file (gitignored).
       # Buttons for unconfigured providers are hidden client-side, so leaving
