@@ -124,8 +124,12 @@ public sealed class ProximityFixture : IAsyncDisposable
             .GetField("_keys", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
         var keys = (MdocSessionKeys)transcriptField.GetValue(Reader)!;
 
-        return MdocSessionCrypto.Decrypt(keys.SkDevice, sessionData.Data, 1, MdocSessionRole.Holder)
+        var plaintext = MdocSessionCrypto.Decrypt(keys.SkDevice, sessionData.Data, 1, MdocSessionRole.Holder)
             ?? throw new InvalidOperationException("Could not decrypt the holder's response.");
+
+        // Both formats ride the same session, so the wire carries an envelope. Unwrap to the DeviceResponse
+        // the mdoc assertions expect.
+        return SorchaProximityEnvelope.Decode(plaintext).Payload;
     }
 
     /// <summary>Delivers raw bytes straight to the reader — for replaying a captured message.</summary>

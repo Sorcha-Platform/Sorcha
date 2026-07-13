@@ -203,6 +203,16 @@ public sealed class ProximityReaderSession : IAsyncDisposable
     /// </summary>
     private async Task<ProximityVerdict> VerifyAsync(byte[] responseBytes)
     {
+        // Both formats ride the same session. Decode tolerates a BARE DeviceResponse, because a conformant
+        // third-party wallet knows nothing about our envelope — refusing that would make this reader unable
+        // to read any wallet but our own, which would defeat the point of implementing the standard.
+        var envelope = SorchaProximityEnvelope.Decode(responseBytes);
+
+        if (envelope.Format == ProximityPayloadFormat.SdJwtVc)
+            return VerifySdJwt(envelope);
+
+        responseBytes = envelope.Payload;
+
         // The holder's static device key is published in the MSO. Only now can the reader complete the
         // EMacKey agreement — its own ephemeral private key against that static public key.
         var eMacKey = await TryDeriveEMacKeyAsync(responseBytes).ConfigureAwait(false);
@@ -242,6 +252,94 @@ public sealed class ProximityReaderSession : IAsyncDisposable
             DeviceBindingValid: result.DeviceBindingValid,
             ValidityOk: result.ValidityOk,
             Errors: errors);
+    }
+
+    /// <summary>
+    /// Verifies a Sorcha-native SD-JWT presentation carried over the proximity session.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The session binding is checked <b>here</b>, and it is the property that makes this rail as
+    /// replay-resistant as the mdoc one: the KB-JWT's <c>aud</c> and <c>nonce</c> must both equal the hash of
+    /// <em>this</em> session's transcript. A presentation captured from another session cannot satisfy that,
+    /// because the transcript differs.
+    /// </para>
+    /// <para>
+    /// ⚠ <b>Scope, stated plainly.</b> The full SD-JWT verification chain (issuer signature, disclosure
+    /// digests, status list) lives in <c>Sorcha.Verifier.Engine</c>, which this assembly deliberately does not
+    /// reference — the proximity layer must not grow a dependency on the SD-JWT stack, or the mdoc rail stops
+    /// being independently testable. So this checks the <b>session binding</b> and reports the presentation as
+    /// <b>not fully verified</b>, leaving the credential-level verdict to the caller that owns the verifier
+    /// engine. Reporting it as Accepted here would be a lie: it would claim checks that never ran.
+    /// </para>
+    /// </remarks>
+    private ProximityVerdict VerifySdJwt(SorchaProximityEnvelope envelope)
+    {
+        var presentation = System.Text.Encoding.UTF8.GetString(envelope.Payload);
+        var expectedBinding = SorchaProximityEnvelope.SessionBinding(_transcript!);
+
+        var errors = new List<string>();
+
+        // The KB-JWT is the last segment of the compact form.
+        var parts = presentation.Split('~');
+        var kbJwt = parts.Length > 0 ? parts[^1] : string.Empty;
+
+        if (string.IsNullOrEmpty(kbJwt))
+        {
+            errors.Add("The presentation carries no key-binding JWT, so it is not bound to this session at all.");
+        }
+        else if (!KeyBindingMatchesSession(kbJwt, expectedBinding))
+        {
+            errors.Add(
+                "The presentation is not bound to this session — its key-binding JWT names a different " +
+                "session. It may be a replay of one captured elsewhere.");
+        }
+
+        // Honest: the session binding is checked; the credential chain is not checked HERE.
+        errors.Add(
+            "Credential-level verification (issuer signature, disclosures, revocation) is performed by the " +
+            "verifier engine, not by the proximity layer.");
+
+        return new ProximityVerdict(
+            Accepted: false,
+            DocType: string.Empty,
+            DisclosedClaims: new Dictionary<string, object>(),
+            IssuerSignatureValid: false,
+            DigestsValid: false,
+            DeviceBindingValid: errors.Count == 1,   // only the honest scope note remains ⇒ the binding held
+            ValidityOk: false,
+            Errors: errors);
+    }
+
+    /// <summary>Checks that the KB-JWT's <c>aud</c> AND <c>nonce</c> both equal the session binding.</summary>
+    /// <remarks>
+    /// Both, not either: a verifier that checks only one of them can still be replayed against.
+    /// </remarks>
+    private static bool KeyBindingMatchesSession(string kbJwt, string expectedBinding)
+    {
+        try
+        {
+            var segments = kbJwt.Split('.');
+            if (segments.Length < 2)
+                return false;
+
+            var payload = segments[1];
+            var padded = payload.Replace('-', '+').Replace('_', '/');
+            padded = (padded.Length % 4) switch { 2 => padded + "==", 3 => padded + "=", _ => padded };
+
+            using var json = System.Text.Json.JsonDocument.Parse(Convert.FromBase64String(padded));
+            var root = json.RootElement;
+
+            var aud = root.TryGetProperty("aud", out var a) ? a.GetString() : null;
+            var nonce = root.TryGetProperty("nonce", out var n) ? n.GetString() : null;
+
+            return string.Equals(aud, expectedBinding, StringComparison.Ordinal)
+                && string.Equals(nonce, expectedBinding, StringComparison.Ordinal);
+        }
+        catch (Exception)
+        {
+            return false;   // an unparseable KB-JWT is not a bound one
+        }
     }
 
     private async Task<byte[]?> TryDeriveEMacKeyAsync(byte[] responseBytes)
