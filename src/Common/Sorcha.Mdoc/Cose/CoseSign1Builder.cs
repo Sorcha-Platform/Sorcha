@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Formats.Cbor;
+using System.Security.Cryptography.Cose;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto.Signers;
 using Sorcha.Mdoc.Cbor;
@@ -162,6 +163,74 @@ public static class CoseSign1Builder
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Verifies an <b>embedded-payload</b> <c>COSE_Sign1</c> (the shape <c>issuerAuth</c> takes) using
+    /// BouncyCastle.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Exists so the verification path never touches <see cref="System.Security.Cryptography.ECDsa"/>.
+    /// <c>CoseSign1Message.VerifyEmbedded(ECDsa)</c> would be the obvious call, but this assembly runs in a
+    /// Blazor <b>WASM</b> host, where the BCL's EC implementation is not dependable — it compiles happily and
+    /// then fails on a phone. BouncyCastle is pure-managed and behaves identically everywhere.
+    /// </para>
+    /// <para>
+    /// We reconstruct the <c>Sig_structure</c> from the message's <b>raw</b> protected headers (not a
+    /// re-encoding of the parsed ones — a re-encode can change bytes, and the signature is over the original
+    /// bytes) and verify it ourselves.
+    /// </para>
+    /// </remarks>
+    public static bool VerifyEmbedded(CoseSign1Message message, ECPublicKeyParameters publicKey)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        ArgumentNullException.ThrowIfNull(publicKey);
+
+        if (message.Content is not { } content)
+            return false;   // no embedded payload to verify
+
+        return VerifyCore(
+            message.RawProtectedHeaders.ToArray(),
+            content.ToArray(),
+            message.Signature.ToArray(),
+            publicKey);
+    }
+
+    /// <summary>
+    /// Verifies a <b>detached-payload</b> <c>COSE_Sign1</c> message against <paramref name="payload"/> using
+    /// BouncyCastle. The device-signature counterpart of <see cref="VerifyEmbedded"/>.
+    /// </summary>
+    public static bool VerifyDetached(CoseSign1Message message, byte[] payload, ECPublicKeyParameters publicKey)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        ArgumentNullException.ThrowIfNull(payload);
+        ArgumentNullException.ThrowIfNull(publicKey);
+
+        return VerifyCore(
+            message.RawProtectedHeaders.ToArray(),
+            payload,
+            message.Signature.ToArray(),
+            publicKey);
+    }
+
+    private static bool VerifyCore(
+        byte[] protectedHeader, byte[] payload, byte[] signature, ECPublicKeyParameters publicKey)
+    {
+        // COSE signatures are fixed-width r‖s, never DER. A DER signature here is a bug upstream, not
+        // something to be tolerated.
+        if (signature.Length != 64)
+            return false;
+
+        var sigStructure = BuildSigStructure(protectedHeader, payload);
+        var digest = System.Security.Cryptography.SHA256.HashData(sigStructure);
+
+        var r = new Org.BouncyCastle.Math.BigInteger(1, signature.AsSpan(0, 32).ToArray());
+        var s = new Org.BouncyCastle.Math.BigInteger(1, signature.AsSpan(32, 32).ToArray());
+
+        var verifier = new ECDsaSigner();
+        verifier.Init(forSigning: false, publicKey);
+        return verifier.VerifySignature(digest, r, s);
     }
 
     /// <summary>

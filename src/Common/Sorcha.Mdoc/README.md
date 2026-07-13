@@ -57,6 +57,22 @@ generation — which is why the wallet carries a *second* device key. See featur
 crypto (empty HKDF info, `0x00`/`0x01` salts, a 2-element session transcript). Following it produces a
 confidently wrong implementation. We target **:2021 final**.
 
+## WASM-safety (CI-enforced)
+
+`scripts/check-wasm-safe.ps1` (workflow `wasm-safe-gate.yml`) fails the build if this project — or
+`Sorcha.Proximity.Abstractions` or `Sorcha.Verifier.Engine` — takes a dependency that cannot load in the
+browser. That failure mode is the nasty one: it compiles, passes CI, ships, and *then* breaks on a phone.
+
+Banned: native P/Invoke packages (`Sodium.Core`, `Nethermind.MclBindings`); `X509Certificate2` /
+`X509CertificateLoader` / `GetECDsaPublicKey`; `ECDiffieHellman`; `AesGcm`. The verify path uses BouncyCastle
+throughout instead (`Cose/X509Leaf.cs`, `CoseSign1Builder`, `MdocSessionCrypto`).
+
+**Not banned — and this is the counter-intuitive bit: `ECDsa` verification works fine under browser-wasm.**
+`Sorcha.Verifier.Engine` uses it for ES256 today, inside the shipping wallet, on every presentation. New code
+here prefers BouncyCastle for consistency, but that is a preference, not a portability requirement.
+
+`MdocIssuer` is exempt: issuance is **server-side only** — a browser never holds an issuer private key.
+
 ## Reference data
 
 `tests/Sorcha.Mdoc.Tests/Fixtures/IsoAnnexDVectors.cs` carries ISO 18013-5:2021 **Annex D** reference data, and

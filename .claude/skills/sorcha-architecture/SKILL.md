@@ -2095,5 +2095,17 @@ learned nothing. `ProximityReaderSession` fails that closed.
 - **`readerAuth` parsed, not verified** — honestly skipped rather than stubbed.
 - **No published vector for QR engagement** (Annex D's worked example is NFC handover), so the QR transcript is
   validated structurally.
-- **`MdocService.Verify` still uses BCL `X509Certificate`/`ECDsa`** for the issuer signature. Fine on the server
-  and in tests; **its WASM behaviour is unproven** and must be checked before the reader app ships.
+- **CLOSED (was: "`MdocService.Verify` uses BCL `X509Certificate`/`ECDsa`, WASM unproven").** The verify path is
+  now pure-managed: `X509Leaf` (BouncyCastle `X509CertificateParser`) resolves the issuer key, and
+  `CoseSign1Builder.VerifyEmbedded`/`VerifyDetached` verify with BouncyCastle. `MdocSessionCrypto`'s AES-GCM
+  moved to BouncyCastle `GcmBlockCipher` too — the Annex D ciphertext vectors still reproduce byte-for-byte, so
+  the swap is pinned, not taken on faith. `MdocIssuer` keeps BCL `ECDsa` for **signing** — server-side only,
+  and a browser never holds an issuer private key. Enforced by `scripts/check-wasm-safe.ps1` +
+  `wasm-safe-gate.yml`.
+- **Correction worth knowing: BCL `ECDsa` verification DOES work under browser-wasm.** An earlier note here
+  implied otherwise. `Sorcha.Verifier.Engine` uses `ECDsa.Create` + `VerifyData` for ES256, it ships inside
+  `Sorcha.Wallet.Pwa`, and that is the live holder→device delegation check the wallet performs in the browser
+  on every presentation. The genuinely unreliable APIs are `X509Certificate2`/`X509CertificateLoader`,
+  `ECDiffieHellman` and `AesGcm` — those are what the gate bans. New `Sorcha.Mdoc` code prefers BouncyCastle
+  throughout anyway (one provider is easier to reason about than two), but that is a preference, not a
+  portability requirement, and the gate does not pretend otherwise.

@@ -4,7 +4,9 @@
 using System.Security.Cryptography;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Agreement;
+using Org.BouncyCastle.Crypto.Engines;
 using Org.BouncyCastle.Crypto.Generators;
+using Org.BouncyCastle.Crypto.Modes;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Security;
 using Sorcha.Mdoc.Cose;
@@ -178,15 +180,16 @@ public static class MdocSessionCrypto
         ArgumentNullException.ThrowIfNull(plaintext);
 
         var nonce = BuildNonce(messageCounter, senderRole);
-        var ciphertext = new byte[plaintext.Length];
-        var tag = new byte[TagLength];
 
-        using var aes = new AesGcm(key, TagLength);
-        aes.Encrypt(nonce, plaintext, ciphertext, tag);
+        // BouncyCastle, not System.Security.Cryptography.AesGcm — see the class remarks. GcmBlockCipher
+        // appends the tag to the ciphertext, which is exactly the `ct ‖ tag` layout ISO 18013-5 wants.
+        var cipher = new GcmBlockCipher(new AesEngine());
+        cipher.Init(forEncryption: true, new AeadParameters(new KeyParameter(key), TagLength * 8, nonce));
 
-        var output = new byte[ciphertext.Length + TagLength];
-        Buffer.BlockCopy(ciphertext, 0, output, 0, ciphertext.Length);
-        Buffer.BlockCopy(tag, 0, output, ciphertext.Length, TagLength);
+        var output = new byte[cipher.GetOutputSize(plaintext.Length)];
+        var written = cipher.ProcessBytes(plaintext, 0, plaintext.Length, output, 0);
+        cipher.DoFinal(output, written);
+
         return output;
     }
 
@@ -203,20 +206,23 @@ public static class MdocSessionCrypto
             return null;
 
         var nonce = BuildNonce(messageCounter, senderRole);
-        var cipherLength = ciphertextWithTag.Length - TagLength;
-        var ciphertext = ciphertextWithTag.AsSpan(0, cipherLength);
-        var tag = ciphertextWithTag.AsSpan(cipherLength, TagLength);
-        var plaintext = new byte[cipherLength];
 
         try
         {
-            using var aes = new AesGcm(key, TagLength);
-            aes.Decrypt(nonce, ciphertext, tag, plaintext);
-            return plaintext;
+            var cipher = new GcmBlockCipher(new AesEngine());
+            cipher.Init(forEncryption: false, new AeadParameters(new KeyParameter(key), TagLength * 8, nonce));
+
+            var output = new byte[cipher.GetOutputSize(ciphertextWithTag.Length)];
+            var written = cipher.ProcessBytes(ciphertextWithTag, 0, ciphertextWithTag.Length, output, 0);
+            cipher.DoFinal(output, written);
+
+            return output;
         }
-        catch (CryptographicException)
+        catch (InvalidCipherTextException)
         {
             // Tag mismatch: the message was tampered with, replayed under the wrong counter, or is not ours.
+            // Returning null (rather than throwing) is what lets every receive path fail closed without
+            // exception handling.
             return null;
         }
     }

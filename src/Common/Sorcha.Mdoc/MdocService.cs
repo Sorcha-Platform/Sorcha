@@ -142,9 +142,10 @@ public sealed class MdocService : IMdocService
                 return result;
             }
 
-            using var leaf = X509CertificateLoader.LoadCertificate(chain[0]);
-            result.IssuerId = leaf.Subject;
-            using var issuerKey = leaf.GetECDsaPublicKey();
+            // BouncyCastle, not X509CertificateLoader/GetECDsaPublicKey: this assembly runs in a Blazor WASM
+            // host (the reader app verifies on-device, offline), where BCL platform crypto is not dependable.
+            result.IssuerId = X509Leaf.TryReadSubject(chain[0]);
+            var issuerKey = X509Leaf.TryReadEcPublicKey(chain[0]);
             if (issuerKey is null)
             {
                 result.Errors.Add("x5chain leaf certificate has no EC public key (mdoc is P-256/ES256 only).");
@@ -152,7 +153,7 @@ public sealed class MdocService : IMdocService
             }
 
             // 1) Issuer signature over the tag-24-wrapped MSO.
-            result.IssuerSignatureValid = doc.IssuerSigned.IssuerAuth.VerifyEmbedded(issuerKey);
+            result.IssuerSignatureValid = CoseSign1Builder.VerifyEmbedded(doc.IssuerSigned.IssuerAuth, issuerKey);
 
             var content = doc.IssuerSigned.IssuerAuth.Content;
             if (content is null)
@@ -224,14 +225,14 @@ public sealed class MdocService : IMdocService
 
         if (auth.DeviceSignature is not null)
         {
-            using var deviceKey = ParseEc2CoseKey(mso.DeviceKeyCose);
+            var deviceKey = CoseKey.TryParseEc2PublicKey(mso.DeviceKeyCose);
             if (deviceKey is null)
             {
                 result.Errors.Add("MSO device key is not a P-256 EC2 COSE_Key.");
                 return false;
             }
 
-            return auth.DeviceSignature.VerifyDetached(deviceKey, deviceAuthentication);
+            return CoseSign1Builder.VerifyDetached(auth.DeviceSignature, deviceAuthentication, deviceKey);
         }
 
         if (auth.DeviceMacRaw is not null)
@@ -262,38 +263,8 @@ public sealed class MdocService : IMdocService
         _ => throw new NotSupportedException($"Unsupported MSO digest algorithm '{algorithm}'.")
     };
 
-    /// <summary>Parses an EC2 (P-256) COSE_Key map (kty=2, crv=1, x=-2, y=-3) into an ECDsa public key.</summary>
-    private static ECDsa? ParseEc2CoseKey(byte[] coseKey)
-    {
-        if (coseKey.Length == 0)
-            return null;
-
-        var reader = new CborReader(coseKey, CborConformanceMode.Lax);
-        long kty = 0, crv = 0;
-        byte[]? x = null, y = null;
-
-        reader.ReadStartMap();
-        while (reader.PeekState() != CborReaderState.EndMap)
-        {
-            var label = reader.ReadInt32();
-            switch (label)
-            {
-                case 1: kty = reader.ReadInt64(); break;       // kty
-                case -1: crv = reader.ReadInt64(); break;      // crv
-                case -2: x = reader.ReadByteString(); break;   // x
-                case -3: y = reader.ReadByteString(); break;   // y
-                default: reader.SkipValue(); break;
-            }
-        }
-        reader.ReadEndMap();
-
-        if (kty != 2 || crv != 1 || x is null || y is null) // EC2 + P-256
-            return null;
-
-        return ECDsa.Create(new ECParameters
-        {
-            Curve = ECCurve.NamedCurves.nistP256,
-            Q = new ECPoint { X = x, Y = y }
-        });
-    }
+    // ParseEc2CoseKey was removed in feature 185: it returned a BCL ECDsa, which is exactly the dependency
+    // that cannot be relied on in WASM. CoseKey.TryParseEc2PublicKey supersedes it and additionally rejects
+    // off-curve points — an attacker-supplied invalid point is the classic invalid-curve attack against the
+    // ECDH that follows.
 }
