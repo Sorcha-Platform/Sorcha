@@ -149,9 +149,14 @@ builder.Services.Configure<Sorcha.Register.Core.LocalRelationship.LocalIdentityO
     builder.Configuration.GetSection("LocalIdentity"));
 builder.Services.Configure<Sorcha.Register.Core.SyncState.RegisterSyncStateOptions>(
     builder.Configuration.GetSection("RegisterSyncState"));
+// Resolve this node's identity from the system wallet it actually signs with, not from static
+// config. LocalIdentity:* is set on no deployment, so the configured provider resolved an EMPTY
+// identity and every register derived as Subscriber — a node was a "subscriber" to the very
+// registers it owns, validates and seals. Configured values still win when present (dev/test seam);
+// the wallet is the fallback, and an unreachable wallet fails safe to Subscriber.
 builder.Services.AddSingleton<
     Sorcha.Register.Core.LocalRelationship.ILocalIdentityProvider,
-    Sorcha.Register.Core.LocalRelationship.ConfiguredLocalIdentityProvider>();
+    Sorcha.Register.Service.Services.SystemWalletLocalIdentityProvider>();
 builder.Services.AddSingleton<
     Sorcha.Register.Core.LocalRelationship.IRegisterLocalRelationshipService,
     Sorcha.Register.Core.LocalRelationship.RegisterLocalRelationshipService>();
@@ -511,11 +516,12 @@ app.MapPost("/api/internal/register-sync-status", async (
     if (register == null)
         return Results.NotFound(new { error = $"Register '{report.RegisterId}' not found" });
 
-    // Map peer sync state to RegisterStatus
+    // Map peer sync state to RegisterStatus. A replica pulling chain data is CHECKING, not in
+    // RECOVERY — "Recovery" reads as data loss, and this is the ordinary path every joining node
+    // takes. Recovery/Offline stay reserved for a register that is actually unwell.
     var newStatus = report.SyncState switch
     {
-        "Subscribing" => RegisterStatus.Checking,
-        "Syncing" => RegisterStatus.Recovery,
+        "Subscribing" or "Syncing" => RegisterStatus.Checking,
         "FullyReplicated" or "Active" => RegisterStatus.Online,
         "Error" => RegisterStatus.Offline,
         _ when !report.PeerConnectionActive => RegisterStatus.Offline,
