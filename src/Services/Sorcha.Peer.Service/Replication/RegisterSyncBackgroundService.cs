@@ -428,6 +428,30 @@ public class RegisterSyncBackgroundService : BackgroundService
                 break;
 
             case RegisterSyncState.Syncing:
+                // A node cannot pull a register it is itself the source of. The genesis/seed node
+                // subscribes to the system register (SystemRegisterBootstrapper) so it ADVERTISES and
+                // SERVES it — but that put it on the pull path too, where PullFullReplicaAsync found
+                // "no source peers" (there are none — it IS the source), never succeeded, and so the
+                // subscription sat in Syncing forever. Register Service maps Syncing → Recovery, so a
+                // perfectly healthy system register reported itself as being in recovery, permanently.
+                //
+                // The honest discriminator is the register's own control record: this node is on its
+                // validator roster (or holds an owning attestation), so it already holds the
+                // authoritative chain. Nothing to pull — go straight to FullyReplicated and start
+                // serving.
+                if (await IsAuthoritativeSourceAsync(subscription.RegisterId, cancellationToken))
+                {
+                    subscription.TransitionToNextState();
+                    _logger.LogInformation(
+                        "Register {RegisterId} is served by this node (owner/validator) — nothing to pull; "
+                        + "marking fully replicated",
+                        subscription.RegisterId);
+                    await PersistSubscriptionAsync(subscription, cancellationToken);
+                    await ReportSyncStatusAsync(subscription.RegisterId, subscription.SyncState, cancellationToken);
+                    _immediateSyncSignal.Set();
+                    break;
+                }
+
                 // Full replica mode: pull docket chain
                 await ReportSyncStatusAsync(subscription.RegisterId, RegisterSyncState.Syncing, cancellationToken);
                 var result = await _replicationService.PullFullReplicaAsync(subscription, cancellationToken);
@@ -750,6 +774,40 @@ public class RegisterSyncBackgroundService : BackgroundService
     {
         CancelOfflineDebounce(registerId);
         await ReportSyncStatusAsync(registerId, RegisterSyncState.Subscribing, cancellationToken);
+    }
+
+    /// <summary>
+    /// True when this node already holds the register authoritatively — it owns it, or its
+    /// docket-signing key is on the register's validator roster — so there is nothing to pull.
+    /// </summary>
+    /// <remarks>
+    /// Derived from the register's control record via the Feature 108 relationship (the same signal
+    /// T017 uses to pick a sealer), NOT from "are there any peers?" — a genuine subscriber with no
+    /// reachable peers must keep trying, and only the relationship distinguishes the two.
+    /// <para>
+    /// Fail-safe: an unavailable or indeterminate relationship answers <c>false</c>, so the node falls
+    /// back to attempting the pull. Wrongly pulling is a wasted round-trip; wrongly declining to pull
+    /// would leave a real subscriber permanently stale.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> IsAuthoritativeSourceAsync(string registerId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+
+            var relationship = await registerClient.GetLocalRelationshipAsync(registerId, cancellationToken);
+            return RegisterSourceAuthority.IsAuthoritativeSource(relationship);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex,
+                "Could not derive the local relationship for register {RegisterId}; assuming this node is "
+                + "not the source and attempting a pull",
+                registerId);
+            return false;
+        }
     }
 
     /// <summary>
