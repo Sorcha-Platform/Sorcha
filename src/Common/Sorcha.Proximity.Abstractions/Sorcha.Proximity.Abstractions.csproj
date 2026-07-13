@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Sorcha.Proximity.Abstractions</PackageId>
+    <Description>The proximity (in-person, offline) credential-presentation seam: IProximityTransport (opaque bytes over a nearby-device channel) plus the ISO/IEC 18013-5 holder and reader session state machines that run over it. Includes LoopbackProximityTransport, which runs the ENTIRE exchange holder-to-reader in one process so the protocol is provable in CI with no Bluetooth and no phones (Feature 185).</Description>
+    <PackageTags>sorcha;proximity;iso18013-5;mdoc;ble;offline;verifiable-credentials</PackageTags>
+    <RootNamespace>Sorcha.Proximity</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    HARD RULE: pure-managed, and NO transport implementation lives here.
+
+    This project is consumed by two Blazor WASM hosts. It must not gain a native dependency, and it
+    must not learn about Bluetooth. IProximityTransport carries opaque bytes precisely so that
+    LoopbackProximityTransport can substitute for the radio in tests — that substitution is the whole
+    de-risking strategy for the feature. Protocol knowledge in the transport would destroy it.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sorcha.Mdoc\Sorcha.Mdoc.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sorcha.Proximity.Tests" />
+  </ItemGroup>
+
+</Project>

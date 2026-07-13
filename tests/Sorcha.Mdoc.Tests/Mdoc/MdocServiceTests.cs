@@ -6,8 +6,8 @@ using System.Security.Cryptography.X509Certificates;
 
 using FluentAssertions;
 
-using Sorcha.Cryptography.Mdoc;
-using Sorcha.Cryptography.Mdoc.Cbor;
+using Sorcha.Mdoc;
+using Sorcha.Mdoc.Cbor;
 
 using Xunit;
 

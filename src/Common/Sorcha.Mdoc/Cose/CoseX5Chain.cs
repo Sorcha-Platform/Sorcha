@@ -4,7 +4,7 @@
 using System.Formats.Cbor;
 using System.Security.Cryptography.Cose;
 
-namespace Sorcha.Cryptography.Mdoc.Cose;
+namespace Sorcha.Mdoc.Cose;
 
 /// <summary>
 /// Reads and writes the COSE <c>x5chain</c> header (RFC 9360 label 33) in the unprotected bucket

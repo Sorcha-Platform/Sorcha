@@ -9,7 +9,7 @@ using FluentAssertions;
 using Sorcha.Blueprint.Engine.Credentials;
 using Sorcha.Blueprint.Engine.Credentials.Sources;
 using Sorcha.Blueprint.Models.Credentials;
-using Sorcha.Cryptography.Mdoc;
+using Sorcha.Mdoc;
 
 namespace Sorcha.Blueprint.Engine.Tests.Credentials;
 
@@ -42,7 +42,7 @@ public class MdocFormatHandlerIssuanceTests
     {
         using var holder = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var p = holder.ExportParameters(false);
-        return Sorcha.Cryptography.Mdoc.Cbor.MdocCbor.Encode(w =>
+        return Sorcha.Mdoc.Cbor.MdocCbor.Encode(w =>
         {
             w.WriteStartMap(4);
             w.WriteInt32(1); w.WriteInt32(2);

@@ -5,10 +5,10 @@ using System.Formats.Cbor;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
-using Sorcha.Cryptography.Mdoc.Cbor;
-using Sorcha.Cryptography.Mdoc.Cose;
+using Sorcha.Mdoc.Cbor;
+using Sorcha.Mdoc.Cose;
 
-namespace Sorcha.Cryptography.Mdoc;
+namespace Sorcha.Mdoc;
 
 /// <summary>The OpenID4VP session parameters needed to reconstruct the mdoc <c>SessionTranscript</c>.</summary>
 public sealed class MdocSessionTranscript

@@ -17,9 +17,12 @@
     <!-- Minimal dependencies -->
     <PackageReference Include="BouncyCastle.Cryptography" />
     <PackageReference Include="HeroSD-JWT" />
-    <!-- ISO mdoc (feature 135): CBOR + COSE_Sign1 / x5chain -->
-    <PackageReference Include="System.Formats.Cbor" />
-    <PackageReference Include="System.Security.Cryptography.Cose" />
+    <!--
+      ISO mdoc moved to Sorcha.Mdoc in Feature 185. This project P/Invokes libsodium (Sodium.Core)
+      and MCL, so it cannot load in Blazor WASM — and the wallet (holder) and verifier (reader) both
+      need the mdoc codec. Do NOT reintroduce System.Formats.Cbor / System.Security.Cryptography.Cose
+      here: reference Sorcha.Mdoc instead.
+    -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Nethermind.MclBindings" />
     <PackageReference Include="Sodium.Core" />

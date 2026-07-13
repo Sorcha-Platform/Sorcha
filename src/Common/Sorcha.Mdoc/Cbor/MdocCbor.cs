@@ -3,7 +3,7 @@
 
 using System.Formats.Cbor;
 
-namespace Sorcha.Cryptography.Mdoc.Cbor;
+namespace Sorcha.Mdoc.Cbor;
 
 /// <summary>
 /// CBOR primitives for the ISO mdoc wire format (feature 135). Centralises tag-24

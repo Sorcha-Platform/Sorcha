@@ -6,9 +6,9 @@ using System.Security.Cryptography.Cose;
 
 using FluentAssertions;
 
-using Sorcha.Cryptography.Mdoc;
-using Sorcha.Cryptography.Mdoc.Cbor;
-using Sorcha.Cryptography.Mdoc.Cose;
+using Sorcha.Mdoc;
+using Sorcha.Mdoc.Cbor;
+using Sorcha.Mdoc.Cose;
 
 using Xunit;
 

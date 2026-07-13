@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Sorcha.Mdoc</PackageId>
+    <Description>ISO/IEC 18013-5 mdoc (mso_mdoc) credential format: CBOR/COSE codec, issuance, verification, and the proximity (device-retrieval) session layer. Pure-managed and WASM-safe — BCL CBOR/COSE plus BouncyCastle only — so the Blazor WASM wallet (holder) and verifier (reader) can share ONE implementation of the protocol with the server-side issuer and verifier. Extracted from Sorcha.Cryptography in Feature 185 because that project P/Invokes libsodium and MCL and therefore cannot load in WASM.</Description>
+    <PackageTags>sorcha;mdoc;mso_mdoc;iso18013-5;cbor;cose;verifiable-credentials;proximity;ble</PackageTags>
+    <RootNamespace>Sorcha.Mdoc</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    HARD RULE: this project MUST stay pure-managed.
+
+    It is consumed by Sorcha.Wallet.Pwa and Sorcha.Verifier.Pwa, which are Blazor WASM hosts where
+    native P/Invoke is unavailable. Do NOT add Sodium.Core, Nethermind.MclBindings, or any other
+    native dependency — that is precisely why this code was extracted out of Sorcha.Cryptography.
+    All crypto primitives come from the BCL or BouncyCastle (both pure-managed).
+  -->
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" />
+    <PackageReference Include="System.Formats.Cbor" />
+    <PackageReference Include="System.Security.Cryptography.Cose" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sorcha.Mdoc.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -3,7 +3,7 @@
 
 using System.Security.Cryptography.Cose;
 
-namespace Sorcha.Cryptography.Mdoc;
+namespace Sorcha.Mdoc;
 
 /// <summary>
 /// A single issuer-signed data element (ISO 18013-5 <c>IssuerSignedItem</c>, feature 135):

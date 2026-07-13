@@ -4,9 +4,9 @@
 using System.Formats.Cbor;
 using System.Security.Cryptography.Cose;
 
-using Sorcha.Cryptography.Mdoc.Cbor;
+using Sorcha.Mdoc.Cbor;
 
-namespace Sorcha.Cryptography.Mdoc;
+namespace Sorcha.Mdoc;
 
 /// <summary>
 /// Encodes and decodes the ISO 18013-5 mdoc wire structures (feature 135) using

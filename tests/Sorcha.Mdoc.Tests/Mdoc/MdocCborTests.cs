@@ -3,7 +3,7 @@
 
 using FluentAssertions;
 
-using Sorcha.Cryptography.Mdoc.Cbor;
+using Sorcha.Mdoc.Cbor;
 
 using Xunit;
 

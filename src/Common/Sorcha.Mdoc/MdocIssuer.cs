@@ -4,10 +4,10 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.Cose;
 
-using Sorcha.Cryptography.Mdoc.Cbor;
-using Sorcha.Cryptography.Mdoc.Cose;
+using Sorcha.Mdoc.Cbor;
+using Sorcha.Mdoc.Cose;
 
-namespace Sorcha.Cryptography.Mdoc;
+namespace Sorcha.Mdoc;
 
 /// <summary>
 /// Builds (issues) an ISO 18013-5 mdoc credential (feature 135, US3): one issuer-signed item per

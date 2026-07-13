@@ -5,9 +5,9 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.Cose;
 using System.Security.Cryptography.X509Certificates;
 
-using Sorcha.Cryptography.Mdoc;
-using Sorcha.Cryptography.Mdoc.Cbor;
-using Sorcha.Cryptography.Mdoc.Cose;
+using Sorcha.Mdoc;
+using Sorcha.Mdoc.Cbor;
+using Sorcha.Mdoc.Cose;
 
 namespace Sorcha.Cryptography.Tests.Mdoc;
 

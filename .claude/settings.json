@@ -1,5 +1,6 @@
 {
   "enabledPlugins": {
-    "dotnet@dotnet-agent-skills": true
+    "dotnet@dotnet-agent-skills": true,
+    "azure@azure-skills": true
   }
 }

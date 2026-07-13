@@ -5,7 +5,7 @@ using System.Buffers.Text;
 using System.Xml;
 
 using Sorcha.Blueprint.Models.Credentials;
-using Sorcha.Cryptography.Mdoc;
+using Sorcha.Mdoc;
 
 namespace Sorcha.Blueprint.Engine.Credentials;
 

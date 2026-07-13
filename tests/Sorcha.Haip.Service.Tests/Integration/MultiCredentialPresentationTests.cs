@@ -272,7 +272,7 @@ public sealed class MultiCredentialPresentationTests
     {
         var registry = new TrustResolverRegistry(new ITrustSourceResolver[] { new X509TenantTrustSourceResolver(new FakeAnchors(null)) });
         return new MdocPresentationVerifier(
-            new MdocFormatHandler(new Sorcha.Cryptography.Mdoc.MdocService(), new TrustEvaluator(registry, null)),
+            new MdocFormatHandler(new Sorcha.Mdoc.MdocService(), new TrustEvaluator(registry, null)),
             Mock.Of<ILogger<MdocPresentationVerifier>>());
     }
 

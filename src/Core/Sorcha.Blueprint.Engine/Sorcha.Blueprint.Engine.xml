@@ -186,6 +186,14 @@
             Checks a specific bit in a remote bitstring status list.
             </summary>
         </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.BitstringStatusListChecker.DecodeEncodedList(System.String)">
+            <summary>
+            Decode a W3C Bitstring Status List <c>encodedList</c> value. Feature 181 US3 (R7/FR-010):
+            a leading <c>u</c> is the multibase base64url prefix (v1 canonical form, unpadded) — decode
+            the remainder as base64url; any other value is plain base64 (the pre-v1 draft form Sorcha
+            issuance still emits). The returned bytes are the GZip-compressed bitstring.
+            </summary>
+        </member>
         <member name="M:Sorcha.Blueprint.Engine.Credentials.BitstringStatusListChecker.TryParseStatusReference(System.String,System.String@,System.Int32@)">
             <summary>
             Parses a status list reference in the format "statusListUrl#index".
@@ -658,7 +666,7 @@
         <member name="T:Sorcha.Blueprint.Engine.Credentials.MdocFormatHandler">
             <summary>
             mso_mdoc credential-format handler (feature 135, US2). Owns the ISO 18013-5 format crypto via
-            <see cref="T:Sorcha.Cryptography.Mdoc.IMdocService"/> — issuer COSE_Sign1 over the MSO, value-digest integrity, and
+            <see cref="T:Sorcha.Mdoc.IMdocService"/> — issuer COSE_Sign1 over the MSO, value-digest integrity, and
             OpenID4VP holder binding — then delegates the trust decision (does the issuer x5chain reach a
             trusted anchor, and is the credential revoked) to the shared <see cref="T:Sorcha.Blueprint.Engine.Credentials.ITrustEvaluator"/>, so
             trust semantics are identical to the SD-JWT VC path. Format-level failures (bad signature,
@@ -681,7 +689,7 @@
             <c>IssuerSigned</c> (the issued credential at rest).
             </summary>
         </member>
-        <member name="M:Sorcha.Blueprint.Engine.Credentials.MdocFormatHandler.FailFormat(Sorcha.Blueprint.Engine.Credentials.FormatVerifyResult,Sorcha.Blueprint.Engine.Credentials.TrustFailureReason,System.String,Sorcha.Cryptography.Mdoc.MdocVerificationResult)">
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.MdocFormatHandler.FailFormat(Sorcha.Blueprint.Engine.Credentials.FormatVerifyResult,Sorcha.Blueprint.Engine.Credentials.TrustFailureReason,System.String,Sorcha.Mdoc.MdocVerificationResult)">
             <summary>Records a fail-closed format-gate rejection on both the trust decision and the error list.</summary>
         </member>
         <member name="T:Sorcha.Blueprint.Engine.Credentials.SdJwtVcFormatHandler">
@@ -949,6 +957,12 @@
         </member>
         <member name="F:Sorcha.Blueprint.Engine.Credentials.TrustMetrics.MeterName">
             <summary>The meter name used for all trust-decision instruments.</summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.TrustMetrics.RecordStaleEvaluation(System.String,System.Int64,System.Boolean)">
+            <summary>
+            Feature 181 US3 (FR-016) — records a trust evaluation against a stale trusted-list snapshot.
+            Tags carry only the list identity + sequence + whether strict mode fail-closed — never subject data.
+            </summary>
         </member>
         <member name="M:Sorcha.Blueprint.Engine.Credentials.TrustMetrics.RecordDecision(Sorcha.Blueprint.Engine.Credentials.TrustDecision,Sorcha.Blueprint.Models.Credentials.CredentialFormat)">
             <summary>
@@ -2742,6 +2756,20 @@
             <remarks>
             Contains the JSON Logic expression that evaluated to true.
             Useful for understanding why a particular route was chosen.
+            </remarks>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Models.RoutingResult.MatchedRouteId">
+            <summary>
+            The id of the <see cref="T:Sorcha.Blueprint.Models.Route"/> that was taken. Null when no route
+            matched (Feature 184).
+            </summary>
+            <remarks>
+            Distinct from the per-next-action <see cref="P:Sorcha.Blueprint.Engine.Models.RoutedAction.MatchedRouteId"/>, which is absent
+            for a <b>terminal</b> route because such a route produces no next actions at all. A decision
+            workflow's reject route is exactly that case, so the taken route's identity must also live at
+            the top level. It rides the signed routing decision onto the transaction, letting any node
+            that folds it locate the route in the replicated blueprint without re-evaluating conditions
+            against a payload it may not be able to read.
             </remarks>
         </member>
         <member name="P:Sorcha.Blueprint.Engine.Models.RoutingResult.NextActions">

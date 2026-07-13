@@ -583,7 +583,7 @@ public static class CredentialEndpoints
 
         var x = System.Buffers.Text.Base64Url.DecodeFromChars(xEl.GetString()!);
         var y = System.Buffers.Text.Base64Url.DecodeFromChars(yEl.GetString()!);
-        return Sorcha.Cryptography.Mdoc.Cbor.MdocCbor.Encode(w =>
+        return Sorcha.Mdoc.Cbor.MdocCbor.Encode(w =>
         {
             w.WriteStartMap(4);
             w.WriteInt32(1); w.WriteInt32(2);   // kty: EC2
