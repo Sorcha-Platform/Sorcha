@@ -66,6 +66,27 @@ public interface IMdocService
     /// integrity, and holder binding against the OpenID4VP session transcript.
     /// </summary>
     MdocVerificationResult Verify(ReadOnlyMemory<byte> deviceResponse, MdocSessionTranscript transcript);
+
+    /// <summary>
+    /// Verifies an mdoc <c>DeviceResponse</c> against an <b>already-built</b> session transcript — the form
+    /// the ISO 18013-5 <b>proximity</b> exchange needs (feature 185).
+    /// </summary>
+    /// <param name="deviceResponse">The response bytes.</param>
+    /// <param name="sessionTranscript">
+    /// The <b>bare</b> encoded <c>SessionTranscript</c> array (not the tag-24-wrapped form — that one is only
+    /// for the HKDF salt).
+    /// </param>
+    /// <param name="eMacKey">
+    /// The <c>EMacKey</c>, when the holder authenticated with <c>deviceMac</c>. Pass <see langword="null"/>
+    /// (or empty) if only <c>deviceSignature</c> is expected — a <c>deviceMac</c> then cannot be verified and
+    /// is <b>rejected</b> rather than waved through.
+    /// </param>
+    /// <remarks>
+    /// The OpenID4VP overload delegates here, so the two paths cannot drift apart. Both device-auth forms are
+    /// accepted: ISO requires exactly one of them, and a conformant verifier must handle either.
+    /// </remarks>
+    MdocVerificationResult Verify(
+        ReadOnlyMemory<byte> deviceResponse, byte[] sessionTranscript, byte[]? eMacKey = null);
 }
 
 /// <inheritdoc />
@@ -79,6 +100,20 @@ public sealed class MdocService : IMdocService
     public MdocVerificationResult Verify(ReadOnlyMemory<byte> deviceResponse, MdocSessionTranscript transcript)
     {
         ArgumentNullException.ThrowIfNull(transcript);
+
+        // Build the OpenID4VP transcript, then hand off to the one real implementation. Keeping a single
+        // verification body is what stops the online and proximity paths quietly diverging.
+        var sessionTranscript = MdocCodec.BuildOpenId4VpSessionTranscript(
+            transcript.ClientId, transcript.Nonce, transcript.JwkThumbprint, transcript.ResponseUri);
+
+        return Verify(deviceResponse, sessionTranscript, eMacKey: null);
+    }
+
+    /// <inheritdoc />
+    public MdocVerificationResult Verify(
+        ReadOnlyMemory<byte> deviceResponse, byte[] sessionTranscript, byte[]? eMacKey = null)
+    {
+        ArgumentNullException.ThrowIfNull(sessionTranscript);
         var result = new MdocVerificationResult();
 
         try
@@ -132,7 +167,7 @@ public sealed class MdocService : IMdocService
             result.DigestsValid = VerifyDigests(doc.IssuerSigned, mso);
 
             // 3) Holder binding: device auth over the reconstructed DeviceAuthentication.
-            result.DeviceBindingValid = VerifyDeviceBinding(doc, mso, transcript, result);
+            result.DeviceBindingValid = VerifyDeviceBinding(doc, mso, sessionTranscript, eMacKey, result);
 
             // 4) Validity window.
             var now = _timeProvider.GetUtcNow();
@@ -167,30 +202,56 @@ public sealed class MdocService : IMdocService
         return true;
     }
 
+    /// <summary>
+    /// Verifies the holder's proof of possession over the reconstructed <c>DeviceAuthentication</c>.
+    /// </summary>
+    /// <remarks>
+    /// ISO 18013-5 offers two forms and requires exactly one of them; a conformant verifier must accept
+    /// either. Feature 135 could only do <c>deviceSignature</c> (the BCL has no <c>COSE_Mac0</c> type, so
+    /// <c>deviceMac</c> was refused outright); feature 185 added <see cref="CoseMac0"/> and closes that gap.
+    /// </remarks>
     private static bool VerifyDeviceBinding(
-        Document doc, MobileSecurityObject mso, MdocSessionTranscript transcript, MdocVerificationResult result)
+        Document doc,
+        MobileSecurityObject mso,
+        byte[] sessionTranscript,
+        byte[]? eMacKey,
+        MdocVerificationResult result)
     {
-        if (doc.DeviceSigned.DeviceAuth.DeviceSignature is null)
-        {
-            result.Errors.Add(doc.DeviceSigned.DeviceAuth.DeviceMacRaw is not null
-                ? "MAC-based device authentication is not supported in v1 (use deviceSignature)."
-                : "DeviceAuth carries neither a deviceSignature nor a deviceMac.");
-            return false;
-        }
+        var auth = doc.DeviceSigned.DeviceAuth;
 
-        using var deviceKey = ParseEc2CoseKey(mso.DeviceKeyCose);
-        if (deviceKey is null)
-        {
-            result.Errors.Add("MSO device key is not a P-256 EC2 COSE_Key.");
-            return false;
-        }
-
-        var sessionTranscript = MdocCodec.BuildOpenId4VpSessionTranscript(
-            transcript.ClientId, transcript.Nonce, transcript.JwkThumbprint, transcript.ResponseUri);
         var deviceAuthentication = MdocCodec.BuildDeviceAuthentication(
             sessionTranscript, doc.DocType, doc.DeviceSigned.NameSpacesBytes);
 
-        return doc.DeviceSigned.DeviceAuth.DeviceSignature.VerifyDetached(deviceKey, deviceAuthentication);
+        if (auth.DeviceSignature is not null)
+        {
+            using var deviceKey = ParseEc2CoseKey(mso.DeviceKeyCose);
+            if (deviceKey is null)
+            {
+                result.Errors.Add("MSO device key is not a P-256 EC2 COSE_Key.");
+                return false;
+            }
+
+            return auth.DeviceSignature.VerifyDetached(deviceKey, deviceAuthentication);
+        }
+
+        if (auth.DeviceMacRaw is not null)
+        {
+            if (eMacKey is null || eMacKey.Length == 0)
+            {
+                // Fail closed. A deviceMac we cannot check is an UNVERIFIED holder binding, and treating it
+                // as acceptable would defeat the whole point of the check.
+                result.Errors.Add(
+                    "DeviceAuth carries a deviceMac but no EMacKey was supplied, so holder binding cannot " +
+                    "be verified. (A deviceMac is only meaningful inside the proximity session that derived " +
+                    "the key — the online OpenID4VP path has no such key and expects a deviceSignature.)");
+                return false;
+            }
+
+            return CoseMac0.VerifyDetached(auth.DeviceMacRaw, deviceAuthentication, eMacKey);
+        }
+
+        result.Errors.Add("DeviceAuth carries neither a deviceSignature nor a deviceMac.");
+        return false;
     }
 
     private static byte[] Hash(string algorithm, byte[] data) => algorithm.ToUpperInvariant() switch
