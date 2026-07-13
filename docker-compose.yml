@@ -688,6 +688,27 @@ services:
     depends_on:
       - api-gateway
 
+  # Feature 185: The Sorcha Reader — the verifier's half of an in-person credential check.
+  # Blazor WASM served via nginx; gateway routes /reader/*. Wrapped natively by mobile/reader.
+  #
+  # The app VERIFIES OFFLINE, on-device. This service only DELIVERS it — once loaded it needs no
+  # network at all, which is the entire point of an in-person reader.
+  sorcha-reader-pwa:
+    build:
+      context: .
+      dockerfile: src/Apps/Sorcha.Verifier.Pwa/Dockerfile
+    image: sorchadev/reader-pwa:latest
+    container_name: sorcha-reader-pwa
+    restart: unless-stopped
+    mem_limit: 128m
+    # Reachable internally via http://sorcha-reader-pwa:8080 (gateway routes /reader/*).
+    ports:
+      - "${READER_PWA_PORT:-7401}:8080"
+    networks:
+      - sorcha-network
+    depends_on:
+      - api-gateway
+
   # Feature 127: Strathcarron Council sample portal — NOT part of the platform
   # deliverable. Its service definition lives in
   # samples/strathcarron-portal/docker-compose.yml as an opt-in overlay. Run
