@@ -9,7 +9,8 @@ namespace Sorcha.UI.Core.Services.Admin;
 /// org's internal + imported certificates with status/validity/chain summary and eligibility, and
 /// drives re-issue (enrol), CSR generation, external-cert import, and retire/delete. Mirrors
 /// <see cref="ITrustedListAdminService"/> in shape (typed HttpClient, record DTOs, <c>*Outcome</c>
-/// result types for the 422-carrying calls). Auth rides the browser session (platform tier).
+/// result types for the 422-carrying calls).
+/// The host registers this typed client with <c>AuthenticatedHttpMessageHandler</c>, which attaches the admin's bearer token — there is no browser session to ride: the WASM client sends no cookie, and these endpoints are admin + platform-audience gated. Registered without that handler, every call 401s (and the swallowed failure renders as a plausible "nothing here yet" empty state).
 /// </summary>
 public interface IOrgCertificateAdminService
 {
