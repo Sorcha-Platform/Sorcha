@@ -1,0 +1,9 @@
+{
+  "appId": "app.sorcha.reader",
+  "appName": "Sorcha Reader",
+  "webDir": "www",
+  "server": {
+    "url": "https://n1.sorcha.dev/reader",
+    "cleartext": false
+  }
+}

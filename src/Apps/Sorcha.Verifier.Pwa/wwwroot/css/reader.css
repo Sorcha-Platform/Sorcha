@@ -1,0 +1,105 @@
+/* SPDX-License-Identifier: MIT
+   Copyright (c) 2026 Sorcha Contributors
+
+   The Sorcha Reader — Feature 185.
+   Used standing up, at a door or a roadside, often in a hurry. Big targets, high contrast, no decoration. */
+
+:root { color-scheme: light dark; }
+
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: Canvas;
+    color: CanvasText;
+}
+
+.reader { max-width: 32rem; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
+
+.reader h1 { font-size: 1.5rem; margin: 0 0 0.75rem; }
+.reader h2 { font-size: 1rem; margin: 2rem 0 0.5rem; opacity: 0.8; }
+.reader__status { margin: 0 0 1.5rem; line-height: 1.5; }
+.reader__error { color: #c53030; margin: 1rem 0; }
+
+.reader__questions { list-style: none; margin: 0; padding: 0; }
+
+.reader__question {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+    border: 1px solid rgba(128,128,128,0.35);
+    border-radius: 0.5rem;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+
+.reader__question-label { display: block; font-size: 1.0625rem; font-weight: 600; }
+.reader__question-detail { display: block; font-size: 0.875rem; opacity: 0.75; margin-top: 0.25rem; }
+
+.reader__question-retain {
+    display: inline-block;
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.2rem 0.45rem;
+    border-radius: 0.375rem;
+    background: rgba(214,158,46,0.18);
+    color: #8a5a00;
+}
+
+.reader__viewfinder {
+    width: 100%;
+    aspect-ratio: 1/1;
+    object-fit: cover;
+    border-radius: 0.5rem;
+    background: #000;
+    margin-bottom: 1rem;
+}
+
+/* The verdict. Unmissable, because it is the entire answer. */
+.reader__verdict { padding: 1.25rem; border-radius: 0.5rem; margin-bottom: 1.25rem; }
+.reader__verdict h1 { margin: 0; }
+.reader__verdict--pass { background: rgba(56,161,105,0.15); }
+.reader__verdict--fail { background: rgba(197,48,48,0.15); }
+
+.reader__claims, .reader__errors, .reader__trail { list-style: none; margin: 0; padding: 0; }
+
+.reader__claim, .reader__layer {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid rgba(128,128,128,0.2);
+}
+
+.reader__claim-value { font-weight: 600; }
+.reader__layer-status { font-size: 0.875rem; font-weight: 600; }
+
+.reader__layer--pass .reader__layer-status { color: #2f855a; }
+.reader__layer--fail .reader__layer-status { color: #c53030; }
+
+/* "Not checked" is deliberately NEITHER green NOR red.
+   It is a third answer, and colouring it as a pass would be the exact dishonesty this app must not commit. */
+.reader__layer--not\ checked .reader__layer-status { color: #718096; }
+
+.reader__offline-note {
+    margin-top: 1.25rem;
+    padding: 0.875rem;
+    border-radius: 0.5rem;
+    background: rgba(128,128,128,0.12);
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.reader__primary, .reader__secondary {
+    display: block; width: 100%; padding: 0.875rem 1rem;
+    font-size: 1rem; font-weight: 600;
+    border-radius: 0.5rem; border: 1px solid transparent;
+    cursor: pointer; margin-top: 1.25rem;
+}
+.reader__primary { background: #2b6cb0; color: #fff; }
+.reader__secondary { background: transparent; border-color: rgba(128,128,128,0.4); color: inherit; }
+
+#blazor-error-ui { display: none; position: fixed; bottom: 0; width: 100%; padding: 0.75rem; background: #ffc; }

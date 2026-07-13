@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
+  </PropertyGroup>
+
+  <!--
+    The Sorcha Reader (Feature 185).
+
+    WHY THIS EXISTS AS A SEPARATE APP. Sorcha.Verifier is Blazor SERVER — a server-hosted app cannot reach a
+    phone's Bluetooth radio, and a browser cannot be a BLE central. So an in-person reader has to be a WASM
+    host wrapped natively. This is also F155's long-deferred "path B (WASM/offline verifier)": the offline
+    reader IS the offline verifier, so building one builds the other.
+
+    It verifies ON DEVICE, with NO NETWORK. Everything it references must therefore load in WASM — see
+    scripts/check-wasm-safe.ps1.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sorcha.Verifier.Pwa.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Common\Sorcha.Mdoc\Sorcha.Mdoc.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.Proximity.Abstractions\Sorcha.Proximity.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.Proximity.Capacitor\Sorcha.Proximity.Capacitor.csproj" />
+  </ItemGroup>
+
+</Project>

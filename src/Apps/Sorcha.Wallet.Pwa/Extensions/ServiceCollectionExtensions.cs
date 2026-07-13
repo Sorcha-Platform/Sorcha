@@ -62,7 +62,7 @@ public static class ServiceCollectionExtensions
         // would carry a dead channel into the next presentation. Same for the presentation service, which
         // owns one session.
         services.AddTransient<Sorcha.Proximity.IProximityTransport,
-                              Sorcha.Wallet.Pwa.Services.Proximity.CapacitorProximityTransport>();
+                              Sorcha.Proximity.Capacitor.CapacitorProximityTransport>();
         services.AddTransient<Sorcha.Wallet.Pwa.Services.Proximity.IProximityPresentationService,
                               Sorcha.Wallet.Pwa.Services.Proximity.ProximityPresentationService>();
 

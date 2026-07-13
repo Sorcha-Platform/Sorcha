@@ -6,7 +6,7 @@ using System.Text.Json.Serialization;
 using Microsoft.JSInterop;
 using Sorcha.Proximity;
 
-namespace Sorcha.Wallet.Pwa.Services.Proximity;
+namespace Sorcha.Proximity.Capacitor;
 
 /// <summary>
 /// <see cref="IProximityTransport"/> over the native <c>sorcha-proximity</c> Capacitor plugin.
