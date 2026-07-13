@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      Android 12+ (API 31) runtime BLE permissions.
+
+      neverForLocation on BLUETOOTH_SCAN is load-bearing: without it Android treats a BLE scan as a
+      location request and demands ACCESS_FINE_LOCATION, which would mean asking a citizen for their
+      location in order to show a credential to the person in front of them. We do not derive location
+      from these scans and must not be asking for it.
+    -->
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+
+    <!-- Pre-Android-12 equivalents, install-time. -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+
+    <uses-feature
+        android:name="android.hardware.bluetooth_le"
+        android:required="false" />
+
+</manifest>

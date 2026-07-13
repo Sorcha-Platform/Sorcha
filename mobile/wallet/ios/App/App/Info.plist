@@ -52,5 +52,7 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Sorcha uses Bluetooth to show your credential to a verifier standing in front of you, without sending anything over the internet.</string>
 </dict>
 </plist>

@@ -1,0 +1,45 @@
+{
+  "name": "sorcha-proximity",
+  "version": "1.0.0",
+  "description": "BLE transport for ISO 18013-5 proximity credential presentation. Moves opaque bytes and nothing more — every byte of ISO protocol lives in C# (Sorcha.Mdoc), written once and shared by holder and reader.",
+  "main": "dist/plugin.cjs.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/",
+    "ios/Sources/",
+    "Package.swift",
+    "SorchaProximity.podspec"
+  ],
+  "author": "Sorcha Contributors",
+  "license": "MIT",
+  "scripts": {
+    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
+    "clean": "rimraf ./dist",
+    "verify:ios": "xcodebuild -scheme SorchaProximity -destination generic/platform=iOS build",
+    "verify:android": "cd android && ./gradlew clean build test && cd ..",
+    "verify": "npm run verify:ios && npm run verify:android"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/ios": "^8.4.0",
+    "rimraf": "^5.0.0",
+    "rollup": "^4.0.0",
+    "typescript": "^5.4.0"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  }
+}
