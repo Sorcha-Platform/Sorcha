@@ -154,7 +154,7 @@
                 "title": "Decision",
                 "description": "Assurance state and supporting notes for the audit trail.",
                 "layout": "vertical",
-                "fields": ["decision", "verificationNotes"]
+                "fields": ["decision", "reasonCode", "verificationNotes"]
               }
             ],
             "properties": {
@@ -162,6 +162,12 @@
                 "type": "string",
                 "title": "Decision",
                 "enum": ["approved", "rejected"]
+              },
+              "reasonCode": {
+                "type": "string",
+                "title": "Reason code",
+                "description": "Non-sensitive code for a rejection. It rides the sender-signed routing decision on the transaction's clear metadata; the applicant's own node resolves it to the citizen-facing wording held in this route's x-decision-notice reasons catalogue. Never put applicant data or prose here — every node holding the register can read it.",
+                "enum": ["postcode-not-found", "profanity", "email-unverified"]
               },
               "verificationNotes": {
                 "type": "string",
@@ -220,9 +226,15 @@
             "description": "Rejected by AIAS — workflow ends with the on-brand reason surfaced to the applicant and no credential issued",
             "x-decision-notice": {
               "recipientParticipantId": "citizen",
-              "reasonField": "/verificationNotes",
+              "reasonCodeField": "/reasonCode",
               "title": "AIAS could not assure your identity",
-              "severity": "Warning"
+              "severity": "Warning",
+              "reasons": {
+                "postcode-not-found": "AIAS could not locate that address on any map. We assure real people at real places — try a postcode that exists.",
+                "profanity": "AIAS does not assure identities described in such... colourful terms. Please reapply with your Sunday-best vocabulary.",
+                "email-unverified": "AIAS needs a verified email before it can assure you. Confirm your email and reapply."
+              },
+              "fallbackMessage": "AIAS could not assure your identity on this occasion. Please review your details and reapply."
             }
           }
         ]

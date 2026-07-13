@@ -33,6 +33,34 @@ public class RoutingDecision
     public List<ActionRef> NextActions { get; set; } = [];
 
     /// <summary>
+    /// Gets or sets the identifier of the route the sender actually took (Feature 184).
+    /// </summary>
+    /// <remarks>
+    /// Lets any node that folds this transaction find the taken route in the replicated blueprint
+    /// without re-evaluating routing conditions — which it could not do anyway, having no access to
+    /// the (possibly encrypted) payload. Null on transactions sealed before Feature 184 and on
+    /// presentation-outcome decisions.
+    /// </remarks>
+    [JsonPropertyName("routeId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? RouteId { get; set; }
+
+    /// <summary>
+    /// Gets or sets a non-sensitive code describing <i>why</i> the sender decided as it did
+    /// (Feature 184). Set only when the taken route declares an <c>x-decision-notice</c> whose
+    /// <c>reasonCodeField</c> resolves against the submitted payload.
+    /// </summary>
+    /// <remarks>
+    /// The code rides the transaction in the clear and is readable by every node holding the
+    /// register, so it MUST describe the <i>class</i> of reason and never carry applicant data or
+    /// free prose. The recipient's node resolves it to citizen-facing text from the blueprint's
+    /// <c>reasons</c> catalogue.
+    /// </remarks>
+    [JsonPropertyName("reasonCode")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ReasonCode { get; set; }
+
+    /// <summary>
     /// Gets or sets the trust attestation for this decision (Entity 2 / FR-009).
     /// </summary>
     [JsonPropertyName("attestation")]
@@ -43,6 +71,10 @@ public class RoutingDecision
     /// <see cref="Attestation"/> excluded (the signature cannot sign over itself).
     /// Uses <see cref="RegisterSerializationOptions.Canonical"/> so producer and validator agree.
     /// </summary>
+    /// <remarks>
+    /// This rebuilds the decision field by field. <b>Every new field MUST be copied here</b> — one
+    /// omitted from this object rides the wire unauthenticated while appearing signed.
+    /// </remarks>
     /// <returns>UTF-8 canonical JSON of the attestation-free decision.</returns>
     public byte[] ComputeSignableBytes()
     {
@@ -50,6 +82,8 @@ public class RoutingDecision
         {
             CompletedActionId = CompletedActionId,
             NextActions = NextActions,
+            RouteId = RouteId,
+            ReasonCode = ReasonCode,
             Attestation = null,
         };
         return JsonSerializer.SerializeToUtf8Bytes(signable, RegisterSerializationOptions.Canonical);

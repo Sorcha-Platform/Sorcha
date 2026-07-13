@@ -7,6 +7,7 @@ using Moq;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.ServiceClients.Inbox;
 using Sorcha.ServiceClients.Participant;
+using Sorcha.ServiceClients.Wallet;
 
 namespace Sorcha.Blueprint.Service.Tests.Services;
 
@@ -17,12 +18,25 @@ public class BlueprintInboxWriterTests
 {
     private readonly Mock<IParticipantServiceClient> _participants = new();
     private readonly Mock<IPlatformInboxClient> _inbox = new();
+    private readonly Mock<IWalletServiceClient> _wallets = new();
     private readonly BlueprintInboxWriter _sut;
 
     public BlueprintInboxWriterTests()
     {
-        _sut = new BlueprintInboxWriter(_participants.Object, _inbox.Object, NullLogger<BlueprintInboxWriter>.Instance);
+        _sut = new BlueprintInboxWriter(
+            _participants.Object, _inbox.Object, _wallets.Object, NullLogger<BlueprintInboxWriter>.Instance);
     }
+
+    private static WalletInfo Wallet(string owner) => new()
+    {
+        Address = "citizen-wallet",
+        Name = "Citizen Wallet",
+        PublicKey = "pk",
+        Algorithm = "ED25519",
+        Status = "Active",
+        Owner = owner,
+        Tenant = "default",
+    };
 
     [Fact]
     public async Task WriteActionAvailableAsync_HappyPath_PostsExpectedPayload()
@@ -148,14 +162,49 @@ public class BlueprintInboxWriterTests
     }
 
     [Fact]
-    public async Task WriteDecisionAsync_NoParticipant_SkipsInbox()
+    public async Task WriteDecisionAsync_NoParticipantNoWallet_SkipsInbox()
     {
         _participants.Setup(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((ParticipantInfo?)null);
+        _wallets.Setup(w => w.GetWalletAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((WalletInfo?)null);
 
         await _sut.WriteDecisionAsync("citizen-wallet", "instance-A", "2", "Title", "reason", "Warning");
 
         _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task WriteDecisionAsync_LateBoundCitizen_ResolvesViaSendingWalletOwner()
+    {
+        // A late-bound open participant (citizen) has NO participant-registry record — so we must
+        // resolve the recipient from the sending wallet's owner (a consumer wallet's Owner IS the
+        // PlatformUserId). GetWalletAsync is inherently local-only, so this also skips gracefully
+        // (no misfire) when the citizen's wallet is hosted on another node.
+        var platformUserId = Guid.NewGuid();
+        InboxWritePayload? captured = null;
+
+        _participants.Setup(p => p.GetByWalletAddressAsync("citizen-wallet", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ParticipantInfo?)null);
+        _wallets.Setup(w => w.GetWalletAsync("citizen-wallet", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Wallet(owner: platformUserId.ToString()));
+        // Owner is already a PlatformUserId, so the UserIdentity resolution misses and we use it directly.
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(platformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid?)null);
+        _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
+            .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
+            .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
+
+        await _sut.WriteDecisionAsync(
+            "citizen-wallet", "instance-A", "2",
+            title: "AIAS could not assure your identity",
+            reason: "AIAS needs a verified email before it can assure you.",
+            severity: "Warning");
+
+        captured.Should().NotBeNull();
+        captured!.PlatformUserId.Should().Be(platformUserId);
+        captured.Category.Should().Be("Workflow");
+        captured.Summary.Should().Be("AIAS needs a verified email before it can assure you.");
     }
 
     [Fact]

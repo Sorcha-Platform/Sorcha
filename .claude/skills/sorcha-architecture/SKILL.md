@@ -1770,18 +1770,65 @@ Two coupled fixes to the AIAS web path (M1). Spec: `specs/183-aias-decision-visi
   properties only (nested = documented YAGNI).
 - **`x-decision-notice` (US2) — reject visibility.** The agent's terminal reject fired only an ephemeral
   `WorkflowCompleted` SignalR signal — no durable record, no reason. Fix: a **route** annotation
-  `x-decision-notice {recipientParticipantId, reasonField, title, severity?}` (`Sorcha.Blueprint.Models.DecisionNotice`
-  on `Route.DecisionNotice`) + `BlueprintInboxWriter.WriteDecisionAsync` (reuses wallet→participant→PlatformUserId
-  resolution + kind-discriminated deterministic `SourceEventId` `("decision-notice", …)`; `Category="Workflow"`,
-  `Summary`=reason). `DecisionNoticeDispatcher` (pure, testable) resolves the taken route (matched next-action
-  set + truthy condition), recipient wallet (`Instance.ParticipantWallets[recipientParticipantId]`), and reason
-  (JSON Pointer into the merged payload), then writes via `INotificationService.NotifyDecisionAsync` (thin
-  passthrough). Hooked in `ActionExecutionService.ExecuteAsync` right after routing; the whole dispatch is
-  try/log/swallow — **never affects sealing/routing**. F118 bell drawer renders it with **no client change**.
-  **Reject-only**: approval is already surfaced (claim action-available + credential-received). Recipient is the
-  starting participant (`citizen`), reusing the same binding `credentialIssuanceConfig.recipientParticipantId`
-  delivery uses. Hook covers the DevMode inline path (AIAS); encrypted-register `CompleteAfterPresentationAsync`
-  is a follow-up. Follow-up issue: citizen "My Applications" history page + email-on-decision.
+  `x-decision-notice` (`Sorcha.Blueprint.Models.DecisionNotice` on `Route.DecisionNotice`) +
+  `BlueprintInboxWriter.WriteDecisionAsync` (`Category="Workflow"`, `IconKey="workflow.rejected"`,
+  `Summary`=reason; kind-discriminated deterministic `SourceEventId` `("decision-notice", …)`). F118 bell
+  drawer renders it with **no client change**. **Reject-only**: approval is already surfaced (claim
+  action-available + credential-received). **The delivery mechanism was reworked by Feature 184 — see
+  below; the original inline `ActionExecutionService` hook and `DecisionNoticeDispatcher` are gone.**
+  Follow-up issue #1163: citizen "My Applications" history page + email-on-decision.
+
+---
+
+## Decentralised decision notice + reason codification (Feature 184)
+
+The F183 notice never reached a citizen, for two coupled reasons — both fixed here. Spec:
+`specs/184-decision-notice-decentralised/`. Design:
+`docs/superpowers/specs/2026-07-13-aias-decision-notice-decentralised-design.md`.
+
+**1. It fired on the wrong node.** The inline `ActionExecutionService` hook runs only on the node that
+processed the **decider's** submission (the agent / register-owner node). A citizen's account, wallet and
+inbox live on **their** node — the default assumption in a federated DAD deployment. So the notice now
+fires from the **fold**: `InstanceProjector` → `ReactionDispatcher.DispatchDecisionNoticeAsync`, which runs
+on every node holding the register and is **entitlement-gated** (`IWalletServiceClient.GetWalletAsync` is
+local-only ⇒ only the node hosting the recipient's wallet acts; the decider's node folds the same tx and
+skips) and **idempotent** (`react:{sealedTxId}:decision-notice:{wallet}` SET-NX). `IReactionDispatcher.DispatchAsync`
+now takes the sealed `TransactionModel` (the projector already holds it) rather than a bare txId, plus a new
+`IActionResolverService` dep. It runs **before** the terminal/active branching, so a notice on a
+non-terminal route (e.g. "returned for more info") fires too.
+
+**2. The reason could not travel.** A background fold on the citizen's node has **no delegation token** and
+cannot decrypt a disclosure group; `IStateReconstructionService` / `IActionDisclosureResolver` are
+prior-action-scoped and don't return the completed action's own payload anyway. And copying the free-text
+`verificationNotes` into clear metadata would leak analyst prose to every node. Fix — **reason
+codification**:
+
+- **Carrier = the sender-signed `RoutingDecision`.** It gains `routeId` + `reasonCode` (`Sorcha.Register.Models`).
+  Both are **copied into `ComputeSignableBytes()`'s field-by-field rebuild** — a field omitted there would ride
+  the wire unauthenticated while appearing signed — so `VAL_ROUTING_002` verifies them with **zero new
+  validator code**, and they reach every node with zero new plumbing (already projected onto the sealed tx by
+  `DocketBuildTriggerService`, already read by `InstanceProjectionResolver.ResolveRoutingDecision`). A raw
+  `TrackingData` key would NOT do: the tx signature covers only `{TxId}:{PayloadHash}`.
+- **`routeId`, not next-action-set matching.** Two routes can share a next-action set (and every terminal route
+  shares the empty one), differing only by condition — which the citizen's node cannot re-evaluate. The producer
+  knows the route it took, so it says so. The engine's `RoutingResult` gained a top-level `MatchedRouteId`
+  because `BuildRoutingResult` returns `RoutingResult.Complete()` for a terminal route, discarding `route.Id` —
+  and a reject route **is** terminal.
+- **Catalogue in the blueprint.** `DecisionNotice` drops `reasonField` (clean break) and gains `reasonCodeField`
+  (pointer to the code in the payload), `reasons` (code → citizen-facing message) and `fallbackMessage`.
+  `DecisionNotice.ResolveMessage(code)` = `reasons[code] ?? fallbackMessage ?? ""`. The citizen-facing copy
+  lives in the replicated blueprint; the agent's prose stays on the ledger as the audit record. Agent rules
+  emit the code as an ordinary payload field — **no agent code change**.
+- **The payload is read exactly once, by the decider** (`ActionExecutionService.ResolveDecisionReasonCode`,
+  step 10d) — the node submitting it, which can plainly read it. Nothing downstream touches payload.
+
+**Recipient resolution** (already on the branch, `dedb339c`): `BlueprintInboxWriter.ResolveRecipientPlatformUserIdAsync`
+tries the participant registry first, then falls back to the **sending wallet's `Owner`** — a **consumer
+wallet's `Owner` IS the PlatformUserId** — which is what makes a **late-bound open-participant citizen**
+(no participant record ⇒ 404) resolvable at all.
+
+**Removed (clean break, CI-greppable):** `DecisionNoticeDispatcher` (+ tests), the `ActionExecutionService`
+9-notice hook, `SafeEvaluateCondition`, `DecisionNotice.ReasonField`.
 
 ---
 

@@ -5,6 +5,7 @@
     "decision": "submit",
     "payload": {
       "decision": "rejected",
+      "reasonCode": "postcode-not-found",
       "verificationNotes": "AIAS could not locate that address on any map. We assure real people at real places — try a postcode that exists."
     }
   },
@@ -14,6 +15,7 @@
     "decision": "submit",
     "payload": {
       "decision": "rejected",
+      "reasonCode": "profanity",
       "verificationNotes": "AIAS does not assure identities described in such... colourful terms. Please reapply with your Sunday-best vocabulary."
     }
   },
@@ -23,6 +25,7 @@
     "decision": "submit",
     "payload": {
       "decision": "rejected",
+      "reasonCode": "email-unverified",
       "verificationNotes": "AIAS needs a verified email before it can assure you. Confirm your email and reapply."
     }
   },

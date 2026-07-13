@@ -176,7 +176,7 @@ public sealed class InstanceProjector : BackgroundService
             _logger.LogInformation(
                 "InstanceProjector: created instance {InstanceId} (blueprint {BlueprintId}) at action(s) {Actions}",
                 instanceId, blueprintId, string.Join(",", created.CurrentActionIds));
-            await reactionDispatcher.DispatchAsync(created, tx.TxId, ct);
+            await reactionDispatcher.DispatchAsync(created, tx, ct);
             return;
         }
 
@@ -192,6 +192,6 @@ public sealed class InstanceProjector : BackgroundService
         _logger.LogInformation(
             "InstanceProjector: advanced instance {InstanceId} via tx {TxId} to action(s) {Actions} (state {State})",
             instanceId, tx.TxId, string.Join(",", existing.CurrentActionIds), existing.State);
-        await reactionDispatcher.DispatchAsync(existing, tx.TxId, ct);
+        await reactionDispatcher.DispatchAsync(existing, tx, ct);
     }
 }
