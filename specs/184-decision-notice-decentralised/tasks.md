@@ -84,7 +84,7 @@ the delivered notice text matches the blueprint's wording for that code; an unkn
 
 - [ ] T025 Full `dotnet build` clean (no new warnings) and the affected test projects green: `Sorcha.Blueprint.Service.Tests`, `Sorcha.Blueprint.Engine.Tests`, `Sorcha.Register.Models.Tests`.
 - [ ] T026 Grep-verify the clean break: no `DecisionNoticeDispatcher` and no `ReasonField` / `reasonField` remain anywhere in `src/` or `demos/`.
-- [ ] T027 Deploy to n1 (code-only): pull `:latest` and `docker compose … up -d --force-recreate --no-deps blueprint-service` (keep `-f docker-compose.smtp.yml` in the standing `up`). Republish the AIAS blueprint with `Publish-AiasBlueprint -Force`.
+- [ ] T027 Deploy to n1 (code-only). **`RoutingDecision` is in the shared `Sorcha.Register.Models`, and the validator re-derives `ComputeSignableBytes()` from the deserialized decision — an old validator image drops the new fields and REJECTS the transaction with `VAL_ROUTING_002`. So blueprint-service, validator-service and register-service must be pulled + recreated TOGETHER.** Keep `-f docker-compose.smtp.yml` in the standing `up`. Then republish the AIAS blueprint with `Publish-AiasBlueprint -Force`.
 - [ ] T028 Live acceptance (Chrome-DevTools): drive a reject through the web path as the citizen; confirm a durable bell/inbox entry carrying the **blueprint's** wording for the emitted code; confirm it survives a reload and a sign-out / sign-in. Confirm an approve produces no decision notice. Confirm the sealed tx's clear metadata carries `routeId` + `reasonCode` and no free-text reason.
 
 ---

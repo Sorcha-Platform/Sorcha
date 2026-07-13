@@ -221,7 +221,21 @@ TDD, unit-first; the live n1 run is the acceptance gate.
   and via `demos/AIAS/rehearse.ps1`; Chrome-DevTools confirms a durable bell/inbox entry carrying the
   codified reason, surviving reload and re-login. True multi-node (tiny + n1) is the stretch validation.
 
-## 8. Non-goals
+## 8. Deploy coupling (blueprint-service + validator-service must move together)
+
+`RoutingDecision` lives in `Sorcha.Register.Models` — a **shared** library — and the validator
+**re-derives** `ComputeSignableBytes()` from the *deserialized* decision to check the attestation
+(`ValidationEngine.cs:1010`). An old validator image, whose model has no `routeId`/`reasonCode`,
+silently drops those fields on deserialize, computes different signable bytes, and **rejects the
+transaction** with `VAL_ROUTING_002`. `DocketBuildTriggerService` would likewise strip them from the
+sealed typed decision.
+
+So this is not a blueprint-service-only deploy. **blueprint-service and validator-service must be
+recreated together** (register-service too, since it stores the sealed decision). This is safe
+precisely because it is caught at the signature check rather than silently mis-delivering — a rejected
+transaction is loud. Pre-release, the fleet deploys together anyway.
+
+## 9. Non-goals
 
 - **No validator rule** for `routeId` / `reasonCode`. The attestation signature already covers them, and
   the sender is the decision authority — there is nothing for a third party to independently check.
