@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>Sorcha.Proximity.Capacitor</PackageId>
+    <Description>IProximityTransport over the native sorcha-proximity Capacitor plugin, plus the JS bridge that reaches it. Shared by BOTH proximity apps — the citizen wallet (holder, BLE peripheral) and the verifier reader (BLE central) — so the JS-interop seam exists exactly once. A Razor Class Library so the bridge script ships as a static web asset rather than being copy-pasted into two wwwroots and drifting.</Description>
+    <RootNamespace>Sorcha.Proximity.Capacitor</RootNamespace>
+  </PropertyGroup>
+
+  <!-- Pure-managed: both consumers are Blazor WASM hosts. See scripts/check-wasm-safe.ps1. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sorcha.Proximity.Abstractions\Sorcha.Proximity.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

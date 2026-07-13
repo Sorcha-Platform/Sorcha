@@ -59,6 +59,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $guardedProjects = @(
     'src/Common/Sorcha.Mdoc',
     'src/Common/Sorcha.Proximity.Abstractions',
+    'src/Common/Sorcha.Proximity.Capacitor',
     'src/Common/Sorcha.Verifier.Engine'
 )
 
