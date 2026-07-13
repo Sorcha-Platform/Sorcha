@@ -752,20 +752,12 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         var outputSource = BuildOutputMappingSource(request.PayloadData, calculations, haipOfferResult, actionDef);
         var routingResult = await EvaluateRoutingAsync(blueprint, actionDef, mergedData, outputSource, cancellationToken);
 
-        // 9-notice. Feature 183 (US2) — reject visibility. For the route that was taken, fire any
-        // x-decision-notice so a rejected applicant gets a durable, reasoned bell/inbox entry. The
-        // dispatcher is fail-safe (swallows) and the writer is best-effort — a notice failure never
-        // affects sealing or routing.
-        await DecisionNoticeDispatcher.DispatchAsync(
-            actionDef,
-            instanceId,
-            instance.ParticipantWallets,
-            mergedData,
-            routingResult,
-            conditionMatches: condition => IsConditionTruthy(SafeEvaluateCondition(condition, mergedData)),
-            write: (w, iid, aid, t, r, sev, c) => _notificationService.NotifyDecisionAsync(w, iid, aid, t, r, sev, c),
-            logger: _logger,
-            ct: cancellationToken);
+        // Feature 184: the decision notice is NO LONGER fired here. Firing inline would fire it on the
+        // node that processed THIS submission — the deciding participant's node — where the recipient
+        // (a citizen, typically on another node entirely) has no account and no inbox. Instead the
+        // taken route's id and the reason code ride the signed routing decision (step 10d below), and
+        // the ReactionDispatcher fires the notice on whichever node hosts the recipient's wallet, as
+        // that node folds the sealed transaction.
 
         // 9a. Build payload that includes calculated values so they persist in the transaction
         //     and are available during state reconstruction for subsequent actions' routing
@@ -1085,12 +1077,19 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         //      validates it at seal (VAL_ROUTING_*, T023). The full set preserves parallel
         //      branches that the singular nextActionId above collapses. TrackingData copies all
         //      string metadata to the sealed tx, so "routingDecision" rides through to the docket.
+        //      Feature 184: the decision also carries the taken route's id and — when that route
+        //      declares an x-decision-notice — a non-sensitive reason code resolved from the payload.
+        //      Both fall inside ComputeSignableBytes(), so the sender signs them and the validator
+        //      verifies them (VAL_ROUTING_002); the recipient's node then renders the notice from the
+        //      replicated blueprint without ever reading the payload.
         var routingDecision = new RoutingDecision
         {
             CompletedActionId = actionId,
             NextActions = routingResult.NextActions
                 .Select(n => new ActionRef { ActionId = n.ActionId, BranchKey = n.BranchId })
                 .ToList(),
+            RouteId = routingResult.MatchedRouteId,
+            ReasonCode = ResolveDecisionReasonCode(actionDef, routingResult.MatchedRouteId, mergedData),
             Attestation = new Attestation { Kind = AttestationKind.SenderSigned },
         };
         var routingSignResult = await _walletClient.SignTransactionAsync(
@@ -1578,6 +1577,70 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         return routingDecision;
     }
 
+    /// <summary>
+    /// Feature 184 — resolves the non-sensitive reason code to carry on the signed routing decision.
+    /// Returns null unless the taken route declares an <c>x-decision-notice</c> with a
+    /// <c>reasonCodeField</c> that resolves against the submitted payload.
+    /// </summary>
+    /// <remarks>
+    /// This is the ONLY point at which the reason is read from the payload. It runs on the deciding
+    /// participant's node, which is submitting that payload and so plainly can read it. Everything
+    /// downstream — including the recipient's node, which can not — works from the resulting code.
+    /// </remarks>
+    internal static string? ResolveDecisionReasonCode(
+        ActionModel actionDef,
+        string? matchedRouteId,
+        IReadOnlyDictionary<string, object> mergedData)
+    {
+        if (string.IsNullOrEmpty(matchedRouteId) || actionDef.Routes is null)
+            return null;
+
+        var notice = actionDef.Routes
+            .FirstOrDefault(r => string.Equals(r.Id, matchedRouteId, StringComparison.Ordinal))
+            ?.DecisionNotice;
+
+        if (notice is null || string.IsNullOrWhiteSpace(notice.ReasonCodeField))
+            return null;
+
+        return ResolvePointerString(mergedData, notice.ReasonCodeField);
+    }
+
+    /// <summary>
+    /// Resolves a JSON Pointer against the merged action payload to a string, walking dictionary and
+    /// <see cref="JsonElement"/> nodes. Returns null when the pointer is empty or unresolvable.
+    /// </summary>
+    private static string? ResolvePointerString(IReadOnlyDictionary<string, object> data, string? pointer)
+    {
+        if (string.IsNullOrWhiteSpace(pointer))
+            return null;
+
+        var segments = pointer.TrimStart('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        object? current = data;
+
+        foreach (var segment in segments)
+        {
+            switch (current)
+            {
+                case IReadOnlyDictionary<string, object> dict when dict.TryGetValue(segment, out var next):
+                    current = next;
+                    break;
+                case JsonElement je when je.ValueKind == JsonValueKind.Object && je.TryGetProperty(segment, out var prop):
+                    current = prop;
+                    break;
+                default:
+                    return null;
+            }
+        }
+
+        return current switch
+        {
+            null => null,
+            string s => s,
+            JsonElement je => je.ValueKind == JsonValueKind.String ? je.GetString() : je.ToString(),
+            _ => current.ToString(),
+        };
+    }
+
     private async Task<RoutingResult> EvaluateRoutingAsync(
         BlueprintModel blueprint,
         ActionModel action,
@@ -1617,6 +1680,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         {
             NextActions = nextActions,
             IsParallel = engineResult.IsParallel,
+            MatchedRouteId = engineResult.MatchedRouteId,
             PendingPayloads = engineResult.PendingPayloads
         };
     }
@@ -1815,24 +1879,6 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                 "Action {ActionId}: credential issuanceCondition evaluation threw — failing closed, no credential issued.",
                 actionDef.Id);
             return false;
-        }
-    }
-
-    /// <summary>
-    /// Evaluates a route condition (JSON Logic) against the merged data, fail-safe (Feature 183).
-    /// Returns null — treated as not-truthy — when no evaluator is available or evaluation throws,
-    /// so a decision notice is only fired for a route whose condition genuinely matched.
-    /// </summary>
-    private object? SafeEvaluateCondition(System.Text.Json.Nodes.JsonNode condition, Dictionary<string, object> data)
-    {
-        try
-        {
-            return _jsonLogicEvaluator?.Evaluate(condition, data);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "Decision-notice route-condition evaluation threw — treating as non-match.");
-            return null;
         }
     }
 
@@ -2991,6 +3037,14 @@ public class RoutingResult
 {
     public List<NextAction> NextActions { get; init; } = [];
     public bool IsParallel { get; init; }
+
+    /// <summary>
+    /// The id of the route that was taken, or null when no route matched (Feature 184). Carried onto
+    /// the sender-signed routing decision so a node folding the sealed transaction can find the route
+    /// — and any <c>x-decision-notice</c> on it — in the replicated blueprint, without re-evaluating
+    /// conditions against a payload it may not be able to read. Populated for terminal routes too.
+    /// </summary>
+    public string? MatchedRouteId { get; init; }
 
     /// <summary>
     /// Per-next-action prepopulated payloads derived from the matched route's

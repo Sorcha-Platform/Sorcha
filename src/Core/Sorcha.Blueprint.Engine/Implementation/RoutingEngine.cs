@@ -193,7 +193,13 @@ public class RoutingEngine : IRoutingEngine
         var nextActionIds = route.NextActionIds?.ToList() ?? [];
         if (nextActionIds.Count == 0)
         {
-            return RoutingResult.Complete();
+            // Terminal route. It produces no RoutedAction, so the taken route's identity would be
+            // lost were it not reported at the top level (Feature 184) — and a decision workflow's
+            // reject route is precisely a terminal route.
+            var terminal = RoutingResult.Complete();
+            terminal.MatchedRouteId = route.Id;
+            terminal.MatchedCondition = route.Condition?.ToJsonString();
+            return terminal;
         }
 
         var conditionStr = route.Condition?.ToJsonString();
@@ -217,11 +223,14 @@ public class RoutingEngine : IRoutingEngine
                 NextActionId = routedActions[0].ActionId,
                 NextParticipantId = routedActions[0].ParticipantId ?? "",
                 MatchedCondition = conditionStr,
+                MatchedRouteId = route.Id,
                 NextActions = routedActions
             };
         }
 
-        return RoutingResult.Parallel(routedActions, conditionStr);
+        var parallel = RoutingResult.Parallel(routedActions, conditionStr);
+        parallel.MatchedRouteId = route.Id;
+        return parallel;
     }
 
     /// <summary>

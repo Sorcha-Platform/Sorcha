@@ -545,21 +545,36 @@ Seed a form field from a named JWT claim on the authenticated principal, at form
 
 Runtime: `ClaimSourceSeeder` (in `Sorcha.UI.Components.User`), invoked by `SorchaFormRenderer` on action load; never overwrites a user-entered value. Use it for agent-facing metadata the applicant shouldn't type (e.g. the AIAS email-verified gate signal). Non-boolean bindings seed the raw claim string only when present.
 
-### Decision notice (`x-decision-notice`) — Feature 183
+### Decision notice (`x-decision-notice`) — Feature 183, codified in Feature 184
 
-Make an autonomous decision visible to the applicant. On a **route**, declare that taking it writes a durable bell/inbox entry (F118) carrying an on-brand reason to a named participant — so a rejected applicant learns WHY, across sessions and devices.
+Make an autonomous decision visible to the applicant. On a **route**, declare that taking it writes a durable bell/inbox entry (F118) to a named participant — so a rejected applicant learns WHY, across sessions and devices.
 
 ```jsonc
 // on a reject route (nextActionIds: [])
 "x-decision-notice": {
   "recipientParticipantId": "citizen",     // resolved via instance participant bindings
-  "reasonField": "/verificationNotes",     // JSON Pointer into the submitted payload
+  "reasonCodeField": "/reasonCode",        // JSON Pointer to the non-sensitive CODE in the payload
   "title": "AIAS could not assure your identity",
-  "severity": "Warning"                     // optional; defaults to Warning
+  "severity": "Warning",                    // optional; defaults to Warning
+  "reasons": {                              // code → the citizen-facing message
+    "postcode-not-found": "AIAS could not locate that address on any map. …",
+    "profanity":          "AIAS does not assure identities described in such… colourful terms. …",
+    "email-unverified":   "AIAS needs a verified email before it can assure you. …"
+  },
+  "fallbackMessage": "Your application was not approved."   // unknown / absent code
 }
 ```
 
-Fires in `ActionExecutionService` for the route actually taken (matched next-action set + truthy condition). Fail-safe — a notice failure never affects sealing or routing. Reject-only in practice: approval is already surfaced (claim action-available + credential-received). See the **sorcha-architecture** skill for the writer/hook detail.
+**The notice fires on the RECIPIENT's node, not the decider's.** The `ReactionDispatcher` writes it as that node folds the sealed decision transaction — entitlement-gated (only the node hosting the recipient's wallet acts) and idempotent. That is the whole reason the reason is **codified**: on the applicant's node a background fold holds no delegation token and cannot decrypt the payload, so the reason must arrive as a code on the transaction's clear metadata (carried on the sender-signed `RoutingDecision`, alongside the taken route's id) and be resolved to text from the blueprint — which every node holds.
+
+Authoring rules:
+- **Declare the code field on the deciding action's `dataSchema`**, with an `enum` of the valid codes, so a typo in an agent rules file fails validation instead of silently degrading to the fallback.
+- **Codes are public.** Every node holding the register can read them. Name the *class* of reason — never applicant data, never prose.
+- **Citizen-facing copy lives in the blueprint** (`reasons`). The decider's own prose (e.g. `verificationNotes`) stays on the ledger as the audit record; it is not the delivery mechanism.
+- Reject-only in practice: approval is already surfaced (claim action-available + credential-received). Terminal and non-terminal routes both work.
+- Fail-safe throughout — a notice failure never affects sealing, routing, or the folded instance.
+
+Full contract: `specs/184-decision-notice-decentralised/contracts/x-decision-notice-extension.md`. Runtime detail: the **sorcha-architecture** skill.
 
 ### Review summary (`x-review`)
 

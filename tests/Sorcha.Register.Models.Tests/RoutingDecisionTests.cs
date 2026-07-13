@@ -138,4 +138,66 @@ public class RoutingDecisionTests
 
         Assert.Empty(round.NextActions);
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Feature 184 — the decision-notice carrier: the taken route's id and a non-sensitive reason code
+    // ride the signed decision so the recipient's node can render a notice from the replicated
+    // blueprint without decrypting payload.
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public void RoutingDecision_CanonicalRoundTrip_PreservesRouteIdAndReasonCode()
+    {
+        var decision = new RoutingDecision
+        {
+            CompletedActionId = 2,
+            NextActions = [],
+            RouteId = "rejected-terminal",
+            ReasonCode = "postcode-not-found",
+            Attestation = new Attestation { Kind = AttestationKind.SenderSigned, Signature = "c2ln" },
+        };
+
+        var json = JsonSerializer.Serialize(decision, RegisterSerializationOptions.Canonical);
+        var round = JsonSerializer.Deserialize<RoutingDecision>(json, RegisterSerializationOptions.Canonical)!;
+
+        Assert.Contains("\"routeId\":\"rejected-terminal\"", json);
+        Assert.Contains("\"reasonCode\":\"postcode-not-found\"", json);
+        Assert.Equal("rejected-terminal", round.RouteId);
+        Assert.Equal("postcode-not-found", round.ReasonCode);
+    }
+
+    [Fact]
+    public void RoutingDecision_AbsentRouteIdAndReasonCode_DeserializeToNull()
+    {
+        // A transaction sealed before Feature 184 carries neither field — it must deserialize
+        // cleanly and simply produce no notice.
+        const string legacyJson = """{"completedActionId":2,"nextActions":[]}""";
+
+        var round = JsonSerializer.Deserialize<RoutingDecision>(legacyJson, RegisterSerializationOptions.Canonical)!;
+
+        Assert.Null(round.RouteId);
+        Assert.Null(round.ReasonCode);
+    }
+
+    [Fact]
+    public void ComputeSignableBytes_IncludesRouteId_SoItCannotBeAlteredInTransit()
+    {
+        var a = new RoutingDecision { CompletedActionId = 2, NextActions = [], RouteId = "rejected-terminal" };
+        var b = new RoutingDecision { CompletedActionId = 2, NextActions = [], RouteId = "approved-to-claim" };
+
+        // If RouteId were omitted from the object ComputeSignableBytes() rebuilds, these would be
+        // byte-identical — the field would ride the wire unauthenticated while appearing signed.
+        Assert.NotEqual(a.ComputeSignableBytes(), b.ComputeSignableBytes());
+        Assert.Contains("rejected-terminal", Encoding.UTF8.GetString(a.ComputeSignableBytes()));
+    }
+
+    [Fact]
+    public void ComputeSignableBytes_IncludesReasonCode_SoTheReasonCannotBeAlteredInTransit()
+    {
+        var a = new RoutingDecision { CompletedActionId = 2, NextActions = [], ReasonCode = "postcode-not-found" };
+        var b = new RoutingDecision { CompletedActionId = 2, NextActions = [], ReasonCode = "profanity" };
+
+        Assert.NotEqual(a.ComputeSignableBytes(), b.ComputeSignableBytes());
+        Assert.Contains("postcode-not-found", Encoding.UTF8.GetString(a.ComputeSignableBytes()));
+    }
 }

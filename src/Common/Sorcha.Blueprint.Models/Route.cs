@@ -99,8 +99,24 @@ public class Route
 
 /// <summary>
 /// Declares that taking a route notifies a participant with a durable, reasoned notice
-/// (Feature 183). Carried on a <see cref="Route"/> as the <c>x-decision-notice</c> extension.
+/// (Feature 183; codified in Feature 184). Carried on a <see cref="Route"/> as the
+/// <c>x-decision-notice</c> extension.
 /// </summary>
+/// <remarks>
+/// <para>
+/// The notice is delivered by the node that <b>hosts the recipient's wallet</b>, as that node folds
+/// the sealed decision transaction — not by the node that processed the deciding participant's
+/// submission. Those are different nodes whenever the recipient is not co-located with the decider,
+/// which is the default assumption in a federated deployment.
+/// </para>
+/// <para>
+/// So the reason must survive the journey in a form the recipient's node can read: a non-sensitive
+/// <b>code</b> on the transaction's clear metadata, resolved to citizen-facing text through
+/// <see cref="Reasons"/> in the replicated blueprint. The recipient's node decrypts nothing and holds
+/// no delegated authority on the recipient's behalf. Codes are readable by every node holding the
+/// register, so they must name the <i>class</i> of reason and never carry applicant data or prose.
+/// </para>
+/// </remarks>
 public class DecisionNotice
 {
     /// <summary>
@@ -111,11 +127,31 @@ public class DecisionNotice
     public string RecipientParticipantId { get; set; } = string.Empty;
 
     /// <summary>
-    /// JSON Pointer into the submitted action payload for the human-readable reason
-    /// (e.g. <c>/verificationNotes</c>). Surfaced as the notification summary.
+    /// JSON Pointer into the submitted action payload for the non-sensitive reason <b>code</b>
+    /// (e.g. <c>/reasonCode</c>). The code is stamped onto the sender-signed routing decision at
+    /// submit and resolved through <see cref="Reasons"/> on the recipient's node. Omit for a notice
+    /// that needs no per-reason variation — <see cref="FallbackMessage"/> is then always used.
     /// </summary>
-    [JsonPropertyName("reasonField")]
-    public string ReasonField { get; set; } = string.Empty;
+    [JsonPropertyName("reasonCodeField")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ReasonCodeField { get; set; }
+
+    /// <summary>
+    /// Catalogue mapping each reason code to the message the recipient reads. This is where the
+    /// citizen-facing copy lives: in the blueprint — the shared, replicated contract every node holds
+    /// — rather than in the deciding agent's own prose.
+    /// </summary>
+    [JsonPropertyName("reasons")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, string>? Reasons { get; set; }
+
+    /// <summary>
+    /// Message used when the decision carries no reason code, or a code absent from
+    /// <see cref="Reasons"/>. Declare it — without it, an unrecognised code yields an empty summary.
+    /// </summary>
+    [JsonPropertyName("fallbackMessage")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? FallbackMessage { get; set; }
 
     /// <summary>Notification title (e.g. "AIAS could not assure your identity").</summary>
     [JsonPropertyName("title")]
@@ -125,4 +161,23 @@ public class DecisionNotice
     [JsonPropertyName("severity")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Severity { get; set; }
+
+    /// <summary>
+    /// Resolves the message the recipient reads for a carried reason code:
+    /// <see cref="Reasons"/> lookup, else <see cref="FallbackMessage"/>, else empty.
+    /// </summary>
+    /// <param name="reasonCode">The code carried on the routing decision; may be null.</param>
+    /// <returns>The citizen-facing message; never null.</returns>
+    public string ResolveMessage(string? reasonCode)
+    {
+        if (!string.IsNullOrWhiteSpace(reasonCode) &&
+            Reasons is not null &&
+            Reasons.TryGetValue(reasonCode, out var message) &&
+            !string.IsNullOrWhiteSpace(message))
+        {
+            return message;
+        }
+
+        return FallbackMessage ?? string.Empty;
+    }
 }

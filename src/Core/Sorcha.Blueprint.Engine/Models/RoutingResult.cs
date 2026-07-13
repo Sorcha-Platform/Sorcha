@@ -88,6 +88,20 @@ public class RoutingResult
     public string? MatchedCondition { get; set; }
 
     /// <summary>
+    /// The id of the <see cref="Sorcha.Blueprint.Models.Route"/> that was taken. Null when no route
+    /// matched (Feature 184).
+    /// </summary>
+    /// <remarks>
+    /// Distinct from the per-next-action <see cref="RoutedAction.MatchedRouteId"/>, which is absent
+    /// for a <b>terminal</b> route because such a route produces no next actions at all. A decision
+    /// workflow's reject route is exactly that case, so the taken route's identity must also live at
+    /// the top level. It rides the signed routing decision onto the transaction, letting any node
+    /// that folds it locate the route in the replicated blueprint without re-evaluating conditions
+    /// against a payload it may not be able to read.
+    /// </remarks>
+    public string? MatchedRouteId { get; set; }
+
+    /// <summary>
     /// List of next actions for route-based routing, supporting parallel branches.
     /// </summary>
     /// <remarks>

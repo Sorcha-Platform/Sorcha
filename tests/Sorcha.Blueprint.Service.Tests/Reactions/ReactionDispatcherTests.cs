@@ -10,6 +10,7 @@ using Sorcha.AtomicCache;
 using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.Blueprint.Service.Services.Interfaces;
+using Sorcha.Register.Models;
 using Sorcha.ServiceClients.Wallet;
 
 namespace Sorcha.Blueprint.Service.Tests.Reactions;
@@ -24,6 +25,7 @@ public class ReactionDispatcherTests
 {
     private readonly Mock<IWalletServiceClient> _walletClient = new();
     private readonly Mock<INotificationService> _notifier = new();
+    private readonly Mock<IActionResolverService> _actionResolver = new();
     private readonly IAtomicDistributedCache _claims = new InMemoryAtomicDistributedCache();
     private readonly ReactionDispatcherMetrics _metrics;
     private readonly ServiceProvider _provider;
@@ -42,7 +44,20 @@ public class ReactionDispatcherTests
         _claims,
         _metrics,
         NullLogger<ReactionDispatcher>.Instance,
+        _actionResolver.Object,
         _notifier.Object);
+
+    /// <summary>
+    /// A sealed transaction carrying no routing decision — the notification/inbox reactions covered
+    /// here key off the folded instance, not the decision. (The Feature 184 decision-notice reaction,
+    /// which does read the carried decision, is covered in
+    /// <see cref="ReactionDispatcherDecisionNoticeTests"/>.)
+    /// </summary>
+    private static TransactionModel SealedTx(string txId) => new()
+    {
+        TxId = txId,
+        MetaData = new TransactionMetaData { BlueprintId = "bp-1", InstanceId = "inst-1" },
+    };
 
     private void HostsWallet(string address) =>
         _walletClient.Setup(w => w.GetWalletAsync(address, It.IsAny<CancellationToken>()))
@@ -91,7 +106,7 @@ public class ReactionDispatcherTests
         HostsWallet(CitizenWallet);
         var dispatcher = CreateDispatcher();
 
-        await dispatcher.DispatchAsync(ActiveInstance(CitizenWallet, 2), SealedTxId, default);
+        await dispatcher.DispatchAsync(ActiveInstance(CitizenWallet, 2), SealedTx(SealedTxId), default);
 
         _notifier.Verify(n => n.NotifyActionAvailableAsync("inst-1", CitizenWallet, "2", It.IsAny<CancellationToken>()),
             Times.Once);
@@ -103,7 +118,7 @@ public class ReactionDispatcherTests
         DoesNotHostWallet(CitizenWallet);
         var dispatcher = CreateDispatcher();
 
-        await dispatcher.DispatchAsync(ActiveInstance(CitizenWallet, 2), SealedTxId, default);
+        await dispatcher.DispatchAsync(ActiveInstance(CitizenWallet, 2), SealedTx(SealedTxId), default);
 
         _notifier.Verify(n => n.NotifyActionAvailableAsync(
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
@@ -117,8 +132,8 @@ public class ReactionDispatcherTests
         var dispatcher = CreateDispatcher();
 
         // Same sealed tx folded/dispatched twice (replay, restart, or rebuild).
-        await dispatcher.DispatchAsync(ActiveInstance(CitizenWallet, 2), SealedTxId, default);
-        await dispatcher.DispatchAsync(ActiveInstance(CitizenWallet, 2), SealedTxId, default);
+        await dispatcher.DispatchAsync(ActiveInstance(CitizenWallet, 2), SealedTx(SealedTxId), default);
+        await dispatcher.DispatchAsync(ActiveInstance(CitizenWallet, 2), SealedTx(SealedTxId), default);
 
         _notifier.Verify(n => n.NotifyActionAvailableAsync("inst-1", CitizenWallet, "2", It.IsAny<CancellationToken>()),
             Times.Once);
@@ -130,8 +145,8 @@ public class ReactionDispatcherTests
         HostsWallet(CitizenWallet);
         var dispatcher = CreateDispatcher();
 
-        await dispatcher.DispatchAsync(ActiveInstance(CitizenWallet, 2), "tx-1", default);
-        await dispatcher.DispatchAsync(ActiveInstance(CitizenWallet, 3), "tx-2", default);
+        await dispatcher.DispatchAsync(ActiveInstance(CitizenWallet, 2), SealedTx("tx-1"), default);
+        await dispatcher.DispatchAsync(ActiveInstance(CitizenWallet, 3), SealedTx("tx-2"), default);
 
         _notifier.Verify(n => n.NotifyActionAvailableAsync("inst-1", CitizenWallet, "2", It.IsAny<CancellationToken>()),
             Times.Once);
@@ -148,7 +163,7 @@ public class ReactionDispatcherTests
         var instance = ActiveInstance(CitizenWallet, 2);
         instance.ParticipantWallets["agent"] = "ws-agent-2";
 
-        await dispatcher.DispatchAsync(instance, SealedTxId, default);
+        await dispatcher.DispatchAsync(instance, SealedTx(SealedTxId), default);
 
         _notifier.Verify(n => n.NotifyActionAvailableAsync(
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
@@ -161,7 +176,7 @@ public class ReactionDispatcherTests
         HostsWallet(CitizenWallet);
         var dispatcher = CreateDispatcher();
 
-        await dispatcher.DispatchAsync(CompletedInstance(CitizenWallet), SealedTxId, default);
+        await dispatcher.DispatchAsync(CompletedInstance(CitizenWallet), SealedTx(SealedTxId), default);
 
         _notifier.Verify(n => n.NotifyWorkflowCompletedAsync(
             "inst-1", It.Is<IEnumerable<string>>(w => w.Contains(CitizenWallet)), It.IsAny<CancellationToken>()),
@@ -174,8 +189,8 @@ public class ReactionDispatcherTests
         HostsWallet(CitizenWallet);
         var dispatcher = CreateDispatcher();
 
-        await dispatcher.DispatchAsync(CompletedInstance(CitizenWallet), SealedTxId, default);
-        await dispatcher.DispatchAsync(CompletedInstance(CitizenWallet), SealedTxId, default);
+        await dispatcher.DispatchAsync(CompletedInstance(CitizenWallet), SealedTx(SealedTxId), default);
+        await dispatcher.DispatchAsync(CompletedInstance(CitizenWallet), SealedTx(SealedTxId), default);
 
         _notifier.Verify(n => n.NotifyWorkflowCompletedAsync(
             "inst-1", It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()),
@@ -188,7 +203,7 @@ public class ReactionDispatcherTests
         DoesNotHostWallet(CitizenWallet);
         var dispatcher = CreateDispatcher();
 
-        await dispatcher.DispatchAsync(CompletedInstance(CitizenWallet), SealedTxId, default);
+        await dispatcher.DispatchAsync(CompletedInstance(CitizenWallet), SealedTx(SealedTxId), default);
 
         _notifier.Verify(n => n.NotifyWorkflowCompletedAsync(
             It.IsAny<string>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()),
