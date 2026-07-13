@@ -97,14 +97,32 @@ builder.Services.AddScoped<SchemaLibraryService>(sp =>
 // Feature 126 — council enrolment gate services. ITierProbeService hits the
 // API gateway directly via a typed HttpClient; IEnrolPairingSignal layers
 // SignalR (via TenantHubConnection) with a 3-s /me/devices poll as fallback.
+//
+// ITierProbeService is deliberately left ANONYMOUS: its whole job is to classify the visitor, and a
+// 401 from /whoami IS the answer "cold-start visitor, tier 3". Attaching the authenticated handler
+// would turn that expected 401 into a redirect-to-login and break the cold-start gate.
 builder.Services.AddHttpClient<ITierProbeService, HttpTierProbeService>(client =>
 {
     client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
 });
+
+// Everything below calls an endpoint scoped to the SIGNED-IN citizen, so each typed client must
+// carry their bearer token. The host's ambient HttpClient cannot: it is the plain client
+// AuthenticationService itself uses, so it can't depend on the auth handler without a circular
+// dependency. A client registered without the handler here silently sends anonymous requests and
+// gets a 401 — which is exactly how "Couldn't generate a pairing code." reached a signed-in citizen.
 builder.Services.AddHttpClient<IEnrolPairingSignal, EnrolPairingSignal>(client =>
 {
     client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
-});
+}).AddHttpMessageHandler<AuthenticatedHttpMessageHandler>();
+
+// Features 126/128 — mints the enrol-session token (QR) and the 6-digit pairing short code for
+// WalletPairingSurface and PairingHandoffSurface (/setup/add-device).
+builder.Services.AddHttpClient<Sorcha.UI.Core.Services.User.Pairing.IPairingClient,
+                               Sorcha.UI.Core.Services.User.Pairing.PairingClient>(client =>
+{
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+}).AddHttpMessageHandler<AuthenticatedHttpMessageHandler>();
 
 // Feature 181 US3 (T037) — platform-admin trusted-list snapshot management.
 builder.Services.AddHttpClient<Sorcha.UI.Core.Services.Admin.ITrustedListAdminService,
@@ -128,7 +146,7 @@ builder.Services.AddHttpClient<Sorcha.UI.Core.Services.User.Devices.IHasPairedDe
                                Sorcha.UI.Core.Services.User.Devices.HasPairedDeviceProbe>(client =>
 {
     client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
-});
+}).AddHttpMessageHandler<AuthenticatedHttpMessageHandler>();
 
 // Feature 128 US3 — PWA-installability probe used by PairingHandoffSurface
 // to switch between the QR variant and the install-flavoured variant.

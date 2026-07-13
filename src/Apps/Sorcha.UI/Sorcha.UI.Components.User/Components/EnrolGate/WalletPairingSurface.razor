@@ -1,8 +1,8 @@
 @namespace Sorcha.UI.Core.Components.EnrolGate
-@using System.Net.Http.Json
 @using Sorcha.UI.Core.Services.User.Enrolment
+@using Sorcha.UI.Core.Services.User.Pairing
 @using Sorcha.UI.Core.Extensions
-@inject HttpClient Http
+@inject IPairingClient Pairing
 @inject IEnrolPairingSignal PairingSignal
 @implements IAsyncDisposable
 
@@ -78,7 +78,7 @@
     /// <summary>Fired when a wallet device for this user has been enrolled.</summary>
     [Parameter] public EventCallback OnPaired { get; set; }
 
-    private MintEnrolSessionResponseShape? _minted;
+    private EnrolSessionMint? _minted;
     private bool _minting = true;
     private string? _mintError;
     private string _statusText = "Waiting for your phone…";
@@ -117,21 +117,16 @@
 
         try
         {
-            using var response = await Http.PostAsJsonAsync("/api/auth/enrol-session", new { });
-            if (!response.IsSuccessStatusCode)
+            // The mint is authenticated — the typed client carries the caller's bearer token,
+            // because the host registers it with the same auth handler its other API clients use.
+            _minted = await Pairing.MintAsync();
+            if (_minted is null)
             {
                 _mintError = "Couldn't generate an enrolment code — try again or refresh the page.";
                 return;
             }
-            _minted = await response.Content.ReadFromJsonAsync<MintEnrolSessionResponseShape>(JsonDefaults.Api);
-            if (_minted is not null)
-            {
-                _ = WatchForExpiryAsync(_minted.ExpiresAt, _expiryWatcher.Token);
-            }
-        }
-        catch (Exception)
-        {
-            _mintError = "Couldn't reach Sorcha — check your connection.";
+
+            _ = WatchForExpiryAsync(_minted.ExpiresAt, _expiryWatcher.Token);
         }
         finally
         {
@@ -206,7 +201,6 @@
     }
 
     /// <summary>Local DTO mirroring <c>MintEnrolSessionResponse</c> on the Tenant Service.</summary>
-    public sealed record MintEnrolSessionResponseShape(string SessionToken, string QrUrl, DateTimeOffset ExpiresAt);
 
     /// <summary>Tier-aware copy mode for the pairing surface.</summary>
     public enum TierMode
