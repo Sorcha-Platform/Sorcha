@@ -114,6 +114,111 @@ public class BlueprintInboxWriterTests
             "inbox-write failures must never surface to the caller — SignalR delivery must be unaffected");
     }
 
+    // ---- Feature 183 (US2) — WriteDecisionAsync (reject-visibility decision notice) ----
+
+    [Fact]
+    public async Task WriteDecisionAsync_HappyPath_PostsWorkflowEntryCarryingTheReason()
+    {
+        var participant = BuildParticipant(Guid.NewGuid());
+        var platformUserId = Guid.NewGuid();
+        InboxWritePayload? captured = null;
+
+        _participants.Setup(p => p.GetByWalletAddressAsync("citizen-wallet", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(participant);
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(participant.UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(platformUserId);
+        _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
+            .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
+            .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
+
+        await _sut.WriteDecisionAsync(
+            "citizen-wallet", "instance-A", "2",
+            title: "AIAS could not assure your identity",
+            reason: "AIAS needs a verified email before it can assure you.",
+            severity: "Warning");
+
+        captured.Should().NotBeNull();
+        captured!.PlatformUserId.Should().Be(platformUserId);
+        captured.Category.Should().Be("Workflow");
+        captured.Severity.Should().Be("Warning");
+        captured.Title.Should().Be("AIAS could not assure your identity");
+        captured.Summary.Should().Be("AIAS needs a verified email before it can assure you.");
+        captured.CorrelationKey.Should().Be("decision:instance-A:2");
+        captured.DetailHref.Should().Be("/api/instances/instance-A");
+    }
+
+    [Fact]
+    public async Task WriteDecisionAsync_NoParticipant_SkipsInbox()
+    {
+        _participants.Setup(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ParticipantInfo?)null);
+
+        await _sut.WriteDecisionAsync("citizen-wallet", "instance-A", "2", "Title", "reason", "Warning");
+
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task WriteDecisionAsync_NoPlatformUserResolution_SkipsInbox()
+    {
+        var participant = BuildParticipant(Guid.NewGuid());
+        _participants.Setup(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(participant);
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid?)null);
+
+        await _sut.WriteDecisionAsync("citizen-wallet", "instance-A", "2", "Title", "reason", "Warning");
+
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task WriteDecisionAsync_EmptyRecipientWallet_SkipsInbox()
+    {
+        await _sut.WriteDecisionAsync("", "instance-A", "2", "Title", "reason", "Warning");
+
+        _participants.Verify(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task WriteDecisionAsync_DeterministicSourceEventId_ReusesAcrossCalls()
+    {
+        var participant = BuildParticipant(Guid.NewGuid());
+        var sourceIds = new List<Guid>();
+
+        _participants.Setup(p => p.GetByWalletAddressAsync("citizen-wallet", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(participant);
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Guid.NewGuid());
+        _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
+            .Callback<InboxWritePayload, CancellationToken>((p, _) => sourceIds.Add(p.SourceEventId))
+            .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
+
+        await _sut.WriteDecisionAsync("citizen-wallet", "instance-A", "2", "Title", "reason", "Warning");
+        await _sut.WriteDecisionAsync("citizen-wallet", "instance-A", "2", "Title", "reason", "Warning");
+
+        sourceIds.Should().HaveCount(2);
+        sourceIds[0].Should().Be(sourceIds[1], "duplicate decision notices must collapse to the same idempotency key");
+    }
+
+    [Fact]
+    public async Task WriteDecisionAsync_InboxThrows_DoesNotPropagate()
+    {
+        var participant = BuildParticipant(Guid.NewGuid());
+        _participants.Setup(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(participant);
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Guid.NewGuid());
+        _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Tenant unavailable"));
+
+        var act = () => _sut.WriteDecisionAsync("citizen-wallet", "instance-A", "2", "Title", "reason", "Warning");
+
+        await act.Should().NotThrowAsync(
+            "a decision-notice write failure must never affect sealing/routing or surface to the caller");
+    }
+
     private static ParticipantInfo BuildParticipant(Guid userId) =>
         new()
         {

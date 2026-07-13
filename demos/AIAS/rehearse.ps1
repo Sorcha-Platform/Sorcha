@@ -56,24 +56,35 @@ $failures = @()
 # ---------------------------------------------------------------------------
 
 function New-RehearsalApplicant {
-    param([string]$Tag)
+    param([string]$Tag, [switch]$SkipEmailVerification)
     # Anonymous signup on the public org + a wallet so the credential can be delivered.
     $email = "aias-rehearse-$Tag-$([guid]::NewGuid().ToString('N').Substring(0,8))@example.test"
     $pw = "Rehearse_Pass_2026!"
     Register-SorchaPublicUser -TenantUrl $api -Email $email -Password $pw -DisplayName "Rehearsal $Tag" | Out-Null
-    # Verify the email so the agent's emailVerified check passes on the happy path.
-    $secrets = Import-DemoSecrets
-    $node = [pscustomobject]@{ id = $state.target; adminEmail = 'admin@sorcha.local'; gateway = $gateway }
-    $admin = Connect-DemoNodeAdmin -Node $node -Secrets $secrets
     $publicOrgId = "00000000-0000-0000-0000-000000000002"
-    $pu = Invoke-SorchaApi -Method GET -Uri "$api/organizations/$publicOrgId/users?includeInactive=true" -Headers $admin.Headers
-    $u = $pu.users | Where-Object { $_.email -eq $email } | Select-Object -First 1
-    if ($u) { $null = Confirm-SorchaUserEmail -TenantUrl $api -OrganizationId $publicOrgId -UserId $u.id -Headers $admin.Headers }
 
+    # Verify the email so the agent's emailVerified gate passes — UNLESS this is the F183
+    # unverified-applicant rehearsal, which must reach the email-gate reject. The returned
+    # EmailVerified flag drives what the submission carries (mirrors the web client's
+    # x-claim-source stamp of the real email_verified JWT claim).
+    $emailVerified = $false
+    if (-not $SkipEmailVerification) {
+        $secrets = Import-DemoSecrets
+        $node = [pscustomobject]@{ id = $state.target; adminEmail = 'admin@sorcha.local'; gateway = $gateway }
+        $admin = Connect-DemoNodeAdmin -Node $node -Secrets $secrets
+        $pu = Invoke-SorchaApi -Method GET -Uri "$api/organizations/$publicOrgId/users?includeInactive=true" -Headers $admin.Headers
+        $u = $pu.users | Where-Object { $_.email -eq $email } | Select-Object -First 1
+        if ($u) {
+            $null = Confirm-SorchaUserEmail -TenantUrl $api -OrganizationId $publicOrgId -UserId $u.id -Headers $admin.Headers
+            $emailVerified = $true
+        }
+    }
+
+    # Login succeeds even for an unverified user (the token just carries email_verified=false).
     $session = Connect-SorchaUser -TenantUrl $api -Email $email -Password $pw -OrganizationId $publicOrgId
     $wallet = New-SorchaWallet -WalletUrl $api -Name "Rehearsal $Tag Wallet" -Headers $session.Headers -FetchPublicKey
     return [pscustomobject]@{
-        Email = $email; Session = $session; Wallet = $wallet; PublicOrgId = $publicOrgId
+        Email = $email; Session = $session; Wallet = $wallet; PublicOrgId = $publicOrgId; EmailVerified = $emailVerified
     }
 }
 
@@ -98,12 +109,16 @@ function Submit-RehearsalApplication {
         name = @{ givenName = "Ada"; middleName = ""; familyName = "Rehearsal"; fullName = "Ada Rehearsal" }
         dob  = @{ dateOfBirth = "1990-01-01" }
         email = @{ email = $Applicant.Email }
-        emailVerified = $true
         address = @{
             line1 = "1 Demo Street"; town = "Testington"; region = "Testshire"
             postcode = $Postcode; country = "GB"
         }
     }
+    # F183: carry the applicant's REAL email-verified status, exactly as the web client's
+    # x-claim-source seeder stamps it from the email_verified JWT claim — NOT a hardcoded true.
+    # Verified → emailVerified:true; unverified → key omitted (the absent-on-the-wire shape the
+    # agent's email gate rejects, which the old hardcoded true masked).
+    if ($Applicant.EmailVerified) { $payload.emailVerified = $true }
     if ($WithPortrait) {
         # Tiny valid-JPEG-ish token well under the F107 ~27KB gate so the portrait
         # claim is carried. (Real applicants supply a camera/upload-sized photo.)
@@ -183,7 +198,7 @@ function Test-CredentialDelivered {
 # ---------------------------------------------------------------------------
 # Rehearsal 1 — APPROVAL (existing postcode + portrait)
 # ---------------------------------------------------------------------------
-Write-WtBanner "AIAS rehearsal 1/2 — APPROVAL (existing postcode + portrait)"
+Write-WtBanner "AIAS rehearsal 1/3 — APPROVAL (verified email + existing postcode + portrait)"
 try {
     $approveApplicant = New-RehearsalApplicant -Tag "approve"
     $goodPostcode = "SW1A 1AA"   # present in fixtures/postcodes.offline.json + postcodes.io
@@ -211,7 +226,7 @@ try {
 # ---------------------------------------------------------------------------
 # Rehearsal 2 — REJECTION (non-existent postcode -> on-brand reason, no credential)
 # ---------------------------------------------------------------------------
-Write-WtBanner "AIAS rehearsal 2/2 — REJECTION (bad postcode 'ZZ99 9ZZ')"
+Write-WtBanner "AIAS rehearsal 2/3 — REJECTION (verified email, bad postcode 'ZZ99 9ZZ')"
 try {
     $rejectApplicant = New-RehearsalApplicant -Tag "reject"
     $instId = Submit-RehearsalApplication -Applicant $rejectApplicant -Postcode "ZZ99 9ZZ"
@@ -238,6 +253,31 @@ try {
     } catch { Write-WtWarn "REJECTION: reason read transient error: $($_.Exception.Message)" }
 } catch {
     $failures += "REJECTION: threw — $($_.Exception.Message)"
+}
+
+# ---------------------------------------------------------------------------
+# Rehearsal 3 — REJECTION (unverified email -> email-gate reject, no credential) [F183]
+# Real web-form shape: an unverified applicant's client stamps NO verified emailVerified,
+# so the payload omits it and the agent's email gate rejects. This is the case the old
+# hardcoded emailVerified=$true masked — a genuine web applicant could never get here.
+# ---------------------------------------------------------------------------
+Write-WtBanner "AIAS rehearsal 3/3 — REJECTION (unverified email; no emailVerified on the wire)"
+try {
+    $unverifiedApplicant = New-RehearsalApplicant -Tag "unverified" -SkipEmailVerification
+    $goodPostcode = "SW1A 1AA"   # good postcode so the ONLY reject reason is the email gate
+    $instId = Submit-RehearsalApplication -Applicant $unverifiedApplicant -Postcode $goodPostcode
+    Write-WtInfo "submitted unverified-email application (instance=$instId)"
+
+    $decision = Wait-AiasDecision -InstanceId $instId -Headers $unverifiedApplicant.Session.Headers
+    if ($decision -ne 'rejected') { $failures += "UNVERIFIED: expected decision 'rejected' within ${DecisionTimeoutSeconds}s, got '$decision'." }
+    else { Write-WtSuccess "agent rejected the application (unverified email)" }
+
+    # No credential must be issued on an email-gate reject.
+    $cred = Test-CredentialDelivered -Applicant $unverifiedApplicant
+    if ($cred) { $failures += "UNVERIFIED: a credential was issued ($($cred.id)) — none should be on an email-gate reject." }
+    else { Write-WtSuccess "no credential issued (correct)" }
+} catch {
+    $failures += "UNVERIFIED: threw — $($_.Exception.Message)"
 }
 
 # ---------------------------------------------------------------------------

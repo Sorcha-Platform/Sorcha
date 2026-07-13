@@ -112,7 +112,8 @@
                 "title": "Email verified",
                 "description": "Whether the applicant's email was verified at signup. Carried automatically from the platform's email-verification state so the Assure-ID agent can rely on it (FR-005a). Read-only.",
                 "default": true,
-                "readOnly": true
+                "readOnly": true,
+                "x-claim-source": "email_verified"
               },
               "holderKeys": {
                 "type": "object",
@@ -216,7 +217,13 @@
             "nextActionIds": [],
             "isDefault": true,
             "condition": { "==": [{ "var": "decision" }, "rejected"] },
-            "description": "Rejected by AIAS — workflow ends with the on-brand reason surfaced to the applicant and no credential issued"
+            "description": "Rejected by AIAS — workflow ends with the on-brand reason surfaced to the applicant and no credential issued",
+            "x-decision-notice": {
+              "recipientParticipantId": "citizen",
+              "reasonField": "/verificationNotes",
+              "title": "AIAS could not assure your identity",
+              "severity": "Warning"
+            }
           }
         ]
       },

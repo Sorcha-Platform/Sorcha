@@ -85,4 +85,44 @@ public class Route
     [JsonPropertyName("outputMapping")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Dictionary<string, string>? OutputMapping { get; set; }
+
+    /// <summary>
+    /// Optional decision-notice declaration (Feature 183). When this route is the one taken,
+    /// a durable inbox entry carrying the on-brand reason is written to the named recipient
+    /// participant — making an autonomous decision (e.g. an AIAS reject) visible to the
+    /// applicant across sessions and devices. Reusable by any blueprint route.
+    /// </summary>
+    [JsonPropertyName("x-decision-notice")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DecisionNotice? DecisionNotice { get; set; }
+}
+
+/// <summary>
+/// Declares that taking a route notifies a participant with a durable, reasoned notice
+/// (Feature 183). Carried on a <see cref="Route"/> as the <c>x-decision-notice</c> extension.
+/// </summary>
+public class DecisionNotice
+{
+    /// <summary>
+    /// Participant id to notify (resolved to a wallet via the instance's participant bindings).
+    /// For AIAS this is the starting participant, <c>"citizen"</c>.
+    /// </summary>
+    [JsonPropertyName("recipientParticipantId")]
+    public string RecipientParticipantId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// JSON Pointer into the submitted action payload for the human-readable reason
+    /// (e.g. <c>/verificationNotes</c>). Surfaced as the notification summary.
+    /// </summary>
+    [JsonPropertyName("reasonField")]
+    public string ReasonField { get; set; } = string.Empty;
+
+    /// <summary>Notification title (e.g. "AIAS could not assure your identity").</summary>
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>Inbox severity. Defaults to <c>Warning</c> when unspecified.</summary>
+    [JsonPropertyName("severity")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Severity { get; set; }
 }

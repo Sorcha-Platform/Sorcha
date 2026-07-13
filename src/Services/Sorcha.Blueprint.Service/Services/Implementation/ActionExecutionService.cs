@@ -752,6 +752,21 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         var outputSource = BuildOutputMappingSource(request.PayloadData, calculations, haipOfferResult, actionDef);
         var routingResult = await EvaluateRoutingAsync(blueprint, actionDef, mergedData, outputSource, cancellationToken);
 
+        // 9-notice. Feature 183 (US2) — reject visibility. For the route that was taken, fire any
+        // x-decision-notice so a rejected applicant gets a durable, reasoned bell/inbox entry. The
+        // dispatcher is fail-safe (swallows) and the writer is best-effort — a notice failure never
+        // affects sealing or routing.
+        await DecisionNoticeDispatcher.DispatchAsync(
+            actionDef,
+            instanceId,
+            instance.ParticipantWallets,
+            mergedData,
+            routingResult,
+            conditionMatches: condition => IsConditionTruthy(SafeEvaluateCondition(condition, mergedData)),
+            write: (w, iid, aid, t, r, sev, c) => _notificationService.NotifyDecisionAsync(w, iid, aid, t, r, sev, c),
+            logger: _logger,
+            ct: cancellationToken);
+
         // 9a. Build payload that includes calculated values so they persist in the transaction
         //     and are available during state reconstruction for subsequent actions' routing
         var payloadWithCalculations = new Dictionary<string, object>(request.PayloadData);
@@ -1800,6 +1815,24 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                 "Action {ActionId}: credential issuanceCondition evaluation threw — failing closed, no credential issued.",
                 actionDef.Id);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Evaluates a route condition (JSON Logic) against the merged data, fail-safe (Feature 183).
+    /// Returns null — treated as not-truthy — when no evaluator is available or evaluation throws,
+    /// so a decision notice is only fired for a route whose condition genuinely matched.
+    /// </summary>
+    private object? SafeEvaluateCondition(System.Text.Json.Nodes.JsonNode condition, Dictionary<string, object> data)
+    {
+        try
+        {
+            return _jsonLogicEvaluator?.Evaluate(condition, data);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Decision-notice route-condition evaluation threw — treating as non-match.");
+            return null;
         }
     }
 

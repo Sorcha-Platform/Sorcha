@@ -1752,6 +1752,39 @@ blueprint-cluster (the MCP tool uses the direct service address, so unit tests d
 
 ---
 
+## AIAS decision integrity & visibility (Feature 183)
+
+Two coupled fixes to the AIAS web path (M1). Spec: `specs/183-aias-decision-visibility/`. Design:
+`docs/superpowers/specs/2026-07-12-aias-emailverified-claim-source-design.md`.
+
+- **`x-claim-source` (US1) — the emailVerified gate is now genuine.** Every real web submission was
+  auto-rejected because the read-only `emailVerified` field (on no form page) never reached the
+  wallet-signed payload → agent read absent → false → reject. Fix: a **headless** JSON-Schema property
+  extension `x-claim-source: "<claim>"` + `ClaimSourceSeeder` (`Sorcha.UI.Components.User/Services/User/Forms/`,
+  `IClaimSourceSeeder`) that at form init stamps the field from the authenticated principal's named JWT
+  claim (`email_verified`, already minted by F157 `TokenService`, already on the `ClaimsPrincipal` via
+  `CustomAuthenticationStateProvider`) into `FormContext.FormData` — so it rides the signature.
+  `SorchaFormRenderer.SeedClaimSourcesAsync` runs fire-and-forget on `actionChanged` (mirrors persona
+  autofill; graceful-skip via `IServiceProvider.GetService`, never clobbers user input). **Boolean fails
+  closed** (absent/unparseable → false). Registered in `AddSorchaUserComponents` (web + PWA). Top-level
+  properties only (nested = documented YAGNI).
+- **`x-decision-notice` (US2) — reject visibility.** The agent's terminal reject fired only an ephemeral
+  `WorkflowCompleted` SignalR signal — no durable record, no reason. Fix: a **route** annotation
+  `x-decision-notice {recipientParticipantId, reasonField, title, severity?}` (`Sorcha.Blueprint.Models.DecisionNotice`
+  on `Route.DecisionNotice`) + `BlueprintInboxWriter.WriteDecisionAsync` (reuses wallet→participant→PlatformUserId
+  resolution + kind-discriminated deterministic `SourceEventId` `("decision-notice", …)`; `Category="Workflow"`,
+  `Summary`=reason). `DecisionNoticeDispatcher` (pure, testable) resolves the taken route (matched next-action
+  set + truthy condition), recipient wallet (`Instance.ParticipantWallets[recipientParticipantId]`), and reason
+  (JSON Pointer into the merged payload), then writes via `INotificationService.NotifyDecisionAsync` (thin
+  passthrough). Hooked in `ActionExecutionService.ExecuteAsync` right after routing; the whole dispatch is
+  try/log/swallow — **never affects sealing/routing**. F118 bell drawer renders it with **no client change**.
+  **Reject-only**: approval is already surfaced (claim action-available + credential-received). Recipient is the
+  starting participant (`citizen`), reusing the same binding `credentialIssuanceConfig.recipientParticipantId`
+  delivery uses. Hook covers the DevMode inline path (AIAS); encrypted-register `CompleteAfterPresentationAsync`
+  is a follow-up. Follow-up issue: citizen "My Applications" history page + email-on-decision.
+
+---
+
 ## EUDI conformance — DCQL dialect, trust rail, verifier auth (Feature 181, US1–US6)
 
 Protocol-alignment feature moving every Sorcha presentation surface onto the OpenID4VP 1.0 **final**

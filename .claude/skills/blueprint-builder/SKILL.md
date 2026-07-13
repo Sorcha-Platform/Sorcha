@@ -530,6 +530,37 @@ Mark a property as a file reference with `format: "file-reference"` and an `x-fi
 
 `capture: "user"` requests the front-facing camera on mobile; `embedAs` triggers the client-side resizer to produce a base64 token at `{fieldPointer}/tokenImageBase64` alongside the chunked original. Full chunking/encryption pipeline lives in the **sorcha-architecture** skill — *Stored Data Transactions API*.
 
+### Account-derived field (`x-claim-source`) — Feature 183
+
+Seed a form field from a named JWT claim on the authenticated principal, at form init, so the value rides the wallet-signed payload **even when the field is on no page**. Headless (no control, no `x-page` placement needed) and reusable. Boolean fields **fail closed** (absent / unparseable claim → `false`).
+
+```jsonc
+"emailVerified": {
+  "type": "boolean",
+  "readOnly": true,
+  "default": true,
+  "x-claim-source": "email_verified"   // ← seeds from the email_verified claim
+}
+```
+
+Runtime: `ClaimSourceSeeder` (in `Sorcha.UI.Components.User`), invoked by `SorchaFormRenderer` on action load; never overwrites a user-entered value. Use it for agent-facing metadata the applicant shouldn't type (e.g. the AIAS email-verified gate signal). Non-boolean bindings seed the raw claim string only when present.
+
+### Decision notice (`x-decision-notice`) — Feature 183
+
+Make an autonomous decision visible to the applicant. On a **route**, declare that taking it writes a durable bell/inbox entry (F118) carrying an on-brand reason to a named participant — so a rejected applicant learns WHY, across sessions and devices.
+
+```jsonc
+// on a reject route (nextActionIds: [])
+"x-decision-notice": {
+  "recipientParticipantId": "citizen",     // resolved via instance participant bindings
+  "reasonField": "/verificationNotes",     // JSON Pointer into the submitted payload
+  "title": "AIAS could not assure your identity",
+  "severity": "Warning"                     // optional; defaults to Warning
+}
+```
+
+Fires in `ActionExecutionService` for the route actually taken (matched next-action set + truthy condition). Fail-safe — a notice failure never affects sealing or routing. Reject-only in practice: approval is already surfaced (claim action-available + credential-received). See the **sorcha-architecture** skill for the writer/hook detail.
+
 ### Review summary (`x-review`)
 
 Mark a wizard page as a read-only summary that renders as a credential id-card preview.
