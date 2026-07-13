@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
-using Sorcha.Verifier.Pwa.Services;
+using Sorcha.Reader.Services;
 using Xunit;
 
 namespace Sorcha.Verifier.Pwa.Tests;

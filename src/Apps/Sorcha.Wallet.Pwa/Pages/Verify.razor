@@ -20,6 +20,8 @@
 @inject IVerificationHistoryStore History
 @inject IUserContext UserContext
 @inject ILogger<Verify> Logger
+@inject IServiceProvider Sp
+@inject NavigationManager Nav
 
 <PageTitle>Verify a credential · Sorcha Wallet</PageTitle>
 
@@ -27,6 +29,27 @@
     @if (_selectedQuestion is null)
     {
         <QuestionSelectionPanel OnQuestionSelected="@SelectQuestionAsync" />
+
+        @* Feature 185: the same check, with no signal.
+           This page verifies ONLINE over HAIP. When the two people are standing in front of each other and
+           there is no connectivity — a roadside, a doorstep, a basement — the exchange can happen directly
+           over Bluetooth instead. Capability-gated: hidden entirely where the device cannot do it, because a
+           dead button at a doorstep is worse than no button. *@
+        @if (_proximitySupported)
+        {
+            <MudPaper Elevation="0" Class="pa-4 mt-4" Outlined="true" data-testid="verify-proximity-card">
+                <MudText Typo="Typo.subtitle2">No signal?</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                    Check their credential directly, device to device. Nothing goes over the internet.
+                </MudText>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true"
+                           StartIcon="@Icons.Material.Filled.Contactless"
+                           data-testid="verify-proximity-button"
+                           OnClick="@(() => Nav.NavigateTo("verify/proximity"))">
+                    Check in person
+                </MudButton>
+            </MudPaper>
+        }
     }
     else if (!_complete)
     {
@@ -48,7 +71,13 @@
 </MudContainer>
 
 @code {
+    // Feature 185. False until proven otherwise — an affordance the device cannot honour must not appear.
+    private bool _proximitySupported;
+
     private VerificationPreset? _selectedQuestion;
+
+    /// <inheritdoc />
+    protected override async Task OnInitializedAsync() => await ProbeProximityAsync();
     private bool _complete;
     private CancellationTokenSource _pageCts = new();
 
@@ -104,4 +133,26 @@
     }
 
     public void Dispose() => _pageCts.Dispose();
+
+    /// <summary>Ask the device whether it can do an in-person check, BEFORE offering one.</summary>
+    /// <remarks>
+    /// Resolved through IServiceProvider rather than @inject: the ONLINE verification path must not acquire a
+    /// hard dependency on a BLE transport it never uses, and a host with no proximity registration should
+    /// still render this page perfectly.
+    /// </remarks>
+    private async Task ProbeProximityAsync()
+    {
+        try
+        {
+            var transport = Sp.GetService(typeof(Sorcha.Proximity.IProximityTransport))
+                as Sorcha.Proximity.IProximityTransport;
+
+            _proximitySupported = transport is not null && (await transport.ProbeAsync()).Supported;
+        }
+        catch
+        {
+            // An unsupported device is a normal answer, not an error. Never let it break the online path.
+            _proximitySupported = false;
+        }
+    }
 }

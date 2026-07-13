@@ -295,6 +295,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.Verifier.Pwa", "src\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.Verifier.Pwa.Tests", "tests\Sorcha.Verifier.Pwa.Tests\Sorcha.Verifier.Pwa.Tests.csproj", "{5F3B3AEA-E67D-4595-BD10-B808B4470D1E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.Reader", "src\Common\Sorcha.Reader\Sorcha.Reader.csproj", "{1EA70E7E-65CC-43F0-BEE1-93D5BA96AF17}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -1673,6 +1675,18 @@ Global
 		{5F3B3AEA-E67D-4595-BD10-B808B4470D1E}.Release|x64.Build.0 = Release|Any CPU
 		{5F3B3AEA-E67D-4595-BD10-B808B4470D1E}.Release|x86.ActiveCfg = Release|Any CPU
 		{5F3B3AEA-E67D-4595-BD10-B808B4470D1E}.Release|x86.Build.0 = Release|Any CPU
+		{1EA70E7E-65CC-43F0-BEE1-93D5BA96AF17}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1EA70E7E-65CC-43F0-BEE1-93D5BA96AF17}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1EA70E7E-65CC-43F0-BEE1-93D5BA96AF17}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{1EA70E7E-65CC-43F0-BEE1-93D5BA96AF17}.Debug|x64.Build.0 = Debug|Any CPU
+		{1EA70E7E-65CC-43F0-BEE1-93D5BA96AF17}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{1EA70E7E-65CC-43F0-BEE1-93D5BA96AF17}.Debug|x86.Build.0 = Debug|Any CPU
+		{1EA70E7E-65CC-43F0-BEE1-93D5BA96AF17}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1EA70E7E-65CC-43F0-BEE1-93D5BA96AF17}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1EA70E7E-65CC-43F0-BEE1-93D5BA96AF17}.Release|x64.ActiveCfg = Release|Any CPU
+		{1EA70E7E-65CC-43F0-BEE1-93D5BA96AF17}.Release|x64.Build.0 = Release|Any CPU
+		{1EA70E7E-65CC-43F0-BEE1-93D5BA96AF17}.Release|x86.ActiveCfg = Release|Any CPU
+		{1EA70E7E-65CC-43F0-BEE1-93D5BA96AF17}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -1799,5 +1813,6 @@ Global
 		{5D932FB5-23A7-42FB-B76E-2DB6DC979785} = {BFF2DF6E-AA54-47C7-211F-79ACCBB4577C}
 		{441BBFEC-529B-4E1B-A4AD-75189264943E} = {AD2A5A3B-A595-3E96-334A-002D08FE630C}
 		{5F3B3AEA-E67D-4595-BD10-B808B4470D1E} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{1EA70E7E-65CC-43F0-BEE1-93D5BA96AF17} = {BFF2DF6E-AA54-47C7-211F-79ACCBB4577C}
 	EndGlobalSection
 EndGlobal
