@@ -8,6 +8,49 @@ using Sorcha.Mdoc.Proximity;
 
 namespace Sorcha.Proximity;
 
+/// <summary>
+/// A credential the holder can present in person — of <b>either</b> format.
+/// </summary>
+/// <remarks>
+/// mdoc is what the world can read; SD-JWT VC is what Sorcha citizens actually hold. Carrying only one would
+/// either make in-person sharing useless to every current holder, or dead-end it against the wider ecosystem.
+/// Both rails ride the same ISO session.
+/// </remarks>
+public abstract record ProximityCredential
+{
+    /// <summary>The doc type / credential type the reader asks for.</summary>
+    public abstract string Identifier { get; }
+
+    /// <summary>An ISO mdoc.</summary>
+    public sealed record Mdoc(HeldMdoc Credential) : ProximityCredential
+    {
+        /// <inheritdoc />
+        public override string Identifier => Credential.DocType;
+    }
+
+    /// <summary>
+    /// A Sorcha-native SD-JWT VC, presented with a KB-JWT bound to the session transcript.
+    /// </summary>
+    /// <param name="Vct">The credential type.</param>
+    /// <param name="Present">
+    /// Builds the SD-JWT presentation. Given the approved claim names and the session binding (which MUST go
+    /// into the KB-JWT's <c>aud</c> AND <c>nonce</c>), returns the compact presentation.
+    /// <para>
+    /// A delegate, not a key — the holder key that signs the KB-JWT is a non-extractable WebCrypto key, and
+    /// the wallet already owns the code that drives it. Reimplementing SD-JWT presentation here would be a
+    /// second implementation of something that already works.
+    /// </para>
+    /// </param>
+    public sealed record SdJwt(
+        string Vct,
+        IReadOnlyList<string> AvailableClaims,
+        Func<IReadOnlyList<string>, string, CancellationToken, Task<string>> Present) : ProximityCredential
+    {
+        /// <inheritdoc />
+        public override string Identifier => Vct;
+    }
+}
+
 /// <summary>Where the holder is in an exchange.</summary>
 public enum HolderSessionState
 {
@@ -106,7 +149,7 @@ internal sealed class DelegatedStaticDeviceKey(HolderDeviceKey deviceKey, ECPubl
 public sealed class ProximityHolderSession : IAsyncDisposable
 {
     private readonly IProximityTransport _transport;
-    private readonly IReadOnlyList<HeldMdoc> _credentials;
+    private readonly IReadOnlyList<ProximityCredential> _credentials;
     private readonly HolderDeviceKey _deviceKey;
 
     private AsymmetricCipherKeyPairAdapter? _ephemeral;
@@ -114,7 +157,7 @@ public sealed class ProximityHolderSession : IAsyncDisposable
     private MdocSessionKeys? _keys;
     private DeviceEngagement? _engagement;
     private MdocDeviceRequest? _request;
-    private HeldMdoc? _matched;
+    private ProximityCredential? _matched;
 
     private uint _readerCounter;
     private uint _holderCounter;
@@ -128,6 +171,18 @@ public sealed class ProximityHolderSession : IAsyncDisposable
     public ProximityHolderSession(
         IProximityTransport transport,
         IReadOnlyList<HeldMdoc> credentials,
+        HolderDeviceKey deviceKey)
+        : this(transport,
+               (credentials ?? throw new ArgumentNullException(nameof(credentials)))
+                   .Select(c => (ProximityCredential)new ProximityCredential.Mdoc(c)).ToList(),
+               deviceKey)
+    {
+    }
+
+    /// <summary>Creates a holder session over credentials of either format.</summary>
+    public ProximityHolderSession(
+        IProximityTransport transport,
+        IReadOnlyList<ProximityCredential> credentials,
         HolderDeviceKey deviceKey)
     {
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
@@ -164,12 +219,19 @@ public sealed class ProximityHolderSession : IAsyncDisposable
             if (_request is null || _matched is null)
                 return [];
 
-            var held = _matched.IssuerSigned.NameSpaces
-                .SelectMany(ns => ns.Value.Select(i => (ns.Key, i.Item.ElementIdentifier)))
-                .ToHashSet();
+            var held = _matched switch
+            {
+                ProximityCredential.Mdoc m => m.Credential.IssuerSigned.NameSpaces
+                    .SelectMany(ns => ns.Value.Select(i => i.Item.ElementIdentifier))
+                    .ToHashSet(StringComparer.Ordinal),
+
+                ProximityCredential.SdJwt s => s.AvailableClaims.ToHashSet(StringComparer.Ordinal),
+
+                _ => []
+            };
 
             return _request.AllElements
-                .Where(e => held.Contains((e.Namespace, e.ElementIdentifier)))
+                .Where(e => held.Contains(e.ElementIdentifier))
                 .ToList();
         }
     }
@@ -245,9 +307,35 @@ public sealed class ProximityHolderSession : IAsyncDisposable
                 $"Refusing to disclose {unrequested.Count} element(s) the reader never asked for. " +
                 "The approved set must be a subset of the requested set.");
 
-        var response = MdocDeviceResponseBuilder.BuildWithMac(_matched, approved, _transcript, _keys.EMacKey);
+        // Both formats ride the same encrypted session; only the payload differs.
+        var envelope = _matched switch
+        {
+            ProximityCredential.Mdoc mdoc => new SorchaProximityEnvelope
+            {
+                Format = ProximityPayloadFormat.MsoMdoc,
+                Payload = MdocDeviceResponseBuilder.BuildWithMac(
+                    mdoc.Credential, approved, _transcript, _keys.EMacKey)
+            },
 
-        var sessionData = new SessionData { Data = Encrypt(response) };
+            ProximityCredential.SdJwt sdJwt => new SorchaProximityEnvelope
+            {
+                Format = ProximityPayloadFormat.SdJwtVc,
+
+                // The KB-JWT binds to the SESSION TRANSCRIPT, not to an HTTPS response_uri (there isn't one).
+                // Without this the SD-JWT path would have no session binding at all and a captured
+                // presentation would replay anywhere — so replay resistance would NOT hold identically for
+                // both formats, which FR-005 requires.
+                Payload = System.Text.Encoding.UTF8.GetBytes(
+                    await sdJwt.Present(
+                        approved.Select(a => a.ElementIdentifier).ToList(),
+                        SorchaProximityEnvelope.SessionBinding(_transcript),
+                        ct).ConfigureAwait(false))
+            },
+
+            _ => throw new InvalidOperationException("No credential is matched.")
+        };
+
+        var sessionData = new SessionData { Data = Encrypt(envelope.Encode()) };
         await _transport.SendAsync(sessionData.Encode(), ct).ConfigureAwait(false);
 
         State = HolderSessionState.Complete;
@@ -359,7 +447,7 @@ public sealed class ProximityHolderSession : IAsyncDisposable
 
         _request = MdocDeviceRequest.Decode(plaintext);
         _matched = _credentials.FirstOrDefault(c =>
-            _request.DocRequests.Any(d => d.DocType == c.DocType));
+            _request.DocRequests.Any(d => string.Equals(d.DocType, c.Identifier, StringComparison.Ordinal)));
 
         State = HolderSessionState.AwaitingConsent;
         _requestArrived?.TrySetResult(_request);
