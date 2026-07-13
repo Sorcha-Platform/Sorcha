@@ -135,6 +135,55 @@ Both enrolled; all creds placed on the Mac under `~/.sorcha-signing` (see `refer
 a **publicly reachable backend** the build points at + a **demo login** for App Review, plus store
 listing/screenshots. Internal/TestFlight (current targets) need none of that.
 
+## Native plugins (Feature 185 — the first one)
+
+`mobile/plugins/sorcha-proximity/` is the repo's **first native code**. Until F185, `mobile/wallet` had
+**zero** Capacitor plugins and its only hand-edited native file was `App.entitlements`.
+
+**The rule that keeps it small:** the plugin moves **opaque bytes** and knows nothing else — no CBOR, no mdoc,
+no credentials, no session state. Every byte of ISO 18013-5 protocol lives in C# (`Sorcha.Mdoc`), written once
+and shared by holder and reader. That is what lets `LoopbackProximityTransport` stand in for the radio so the
+whole exchange is proven in CI **with no phones**. Protocol logic in the plugin would be logic the C# suite
+cannot reach — written twice, in two languages, with two chances to get the tag-24 rules wrong, and those fail
+*silently*. **If you want to parse something in a plugin, you are in the wrong file.**
+
+### Building / verifying a plugin on the Mac node
+
+```bash
+# iOS — SPM. NOTE: plain `swift build` targets macOS and fails with "no such module 'Capacitor'";
+# Capacitor is iOS-only, so you MUST give xcodebuild an iOS destination.
+cd mobile/plugins/sorcha-proximity
+xcodebuild -scheme SorchaProximity -destination "generic/platform=iOS" build
+xcodebuild test -scheme SorchaProximity -destination "platform=iOS Simulator,name=iPhone 17 Pro"
+
+# Android — the plugin is a gradle subproject of the APP, not standalone.
+cd mobile/wallet && npm install && npx cap sync android      # registers the plugin
+cd android && ./gradlew :sorcha-proximity:testDebugUnitTest  # unit tests
+./gradlew assembleDebug                                      # app builds with the plugin
+```
+
+**Gotchas that cost time:**
+- **`npm install` SYMLINKS a `file:` dependency.** Gradle therefore compiles the plugin from
+  `mobile/plugins/…`, and **build output lands there** — not under `mobile/wallet/android/`. Looking for test
+  results in the app tree finds nothing and looks like "0 tests ran".
+- **The simulator name must exist.** `iPhone 16` is not installed on this Mac; `xcrun simctl list devices
+  available` is the source of truth (currently iPhone 17 Pro / 17 Pro Max / 17e).
+- **`xcodebuild -list` names the scheme after the library PRODUCT** (`SorchaProximity`), not the target
+  (`SorchaProximityPlugin`).
+- The plugin's `package.json` `files` whitelist governs what a *published* package ships. It does not affect a
+  symlinked `file:` dep, but omitting `android/src/test/` would hide the tests from a real consumer.
+
+### Permissions the proximity plugin needs
+
+- **iOS:** `NSBluetoothAlwaysUsageDescription` in `Info.plist` (the app is killed on first BLE touch without
+  it). The peripheral role is restricted in the **background** — irrelevant here, a presentation is always
+  foreground.
+- **Android:** `BLUETOOTH_ADVERTISE` / `BLUETOOTH_CONNECT` / `BLUETOOTH_SCAN`, the last with
+  **`neverForLocation`** — without that flag Android demands `ACCESS_FINE_LOCATION`, i.e. we would be asking a
+  citizen for their location in order to show a credential to the person standing in front of them.
+
+Full detail: `mobile/plugins/sorcha-proximity/README.md`.
+
 ## Optional separate workstream (ASK FIRST)
 A NAT'd Docker backend node can run on the Mac so the apps have a real backend during dev/ad-hoc builds.
 Before touching it, ask Stuart: what the node should be (dev API? full peer/validator? demo register?),

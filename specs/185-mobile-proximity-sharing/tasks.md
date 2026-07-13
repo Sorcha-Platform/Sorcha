@@ -110,13 +110,13 @@ these plugin tasks** (T038–T044).
 
 ### The native plugin (the repo's first)
 
-- [ ] T038 [US2] Scaffold `mobile/plugins/sorcha-proximity/` (Capacitor 8 plugin: TS definitions, iOS Swift, Android Kotlin) per [contracts/capacitor-plugin.md](./contracts/capacitor-plugin.md).
-- [ ] T039 [P] [US2] Implement the iOS plugin in `mobile/plugins/sorcha-proximity/ios/Plugin/` — `CBPeripheralManager` (holder) + `CBCentralManager` (reader), the 18013-5 mdoc peripheral-server GATT profile, MTU chunking with a leading continuation byte, **pairing-free** (18013-5 forbids bonding). Add `NSBluetoothAlwaysUsageDescription`.
-- [ ] T040 [P] [US2] Implement the Android plugin in `mobile/plugins/sorcha-proximity/android/` — `BluetoothLeAdvertiser` + `BluetoothGattServer` (holder), `BluetoothLeScanner` + `BluetoothGatt` (reader). Manifest: `BLUETOOTH_ADVERTISE`, `BLUETOOTH_CONNECT`, `BLUETOOTH_SCAN` (`neverForLocation`). `probe()` MUST distinguish `permissionNotYetRequested` from `permissionDenied` so the UI can ask rather than dead-end (FR-021).
-- [ ] T041 [US2] Implement `src/Apps/Sorcha.Wallet.Pwa/wwwroot/js/proximity-bridge.js` — **base64 strings** across the boundary (never `byte[]`), push to C# via `DotNetObjectReference`, following the `SorchaConnectivity` pattern.
-- [ ] T042 [US2] Implement `src/Apps/Sorcha.Wallet.Pwa/Services/Proximity/CapacitorProximityTransport.cs` (`IProximityTransport`) with a capability probe that returns `Supported: false` — never throws — when `globalThis.Capacitor?.Plugins?.SorchaProximity` is `undefined` (FR-020; the app really does run in a plain browser, since `capacitor.config.json` uses `server.url`).
-- [ ] T043 [US2] Wire the plugin into `mobile/wallet/package.json` + `cap sync`; add BLE permissions to the wallet's `Info.plist` and `AndroidManifest.xml`.
-- [ ] T044 [US2] Build a debug **byte-echo harness** and verify a >MTU payload arrives byte-identical device→device — the one thing the C# suite cannot reach, so it gets its own bar (contract: capacitor-plugin.md).
+- [x] T038 [US2] Scaffold `mobile/plugins/sorcha-proximity/` (Capacitor 8 plugin: TS definitions, iOS Swift, Android Kotlin) per [contracts/capacitor-plugin.md](./contracts/capacitor-plugin.md).
+- [x] T039 [P] [US2] Implement the iOS plugin in `mobile/plugins/sorcha-proximity/ios/Plugin/` — `CBPeripheralManager` (holder) + `CBCentralManager` (reader), the 18013-5 mdoc peripheral-server GATT profile, MTU chunking with a leading continuation byte, **pairing-free** (18013-5 forbids bonding). Add `NSBluetoothAlwaysUsageDescription`.
+- [x] T040 [P] [US2] Implement the Android plugin in `mobile/plugins/sorcha-proximity/android/` — `BluetoothLeAdvertiser` + `BluetoothGattServer` (holder), `BluetoothLeScanner` + `BluetoothGatt` (reader). Manifest: `BLUETOOTH_ADVERTISE`, `BLUETOOTH_CONNECT`, `BLUETOOTH_SCAN` (`neverForLocation`). `probe()` MUST distinguish `permissionNotYetRequested` from `permissionDenied` so the UI can ask rather than dead-end (FR-021).
+- [x] T041 [US2] Implement `src/Apps/Sorcha.Wallet.Pwa/wwwroot/js/proximity-bridge.js` — **base64 strings** across the boundary (never `byte[]`), push to C# via `DotNetObjectReference`, following the `SorchaConnectivity` pattern.
+- [x] T042 [US2] Implement `src/Apps/Sorcha.Wallet.Pwa/Services/Proximity/CapacitorProximityTransport.cs` (`IProximityTransport`) with a capability probe that returns `Supported: false` — never throws — when `globalThis.Capacitor?.Plugins?.SorchaProximity` is `undefined` (FR-020; the app really does run in a plain browser, since `capacitor.config.json` uses `server.url`).
+- [x] T043 [US2] Wire the plugin into `mobile/wallet/package.json` + `cap sync`; add BLE permissions to the wallet's `Info.plist` and `AndroidManifest.xml`.
+- [x] T044 [US2] Build a debug **byte-echo harness** and verify a >MTU payload arrives byte-identical device→device — the one thing the C# suite cannot reach, so it gets its own bar (contract: capacitor-plugin.md).
 
 ### The second device key (research R-002)
 
