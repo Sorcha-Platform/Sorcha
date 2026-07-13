@@ -32,6 +32,8 @@
 @inject HttpClient Http
 @inject IJSRuntime JS
 @inject IPresentationLog PresentationLog
+@inject IServiceProvider Services
+@inject NavigationManager Nav
 @inject IDeviceProfileProbe DeviceProbe
 
 <PageTitle>Present a credential</PageTitle>
@@ -41,6 +43,26 @@
 
     @if (_phase == Phase.AwaitingDeepLink)
     {
+        @* Feature 185 — in-person sharing.
+           Capability-GATED, not merely linked: this build also runs in a plain browser (capacitor.config
+           points the native shell at the hosted PWA), where there is no BLE at all. Offering an affordance
+           that cannot work would be worse than not offering it (FR-020). *@
+        @if (_proximitySupported)
+        {
+            <MudPaper Elevation="1" Class="pa-4 mb-3" data-testid="present-proximity-card">
+                <MudText Typo="Typo.subtitle2">Someone in front of you?</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                    Share a credential directly with their device. Works with no signal.
+                </MudText>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                           StartIcon="@Icons.Material.Filled.Contactless"
+                           data-testid="present-proximity-button"
+                           OnClick="@(() => Nav.NavigateTo("present/proximity"))">
+                    Share in person
+                </MudButton>
+            </MudPaper>
+        }
+
         <MudPaper Elevation="1" Class="pa-4">
             @if (_intakeMode == IntakeMode.CameraFirst && !_showPaste)
             {
@@ -199,6 +221,9 @@
 
     private enum Phase { AwaitingDeepLink, NoMatch, PickCredential, Consent, PickAlternative, PickQueryCredential, MultiConsent, Done }
 
+    // Feature 185. False until proven otherwise — an affordance the device cannot honour must not appear.
+    private bool _proximitySupported;
+
     private Phase _phase = Phase.AwaitingDeepLink;
     private string _deepLink = string.Empty;
     private string? _error;
@@ -244,6 +269,25 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Feature 185: ask the device what it can do BEFORE offering in-person sharing.
+        //
+        // Resolved through IServiceProvider rather than @inject, deliberately. The online presentation path
+        // must not acquire a hard dependency on a BLE transport it never uses — a host (or a test) that has
+        // no proximity registration should still render this page perfectly. Graceful-skip, the same pattern
+        // F183 used for IClaimSourceSeeder.
+        try
+        {
+            var transport = Services.GetService(typeof(Sorcha.Proximity.IProximityTransport))
+                as Sorcha.Proximity.IProximityTransport;
+
+            _proximitySupported = transport is not null && (await transport.ProbeAsync()).Supported;
+        }
+        catch
+        {
+            // An unsupported device is a normal answer, not an error. Never let it break the online path.
+            _proximitySupported = false;
+        }
+
         try
         {
             var profile = await DeviceProbe.GetProfileAsync();

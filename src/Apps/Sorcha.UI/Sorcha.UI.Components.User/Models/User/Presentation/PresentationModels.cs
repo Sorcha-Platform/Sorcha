@@ -116,26 +116,68 @@ public sealed record DcqlMatchResult
     public required IReadOnlyList<DcqlSetChoice> SetChoices { get; init; }
 }
 
+/// <summary>Which credential format a cached credential is (Feature 185).</summary>
+/// <remarks>
+/// Before feature 185 the wallet held only SD-JWT VCs, so no discriminator was needed. Proximity presentation
+/// is mdoc-shaped, so the cache now carries both — and the matching rules differ per format (see
+/// <see cref="CachedCredential"/>).
+/// </remarks>
+public enum CachedCredentialFormat
+{
+    /// <summary>SD-JWT VC (<c>dc+sd-jwt</c>) — the Sorcha-native rail. Identified by <c>vct</c>.</summary>
+    SdJwtVc = 0,
+
+    /// <summary>ISO 18013-5 mdoc (<c>mso_mdoc</c>) — the proximity/EUDI rail. Identified by <c>docType</c>.</summary>
+    MsoMdoc = 1
+}
+
 /// <summary>
 /// A credential present in the wallet's cache, in the shape the presentation engine needs.
 /// In production this is materialised by <c>ICredentialCache</c> on demand from IndexedDB.
 /// </summary>
+/// <remarks>
+/// <b>Two formats, two identifiers.</b> An SD-JWT VC is identified by its <see cref="Vct"/>; an mdoc by its
+/// <see cref="DocType"/>. They are different strings and are <em>not</em> interchangeable — a request for
+/// <c>org.iso.18013.5.1.mDL</c> must never be satisfied by matching it against a <c>vct</c>. Which field
+/// applies is decided by <see cref="Format"/>, and nothing else.
+/// </remarks>
 public sealed record CachedCredential
 {
     /// <summary>Credential id (UUID assigned by the issuer).</summary>
     public required Guid Id { get; init; }
 
-    /// <summary>Credential type URI.</summary>
-    public required string Vct { get; init; }
+    /// <summary>Which rail this credential is on. Decides how it is matched and how it is presented.</summary>
+    public CachedCredentialFormat Format { get; init; } = CachedCredentialFormat.SdJwtVc;
+
+    /// <summary>Credential type URI. <b>SD-JWT only</b> — empty for an mdoc.</summary>
+    public string Vct { get; init; } = string.Empty;
+
+    /// <summary>
+    /// mdoc document type, e.g. <c>org.iso.18013.5.1.mDL</c>. <b>mdoc only</b> — null for an SD-JWT VC.
+    /// </summary>
+    public string? DocType { get; init; }
 
     /// <summary>
     /// SD-JWT VC compact form: <c>credentialJwt~disclosure1~..~disclosureN</c>.
     /// Trailing tilde is preserved if present. Does NOT include a KB-JWT — that's
-    /// minted at presentation time.
+    /// minted at presentation time. <b>SD-JWT only</b> — empty for an mdoc.
     /// </summary>
-    public required string RawSdJwt { get; init; }
+    public string RawSdJwt { get; init; } = string.Empty;
 
-    /// <summary>Names of every disclosable claim available in this credential.</summary>
+    /// <summary>
+    /// The raw <c>IssuerSigned</c> CBOR, <b>exactly as issued</b>. <b>mdoc only</b> — null for an SD-JWT VC.
+    /// </summary>
+    /// <remarks>
+    /// Stored verbatim, and it must stay that way. Selective disclosure splices the <em>tag-24-wrapped item
+    /// bytes</em> straight out of here; re-encoding an item can change bytes for the same logical value, which
+    /// changes its digest, which invalidates the issuer's signature over data the issuer really did sign.
+    /// </remarks>
+    public byte[]? IssuerSignedCbor { get; init; }
+
+    /// <summary>
+    /// Names of every disclosable claim available in this credential. For an mdoc these are the element
+    /// identifiers (e.g. <c>age_over_18</c>).
+    /// </summary>
     public required IReadOnlyList<string> AvailableClaimNames { get; init; }
 
     /// <summary>Issuer DID — surfaced for the consent sheet.</summary>
@@ -143,6 +185,20 @@ public sealed record CachedCredential
 
     /// <summary>Optional display label (issuer-supplied).</summary>
     public string? DisplayLabel { get; init; }
+
+    /// <summary>
+    /// The identifier this credential is matched on — <see cref="Vct"/> or <see cref="DocType"/> depending on
+    /// <see cref="Format"/>.
+    /// </summary>
+    /// <remarks>
+    /// A single accessor so no call site has to remember the rule, and so a new format cannot be added without
+    /// deciding what it matches on.
+    /// </remarks>
+    public string MatchIdentifier => Format switch
+    {
+        CachedCredentialFormat.MsoMdoc => DocType ?? string.Empty,
+        _ => Vct
+    };
 }
 
 /// <summary>

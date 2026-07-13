@@ -1,0 +1,264 @@
+@page "/present/proximity"
+@using Microsoft.AspNetCore.Authorization
+@using Sorcha.Mdoc.Proximity
+@using Sorcha.Proximity
+@using Sorcha.UI.Core.Services
+@using Sorcha.Wallet.Pwa.Services.Proximity
+@attribute [Authorize]
+@implements IAsyncDisposable
+@inject IProximityPresentationService Proximity
+@inject IQrPresentationService Qr
+@inject NavigationManager Navigation
+
+<PageTitle>Share in person</PageTitle>
+
+<div class="proximity">
+
+    @if (_phase == Phase.Checking)
+    {
+        <p class="proximity__status" aria-live="polite">Checking this device…</p>
+    }
+    else if (_phase == Phase.Unsupported)
+    {
+        @* Honest, specific, and actionable. "Unsupported" alone would dead-end a citizen whose Bluetooth is
+           merely switched off, or who has simply never been asked for permission. *@
+        <h1>Can't share in person here</h1>
+        <p class="proximity__status">@UnsupportedMessage()</p>
+        <button class="proximity__secondary" @onclick="GoBack">Back</button>
+    }
+    else if (_phase == Phase.Engaging)
+    {
+        <h1>Show this to the verifier</h1>
+        <p class="proximity__status">
+            Hold your phone up. They'll scan this code, then you'll see exactly what they're asking for
+            <strong>before</strong> anything is shared.
+        </p>
+
+        <div class="proximity__qr" aria-label="Engagement code">
+            @((MarkupString)(_qrSvg ?? string.Empty))
+        </div>
+
+        <p class="proximity__hint">This works with no signal. Nothing is sent over the internet.</p>
+        <button class="proximity__secondary" @onclick="CancelAsync">Cancel</button>
+    }
+    else if (_phase == Phase.Consent)
+    {
+        <h1>They're asking for…</h1>
+
+        @if (_satisfiable.Count == 0)
+        {
+            @* Do not show an empty approval screen — say plainly that we cannot answer. *@
+            <p class="proximity__status">
+                You don't hold a credential that answers this request. Nothing has been shared.
+            </p>
+            <ul class="proximity__asks">
+                @foreach (var element in _requested)
+                {
+                    <li class="proximity__ask proximity__ask--unmet">@Humanise(element.ElementIdentifier)</li>
+                }
+            </ul>
+            <button class="proximity__secondary" @onclick="DeclineAsync">Close</button>
+        }
+        else
+        {
+            <ul class="proximity__asks">
+                @foreach (var element in _satisfiable)
+                {
+                    <li class="proximity__ask">
+                        <label>
+                            <input type="checkbox"
+                                   checked="@_approved.Contains(element)"
+                                   @onchange="e => Toggle(element, e)" />
+                            <span class="proximity__ask-name">@Humanise(element.ElementIdentifier)</span>
+                        </label>
+
+                        @if (element.IntentToRetain)
+                        {
+                            @* The single most under-appreciated disclosure in the whole exchange. "Prove you
+                               are over 18" and "prove you are over 18, and I am keeping a copy" are materially
+                               different asks, and only one of them is what most people think they agreed to. *@
+                            <span class="proximity__retain" title="The verifier intends to keep this">
+                                They'll keep this
+                            </span>
+                        }
+                    </li>
+                }
+            </ul>
+
+            <button class="proximity__primary" disabled="@(_approved.Count == 0 || _sharing)" @onclick="ApproveAsync">
+                @(_sharing ? "Sharing…" : "Share selected")
+            </button>
+            <button class="proximity__secondary" disabled="@_sharing" @onclick="DeclineAsync">
+                Don't share
+            </button>
+        }
+    }
+    else if (_phase == Phase.Done)
+    {
+        <h1>Shared</h1>
+        <p class="proximity__status">You shared @_approved.Count @(_approved.Count == 1 ? "detail" : "details").</p>
+        <button class="proximity__primary" @onclick="GoBack">Done</button>
+    }
+    else if (_phase == Phase.Declined)
+    {
+        <h1>Nothing shared</h1>
+        <p class="proximity__status">The verifier received nothing.</p>
+        <button class="proximity__primary" @onclick="GoBack">Done</button>
+    }
+    else if (_phase == Phase.Failed)
+    {
+        <h1>That didn't work</h1>
+        <p class="proximity__status">@(_failure ?? "The exchange ended before it completed.")</p>
+        <p class="proximity__hint">Nothing was shared.</p>
+        <button class="proximity__primary" @onclick="GoBack">Back</button>
+    }
+
+</div>
+
+@code {
+    private enum Phase { Checking, Unsupported, Engaging, Consent, Done, Declined, Failed }
+
+    private Phase _phase = Phase.Checking;
+    private ProximityCapability _capability;
+    private string? _failure;
+    private bool _sharing;
+
+    private string? _qrSvg;
+    private IReadOnlyList<RequestedElement> _requested = [];
+    private IReadOnlyList<RequestedElement> _satisfiable = [];
+    private readonly HashSet<RequestedElement> _approved = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _capability = await Proximity.ProbeAsync();
+
+        if (!_capability.Supported)
+        {
+            _phase = Phase.Unsupported;
+            return;
+        }
+
+        await StartAsync();
+    }
+
+    private async Task StartAsync()
+    {
+        try
+        {
+            var engagement = await Proximity.StartAsync();
+
+            // Rendered in C#, on-device, with no network and no JS. That matters: the whole point of this
+            // feature is that it works with no signal, so a QR that needed a server would defeat it.
+            //
+            // The payload carries an ephemeral key and a random per-session service UUID — nothing about the
+            // citizen — so it is safe to show to anyone who asks.
+            _qrSvg = Qr.GenerateSvgFromUri(EngagementUri(engagement), pixelsPerModule: 6);
+
+            _phase = Phase.Engaging;
+            StateHasChanged();
+
+            await Proximity.WaitForRequestAsync();
+
+            _requested = Proximity.RequestedElements;
+            _satisfiable = Proximity.SatisfiableElements;
+
+            // Nothing is pre-approved. The citizen opts IN to each element — an approval screen that arrives
+            // pre-ticked is not consent.
+            _approved.Clear();
+
+            _phase = Phase.Consent;
+        }
+        catch (Exception ex)
+        {
+            _failure = ex.Message;
+            _phase = Phase.Failed;
+        }
+
+        StateHasChanged();
+    }
+
+    private void Toggle(RequestedElement element, ChangeEventArgs e)
+    {
+        if (e.Value is true)
+            _approved.Add(element);
+        else
+            _approved.Remove(element);
+    }
+
+    private async Task ApproveAsync()
+    {
+        _sharing = true;
+        try
+        {
+            await Proximity.ApproveAsync(_approved.ToList());
+            _phase = Phase.Done;
+        }
+        catch (Exception ex)
+        {
+            _failure = ex.Message;
+            _phase = Phase.Failed;
+        }
+        finally
+        {
+            _sharing = false;
+        }
+    }
+
+    private async Task DeclineAsync()
+    {
+        await Proximity.DeclineAsync();
+        _phase = Phase.Declined;
+    }
+
+    private async Task CancelAsync()
+    {
+        await Proximity.DeclineAsync();
+        GoBack();
+    }
+
+    private void GoBack() => Navigation.NavigateTo("");
+
+    /// <summary>The ISO 18013-5 QR-engagement payload: <c>mdoc:</c> + base64url of the DeviceEngagement.</summary>
+    private static string EngagementUri(byte[] deviceEngagement) =>
+        "mdoc:" + Convert.ToBase64String(deviceEngagement)
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    private string UnsupportedMessage() => _capability.Reason switch
+    {
+        ProximityUnsupportedReason.BluetoothOff =>
+            "Turn Bluetooth on, then try again.",
+        ProximityUnsupportedReason.PermissionNotYetRequested =>
+            "Sorcha needs permission to use Bluetooth. Try again and allow it when asked.",
+        ProximityUnsupportedReason.PermissionDenied =>
+            "Bluetooth permission was refused. You can turn it back on in your phone's settings.",
+        ProximityUnsupportedReason.NoBluetoothHardware =>
+            "This device has no Bluetooth, so it can't share in person.",
+        ProximityUnsupportedReason.NoPlugin =>
+            "In-person sharing needs the Sorcha app — it can't work in a browser tab.",
+        _ =>
+            "In-person sharing isn't available on this device."
+    };
+
+    /// <summary>Turns an mdoc element identifier into something a person would recognise.</summary>
+    private static string Humanise(string elementIdentifier) => elementIdentifier switch
+    {
+        "family_name" => "Your last name",
+        "given_name" => "Your first name",
+        "birth_date" => "Your date of birth",
+        "age_over_18" => "That you're over 18",
+        "age_over_21" => "That you're over 21",
+        "portrait" => "Your photo",
+        "document_number" => "Your document number",
+        "issuing_authority" => "Who issued it",
+        "expiry_date" => "When it expires",
+        // Unknown elements are shown as-is rather than hidden: the citizen must see everything being asked
+        // for, even something we do not have friendly copy for.
+        _ => elementIdentifier.Replace('_', ' ')
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        // Navigating away mid-exchange abandons it: the reader is told, and nothing is disclosed.
+        await Proximity.DisposeAsync();
+    }
+}
