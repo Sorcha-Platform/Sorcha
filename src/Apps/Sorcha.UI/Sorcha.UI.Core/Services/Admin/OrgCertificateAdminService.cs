@@ -12,7 +12,9 @@ namespace Sorcha.UI.Core.Services.Admin;
 /// <summary>
 /// Feature 181 US5 (T050) — HTTP-backed <see cref="IOrgCertificateAdminService"/>. Talks to the
 /// gateway, which routes <c>/api/v1/trust/tenants/{tenantId}/orgs/{orgWalletAddress}</c> to the
-/// Tenant Service. Auth rides the browser session (platform tier). Mirrors
+/// Tenant Service.
+/// The host registers this typed client with <c>AuthenticatedHttpMessageHandler</c>, which attaches the admin's bearer token — there is no browser session to ride: the WASM client sends no cookie, and these endpoints are admin + platform-audience gated. Registered without that handler, every call 401s (and the swallowed failure renders as a plausible "nothing here yet" empty state).
+/// Mirrors
 /// <see cref="TrustedListAdminService"/> in structure and error handling.
 /// </summary>
 public sealed class OrgCertificateAdminService : IOrgCertificateAdminService

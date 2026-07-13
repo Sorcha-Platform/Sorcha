@@ -124,19 +124,20 @@ builder.Services.AddHttpClient<Sorcha.UI.Core.Services.User.Pairing.IPairingClie
     client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
 }).AddHttpMessageHandler<AuthenticatedHttpMessageHandler>();
 
-// Feature 181 US3 (T037) — platform-admin trusted-list snapshot management.
+// Feature 181 US3 (T037) — platform-admin trusted-list snapshot management. The endpoints are
+// admin + platform-audience gated, so the client must carry the admin's bearer token.
 builder.Services.AddHttpClient<Sorcha.UI.Core.Services.Admin.ITrustedListAdminService,
     Sorcha.UI.Core.Services.Admin.TrustedListAdminService>(client =>
 {
     client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
-});
+}).AddHttpMessageHandler<AuthenticatedHttpMessageHandler>();
 
 // Feature 181 US5 (T050) — org-admin X.509 certificate lifecycle management.
 builder.Services.AddHttpClient<Sorcha.UI.Core.Services.Admin.IOrgCertificateAdminService,
     Sorcha.UI.Core.Services.Admin.OrgCertificateAdminService>(client =>
 {
     client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
-});
+}).AddHttpMessageHandler<AuthenticatedHttpMessageHandler>();
 
 // Feature 128 — shared has-any-device probe. Drives the PairingNagBanner
 // on every MainLayout render for signed-in citizens with zero paired
