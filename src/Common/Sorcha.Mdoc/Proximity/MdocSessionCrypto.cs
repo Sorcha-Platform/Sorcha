@@ -129,11 +129,12 @@ public static class MdocSessionCrypto
     /// This asymmetry is the whole reason the mdoc device key must be <b>ECDH-capable</b> — and why the
     /// wallet needs a second device key, since a WebCrypto ECDSA key cannot do ECDH (feature 185, design §3).
     /// </param>
-    public static MdocSessionKeys DeriveKeys(
+    public static async Task<MdocSessionKeys> DeriveKeysAsync(
         byte[] sessionTranscriptBytes,
         ECPrivateKeyParameters ownEphemeralPrivate,
         ECPublicKeyParameters peerEphemeralPublic,
-        StaticDeviceKeyMaterial? staticDeviceKey)
+        StaticDeviceKeyMaterial? staticDeviceKey,
+        CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(sessionTranscriptBytes);
         ArgumentNullException.ThrowIfNull(ownEphemeralPrivate);
@@ -141,6 +142,9 @@ public static class MdocSessionCrypto
 
         var salt = SHA256.HashData(sessionTranscriptBytes);
 
+        // The EPHEMERAL keys are ours, generated per session, and always in memory — there is nothing to
+        // protect in a key that exists for one exchange and is then discarded. Only the STATIC device key is
+        // hardware-held, and that is why only it goes through the agreement seam.
         var sharedSecret = Agree(ownEphemeralPrivate, peerEphemeralPublic);
         try
         {
@@ -150,7 +154,7 @@ public static class MdocSessionCrypto
             byte[] eMacKey = [];
             if (staticDeviceKey is not null)
             {
-                var macSecret = staticDeviceKey.Agree();
+                var macSecret = await staticDeviceKey.AgreeAsync(ct).ConfigureAwait(false);
                 try
                 {
                     eMacKey = Hkdf(macSecret, salt, InfoEMacKey);
@@ -283,32 +287,65 @@ public enum MdocSessionRole
 }
 
 /// <summary>
-/// The half of the <c>EMacKey</c> ECDH each party holds. The holder has the static device <b>private</b> key;
-/// the reader has the static device <b>public</b> key (from the MSO) and its own ephemeral private key.
+/// The half of the <c>EMacKey</c> ECDH that this party can perform.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>This is an agreement <em>seam</em>, not a key — and that distinction is load-bearing.</b>
+/// </para>
+/// <para>
+/// On the citizen's phone the mdoc's static device key is a <b>non-extractable WebCrypto key</b>. C# can
+/// never hold its private half — that is the entire point of it. So the ECDH itself has to happen inside
+/// WebCrypto (<c>deriveBits</c> returns exactly the raw shared secret the standard calls <c>Z</c>), and we
+/// take the result. Modelling this as an <c>ECPrivateKeyParameters</c> would have compiled fine and then
+/// been impossible to wire to the one key that actually matters.
+/// </para>
+/// <para>
+/// It is the same shape as the device-<em>signer</em> delegate in <see cref="Cose.CoseSign1Builder"/>, and
+/// for the same reason: a hardware-protected key is reachable only as an operation, never as bytes.
+/// </para>
+/// <para>
+/// The in-process implementations below are for the reader, for tests, and for the server — all places where
+/// the key really is in memory.
+/// </para>
+/// </remarks>
 public abstract class StaticDeviceKeyMaterial
 {
-    /// <summary>Performs this party's half of the EMacKey agreement.</summary>
-    public abstract byte[] Agree();
+    /// <summary>
+    /// Performs this party's half of the <c>EMacKey</c> agreement and returns the raw shared secret
+    /// (the P-256 x-coordinate, 32 bytes).
+    /// </summary>
+    /// <remarks>Async because on a phone this crosses the JS-interop boundary into WebCrypto.</remarks>
+    public abstract Task<byte[]> AgreeAsync(CancellationToken ct = default);
 
-    /// <summary>The holder's half: the mdoc's static device private key, agreed with the reader's ephemeral public key.</summary>
+    /// <summary>
+    /// The <b>holder's</b> half, when the static device private key is genuinely in memory (tests, server).
+    /// </summary>
+    /// <remarks>
+    /// On a real device use the WebCrypto-backed implementation instead — a phone's device key cannot be
+    /// loaded into an <see cref="ECPrivateKeyParameters"/>, and if it could, it would not be worth having.
+    /// </remarks>
     public static StaticDeviceKeyMaterial ForHolder(
         ECPrivateKeyParameters staticDevicePrivate, ECPublicKeyParameters readerEphemeralPublic)
-        => new HolderMaterial(staticDevicePrivate, readerEphemeralPublic);
+        => new InProcessMaterial(staticDevicePrivate, readerEphemeralPublic);
 
-    /// <summary>The reader's half: its own ephemeral private key, agreed with the mdoc's static device public key.</summary>
+    /// <summary>
+    /// The <b>reader's</b> half: its own ephemeral private key, agreed with the mdoc's static device public
+    /// key (read from the MSO).
+    /// </summary>
+    /// <remarks>
+    /// The reader's key is ephemeral and per-session, so it is always in memory — the reader never needs the
+    /// WebCrypto seam.
+    /// </remarks>
     public static StaticDeviceKeyMaterial ForReader(
         ECPrivateKeyParameters readerEphemeralPrivate, ECPublicKeyParameters staticDevicePublic)
-        => new ReaderMaterial(readerEphemeralPrivate, staticDevicePublic);
+        => new InProcessMaterial(readerEphemeralPrivate, staticDevicePublic);
 
-    private sealed class HolderMaterial(ECPrivateKeyParameters priv, ECPublicKeyParameters pub) : StaticDeviceKeyMaterial
+    private sealed class InProcessMaterial(ECPrivateKeyParameters priv, ECPublicKeyParameters pub)
+        : StaticDeviceKeyMaterial
     {
-        public override byte[] Agree() => AgreeCore(priv, pub);
-    }
-
-    private sealed class ReaderMaterial(ECPrivateKeyParameters priv, ECPublicKeyParameters pub) : StaticDeviceKeyMaterial
-    {
-        public override byte[] Agree() => AgreeCore(priv, pub);
+        public override Task<byte[]> AgreeAsync(CancellationToken ct = default)
+            => Task.FromResult(AgreeCore(priv, pub));
     }
 
     private static byte[] AgreeCore(ECPrivateKeyParameters priv, ECPublicKeyParameters pub)

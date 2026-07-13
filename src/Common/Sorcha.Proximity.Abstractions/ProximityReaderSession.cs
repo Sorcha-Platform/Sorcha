@@ -123,11 +123,12 @@ public sealed class ProximityReaderSession : IAsyncDisposable
         // The reader has no static device key of its own to agree with — EMacKey comes from the holder's
         // static key, which the reader learns from the MSO in the response. So it is derived later, once we
         // can see the credential. (This asymmetry is inherent to the standard, not an artefact of our design.)
-        _keys = MdocSessionCrypto.DeriveKeys(
+        _keys = await MdocSessionCrypto.DeriveKeysAsync(
             _transcript.TaggedBytes,
             _ephemeral.Private,
             holderEphemeral,
-            staticDeviceKey: null);
+            staticDeviceKey: null,
+            ct).ConfigureAwait(false);
 
         await _transport.ConnectCentralAsync(new ProximityTarget(serviceUuid), ct).ConfigureAwait(false);
 
@@ -155,6 +156,14 @@ public sealed class ProximityReaderSession : IAsyncDisposable
 
     private void OnReceived(byte[] payload)
     {
+        // Deriving EMacKey needs an ECDH, which is async for symmetry with the holder (whose key is in
+        // hardware). Continue on a task and funnel every failure into Fail() — a faulted task here must never
+        // become an unobserved exception that strands the verdict.
+        _ = HandleReceivedAsync(payload);
+    }
+
+    private async Task HandleReceivedAsync(byte[] payload)
+    {
         if (State != ReaderSessionState.RequestSent)
             return;
 
@@ -180,7 +189,7 @@ public sealed class ProximityReaderSession : IAsyncDisposable
                 return;
             }
 
-            _verdictReady?.TrySetResult(Verify(responseBytes));
+            _verdictReady?.TrySetResult(await VerifyAsync(responseBytes).ConfigureAwait(false));
             State = ReaderSessionState.Verified;
         }
         catch (Exception ex)
@@ -192,11 +201,11 @@ public sealed class ProximityReaderSession : IAsyncDisposable
     /// <summary>
     /// Verifies the response, deriving <c>EMacKey</c> from the static device key the MSO carries.
     /// </summary>
-    private ProximityVerdict Verify(byte[] responseBytes)
+    private async Task<ProximityVerdict> VerifyAsync(byte[] responseBytes)
     {
         // The holder's static device key is published in the MSO. Only now can the reader complete the
         // EMacKey agreement — its own ephemeral private key against that static public key.
-        var eMacKey = TryDeriveEMacKey(responseBytes);
+        var eMacKey = await TryDeriveEMacKeyAsync(responseBytes).ConfigureAwait(false);
 
         var result = _mdocService.Verify(responseBytes, _transcript!.Encoded, eMacKey);
 
@@ -235,7 +244,7 @@ public sealed class ProximityReaderSession : IAsyncDisposable
             Errors: errors);
     }
 
-    private byte[]? TryDeriveEMacKey(byte[] responseBytes)
+    private async Task<byte[]?> TryDeriveEMacKeyAsync(byte[] responseBytes)
     {
         try
         {
@@ -252,11 +261,11 @@ public sealed class ProximityReaderSession : IAsyncDisposable
             if (staticDevicePublic is null)
                 return null;
 
-            using var macKeys = MdocSessionCrypto.DeriveKeys(
+            using var macKeys = await MdocSessionCrypto.DeriveKeysAsync(
                 _transcript!.TaggedBytes,
                 _ephemeral!.Private,
                 _ephemeral.Public,   // unused for EMacKey; the static agreement below is what matters
-                StaticDeviceKeyMaterial.ForReader(_ephemeral.Private, staticDevicePublic));
+                StaticDeviceKeyMaterial.ForReader(_ephemeral.Private, staticDevicePublic)).ConfigureAwait(false);
 
             return (byte[])macKeys.EMacKey.Clone();
         }

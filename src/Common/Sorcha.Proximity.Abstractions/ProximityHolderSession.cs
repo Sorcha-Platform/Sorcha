@@ -36,15 +36,58 @@ public enum HolderSessionState
     Failed
 }
 
-/// <summary>The holder's static, ECDH-capable device key — the one an mdoc's <c>MSO.DeviceKey</c> is bound to.</summary>
+/// <summary>
+/// The holder's static, ECDH-capable device key — the one an mdoc's <c>MSO.DeviceKey</c> is bound to —
+/// expressed as an <b>agreement operation</b> rather than as key bytes.
+/// </summary>
 /// <remarks>
-/// ⚠ This must be an <b>ECDH</b> key, not the ECDSA key the wallet uses for SD-JWT key binding. ISO 18013-5
+/// <para>
+/// ⚠ It must be an <b>ECDH</b> key, not the ECDSA key the wallet uses for SD-JWT key binding. ISO 18013-5
 /// derives <c>EMacKey</c> by ECDH between this key and the reader's ephemeral key, and in WebCrypto a key's
-/// usages are fixed at generation: a key cannot be both ECDSA and ECDH. That is precisely why the wallet
-/// carries two device keys (feature 185, design §3).
+/// usages are fixed at generation: <b>a key cannot be both ECDSA and ECDH</b>. That is why the wallet carries
+/// two device keys (feature 185, design §3).
+/// </para>
+/// <para>
+/// <b>And it is an operation, not a key.</b> On a phone this key is non-extractable — C# can never hold its
+/// private half, which is precisely what makes it worth having. So the caller supplies a function that
+/// performs the agreement (in WebCrypto, on the device) and returns the shared secret. Tests and the server
+/// pass an in-memory implementation. Modelling this as a private key would compile perfectly and then be
+/// impossible to wire to the only key that matters.
+/// </para>
 /// </remarks>
-/// <param name="Private">The static device private key.</param>
-public sealed record HolderDeviceKey(ECPrivateKeyParameters Private);
+/// <param name="AgreeWithReaderEphemeral">
+/// Given the reader's ephemeral public key, performs the ECDH and returns the raw shared secret (32 bytes).
+/// </param>
+public sealed record HolderDeviceKey(
+    Func<ECPublicKeyParameters, CancellationToken, Task<byte[]>> AgreeWithReaderEphemeral)
+{
+    /// <summary>Builds a holder key from an in-memory private key — for tests and the server.</summary>
+    /// <remarks>A real device cannot use this: its key is in hardware and cannot be loaded into one of these.</remarks>
+    public static HolderDeviceKey FromInMemoryKey(ECPrivateKeyParameters staticDevicePrivate)
+    {
+        ArgumentNullException.ThrowIfNull(staticDevicePrivate);
+
+        return new HolderDeviceKey((readerEphemeralPublic, ct) =>
+            StaticDeviceKeyMaterial
+                .ForHolder(staticDevicePrivate, readerEphemeralPublic)
+                .AgreeAsync(ct));
+    }
+}
+
+/// <summary>
+/// Adapts a <see cref="HolderDeviceKey"/> (an agreement <em>operation</em>) to the
+/// <see cref="StaticDeviceKeyMaterial"/> seam the crypto layer expects.
+/// </summary>
+/// <remarks>
+/// The indirection exists so that a hardware-held, non-extractable device key can take part in the ECDH at
+/// all. It is not ceremony — without it, the one key we actually want to use is the one key we cannot use.
+/// </remarks>
+internal sealed class DelegatedStaticDeviceKey(HolderDeviceKey deviceKey, ECPublicKeyParameters readerEphemeral)
+    : StaticDeviceKeyMaterial
+{
+    public override Task<byte[]> AgreeAsync(CancellationToken ct = default)
+        => deviceKey.AgreeWithReaderEphemeral(readerEphemeral, ct);
+}
 
 /// <summary>
 /// The holder's half of an ISO 18013-5 proximity exchange, as a state machine over
@@ -248,12 +291,21 @@ public sealed class ProximityHolderSession : IAsyncDisposable
 
     private void OnReceived(byte[] payload)
     {
+        // The transport's Received event is synchronous, but key agreement is not: on a phone the static
+        // device key lives in WebCrypto and the ECDH crosses the JS-interop boundary. So the work is
+        // continued on a task, with every failure funnelled into Fail() — a faulted task here must never
+        // become an unobserved exception that silently strands the session.
+        _ = HandleReceivedAsync(payload);
+    }
+
+    private async Task HandleReceivedAsync(byte[] payload)
+    {
         try
         {
             switch (State)
             {
                 case HolderSessionState.Engaging:
-                    HandleSessionEstablishment(payload);
+                    await HandleSessionEstablishmentAsync(payload).ConfigureAwait(false);
                     break;
 
                 case HolderSessionState.AwaitingConsent:
@@ -270,7 +322,7 @@ public sealed class ProximityHolderSession : IAsyncDisposable
         }
     }
 
-    private void HandleSessionEstablishment(byte[] payload)
+    private async Task HandleSessionEstablishmentAsync(byte[] payload)
     {
         var establishment = SessionEstablishment.Decode(payload);
 
@@ -285,12 +337,15 @@ public sealed class ProximityHolderSession : IAsyncDisposable
             MdocCbor.WrapTag24(_engagement!.Encode()),
             establishment.EReaderKeyBytes);
 
-        _keys = MdocSessionCrypto.DeriveKeys(
+        _keys = await MdocSessionCrypto.DeriveKeysAsync(
             _transcript.TaggedBytes,
             _ephemeral!.Private,
             readerEphemeral,
-            // EMacKey: OUR static device private key, agreed with THEIR ephemeral public key.
-            StaticDeviceKeyMaterial.ForHolder(_deviceKey.Private, readerEphemeral));
+            // EMacKey: OUR static device key, agreed with THEIR ephemeral public key.
+            //
+            // On a phone the agreement happens inside WebCrypto — we never see the private key, which is the
+            // whole point of it being non-extractable. Hence a delegate rather than a key.
+            new DelegatedStaticDeviceKey(_deviceKey, readerEphemeral)).ConfigureAwait(false);
 
         _readerCounter++;
         var plaintext = MdocSessionCrypto.Decrypt(

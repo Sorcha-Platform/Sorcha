@@ -47,6 +47,20 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPresentationEngine, PresentationEngine>();
         services.AddSingleton<IDeviceKeyService, WebCryptoDeviceKeyService>();
         services.AddSingleton<ICredentialCache, IndexedDbCredentialCache>();
+
+        // Feature 185 (in-person / offline presentation).
+        //
+        // A SECOND device key, and deliberately so: ISO 18013-5 derives EMacKey by ECDH between the mdoc's
+        // static device key and the reader's ephemeral key, so that key must be ECDH-capable. WebCrypto fixes
+        // a key's usages at generation and a key CANNOT be both ECDSA and ECDH — so the sign-only key above
+        // structurally cannot produce a deviceMac. The SD-JWT rail keeps that one; the mdoc rail gets this.
+        services.AddSingleton<Sorcha.Wallet.Pwa.Services.Proximity.IMdocDeviceKeyService,
+                              Sorcha.Wallet.Pwa.Services.Proximity.WebCryptoMdocDeviceKeyService>();
+
+        // Transient: a proximity transport is per-exchange, and Disconnected is terminal — a shared instance
+        // would carry a dead channel into the next presentation.
+        services.AddTransient<Sorcha.Proximity.IProximityTransport,
+                              Sorcha.Wallet.Pwa.Services.Proximity.CapacitorProximityTransport>();
         // Feature 152 (offline / field capture) — encrypted device-local store seam + connectivity.
         services.AddSingleton<Sorcha.Wallet.Pwa.Services.Drafts.IEncryptedObjectStore,
                               Sorcha.Wallet.Pwa.Services.Drafts.IndexedDbEncryptedObjectStore>();

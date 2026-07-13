@@ -44,7 +44,7 @@ public class IsoAnnexDVectorTests
         ProximitySessionTranscript.FromTaggedBytes(
             IsoAnnexDVectors.Hex(IsoAnnexDVectors.SessionTranscriptBytesHex));
 
-    private static MdocSessionKeys DeriveAnnexDKeys() => MdocSessionCrypto.DeriveKeys(
+    private static Task<MdocSessionKeys> DeriveAnnexDKeysAsync() => MdocSessionCrypto.DeriveKeysAsync(
         AnnexDTranscript().TaggedBytes,
         // From the reader's side: its ephemeral private key against the holder's ephemeral public key.
         PrivateKey(IsoAnnexDVectors.EphemeralReaderKeyDHex),
@@ -59,13 +59,13 @@ public class IsoAnnexDVectorTests
     /// this fails, nothing else can work.
     /// </summary>
     [Fact]
-    public void DeriveKeys_FromEitherSide_AgreesOnTheSameSessionKeys()
+    public async Task DeriveKeys_FromEitherSide_AgreesOnTheSameSessionKeys()
     {
         var transcript = AnnexDTranscript();
 
-        using var readerView = DeriveAnnexDKeys();
+        using var readerView = await DeriveAnnexDKeysAsync();
 
-        using var holderView = MdocSessionCrypto.DeriveKeys(
+        using var holderView = await MdocSessionCrypto.DeriveKeysAsync(
             transcript.TaggedBytes,
             PrivateKey(IsoAnnexDVectors.EphemeralDeviceKeyDHex),
             PublicKey(IsoAnnexDVectors.EphemeralReaderKeyXHex, IsoAnnexDVectors.EphemeralReaderKeyYHex),
@@ -91,9 +91,9 @@ public class IsoAnnexDVectorTests
     /// GCM tag does not authenticate.
     /// </remarks>
     [Fact]
-    public void SessionEstablishment_FromTheStandard_DecryptsToTheStandardsDeviceRequest()
+    public async Task SessionEstablishment_FromTheStandard_DecryptsToTheStandardsDeviceRequest()
     {
-        using var keys = DeriveAnnexDKeys();
+        using var keys = await DeriveAnnexDKeysAsync();
 
         var establishment = SessionEstablishment.Decode(
             IsoAnnexDVectors.Hex(IsoAnnexDVectors.SessionEstablishmentHex));
@@ -112,9 +112,9 @@ public class IsoAnnexDVectorTests
     /// <c>DeviceResponse</c> plaintext back — the holder's direction, under <c>SKDevice</c>.
     /// </summary>
     [Fact]
-    public void SessionData_FromTheStandard_DecryptsToTheStandardsDeviceResponse()
+    public async Task SessionData_FromTheStandard_DecryptsToTheStandardsDeviceResponse()
     {
-        using var keys = DeriveAnnexDKeys();
+        using var keys = await DeriveAnnexDKeysAsync();
 
         var sessionData = SessionData.Decode(IsoAnnexDVectors.Hex(IsoAnnexDVectors.SessionDataHex));
         sessionData.Data.Should().NotBeNull();
@@ -136,9 +136,9 @@ public class IsoAnnexDVectorTests
     /// else's ciphertext exactly cannot.
     /// </remarks>
     [Fact]
-    public void Encrypt_ReproducesTheStandardsCiphertext_ByteForByte()
+    public async Task Encrypt_ReproducesTheStandardsCiphertext_ByteForByte()
     {
-        using var keys = DeriveAnnexDKeys();
+        using var keys = await DeriveAnnexDKeysAsync();
 
         var reEncrypted = MdocSessionCrypto.Encrypt(
             keys.SkReader,
@@ -168,9 +168,9 @@ public class IsoAnnexDVectorTests
     /// </para>
     /// </remarks>
     [Fact]
-    public void DeviceMac_FromTheStandardsDeviceResponse_Verifies()
+    public async Task DeviceMac_FromTheStandardsDeviceResponse_Verifies()
     {
-        using var keys = DeriveAnnexDKeys();
+        using var keys = await DeriveAnnexDKeysAsync();
         var transcript = AnnexDTranscript();
 
         var response = MdocCodec.DecodeDeviceResponse(
@@ -193,9 +193,9 @@ public class IsoAnnexDVectorTests
 
     /// <summary>A tampered MAC tag must be rejected — the verifier fails closed.</summary>
     [Fact]
-    public void DeviceMac_Tampered_IsRejected()
+    public async Task DeviceMac_Tampered_IsRejected()
     {
-        using var keys = DeriveAnnexDKeys();
+        using var keys = await DeriveAnnexDKeysAsync();
         var transcript = AnnexDTranscript();
 
         var response = MdocCodec.DecodeDeviceResponse(
