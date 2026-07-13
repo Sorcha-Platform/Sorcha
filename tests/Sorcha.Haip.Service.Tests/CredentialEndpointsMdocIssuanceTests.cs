@@ -9,8 +9,8 @@ using System.Text.Json;
 
 using FluentAssertions;
 
-using Sorcha.Cryptography.Mdoc;
-using Sorcha.Cryptography.Mdoc.Cbor;
+using Sorcha.Mdoc;
+using Sorcha.Mdoc.Cbor;
 using Sorcha.Haip.Service.Endpoints;
 using Xunit;
 

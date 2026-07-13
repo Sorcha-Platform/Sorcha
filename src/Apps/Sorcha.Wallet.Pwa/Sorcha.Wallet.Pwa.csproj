@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\Common\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Verifier.Engine\Sorcha.Verifier.Engine.csproj" />
     <ProjectReference Include="..\Sorcha.UI\Sorcha.UI.Components.User\Sorcha.UI.Components.User.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.Mdoc\Sorcha.Mdoc.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Feature 185 WASM-safety gate.
+#
+# Sorcha.Mdoc, Sorcha.Proximity.Abstractions and Sorcha.Verifier.Engine are consumed by Blazor WASM hosts
+# (the citizen wallet PWA, and the offline reader app). A native P/Invoke package or an unreliable BCL crypto
+# API in any of them fails AT RUNTIME ON A PHONE — it compiles cleanly, passes every other check, ships, and
+# then breaks in the field. That failure mode is the reason this gate exists.
+#
+# It is also the reason Sorcha.Mdoc was extracted out of Sorcha.Cryptography in the first place (which
+# P/Invokes libsodium and MCL), and the reason Sorcha.Cryptography.Secp256k1 was split out before it.
+#
+# NOTE: ECDsa verification is deliberately NOT banned — it demonstrably works under browser-wasm today, in
+# the shipping wallet. See the script's header for the full reasoning.
+#
+# See scripts/check-wasm-safe.ps1 and the sorcha-architecture skill (Feature 185).
+
+name: wasm-safe-gate
+
+on:
+  pull_request:
+    paths:
+      - "src/Common/Sorcha.Mdoc/**"
+      - "src/Common/Sorcha.Proximity.Abstractions/**"
+      - "src/Common/Sorcha.Verifier.Engine/**"
+      - "scripts/check-wasm-safe.ps1"
+      - ".github/workflows/wasm-safe-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  wasm-safe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Feature 185 WASM-safety gate
+        shell: pwsh
+        run: ./scripts/check-wasm-safe.ps1

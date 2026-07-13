@@ -1356,11 +1356,11 @@ Two coupled capabilities, shipped across three merged PRs (US1 #806, US2 #807, U
 
 ### mdoc (mso_mdoc) — ISO 18013-5 on the BCL
 
-`Sorcha.Cryptography/Mdoc` (BCL only — `System.Formats.Cbor` + `System.Security.Cryptography.Cose`, pinned 10.0.8):
+`Sorcha.Mdoc` (extracted from `Sorcha.Cryptography` in F185 so the WASM wallet can use it; BCL + BouncyCastle — `System.Formats.Cbor` + `System.Security.Cryptography.Cose`, pinned 10.0.8):
 - `MdocCbor` — tag-24 (`#6.24(bstr .cbor X)`) wrap/unwrap **verbatim** (digests/signatures are over the tagged outer bytes; capture via `CborReader.ReadEncodedValue()`, splice via `CborWriter.WriteEncodedValue`). `CoseX5Chain` — x5chain on COSE label 33 (RFC 9360). Models: `IssuerSigned(Item(Bytes))`, `MobileSecurityObject`(+`MsoStatus`/`ValidityInfo`), `DeviceResponse`/`Document`/`DeviceSigned`/`DeviceAuth`. `MdocCodec` — encode/decode + the OpenID4VP 1.x hash-based `SessionTranscript` + `DeviceAuthentication` builders.
 - `MdocService.Verify` — issuer COSE_Sign1 over the MSO (key from x5chain leaf), value-digest integrity (fixed-time), holder binding over the reconstructed `DeviceAuthentication`, validity window.
 - `MdocIssuer.IssueIssuerSigned` — builds + signs an mdoc credential (ES256/P-256 only; throws otherwise).
-- **MAC-based device auth (`deviceMac`) is NOT verified** in v1 (BCL has no `COSE_Mac0`; OpenID4VP uses `deviceSignature`).
+- ~~**MAC-based device auth (`deviceMac`) is NOT verified** in v1 (BCL has no `COSE_Mac0`; OpenID4VP uses `deviceSignature`).~~ **Superseded by Feature 185**, which added `CoseMac0` (the BCL still has no such type — we hand-rolled it) and now verifies `deviceMac`. Online OpenID4VP still uses `deviceSignature`; a `deviceMac` presented with no `EMacKey` is **rejected**, not waved through.
 
 ### Format handlers + verifier wiring
 
@@ -1388,13 +1388,13 @@ Credential trust runs on **two distinct rails**, and which one applies depends o
 
 ### Key files
 
-`src/Common/Sorcha.Cryptography/Mdoc/**` (codec, models, MdocService, MdocIssuer), `src/Core/Sorcha.Blueprint.Engine/Credentials/**` (TrustEvaluator, resolvers, format handlers, seams, TrustMetrics), `src/Common/Sorcha.ServiceClients.Http/Trust/TrustListProvider.cs`, `src/Services/Sorcha.Haip.Service/Services/{HaipPresentationVerifier,MdocPresentationVerifier,IetfTokenStatusListChecker,HaipTrustAdapters}.cs`, `src/Services/Sorcha.Blueprint.Service/Credentials/{DidIssuerDirectory,DidX5cIssuerKeyResolver}.cs`, `src/Services/Sorcha.Tenant.Service/Endpoints/TrustEndpoints.cs`. Clean-break gate: `scripts/check-trust-clean-break.ps1`. Spec: `specs/135-eudi-credential-format-trust/`.
+`src/Common/Sorcha.Mdoc/**` (codec, models, MdocService, MdocIssuer — moved out of Sorcha.Cryptography by F185), `src/Core/Sorcha.Blueprint.Engine/Credentials/**` (TrustEvaluator, resolvers, format handlers, seams, TrustMetrics), `src/Common/Sorcha.ServiceClients.Http/Trust/TrustListProvider.cs`, `src/Services/Sorcha.Haip.Service/Services/{HaipPresentationVerifier,MdocPresentationVerifier,IetfTokenStatusListChecker,HaipTrustAdapters}.cs`, `src/Services/Sorcha.Blueprint.Service/Credentials/{DidIssuerDirectory,DidX5cIssuerKeyResolver}.cs`, `src/Services/Sorcha.Tenant.Service/Endpoints/TrustEndpoints.cs`. Clean-break gate: `scripts/check-trust-clean-break.ps1`. Spec: `specs/135-eudi-credential-format-trust/`.
 
 ### Clean-break notes (no shims)
 
 - `CredentialRequirement.AcceptedIssuers` and `HaipPresentationVerifier._trustedRoots`/`AddTrustedRoot` are **removed** (gate-enforced). Seven unrelated presentation-request/verifier DTOs keep their own `AcceptedIssuers` — left untouched.
 - mdoc is **ES256/P-256-only at the format layer** and additive — it does not touch Sorcha-native signing or the PQC `Multicodec` fallback (SC-009). Register-anchored mdoc is rejected at issuance (mdoc's issuer key is x5chain-resolved; no DID path in `MdocService`).
-- **Deferred follow-ups**: HAIP trustlist-source *consumption* (verifier root distribution — the admin GET returns metadata not roots; x509-tenant is the working mdoc anchor), a real external EUDI PID known-answer vector (vectors are generated end-to-end in tests), and MAC-based device auth.
+- **Deferred follow-ups**: HAIP trustlist-source *consumption* (verifier root distribution — the admin GET returns metadata not roots; x509-tenant is the working mdoc anchor). ~~a real external EUDI PID known-answer vector (vectors are generated end-to-end in tests), and MAC-based device auth~~ — **both closed by Feature 185**: `deviceMac`/`COSE_Mac0` is implemented, and real ISO 18013-5 Annex D reference data now pins the codec (see the Feature 185 section).
 
 ---
 
@@ -1995,3 +1995,117 @@ verifier before showing consent.
   endpoint (US3's is service-tier); a documented follow-up, so v1 renders valid signed requests as
   `AuthenticUntrusted`. The F127 `SorchaWallet` consumer keeps its **DID** `client_id` (register-native
   rail) — it renders `Unverifiable` under the x509 validator and is never blocked.
+
+---
+
+## Proximity credential sharing — ISO 18013-5 over BLE (Feature 185)
+
+In-person, **offline** credential presentation: the citizen's phone and a verifier's device exchange a
+presentation directly over Bluetooth, with **no network and no server**. This is F135's explicit
+*"proximity deferred"* coming due. Spec: `specs/185-mobile-proximity-sharing/`. Design:
+`docs/superpowers/specs/2026-07-13-mobile-proximity-sharing-design.md`.
+
+**Status: US1 shipped (the protocol). The native transport and both UIs are the follow-on PRs.**
+
+### The architecture in one line
+
+**Thin native transport, one shared C# protocol.** The (not-yet-built) Capacitor plugin does *only* BLE —
+opaque bytes — while every byte of ISO protocol lives in C#, written once, shared by holder and reader. The
+alternative (implementing 18013-5 in Swift *and* Kotlin) was rejected: two implementations of the tag-24 rules
+is two chances to get them wrong, in languages the test suite cannot reach.
+
+### `Sorcha.Mdoc` — extracted, pure-managed (the enabling move)
+
+`Sorcha.Cryptography` P/Invokes libsodium + MCL and **cannot load in Blazor WASM**, so the wallet could never
+reference the mdoc codec. The `Mdoc/` tree is now its own pure-managed project (the
+`Sorcha.Cryptography.Secp256k1` precedent). `Blueprint.Engine` and `Haip.Service` re-point at it; clean break,
+no shim.
+
+New in it: `CoseKey`, **`CoseSign1Builder`** (COSE_Sign1 from a *raw* signature — the device key is a
+non-extractable WebCrypto key, so `CoseSign1Message.SignDetached` **cannot** be used), **`CoseMac0`** (the BCL
+has no such type — the documented reason F135 refused `deviceMac`), `MdocSessionCrypto`,
+`ProximitySessionTranscript`, `DeviceEngagement`, `SessionEstablishment`/`SessionData`, `MdocDeviceRequest`,
+and **`MdocDeviceResponseBuilder`** — the holder side, which did not previously exist anywhere (`MdocCodec`'s
+write path is private; `MdocIssuer` is issuer-side, `MdocService` verifier-side).
+
+`MdocService` gained `Verify(response, byte[] sessionTranscript, byte[]? eMacKey)`; the OpenID4VP overload
+delegates to it, so the online and proximity paths cannot drift. **`deviceMac` is now verified** — a `deviceMac`
+with no `EMacKey` is **rejected**, not waved through.
+
+### THE crypto finding: `deviceMac` needs a SECOND device key
+
+ISO derives `EMacKey` by ECDH between the mdoc's **static** device key (published in the MSO) and the reader's
+**ephemeral** key — so the MSO device key must be **ECDH-capable**. In WebCrypto a key's usages are fixed at
+generation and **a key cannot be both ECDSA and ECDH**. The wallet's existing device key is ECDSA-only
+(`WebCryptoDeviceKeyService`), so it **structurally cannot** produce a `deviceMac`.
+
+⇒ The mdoc rail gets a **second**, non-extractable **ECDH** P-256 device key; the SD-JWT/KB-JWT rail keeps the
+existing ECDSA one. Sorcha-issued proximity-capable mdocs bind `MSO.DeviceKey` to the ECDH key.
+
+### The two transcript forms (the classic week-loser)
+
+The standard uses **both**, and they are not interchangeable:
+
+| Form | Used for |
+|---|---|
+| `SessionTranscript` — the bare 3-element array | Spliced into `DeviceAuthentication` |
+| `SessionTranscriptBytes` — `#6.24(bstr .cbor …)` | **Hashed (SHA-256) for the HKDF salt** |
+
+Swap them and you derive plausible keys that decrypt nothing, **silently**. `ProximitySessionTranscript` hands
+out both, named, so no caller has to choose.
+
+### Evidence: ISO Annex D, not self-consistency
+
+`IsoAnnexDVectorTests` reproduces the **standard's own ciphertexts** — decrypts its `SessionEstablishment` to its
+`DeviceRequest`, its `SessionData` to its `DeviceResponse`, re-encrypts byte-for-byte, and **verifies its own
+`deviceMac`**. A wrong salt, info string, ECDH pairing or nonce cannot reproduce someone else's ciphertext.
+
+This settled empirically what prose disagrees about: **`DeviceAuthenticationBytes` occupies the `payload` slot
+of `MAC_structure`** (RFC 9052 detached handling), *not* `external_aad`.
+
+⚠ **Vector provenance:** ISO 18013-5:2021 is paywalled; the vectors come from OpenWallet Foundation `multipaz`
+(Apache-2.0), whose constants are named `ISO_18013_5_ANNEX_D_*`. Documented in full on `IsoAnnexDVectors`.
+⚠ **The DIS draft is a trap** — freely downloadable, with *different* crypto (empty HKDF info, `0x00`/`0x01`
+salts, 2-element transcript). Validating against it yields a confidently wrong implementation.
+
+### `Sorcha.Proximity.Abstractions` — the seam, and why it carries opaque bytes
+
+`IProximityTransport` (`ProbeAsync` / `StartPeripheralAsync` / `ConnectCentralAsync` / `SendAsync` / `Received`
+/ `Disconnected` / `StopAsync`) knows **nothing** about CBOR, mdoc, credentials or sessions — and that ignorance
+is load-bearing. It is what lets **`LoopbackProximityTransport`** stand in for the radio so the **entire
+exchange runs in CI with no Bluetooth and no phones**. Protocol knowledge in the transport would destroy that.
+`ProximityHolderSession` / `ProximityReaderSession` are the state machines.
+
+**The disclosure invariant is structural:** `ApproveAsync` is the *only* method that can encode credential data,
+and it is reachable only from `AwaitingConsent`. Declining, abandoning, or a transport failure cannot disclose
+anything — FR-010 is a property of the type, not a promise in a comment. It also refuses to disclose an element
+the reader never asked for, so a bug in a consent UI cannot widen disclosure.
+
+**A response disclosing NOTHING is not an acceptance.** The digest check iterates the elements *present*, so an
+empty disclosure passes vacuously — sound crypto, but it would tell an operator their check succeeded when they
+learned nothing. `ProximityReaderSession` fails that closed.
+
+### Known gaps (honest)
+
+- **The evidence bar is our own two devices** — self-consistency, **not** certified-reader interop. The Annex D
+  vectors are the compensating control.
+- **`MdocIssuer` uses a flat namespace equal to the docType.** A real mDL separates them
+  (`org.iso.18013.5.1` vs `org.iso.18013.5.1.mDL`). An interop blocker for *issuance*; harmless to the
+  proximity protocol, which is namespace-agnostic.
+- **`readerAuth` parsed, not verified** — honestly skipped rather than stubbed.
+- **No published vector for QR engagement** (Annex D's worked example is NFC handover), so the QR transcript is
+  validated structurally.
+- **CLOSED (was: "`MdocService.Verify` uses BCL `X509Certificate`/`ECDsa`, WASM unproven").** The verify path is
+  now pure-managed: `X509Leaf` (BouncyCastle `X509CertificateParser`) resolves the issuer key, and
+  `CoseSign1Builder.VerifyEmbedded`/`VerifyDetached` verify with BouncyCastle. `MdocSessionCrypto`'s AES-GCM
+  moved to BouncyCastle `GcmBlockCipher` too — the Annex D ciphertext vectors still reproduce byte-for-byte, so
+  the swap is pinned, not taken on faith. `MdocIssuer` keeps BCL `ECDsa` for **signing** — server-side only,
+  and a browser never holds an issuer private key. Enforced by `scripts/check-wasm-safe.ps1` +
+  `wasm-safe-gate.yml`.
+- **Correction worth knowing: BCL `ECDsa` verification DOES work under browser-wasm.** An earlier note here
+  implied otherwise. `Sorcha.Verifier.Engine` uses `ECDsa.Create` + `VerifyData` for ES256, it ships inside
+  `Sorcha.Wallet.Pwa`, and that is the live holder→device delegation check the wallet performs in the browser
+  on every presentation. The genuinely unreliable APIs are `X509Certificate2`/`X509CertificateLoader`,
+  `ECDiffieHellman` and `AesGcm` — those are what the gate bans. New `Sorcha.Mdoc` code prefers BouncyCastle
+  throughout anyway (one provider is easier to reason about than two), but that is a preference, not a
+  portability requirement, and the gate does not pretend otherwise.

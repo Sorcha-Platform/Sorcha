@@ -13,9 +13,9 @@ using Moq;
 using Sorcha.Blueprint.Engine.Credentials;
 using Sorcha.Blueprint.Engine.Credentials.Sources;
 using Sorcha.Blueprint.Models.Credentials;
-using Sorcha.Cryptography.Mdoc;
-using Sorcha.Cryptography.Mdoc.Cbor;
-using Sorcha.Cryptography.Mdoc.Cose;
+using Sorcha.Mdoc;
+using Sorcha.Mdoc.Cbor;
+using Sorcha.Mdoc.Cose;
 using Sorcha.Haip.Service.Services;
 using Xunit;
 
