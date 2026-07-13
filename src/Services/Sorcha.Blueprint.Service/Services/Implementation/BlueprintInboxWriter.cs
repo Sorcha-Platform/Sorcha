@@ -3,6 +3,7 @@
 
 using Sorcha.ServiceClients.Inbox;
 using Sorcha.ServiceClients.Participant;
+using Sorcha.ServiceClients.Wallet;
 
 namespace Sorcha.Blueprint.Service.Services.Implementation;
 
@@ -61,17 +62,67 @@ public sealed class BlueprintInboxWriter : IBlueprintInboxWriter
 {
     private readonly IParticipantServiceClient _participants;
     private readonly IPlatformInboxClient _inbox;
+    private readonly IWalletServiceClient _wallets;
     private readonly ILogger<BlueprintInboxWriter> _logger;
 
     /// <summary>Initialises a new <see cref="BlueprintInboxWriter"/>.</summary>
     public BlueprintInboxWriter(
         IParticipantServiceClient participants,
         IPlatformInboxClient inbox,
+        IWalletServiceClient wallets,
         ILogger<BlueprintInboxWriter> logger)
     {
         _participants = participants ?? throw new ArgumentNullException(nameof(participants));
         _inbox = inbox ?? throw new ArgumentNullException(nameof(inbox));
+        _wallets = wallets ?? throw new ArgumentNullException(nameof(wallets));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    /// <summary>
+    /// Resolves the PlatformUserId to notify for a recipient <b>wallet address</b> (Feature 183) —
+    /// the ledger/register address the application was sent from, NOT a local-node assumption.
+    /// <para>
+    /// Registered org participants resolve through the participant registry
+    /// (wallet → participant → UserIdentity → PlatformUser). A <b>late-bound open participant
+    /// (citizen)</b> has no participant record, so we fall back to the sending wallet's owner: a
+    /// consumer wallet's <c>Owner</c> IS the PlatformUserId; an org wallet's owner is a UserIdentity
+    /// (resolved through the inbox client). <c>GetWalletAsync</c> is inherently local-only, so in a
+    /// federated split this returns null for a wallet hosted on another node — the notice skips
+    /// gracefully here (no misfire) and the citizen's own node is responsible for delivery.
+    /// </para>
+    /// </summary>
+    private async Task<Guid?> ResolveRecipientPlatformUserIdAsync(string walletAddress, CancellationToken ct)
+    {
+        var participant = await _participants.GetByWalletAddressAsync(walletAddress, ct).ConfigureAwait(false);
+        if (participant is not null)
+        {
+            var viaParticipant = await _inbox.ResolvePlatformUserIdAsync(participant.UserId, ct).ConfigureAwait(false);
+            if (viaParticipant is not null)
+            {
+                return viaParticipant;
+            }
+        }
+
+        WalletInfo? wallet;
+        try
+        {
+            wallet = await _wallets.GetWalletAsync(walletAddress, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Decision-notice recipient resolution: wallet lookup failed for {Wallet}", walletAddress);
+            return null;
+        }
+
+        if (wallet is null || !Guid.TryParse(wallet.Owner, out var ownerId))
+        {
+            return null;
+        }
+
+        // Org wallet: owner is a UserIdentity → resolve to its PlatformUser. Consumer wallet: owner
+        // is already the PlatformUserId → the identity lookup misses and we use it directly.
+        var viaOwnerIdentity = await _inbox.ResolvePlatformUserIdAsync(ownerId, ct).ConfigureAwait(false);
+        return viaOwnerIdentity ?? ownerId;
     }
 
     /// <inheritdoc />
@@ -156,21 +207,13 @@ public sealed class BlueprintInboxWriter : IBlueprintInboxWriter
 
         try
         {
-            var participant = await _participants.GetByWalletAddressAsync(recipientWalletAddress, ct).ConfigureAwait(false);
-            if (participant is null)
-            {
-                _logger.LogDebug(
-                    "Inbox skip — no participant for decision-notice recipient wallet {Wallet}",
-                    recipientWalletAddress);
-                return;
-            }
-
-            var platformUserId = await _inbox.ResolvePlatformUserIdAsync(participant.UserId, ct).ConfigureAwait(false);
+            var platformUserId = await ResolveRecipientPlatformUserIdAsync(recipientWalletAddress, ct).ConfigureAwait(false);
             if (platformUserId is null)
             {
                 _logger.LogDebug(
-                    "Inbox skip — could not resolve PlatformUserId for decision-notice UserIdentity {UserIdentityId}",
-                    participant.UserId);
+                    "Inbox skip — could not resolve a recipient PlatformUserId for decision-notice wallet {Wallet} "
+                    + "(late-bound citizen not hosted on this node, or unknown wallet)",
+                    recipientWalletAddress);
                 return;
             }
 
