@@ -104,9 +104,14 @@ public sealed class PresentationEngine : IPresentationEngine
                 ResponseUri = GetRequiredString(root, "response_uri"),
                 Nonce = GetRequiredString(root, "nonce"),
                 Query = query,
-                RequiredVct = credential.Meta.VctValues is { Count: > 0 }
-                    ? credential.Meta.VctValues[0]
-                    : throw new FormatException("Request object's credential query carries no vct_values."),
+                // Feature 185: an mdoc query carries `doctype_value`, NOT `vct_values` — so demanding vct
+                // here rejected every mso_mdoc request outright, even though F181's DCQL vocabulary has
+                // always been able to express one. The wallet could not so much as PARSE a request for the
+                // credential type that proximity presentation exists to present.
+                //
+                // A query with neither is genuinely malformed and still fails, but it fails at the query, not
+                // at the whole request.
+                RequiredVct = QueryIdentifier(credential),
                 RequiredClaims = required,
                 OptionalClaims = optional,
                 Purpose = purpose,
@@ -150,7 +155,13 @@ public sealed class PresentationEngine : IPresentationEngine
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(credentials);
-        return MatchCandidates(request.RequiredVct, request.RequiredClaims, request.OptionalClaims, credentials);
+
+        var format = request.Query.Credentials.Count > 0
+            ? request.Query.Credentials[0].Format
+            : DcqlFormats.SdJwtVc;
+
+        return MatchCandidates(
+            format, request.RequiredVct, request.RequiredClaims, request.OptionalClaims, credentials);
     }
 
     /// <inheritdoc />
@@ -166,9 +177,9 @@ public sealed class PresentationEngine : IPresentationEngine
         var unsatisfiable = new HashSet<string>(StringComparer.Ordinal);
         foreach (var cq in request.Query.Credentials)
         {
-            var vct = cq.Meta.VctValues is { Count: > 0 } ? cq.Meta.VctValues[0] : string.Empty;
+            var vct = QueryIdentifier(cq);
             var (required, optional) = DcqlRequestParser.SplitClaims(cq);
-            var candidates = MatchCandidates(vct, required, optional, credentials);
+            var candidates = MatchCandidates(cq.Format, vct, required, optional, credentials);
             perQuery.Add(new DcqlQueryMatch
             {
                 QueryId = cq.Id,
@@ -240,16 +251,48 @@ public sealed class PresentationEngine : IPresentationEngine
         };
     }
 
+    /// <summary>
+    /// The identifier a credential query matches on: <c>vct_values</c> for SD-JWT, <c>doctype_value</c> for
+    /// mdoc.
+    /// </summary>
+    /// <remarks>
+    /// One place, so that the two formats' identifiers can never be silently confused for one another — they
+    /// are different strings and a credential must never be matched against the wrong one.
+    /// </remarks>
+    private static string QueryIdentifier(DcqlCredentialQuery query) =>
+        string.Equals(query.Format, DcqlFormats.MsoMdoc, StringComparison.Ordinal)
+            ? query.Meta.DoctypeValue ?? string.Empty
+            : query.Meta.VctValues is { Count: > 0 } vcts ? vcts[0] : string.Empty;
+
+    /// <summary>Maps a DCQL format string to the wallet's cached-credential format.</summary>
+    private static CachedCredentialFormat FormatOf(string dcqlFormat) =>
+        string.Equals(dcqlFormat, DcqlFormats.MsoMdoc, StringComparison.Ordinal)
+            ? CachedCredentialFormat.MsoMdoc
+            : CachedCredentialFormat.SdJwtVc;
+
     private static IReadOnlyList<CredentialMatch> MatchCandidates(
-        string vct,
+        string dcqlFormat,
+        string identifier,
         IReadOnlyList<string> requiredClaims,
         IReadOnlyList<string> optionalClaims,
         IReadOnlyList<CachedCredential> credentials)
     {
+        // A query with no identifier matches nothing. Returning every credential instead would be a
+        // catastrophic default — the citizen would be offered credentials the verifier never asked for.
+        if (string.IsNullOrEmpty(identifier))
+            return [];
+
+        var wantedFormat = FormatOf(dcqlFormat);
+
         var matches = new List<CredentialMatch>();
         foreach (var credential in credentials)
         {
-            if (!string.Equals(credential.Vct, vct, StringComparison.Ordinal)) continue;
+            // The format gate comes FIRST. Without it an mdoc docType could be matched against an SD-JWT's
+            // vct — they are different namespaces of string and a collision, however unlikely, would present
+            // the wrong credential entirely.
+            if (credential.Format != wantedFormat) continue;
+
+            if (!string.Equals(credential.MatchIdentifier, identifier, StringComparison.Ordinal)) continue;
 
             var availableNames = new HashSet<string>(credential.AvailableClaimNames, StringComparer.Ordinal);
             var satisfied = requiredClaims.Where(availableNames.Contains).ToList();

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Blazored.LocalStorage;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Sorcha.Wallet.Pwa.Services;
@@ -58,9 +59,17 @@ public static class ServiceCollectionExtensions
                               Sorcha.Wallet.Pwa.Services.Proximity.WebCryptoMdocDeviceKeyService>();
 
         // Transient: a proximity transport is per-exchange, and Disconnected is terminal — a shared instance
-        // would carry a dead channel into the next presentation.
+        // would carry a dead channel into the next presentation. Same for the presentation service, which
+        // owns one session.
         services.AddTransient<Sorcha.Proximity.IProximityTransport,
                               Sorcha.Wallet.Pwa.Services.Proximity.CapacitorProximityTransport>();
+        services.AddTransient<Sorcha.Wallet.Pwa.Services.Proximity.IProximityPresentationService,
+                              Sorcha.Wallet.Pwa.Services.Proximity.ProximityPresentationService>();
+
+        // QR generation happens ON DEVICE (QRCoder, pure-managed) — an in-person exchange must work with no
+        // signal, so a server-rendered QR would defeat the entire feature.
+        services.TryAddSingleton<Sorcha.UI.Core.Services.IQrPresentationService,
+                                 Sorcha.UI.Core.Services.QrPresentationService>();
         // Feature 152 (offline / field capture) — encrypted device-local store seam + connectivity.
         services.AddSingleton<Sorcha.Wallet.Pwa.Services.Drafts.IEncryptedObjectStore,
                               Sorcha.Wallet.Pwa.Services.Drafts.IndexedDbEncryptedObjectStore>();
