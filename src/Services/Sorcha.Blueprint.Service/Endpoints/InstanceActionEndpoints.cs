@@ -2,8 +2,10 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.Blueprint.Service.Models.Responses;
+using Sorcha.Blueprint.Service.Services.Infrastructure;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
+using Sorcha.ServiceClients.Wallet;
 
 namespace Sorcha.Blueprint.Service.Endpoints;
 
@@ -14,6 +16,14 @@ namespace Sorcha.Blueprint.Service.Endpoints;
 /// was (mis)using that same door merely to read the form schema for the action a citizen was filling
 /// in, so every consumer-tier citizen 403'd and the PWA folded that into a fabricated "offline" state.
 /// This endpoint gives the citizen a narrow, participant-gated read instead of reopening authoring.
+///
+/// The participant gate originally read only the <c>wallet_address</c> JWT claim — but under
+/// Feature 136 a consumer-tier token (every real PWA sign-in) deliberately OMITS that claim, so the
+/// gate was unconditionally false for the exact population the endpoint exists to serve. Fixed by
+/// routing through <see cref="ParticipantWalletResolver.ResolveUserWalletAddressesAsync"/> (the same
+/// claim-then-Wallet-Service-fallback seam <c>GetPendingActions</c> / <c>GetPendingActionCount</c> /
+/// <c>WorkflowDisclosureEndpoints</c> already rely on) and checking membership against the full set
+/// of the caller's resolved wallets, not a single claim value.
 /// </summary>
 public static class InstanceActionEndpoints
 {
@@ -32,9 +42,11 @@ public static class InstanceActionEndpoints
                 + "caller's wallet participates in. Unlike GET /api/blueprints/{id} (authoring, "
                 + "service/platform-tier only), this endpoint is reachable by consumer-tier tokens so a "
                 + "citizen can render the action currently assigned to them. Does not return routing "
-                + "rules, other participants, or any other action's content. 403 if the caller's wallet "
-                + "is not a participant on the instance; 404 if the instance, blueprint, or action is "
-                + "not found.")
+                + "rules, other participants, or any other action's content. The caller's wallet(s) are "
+                + "resolved from the wallet_address claim when present, else via a Wallet-Service lookup "
+                + "by owner (consumer-tier tokens carry no wallet_address per Feature 136) — 403 if none "
+                + "of the caller's wallets is a participant on the instance; 404 if the instance, "
+                + "blueprint, or action is not found.")
             .Produces<InstanceActionSchemaResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound);
@@ -51,6 +63,8 @@ public static class InstanceActionEndpoints
         int actionId,
         IInstanceStore instanceStore,
         IActionResolverService actionResolver,
+        IWalletServiceClient walletClient,
+        ILogger<InstanceActionEndpointsLogCategory> logger,
         CancellationToken cancellationToken)
     {
         var instance = await instanceStore.GetAsync(instanceId, cancellationToken);
@@ -65,9 +79,19 @@ public static class InstanceActionEndpoints
         // list already relies on (EfCoreInstanceStore.ContainsWalletAddress /
         // GetPendingActionsByWalletAsync) — a wallet only ever sees this instance as "pending" once it
         // is recorded as a participant, so this gate does not regress the flow it's fixing.
-        var walletAddress = httpContext.User.FindFirst("wallet_address")?.Value;
-        var isParticipant = !string.IsNullOrEmpty(walletAddress)
-            && instance.ParticipantWallets.Values.Any(w => string.Equals(w, walletAddress, StringComparison.OrdinalIgnoreCase));
+        //
+        // A consumer-tier token (every real PWA sign-in, Feature 136) never carries wallet_address, so
+        // the caller's wallet(s) must be resolved via ParticipantWalletResolver (claim fast-path, then
+        // Wallet-Service-by-owner fallback) rather than read off a single claim. A caller can hold more
+        // than one wallet, so membership is checked against the FULL resolved set — matching any one of
+        // them is enough. An empty resolved set means "couldn't resolve any wallet for this caller", not
+        // "didn't look" (ParticipantWalletResolver only returns empty after exhausting the claim and the
+        // owner-keyed Wallet Service lookup) — so it fails closed to 403 like any other non-match.
+        var callerWallets = await ParticipantWalletResolver.ResolveUserWalletAddressesAsync(
+            httpContext, walletClient, logger, cancellationToken);
+        var isParticipant = callerWallets.Count > 0
+            && instance.ParticipantWallets.Values.Any(participantWallet =>
+                callerWallets.Any(w => string.Equals(w, participantWallet, StringComparison.OrdinalIgnoreCase)));
         if (!isParticipant)
         {
             return Results.Problem(
@@ -104,4 +128,11 @@ public static class InstanceActionEndpoints
 
         return Results.Ok(response);
     }
+
+    /// <summary>
+    /// Marker type for <see cref="ILogger{T}"/> categorisation — <see cref="InstanceActionEndpoints"/>
+    /// is static, so it cannot itself be used as a generic type argument. Mirrors
+    /// <c>ActionEndpoints.ActionEndpointsLogCategory</c>.
+    /// </summary>
+    internal sealed class InstanceActionEndpointsLogCategory { }
 }

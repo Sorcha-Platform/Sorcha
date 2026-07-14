@@ -235,8 +235,11 @@ OPENTELEMETRY__ZIPKINENDPOINT="https://zipkin.yourcompany.com"
 PWA uses to render the form for a citizen's current action. It exists because the authoring endpoint
 `GET /api/blueprints/{id}` (Feature 147) is deliberately restricted to service/platform-tier callers —
 a consumer-tier citizen token always 403s there. This endpoint sits on the same `CanExecuteBlueprints`
-group but adds its own participant gate (the caller's `wallet_address` must be in the instance's
-`ParticipantWallets`) and returns only the form-relevant subset of the action (`InstanceActionSchemaResponse`:
+group but adds its own participant gate — at least one of the caller's resolved wallets must be in the
+instance's `ParticipantWallets`, resolved via the shared `ParticipantWalletResolver` (`wallet_address`
+claim fast path, else Wallet-Service-by-owner fallback — the same seam `GET /api/actions/pending` and
+the Feature 176 disclosures endpoint use, since consumer-tier tokens never carry `wallet_address`,
+Feature 136) — and returns only the form-relevant subset of the action (`InstanceActionSchemaResponse`:
 title, form layout, data schemas, calculations, and this action's own credential requirements/issuance
 config) — never routing rules, other participants, or any other action's content. See
 `docs/reference/API-DOCUMENTATION.md` for the full response shape and exclusion list.

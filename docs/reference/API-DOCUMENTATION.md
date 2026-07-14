@@ -847,12 +847,17 @@ bug: the Wallet PWA previously read the action schema via the authoring endpoint
 `GET /api/blueprints/{id}` (Feature 147), which is deliberately restricted to service/platform-tier
 callers — every consumer-tier citizen 403'd, and the PWA (wrongly) reported this as "offline". This
 endpoint sits on the existing `/api/instances` group (`CanExecuteBlueprints` — any authenticated
-caller) and adds its own **participant gate**: the caller's `wallet_address` claim must appear in the
-instance's `ParticipantWallets`, or the request is refused with `403`.
+caller) and adds its own **participant gate**: at least one of the caller's resolved wallets must
+appear in the instance's `ParticipantWallets`, or the request is refused with `403`. The caller's
+wallet(s) are resolved via `ParticipantWalletResolver` — the `wallet_address` JWT claim when present
+(platform-tier fast path), else a Wallet-Service lookup by owner (`platform_user_id`, falling back to
+`sub`) — the same resolution `GET /api/actions/pending` and the Feature 176 disclosures endpoint use.
+This was itself a P0-review fix: the original gate read only `wallet_address`, which consumer-tier
+tokens (every real PWA sign-in, Feature 136) never carry, so every genuine citizen 403'd.
 
 | Method | Path | Auth |
 |--------|------|------|
-| GET    | `/api/instances/{instanceId}/actions/{actionId}` | Authenticated + caller's wallet must be a participant on the instance |
+| GET    | `/api/instances/{instanceId}/actions/{actionId}` | Authenticated + at least one of the caller's resolved wallets is a participant on the instance |
 
 **Response — 200 OK** (`InstanceActionSchemaResponse`):
 
