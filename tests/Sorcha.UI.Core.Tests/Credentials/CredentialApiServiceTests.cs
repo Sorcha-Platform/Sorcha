@@ -193,6 +193,79 @@ public class CredentialApiServiceTests
         result!.DisplayConfig.BackgroundColor.Should().Be("#1976D2"); // default
     }
 
+    [Fact]
+    public async Task GetCredentialDetailAsync_ObjectClaim_NeverRendersAsRawJson()
+    {
+        // The card path was fixed (StringifyClaimValue/SummariseObject), but the detail
+        // dialog is a second door onto the same claims: MapToDetailViewModel used to hand
+        // the raw Dictionary<string, object> straight to the view, and the Razor markup
+        // called @claim.Value?.ToString() — for a boxed JsonElement of ValueKind.Object,
+        // that returns GetRawText(), i.e. the exact `{"_sd":[...]}` blob that shipped to
+        // a citizen's phone on n1. DisplayClaims is the safe, pre-formatted surface.
+        var entity = new
+        {
+            id = "cred-1",
+            type = "AssuredIdentityCredential",
+            issuerDid = "did:sorcha:org:ws11q",
+            subjectDid = "did:sorcha:w:ws11q",
+            issuedAt = DateTimeOffset.UtcNow,
+            expiresAt = (DateTimeOffset?)null,
+            status = "Active",
+            claimsJson = "{\"address\":{\"_sd\":[\"zSH_kfTeW2Mlc\"]}}",
+            usagePolicy = "Reusable",
+            maxPresentations = (int?)null,
+            presentationCount = 0,
+            displayConfigJson = (string?)null,
+            statusListUrl = (string?)null,
+            issuanceBlueprintId = (string?)null
+        };
+
+        var service = CreateServiceReturning(JsonSerializer.Serialize(entity, JsonOptions));
+
+        var result = await service.GetCredentialDetailAsync("wallet-1", "cred-1");
+
+        result.Should().NotBeNull();
+        result!.DisplayClaims.Should().ContainKey("address");
+        result.DisplayClaims["address"].Should().NotContain("_sd");
+        result.DisplayClaims["address"].Should().NotStartWith("{");
+
+        // The raw Claims dictionary is still exposed unmodified — CredentialGatePanel
+        // needs the real values to build the disclosed-claims payload it submits.
+        result.Claims.Should().ContainKey("address");
+    }
+
+    [Fact]
+    public async Task GetCredentialDetailAsync_LegitimateNestedClaim_RendersStructurally()
+    {
+        // SC-1 also forbids the opposite failure mode: blanking every object claim.
+        // A genuine nested claim like address.town must still render usefully.
+        var entity = new
+        {
+            id = "cred-1",
+            type = "AssuredIdentityCredential",
+            issuerDid = "did:sorcha:org:ws11q",
+            subjectDid = "did:sorcha:w:ws11q",
+            issuedAt = DateTimeOffset.UtcNow,
+            expiresAt = (DateTimeOffset?)null,
+            status = "Active",
+            claimsJson = "{\"address\":{\"town\":\"Edinburgh\"}}",
+            usagePolicy = "Reusable",
+            maxPresentations = (int?)null,
+            presentationCount = 0,
+            displayConfigJson = (string?)null,
+            statusListUrl = (string?)null,
+            issuanceBlueprintId = (string?)null
+        };
+
+        var service = CreateServiceReturning(JsonSerializer.Serialize(entity, JsonOptions));
+
+        var result = await service.GetCredentialDetailAsync("wallet-1", "cred-1");
+
+        result.Should().NotBeNull();
+        result!.DisplayClaims["address"].Should().Contain("Edinburgh");
+        result.DisplayClaims["address"].Should().NotStartWith("{");
+    }
+
     private static CredentialApiService CreateServiceWithResponse(HttpStatusCode statusCode, string content)
     {
         var handlerMock = new Mock<HttpMessageHandler>();

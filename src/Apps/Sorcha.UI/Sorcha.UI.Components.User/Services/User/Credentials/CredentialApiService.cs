@@ -543,11 +543,57 @@ public class CredentialApiService : ICredentialApiService
             MaxPresentations = entity.MaxPresentations,
             PresentationCount = entity.PresentationCount,
             Claims = claims,
+            DisplayClaims = BuildDisplayClaims(claims),
             DisplayConfig = displayConfig,
             StatusListUrl = entity.StatusListUrl,
             IssuanceBlueprintId = entity.IssuanceBlueprintId
         };
     }
+
+    /// <summary>
+    /// The detail-dialog counterpart of <see cref="BuildHighlightClaims"/>. Every claim gets
+    /// a safe display string — protocol keys (top-level and nested) are dropped, and nested
+    /// objects render as structural name/value pairs rather than raw JSON. This is the fix
+    /// for the second door onto the n1 `{"_sd":[...]}` leak: <c>MapToDetailViewModel</c> used
+    /// to hand the raw <see cref="Dictionary{TKey,TValue}"/> straight to the view, and the
+    /// Razor markup called <c>@claim.Value?.ToString()</c> — for a boxed <see cref="JsonElement"/>
+    /// of <see cref="JsonValueKind.Object"/> that returns <c>GetRawText()</c>.
+    /// </summary>
+    private static Dictionary<string, string> BuildDisplayClaims(IReadOnlyDictionary<string, object> claims)
+    {
+        return claims
+            .Where(kvp => !kvp.Key.StartsWith('_'))
+            .ToDictionary(kvp => kvp.Key, kvp => FormatClaimForDetailDisplay(kvp.Value));
+    }
+
+    /// <summary>
+    /// Detail-dialog claim formatter. Unlike <see cref="StringifyClaimValue"/> (which reduces
+    /// a nested object to its field names for the compact card surface), the detail dialog has
+    /// room to be useful: nested objects render as "Name: value" pairs, recursively, still
+    /// dropping <c>_</c>-prefixed protocol keys at every level and never emitting raw JSON.
+    /// </summary>
+    private static string FormatClaimForDetailDisplay(object? value) => value switch
+    {
+        null => string.Empty,
+        string s => s,
+        JsonElement el => FormatJsonElementForDetailDisplay(el),
+        _ => value.ToString() ?? string.Empty
+    };
+
+    private static string FormatJsonElementForDetailDisplay(JsonElement el) => el.ValueKind switch
+    {
+        JsonValueKind.String => el.GetString() ?? string.Empty,
+        JsonValueKind.Number => el.ToString(),
+        JsonValueKind.True or JsonValueKind.False => el.GetBoolean().ToString(),
+        JsonValueKind.Null => string.Empty,
+        JsonValueKind.Object => string.Join(", ", el.EnumerateObject()
+            .Where(p => !p.Name.StartsWith('_'))
+            .Select(p => $"{HumaniseClaimName(p.Name)}: {FormatJsonElementForDetailDisplay(p.Value)}")),
+        JsonValueKind.Array => string.Join(", ", el.EnumerateArray()
+            .Select(FormatJsonElementForDetailDisplay)
+            .Where(s => s.Length > 0)),
+        _ => string.Empty
+    };
 
     private static string ExtractIssuerName(string? issuerDid)
     {

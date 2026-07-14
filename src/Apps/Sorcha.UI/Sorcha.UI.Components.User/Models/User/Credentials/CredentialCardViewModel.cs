@@ -125,6 +125,17 @@ public class CredentialDetailViewModel
     public int? MaxPresentations { get; set; }
     public int PresentationCount { get; set; }
     public Dictionary<string, object> Claims { get; set; } = new();
+
+    /// <summary>
+    /// Pre-formatted, safe-to-render text for every non-protocol claim — the counterpart
+    /// of the card path's <c>StringifyClaimValue</c>/<c>SummariseObject</c> discipline for
+    /// the detail dialog. A nested object renders as structural name/value pairs and
+    /// <c>_</c>-prefixed protocol keys (e.g. <c>_sd</c>, <c>_sd_alg</c>) are dropped at
+    /// every level — never raw JSON. Use this for display; <see cref="Claims"/> keeps the
+    /// raw values other consumers (e.g. the credential requirement gate's disclosed-claims
+    /// payload) still need.
+    /// </summary>
+    public Dictionary<string, string> DisplayClaims { get; set; } = new();
     public CredentialDisplayViewModel DisplayConfig { get; set; } = new();
     public string? StatusListUrl { get; set; }
     public string? IssuanceBlueprintId { get; set; }
