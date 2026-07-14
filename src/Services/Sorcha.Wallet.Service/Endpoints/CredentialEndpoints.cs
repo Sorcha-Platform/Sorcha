@@ -228,35 +228,46 @@ public static class CredentialEndpoints
                 ? credentials.Where(c => c.Status == requested.Value)
                 : credentials.Where(c => c.Status == CredentialStatus.Active);
 
-        var response = filtered.Select(c => new
+        var response = filtered.Select(c =>
         {
-            c.Id,
-            c.Type,
-            c.IssuerDid,
-            c.SubjectDid,
-            c.IssuedAt,
-            c.ExpiresAt,
-            c.Status,
-            c.IssuerOrgName,
-            c.IssuanceBlueprintId,
-            c.IssuanceTxId,
-            c.IssuanceInstanceId,
-            c.IssuanceActionId,
-            c.ClaimActionId,
-            c.RegisterId,
-            // Holders need to see what's in a credential before they Accept/Decline
-            // it — see CredentialAcceptCard. Without these fields the card renders
-            // "0 claims" against a credential that does have claims, which actively
-            // misleads the holder. Payload growth is bounded — claims are typically
-            // <2KB and display config is smaller.
-            c.ClaimsJson,
-            c.DisplayConfigJson,
-            c.UsagePolicy,
-            // Which claims the holder can withhold when presenting. Derived from the
-            // stored raw token rather than persisted, so no column and no migration.
-            // Without it every claim renders with an "always disclosed" padlock —
-            // the exact opposite of the truth about what the holder must reveal.
-            DisclosableClaims = SdJwtClaimProjection.Project(c.RawToken).DisclosableClaims,
+            // Single projection per credential — feeds BOTH the claim tree and the
+            // disclosable set. A credential ingested before the nested-disclosure
+            // decoder fix (SdJwtClaimProjection) still carries a badly-decoded
+            // CredentialEntity.ClaimsJson in the store (e.g. a raw {"_sd":[…]}
+            // digest array where "address" should be). RawToken is always the
+            // source of truth, so re-projecting on every read heals it — no
+            // backfill, no migration, no re-issue.
+            var projection = SdJwtClaimProjection.Project(c.RawToken);
+            return new
+            {
+                c.Id,
+                c.Type,
+                c.IssuerDid,
+                c.SubjectDid,
+                c.IssuedAt,
+                c.ExpiresAt,
+                c.Status,
+                c.IssuerOrgName,
+                c.IssuanceBlueprintId,
+                c.IssuanceTxId,
+                c.IssuanceInstanceId,
+                c.IssuanceActionId,
+                c.ClaimActionId,
+                c.RegisterId,
+                // Holders need to see what's in a credential before they Accept/Decline
+                // it — see CredentialAcceptCard. Without these fields the card renders
+                // "0 claims" against a credential that does have claims, which actively
+                // misleads the holder. Payload growth is bounded — claims are typically
+                // <2KB and display config is smaller.
+                ClaimsJson = projection.ClaimsJson,
+                c.DisplayConfigJson,
+                c.UsagePolicy,
+                // Which claims the holder can withhold when presenting. Derived from the
+                // stored raw token rather than persisted, so no column and no migration.
+                // Without it every claim renders with an "always disclosed" padlock —
+                // the exact opposite of the truth about what the holder must reveal.
+                DisclosableClaims = projection.DisclosableClaims,
+            };
         });
 
         return Results.Ok(response);
@@ -275,6 +286,12 @@ public static class CredentialEndpoints
 
         if (credential == null)
             return Results.NotFound();
+
+        // Heal on read (see ListCredentials) — the shape stays CredentialEntity so
+        // every existing consumer (detail dialog, ID-card face) keeps working
+        // unchanged; only the value of ClaimsJson is corrected, in-memory only
+        // (never written back — RawToken remains the persisted source of truth).
+        credential.ClaimsJson = SdJwtClaimProjection.Project(credential.RawToken).ClaimsJson;
 
         return Results.Ok(credential);
     }

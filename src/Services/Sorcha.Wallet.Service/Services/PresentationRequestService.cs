@@ -159,15 +159,26 @@ public class PresentationRequestService : IPresentationRequestService
 
         foreach (var cred in credentials)
         {
+            // Stored ClaimsJson is only consulted to detect a genuinely corrupt row
+            // (skip it below) — it is NOT the source of claim names. A credential
+            // ingested before the nested SD-JWT decoder fix can have a stale, badly
+            // flattened ClaimsJson (a nested claim like "town" leaked to the top
+            // level while its real parent "address" was left as a raw digest
+            // array). Matching claim names against that stale blob would report
+            // false-positive matches for claims the credential's real schema
+            // doesn't have at that path. RawToken is always the source of truth.
             var claims = ParseClaims(cred.ClaimsJson);
             if (claims == null) continue;
 
+            var projection = SdJwtClaimProjection.Project(cred.RawToken);
+            var projectedClaims = ParseClaims(projection.ClaimsJson) ?? claims;
+
             // Not claims.Keys — that declared EVERY claim disclosable, including the
             // ones baked into the JWT body that always travel. The raw token knows.
-            var disclosable = SdJwtClaimProjection.Project(cred.RawToken).DisclosableClaims.ToArray();
+            var disclosable = projection.DisclosableClaims.ToArray();
             var requested = request.RequiredClaims?
                 .Select(c => c.ClaimName)
-                .Where(n => claims.ContainsKey(n))
+                .Where(n => projectedClaims.ContainsKey(n))
                 .ToArray() ?? [];
 
             result.Add(new MatchedCredentialInfo

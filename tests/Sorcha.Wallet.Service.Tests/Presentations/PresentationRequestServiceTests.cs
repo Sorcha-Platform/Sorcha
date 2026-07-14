@@ -295,6 +295,44 @@ public class PresentationRequestServiceTests
     }
 
     [Fact]
+    public async Task FindMatchingCredentialsAsync_StaleFlattenedStoredClaimsJson_DoesNotFalselyMatchLeakedTopLevelClaim()
+    {
+        // Guards the same class of defect as the n1 "_sd digest array" bug, one
+        // step further down the pipeline: a credential ingested BEFORE the nested
+        // SD-JWT decoder fix has a stored ClaimsJson where "town" (which really
+        // lives nested inside "address") leaked out as a flat TOP-LEVEL key. A
+        // verifier requesting "town" by name must NOT get a false-positive match
+        // just because the stale stored blob happens to carry that key — the raw
+        // token (correctly nested) is the source of truth for what the schema
+        // actually looks like.
+        var dto = new CreatePresentationRequestDto
+        {
+            CredentialType = "ChemicalHandlingLicense",
+            CallbackUrl = "https://example.com/callback",
+            RequiredClaims = [new ClaimConstraint { ClaimName = "town" }]
+        };
+        var request = await _service.CreateRequestAsync(dto);
+
+        var rawToken = BuildNestedAddressSdJwt();
+        var staleFlattenedClaimsJson =
+            """{"email":"stuart@stuartfraser.net","town":"Edinburgh","line1":"6/2 Warrender Park Terrace","address":{"_sd":["stale-digest"]}}""";
+
+        _storeMock
+            .Setup(s => s.MatchAsync("wallet-1", "ChemicalHandlingLicense", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                CreateTestCredential("cred-1", "ChemicalHandlingLicense", "did:sorcha:w:hse",
+                    staleFlattenedClaimsJson, rawToken)
+            ]);
+
+        var matches = await _service.FindMatchingCredentialsAsync(request, "wallet-1");
+
+        matches.Should().HaveCount(1);
+        // The real (raw-token-derived) schema has no top-level "town" — it's nested
+        // inside "address" — so the request for "town" must NOT be reported matched.
+        matches[0].RequestedClaims.Should().NotContain("town");
+    }
+
+    [Fact]
     public async Task FindMatchingCredentialsAsync_NoMatchingCredentials_ReturnsEmptyList()
     {
         var request = await _service.CreateRequestAsync(CreateTestDto());
@@ -856,5 +894,32 @@ public class PresentationRequestServiceTests
         var jwt = $"{header}.{payload}.c2ln"; // signature is never verified on this path
 
         return jwt + "~" + string.Join("~", disclosures);
+    }
+
+    /// <summary>
+    /// Builds a compact SD-JWT with a NESTED disclosure for "address" (town +
+    /// line1 individually disclosable children) — the shape that a pre-fix
+    /// decoder (top-level-only _sd resolution) mangled, leaving "address" as a
+    /// raw digest array while its children leaked out as flat top-level claims.
+    /// </summary>
+    private static string BuildNestedAddressSdJwt()
+    {
+        var town = Disclosure("s1", "town", "Edinburgh");
+        var line1 = Disclosure("s2", "line1", "6/2 Warrender Park Terrace");
+        var header = B64Url(Encoding.UTF8.GetBytes("""{"alg":"ES256","typ":"dc+sd-jwt"}"""));
+        var body = new Dictionary<string, object>
+        {
+            ["vct"] = "https://sorcha.dev/vc/test/v1",
+            ["iss"] = "did:sorcha:w:hse",
+            ["email"] = "stuart@stuartfraser.net",
+            ["address"] = new Dictionary<string, object>
+            {
+                ["_sd"] = new[] { Digest(town), Digest(line1) }
+            }
+        };
+        var payload = B64Url(JsonSerializer.SerializeToUtf8Bytes(body));
+        var jwt = $"{header}.{payload}.c2ln";
+
+        return jwt + "~" + town + "~" + line1;
     }
 }
