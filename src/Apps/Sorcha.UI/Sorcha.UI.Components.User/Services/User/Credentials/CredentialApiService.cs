@@ -116,54 +116,6 @@ public class CredentialApiService : ICredentialApiService
     }
 
     /// <inheritdoc/>
-    public async Task<List<PresentationRequestViewModel>> GetPresentationRequestsAsync(
-        string walletAddress, CancellationToken ct = default)
-    {
-        try
-        {
-            var response = await _httpClient.GetAsync(
-                $"/api/v1/presentations?wallet={walletAddress}", ct);
-
-            if (!response.IsSuccessStatusCode)
-                return [];
-
-            var requests = await response.Content
-                .ReadFromJsonAsync<List<PresentationRequestItem>>(JsonOptions, ct);
-
-            return requests?.Select(MapToPresentationViewModel).ToList() ?? [];
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogWarning(ex, "Failed to fetch presentation requests for wallet {WalletAddress}", walletAddress);
-            return [];
-        }
-    }
-
-    /// <inheritdoc/>
-    public async Task<PresentationRequestViewModel?> GetPresentationRequestDetailAsync(
-        string requestId, CancellationToken ct = default)
-    {
-        try
-        {
-            var response = await _httpClient.GetAsync(
-                $"/api/v1/presentations/{requestId}", ct);
-
-            if (!response.IsSuccessStatusCode)
-                return null;
-
-            var request = await response.Content
-                .ReadFromJsonAsync<PresentationRequestItem>(JsonOptions, ct);
-
-            return request == null ? null : MapToPresentationViewModel(request);
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogWarning(ex, "Failed to fetch presentation request {RequestId}", requestId);
-            return null;
-        }
-    }
-
-    /// <inheritdoc/>
     public async Task<PresentationSubmitResult> SubmitPresentationAsync(
         string requestId, string credentialId, List<string> disclosedClaims,
         string vpToken, CancellationToken ct = default)
@@ -274,28 +226,6 @@ public class CredentialApiService : ICredentialApiService
                 operation, credentialId);
             return CredentialOperationResult.NetworkError(ex.Message);
         }
-    }
-
-    private static PresentationRequestViewModel MapToPresentationViewModel(PresentationRequestItem item)
-    {
-        return new PresentationRequestViewModel
-        {
-            RequestId = item.RequestId ?? string.Empty,
-            VerifierIdentity = item.VerifierIdentity ?? "Unknown Verifier",
-            CredentialType = item.CredentialType ?? string.Empty,
-            RequestedClaims = item.RequiredClaims ?? [],
-            ExpiresAt = item.ExpiresAt,
-            Status = item.Status ?? "Pending",
-            Nonce = item.Nonce,
-            MatchingCredentials = item.MatchingCredentials?.Select(m => new MatchingCredentialViewModel
-            {
-                CredentialId = m.CredentialId ?? string.Empty,
-                Type = m.Type ?? string.Empty,
-                IssuerDid = m.IssuerDid ?? string.Empty,
-                AvailableClaims = m.AvailableClaims ?? [],
-                ExpiresAt = m.ExpiresAt
-            }).ToList() ?? []
-        };
     }
 
     private static CredentialCardViewModel MapToCardViewModel(CredentialListItem item)
@@ -629,27 +559,6 @@ public class CredentialApiService : ICredentialApiService
         public string? DisplayConfigJson { get; set; }
         public string? StatusListUrl { get; set; }
         public string? IssuanceBlueprintId { get; set; }
-    }
-
-    private class PresentationRequestItem
-    {
-        public string? RequestId { get; set; }
-        public string? VerifierIdentity { get; set; }
-        public string? CredentialType { get; set; }
-        public List<string>? RequiredClaims { get; set; }
-        public DateTimeOffset ExpiresAt { get; set; }
-        public string? Status { get; set; }
-        public string? Nonce { get; set; }
-        public List<MatchingCredentialItem>? MatchingCredentials { get; set; }
-    }
-
-    private class MatchingCredentialItem
-    {
-        public string? CredentialId { get; set; }
-        public string? Type { get; set; }
-        public string? IssuerDid { get; set; }
-        public List<string>? AvailableClaims { get; set; }
-        public DateTimeOffset? ExpiresAt { get; set; }
     }
 
     /// <inheritdoc/>

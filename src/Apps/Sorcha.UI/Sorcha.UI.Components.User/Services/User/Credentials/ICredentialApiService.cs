@@ -35,18 +35,6 @@ public interface ICredentialApiService
         string walletAddress, string credentialId, CancellationToken ct = default);
 
     /// <summary>
-    /// Gets pending presentation requests targeting a wallet address.
-    /// </summary>
-    Task<List<PresentationRequestViewModel>> GetPresentationRequestsAsync(
-        string walletAddress, CancellationToken ct = default);
-
-    /// <summary>
-    /// Gets a specific presentation request with matching credentials.
-    /// </summary>
-    Task<PresentationRequestViewModel?> GetPresentationRequestDetailAsync(
-        string requestId, CancellationToken ct = default);
-
-    /// <summary>
     /// Submits a presentation (approve) for a request.
     /// </summary>
     Task<PresentationSubmitResult> SubmitPresentationAsync(
