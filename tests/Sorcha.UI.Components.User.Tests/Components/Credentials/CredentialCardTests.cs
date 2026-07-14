@@ -67,8 +67,14 @@ public class CredentialCardTests : BunitContext
 
         var cut = Render<CredentialAcceptCard>(p => p.Add(c => c.Credential, vm));
 
-        // One open padlock (address, holder-controlled) and one closed (email, always disclosed).
-        cut.Markup.Should().Contain("🔓");
-        cut.Markup.Should().Contain("🔒");
+        // Scope the assertion to each claim row so an inverted implementation
+        // (address locked, email open) cannot pass — the padlock must sit next
+        // to the claim name it actually governs, not just appear somewhere on
+        // the page.
+        var openLock = cut.Find("span[aria-label='You control disclosure']");
+        var closedLock = cut.Find("span[aria-label='Always disclosed']");
+
+        openLock.NextElementSibling!.TextContent.Should().Be("address");
+        closedLock.NextElementSibling!.TextContent.Should().Be("email");
     }
 }
