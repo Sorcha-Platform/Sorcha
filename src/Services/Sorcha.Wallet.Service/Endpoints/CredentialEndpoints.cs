@@ -18,6 +18,7 @@ using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Core.Services.Interfaces;
 using Sorcha.Wallet.Service.Credentials;
+using Sorcha.Wallet.Service.Services.Implementation;
 
 using StackExchange.Redis;
 
@@ -244,13 +245,18 @@ public static class CredentialEndpoints
             c.ClaimActionId,
             c.RegisterId,
             // Holders need to see what's in a credential before they Accept/Decline
-            // it on the Pending tab — see CredentialAcceptCard. Without these
-            // fields the card renders "0 claims" against a credential that does
-            // have claims, which actively misleads the holder. Payload growth is
-            // bounded — claims are typically <2KB and display config is smaller.
+            // it — see CredentialAcceptCard. Without these fields the card renders
+            // "0 claims" against a credential that does have claims, which actively
+            // misleads the holder. Payload growth is bounded — claims are typically
+            // <2KB and display config is smaller.
             c.ClaimsJson,
             c.DisplayConfigJson,
             c.UsagePolicy,
+            // Which claims the holder can withhold when presenting. Derived from the
+            // stored raw token rather than persisted, so no column and no migration.
+            // Without it every claim renders with an "always disclosed" padlock —
+            // the exact opposite of the truth about what the holder must reveal.
+            DisclosableClaims = SdJwtClaimProjection.Project(c.RawToken).DisclosableClaims,
         });
 
         return Results.Ok(response);

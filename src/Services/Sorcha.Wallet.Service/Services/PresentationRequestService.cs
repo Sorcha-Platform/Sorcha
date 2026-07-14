@@ -12,6 +12,7 @@ using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Service.Credentials;
 using Sorcha.Wallet.Service.Models;
+using Sorcha.Wallet.Service.Services.Implementation;
 
 namespace Sorcha.Wallet.Service.Services;
 
@@ -161,7 +162,9 @@ public class PresentationRequestService : IPresentationRequestService
             var claims = ParseClaims(cred.ClaimsJson);
             if (claims == null) continue;
 
-            var disclosable = claims.Keys.ToArray();
+            // Not claims.Keys — that declared EVERY claim disclosable, including the
+            // ones baked into the JWT body that always travel. The raw token knows.
+            var disclosable = SdJwtClaimProjection.Project(cred.RawToken).DisclosableClaims.ToArray();
             var requested = request.RequiredClaims?
                 .Select(c => c.ClaimName)
                 .Where(n => claims.ContainsKey(n))

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Sorcha.Cryptography.SdJwt;
@@ -271,11 +273,17 @@ public class PresentationRequestServiceTests
         };
         var request = await _service.CreateRequestAsync(dto);
 
+        // DisclosableClaims is now derived from RawToken via SdJwtClaimProjection
+        // (Task 2), not from ClaimsJson.Keys — so the fixture needs a real SD-JWT
+        // with "class" and "permitNumber" as selectively disclosable, not the
+        // dummy CreateTestCredential default which projects to Empty.
+        var rawToken = BuildSdJwtWithDisclosableClaims(("class", "CategoryB"), ("permitNumber", "HSE-001"));
+
         _storeMock
             .Setup(s => s.MatchAsync("wallet-1", "ChemicalHandlingLicense", null, It.IsAny<CancellationToken>()))
             .ReturnsAsync([
                 CreateTestCredential("cred-1", "ChemicalHandlingLicense", "did:sorcha:w:hse",
-                    """{"class":"CategoryB","permitNumber":"HSE-001"}""")
+                    """{"class":"CategoryB","permitNumber":"HSE-001"}""", rawToken)
             ]);
 
         var matches = await _service.FindMatchingCredentialsAsync(request, "wallet-1");
@@ -793,7 +801,7 @@ public class PresentationRequestServiceTests
     };
 
     private static CredentialEntity CreateTestCredential(
-        string id, string type, string issuerDid, string? claimsJson = null) => new()
+        string id, string type, string issuerDid, string? claimsJson = null, string? rawToken = null) => new()
     {
         Id = id,
         Type = type,
@@ -801,9 +809,52 @@ public class PresentationRequestServiceTests
         SubjectDid = "did:sorcha:w:holder-1",
         WalletAddress = "wallet-1",
         ClaimsJson = claimsJson ?? """{"class":"CategoryB","permitNumber":"HSE-2026-001"}""",
-        RawToken = "eyJhbGciOiJFZERTQSJ9.test",
+        // Not a real SD-JWT — fine for every test except DisclosableClaims
+        // assertions, which need SdJwtClaimProjection.Project to succeed and
+        // therefore must pass an explicit rawToken (see
+        // BuildSdJwtWithDisclosableClaims below).
+        RawToken = rawToken ?? "eyJhbGciOiJFZERTQSJ9.test",
         Status = CredentialStatus.Active,
         IssuedAt = DateTimeOffset.UtcNow.AddDays(-30),
         CreatedAt = DateTimeOffset.UtcNow.AddDays(-30)
     };
+
+    // --- Minimal SD-JWT construction (RFC 9901 §4.2.1) for DisclosableClaims tests ---
+
+    private static string B64Url(byte[] bytes) =>
+        Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    private static string Disclosure(string salt, string name, object value)
+    {
+        var json = JsonSerializer.Serialize(new object[] { salt, name, value });
+        return B64Url(Encoding.UTF8.GetBytes(json));
+    }
+
+    private static string Digest(string disclosure) =>
+        B64Url(SHA256.HashData(Encoding.ASCII.GetBytes(disclosure)));
+
+    /// <summary>
+    /// Builds a compact SD-JWT whose body has an <c>_sd</c> digest for each
+    /// (name, value) pair — i.e. every named claim is selectively disclosable —
+    /// so <see cref="Sorcha.Wallet.Service.Services.Implementation.SdJwtClaimProjection"/>
+    /// reports it in <c>DisclosableClaims</c>.
+    /// </summary>
+    private static string BuildSdJwtWithDisclosableClaims(params (string Name, object Value)[] claims)
+    {
+        var disclosures = claims
+            .Select((c, i) => Disclosure($"salt{i}", c.Name, c.Value))
+            .ToArray();
+
+        var header = B64Url(Encoding.UTF8.GetBytes("""{"alg":"ES256","typ":"dc+sd-jwt"}"""));
+        var body = new Dictionary<string, object>
+        {
+            ["vct"] = "https://sorcha.dev/vc/test/v1",
+            ["iss"] = "did:sorcha:w:hse",
+            ["_sd"] = disclosures.Select(Digest).ToArray()
+        };
+        var payload = B64Url(JsonSerializer.SerializeToUtf8Bytes(body));
+        var jwt = $"{header}.{payload}.c2ln"; // signature is never verified on this path
+
+        return jwt + "~" + string.Join("~", disclosures);
+    }
 }
