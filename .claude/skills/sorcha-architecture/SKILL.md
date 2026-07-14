@@ -1703,8 +1703,10 @@ agent's `verification-analyst` participant `/*` disclosure, but the agent never 
 (+ instance-wide `GET /api/workflows/{instanceId}/disclosures`) in `WorkflowDisclosureEndpoints.cs`, filling a
 route the client (`IBlueprintServiceClient.GetDisclosedDataAsync`) and MCP `DisclosedDataTool` already targeted
 but no server implemented. `.RequireAuthorization()`; resolves the **caller's** wallet(s) via the same
-Wallet-Service fallback `ActionEndpoints.ResolveUserWalletAddressesAsync` uses (consumer/service tokens omit
-`wallet_address` under F136 — resolved by `platform_user_id`→owner, #912). Returns `DisclosedActionData`
+Wallet-Service fallback `ParticipantWalletResolver.ResolveUserWalletAddressesAsync` uses (consumer/service
+tokens omit `wallet_address` under F136 — resolved by `platform_user_id`→owner, #912; extracted from
+`ActionEndpoints` into `Sorcha.Blueprint.Service.Services.Infrastructure` during the P0 review fix on
+`fix/pwa-p0-claim-and-camera` once `InstanceActionEndpoints` became a fourth caller). Returns `DisclosedActionData`
 (`Models/DisclosedActionData.cs`): `recipientResolved` + merged `disclosedFields` (agent) + a per-prior-action
 `disclosures[]` list `{actionId, actionTitle, disclosedAt, data}` (MCP-compatible wire shape). Non-recipient →
 `200` with `recipientResolved:false` + empty view (distinguishes "no disclosure" from auth failure). No new JWT

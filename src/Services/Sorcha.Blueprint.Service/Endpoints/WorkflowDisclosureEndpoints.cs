@@ -3,6 +3,7 @@
 
 using Sorcha.Blueprint.Service.Middleware;
 using Sorcha.Blueprint.Service.Models;
+using Sorcha.Blueprint.Service.Services.Infrastructure;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
 using Sorcha.ServiceClients.Wallet;
@@ -82,7 +83,7 @@ public static class WorkflowDisclosureEndpoints
         IWalletServiceClient walletClient,
         ILogger logger)
     {
-        var callerWallets = await ActionEndpoints.ResolveUserWalletAddressesAsync(
+        var callerWallets = await ParticipantWalletResolver.ResolveUserWalletAddressesAsync(
             httpContext, walletClient, logger, httpContext.RequestAborted);
 
         if (callerWallets.Count == 0)

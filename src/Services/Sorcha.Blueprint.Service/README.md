@@ -220,6 +220,34 @@ OPENTELEMETRY__ZIPKINENDPOINT="https://zipkin.yourcompany.com"
 | POST | `/api/actions/` | Submit an action |
 | POST | `/api/actions/reject` | Reject a pending action |
 
+### Workflow Instances
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/instances/` | List instances for the authenticated user's wallet (paginated, status filter) |
+| POST | `/api/instances/` | Create a new workflow instance |
+| GET | `/api/instances/{instanceId}` | Get a workflow instance by ID |
+| GET | `/api/instances/{instanceId}/actions/{actionId}` | Consumer-readable action schema for one action (P0 fix, `fix/pwa-p0-claim-and-camera`) — see below |
+| POST | `/api/instances/{instanceId}/actions/{actionId}/execute` | Execute an action with full orchestration |
+| POST | `/api/instances/{instanceId}/actions/{actionId}/reject` | Reject a pending action |
+
+**`GET /api/instances/{instanceId}/actions/{actionId}`** is the narrow, instance-scoped read the Wallet
+PWA uses to render the form for a citizen's current action. It exists because the authoring endpoint
+`GET /api/blueprints/{id}` (Feature 147) is deliberately restricted to service/platform-tier callers —
+a consumer-tier citizen token always 403s there. This endpoint sits on the same `CanExecuteBlueprints`
+group but adds its own participant gate — at least one of the caller's resolved wallets must be in the
+instance's `ParticipantWallets`, resolved via the shared `ParticipantWalletResolver` (`wallet_address`
+claim fast path, else Wallet-Service-by-owner fallback — the same seam `GET /api/actions/pending` and
+the Feature 176 disclosures endpoint use, since consumer-tier tokens never carry `wallet_address`,
+Feature 136) — and returns only the form-relevant subset of the action (`InstanceActionSchemaResponse`:
+title, form layout, data schemas, calculations, and this action's own credential requirements/issuance
+config) — never routing rules, other participants, or any other action's content. See
+`docs/reference/API-DOCUMENTATION.md` for the full response shape and exclusion list.
+
+> **Note:** `GET /api/instances/{instanceId}` performs no participant check at all today — any
+> authenticated caller can read any instance by ID. The new endpoint above does not repeat that gap,
+> but tightening the existing one is a separate, currently-untracked follow-up.
+
 ### Template System
 
 | Method | Endpoint | Description |

@@ -103,6 +103,12 @@
             </MudAlert>
             break;
 
+        case State.Forbidden:
+            <MudAlert Severity="Severity.Warning" data-testid="application-instance-forbidden">
+                You don't have permission to view this application. If this seems wrong, contact support.
+            </MudAlert>
+            break;
+
         default:
             <MudAlert Severity="Severity.Error" data-testid="application-instance-error">
                 We couldn't load this application. It may not be ready yet — try again shortly.
@@ -115,7 +121,7 @@
     /// <summary>The blueprint instance the form binds to.</summary>
     [Parameter] public Guid InstanceId { get; set; }
 
-    private enum State { Loading, Ready, Submitted, Error, Offline }
+    private enum State { Loading, Ready, Submitted, Error, Offline, Forbidden }
 
     private State _state = State.Loading;
     private ApplicationFormContext? _ctx;
@@ -133,25 +139,42 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Online: resolve the live form context. On failure (offline / unreachable), fall back to
-        // the locally pre-cached context (Feature 152 US2) so the action still opens in the field.
+        // Online: resolve the live form context. On failure, fall back to the locally pre-cached
+        // context (Feature 152 US2) so the action still opens in the field when genuinely offline.
+        //
+        // P0 fix (fix/pwa-p0-claim-and-camera): LoadFormAsync now returns a discriminated result
+        // instead of a bare null, so a permission failure (403 — the server answered, and said no)
+        // is never mistaken for a connectivity gap. State.Offline is reached ONLY when
+        // Connectivity.IsOnline actually says so; every other failure gets its own honest state.
+        ApplicationFormLoadResult loadResult;
         try
         {
-            _ctx = await ActionClient.LoadFormAsync(InstanceId);
+            loadResult = await ActionClient.LoadFormAsync(InstanceId);
         }
         catch (Exception ex)
         {
             Logger.LogDebug(ex, "Live form load failed for {InstanceId}; trying offline cache.", InstanceId);
-            _ctx = null;
+            loadResult = ApplicationFormLoadResult.NetworkError;
         }
 
-        if (_ctx is null)
+        if (loadResult.Status == ApplicationFormLoadStatus.Loaded && loadResult.Context is { } loaded)
+        {
+            _ctx = loaded;
+        }
+        else
         {
             _ctx = await TryLoadCachedContextAsync();
             if (_ctx is null)
             {
-                // No live context and nothing prepared offline — distinct from a hard error.
-                _state = State.Offline;
+                // No live context and nothing prepared offline. Distinguish WHY:
+                //  - Forbidden: the server gave a real answer — the citizen is online and was refused.
+                //  - Otherwise: offline only if IConnectivity says so; a genuine server-side problem
+                //    while online (e.g. a 5xx) gets the honest Error state, not a fabricated Offline one.
+                _state = loadResult.Status == ApplicationFormLoadStatus.Forbidden
+                    ? State.Forbidden
+                    : !Connectivity.IsOnline
+                        ? State.Offline
+                        : State.Error;
                 return;
             }
         }

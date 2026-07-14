@@ -112,8 +112,8 @@ public sealed class ActionContextCache : IActionContextCache
 
             try
             {
-                var formCtx = await _actionClient.LoadFormAsync(instanceGuid, ct).ConfigureAwait(false);
-                if (formCtx is null)
+                var loadResult = await _actionClient.LoadFormAsync(instanceGuid, ct).ConfigureAwait(false);
+                if (loadResult.Status != ApplicationFormLoadStatus.Loaded || loadResult.Context is not { } formCtx)
                 {
                     continue;
                 }

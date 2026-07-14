@@ -32,4 +32,20 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+      Camera — used ONLY to scan a verifier's QR code when presenting a credential
+      (Present.razor's CameraFirst intake mode). Without this the WebView refuses
+      getUserMedia, IDeviceProfileProbe reports CameraAvailability.Unavailable, and
+      the Present page silently degrades to the paste-a-deep-link fallback — which is
+      unusable on a phone, because you cannot paste a QR code someone is showing you.
+
+      required=false so the app still installs on a camera-less device; the paste
+      fallback is the honest experience there.
+
+      The BLE permissions the proximity plugin needs are declared in the plugin's own
+      manifest (mobile/plugins/sorcha-proximity) and merged in at build time.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 </manifest>

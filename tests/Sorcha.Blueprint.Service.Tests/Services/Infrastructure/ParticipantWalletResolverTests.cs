@@ -6,20 +6,24 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Sorcha.Blueprint.Service.Endpoints;
+using Sorcha.Blueprint.Service.Services.Infrastructure;
 using Sorcha.ServiceClients.Wallet;
 
-namespace Sorcha.Blueprint.Service.Tests.Endpoints;
+namespace Sorcha.Blueprint.Service.Tests.Services.Infrastructure;
 
 /// <summary>
-/// Feature 145 / #912 — the pending-actions endpoint must resolve the caller's wallet by
-/// <c>platform_user_id</c> (the cross-org Owner key per #878), not just <c>sub</c>. A consumer-tier
-/// token (e.g. the verification analyst running the rules agent) carries no <c>wallet_address</c>
-/// claim and its wallet is owned by <c>platform_user_id</c>, which differs from <c>sub</c> for an
-/// org-scoped user — so a sub-only lookup silently misses the wallet and the agent never discovers
-/// the action it must approve.
+/// P0 fix (<c>fix/pwa-p0-claim-and-camera</c>) — <see cref="ParticipantWalletResolver"/> was extracted
+/// from <c>ActionEndpoints.ResolveUserWalletAddressesAsync</c> once a fourth call site
+/// (<c>InstanceActionEndpoints</c>) needed the identical claim-then-Wallet-Service-fallback logic.
+/// These tests were originally <c>ActionEndpointsTests</c> and moved verbatim onto the shared seam.
+///
+/// Feature 145 / #912 — the resolver must resolve the caller's wallet by <c>platform_user_id</c> (the
+/// cross-org Owner key per #878), not just <c>sub</c>. A consumer-tier token (e.g. the verification
+/// analyst running the rules agent, or any real citizen under Feature 136) carries no
+/// <c>wallet_address</c> claim and its wallet is owned by <c>platform_user_id</c>, which differs from
+/// <c>sub</c> for an org-scoped user — so a sub-only lookup silently misses the wallet.
 /// </summary>
-public class ActionEndpointsTests
+public class ParticipantWalletResolverTests
 {
     private static HttpContext ContextWith(params (string Type, string Value)[] claims)
     {
@@ -52,7 +56,7 @@ public class ActionEndpointsTests
     {
         var wallet = new Mock<IWalletServiceClient>(MockBehavior.Strict);
 
-        var result = await ActionEndpoints.ResolveUserWalletAddressesAsync(
+        var result = await ParticipantWalletResolver.ResolveUserWalletAddressesAsync(
             ContextWith(("wallet_address", "ws1-fast"), ("sub", "sub-1")),
             wallet.Object, NullLogger.Instance, CancellationToken.None);
 
@@ -69,7 +73,7 @@ public class ActionEndpointsTests
             ("platform-1", new[] { "ws1-analyst" }),
             ("sub-1", Array.Empty<string>()));
 
-        var result = await ActionEndpoints.ResolveUserWalletAddressesAsync(
+        var result = await ParticipantWalletResolver.ResolveUserWalletAddressesAsync(
             ContextWith(("platform_user_id", "platform-1"), (ClaimTypes.NameIdentifier, "sub-1")),
             wallet.Object, NullLogger.Instance, CancellationToken.None);
 
@@ -85,7 +89,7 @@ public class ActionEndpointsTests
             ("platform-1", Array.Empty<string>()),
             ("sub-1", new[] { "ws1-legacy" }));
 
-        var result = await ActionEndpoints.ResolveUserWalletAddressesAsync(
+        var result = await ParticipantWalletResolver.ResolveUserWalletAddressesAsync(
             ContextWith(("platform_user_id", "platform-1"), (ClaimTypes.NameIdentifier, "sub-1")),
             wallet.Object, NullLogger.Instance, CancellationToken.None);
 
@@ -99,7 +103,7 @@ public class ActionEndpointsTests
     {
         var wallet = new Mock<IWalletServiceClient>(MockBehavior.Strict);
 
-        var result = await ActionEndpoints.ResolveUserWalletAddressesAsync(
+        var result = await ParticipantWalletResolver.ResolveUserWalletAddressesAsync(
             ContextWith(("some-other-claim", "x")),
             wallet.Object, NullLogger.Instance, CancellationToken.None);
 
