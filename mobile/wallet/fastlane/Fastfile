@@ -132,6 +132,13 @@ lane :android_internal do
     package_name: "app.sorcha.wallet",
     json_key: json_key,
     aab: lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH],
+    # This lane ships an AAB. Say so explicitly.
+    #
+    # supply refuses to upload when it finds BOTH an .aab and a stray .apk in build/outputs — and a stray
+    # debug APK is easy to leave behind (any `./gradlew assembleDebug`, e.g. while verifying a plugin, drops
+    # one). Without this the lane builds a perfectly good bundle and then dies at the very last step with
+    # "Cannot provide both apk(s) and aab", which reads like a signing problem and is not.
+    skip_upload_apk: true,
     skip_upload_metadata: true,
     skip_upload_images: true,
     skip_upload_screenshots: true
