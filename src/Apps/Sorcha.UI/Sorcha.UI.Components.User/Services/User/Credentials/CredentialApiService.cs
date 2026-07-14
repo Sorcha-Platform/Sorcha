@@ -305,8 +305,16 @@ public class CredentialApiService : ICredentialApiService
     /// label) when the issuer specified one; otherwise falls back to the first
     /// six claim entries with their raw keys so credentials without an explicit
     /// display contract still render meaningfully.
+    /// <para>
+    /// Each entry carries both the display label and the underlying claim name (the
+    /// pointer's first segment) — the card's padlock resolves disclosability against
+    /// the claim name, never the label. Keying a flat dictionary by label (the
+    /// previous shape) made <c>DisclosableClaims.Contains(label)</c> false for every
+    /// issuer that actually used <c>highlightClaims</c>, so every claim rendered
+    /// "Always disclosed" regardless of who controlled it.
+    /// </para>
     /// </summary>
-    private static Dictionary<string, string> BuildHighlightClaims(
+    private static List<HighlightClaimEntry> BuildHighlightClaims(
         IReadOnlyDictionary<string, object?> claims,
         CredentialDisplayViewModel displayConfig)
     {
@@ -314,12 +322,12 @@ public class CredentialApiService : ICredentialApiService
 
         if (displayConfig.HighlightClaims is { Count: > 0 })
         {
-            var result = new Dictionary<string, string>();
+            var result = new List<HighlightClaimEntry>();
             foreach (var (pointer, label) in displayConfig.HighlightClaims)
             {
                 var value = ResolveJsonPointer(claims, pointer);
                 if (value is null) continue;
-                result[label] = value;
+                result.Add(new HighlightClaimEntry(ClaimNameFromPointer(pointer), label, value));
             }
             if (result.Count > 0) return result;
         }
@@ -327,7 +335,20 @@ public class CredentialApiService : ICredentialApiService
         return claims
             .Where(kvp => kvp.Value is not null && !kvp.Key.StartsWith('_'))
             .Take(6)
-            .ToDictionary(kvp => kvp.Key, kvp => StringifyClaimValue(kvp.Value));
+            .Select(kvp => new HighlightClaimEntry(kvp.Key, kvp.Key, StringifyClaimValue(kvp.Value)))
+            .ToList();
+    }
+
+    /// <summary>
+    /// The claim name a JSON Pointer (or bare key) is rooted at — <c>/address/town</c>
+    /// and <c>address</c> both resolve to <c>address</c>, which is the identifier
+    /// <see cref="CredentialCardViewModel.DisclosableClaims"/> is expressed in.
+    /// </summary>
+    private static string ClaimNameFromPointer(string pointer)
+    {
+        var path = pointer.StartsWith('/') ? pointer[1..] : pointer;
+        var slash = path.IndexOf('/');
+        return slash < 0 ? path : path[..slash];
     }
 
     private static Dictionary<string, object?> ParseClaims(string? claimsJson)

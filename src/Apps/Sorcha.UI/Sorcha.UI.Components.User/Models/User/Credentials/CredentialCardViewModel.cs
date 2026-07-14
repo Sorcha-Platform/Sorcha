@@ -32,7 +32,15 @@ public class CredentialCardViewModel
     public string UsagePolicy { get; set; } = "Reusable";
     public int? MaxPresentations { get; set; }
     public int PresentationCount { get; set; }
-    public Dictionary<string, string> HighlightClaims { get; set; } = new();
+
+    /// <summary>
+    /// Claims spotlighted on the card face, in display order. Each entry carries BOTH
+    /// the display label (what the citizen reads) and the underlying claim name / JSON
+    /// pointer first segment (what governs disclosability) — a flat label-keyed
+    /// dictionary cannot express both, which is how the padlock ended up checking
+    /// <c>DisclosableClaims.Contains(label)</c> against a set of raw claim names.
+    /// </summary>
+    public List<HighlightClaimEntry> HighlightClaims { get; set; } = new();
     public CredentialDisplayViewModel DisplayConfig { get; set; } = new();
     public List<string> AvailableActions { get; set; } = new();
 
@@ -85,6 +93,16 @@ public class CredentialCardViewModel
         ExpiresAt.Value > DateTimeOffset.UtcNow &&
         ExpiresAt.Value <= DateTimeOffset.UtcNow.AddDays(30);
 }
+
+/// <summary>
+/// A single spotlighted claim on a credential card. <see cref="ClaimName"/> is the
+/// raw top-level claim name (or a JSON pointer's first segment) — the identifier
+/// <see cref="CredentialCardViewModel.DisclosableClaims"/> is expressed in.
+/// <see cref="Label"/> is the issuer-facing display text, which may differ (e.g. a
+/// pointer <c>/address/town</c> labelled "Home town"). The padlock in
+/// <c>CredentialAcceptCard</c> MUST check <see cref="ClaimName"/>, never <see cref="Label"/>.
+/// </summary>
+public sealed record HighlightClaimEntry(string ClaimName, string Label, string Value);
 
 /// <summary>
 /// Display configuration for credential card rendering.

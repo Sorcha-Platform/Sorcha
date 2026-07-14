@@ -28,7 +28,7 @@ public class CredentialCardTests : BunitContext
         Status = CredentialStatus.Active,
         IssuedAt = DateTimeOffset.Parse("2026-07-01T00:00:00Z"),
         ClaimSummary = "Address, email",
-        HighlightClaims = new() { ["email"] = "stuart@stuartfraser.net" },
+        HighlightClaims = new() { new HighlightClaimEntry("email", "email", "stuart@stuartfraser.net") },
         DisclosableClaims = ["address"]
     };
 
@@ -62,7 +62,11 @@ public class CredentialCardTests : BunitContext
     public void CredentialAcceptCard_LocksReflectDisclosability()
     {
         var vm = Card();
-        vm.HighlightClaims = new() { ["address"] = "Edinburgh", ["email"] = "a@b.c" };
+        vm.HighlightClaims = new()
+        {
+            new HighlightClaimEntry("address", "address", "Edinburgh"),
+            new HighlightClaimEntry("email", "email", "a@b.c"),
+        };
         vm.DisclosableClaims = ["address"];   // email always travels
 
         var cut = Render<CredentialAcceptCard>(p => p.Add(c => c.Credential, vm));
@@ -76,5 +80,31 @@ public class CredentialCardTests : BunitContext
 
         openLock.NextElementSibling!.TextContent.Should().Be("address");
         closedLock.NextElementSibling!.TextContent.Should().Be("email");
+    }
+
+    [Fact]
+    public void CredentialAcceptCard_LocksReflectDisclosability_WithDisplayConfigLabels()
+    {
+        // I1: BuildHighlightClaims keys its result by the issuer's display LABEL when
+        // displayConfig.highlightClaims is set (e.g. pointer "/address/town" labelled
+        // "Home town"). DisclosableClaims holds raw claim NAMES ("address"). The card's
+        // padlock must still resolve against the underlying claim name, not the label —
+        // otherwise DisclosableClaims.Contains("Home town") is false for every row and
+        // every claim renders as "Always disclosed", regardless of who actually controls it.
+        var vm = Card();
+        vm.HighlightClaims = new()
+        {
+            new HighlightClaimEntry("address", "Home town", "Edinburgh"),
+            new HighlightClaimEntry("email", "Email", "a@b.c"),
+        };
+        vm.DisclosableClaims = ["address"];   // the underlying claim name, not the label
+
+        var cut = Render<CredentialAcceptCard>(p => p.Add(c => c.Credential, vm));
+
+        var openLock = cut.Find("span[aria-label='You control disclosure']");
+        var closedLock = cut.Find("span[aria-label='Always disclosed']");
+
+        openLock.NextElementSibling!.TextContent.Should().Be("Home town");
+        closedLock.NextElementSibling!.TextContent.Should().Be("Email");
     }
 }

@@ -330,10 +330,10 @@ public class CredentialApiServiceTests
 
         var result = await service.GetCredentialsAsync("ws11q");
 
-        foreach (var value in result[0].HighlightClaims.Values)
+        foreach (var entry in result[0].HighlightClaims)
         {
-            value.Should().NotContain("_sd");
-            value.Should().NotStartWith("{");
+            entry.Value.Should().NotContain("_sd");
+            entry.Value.Should().NotStartWith("{");
         }
     }
 
