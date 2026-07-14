@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Sorcha.Proximity;
 using Sorcha.Proximity.Capacitor;
 using Sorcha.Verifier.Pwa;
-using Sorcha.Verifier.Pwa.Services;
+using Sorcha.Reader;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 
@@ -17,7 +17,7 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 // Transient: a proximity transport is per-exchange and Disconnected is terminal — a shared instance would
 // carry a dead channel into the next read.
 builder.Services.AddTransient<IProximityTransport, CapacitorProximityTransport>();
-builder.Services.AddTransient<IReaderService, ReaderService>();
+builder.Services.AddSorchaReader();
 
 // NOTE: there is deliberately NO HttpClient registered.
 //

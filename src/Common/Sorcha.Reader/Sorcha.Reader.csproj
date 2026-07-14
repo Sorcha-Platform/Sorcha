@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>Sorcha.Reader</PackageId>
+    <Description>The verifier's half of an in-person credential check (Feature 185), as a shared component library rather than an application. Hosted BY the citizen wallet today (one binary, one store record); the standalone Sorcha.Verifier.Pwa host also consumes it, so splitting the reader into its own product later costs nothing and duplicates nothing.</Description>
+    <RootNamespace>Sorcha.Reader</RootNamespace>
+  </PropertyGroup>
+
+  <!-- Pure-managed: every host is a Blazor WASM app. See scripts/check-wasm-safe.ps1. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sorcha.Mdoc\Sorcha.Mdoc.csproj" />
+    <ProjectReference Include="..\Sorcha.Proximity.Abstractions\Sorcha.Proximity.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sorcha.Verifier.Pwa.Tests" />
+  </ItemGroup>
+
+</Project>

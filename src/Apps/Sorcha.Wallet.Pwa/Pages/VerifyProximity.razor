@@ -1,0 +1,24 @@
+@page "/verify/proximity"
+@layout MainLayout
+@using Microsoft.AspNetCore.Authorization
+@using Sorcha.Reader.Components
+@attribute [Authorize]
+
+@*
+    Doorstep verification, IN PERSON and OFFLINE (Feature 185).
+
+    The sibling of /verify, which does the same job ONLINE over HAIP. This one needs no signal at all: the
+    two devices talk directly over Bluetooth. Same feature, different circumstances — which is why it lives
+    under /verify/ rather than as a rival surface.
+
+    ONE app, both roles. The BLE plugin can be a peripheral (showing a credential) or a central (reading one),
+    so two phones with the wallet installed can complete an entire in-person check between them. A separate
+    reader app would have needed new App Store Connect and Play records before any of it could be tested.
+
+    The reader itself lives in Sorcha.Reader (a component library), so splitting it into its own product later
+    costs nothing and duplicates nothing.
+*@
+
+<PageTitle>Check in person · Sorcha Wallet</PageTitle>
+
+<ReaderView />

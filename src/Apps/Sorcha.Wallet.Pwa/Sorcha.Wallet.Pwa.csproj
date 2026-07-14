@@ -27,6 +27,7 @@
     <ProjectReference Include="..\..\Common\Sorcha.Mdoc\Sorcha.Mdoc.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Proximity.Abstractions\Sorcha.Proximity.Abstractions.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Proximity.Capacitor\Sorcha.Proximity.Capacitor.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.Reader\Sorcha.Reader.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -4,7 +4,7 @@
 using Sorcha.Mdoc.Proximity;
 using Sorcha.Proximity;
 
-namespace Sorcha.Verifier.Pwa.Services;
+namespace Sorcha.Reader.Services;
 
 /// <inheritdoc />
 /// <remarks>

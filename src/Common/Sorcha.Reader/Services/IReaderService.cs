@@ -4,7 +4,7 @@
 using Sorcha.Mdoc.Proximity;
 using Sorcha.Proximity;
 
-namespace Sorcha.Verifier.Pwa.Services;
+namespace Sorcha.Reader.Services;
 
 /// <summary>What the verifier wants to know. Deliberately few, and phrased as questions, not fields.</summary>
 /// <remarks>

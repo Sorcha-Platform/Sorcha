@@ -60,6 +60,7 @@ $guardedProjects = @(
     'src/Common/Sorcha.Mdoc',
     'src/Common/Sorcha.Proximity.Abstractions',
     'src/Common/Sorcha.Proximity.Capacitor',
+    'src/Common/Sorcha.Reader',
     'src/Common/Sorcha.Verifier.Engine'
 )
 

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Sorcha.Reader;
 using Blazored.LocalStorage;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Sorcha.Wallet.Pwa.Services;
@@ -65,6 +66,13 @@ public static class ServiceCollectionExtensions
                               Sorcha.Proximity.Capacitor.CapacitorProximityTransport>();
         services.AddTransient<Sorcha.Wallet.Pwa.Services.Proximity.IProximityPresentationService,
                               Sorcha.Wallet.Pwa.Services.Proximity.ProximityPresentationService>();
+
+        // The READER — the verifier's side of an in-person check — hosted inside this same app.
+        //
+        // One binary, not two: a separate app.sorcha.reader would have needed new App Store Connect and Play
+        // records before anything could be tested, and the plugin already does both BLE roles. Two phones
+        // with this app: one shows, one reads.
+        services.AddSorchaReader();
 
         // QR generation happens ON DEVICE (QRCoder, pure-managed) — an in-person exchange must work with no
         // signal, so a server-rendered QR would defeat the entire feature.
