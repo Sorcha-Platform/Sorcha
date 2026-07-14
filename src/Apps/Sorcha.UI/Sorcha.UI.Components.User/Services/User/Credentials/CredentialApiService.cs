@@ -322,6 +322,9 @@ public class CredentialApiService : ICredentialApiService
             RegisterId = item.RegisterId,
             DisplayConfig = displayConfig,
             HighlightClaims = BuildHighlightClaims(claims, displayConfig),
+            DisclosableClaims = item.DisclosableClaims ?? [],
+            DisplayName = Humanise(item.Type),
+            ClaimSummary = BuildClaimSummary(claims),
             // Feature 106 — rows with the new PendingAcceptance status flow into
             // the MyCredentials PENDING tab via CredentialCardViewModel.IsPending.
             IsPending = string.Equals(item.Status, CredentialStatus.PendingAcceptance, StringComparison.Ordinal),
@@ -329,6 +332,49 @@ public class CredentialApiService : ICredentialApiService
 
         vm.AvailableActions = GetAvailableActions(vm.Status);
         return vm;
+    }
+
+    /// <summary>
+    /// "AssuredIdentityCredential" → "Assured Identity". Splits PascalCase and drops
+    /// the redundant "Credential" suffix — every card on the page is a credential.
+    /// </summary>
+    private static string Humanise(string? type)
+    {
+        if (string.IsNullOrWhiteSpace(type)) return string.Empty;
+
+        var trimmed = type.EndsWith("Credential", StringComparison.Ordinal) && type.Length > "Credential".Length
+            ? type[..^"Credential".Length]
+            : type;
+
+        var spaced = System.Text.RegularExpressions.Regex.Replace(
+            trimmed, "(?<=[a-z0-9])(?=[A-Z])", " ");
+
+        return spaced.Length == 0 ? type : char.ToUpperInvariant(spaced[0]) + spaced[1..];
+    }
+
+    /// <summary>
+    /// A single line naming what the credential holds — names only, never values.
+    /// Caps at four names so a fat credential cannot blow the card open.
+    /// </summary>
+    private static string BuildClaimSummary(IReadOnlyDictionary<string, object?> claims)
+    {
+        var names = claims.Keys
+            .Where(k => !k.StartsWith('_'))
+            .Select(HumaniseClaimName)
+            .ToList();
+
+        if (names.Count == 0) return string.Empty;
+        if (names.Count <= 4) return string.Join(", ", names);
+
+        return string.Join(", ", names.Take(4)) + $" and {names.Count - 4} more";
+    }
+
+    /// <summary>"dateOfBirth" → "Date of birth". Sentence case, not Title Case.</summary>
+    private static string HumaniseClaimName(string key)
+    {
+        var spaced = System.Text.RegularExpressions.Regex.Replace(
+            key, "(?<=[a-z0-9])(?=[A-Z])", " ").ToLowerInvariant();
+        return spaced.Length == 0 ? key : char.ToUpperInvariant(spaced[0]) + spaced[1..];
     }
 
     /// <summary>
@@ -357,7 +403,7 @@ public class CredentialApiService : ICredentialApiService
         }
 
         return claims
-            .Where(kvp => kvp.Value is not null)
+            .Where(kvp => kvp.Value is not null && !kvp.Key.StartsWith('_'))
             .Take(6)
             .ToDictionary(kvp => kvp.Key, kvp => StringifyClaimValue(kvp.Value));
     }
@@ -414,6 +460,12 @@ public class CredentialApiService : ICredentialApiService
         return StringifyClaimValue(cursor);
     }
 
+    /// <summary>
+    /// Renders a claim value for display. An object or array NEVER renders as raw
+    /// JSON — that is how an unresolved SD-JWT digest array reached a citizen's
+    /// card on n1. The server should not send one, and this layer must not be
+    /// capable of printing it if it does.
+    /// </summary>
     private static string StringifyClaimValue(object? value) => value switch
     {
         null => string.Empty,
@@ -424,10 +476,26 @@ public class CredentialApiService : ICredentialApiService
             JsonValueKind.Number => el.ToString(),
             JsonValueKind.True or JsonValueKind.False => el.GetBoolean().ToString(),
             JsonValueKind.Null => string.Empty,
-            _ => el.GetRawText()
+            JsonValueKind.Object => SummariseObject(el),
+            JsonValueKind.Array => $"{el.GetArrayLength()} item{(el.GetArrayLength() == 1 ? "" : "s")}",
+            _ => string.Empty
         },
         _ => value.ToString() ?? string.Empty
     };
+
+    /// <summary>
+    /// A nested object renders as its field names, not its JSON. Protocol keys are
+    /// dropped so a stray digest array degrades to an empty string, never a blob.
+    /// </summary>
+    private static string SummariseObject(JsonElement el)
+    {
+        var fields = el.EnumerateObject()
+            .Where(p => !p.Name.StartsWith('_'))
+            .Select(p => p.Name)
+            .ToList();
+
+        return fields.Count == 0 ? string.Empty : string.Join(", ", fields);
+    }
 
     private static CredentialDetailViewModel MapToDetailViewModel(CredentialDetailResponse entity)
     {
@@ -533,6 +601,9 @@ public class CredentialApiService : ICredentialApiService
         public string? ClaimsJson { get; set; }
         public string? DisplayConfigJson { get; set; }
         public string? UsagePolicy { get; set; }
+
+        /// <summary>Claims the holder may withhold when presenting. Server-derived from the raw token.</summary>
+        public List<string>? DisclosableClaims { get; set; }
     }
 
     private class CredentialDetailResponse

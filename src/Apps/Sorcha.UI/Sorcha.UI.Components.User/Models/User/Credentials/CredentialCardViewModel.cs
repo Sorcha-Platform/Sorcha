@@ -10,6 +10,19 @@ public class CredentialCardViewModel
 {
     public string CredentialId { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The credential type as a human reads it — "Assured Identity", not
+    /// "AssuredIdentityCredential". Falls back to <see cref="Type"/>.
+    /// </summary>
+    public string DisplayName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// One line naming what is inside, e.g. "Name, date of birth, address".
+    /// Claim NAMES only — a list view must never print claim values, or a
+    /// holder's address is legible to anyone glancing at their screen.
+    /// </summary>
+    public string ClaimSummary { get; set; } = string.Empty;
     public string IssuerDid { get; set; } = string.Empty;
     public string IssuerName { get; set; } = string.Empty;
     public string SubjectDid { get; set; } = string.Empty;

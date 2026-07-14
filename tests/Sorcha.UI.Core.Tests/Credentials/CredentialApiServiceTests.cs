@@ -214,4 +214,93 @@ public class CredentialApiServiceTests
 
         return new CredentialApiService(httpClient, NullLogger<CredentialApiService>.Instance);
     }
+
+    private static CredentialApiService CreateServiceReturning(string json) =>
+        CreateServiceWithResponse(HttpStatusCode.OK, json);
+
+    [Fact]
+    public async Task GetCredentialsAsync_PopulatesDisclosableClaimsFromResponse()
+    {
+        // The card's padlock is only meaningful if this survives the wire.
+        var json = """
+        [{
+          "id": "urn:credential:1", "type": "AssuredIdentityCredential",
+          "issuerDid": "did:sorcha:org:ws11q", "subjectDid": "did:sorcha:w:ws11q",
+          "status": "Active", "issuedAt": "2026-07-01T00:00:00Z",
+          "claimsJson": "{\"email\":\"a@b.c\",\"address\":{\"town\":\"Edinburgh\"}}",
+          "disclosableClaims": ["address"]
+        }]
+        """;
+        var service = CreateServiceReturning(json);
+
+        var result = await service.GetCredentialsAsync("ws11q");
+
+        result.Should().ContainSingle();
+        result[0].DisclosableClaims.Should().BeEquivalentTo(["address"]);
+    }
+
+    [Fact]
+    public async Task GetCredentialsAsync_ObjectClaim_NeverRendersAsRawJson()
+    {
+        // The n1 defect, guarded at the rendering layer: even if the server
+        // regressed and sent a digest array, no card may print raw JSON.
+        var json = """
+        [{
+          "id": "urn:credential:1", "type": "AssuredIdentityCredential",
+          "issuerDid": "did:sorcha:org:ws11q", "subjectDid": "did:sorcha:w:ws11q",
+          "status": "Active", "issuedAt": "2026-07-01T00:00:00Z",
+          "claimsJson": "{\"address\":{\"_sd\":[\"zSH_kfTeW2Mlc\"]}}",
+          "disclosableClaims": []
+        }]
+        """;
+        var service = CreateServiceReturning(json);
+
+        var result = await service.GetCredentialsAsync("ws11q");
+
+        foreach (var value in result[0].HighlightClaims.Values)
+        {
+            value.Should().NotContain("_sd");
+            value.Should().NotStartWith("{");
+        }
+    }
+
+    [Fact]
+    public async Task GetCredentialsAsync_BuildsClaimSummaryOfNamesNotValues()
+    {
+        var json = """
+        [{
+          "id": "urn:credential:1", "type": "AssuredIdentityCredential",
+          "issuerDid": "did:sorcha:org:ws11q", "subjectDid": "did:sorcha:w:ws11q",
+          "status": "Active", "issuedAt": "2026-07-01T00:00:00Z",
+          "claimsJson": "{\"email\":\"stuart@stuartfraser.net\",\"dateOfBirth\":\"1980-01-01\"}",
+          "disclosableClaims": ["email"]
+        }]
+        """;
+        var service = CreateServiceReturning(json);
+
+        var result = await service.GetCredentialsAsync("ws11q");
+
+        result[0].ClaimSummary.Should().Contain("Email");
+        result[0].ClaimSummary.Should().Contain("Date of birth");
+        result[0].ClaimSummary.Should().NotContain("stuart@stuartfraser.net", "a list must never print claim values");
+        result[0].ClaimSummary.Should().NotContain("1980");
+    }
+
+    [Fact]
+    public async Task GetCredentialsAsync_HumanisesTheCredentialType()
+    {
+        var json = """
+        [{
+          "id": "urn:credential:1", "type": "AssuredIdentityCredential",
+          "issuerDid": "did:sorcha:org:ws11q", "subjectDid": "did:sorcha:w:ws11q",
+          "status": "Active", "issuedAt": "2026-07-01T00:00:00Z",
+          "claimsJson": "{}", "disclosableClaims": []
+        }]
+        """;
+        var service = CreateServiceReturning(json);
+
+        var result = await service.GetCredentialsAsync("ws11q");
+
+        result[0].DisplayName.Should().Be("Assured Identity");
+    }
 }
