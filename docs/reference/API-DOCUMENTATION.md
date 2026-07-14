@@ -840,6 +840,47 @@ a candidate is selected.
 
 ### Base Path: `/api/blueprints`
 
+### `GET /api/instances/{instanceId}/actions/{actionId}` — consumer-readable action schema (P0 fix)
+
+Instance-scoped, consumer-readable read of a single action's form-relevant schema. Added to close a P0
+bug: the Wallet PWA previously read the action schema via the authoring endpoint
+`GET /api/blueprints/{id}` (Feature 147), which is deliberately restricted to service/platform-tier
+callers — every consumer-tier citizen 403'd, and the PWA (wrongly) reported this as "offline". This
+endpoint sits on the existing `/api/instances` group (`CanExecuteBlueprints` — any authenticated
+caller) and adds its own **participant gate**: the caller's `wallet_address` claim must appear in the
+instance's `ParticipantWallets`, or the request is refused with `403`.
+
+| Method | Path | Auth |
+|--------|------|------|
+| GET    | `/api/instances/{instanceId}/actions/{actionId}` | Authenticated + caller's wallet must be a participant on the instance |
+
+**Response — 200 OK** (`InstanceActionSchemaResponse`):
+
+```json
+{
+  "actionId": 1,
+  "title": "Claim your Assured Identity credential",
+  "form": { "type": "Layout", "elements": [ ] },
+  "dataSchemas": [ { "type": "object", "properties": { "email": { "type": "string" } } } ],
+  "calculations": null,
+  "credentialRequirements": null,
+  "credentialIssuanceConfig": { "credentialType": "AssuredIdentityCredential", "claimMappings": [ ], "recipientParticipantId": "citizen" }
+}
+```
+
+Deliberately **narrow** — this is not the full `Action` model and not a blueprint wrapper. It carries
+only what `SorchaFormRenderer` reads to render and validate the form for this one action. It does
+**not** return routing rules (`routes`, `condition`), other participants (`participants`, `target`,
+`additionalRecipients`), state-reconstruction internals (`requiredPriorActions`), rejection routing
+(`rejectionConfig`), or disclosure/sender fields (only meaningful when the caller is not the action's
+sender, which this endpoint's caller always is). `404` if the instance, blueprint, or action is not
+found; `403` if the caller is not a recorded participant on the instance.
+
+> **Known gap, not fixed here (flagged, not silently copied):** the sibling `GET /api/instances/{id}`
+> endpoint on the same group performs **no participant check at all** — any authenticated caller can
+> read any instance by id. This endpoint intentionally does not repeat that gap. Tightening
+> `GET /api/instances/{id}` itself is out of scope for this fix and tracked separately.
+
 ### Timebound Presentation Lifecycle (Feature 111)
 
 Three-event on-register lifecycle for timebound credential presentations. When an action carries `credentialRequirements` targeting HaipExternalWallet and the citizen submits without pre-attached presentations, `/execute` returns **`202 Accepted`** with `AwaitingPresentation=true` and a QR code. A `PresentationInitiated` transaction is written to the register immediately. The action does NOT complete until the verifier callback writes a `PresentationOutcome` with `kind=success`. Retry after a decline is first-class; a second attempt after a successful outcome returns **`409 Conflict`**.

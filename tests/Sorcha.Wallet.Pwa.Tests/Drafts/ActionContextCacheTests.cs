@@ -45,7 +45,7 @@ public sealed class ActionContextCacheTests
         _actions.Setup(a => a.GetPendingAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<PendingActionItem> { Pending(id1.ToString()), Pending(id2.ToString()) });
         _actionClient.Setup(c => c.LoadFormAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid g, CancellationToken _) => FormCtx(g));
+            .ReturnsAsync((Guid g, CancellationToken _) => ApplicationFormLoadResult.Success(FormCtx(g)));
 
         var cached = await Create().RefreshFromPendingAsync();
 
@@ -64,7 +64,7 @@ public sealed class ActionContextCacheTests
         _actionClient.Setup(c => c.LoadFormAsync(bad, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("boom"));
         _actionClient.Setup(c => c.LoadFormAsync(ok, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(FormCtx(ok));
+            .ReturnsAsync(ApplicationFormLoadResult.Success(FormCtx(ok)));
 
         var cached = await Create().RefreshFromPendingAsync();
 

@@ -2359,6 +2359,10 @@ instancesGroup.MapGet("/{instanceId}", async (
 .WithSummary("Get workflow instance")
 .WithDescription("Retrieve a workflow instance by its ID");
 
+// P0 fix (fix/pwa-p0-claim-and-camera) — GET /{instanceId}/actions/{actionId}: instance-scoped,
+// consumer-readable action schema (see Sorcha.Blueprint.Service.Endpoints.InstanceActionEndpoints).
+instancesGroup.MapInstanceActionSchemaEndpoint();
+
 // <summary>
 // Execute an action in a workflow instance (with orchestration)
 // </summary>
