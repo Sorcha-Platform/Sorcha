@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
 using FluentAssertions;
 using Sorcha.UI.Core.Models.Credentials;
 using Sorcha.UI.Core.Models.Forms;
@@ -112,5 +113,54 @@ public class CredentialIdCardTests
         fromPrimitives.CredentialName.Should().Be(fromModel.CredentialName);
         fromPrimitives.FieldValues["/fullName"].Should().Be(fromModel.FieldValues["/fullName"]);
         fromPrimitives.FieldValues["/portrait/tokenImageBase64"].Should().Be(fromModel.FieldValues["/portrait/tokenImageBase64"]);
+    }
+
+    [Fact]
+    public void BuildConfig_PoisonDigestArrayClaim_NeverRendersRawJson()
+    {
+        // Third door onto the n1 leak. CredentialIdCard.BuildConfig used to read the RAW
+        // Claims dictionary and call kv.Value?.ToString() -- for a boxed JsonElement of
+        // ValueKind.Object that returns GetRawText(), i.e. the exact {"_sd":[...]} blob that
+        // shipped to a citizen's phone. This is the worst of the three doors: the ID-card face
+        // is the surface the bug report actually hit (AssuredIdentityCredential). Deserializing
+        // real JSON (rather than hand-building a fake) mirrors how
+        // CredentialApiService.MapToDetailViewModel actually populates Claims in production.
+        var claimsJson = "{\"address\":{\"_sd\":[\"zSH_kfTeW2Mlc\"]},\"fullName\":\"Stuart Fraser\"}";
+        var claims = JsonSerializer.Deserialize<Dictionary<string, object>>(claimsJson)!;
+
+        var cred = new CredentialDetailViewModel
+        {
+            Type = "AssuredIdentityCredential",
+            Claims = claims,
+        };
+
+        var cfg = CredentialIdCard.BuildConfig(cred);
+
+        var addressValue = cfg.FieldValues.TryGetValue("/address", out var v) ? v?.ToString() ?? string.Empty : string.Empty;
+        addressValue.Should().NotContain("_sd");
+        addressValue.Should().NotContain("{");
+        cfg.FieldValues["/fullName"].Should().Be("Stuart Fraser");
+    }
+
+    [Fact]
+    public void BuildConfig_LegitimateNestedAddressClaim_RendersStructurally()
+    {
+        // SC-1 also forbids the opposite failure mode: blanking every object claim. A genuine
+        // nested claim like address.town must still render something meaningful to a citizen.
+        var claimsJson = "{\"address\":{\"town\":\"Edinburgh\",\"line1\":\"1 High Street\"},\"fullName\":\"Stuart Fraser\"}";
+        var claims = JsonSerializer.Deserialize<Dictionary<string, object>>(claimsJson)!;
+
+        var cred = new CredentialDetailViewModel
+        {
+            Type = "AssuredIdentityCredential",
+            Claims = claims,
+        };
+
+        var cfg = CredentialIdCard.BuildConfig(cred);
+
+        cfg.FieldValues.Should().ContainKey("/address");
+        var addressValue = cfg.FieldValues["/address"]?.ToString() ?? string.Empty;
+        addressValue.Should().NotContain("{");
+        addressValue.Should().Contain("Edinburgh");
     }
 }

@@ -33,12 +33,26 @@ public static class CredentialIdCard
         => !string.IsNullOrWhiteSpace(credentialType)
            && credentialType.Contains("identity", System.StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Builds an <see cref="IdCardLayoutConfig"/> from a web detail view model.</summary>
+    /// <summary>
+    /// Builds an <see cref="IdCardLayoutConfig"/> from a web detail view model. This is the third
+    /// (and worst) door onto the n1 raw-digest leak: it used to read the RAW <see cref="CredentialDetailViewModel.Claims"/>
+    /// dictionary and call <c>kv.Value?.ToString()</c> — for a boxed <see cref="System.Text.Json.JsonElement"/>
+    /// of kind Object that returns <c>GetRawText()</c>, i.e. the exact <c>{"_sd":[...]}</c> blob. The
+    /// ID-card face is the surface the bug report actually hit, since it renders <c>address</c> — a
+    /// <see cref="FaceClaims"/> entry — for exactly the credential type (<c>AssuredIdentityCredential</c>)
+    /// that shipped the bug.
+    /// <para>
+    /// Formats <see cref="CredentialDetailViewModel.Claims"/> through <see cref="CredentialClaimDisplayFormatter"/>
+    /// directly, rather than trusting the pre-populated <see cref="CredentialDetailViewModel.DisplayClaims"/>
+    /// field — the card is safe by construction here regardless of whether a given construction site
+    /// (production mapper, test fixture, or a future caller) remembered to populate <c>DisplayClaims</c>.
+    /// </para>
+    /// </summary>
     public static IdCardLayoutConfig BuildConfig(CredentialDetailViewModel credential)
     {
         System.ArgumentNullException.ThrowIfNull(credential);
-        var claims = credential.Claims.ToDictionary(
-            kv => kv.Key, kv => kv.Value?.ToString(), System.StringComparer.Ordinal);
+        var claims = CredentialClaimDisplayFormatter.BuildDisplayClaims(credential.Claims)
+            .ToDictionary(kv => kv.Key, kv => (string?)kv.Value, System.StringComparer.Ordinal);
         var issuer = string.IsNullOrWhiteSpace(credential.IssuerName) ? null : credential.IssuerName;
         return BuildConfig(credential.Type, PrettyCredentialName(credential.Type), issuer, claims);
     }

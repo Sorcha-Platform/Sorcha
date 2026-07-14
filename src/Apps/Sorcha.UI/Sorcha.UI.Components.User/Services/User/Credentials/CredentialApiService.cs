@@ -360,21 +360,13 @@ public class CredentialApiService : ICredentialApiService
     {
         var names = claims.Keys
             .Where(k => !k.StartsWith('_'))
-            .Select(HumaniseClaimName)
+            .Select(CredentialClaimDisplayFormatter.HumaniseClaimName)
             .ToList();
 
         if (names.Count == 0) return string.Empty;
         if (names.Count <= 4) return string.Join(", ", names);
 
         return string.Join(", ", names.Take(4)) + $" and {names.Count - 4} more";
-    }
-
-    /// <summary>"dateOfBirth" → "Date of birth". Sentence case, not Title Case.</summary>
-    private static string HumaniseClaimName(string key)
-    {
-        var spaced = System.Text.RegularExpressions.Regex.Replace(
-            key, "(?<=[a-z0-9])(?=[A-Z])", " ").ToLowerInvariant();
-        return spaced.Length == 0 ? key : char.ToUpperInvariant(spaced[0]) + spaced[1..];
     }
 
     /// <summary>
@@ -557,43 +549,12 @@ public class CredentialApiService : ICredentialApiService
     /// for the second door onto the n1 `{"_sd":[...]}` leak: <c>MapToDetailViewModel</c> used
     /// to hand the raw <see cref="Dictionary{TKey,TValue}"/> straight to the view, and the
     /// Razor markup called <c>@claim.Value?.ToString()</c> — for a boxed <see cref="JsonElement"/>
-    /// of <see cref="JsonValueKind.Object"/> that returns <c>GetRawText()</c>.
+    /// of <see cref="JsonValueKind.Object"/> that returns <c>GetRawText()</c>. Delegates to
+    /// <see cref="CredentialClaimDisplayFormatter"/> — the same formatter <see cref="CredentialIdCard"/>
+    /// uses for the ID-card face, so there is one safe-rendering implementation, not two.
     /// </summary>
     private static Dictionary<string, string> BuildDisplayClaims(IReadOnlyDictionary<string, object> claims)
-    {
-        return claims
-            .Where(kvp => !kvp.Key.StartsWith('_'))
-            .ToDictionary(kvp => kvp.Key, kvp => FormatClaimForDetailDisplay(kvp.Value));
-    }
-
-    /// <summary>
-    /// Detail-dialog claim formatter. Unlike <see cref="StringifyClaimValue"/> (which reduces
-    /// a nested object to its field names for the compact card surface), the detail dialog has
-    /// room to be useful: nested objects render as "Name: value" pairs, recursively, still
-    /// dropping <c>_</c>-prefixed protocol keys at every level and never emitting raw JSON.
-    /// </summary>
-    private static string FormatClaimForDetailDisplay(object? value) => value switch
-    {
-        null => string.Empty,
-        string s => s,
-        JsonElement el => FormatJsonElementForDetailDisplay(el),
-        _ => value.ToString() ?? string.Empty
-    };
-
-    private static string FormatJsonElementForDetailDisplay(JsonElement el) => el.ValueKind switch
-    {
-        JsonValueKind.String => el.GetString() ?? string.Empty,
-        JsonValueKind.Number => el.ToString(),
-        JsonValueKind.True or JsonValueKind.False => el.GetBoolean().ToString(),
-        JsonValueKind.Null => string.Empty,
-        JsonValueKind.Object => string.Join(", ", el.EnumerateObject()
-            .Where(p => !p.Name.StartsWith('_'))
-            .Select(p => $"{HumaniseClaimName(p.Name)}: {FormatJsonElementForDetailDisplay(p.Value)}")),
-        JsonValueKind.Array => string.Join(", ", el.EnumerateArray()
-            .Select(FormatJsonElementForDetailDisplay)
-            .Where(s => s.Length > 0)),
-        _ => string.Empty
-    };
+        => CredentialClaimDisplayFormatter.BuildDisplayClaims(claims);
 
     private static string ExtractIssuerName(string? issuerDid)
     {
