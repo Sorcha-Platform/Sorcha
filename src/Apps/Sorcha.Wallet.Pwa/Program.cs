@@ -3,9 +3,11 @@
 
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using MudBlazor.Services;
 using Sorcha.UI.Components.User.Extensions;
 using Sorcha.UI.Components.User.Services.Verification;
+using Sorcha.UI.Core.Services;
 using Sorcha.Wallet.Pwa;
 using Sorcha.Wallet.Pwa.Extensions;
 using Sorcha.Wallet.Pwa.Services;
@@ -47,4 +49,14 @@ builder.Services.AddCitizenWalletServices(hostRoot);
 builder.Services.AddScoped<IVerifierIdentityProvider, EphemeralVerifierIdentityAdapter>();
 builder.Services.AddScoped<IVerificationTransport, HaipVerificationTransport>();
 
-await builder.Build().RunAsync();
+var host = builder.Build();
+
+// Bug fix — the PWA registers ILocalizationService (Extensions/ServiceCollectionExtensions.cs)
+// but never initialised it, so every Loc.T(key) call anywhere in the shared component library
+// (Settings → Security is the page a citizen actually hit this on) rendered the raw dot-notation
+// key instead of text. Mirrors the web host (Sorcha.UI.Web.Client/Program.cs), which loads
+// default (English) translations eagerly before the first render.
+var localization = host.Services.GetRequiredService<ILocalizationService>();
+await localization.LoadDefaultTranslationsAsync();
+
+await host.RunAsync();

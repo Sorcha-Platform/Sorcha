@@ -136,8 +136,12 @@ var rewriteOptions = new RewriteOptions()
     // hash (Sorcha.UI.Web.Client.<hash>.bundle.scp.css) that changes with
     // every build, so the rule has to match the pattern, not a literal name.
     .AddRewrite(@"^app/(Sorcha\.UI\.Web\.Client\.[^/]+\.bundle\.scp\.css)$", "$1", skipRemainingRules: true)
-    .AddRewrite(@"^app/appsettings\.(.*)$", "appsettings.$1", skipRemainingRules: true)
-    .AddRewrite(@"^app/i18n/(.*)$", "i18n/$1", skipRemainingRules: true);
+    .AddRewrite(@"^app/appsettings\.(.*)$", "appsettings.$1", skipRemainingRules: true);
+    // NOTE: the old "^app/i18n/(.*)$" rewrite is gone — the translation JSON files moved from
+    // Sorcha.UI.Web.Client/wwwroot/i18n (a plain host asset) to Sorcha.UI.Components.User's RCL
+    // wwwroot (a shared asset consumed by both the web host and the Wallet PWA), so they are now
+    // served under _content/Sorcha.UI.Components.User/i18n/*.json — already covered by the
+    // "^app/_content/(.*)$" rule above.
 app.UseRewriter(rewriteOptions);
 
 // Serve Blazor framework files

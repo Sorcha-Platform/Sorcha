@@ -11,6 +11,7 @@
 @layout MainLayout
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.JSInterop
 @using Sorcha.Wallet.Pwa.Services
 @inject IJSRuntime Js
@@ -91,21 +92,37 @@
             </CardHeaderContent>
         </MudCardHeader>
         <MudCardContent>
-            @if (_signedInEmail is not null)
-            {
-                <MudText Typo="Typo.body2" Class="mb-2">Signed in as <strong>@_signedInEmail</strong></MudText>
-                <MudButton StartIcon="@Icons.Material.Filled.Logout" Variant="Variant.Outlined"
-                           Color="Color.Error" OnClick="SignOutAsync" data-testid="settings-signout">
-                    Sign out
-                </MudButton>
-            }
-            else
-            {
-                <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                           OnClick="@(() => Nav.NavigateTo("signin"))" data-testid="settings-signin-link">
-                    Sign in
-                </MudButton>
-            }
+            @* Feature 114 bugfix — gate on the SAME AuthenticationStateProvider the rest of
+               the shell uses (token presence + expiry via WalletAuthenticationStateProvider),
+               not on _signedInEmail. AccessTokenRecord.Email is captured "for display only"
+               (see IAccessTokenStore.cs) and is null for passkey/social sign-in, so a citizen
+               signed in via passkey has a valid token but no email — using email presence as
+               the auth signal showed them "Sign in" while already signed in, and hid the only
+               Sign out control on the page. *@
+            <AuthorizeView>
+                <Authorized>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        @if (_signedInEmail is not null)
+                        {
+                            <text>Signed in as <strong>@_signedInEmail</strong></text>
+                        }
+                        else
+                        {
+                            <text>You're signed in.</text>
+                        }
+                    </MudText>
+                    <MudButton StartIcon="@Icons.Material.Filled.Logout" Variant="Variant.Outlined"
+                               Color="Color.Error" OnClick="SignOutAsync" data-testid="settings-signout">
+                        Sign out
+                    </MudButton>
+                </Authorized>
+                <NotAuthorized>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               OnClick="@(() => Nav.NavigateTo("signin"))" data-testid="settings-signin-link">
+                        Sign in
+                    </MudButton>
+                </NotAuthorized>
+            </AuthorizeView>
         </MudCardContent>
     </MudCard>
 

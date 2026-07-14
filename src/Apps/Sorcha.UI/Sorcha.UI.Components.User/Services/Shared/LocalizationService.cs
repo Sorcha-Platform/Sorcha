@@ -181,7 +181,15 @@ public class LocalizationService : ILocalizationService
     {
         try
         {
-            var url = $"i18n/{languageCode}.json";
+            // The translation JSON files are shipped as a static web asset of THIS razor class
+            // library (wwwroot/i18n/*.json), not of the hosting app's own wwwroot — both the
+            // web client (base href "/app/") and the Wallet PWA (base href "/wallet/") reference
+            // Sorcha.UI.Components.User, so a single copy is served to both at build/publish time
+            // under the RCL's conventional "_content/{PackageId}/..." path. The path is relative
+            // (no leading slash) so it resolves against each host's own ambient HttpClient
+            // BaseAddress (== that host's own base href) rather than the site root — with a
+            // leading slash this would 404 for any host not mounted at "/".
+            var url = $"_content/Sorcha.UI.Components.User/i18n/{languageCode}.json";
             var response = await _httpClient.GetAsync(url);
 
             if (!response.IsSuccessStatusCode)
