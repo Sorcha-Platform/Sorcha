@@ -12,6 +12,7 @@ using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Service.Credentials;
 using Sorcha.Wallet.Service.Models;
+using Sorcha.Wallet.Service.Services.Implementation;
 
 namespace Sorcha.Wallet.Service.Services;
 
@@ -158,13 +159,36 @@ public class PresentationRequestService : IPresentationRequestService
 
         foreach (var cred in credentials)
         {
+            // Stored ClaimsJson is consulted twice, for two different reasons:
+            //  1. Below, to detect a genuinely corrupt row (skip it) — a JSON parse
+            //     failure here means the row itself is unusable.
+            //  2. As the FALLBACK source of claim names when RawToken isn't a
+            //     decodable SD-JWT (mdoc/CBOR from Feature 185, a W3C JSON-LD VC, a
+            //     truncated token) — SdJwtClaimProjection.Project returns
+            //     SdJwtProjection.Empty ("{}") for those, and ParseClaims("{}")
+            //     returns an EMPTY dictionary, not null, so a naive `?? claims`
+            //     never fires (I3) and every requirement silently looks unmatched.
+            // When RawToken DOES decode, it is the source of truth: a credential
+            // ingested before the nested SD-JWT decoder fix can have a stale, badly
+            // flattened ClaimsJson (a nested claim like "town" leaked to the top
+            // level while its real parent "address" was left as a raw digest
+            // array). Matching claim names against that stale blob would report
+            // false-positive matches for claims the credential's real schema
+            // doesn't have at that path.
             var claims = ParseClaims(cred.ClaimsJson);
             if (claims == null) continue;
 
-            var disclosable = claims.Keys.ToArray();
+            var projection = SdJwtClaimProjection.Project(cred.RawToken);
+            var projectedClaims = ReferenceEquals(projection, SdJwtProjection.Empty)
+                ? claims
+                : ParseClaims(projection.ClaimsJson) ?? claims;
+
+            // Not claims.Keys — that declared EVERY claim disclosable, including the
+            // ones baked into the JWT body that always travel. The raw token knows.
+            var disclosable = projection.DisclosableClaims.ToArray();
             var requested = request.RequiredClaims?
                 .Select(c => c.ClaimName)
-                .Where(n => claims.ContainsKey(n))
+                .Where(n => projectedClaims.ContainsKey(n))
                 .ToArray() ?? [];
 
             result.Add(new MatchedCredentialInfo
@@ -435,6 +459,26 @@ public class PresentationRequestService : IPresentationRequestService
         // 8. Required claims verification.
         //    Feature 093 FR-003: claim values come from the verified token when available;
         //    otherwise (legacy fallback path only) they come from the server-side credential row.
+        //
+        //    Deliberately NOT routed through SdJwtClaimProjection(credential.RawToken), unlike
+        //    CredentialMatcher / FindMatchingCredentialsAsync. Two reasons:
+        //    1. This branch is unreachable today: verifiedTokenClaims comes from
+        //       VpTokenVerifyOutcome.Ok(verification.Claims, ...), and
+        //       SdJwtVerificationResult.Claims defaults to a non-null empty dictionary and is
+        //       only ever mutated (SdJwtService.VerifyTokenAsync), never reassigned to null —
+        //       so verifiedTokenClaims is never actually null on the success path this line
+        //       runs on. The ?? here is a defensive guard against a future/alternate
+        //       ISdJwtService implementation that violates that (implicit) contract.
+        //    2. If it WERE ever exercised, RawToken is the FULL, un-redacted credential (every
+        //       claim the issuer signed) — not the SUBSET the holder actually disclosed in
+        //       THIS vpToken. Substituting a projection of it here would let a degenerate
+        //       verifier response (IsValid=true, Claims=null) "verify" claims the holder never
+        //       disclosed in this presentation, which is a bypass of selective disclosure —
+        //       strictly worse than the current stale-ClaimsJson fallback, not better. The
+        //       stored ClaimsJson carries the same "full credential" shape, so swapping the
+        //       source here would not have closed a real gap; it would have added a plausible
+        //       route to one. Left unchanged — see final-fix-server-report.md for the full
+        //       writeup of this judgement call.
         var claimsSource = verifiedTokenClaims ?? ParseClaims(credential.ClaimsJson);
         var verifiedClaims = new Dictionary<string, object>();
 

@@ -535,7 +535,7 @@ public sealed class InboundCredentialDetector : IInboundCredentialDetector
         // (rawToken + issuerDid + subjectDid + …), which surfaced as garbage
         // claims like "rawToken: eyJh…" on the Pending card. Those envelope
         // fields are already top-level columns on CredentialEntity.
-        var claimsJson = ExtractDisclosedClaimsJson(rawToken!) ?? "{}";
+        var claimsJson = SdJwtClaimProjection.Project(rawToken).ClaimsJson;
 
         return new InboundCredentialExtract
         {
@@ -581,87 +581,4 @@ public sealed class InboundCredentialDetector : IInboundCredentialDetector
         }
     }
 
-    /// <summary>
-    /// Decode an SD-JWT VC into the flat claim dictionary the holder UI needs.
-    /// Reads always-disclosed claims from the JWT body and merges in
-    /// selectively-disclosed claims from each <c>~salt~</c> disclosure segment.
-    /// Skips signature verification — this projection is for *display* on the
-    /// Pending tab, before the holder has chosen to trust the issuer. Verification
-    /// runs on accept.
-    /// </summary>
-    /// <returns>JSON object string of flat claims, or null if the token is malformed.</returns>
-    internal static string? ExtractDisclosedClaimsJson(string rawToken)
-    {
-        if (string.IsNullOrWhiteSpace(rawToken)) return null;
-
-        try
-        {
-            // SD-JWT format: <header>.<body>.<signature>~<disclosure1>~<disclosure2>~...~[<kb-jwt>]
-            var segments = rawToken.Split('~');
-            var jwtParts = segments[0].Split('.');
-            if (jwtParts.Length < 2) return null;
-
-            var bodyBytes = DecodePayloadData(jwtParts[1]);
-            using var bodyDoc = JsonDocument.Parse(bodyBytes);
-
-            var claims = new Dictionary<string, object?>();
-
-            // Always-disclosed claims live in the JWT body. Skip SD-JWT/JWT
-            // protocol fields — they're not credential claims.
-            var skip = new HashSet<string>(StringComparer.Ordinal)
-            {
-                "iss", "sub", "iat", "exp", "nbf", "jti", "aud", "vct",
-                "_sd", "_sd_alg", "cnf", "credentialStatus", "type"
-            };
-            foreach (var prop in bodyDoc.RootElement.EnumerateObject())
-            {
-                if (skip.Contains(prop.Name)) continue;
-                claims[prop.Name] = JsonElementToValue(prop.Value);
-            }
-
-            // Selectively-disclosed claims: each disclosure is a base64url-encoded
-            // JSON array [salt, claimName, claimValue] (RFC 9901 §4.2.1).
-            for (var i = 1; i < segments.Length; i++)
-            {
-                var seg = segments[i];
-                if (string.IsNullOrEmpty(seg)) continue;
-                // The optional KB-JWT at the tail is a JWT (header.body.sig), not a
-                // disclosure — it has dots, real disclosures don't.
-                if (seg.Contains('.')) continue;
-
-                try
-                {
-                    var disclosureBytes = DecodePayloadData(seg);
-                    using var disclosureDoc = JsonDocument.Parse(disclosureBytes);
-                    if (disclosureDoc.RootElement.ValueKind != JsonValueKind.Array) continue;
-                    var arr = disclosureDoc.RootElement;
-                    if (arr.GetArrayLength() < 3) continue;
-                    var name = arr[1].GetString();
-                    if (string.IsNullOrEmpty(name)) continue;
-                    claims[name] = JsonElementToValue(arr[2]);
-                }
-                catch
-                {
-                    // Single bad disclosure shouldn't drop the whole credential —
-                    // skip it and continue with the rest.
-                }
-            }
-
-            return JsonSerializer.Serialize(claims, JsonOptions);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static object? JsonElementToValue(JsonElement el) => el.ValueKind switch
-    {
-        JsonValueKind.String => el.GetString(),
-        JsonValueKind.Number => el.TryGetInt64(out var i) ? i : el.GetDouble(),
-        JsonValueKind.True => true,
-        JsonValueKind.False => false,
-        JsonValueKind.Null => null,
-        _ => JsonSerializer.Deserialize<object?>(el.GetRawText(), JsonOptions)
-    };
 }

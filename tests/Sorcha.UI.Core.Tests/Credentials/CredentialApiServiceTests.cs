@@ -193,6 +193,79 @@ public class CredentialApiServiceTests
         result!.DisplayConfig.BackgroundColor.Should().Be("#1976D2"); // default
     }
 
+    [Fact]
+    public async Task GetCredentialDetailAsync_ObjectClaim_NeverRendersAsRawJson()
+    {
+        // The card path was fixed (StringifyClaimValue/SummariseObject), but the detail
+        // dialog is a second door onto the same claims: MapToDetailViewModel used to hand
+        // the raw Dictionary<string, object> straight to the view, and the Razor markup
+        // called @claim.Value?.ToString() — for a boxed JsonElement of ValueKind.Object,
+        // that returns GetRawText(), i.e. the exact `{"_sd":[...]}` blob that shipped to
+        // a citizen's phone on n1. DisplayClaims is the safe, pre-formatted surface.
+        var entity = new
+        {
+            id = "cred-1",
+            type = "AssuredIdentityCredential",
+            issuerDid = "did:sorcha:org:ws11q",
+            subjectDid = "did:sorcha:w:ws11q",
+            issuedAt = DateTimeOffset.UtcNow,
+            expiresAt = (DateTimeOffset?)null,
+            status = "Active",
+            claimsJson = "{\"address\":{\"_sd\":[\"zSH_kfTeW2Mlc\"]}}",
+            usagePolicy = "Reusable",
+            maxPresentations = (int?)null,
+            presentationCount = 0,
+            displayConfigJson = (string?)null,
+            statusListUrl = (string?)null,
+            issuanceBlueprintId = (string?)null
+        };
+
+        var service = CreateServiceReturning(JsonSerializer.Serialize(entity, JsonOptions));
+
+        var result = await service.GetCredentialDetailAsync("wallet-1", "cred-1");
+
+        result.Should().NotBeNull();
+        result!.DisplayClaims.Should().ContainKey("address");
+        result.DisplayClaims["address"].Should().NotContain("_sd");
+        result.DisplayClaims["address"].Should().NotStartWith("{");
+
+        // The raw Claims dictionary is still exposed unmodified — CredentialGatePanel
+        // needs the real values to build the disclosed-claims payload it submits.
+        result.Claims.Should().ContainKey("address");
+    }
+
+    [Fact]
+    public async Task GetCredentialDetailAsync_LegitimateNestedClaim_RendersStructurally()
+    {
+        // SC-1 also forbids the opposite failure mode: blanking every object claim.
+        // A genuine nested claim like address.town must still render usefully.
+        var entity = new
+        {
+            id = "cred-1",
+            type = "AssuredIdentityCredential",
+            issuerDid = "did:sorcha:org:ws11q",
+            subjectDid = "did:sorcha:w:ws11q",
+            issuedAt = DateTimeOffset.UtcNow,
+            expiresAt = (DateTimeOffset?)null,
+            status = "Active",
+            claimsJson = "{\"address\":{\"town\":\"Edinburgh\"}}",
+            usagePolicy = "Reusable",
+            maxPresentations = (int?)null,
+            presentationCount = 0,
+            displayConfigJson = (string?)null,
+            statusListUrl = (string?)null,
+            issuanceBlueprintId = (string?)null
+        };
+
+        var service = CreateServiceReturning(JsonSerializer.Serialize(entity, JsonOptions));
+
+        var result = await service.GetCredentialDetailAsync("wallet-1", "cred-1");
+
+        result.Should().NotBeNull();
+        result!.DisplayClaims["address"].Should().Contain("Edinburgh");
+        result.DisplayClaims["address"].Should().NotStartWith("{");
+    }
+
     private static CredentialApiService CreateServiceWithResponse(HttpStatusCode statusCode, string content)
     {
         var handlerMock = new Mock<HttpMessageHandler>();
@@ -213,5 +286,94 @@ public class CredentialApiServiceTests
         };
 
         return new CredentialApiService(httpClient, NullLogger<CredentialApiService>.Instance);
+    }
+
+    private static CredentialApiService CreateServiceReturning(string json) =>
+        CreateServiceWithResponse(HttpStatusCode.OK, json);
+
+    [Fact]
+    public async Task GetCredentialsAsync_PopulatesDisclosableClaimsFromResponse()
+    {
+        // The card's padlock is only meaningful if this survives the wire.
+        var json = """
+        [{
+          "id": "urn:credential:1", "type": "AssuredIdentityCredential",
+          "issuerDid": "did:sorcha:org:ws11q", "subjectDid": "did:sorcha:w:ws11q",
+          "status": "Active", "issuedAt": "2026-07-01T00:00:00Z",
+          "claimsJson": "{\"email\":\"a@b.c\",\"address\":{\"town\":\"Edinburgh\"}}",
+          "disclosableClaims": ["address"]
+        }]
+        """;
+        var service = CreateServiceReturning(json);
+
+        var result = await service.GetCredentialsAsync("ws11q");
+
+        result.Should().ContainSingle();
+        result[0].DisclosableClaims.Should().BeEquivalentTo(["address"]);
+    }
+
+    [Fact]
+    public async Task GetCredentialsAsync_ObjectClaim_NeverRendersAsRawJson()
+    {
+        // The n1 defect, guarded at the rendering layer: even if the server
+        // regressed and sent a digest array, no card may print raw JSON.
+        var json = """
+        [{
+          "id": "urn:credential:1", "type": "AssuredIdentityCredential",
+          "issuerDid": "did:sorcha:org:ws11q", "subjectDid": "did:sorcha:w:ws11q",
+          "status": "Active", "issuedAt": "2026-07-01T00:00:00Z",
+          "claimsJson": "{\"address\":{\"_sd\":[\"zSH_kfTeW2Mlc\"]}}",
+          "disclosableClaims": []
+        }]
+        """;
+        var service = CreateServiceReturning(json);
+
+        var result = await service.GetCredentialsAsync("ws11q");
+
+        foreach (var entry in result[0].HighlightClaims)
+        {
+            entry.Value.Should().NotContain("_sd");
+            entry.Value.Should().NotStartWith("{");
+        }
+    }
+
+    [Fact]
+    public async Task GetCredentialsAsync_BuildsClaimSummaryOfNamesNotValues()
+    {
+        var json = """
+        [{
+          "id": "urn:credential:1", "type": "AssuredIdentityCredential",
+          "issuerDid": "did:sorcha:org:ws11q", "subjectDid": "did:sorcha:w:ws11q",
+          "status": "Active", "issuedAt": "2026-07-01T00:00:00Z",
+          "claimsJson": "{\"email\":\"stuart@stuartfraser.net\",\"dateOfBirth\":\"1980-01-01\"}",
+          "disclosableClaims": ["email"]
+        }]
+        """;
+        var service = CreateServiceReturning(json);
+
+        var result = await service.GetCredentialsAsync("ws11q");
+
+        result[0].ClaimSummary.Should().Contain("Email");
+        result[0].ClaimSummary.Should().Contain("Date of birth");
+        result[0].ClaimSummary.Should().NotContain("stuart@stuartfraser.net", "a list must never print claim values");
+        result[0].ClaimSummary.Should().NotContain("1980");
+    }
+
+    [Fact]
+    public async Task GetCredentialsAsync_HumanisesTheCredentialType()
+    {
+        var json = """
+        [{
+          "id": "urn:credential:1", "type": "AssuredIdentityCredential",
+          "issuerDid": "did:sorcha:org:ws11q", "subjectDid": "did:sorcha:w:ws11q",
+          "status": "Active", "issuedAt": "2026-07-01T00:00:00Z",
+          "claimsJson": "{}", "disclosableClaims": []
+        }]
+        """;
+        var service = CreateServiceReturning(json);
+
+        var result = await service.GetCredentialsAsync("ws11q");
+
+        result[0].DisplayName.Should().Be("Assured Identity");
     }
 }

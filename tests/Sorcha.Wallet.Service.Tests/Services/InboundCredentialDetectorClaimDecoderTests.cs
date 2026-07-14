@@ -10,7 +10,7 @@ using Sorcha.Wallet.Service.Services.Implementation;
 namespace Sorcha.Wallet.Service.Tests.Services;
 
 /// <summary>
-/// Covers <see cref="InboundCredentialDetector.ExtractDisclosedClaimsJson"/> —
+/// Covers <see cref="SdJwtClaimProjection.Project"/> —
 /// the SD-JWT body + disclosure decoder that populates
 /// <c>CredentialEntity.ClaimsJson</c> when the wallet receives a
 /// PendingAcceptance row from the register-native delivery path.
@@ -45,7 +45,7 @@ public class InboundCredentialDetectorClaimDecoderTests
     [Fact]
     public void ExtractDisclosedClaimsJson_RealForestryDpp_ReturnsAllTwelveClaims()
     {
-        var json = InboundCredentialDetector.ExtractDisclosedClaimsJson(ForestryDppRawToken);
+        var json = SdJwtClaimProjection.Project(ForestryDppRawToken).ClaimsJson;
 
         json.Should().NotBeNull();
         using var doc = JsonDocument.Parse(json!);
@@ -71,7 +71,7 @@ public class InboundCredentialDetectorClaimDecoderTests
     [Fact]
     public void ExtractDisclosedClaimsJson_RealForestryDpp_StripsProtocolFields()
     {
-        var json = InboundCredentialDetector.ExtractDisclosedClaimsJson(ForestryDppRawToken);
+        var json = SdJwtClaimProjection.Project(ForestryDppRawToken).ClaimsJson;
 
         using var doc = JsonDocument.Parse(json!);
         var props = doc.RootElement.EnumerateObject().Select(p => p.Name).ToHashSet();
@@ -97,14 +97,9 @@ public class InboundCredentialDetectorClaimDecoderTests
     [InlineData("garbage~~tilde")]
     public void ExtractDisclosedClaimsJson_MalformedInput_ReturnsNullOrEmptyObject(string? input)
     {
-        var json = InboundCredentialDetector.ExtractDisclosedClaimsJson(input!);
+        var json = SdJwtClaimProjection.Project(input!).ClaimsJson;
 
-        // Null or empty-object both acceptable — caller falls back to "{}".
-        if (json is not null)
-        {
-            using var doc = JsonDocument.Parse(json);
-            doc.RootElement.EnumerateObject().Should().BeEmpty();
-        }
+        json.Should().Be("{}");
     }
 
     [Fact]
@@ -116,7 +111,7 @@ public class InboundCredentialDetectorClaimDecoderTests
             "WyIzV1RIWi1FQnNkN2puRjk5Tk1TcXV3Iiwic3BlY2llcyIsIlNpdGthIFNwcnVjZSJd",
             "this-is-not-base64url-at-all!!!");
 
-        var json = InboundCredentialDetector.ExtractDisclosedClaimsJson(corrupted);
+        var json = SdJwtClaimProjection.Project(corrupted).ClaimsJson;
 
         json.Should().NotBeNull();
         using var doc = JsonDocument.Parse(json!);

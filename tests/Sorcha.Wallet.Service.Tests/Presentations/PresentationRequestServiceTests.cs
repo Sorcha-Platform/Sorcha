@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Sorcha.Cryptography.SdJwt;
@@ -271,11 +273,17 @@ public class PresentationRequestServiceTests
         };
         var request = await _service.CreateRequestAsync(dto);
 
+        // DisclosableClaims is now derived from RawToken via SdJwtClaimProjection
+        // (Task 2), not from ClaimsJson.Keys — so the fixture needs a real SD-JWT
+        // with "class" and "permitNumber" as selectively disclosable, not the
+        // dummy CreateTestCredential default which projects to Empty.
+        var rawToken = BuildSdJwtWithDisclosableClaims(("class", "CategoryB"), ("permitNumber", "HSE-001"));
+
         _storeMock
             .Setup(s => s.MatchAsync("wallet-1", "ChemicalHandlingLicense", null, It.IsAny<CancellationToken>()))
             .ReturnsAsync([
                 CreateTestCredential("cred-1", "ChemicalHandlingLicense", "did:sorcha:w:hse",
-                    """{"class":"CategoryB","permitNumber":"HSE-001"}""")
+                    """{"class":"CategoryB","permitNumber":"HSE-001"}""", rawToken)
             ]);
 
         var matches = await _service.FindMatchingCredentialsAsync(request, "wallet-1");
@@ -284,6 +292,74 @@ public class PresentationRequestServiceTests
         matches[0].RequestedClaims.Should().Contain("class");
         matches[0].DisclosableClaims.Should().Contain("class");
         matches[0].DisclosableClaims.Should().Contain("permitNumber");
+    }
+
+    [Fact]
+    public async Task FindMatchingCredentialsAsync_StaleFlattenedStoredClaimsJson_DoesNotFalselyMatchLeakedTopLevelClaim()
+    {
+        // Guards the same class of defect as the n1 "_sd digest array" bug, one
+        // step further down the pipeline: a credential ingested BEFORE the nested
+        // SD-JWT decoder fix has a stored ClaimsJson where "town" (which really
+        // lives nested inside "address") leaked out as a flat TOP-LEVEL key. A
+        // verifier requesting "town" by name must NOT get a false-positive match
+        // just because the stale stored blob happens to carry that key — the raw
+        // token (correctly nested) is the source of truth for what the schema
+        // actually looks like.
+        var dto = new CreatePresentationRequestDto
+        {
+            CredentialType = "ChemicalHandlingLicense",
+            CallbackUrl = "https://example.com/callback",
+            RequiredClaims = [new ClaimConstraint { ClaimName = "town" }]
+        };
+        var request = await _service.CreateRequestAsync(dto);
+
+        var rawToken = BuildNestedAddressSdJwt();
+        var staleFlattenedClaimsJson =
+            """{"email":"stuart@stuartfraser.net","town":"Edinburgh","line1":"6/2 Warrender Park Terrace","address":{"_sd":["stale-digest"]}}""";
+
+        _storeMock
+            .Setup(s => s.MatchAsync("wallet-1", "ChemicalHandlingLicense", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                CreateTestCredential("cred-1", "ChemicalHandlingLicense", "did:sorcha:w:hse",
+                    staleFlattenedClaimsJson, rawToken)
+            ]);
+
+        var matches = await _service.FindMatchingCredentialsAsync(request, "wallet-1");
+
+        matches.Should().HaveCount(1);
+        // The real (raw-token-derived) schema has no top-level "town" — it's nested
+        // inside "address" — so the request for "town" must NOT be reported matched.
+        matches[0].RequestedClaims.Should().NotContain("town");
+    }
+
+    [Fact]
+    public async Task FindMatchingCredentialsAsync_NonSdJwtRawToken_RequestedClaims_FallsBackToStoredClaimsJson()
+    {
+        // I3: ParseClaims("{}") returns an EMPTY dictionary, not null — so the pre-fix
+        // `ParseClaims(projection.ClaimsJson) ?? claims` never falls back to the stored
+        // ClaimsJson when RawToken doesn't decode (mdoc/CBOR, W3C VC, truncated token —
+        // the CreateTestCredential dummy RawToken default stands in for all three). The
+        // credential's real "class" claim must still be reported as requested/matched.
+        var dto = new CreatePresentationRequestDto
+        {
+            CredentialType = "ChemicalHandlingLicense",
+            CallbackUrl = "https://example.com/callback",
+            RequiredClaims = [new ClaimConstraint { ClaimName = "class" }]
+        };
+        var request = await _service.CreateRequestAsync(dto);
+
+        _storeMock
+            .Setup(s => s.MatchAsync("wallet-1", "ChemicalHandlingLicense", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                CreateTestCredential("cred-1", "ChemicalHandlingLicense", "did:sorcha:w:hse",
+                    """{"class":"CategoryB","permitNumber":"HSE-001"}""")
+                // RawToken left at the dummy default — projects to Empty.
+            ]);
+
+        var matches = await _service.FindMatchingCredentialsAsync(request, "wallet-1");
+
+        matches.Should().HaveCount(1);
+        matches[0].RequestedClaims.Should().Contain("class");
     }
 
     [Fact]
@@ -505,6 +581,43 @@ public class PresentationRequestServiceTests
         _storeMock.Verify(
             s => s.RecordPresentationAsync("cred-1", It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task SubmitPresentationAsync_StaleFlattenedStoredClaimsJson_VerifiedTokenClaimsGovern_NotStaleBlob()
+    {
+        // C2 investigation lock-in: the ParseClaims(credential.ClaimsJson) fallback at the
+        // "8. Required claims verification" step is reached only when verifiedTokenClaims is
+        // null — which SdJwtVerificationResult.Claims (defaulting to a non-null empty dict,
+        // only ever mutated) never actually is. This test proves the LIVE path: even with a
+        // stale, badly-flattened stored ClaimsJson (the same "town leaked out of address"
+        // defect CredentialMatcher had), the verifier's decision is governed entirely by the
+        // cryptographically verified token claims — never by the stale row — so requesting
+        // "town" (which the real, correctly-nested token does NOT disclose at top level)
+        // correctly denies.
+        SetupVerifierClaims(new Dictionary<string, object>());
+
+        var dto = new CreatePresentationRequestDto
+        {
+            CredentialType = "ChemicalHandlingLicense",
+            CallbackUrl = "https://example.com/callback",
+            RequiredClaims = [new ClaimConstraint { ClaimName = "town" }]
+        };
+        var request = await _service.CreateRequestAsync(dto);
+
+        var cred = CreateTestCredential("cred-1", "ChemicalHandlingLicense", "did:sorcha:w:hse",
+            """{"email":"stuart@stuartfraser.net","town":"Edinburgh","line1":"6/2 Warrender Park Terrace","address":{"_sd":["stale-digest"]}}""");
+
+        _storeMock
+            .Setup(s => s.GetByIdAsync("cred-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(cred);
+
+        var result = await _service.SubmitPresentationAsync(request.Id, "cred-1", [], "vp-token");
+
+        result.Status.Should().Be(PresentationStatus.Denied);
+
+        var verification = JsonSerializer.Deserialize<VerificationResult>(result.VerificationResult!);
+        verification!.Errors.Should().Contain(e => e.FailureReason == "MissingClaim");
     }
 
     [Fact]
@@ -793,7 +906,7 @@ public class PresentationRequestServiceTests
     };
 
     private static CredentialEntity CreateTestCredential(
-        string id, string type, string issuerDid, string? claimsJson = null) => new()
+        string id, string type, string issuerDid, string? claimsJson = null, string? rawToken = null) => new()
     {
         Id = id,
         Type = type,
@@ -801,9 +914,79 @@ public class PresentationRequestServiceTests
         SubjectDid = "did:sorcha:w:holder-1",
         WalletAddress = "wallet-1",
         ClaimsJson = claimsJson ?? """{"class":"CategoryB","permitNumber":"HSE-2026-001"}""",
-        RawToken = "eyJhbGciOiJFZERTQSJ9.test",
+        // Not a real SD-JWT — fine for every test except DisclosableClaims
+        // assertions, which need SdJwtClaimProjection.Project to succeed and
+        // therefore must pass an explicit rawToken (see
+        // BuildSdJwtWithDisclosableClaims below).
+        RawToken = rawToken ?? "eyJhbGciOiJFZERTQSJ9.test",
         Status = CredentialStatus.Active,
         IssuedAt = DateTimeOffset.UtcNow.AddDays(-30),
         CreatedAt = DateTimeOffset.UtcNow.AddDays(-30)
     };
+
+    // --- Minimal SD-JWT construction (RFC 9901 §4.2.1) for DisclosableClaims tests ---
+
+    private static string B64Url(byte[] bytes) =>
+        Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    private static string Disclosure(string salt, string name, object value)
+    {
+        var json = JsonSerializer.Serialize(new object[] { salt, name, value });
+        return B64Url(Encoding.UTF8.GetBytes(json));
+    }
+
+    private static string Digest(string disclosure) =>
+        B64Url(SHA256.HashData(Encoding.ASCII.GetBytes(disclosure)));
+
+    /// <summary>
+    /// Builds a compact SD-JWT whose body has an <c>_sd</c> digest for each
+    /// (name, value) pair — i.e. every named claim is selectively disclosable —
+    /// so <see cref="Sorcha.Wallet.Service.Services.Implementation.SdJwtClaimProjection"/>
+    /// reports it in <c>DisclosableClaims</c>.
+    /// </summary>
+    private static string BuildSdJwtWithDisclosableClaims(params (string Name, object Value)[] claims)
+    {
+        var disclosures = claims
+            .Select((c, i) => Disclosure($"salt{i}", c.Name, c.Value))
+            .ToArray();
+
+        var header = B64Url(Encoding.UTF8.GetBytes("""{"alg":"ES256","typ":"dc+sd-jwt"}"""));
+        var body = new Dictionary<string, object>
+        {
+            ["vct"] = "https://sorcha.dev/vc/test/v1",
+            ["iss"] = "did:sorcha:w:hse",
+            ["_sd"] = disclosures.Select(Digest).ToArray()
+        };
+        var payload = B64Url(JsonSerializer.SerializeToUtf8Bytes(body));
+        var jwt = $"{header}.{payload}.c2ln"; // signature is never verified on this path
+
+        return jwt + "~" + string.Join("~", disclosures);
+    }
+
+    /// <summary>
+    /// Builds a compact SD-JWT with a NESTED disclosure for "address" (town +
+    /// line1 individually disclosable children) — the shape that a pre-fix
+    /// decoder (top-level-only _sd resolution) mangled, leaving "address" as a
+    /// raw digest array while its children leaked out as flat top-level claims.
+    /// </summary>
+    private static string BuildNestedAddressSdJwt()
+    {
+        var town = Disclosure("s1", "town", "Edinburgh");
+        var line1 = Disclosure("s2", "line1", "6/2 Warrender Park Terrace");
+        var header = B64Url(Encoding.UTF8.GetBytes("""{"alg":"ES256","typ":"dc+sd-jwt"}"""));
+        var body = new Dictionary<string, object>
+        {
+            ["vct"] = "https://sorcha.dev/vc/test/v1",
+            ["iss"] = "did:sorcha:w:hse",
+            ["email"] = "stuart@stuartfraser.net",
+            ["address"] = new Dictionary<string, object>
+            {
+                ["_sd"] = new[] { Digest(town), Digest(line1) }
+            }
+        };
+        var payload = B64Url(JsonSerializer.SerializeToUtf8Bytes(body));
+        var jwt = $"{header}.{payload}.c2ln";
+
+        return jwt + "~" + town + "~" + line1;
+    }
 }

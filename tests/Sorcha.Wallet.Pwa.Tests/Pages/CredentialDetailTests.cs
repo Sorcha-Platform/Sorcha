@@ -4,6 +4,8 @@
 using System;
 using System.Buffers.Text;
 using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -45,12 +47,25 @@ public sealed class CredentialDetailTests : ComponentTestFixture
     private static string Disclosure(string name, string value) =>
         Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(new[] { "salt", name, value }));
 
+    /// <summary>The digest of a disclosure as it appears in an <c>_sd</c> array: base64url(SHA256(ascii(disclosure))).</summary>
+    private static string Digest(string disclosure) =>
+        Base64Url.EncodeToString(SHA256.HashData(Encoding.ASCII.GetBytes(disclosure)));
+
     private static CachedCredential CredWithClaims(Guid id)
     {
         var exp = DateTimeOffset.UtcNow.AddDays(90).ToUnixTimeSeconds();
+        var givenName = Disclosure("given_name", "Ada");
+        var familyName = Disclosure("family_name", "Lovelace");
+        // The digests must appear in the body's _sd array — that is what makes these
+        // valid (resolvable) disclosures rather than orphan segments a real SD-JWT
+        // reader would ignore.
         var jwt = "eyJhbGciOiJFUzI1NiJ9." +
-                  Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(new { exp })) + ".sig";
-        var raw = jwt + "~" + Disclosure("given_name", "Ada") + "~" + Disclosure("family_name", "Lovelace") + "~";
+                  Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(new
+                  {
+                      exp,
+                      _sd = new[] { Digest(givenName), Digest(familyName) }
+                  })) + ".sig";
+        var raw = jwt + "~" + givenName + "~" + familyName + "~";
         return new CachedCredential
         {
             Id = id,

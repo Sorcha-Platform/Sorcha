@@ -116,54 +116,6 @@ public class CredentialApiService : ICredentialApiService
     }
 
     /// <inheritdoc/>
-    public async Task<List<PresentationRequestViewModel>> GetPresentationRequestsAsync(
-        string walletAddress, CancellationToken ct = default)
-    {
-        try
-        {
-            var response = await _httpClient.GetAsync(
-                $"/api/v1/presentations?wallet={walletAddress}", ct);
-
-            if (!response.IsSuccessStatusCode)
-                return [];
-
-            var requests = await response.Content
-                .ReadFromJsonAsync<List<PresentationRequestItem>>(JsonOptions, ct);
-
-            return requests?.Select(MapToPresentationViewModel).ToList() ?? [];
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogWarning(ex, "Failed to fetch presentation requests for wallet {WalletAddress}", walletAddress);
-            return [];
-        }
-    }
-
-    /// <inheritdoc/>
-    public async Task<PresentationRequestViewModel?> GetPresentationRequestDetailAsync(
-        string requestId, CancellationToken ct = default)
-    {
-        try
-        {
-            var response = await _httpClient.GetAsync(
-                $"/api/v1/presentations/{requestId}", ct);
-
-            if (!response.IsSuccessStatusCode)
-                return null;
-
-            var request = await response.Content
-                .ReadFromJsonAsync<PresentationRequestItem>(JsonOptions, ct);
-
-            return request == null ? null : MapToPresentationViewModel(request);
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogWarning(ex, "Failed to fetch presentation request {RequestId}", requestId);
-            return null;
-        }
-    }
-
-    /// <inheritdoc/>
     public async Task<PresentationSubmitResult> SubmitPresentationAsync(
         string requestId, string credentialId, List<string> disclosedClaims,
         string vpToken, CancellationToken ct = default)
@@ -276,28 +228,6 @@ public class CredentialApiService : ICredentialApiService
         }
     }
 
-    private static PresentationRequestViewModel MapToPresentationViewModel(PresentationRequestItem item)
-    {
-        return new PresentationRequestViewModel
-        {
-            RequestId = item.RequestId ?? string.Empty,
-            VerifierIdentity = item.VerifierIdentity ?? "Unknown Verifier",
-            CredentialType = item.CredentialType ?? string.Empty,
-            RequestedClaims = item.RequiredClaims ?? [],
-            ExpiresAt = item.ExpiresAt,
-            Status = item.Status ?? "Pending",
-            Nonce = item.Nonce,
-            MatchingCredentials = item.MatchingCredentials?.Select(m => new MatchingCredentialViewModel
-            {
-                CredentialId = m.CredentialId ?? string.Empty,
-                Type = m.Type ?? string.Empty,
-                IssuerDid = m.IssuerDid ?? string.Empty,
-                AvailableClaims = m.AvailableClaims ?? [],
-                ExpiresAt = m.ExpiresAt
-            }).ToList() ?? []
-        };
-    }
-
     private static CredentialCardViewModel MapToCardViewModel(CredentialListItem item)
     {
         var displayConfig = ParseDisplayConfig(item.DisplayConfigJson);
@@ -322,6 +252,9 @@ public class CredentialApiService : ICredentialApiService
             RegisterId = item.RegisterId,
             DisplayConfig = displayConfig,
             HighlightClaims = BuildHighlightClaims(claims, displayConfig),
+            DisclosableClaims = item.DisclosableClaims ?? [],
+            DisplayName = Humanise(item.Type),
+            ClaimSummary = BuildClaimSummary(claims),
             // Feature 106 — rows with the new PendingAcceptance status flow into
             // the MyCredentials PENDING tab via CredentialCardViewModel.IsPending.
             IsPending = string.Equals(item.Status, CredentialStatus.PendingAcceptance, StringComparison.Ordinal),
@@ -332,13 +265,56 @@ public class CredentialApiService : ICredentialApiService
     }
 
     /// <summary>
+    /// "AssuredIdentityCredential" → "Assured Identity". Splits PascalCase and drops
+    /// the redundant "Credential" suffix — every card on the page is a credential.
+    /// </summary>
+    private static string Humanise(string? type)
+    {
+        if (string.IsNullOrWhiteSpace(type)) return string.Empty;
+
+        var trimmed = type.EndsWith("Credential", StringComparison.Ordinal) && type.Length > "Credential".Length
+            ? type[..^"Credential".Length]
+            : type;
+
+        var spaced = System.Text.RegularExpressions.Regex.Replace(
+            trimmed, "(?<=[a-z0-9])(?=[A-Z])", " ");
+
+        return spaced.Length == 0 ? type : char.ToUpperInvariant(spaced[0]) + spaced[1..];
+    }
+
+    /// <summary>
+    /// A single line naming what the credential holds — names only, never values.
+    /// Caps at four names so a fat credential cannot blow the card open.
+    /// </summary>
+    private static string BuildClaimSummary(IReadOnlyDictionary<string, object?> claims)
+    {
+        var names = claims.Keys
+            .Where(k => !k.StartsWith('_'))
+            .Select(CredentialClaimDisplayFormatter.HumaniseClaimName)
+            .ToList();
+
+        if (names.Count == 0) return string.Empty;
+        if (names.Count <= 4) return string.Join(", ", names);
+
+        return string.Join(", ", names.Take(4)) + $" and {names.Count - 4} more";
+    }
+
+    /// <summary>
     /// Resolve the claims map to display on a card. Honours
     /// <c>displayConfig.highlightClaims</c> (key = JSON pointer, value = display
     /// label) when the issuer specified one; otherwise falls back to the first
     /// six claim entries with their raw keys so credentials without an explicit
     /// display contract still render meaningfully.
+    /// <para>
+    /// Each entry carries both the display label and the underlying claim name (the
+    /// pointer's first segment) — the card's padlock resolves disclosability against
+    /// the claim name, never the label. Keying a flat dictionary by label (the
+    /// previous shape) made <c>DisclosableClaims.Contains(label)</c> false for every
+    /// issuer that actually used <c>highlightClaims</c>, so every claim rendered
+    /// "Always disclosed" regardless of who controlled it.
+    /// </para>
     /// </summary>
-    private static Dictionary<string, string> BuildHighlightClaims(
+    private static List<HighlightClaimEntry> BuildHighlightClaims(
         IReadOnlyDictionary<string, object?> claims,
         CredentialDisplayViewModel displayConfig)
     {
@@ -346,20 +322,33 @@ public class CredentialApiService : ICredentialApiService
 
         if (displayConfig.HighlightClaims is { Count: > 0 })
         {
-            var result = new Dictionary<string, string>();
+            var result = new List<HighlightClaimEntry>();
             foreach (var (pointer, label) in displayConfig.HighlightClaims)
             {
                 var value = ResolveJsonPointer(claims, pointer);
                 if (value is null) continue;
-                result[label] = value;
+                result.Add(new HighlightClaimEntry(ClaimNameFromPointer(pointer), label, value));
             }
             if (result.Count > 0) return result;
         }
 
         return claims
-            .Where(kvp => kvp.Value is not null)
+            .Where(kvp => kvp.Value is not null && !kvp.Key.StartsWith('_'))
             .Take(6)
-            .ToDictionary(kvp => kvp.Key, kvp => StringifyClaimValue(kvp.Value));
+            .Select(kvp => new HighlightClaimEntry(kvp.Key, kvp.Key, StringifyClaimValue(kvp.Value)))
+            .ToList();
+    }
+
+    /// <summary>
+    /// The claim name a JSON Pointer (or bare key) is rooted at — <c>/address/town</c>
+    /// and <c>address</c> both resolve to <c>address</c>, which is the identifier
+    /// <see cref="CredentialCardViewModel.DisclosableClaims"/> is expressed in.
+    /// </summary>
+    private static string ClaimNameFromPointer(string pointer)
+    {
+        var path = pointer.StartsWith('/') ? pointer[1..] : pointer;
+        var slash = path.IndexOf('/');
+        return slash < 0 ? path : path[..slash];
     }
 
     private static Dictionary<string, object?> ParseClaims(string? claimsJson)
@@ -414,6 +403,12 @@ public class CredentialApiService : ICredentialApiService
         return StringifyClaimValue(cursor);
     }
 
+    /// <summary>
+    /// Renders a claim value for display. An object or array NEVER renders as raw
+    /// JSON — that is how an unresolved SD-JWT digest array reached a citizen's
+    /// card on n1. The server should not send one, and this layer must not be
+    /// capable of printing it if it does.
+    /// </summary>
     private static string StringifyClaimValue(object? value) => value switch
     {
         null => string.Empty,
@@ -424,10 +419,26 @@ public class CredentialApiService : ICredentialApiService
             JsonValueKind.Number => el.ToString(),
             JsonValueKind.True or JsonValueKind.False => el.GetBoolean().ToString(),
             JsonValueKind.Null => string.Empty,
-            _ => el.GetRawText()
+            JsonValueKind.Object => SummariseObject(el),
+            JsonValueKind.Array => $"{el.GetArrayLength()} item{(el.GetArrayLength() == 1 ? "" : "s")}",
+            _ => string.Empty
         },
         _ => value.ToString() ?? string.Empty
     };
+
+    /// <summary>
+    /// A nested object renders as its field names, not its JSON. Protocol keys are
+    /// dropped so a stray digest array degrades to an empty string, never a blob.
+    /// </summary>
+    private static string SummariseObject(JsonElement el)
+    {
+        var fields = el.EnumerateObject()
+            .Where(p => !p.Name.StartsWith('_'))
+            .Select(p => p.Name)
+            .ToList();
+
+        return fields.Count == 0 ? string.Empty : string.Join(", ", fields);
+    }
 
     private static CredentialDetailViewModel MapToDetailViewModel(CredentialDetailResponse entity)
     {
@@ -475,11 +486,26 @@ public class CredentialApiService : ICredentialApiService
             MaxPresentations = entity.MaxPresentations,
             PresentationCount = entity.PresentationCount,
             Claims = claims,
+            DisplayClaims = BuildDisplayClaims(claims),
             DisplayConfig = displayConfig,
             StatusListUrl = entity.StatusListUrl,
             IssuanceBlueprintId = entity.IssuanceBlueprintId
         };
     }
+
+    /// <summary>
+    /// The detail-dialog counterpart of <see cref="BuildHighlightClaims"/>. Every claim gets
+    /// a safe display string — protocol keys (top-level and nested) are dropped, and nested
+    /// objects render as structural name/value pairs rather than raw JSON. This is the fix
+    /// for the second door onto the n1 `{"_sd":[...]}` leak: <c>MapToDetailViewModel</c> used
+    /// to hand the raw <see cref="Dictionary{TKey,TValue}"/> straight to the view, and the
+    /// Razor markup called <c>@claim.Value?.ToString()</c> — for a boxed <see cref="JsonElement"/>
+    /// of <see cref="JsonValueKind.Object"/> that returns <c>GetRawText()</c>. Delegates to
+    /// <see cref="CredentialClaimDisplayFormatter"/> — the same formatter <see cref="CredentialIdCard"/>
+    /// uses for the ID-card face, so there is one safe-rendering implementation, not two.
+    /// </summary>
+    private static Dictionary<string, string> BuildDisplayClaims(IReadOnlyDictionary<string, object> claims)
+        => CredentialClaimDisplayFormatter.BuildDisplayClaims(claims);
 
     private static string ExtractIssuerName(string? issuerDid)
     {
@@ -533,6 +559,9 @@ public class CredentialApiService : ICredentialApiService
         public string? ClaimsJson { get; set; }
         public string? DisplayConfigJson { get; set; }
         public string? UsagePolicy { get; set; }
+
+        /// <summary>Claims the holder may withhold when presenting. Server-derived from the raw token.</summary>
+        public List<string>? DisclosableClaims { get; set; }
     }
 
     private class CredentialDetailResponse
@@ -551,27 +580,6 @@ public class CredentialApiService : ICredentialApiService
         public string? DisplayConfigJson { get; set; }
         public string? StatusListUrl { get; set; }
         public string? IssuanceBlueprintId { get; set; }
-    }
-
-    private class PresentationRequestItem
-    {
-        public string? RequestId { get; set; }
-        public string? VerifierIdentity { get; set; }
-        public string? CredentialType { get; set; }
-        public List<string>? RequiredClaims { get; set; }
-        public DateTimeOffset ExpiresAt { get; set; }
-        public string? Status { get; set; }
-        public string? Nonce { get; set; }
-        public List<MatchingCredentialItem>? MatchingCredentials { get; set; }
-    }
-
-    private class MatchingCredentialItem
-    {
-        public string? CredentialId { get; set; }
-        public string? Type { get; set; }
-        public string? IssuerDid { get; set; }
-        public List<string>? AvailableClaims { get; set; }
-        public DateTimeOffset? ExpiresAt { get; set; }
     }
 
     /// <inheritdoc/>

@@ -5,6 +5,7 @@ using System.Text.Json;
 using Sorcha.Blueprint.Models.Credentials;
 using Sorcha.ServiceClients.Did;
 using Sorcha.Wallet.Core.Domain.Entities;
+using Sorcha.Wallet.Service.Services.Implementation;
 
 namespace Sorcha.Wallet.Service.Credentials;
 
@@ -80,7 +81,7 @@ public class CredentialMatcher
             // Claim constraints check
             if (requirement.RequiredClaims?.Any() == true)
             {
-                var claims = ParseClaims(credential.ClaimsJson);
+                var claims = ResolveClaims(credential);
                 if (claims == null)
                     continue;
 
@@ -153,7 +154,7 @@ public class CredentialMatcher
 
                 if (requirement.RequiredClaims?.Any() == true)
                 {
-                    var claims = ParseClaims(credential.ClaimsJson);
+                    var claims = ResolveClaims(credential);
                     if (claims is null) continue;
 
                     var claimsMatch = true;
@@ -178,6 +179,32 @@ public class CredentialMatcher
             result[requirement.Type] = match;
         }
         return result;
+    }
+
+    /// <summary>
+    /// Resolves the claim set to gate a credential requirement against.
+    /// <see cref="CredentialEntity.RawToken"/> is the source of truth — a credential
+    /// ingested before the nested SD-JWT decoder fix can have a stale, badly
+    /// flattened <see cref="CredentialEntity.ClaimsJson"/> (e.g. a nested claim like
+    /// "town" leaked to the top level while its real parent "address" was left as a
+    /// raw <c>_sd</c> digest array). Matching claim names against that stale blob
+    /// reports false-positive matches for claims the credential's real schema
+    /// doesn't have at that top-level path. Only fall back to the stored
+    /// <see cref="CredentialEntity.ClaimsJson"/> when RawToken genuinely isn't a
+    /// decodable SD-JWT (mdoc/CBOR, W3C JSON-LD VC, truncated token) — the same
+    /// heal-on-read discipline as <c>CredentialEndpoints</c>.
+    /// </summary>
+    private static Dictionary<string, object>? ResolveClaims(CredentialEntity credential)
+    {
+        var projection = SdJwtClaimProjection.Project(credential.RawToken);
+        if (!ReferenceEquals(projection, SdJwtProjection.Empty))
+        {
+            var projected = ParseClaims(projection.ClaimsJson);
+            if (projected != null)
+                return projected;
+        }
+
+        return ParseClaims(credential.ClaimsJson);
     }
 
     private static Dictionary<string, object>? ParseClaims(string claimsJson)
