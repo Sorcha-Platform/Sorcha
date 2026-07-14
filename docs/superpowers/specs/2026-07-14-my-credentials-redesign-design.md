@@ -180,15 +180,27 @@ server-side writer would light up both when we do take this on.
 
 ---
 
-## 7. Scope boundary — the Wallet PWA
+## 7. The Wallet PWA — in scope
 
 The PWA has its **own** credential list (`Pages/Cards.razor`, `Services/SdJwtReader.cs`) sharing no
-code with the web page. Its local reader has the same flat-only limitation.
+code with the web page. `SdJwtReader.ReadDisclosedClaims` (`:28–60`) reads **only** the disclosure
+segments, never the JWT body — so it will not print `{"_sd":…}` for `address`. But it has the same
+flat-only limitation, and `JsonValueToString` (`:87–95`) dumps an object-valued disclosure as raw
+JSON. A credential read straight from the raw token **on-device** therefore still renders a nested
+object badly.
 
-**In scope:** the server-side `ClaimsJson` fix (§4), which the PWA inherits for free on synced
-credentials.
-**Not in scope:** the PWA's local `SdJwtReader` nested-disclosure handling, and any unification of
-the two list UIs. Noted as a known gap.
+This matters because **the PWA is the device in the two-device proximity run**. So it is in scope:
+
+- `SdJwtReader` handles **nested** disclosures — reconstructing the parent object rather than
+  emitting the children as top-level names.
+- `JsonValueToString` never dumps raw JSON; an object value renders structurally.
+- Covered by `tests/Sorcha.Wallet.Pwa.Tests/Services/SdJwtReaderTests.cs` with a nested case.
+
+The PWA credential UI has **no padlock icons** (verified) — the lock-icon correctness fix (§5) is
+web-only. It has no Inbox tab either; the page restructure (§3) is web-only.
+
+**Still not in scope:** unifying the PWA and web list UIs into one shared component. That is a
+worthwhile de-duplication and a separate piece of work.
 
 ---
 
@@ -207,6 +219,7 @@ There are currently **no bUnit tests for `MyCredentials.razor`, `CredentialAccep
 | bUnit — page bands | Empty bands are omitted; Expired + Revoked both land in Archive; Archive is collapsed by default. |
 | bUnit — Active card | Summary line contains claim **names** and **no claim values**. |
 | bUnit — offer card | Claim detail expanded; padlock reflects `DisclosableClaims` (locks are truthful). |
+| PWA `SdJwtReaderTests` — nested case | A nested disclosure reconstructs its parent object; an object value never renders as raw JSON on-device. |
 
 ---
 
@@ -226,6 +239,9 @@ There are currently **no bUnit tests for `MyCredentials.razor`, `CredentialAccep
 **Web page**
 - `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyCredentials.razor` — remove `MudTabs`, three bands, collapsed Archive
 
+**Wallet PWA**
+- `src/Apps/Sorcha.Wallet.Pwa/Services/SdJwtReader.cs` — nested-disclosure reconstruction; no raw-JSON stringification
+
 **Tests** — as §8.
 
 ---
@@ -237,3 +253,4 @@ There are currently **no bUnit tests for `MyCredentials.razor`, `CredentialAccep
 - **SC-3** The page has no tabs. Expired and Revoked appear together in a collapsed Archive, each carrying its reason.
 - **SC-4** The Active list at rest exposes **no claim values**.
 - **SC-5** Empty bands are absent, not empty-stated. A holder with one active credential and nothing pending sees exactly one band.
+- **SC-6** SC-1 holds on the **PWA** too, for a credential read straight from its raw token on-device — the surface used in the two-device proximity run.
