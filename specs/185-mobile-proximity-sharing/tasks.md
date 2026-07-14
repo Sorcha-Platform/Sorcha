@@ -120,22 +120,22 @@ these plugin tasks** (T038–T044).
 
 ### The second device key (research R-002)
 
-- [ ] T045 [US2] Extend `src/Apps/Sorcha.Wallet.Pwa/wwwroot/js/webcrypto-bridge.js` with `generateEcdhP256` / `deriveBits` / `getEcdhPublicJwk`, keyed separately from the existing ECDSA key.
-- [ ] T046 [US2] Extend `IDeviceKeyService` / `WebCryptoDeviceKeyService` with the ECDH key. **Both keys remain non-extractable.** The existing ECDSA key and the SD-JWT KB-JWT path are **untouched** (SC-010).
-- [ ] T047 [P] [US2] Write `tests/Sorcha.Wallet.Pwa.Tests/Services/DeviceKeyServiceTests.cs` — assert the two keys are distinct, that the ECDH key cannot sign and the ECDSA key cannot derive, and that neither is extractable.
+- [x] T045 [US2] Extend `src/Apps/Sorcha.Wallet.Pwa/wwwroot/js/webcrypto-bridge.js` with `generateEcdhP256` / `deriveBits` / `getEcdhPublicJwk`, keyed separately from the existing ECDSA key.
+- [x] T046 [US2] Extend `IDeviceKeyService` / `WebCryptoDeviceKeyService` with the ECDH key. **Both keys remain non-extractable.** The existing ECDSA key and the SD-JWT KB-JWT path are **untouched** (SC-010).
+- [x] T047 [P] [US2] Write `tests/Sorcha.Wallet.Pwa.Tests/Services/DeviceKeyServiceTests.cs` — assert the two keys are distinct, that the ECDH key cannot sign and the ECDSA key cannot derive, and that neither is extractable.
 
 ### Wallet mdoc rail
 
-- [ ] T048 [US2] Extend the IndexedDB credential cache with `Format` / `DocType` / `IssuerSignedCbor` (data-model §3a). **Preserve the evict-and-continue rule** on undecryptable rows — a bad row must never abort the listing (this has already broken sync once).
-- [ ] T049 [US2] Implement `src/Apps/Sorcha.Wallet.Pwa/Services/Proximity/ProximityPresentationService.cs` — composes `ProximityHolderSession` + `CapacitorProximityTransport` + the credential cache + the device keys.
+- [x] T048 [US2] Extend the IndexedDB credential cache with `Format` / `DocType` / `IssuerSignedCbor` (data-model §3a). **Preserve the evict-and-continue rule** on undecryptable rows — a bad row must never abort the listing (this has already broken sync once).
+- [x] T049 [US2] Implement `src/Apps/Sorcha.Wallet.Pwa/Services/Proximity/ProximityPresentationService.cs` — composes `ProximityHolderSession` + `CapacitorProximityTransport` + the credential cache + the device keys.
 
 ### UI (FR-017 — ordinary surfaces, not a developer route)
 
-- [ ] T050 [US2] Implement `src/Apps/Sorcha.Wallet.Pwa/Pages/PresentProximity.razor` — engagement QR, honest connection state, and a completion beat.
-- [ ] T051 [US2] Extend `ConsentSheet` to render mdoc namespace→element asks **and the `intentToRetain` flag** beside the existing SD-JWT claim asks. `intentToRetain` is a real disclosure the citizen is entitled to see (FR-009).
-- [ ] T052 [P] [US2] Add a "Share in person" action to the credential detail view **and** the present surface, gated on `ProbeAsync().Supported` so it is hidden — not broken — where unsupported (FR-017 / FR-020).
-- [ ] T053 [P] [US2] Record completed in-person shares in the existing presentation log with a channel discriminator so they are distinguishable from online presentations (FR-019). Disclosed claim **names** only, never values — the rule the log already follows.
-- [ ] T054 [P] [US2] Write bUnit tests in `tests/Sorcha.Wallet.Pwa.Tests/` — the affordance is hidden when unsupported; declining discloses nothing (US2 scenario 3); every requested element and its retain flag is shown before approval (US2 scenario 2).
+- [x] T050 [US2] Implement `src/Apps/Sorcha.Wallet.Pwa/Pages/PresentProximity.razor` — engagement QR, honest connection state, and a completion beat.
+- [x] T051 [US2] Extend `ConsentSheet` to render mdoc namespace→element asks **and the `intentToRetain` flag** beside the existing SD-JWT claim asks. `intentToRetain` is a real disclosure the citizen is entitled to see (FR-009).
+- [x] T052 [P] [US2] Add a "Share in person" action to the credential detail view **and** the present surface, gated on `ProbeAsync().Supported` so it is hidden — not broken — where unsupported (FR-017 / FR-020).
+- [x] T053 [P] [US2] Record completed in-person shares in the existing presentation log with a channel discriminator so they are distinguishable from online presentations (FR-019). Disclosed claim **names** only, never values — the rule the log already follows.
+- [x] T054 [P] [US2] Write bUnit tests in `tests/Sorcha.Wallet.Pwa.Tests/` — the affordance is hidden when unsupported; declining discloses nothing (US2 scenario 3); every requested element and its retain flag is shown before approval (US2 scenario 2).
 
 **Checkpoint**: a citizen can share in person, offline, from the wallet's ordinary surfaces.
 
@@ -149,14 +149,14 @@ these plugin tasks** (T038–T044).
 
 **Depends on**: US1 (protocol) and the US2 plugin tasks T038–T044.
 
-- [ ] T055 [US3] Create `src/Apps/Sorcha.Verifier.Pwa/` — a Blazor **WASM** host referencing `Sorcha.Verifier.Engine` (already WASM-safe) + `Sorcha.Mdoc` + `Sorcha.Proximity.Abstractions`. **This is F155's deferred "path B"**, which this feature makes due.
-- [ ] T056 [US3] Add mdoc verification to `Sorcha.Verifier.Engine` — dispatch by format so the engine answers both `mso_mdoc` and `dc+sd-jwt`. It is SD-JWT-only today.
-- [ ] T057 [US3] Implement the reader-side `CapacitorProximityTransport` (central role) in `Sorcha.Verifier.Pwa`, reusing the same plugin.
-- [ ] T058 [US3] Implement `Pages/Read.razor` — QR scan → engagement → connect → request → response, driven by `ProximityReaderSession`.
-- [ ] T059 [US3] Implement `Pages/Verdict.razor` — the four-layer trail. **`RegisterAnchor` must render as "not checked" — never as passed, never as failed** (FR-014 / SC-007). Show disclosed values and make clear that others were withheld (FR-016).
-- [ ] T060 [P] [US3] Implement the "what do you need to know?" first screen, reusing the F155 `QuestionPresets` shape (FR-018).
-- [ ] T061 [US3] Create the `mobile/verifier` Capacitor target (new bundle id), wire in the plugin, add BLE permissions to both platform manifests.
-- [ ] T062 [P] [US3] Write bUnit tests asserting a skipped layer is **never** rendered as passed (SC-007 — the specific dishonesty this feature must not commit).
+- [x] T055 [US3] Create `src/Apps/Sorcha.Verifier.Pwa/` — a Blazor **WASM** host referencing `Sorcha.Verifier.Engine` (already WASM-safe) + `Sorcha.Mdoc` + `Sorcha.Proximity.Abstractions`. **This is F155's deferred "path B"**, which this feature makes due.
+- [x] T056 [US3] Add mdoc verification to `Sorcha.Verifier.Engine` — dispatch by format so the engine answers both `mso_mdoc` and `dc+sd-jwt`. It is SD-JWT-only today.
+- [x] T057 [US3] Implement the reader-side `CapacitorProximityTransport` (central role) in `Sorcha.Verifier.Pwa`, reusing the same plugin.
+- [x] T058 [US3] Implement `Pages/Read.razor` — QR scan → engagement → connect → request → response, driven by `ProximityReaderSession`.
+- [x] T059 [US3] Implement `Pages/Verdict.razor` — the four-layer trail. **`RegisterAnchor` must render as "not checked" — never as passed, never as failed** (FR-014 / SC-007). Show disclosed values and make clear that others were withheld (FR-016).
+- [x] T060 [P] [US3] Implement the "what do you need to know?" first screen, reusing the F155 `QuestionPresets` shape (FR-018).
+- [x] T061 [US3] Create the `mobile/verifier` Capacitor target (new bundle id), wire in the plugin, add BLE permissions to both platform manifests.
+- [x] T062 [P] [US3] Write bUnit tests asserting a skipped layer is **never** rendered as passed (SC-007 — the specific dishonesty this feature must not commit).
 
 **Checkpoint**: a verifier can read a credential in person and gets an honest verdict.
 
@@ -168,11 +168,11 @@ these plugin tasks** (T038–T044).
 
 **Independent test**: run the exchange twice, once per format; both verify.
 
-- [ ] T063 [US4] Fix `src/Apps/Sorcha.Wallet.Pwa/Services/Presentation/PresentationEngine.cs`: stop throwing when `vct_values` is absent, and dispatch matching on `meta.doctype_value` for `mso_mdoc` alongside `vct` for `dc+sd-jwt`. The DCQL *request* vocabulary already speaks mdoc (F181) — only the wallet cannot answer it (research R-008).
-- [ ] T064 [US4] Implement `SorchaProximityEnvelope` in `src/Common/Sorcha.Mdoc/Proximity/` — the CBOR `{ Format, Payload }` map carrying an SD-JWT VP where mdoc carries a `DeviceResponse` (data-model §4).
-- [ ] T065 [US4] Bind the SD-JWT **KB-JWT `aud`/`nonce` to the `SessionTranscript` hash** rather than an HTTPS `response_uri`. This is what makes FR-005's "replay resistance holds identically for both kinds" **true** rather than aspirational — without it the SD-JWT path has no session binding at all.
-- [ ] T066 [US4] Teach `ProximityReaderSession` to dispatch on the envelope and verify either format.
-- [ ] T067 [P] [US4] Write `tests/Sorcha.Proximity.Tests/BothFormatsTests.cs` — full loopback exchange for each format, **and replay/tamper rejection for each** (US4 scenario 3).
+- [x] T063 [US4] Fix `src/Apps/Sorcha.Wallet.Pwa/Services/Presentation/PresentationEngine.cs`: stop throwing when `vct_values` is absent, and dispatch matching on `meta.doctype_value` for `mso_mdoc` alongside `vct` for `dc+sd-jwt`. The DCQL *request* vocabulary already speaks mdoc (F181) — only the wallet cannot answer it (research R-008).
+- [x] T064 [US4] Implement `SorchaProximityEnvelope` in `src/Common/Sorcha.Mdoc/Proximity/` — the CBOR `{ Format, Payload }` map carrying an SD-JWT VP where mdoc carries a `DeviceResponse` (data-model §4).
+- [x] T065 [US4] Bind the SD-JWT **KB-JWT `aud`/`nonce` to the `SessionTranscript` hash** rather than an HTTPS `response_uri`. This is what makes FR-005's "replay resistance holds identically for both kinds" **true** rather than aspirational — without it the SD-JWT path has no session binding at all.
+- [x] T066 [US4] Teach `ProximityReaderSession` to dispatch on the envelope and verify either format.
+- [x] T067 [P] [US4] Write `tests/Sorcha.Proximity.Tests/BothFormatsTests.cs` — full loopback exchange for each format, **and replay/tamper rejection for each** (US4 scenario 3).
 
 **Checkpoint**: both credential kinds work in person.
 
@@ -180,14 +180,14 @@ these plugin tasks** (T038–T044).
 
 ## Phase 7: Polish & cross-cutting
 
-- [ ] T068 [P] Handle every abandonment path cleanly — walk-away, screen lock, second-reader connection attempt (refused), out-of-range. Neither app may be left stuck; **nothing is disclosed** on any of them (spec Edge Cases).
-- [ ] T069 [P] Offline revocation honesty: use the most recent cached status list and **surface its age**; absent ⇒ `Unverified`. Never treat unknown as good (spec Edge Cases; FR-014).
-- [ ] T070 [P] Permission and Bluetooth-off flows in both apps: tell the citizen what is needed, let them grant it and continue. Refusal is not a dead end and not a crash (FR-021).
-- [ ] T071 [P] Handle "you don't hold what was asked for" with a plain explanation, not an empty approval screen (spec Edge Cases).
-- [ ] T072 [P] XML doc comments on all public APIs of `Sorcha.Mdoc` and `Sorcha.Proximity.Abstractions` (constitution: mandatory, and it gates the build).
-- [ ] T073 [P] `README.md` for `Sorcha.Proximity.Abstractions` and `mobile/plugins/sorcha-proximity/`.
-- [ ] T074 Update `.claude/skills/sorcha-architecture/SKILL.md` with a Feature 185 section, and `CLAUDE.md` if any cross-cutting pattern changed (mandatory per the documentation sync policy — PRs without it are not approved).
-- [ ] T075 Update `.specify/MASTER-TASKS.md` (📋 → 🚧 → ✅).
+- [x] T068 [P] Handle every abandonment path cleanly — walk-away, screen lock, second-reader connection attempt (refused), out-of-range. Neither app may be left stuck; **nothing is disclosed** on any of them (spec Edge Cases).
+- [x] T069 [P] Offline revocation honesty: use the most recent cached status list and **surface its age**; absent ⇒ `Unverified`. Never treat unknown as good (spec Edge Cases; FR-014).
+- [x] T070 [P] Permission and Bluetooth-off flows in both apps: tell the citizen what is needed, let them grant it and continue. Refusal is not a dead end and not a crash (FR-021).
+- [x] T071 [P] Handle "you don't hold what was asked for" with a plain explanation, not an empty approval screen (spec Edge Cases).
+- [x] T072 [P] XML doc comments on all public APIs of `Sorcha.Mdoc` and `Sorcha.Proximity.Abstractions` (constitution: mandatory, and it gates the build).
+- [x] T073 [P] `README.md` for `Sorcha.Proximity.Abstractions` and `mobile/plugins/sorcha-proximity/`.
+- [x] T074 Update `.claude/skills/sorcha-architecture/SKILL.md` with a Feature 185 section, and `CLAUDE.md` if any cross-cutting pattern changed (mandatory per the documentation sync policy — PRs without it are not approved).
+- [x] T075 Update `.specify/MASTER-TASKS.md` (📋 → 🚧 → ✅).
 - [ ] T076 Two-device validation: iPhone ↔ Android, **both roles**, **both formats**, **both devices in airplane mode** (SC-008 / SC-009 / SC-001 — the ≤30 s budget measured on real hardware).
 - [ ] T077 Run the full pre-existing test suite and confirm the online presentation path is untouched (SC-010).
 
