@@ -54,5 +54,7 @@
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Sorcha uses Bluetooth to show your credential to a verifier standing in front of you, without sending anything over the internet.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Sorcha uses the camera to scan a verifier's QR code when you present a credential. Nothing is recorded or stored.</string>
 </dict>
 </plist>
