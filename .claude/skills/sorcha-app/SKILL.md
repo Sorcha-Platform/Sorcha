@@ -63,8 +63,21 @@ ssh stuart@macmini 'echo OK; hostname; cd ~/projects/Sorcha && git rev-parse --s
 ### Lanes (`mobile/wallet/fastlane/Fastfile`) — **ALL FOUR PROVEN END-TO-END (2026-06-23)** on real accounts
 - **`android_adhoc`** — signed release APK. No account needed.
 - **`android_internal`** — AAB → Play Internal via `supply`. Needs `~/.sorcha-signing/play_service_account.json`
-  + the SA granted **account-level Admin** in Play Console (a narrower track grant kept failing). Bump
-  `SORCHA_VERSION_CODE` above the last used (vc1 manual, vc2 automated).
+  + the SA granted **account-level Admin** in Play Console (a narrower track grant kept failing).
+  **`SORCHA_VERSION_CODE` must be EPOCH SECONDS** (`$(date +%s)`).
+  ⚠ The old note here said "vc1 manual, vc2 automated" — that is **stale by three orders of magnitude** and
+  will send you straight into a wall. The internal track already carries **1783011347** (a prior build used
+  epoch seconds), and Play rejects anything lower with a message that does not mention version codes at all:
+  *"You cannot rollout this release because it does not allow any existing users to upgrade to the newly added
+  APKs."* That reads like a device-compatibility/minSdk problem. It is not — it is the version code.
+  Check what is actually there before guessing:
+  ```bash
+  bundle exec fastlane run google_play_track_version_codes     package_name:app.sorcha.wallet track:internal json_key:$HOME/.sorcha-signing/play_service_account.json
+  ```
+  Also: the lane now passes **`skip_upload_apk: true`**. `supply` refuses to upload when it finds BOTH an
+  `.aab` and a stray `.apk` in `build/outputs` — and ANY `./gradlew assembleDebug` (e.g. while verifying a
+  native plugin) leaves one behind. That failure says *"Cannot provide both apk(s) and aab"* and reads like a
+  signing problem.
 - **`ios_adhoc`** — signed ad-hoc IPA. **`ios_beta`** — IPA → TestFlight. Both use `match` (repo
   `Sorcha-Platform/ios-certs`) + the ASC API key; the lanes call `setup_ci` (headless keychain) and
   `apply_match_signing` (Capacitor ships automatic signing/no team → must force manual). iOS env
