@@ -125,14 +125,38 @@ public static class SdJwtClaimProjection
             .ToList();
     }
 
-    /// <summary>True if an <c>_sd</c> array appears anywhere in this subtree.</summary>
+    /// <summary>
+    /// True if a selective-disclosure marker appears anywhere in this subtree —
+    /// either shape from RFC 9901: an <c>_sd</c> digest array (object-field
+    /// disclosure, §5.2.1) or an array-element placeholder object of the form
+    /// <c>{"...": digest}</c> (§5.2.4). The array shape carries no <c>_sd</c> key
+    /// at all, so it needs its own check or it walks straight through as
+    /// "always disclosed".
+    /// </summary>
     private static bool ContainsSd(JsonElement element) => element.ValueKind switch
     {
-        JsonValueKind.Object => element.EnumerateObject()
-            .Any(p => p.Name == "_sd" || ContainsSd(p.Value)),
+        JsonValueKind.Object => IsArrayElementPlaceholder(element)
+            || element.EnumerateObject().Any(p => p.Name == "_sd" || ContainsSd(p.Value)),
         JsonValueKind.Array => element.EnumerateArray().Any(ContainsSd),
         _ => false
     };
+
+    /// <summary>
+    /// True if <paramref name="element"/> is an SD-JWT array-element disclosure
+    /// placeholder: an object with exactly one property, literally named
+    /// <c>"..."</c> (three dots — RFC 9901 §5.2.4), whose value is a digest string.
+    /// </summary>
+    private static bool IsArrayElementPlaceholder(JsonElement element)
+    {
+        JsonProperty? only = null;
+        foreach (var prop in element.EnumerateObject())
+        {
+            if (only is not null) return false; // more than one property
+            only = prop;
+        }
+
+        return only is { Name: "...", Value.ValueKind: JsonValueKind.String };
+    }
 
     /// <summary>
     /// Base64url with tolerant padding. The write path emits base64url (RFC 4648 §5);

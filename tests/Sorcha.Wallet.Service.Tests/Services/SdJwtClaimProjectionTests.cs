@@ -33,6 +33,16 @@ public class SdJwtClaimProjectionTests
     private static string Digest(string disclosure) =>
         B64Url(SHA256.HashData(Encoding.ASCII.GetBytes(disclosure)));
 
+    /// <summary>
+    /// An array-element disclosure is base64url(JSON([salt, value])) — RFC 9901 §5.2.4.
+    /// Two elements, no claim name (the name is implicit in the array's position).
+    /// </summary>
+    private static string ArrayElementDisclosure(string salt, object value)
+    {
+        var json = JsonSerializer.Serialize(new object[] { salt, value });
+        return B64Url(Encoding.UTF8.GetBytes(json));
+    }
+
     private static string Token(object body, params string[] disclosures)
     {
         var header = B64Url(Encoding.UTF8.GetBytes("""{"alg":"ES256","typ":"dc+sd-jwt"}"""));
@@ -134,6 +144,36 @@ public class SdJwtClaimProjectionTests
         doc.RootElement.GetProperty("licenceNumber").GetString().Should().Be("BI-2026-0042");
 
         result.DisclosableClaims.Should().BeEquivalentTo(["name"]);
+    }
+
+    /// <summary>
+    /// RFC 9901's OTHER disclosure shape: an array element replaced with a
+    /// <c>{"...": digest}</c> placeholder — no <c>_sd</c> key anywhere in the subtree.
+    /// </summary>
+    private static string ArrayElementDisclosureToken()
+    {
+        var element = ArrayElementDisclosure("s3", "DE");
+        var body = new Dictionary<string, object>
+        {
+            ["vct"] = "https://sorcha.dev/vc/assured-identity/v1",
+            ["iss"] = "did:sorcha:org:ws11q",
+            ["nationalities"] = new object[]
+            {
+                new Dictionary<string, object> { ["..."] = Digest(element) }
+            }
+        };
+        return Token(body, element);
+    }
+
+    [Fact]
+    public void Project_ArrayElementDisclosure_MarksClaimDisclosable()
+    {
+        var result = SdJwtClaimProjection.Project(ArrayElementDisclosureToken());
+
+        // nationalities has an array-element {"...": digest} placeholder — no _sd
+        // anywhere in its subtree — so the naive _sd-only check wrongly marks it
+        // always-disclosed. The holder actually controls whether it's revealed.
+        result.DisclosableClaims.Should().Contain("nationalities");
     }
 
     [Theory]
