@@ -333,6 +333,36 @@ public class PresentationRequestServiceTests
     }
 
     [Fact]
+    public async Task FindMatchingCredentialsAsync_NonSdJwtRawToken_RequestedClaims_FallsBackToStoredClaimsJson()
+    {
+        // I3: ParseClaims("{}") returns an EMPTY dictionary, not null — so the pre-fix
+        // `ParseClaims(projection.ClaimsJson) ?? claims` never falls back to the stored
+        // ClaimsJson when RawToken doesn't decode (mdoc/CBOR, W3C VC, truncated token —
+        // the CreateTestCredential dummy RawToken default stands in for all three). The
+        // credential's real "class" claim must still be reported as requested/matched.
+        var dto = new CreatePresentationRequestDto
+        {
+            CredentialType = "ChemicalHandlingLicense",
+            CallbackUrl = "https://example.com/callback",
+            RequiredClaims = [new ClaimConstraint { ClaimName = "class" }]
+        };
+        var request = await _service.CreateRequestAsync(dto);
+
+        _storeMock
+            .Setup(s => s.MatchAsync("wallet-1", "ChemicalHandlingLicense", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                CreateTestCredential("cred-1", "ChemicalHandlingLicense", "did:sorcha:w:hse",
+                    """{"class":"CategoryB","permitNumber":"HSE-001"}""")
+                // RawToken left at the dummy default — projects to Empty.
+            ]);
+
+        var matches = await _service.FindMatchingCredentialsAsync(request, "wallet-1");
+
+        matches.Should().HaveCount(1);
+        matches[0].RequestedClaims.Should().Contain("class");
+    }
+
+    [Fact]
     public async Task FindMatchingCredentialsAsync_NoMatchingCredentials_ReturnsEmptyList()
     {
         var request = await _service.CreateRequestAsync(CreateTestDto());
@@ -551,6 +581,43 @@ public class PresentationRequestServiceTests
         _storeMock.Verify(
             s => s.RecordPresentationAsync("cred-1", It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task SubmitPresentationAsync_StaleFlattenedStoredClaimsJson_VerifiedTokenClaimsGovern_NotStaleBlob()
+    {
+        // C2 investigation lock-in: the ParseClaims(credential.ClaimsJson) fallback at the
+        // "8. Required claims verification" step is reached only when verifiedTokenClaims is
+        // null — which SdJwtVerificationResult.Claims (defaulting to a non-null empty dict,
+        // only ever mutated) never actually is. This test proves the LIVE path: even with a
+        // stale, badly-flattened stored ClaimsJson (the same "town leaked out of address"
+        // defect CredentialMatcher had), the verifier's decision is governed entirely by the
+        // cryptographically verified token claims — never by the stale row — so requesting
+        // "town" (which the real, correctly-nested token does NOT disclose at top level)
+        // correctly denies.
+        SetupVerifierClaims(new Dictionary<string, object>());
+
+        var dto = new CreatePresentationRequestDto
+        {
+            CredentialType = "ChemicalHandlingLicense",
+            CallbackUrl = "https://example.com/callback",
+            RequiredClaims = [new ClaimConstraint { ClaimName = "town" }]
+        };
+        var request = await _service.CreateRequestAsync(dto);
+
+        var cred = CreateTestCredential("cred-1", "ChemicalHandlingLicense", "did:sorcha:w:hse",
+            """{"email":"stuart@stuartfraser.net","town":"Edinburgh","line1":"6/2 Warrender Park Terrace","address":{"_sd":["stale-digest"]}}""");
+
+        _storeMock
+            .Setup(s => s.GetByIdAsync("cred-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(cred);
+
+        var result = await _service.SubmitPresentationAsync(request.Id, "cred-1", [], "vp-token");
+
+        result.Status.Should().Be(PresentationStatus.Denied);
+
+        var verification = JsonSerializer.Deserialize<VerificationResult>(result.VerificationResult!);
+        verification!.Errors.Should().Contain(e => e.FailureReason == "MissingClaim");
     }
 
     [Fact]

@@ -189,6 +189,40 @@ public class SdJwtClaimProjectionTests
         result.DisclosableClaims.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// Locks in the ProtocolFields investigation from the final code review: "status" is
+    /// the IETF Token Status List claim (draft-ietf-oauth-status-list, referenced by the
+    /// SD-JWT VC spec), shaped <c>{"status":{"status_list":{"uri":...,"idx":...}}}</c> —
+    /// the structural sibling of the already-stripped W3C "credentialStatus" form. Sorcha's
+    /// own issuer writes this exact shape for <c>StatusClaimForm.IetfTokenStatusList</c>
+    /// (see <c>CredentialEndpoints.IssueCredential</c>). It is a status-list pointer, not
+    /// credential content, so it must not render on a card as if it were a business claim.
+    /// </summary>
+    [Fact]
+    public void Project_IetfTokenStatusListClaim_IsStrippedAsProtocolField()
+    {
+        var body = new Dictionary<string, object>
+        {
+            ["vct"] = "https://sorcha.dev/vc/x/v1",
+            ["licenceNumber"] = "BI-2026-0042",
+            ["status"] = new Dictionary<string, object>
+            {
+                ["status_list"] = new Dictionary<string, object>
+                {
+                    ["uri"] = "https://issuer.example/statuslist/1",
+                    ["idx"] = 42
+                }
+            }
+        };
+
+        var result = SdJwtClaimProjection.Project(Token(body));
+
+        using var doc = JsonDocument.Parse(result.ClaimsJson);
+        doc.RootElement.TryGetProperty("status", out _).Should().BeFalse(
+            "status is a status-list pointer (IETF Token Status List), not a business claim");
+        doc.RootElement.GetProperty("licenceNumber").GetString().Should().Be("BI-2026-0042");
+    }
+
     [Fact]
     public void Project_BadDisclosure_KeepsTheRest()
     {

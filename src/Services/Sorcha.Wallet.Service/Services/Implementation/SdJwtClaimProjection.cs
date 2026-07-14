@@ -46,6 +46,16 @@ public static class SdJwtClaimProjection
     /// SD-JWT / JWT envelope fields. Not credential claims, so they never reach a card.
     /// <see cref="NestedDisclosure.Reconstruct"/> already drops iss/sub/iat/exp/cnf/_sd/_sd_alg;
     /// these are the ones it leaves behind.
+    ///
+    /// <c>status</c> is deliberately included (the pre-fix decoder did not strip it — see
+    /// final-fix-server-report.md for the investigation): it is the IETF Token Status List
+    /// claim (draft-ietf-oauth-status-list, referenced by the SD-JWT VC spec), shaped
+    /// <c>{"status":{"status_list":{"uri":...,"idx":...}}}</c>. It is the exact structural
+    /// sibling of <c>credentialStatus</c> (the W3C BitstringStatusListEntry form) already in
+    /// this set — Sorcha's own issuer writes one or the other depending on
+    /// <c>StatusClaimForm</c> (see <c>CredentialEndpoints.IssueCredential</c>), never both, and
+    /// never as a business claim. Both are status-list *pointers*, not credential content, so
+    /// both must be stripped for the card the same way.
     /// </summary>
     private static readonly HashSet<string> ProtocolFields = new(StringComparer.Ordinal)
     {

@@ -237,7 +237,18 @@ public static class CredentialEndpoints
             // digest array where "address" should be). RawToken is always the
             // source of truth, so re-projecting on every read heals it — no
             // backfill, no migration, no re-issue.
+            //
+            // BUT RawToken is only guaranteed non-null, not guaranteed to be a
+            // compact SD-JWT: StoreCredential accepts any RawToken/ClaimsJson pair
+            // from the caller, and Feature 185 proximity sharing stores mdoc/CBOR
+            // credentials this way (a W3C JSON-LD VC or a truncated token can land
+            // here too). SdJwtClaimProjection.Project never throws, but it DOES
+            // return SdJwtProjection.Empty for anything it can't decode — heal only
+            // when the projection actually produced something, otherwise keep the
+            // stored value. A row healed via a real (if stale) SD-JWT RawToken is
+            // unaffected: Project only returns Empty on genuine decode failure.
             var projection = SdJwtClaimProjection.Project(c.RawToken);
+            var healed = !ReferenceEquals(projection, SdJwtProjection.Empty);
             return new
             {
                 c.Id,
@@ -259,14 +270,18 @@ public static class CredentialEndpoints
                 // "0 claims" against a credential that does have claims, which actively
                 // misleads the holder. Payload growth is bounded — claims are typically
                 // <2KB and display config is smaller.
-                ClaimsJson = projection.ClaimsJson,
+                ClaimsJson = healed ? projection.ClaimsJson : c.ClaimsJson,
                 c.DisplayConfigJson,
                 c.UsagePolicy,
                 // Which claims the holder can withhold when presenting. Derived from the
                 // stored raw token rather than persisted, so no column and no migration.
                 // Without it every claim renders with an "always disclosed" padlock —
                 // the exact opposite of the truth about what the holder must reveal.
-                DisclosableClaims = projection.DisclosableClaims,
+                // When RawToken isn't a decodable SD-JWT there is no way to know what's
+                // withholdable, so fall back to "nothing withholdable" (same
+                // always-disclosed padlock the field defaulted to before it existed) —
+                // never an empty ClaimsJson.
+                DisclosableClaims = healed ? projection.DisclosableClaims : Array.Empty<string>(),
             };
         });
 
@@ -291,7 +306,16 @@ public static class CredentialEndpoints
         // every existing consumer (detail dialog, ID-card face) keeps working
         // unchanged; only the value of ClaimsJson is corrected, in-memory only
         // (never written back — RawToken remains the persisted source of truth).
-        credential.ClaimsJson = SdJwtClaimProjection.Project(credential.RawToken).ClaimsJson;
+        // Only heal when RawToken actually decodes as an SD-JWT — a non-JWT
+        // RawToken (mdoc/CBOR from Feature 185, a W3C JSON-LD VC, a truncated
+        // token) projects to SdJwtProjection.Empty and must NOT wipe the stored
+        // ClaimsJson, or the card silently shows "0 claims" for a credential that
+        // has real claims (a stale-but-decodable SD-JWT RawToken still heals fine).
+        var projection = SdJwtClaimProjection.Project(credential.RawToken);
+        if (!ReferenceEquals(projection, SdJwtProjection.Empty))
+        {
+            credential.ClaimsJson = projection.ClaimsJson;
+        }
 
         return Results.Ok(credential);
     }

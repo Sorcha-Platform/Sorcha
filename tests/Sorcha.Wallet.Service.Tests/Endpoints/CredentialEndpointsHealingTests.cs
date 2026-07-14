@@ -103,6 +103,32 @@ public sealed class CredentialEndpointsHealingTests
         CreatedAt = DateTimeOffset.UtcNow.AddDays(-30),
     };
 
+    /// <summary>
+    /// C1: a credential whose <c>RawToken</c> is NOT a decodable SD-JWT — e.g. a
+    /// Feature 185 mdoc/CBOR proximity credential, a W3C JSON-LD VC, or a
+    /// truncated token. <c>StoreCredentialRequest</c> accepts any RawToken +
+    /// ClaimsJson pair, so this row is legitimate, not stale. The stored
+    /// ClaimsJson is the ONLY source of truth in this case; unconditional
+    /// re-projection must not wipe it to "{}".
+    /// </summary>
+    private const string MdocCredentialId = "urn:uuid:mdoc-proximity-credential";
+
+    private static CredentialEntity MdocCredential() => new()
+    {
+        Id = MdocCredentialId,
+        Type = "MobileDrivingLicence",
+        IssuerDid = "did:sorcha:org:ws11q",
+        SubjectDid = WalletAddress,
+        ClaimsJson = """{"documentNumber":"D1234567","drivingPrivileges":["B"]}""",
+        // A base64-encoded CBOR blob has no JWT structure at all (no '.' separators),
+        // so SdJwtClaimProjection.Project cannot decode it and returns Empty.
+        RawToken = "o2ppc3N1ZXJBdXRohEOhASag2BhZAcqjZ2RvY1R5cGV1b3JnLmlzby4xODAxMy41LjEubUw=",
+        IssuedAt = DateTimeOffset.UtcNow.AddDays(-10),
+        Status = CredentialStatus.Active,
+        WalletAddress = WalletAddress,
+        CreatedAt = DateTimeOffset.UtcNow.AddDays(-10),
+    };
+
     // --- ListCredentials ---
 
     private static async Task<IResult> InvokeListCredentials(
@@ -160,6 +186,37 @@ public sealed class CredentialEndpointsHealingTests
         root.GetRawText().Should().NotContain("_sd");
     }
 
+    [Fact]
+    public async Task ListCredentials_NonSdJwtRawToken_ServesStoredClaimsJsonInstead()
+    {
+        var store = new Mock<ICredentialStore>();
+        store.Setup(s => s.GetByWalletAsync(WalletAddress, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([MdocCredential()]);
+
+        var result = await InvokeListCredentials(WalletAddress, store.Object);
+
+        var root = GetSingleListedClaimsJsonElement(result);
+        root.GetProperty("documentNumber").GetString().Should().Be("D1234567");
+    }
+
+    [Fact]
+    public async Task ListCredentials_NonSdJwtRawToken_DisclosableClaimsIsEmptyNotThrow()
+    {
+        var store = new Mock<ICredentialStore>();
+        store.Setup(s => s.GetByWalletAsync(WalletAddress, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([MdocCredential()]);
+
+        var result = await InvokeListCredentials(WalletAddress, store.Object);
+
+        var value = result.GetType().GetProperty("Value")!.GetValue(result);
+        var items = ((IEnumerable)value!).Cast<object>().ToList();
+        items.Should().ContainSingle();
+
+        var disclosable = (IEnumerable<string>)items[0].GetType()
+            .GetProperty("DisclosableClaims")!.GetValue(items[0])!;
+        disclosable.Should().BeEmpty();
+    }
+
     // --- GetCredential ---
 
     private static async Task<IResult> InvokeGetCredential(
@@ -202,6 +259,20 @@ public sealed class CredentialEndpointsHealingTests
 
         var ok = result.Should().BeOfType<Ok<CredentialEntity>>().Subject;
         ok.Value!.ClaimsJson.Should().NotContain("_sd");
+    }
+
+    [Fact]
+    public async Task GetCredential_NonSdJwtRawToken_ServesStoredClaimsJsonInstead()
+    {
+        var store = new Mock<ICredentialStore>();
+        store.Setup(s => s.GetByIdForWalletAsync(MdocCredentialId, WalletAddress, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MdocCredential());
+
+        var result = await InvokeGetCredential(WalletAddress, MdocCredentialId, store.Object);
+
+        var ok = result.Should().BeOfType<Ok<CredentialEntity>>().Subject;
+        using var doc = JsonDocument.Parse(ok.Value!.ClaimsJson);
+        doc.RootElement.GetProperty("documentNumber").GetString().Should().Be("D1234567");
     }
 
     [Fact]
