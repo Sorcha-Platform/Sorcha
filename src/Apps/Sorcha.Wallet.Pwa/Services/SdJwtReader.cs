@@ -84,6 +84,11 @@ public static class SdJwtReader
         return null;
     }
 
+    /// <summary>
+    /// Renders a disclosure value for the card. An object or array NEVER renders as
+    /// raw JSON — that is how an unresolved SD-JWT digest array reached a citizen's
+    /// card on the web. This reader is the on-device equivalent and must not repeat it.
+    /// </summary>
     private static string JsonValueToString(JsonElement value) => value.ValueKind switch
     {
         JsonValueKind.String => value.GetString() ?? string.Empty,
@@ -91,6 +96,33 @@ public static class SdJwtReader
         JsonValueKind.False => "No",
         JsonValueKind.Null => string.Empty,
         JsonValueKind.Number => value.GetRawText(),
-        _ => value.GetRawText(),
+        JsonValueKind.Object => SummariseObject(value),
+        JsonValueKind.Array => SummariseArray(value),
+        _ => string.Empty,
     };
+
+    /// <summary>
+    /// A nested object renders as "field: value" pairs, dropping SD-JWT protocol keys
+    /// so a digest array degrades to an empty string rather than a blob of base64.
+    /// </summary>
+    private static string SummariseObject(JsonElement value)
+    {
+        var parts = value.EnumerateObject()
+            .Where(p => !p.Name.StartsWith('_'))
+            .Select(p => $"{p.Name}: {JsonValueToString(p.Value)}")
+            .Where(s => !s.EndsWith(": ", StringComparison.Ordinal))
+            .ToList();
+
+        return string.Join(", ", parts);
+    }
+
+    private static string SummariseArray(JsonElement value)
+    {
+        var parts = value.EnumerateArray()
+            .Select(JsonValueToString)
+            .Where(s => !string.IsNullOrEmpty(s))
+            .ToList();
+
+        return string.Join(", ", parts);
+    }
 }
