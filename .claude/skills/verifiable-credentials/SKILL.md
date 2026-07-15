@@ -103,12 +103,18 @@ All credential domain models live in `Sorcha.Blueprint.Models.Credentials` (note
 // Sorcha.Blueprint.Models/Credentials/CredentialIssuanceConfig.cs
 public class CredentialIssuanceConfig
 {
-    public string CredentialType { get; set; } = string.Empty;
+    public string CredentialType { get; set; } = string.Empty;   // short-name / fallback / readable id — NOT the wire vct
+    public string? Vct { get; set; }                             // canonical absolute URI, e.g. https://sorcha.dev/vc/assured-identity/v1 — the SD-JWT VC's sole type identifier
+    public string? DisplayName { get; set; }                     // authored human card label, e.g. "Assured Identity"
     public IEnumerable<ClaimMapping> ClaimMappings { get; set; } = [];
     public string RecipientParticipantId { get; set; } = string.Empty;
     // ... plus display config, status list binding, validity window
 }
+```
 
+**VCT / display decoupling (2026-07-15).** `Vct` is the canonical, **case-sensitive absolute URI** that is the credential's sole machine-matching identity — written to `claims["vct"]` and nowhere else. The wire SD-JWT VC carries **`vct` only; there is no `type` claim** (SD-JWT VC §3.2.2.1 — Sorcha previously wrote both, which was non-standard, and has stopped). `DisplayName` is the authored human card label; when omitted the card falls back to `Humanize(vct)`. `CredentialType` is demoted to a short-name/fallback/readable id, used only when `Vct` is omitted. Matching is **case-sensitive exact** (`Ordinal`) everywhere — `CredentialVerifier`/`CredentialMatcher` moved off `OrdinalIgnoreCase`; the PWA's `PresentationEngine` was already `Ordinal`. Every platform credential type has a canonical constant in `Sorcha.CitizenWallet.Abstractions.Constants.VctUris` (e.g. `VctUris.AssuredIdentityV1 = "https://sorcha.dev/vc/assured-identity/v1"`) — new blueprints should declare `vct` from that registry, not rely on the bare-name fallback. A parametrised `BlueprintVctConformanceTests` enforces every shipped blueprint's `vct` matches its `VctUris` constant.
+
+```csharp
 // Sorcha.Blueprint.Models/Credentials/CredentialRequirement.cs
 public class CredentialRequirement
 {
@@ -267,7 +273,9 @@ Actions carry credential configs as first-class fields (not an `x-*` schema exte
 {
   "actionId": "issue-graduation",
   "credentialIssuance": {
-    "credentialType": "GraduationCredential",
+    "credentialType": "CompletionCertificateCredential",
+    "vct": "https://sorcha.dev/vc/completion-certificate/v1",
+    "displayName": "Completion Certificate",
     "recipientParticipantId": "student",
     "claimMappings": [
       { "claimName": "name",           "sourceField": "/student/name" },
@@ -290,6 +298,8 @@ Actions carry credential configs as first-class fields (not an `x-*` schema exte
   ]
 }
 ```
+
+`vct` is the canonical URI (from `VctUris.CompletionCertificateV1`) — the credential's sole wire type identifier; `credentialType` is the short-name fallback used only when `vct` is omitted; `displayName` is the card label. `IdentityAttestation` above is an action-local requirement type, not a platform-catalogued credential, so it stays a bare name — there is no `VctUris` constant for it.
 
 > **Feature 135:** `CredentialRequirement.acceptedIssuers` was **removed** and replaced by `trustPolicy` (a `sources[]` + `combinator` + `minAssuranceLevel` shape decided by the unified `ITrustEvaluator`). The `did-allowlist` source above is the direct equivalent of the old flat issuer list; omit `trustPolicy` (or use a `{ "kind": "register" }` source) to trust register-resolved issuers. Full shape: the "EUDI credential format & unified trust (Feature 135)" section of the `sorcha-architecture` skill. **Do not** write `acceptedIssuers` — it is silently ignored.
 
