@@ -278,4 +278,39 @@ public sealed class SyncServiceTests
 
         cached.DisplayLabel.Should().BeNull();
     }
+
+    [Fact]
+    public void ToCachedCredential_PopulatesAvailableClaimNames_FromSdJwtDisclosures()
+    {
+        // Regression: ToCachedCredential used to hard-code AvailableClaimNames = [], which made
+        // PresentationEngine.MatchCandidates reject every request that requires claims (every real
+        // verifier preset), regardless of vct — surfacing as "None of your credentials match".
+        var fullName = SdJwtDisclosure("salt1", "fullName", "Ada Lovelace");
+        var portrait = SdJwtDisclosure("salt2", "portrait", "data:image/jpeg;base64,AAAA");
+        var jwt = SdJwtBody(new
+            {
+                vct = "https://sorcha.dev/vc/assured-identity/v1",
+                _sd = new[] { SdJwtDigest(fullName), SdJwtDigest(portrait) },
+            })
+            + "~" + fullName + "~" + portrait + "~";
+
+        var cached = SyncService.ToCachedCredential(NewPayload() with { Jwt = jwt });
+
+        cached.AvailableClaimNames.Should().Contain(new[] { "fullName", "portrait" },
+            "the DCQL matcher checks required claims against AvailableClaimNames");
+    }
+
+    private static string SdJwtBody(object payload) =>
+        "eyJhbGciOiJFUzI1NiJ9." +
+        System.Buffers.Text.Base64Url.EncodeToString(
+            System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(payload)) +
+        ".c2ln";
+
+    private static string SdJwtDisclosure(string salt, string name, object value) =>
+        System.Buffers.Text.Base64Url.EncodeToString(System.Text.Encoding.UTF8.GetBytes(
+            System.Text.Json.JsonSerializer.Serialize(new object[] { salt, name, value })));
+
+    private static string SdJwtDigest(string disclosure) =>
+        System.Buffers.Text.Base64Url.EncodeToString(
+            System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(disclosure)));
 }
