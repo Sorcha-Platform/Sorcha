@@ -29,10 +29,41 @@ def web_build
   sh("bash", WEB_STEP)
 end
 
-# Version injected by CI (tag -> name, run number -> code); falls back to build.gradle values.
+# The marketing version string (CFBundleShortVersionString / Android versionName).
+#
+# CI sets SORCHA_VERSION_NAME explicitly (from the git tag). A local/manual build usually
+# does NOT — and when it's absent the lanes previously fell through to the committed project
+# defaults (iOS pbxproj MARKETING_VERSION = "1.0", Android build.gradle). That shipped a
+# camera-permission build to TestFlight as "1.0", which sorts BELOW the platform's real 2.x
+# versions, so the NEWEST build looked like the OLDEST and testers grabbed a stale one.
+#
+# So when the env var is absent we synthesise a real 2.x name instead of falling back to 1.0:
+#   Major  = SorchaMajor from the root Directory.Build.props (single source of truth, currently 2)
+#   Minor  = git commit count (monotonic, deterministic offline, no CI run number needed)
+#   Patch  = 0
+# The env var still wins when set, so CI's tag-derived version is unchanged.
+def resolved_version_name
+  env = ENV["SORCHA_VERSION_NAME"].to_s
+  return env unless env.empty?
+
+  major =
+    begin
+      props = File.read(File.join(REPO_ROOT, "Directory.Build.props"))
+      props[%r{<SorchaMajor>\s*(\d+)\s*</SorchaMajor>}, 1] || "2"
+    rescue StandardError
+      "2"
+    end
+  minor = `git -C "#{REPO_ROOT}" rev-list --count HEAD`.strip
+  minor = "0" if minor.empty?
+  "#{major}.#{minor}.0"
+end
+
+# Version injected by CI (tag -> name, run number -> code); name falls back to a git-derived
+# 2.x via resolved_version_name (never the bare "1.0" project default); code falls back to
+# build.gradle only when SORCHA_VERSION_CODE is unset.
 def version_props
   props = {}
-  props["sorchaVersionName"] = ENV["SORCHA_VERSION_NAME"] unless ENV["SORCHA_VERSION_NAME"].to_s.empty?
+  props["sorchaVersionName"] = resolved_version_name
   props["sorchaVersionCode"] = ENV["SORCHA_VERSION_CODE"] unless ENV["SORCHA_VERSION_CODE"].to_s.empty?
   props
 end
@@ -63,10 +94,11 @@ IOS_OUTPUT  = File.join(WALLET_DIR, "ios", "App", "output")
 # CFBundleVersion = $(CURRENT_PROJECT_VERSION), so the override flows through. The committed
 # project stays generic (CI checks out fresh each run); we never mutate the pbxproj for this.
 def ios_version_xcargs
-  parts = ["CURRENT_PROJECT_VERSION=#{Time.now.utc.to_i}"]
-  name = ENV["SORCHA_VERSION_NAME"].to_s
-  parts << "MARKETING_VERSION=#{name}" unless name.empty?
-  parts.join(" ")
+  # Build number: epoch seconds (monotonic, always beats a prior TestFlight upload — see above).
+  # Marketing version: resolved_version_name so a local build carries a real 2.x string and never
+  # the bare pbxproj "1.0" default (which would sort BELOW the platform's real versions on
+  # TestFlight and make the newest build look like the oldest).
+  "CURRENT_PROJECT_VERSION=#{Time.now.utc.to_i} MARKETING_VERSION=#{resolved_version_name}"
 end
 
 # Capacitor's generated Xcode project ships with automatic signing and no team, so an
