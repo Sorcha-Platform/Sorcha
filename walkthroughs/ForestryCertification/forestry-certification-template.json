@@ -252,6 +252,8 @@
         ],
         "credentialIssuanceConfig": {
           "credentialType": "ForestProductDPPCredential",
+          "vct": "https://sorcha.dev/vc/forest-product-dpp/v1",
+          "displayName": "Forest Product DPP",
           "recipientParticipantId": "sales-mgr",
           "expiryDuration": "P365D",
           "claimMappings": [

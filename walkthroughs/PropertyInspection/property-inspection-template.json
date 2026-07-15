@@ -182,6 +182,8 @@
         ],
         "credentialIssuanceConfig": {
           "credentialType": "JobAssignmentCredential",
+          "vct": "https://sorcha.dev/vc/job-assignment/v1",
+          "displayName": "Job Assignment",
           "recipientParticipantId": "contractor",
           "expiryDuration": "P30D",
           "claimMappings": [
@@ -460,6 +462,8 @@
         ],
         "credentialIssuanceConfig": {
           "credentialType": "ServiceCompletionCredential",
+          "vct": "https://sorcha.dev/vc/service-completion/v1",
+          "displayName": "Service Completion",
           "recipientParticipantId": "tenant",
           "expiryDuration": "P3650D",
           "claimMappings": [

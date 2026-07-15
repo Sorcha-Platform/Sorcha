@@ -40,7 +40,7 @@
         "isStartingAction": true,
         "credentialRequirements": [
           {
-            "type": "AssuredIdentityCredential",
+            "type": "https://sorcha.dev/vc/assured-identity/v1",
             "presentationSource": "SorchaWallet",
             "trustPolicy": {
               "sources": [
@@ -130,6 +130,8 @@
         ],
         "credentialIssuanceConfig": {
           "credentialType": "MembershipCredential/v1",
+          "vct": "https://sorcha.dev/vc/membership/v1",
+          "displayName": "Membership",
           "targetAudience": "SorchaLocalWallet",
           "recipientParticipantId": "applicant",
           "claimMappings": [

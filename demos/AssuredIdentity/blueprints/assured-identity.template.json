@@ -166,6 +166,8 @@
         ],
         "credentialIssuanceConfig": {
           "credentialType": "AssuredIdentityCredential",
+          "vct": "https://sorcha.dev/vc/assured-identity/v1",
+          "displayName": "Assured Identity",
           "targetAudience": "SorchaLocalWallet",
           "recipientParticipantId": "citizen",
           "holderKeySourceField": "/holderKeys/holderJwk",

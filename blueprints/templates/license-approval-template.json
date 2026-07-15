@@ -103,6 +103,8 @@
         ],
         "credentialIssuanceConfig": {
           "credentialType": "LicenseCredential",
+          "vct": "https://sorcha.dev/vc/licence/v1",
+          "displayName": "Licence",
           "claimMappings": [
             { "claimName": "holder_name", "sourceField": "/applicantName" },
             { "claimName": "license_type", "sourceField": "/licenseType" },

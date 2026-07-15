@@ -641,6 +641,8 @@
         ],
         "credentialIssuanceConfig": {
           "credentialType": "RefurbishmentCertificateCredential",
+          "vct": "https://sorcha.dev/vc/refurbishment-certificate/v1",
+          "displayName": "Refurbishment Certificate",
           "recipientParticipantId": "biomedical-engineer",
           "expiryDuration": "P365D",
           "claimMappings": [

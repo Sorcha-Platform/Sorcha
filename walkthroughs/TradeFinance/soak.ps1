@@ -370,7 +370,7 @@ while ((Get-Date) -lt $soakEnd) {
         $pending = Invoke-SorchaApi -Method GET `
             -Uri "$($env.WalletUrl)/v1/wallets/$salesMgrWallet/credentials?status=PendingAcceptance" `
             -Headers $credHeaders
-        foreach ($p in ($pending | Where-Object { $_.type -eq "VerifiedInvoiceCredential" })) {
+        foreach ($p in ($pending | Where-Object { $_.type -eq "https://sorcha.dev/vc/verified-invoice/v1" })) {
             $null = Invoke-SorchaApi -Method PATCH `
                 -Uri "$($env.WalletUrl)/v1/wallets/$salesMgrWallet/credentials/$($p.id)" `
                 -Body @{ status = "Active" } `
@@ -380,7 +380,7 @@ while ((Get-Date) -lt $soakEnd) {
         $creds = Invoke-SorchaApi -Method GET `
             -Uri "$($env.WalletUrl)/v1/wallets/$salesMgrWallet/credentials" `
             -Headers $credHeaders
-        $invoiceCred = $creds | Where-Object { $_.type -eq "VerifiedInvoiceCredential" } |
+        $invoiceCred = $creds | Where-Object { $_.type -eq "https://sorcha.dev/vc/verified-invoice/v1" } |
             Sort-Object -Property issuedAt -Descending | Select-Object -First 1
 
         if ($invoiceCred) {
@@ -392,7 +392,7 @@ while ((Get-Date) -lt $soakEnd) {
             $credPresentations = @(@{
                 credentialId    = $invoiceCred.id
                 disclosedClaims = @{
-                    type           = "VerifiedInvoiceCredential"
+                    type           = "https://sorcha.dev/vc/verified-invoice/v1"
                     invoiceNumber  = $scenario.procurement.'5'.invoiceNumber
                     invoiceAmount  = $scenario.procurement.'5'.invoiceTotal
                     poReference    = $scenario.procurement.'1'.poReference

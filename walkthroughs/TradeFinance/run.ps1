@@ -497,7 +497,7 @@ foreach ($sid in $scenariosToRun) {
 
             # Auto-accept any pending credentials we plan to present (invoice + DPP)
             # before fetching the active list, so they appear as Active downstream.
-            $autoAcceptTypes = @("VerifiedInvoiceCredential", "ForestProductDPPCredential")
+            $autoAcceptTypes = @("https://sorcha.dev/vc/verified-invoice/v1", "https://sorcha.dev/vc/forest-product-dpp/v1")
             foreach ($p in ($pending | Where-Object { $autoAcceptTypes -contains $_.type })) {
                 Write-WtInfo "  Accepting pending $($p.type) $($p.id)..."
                 $null = Invoke-SorchaApi -Method PATCH `
@@ -510,7 +510,7 @@ foreach ($sid in $scenariosToRun) {
                 -Uri "$($env.WalletUrl)/v1/wallets/$salesMgrWallet/credentials" `
                 -Headers $credHeaders
 
-            $invoiceCred = $creds | Where-Object { $_.type -eq "VerifiedInvoiceCredential" } | Select-Object -First 1
+            $invoiceCred = $creds | Where-Object { $_.type -eq "https://sorcha.dev/vc/verified-invoice/v1" } | Select-Object -First 1
 
             if ($invoiceCred) {
                 Write-WtInfo "  Found credential: $($invoiceCred.id)"
@@ -526,7 +526,7 @@ foreach ($sid in $scenariosToRun) {
                     @{
                         credentialId    = $invoiceCred.id
                         disclosedClaims = @{
-                            type           = "VerifiedInvoiceCredential"
+                            type           = "https://sorcha.dev/vc/verified-invoice/v1"
                             invoiceNumber  = $scenarioData.procurement."5".invoiceNumber
                             invoiceAmount  = $scenarioData.procurement."5".invoiceTotal
                             poReference    = $scenarioData.procurement."1".poReference
@@ -543,7 +543,7 @@ foreach ($sid in $scenariosToRun) {
             # Optional ForestProductDPPCredential — issued by the ForestryCertification
             # walkthrough to sales-mgr. When present, the financing template's calc
             # applies a +10% advance-rate uplift if sustainabilityScore >= 70.
-            $dppCred = $creds | Where-Object { $_.type -eq "ForestProductDPPCredential" } | Select-Object -First 1
+            $dppCred = $creds | Where-Object { $_.type -eq "https://sorcha.dev/vc/forest-product-dpp/v1" } | Select-Object -First 1
             if ($dppCred) {
                 Write-WtInfo "  Found DPP credential: $($dppCred.id)"
 
@@ -560,7 +560,7 @@ foreach ($sid in $scenariosToRun) {
                 $credPresentations += @{
                     credentialId    = $dppCred.id
                     disclosedClaims = @{
-                        type                  = "ForestProductDPPCredential"
+                        type                  = "https://sorcha.dev/vc/forest-product-dpp/v1"
                         certificationScheme   = "FSC"
                         sustainabilityScore   = 87
                         embodiedCarbonKgCO2e  = 36.4

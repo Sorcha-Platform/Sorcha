@@ -70,7 +70,7 @@
         ],
         "credentialRequirements": [
           {
-            "type": "CyberEssentialsUacPosture",
+            "type": "https://sorcha.dev/vc/cyber-essentials-uac/v1",
             "presentationSource": "SorchaInternal",
             "trustPolicy": {
               "sources": [

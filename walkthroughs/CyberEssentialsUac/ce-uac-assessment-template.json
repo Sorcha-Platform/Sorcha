@@ -308,6 +308,8 @@
         ],
         "credentialIssuanceConfig": {
           "credentialType": "CyberEssentialsUacPosture",
+          "vct": "https://sorcha.dev/vc/cyber-essentials-uac/v1",
+          "displayName": "Cyber Essentials UAC",
           "recipientParticipantId": "subject-org",
           "expiryDuration": "P1Y",
           "targetAudience": "SorchaLocalWallet",

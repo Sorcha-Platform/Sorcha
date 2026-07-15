@@ -62,7 +62,7 @@
         "isStartingAction": true,
         "credentialRequirements": [
           {
-            "type": "VerifiedInvoiceCredential",
+            "type": "https://sorcha.dev/vc/verified-invoice/v1",
             "requiredClaims": [
               { "claimName": "invoiceNumber" },
               { "claimName": "invoiceAmount" },
@@ -73,7 +73,7 @@
             "description": "A verified invoice credential from the procurement register is required to request financing"
           },
           {
-            "type": "ForestProductDPPCredential",
+            "type": "https://sorcha.dev/vc/forest-product-dpp/v1",
             "requiredClaims": [
               { "claimName": "certificationScheme" },
               { "claimName": "sustainabilityScore" },
@@ -522,6 +522,8 @@
         ],
         "credentialIssuanceConfig": {
           "credentialType": "TradeFinanceCredential",
+          "vct": "https://sorcha.dev/vc/trade-finance/v1",
+          "displayName": "Trade Finance",
           "recipientParticipantId": "sales-mgr",
           "expiryDuration": "P180D",
           "claimMappings": [

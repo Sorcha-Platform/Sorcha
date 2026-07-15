@@ -39,7 +39,7 @@
         "isStartingAction": true,
         "credentialRequirements": [
           {
-            "type": "LicenseCredential",
+            "type": "https://sorcha.dev/vc/licence/v1",
             "description": "A valid license credential issued by a recognized licensing authority",
             "requiredClaims": [
               { "claimName": "license_type" }
