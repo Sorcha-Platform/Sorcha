@@ -3579,11 +3579,21 @@ public class PublishService(
         const string SorchaLocalWalletRecipientCode = "VAL_BP_CRED_001";
         const string SorchaLocalWalletImplicitDisclosureWarning = "WARN_BP_CRED_002";
         const string SorchaLocalWalletRejectNotTerminalCode = "VAL_BP_CRED_003";
+        const string CredentialVctNotAbsoluteUriCode = "VAL_BP_CRED_004";
 
         foreach (var action in blueprint.Actions)
         {
             var issuance = action.CredentialIssuanceConfig;
             if (issuance is null) continue;
+
+            // VAL_BP_CRED_004 — a declared vct must be an absolute URI (SD-JWT VC vct is a URI).
+            if (!string.IsNullOrWhiteSpace(issuance.Vct) && !Uri.TryCreate(issuance.Vct, UriKind.Absolute, out _))
+            {
+                errors.Add(
+                    $"[{CredentialVctNotAbsoluteUriCode}] Action {action.Id} ('{action.Title}'): " +
+                    $"credentialIssuanceConfig.vct '{issuance.Vct}' is not an absolute URI. The vct must be an " +
+                    $"absolute URI, e.g. https://sorcha.dev/vc/{{type}}/v1.");
+            }
 
             // This block is the deprecation handler for SorchaInternal — it references the obsolete
             // value deliberately, to warn authors and to treat it as SorchaLocalWallet at runtime.

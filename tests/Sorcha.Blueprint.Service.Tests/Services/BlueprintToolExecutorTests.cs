@@ -634,6 +634,129 @@ public class BlueprintToolExecutorTests
         output!.warnings.Should().Contain(w => w.code == "NO_STARTING_ACTION");
     }
 
+    [Fact]
+    public async Task ExecuteAsync_ValidateBlueprint_ReturnsErrorForNonAbsoluteUriVct()
+    {
+        // Arrange
+        var builder = BlueprintBuilder.Create();
+        await _executor.ExecuteAsync("create_blueprint",
+            CreateArgs(new { title = "Test Blueprint", description = "Test blueprint" }), builder);
+        await _executor.ExecuteAsync("add_participant",
+            CreateArgs(new { id = "issuer", name = "Issuer" }), builder);
+        await _executor.ExecuteAsync("add_participant",
+            CreateArgs(new { id = "holder", name = "Holder" }), builder);
+        await _executor.ExecuteAsync("add_action",
+            CreateArgs(new
+            {
+                id = 1,
+                title = "Issue",
+                description = "Issue a credential",
+                sender = "issuer",
+                isStartingAction = true
+            }), builder);
+
+        var issueResult = await _executor.ExecuteAsync("issue_credential",
+            CreateArgs(new
+            {
+                actionId = 1,
+                credentialType = "AssuredIdentity",
+                recipientParticipantId = "holder",
+                claimMappings = new[]
+                {
+                    new { claimName = "name", sourceField = "/name" }
+                }
+            }), builder);
+        issueResult.Success.Should().BeTrue();
+
+        // Set an invalid (non-absolute-URI) vct via the metadata escape-hatch.
+        var metadataResult = await _executor.ExecuteAsync("set_action_metadata",
+            CreateArgs(new
+            {
+                actionId = 1,
+                credentialIssuanceConfig = new
+                {
+                    credentialType = "AssuredIdentity",
+                    vct = "not a uri",
+                    recipientParticipantId = "holder",
+                    claimMappings = new[]
+                    {
+                        new { claimName = "name", sourceField = "/name" }
+                    }
+                }
+            }), builder);
+        metadataResult.Success.Should().BeTrue();
+
+        // Act
+        var result = await _executor.ExecuteAsync("validate_blueprint", CreateArgs(new { }), builder);
+
+        // Assert
+        var resultJson = result.Result!.RootElement.ToString();
+        var output = JsonSerializer.Deserialize<ValidationOutput>(resultJson);
+        output!.isValid.Should().BeFalse();
+        output.errors.Should().Contain(e => e.code == "INVALID_CREDENTIAL_VCT");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ValidateBlueprint_AllowsAbsoluteUriVct()
+    {
+        // Arrange
+        var builder = BlueprintBuilder.Create();
+        await _executor.ExecuteAsync("create_blueprint",
+            CreateArgs(new { title = "Test Blueprint", description = "Test blueprint" }), builder);
+        await _executor.ExecuteAsync("add_participant",
+            CreateArgs(new { id = "issuer", name = "Issuer" }), builder);
+        await _executor.ExecuteAsync("add_participant",
+            CreateArgs(new { id = "holder", name = "Holder" }), builder);
+        await _executor.ExecuteAsync("add_action",
+            CreateArgs(new
+            {
+                id = 1,
+                title = "Issue",
+                description = "Issue a credential",
+                sender = "issuer",
+                isStartingAction = true
+            }), builder);
+
+        var issueResult = await _executor.ExecuteAsync("issue_credential",
+            CreateArgs(new
+            {
+                actionId = 1,
+                credentialType = "AssuredIdentity",
+                recipientParticipantId = "holder",
+                claimMappings = new[]
+                {
+                    new { claimName = "name", sourceField = "/name" }
+                }
+            }), builder);
+        issueResult.Success.Should().BeTrue();
+
+        // Set a valid absolute-URI vct via the metadata escape-hatch.
+        var metadataResult = await _executor.ExecuteAsync("set_action_metadata",
+            CreateArgs(new
+            {
+                actionId = 1,
+                credentialIssuanceConfig = new
+                {
+                    credentialType = "AssuredIdentity",
+                    vct = "https://sorcha.dev/vc/assured-identity/v1",
+                    recipientParticipantId = "holder",
+                    claimMappings = new[]
+                    {
+                        new { claimName = "name", sourceField = "/name" }
+                    }
+                }
+            }), builder);
+        metadataResult.Success.Should().BeTrue();
+
+        // Act
+        var result = await _executor.ExecuteAsync("validate_blueprint", CreateArgs(new { }), builder);
+
+        // Assert
+        var resultJson = result.Result!.RootElement.ToString();
+        var output = JsonSerializer.Deserialize<ValidationOutput>(resultJson);
+        output!.errors.Should().NotContain(e => e.code == "INVALID_CREDENTIAL_VCT");
+    }
+
     #endregion
 
     #region Unknown Tool Tests
