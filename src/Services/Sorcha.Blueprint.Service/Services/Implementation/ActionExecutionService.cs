@@ -802,6 +802,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             {
                 ["credentialId"] = localWalletCredential.CredentialId,
                 ["credentialType"] = localWalletCredential.Type,
+                ["displayConfig"] = localWalletCredential.DisplayConfigJson,
                 ["issuerDid"] = localWalletCredential.IssuerDid,
                 ["subjectDid"] = localWalletCredential.SubjectDid,
                 ["issuedAt"] = localWalletCredential.IssuedAt,
@@ -2388,6 +2389,11 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                 trustAnchor: config.TrustAnchor == Sorcha.Blueprint.Models.Credentials.TrustAnchor.X509Lotl
                     ? "x509-lotl"
                     : null,
+                // Credential VCT decoupling — carry the canonical vct URI and the authored
+                // display name so the issuer stamps the citizen entity's Type with the vct
+                // and records credentialName in the display config (not the bare type).
+                vct: config.Vct,
+                displayName: config.DisplayName,
                 cancellationToken: cancellationToken);
 
             return result;

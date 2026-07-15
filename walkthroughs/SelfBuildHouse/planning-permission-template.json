@@ -1402,6 +1402,8 @@
         ],
         "credentialIssuanceConfig": {
           "credentialType": "PlanningPermissionCredential",
+          "vct": "https://sorcha.dev/vc/planning-permission/v1",
+          "displayName": "Planning Permission",
           "recipientParticipantId": "self-builder",
           "expiryDuration": "P1095D",
           "claimMappings": [

@@ -130,7 +130,7 @@ $walletCreds = Invoke-SorchaApi `
 
 $cred = $null
 if ($walletCreds) {
-    $cred = @($walletCreds) | Where-Object { $_.type -eq "CyberEssentialsUacPosture" } | Select-Object -First 1
+    $cred = @($walletCreds) | Where-Object { $_.type -eq "https://sorcha.dev/vc/cyber-essentials-uac/v1" } | Select-Object -First 1
 }
 
 if (-not $cred) {
@@ -201,7 +201,7 @@ Write-WtStep "S3-4: Building presentation from revoked credential"
 $presR = Get-SorchaCredentialPresentation `
     -WalletUrl      $sorchaEnv.WalletUrl `
     -WalletAddress  $state.roles.'subject-org'.walletAddress `
-    -CredentialType "CyberEssentialsUacPosture" `
+    -CredentialType "https://sorcha.dev/vc/cyber-essentials-uac/v1" `
     -Token          $subjectSession.Token
 
 Assert ($presR -ne $null) "presentation object constructed from revoked credential"

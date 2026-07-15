@@ -102,7 +102,7 @@
         "requiredPriorActions": [1],
         "credentialRequirements": [
           {
-            "type": "AssuredIdentityCredential",
+            "type": "https://sorcha.dev/vc/assured-identity/v1",
             "presentationSource": "HaipExternalWallet",
             "requiredClaims": [
               { "claimName": "givenName" },
@@ -145,6 +145,8 @@
         "requiredPriorActions": [2],
         "credentialIssuanceConfig": {
           "credentialType": "DrivingLicenceCredential",
+          "vct": "https://sorcha.dev/vc/driving-licence/v1",
+          "displayName": "Driving Licence",
           "targetAudience": "HaipExternalWallet",
           "recipientParticipantId": "citizen",
           "claimMappings": [

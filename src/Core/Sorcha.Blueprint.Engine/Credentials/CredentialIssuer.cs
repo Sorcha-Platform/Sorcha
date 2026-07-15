@@ -40,9 +40,11 @@ public class CredentialIssuer : ICredentialIssuer
         // Step 1: Map action data fields to credential claims
         var claims = MapClaims(config.ClaimMappings, processedData);
 
-        // Add standard claims
-        claims["type"] = config.CredentialType;
-        claims["vct"] = config.CredentialType;
+        // Add standard claims.
+        // SD-JWT VC (draft-ietf-oauth-sd-jwt-vc §3.2.2.1): vct is the SOLE type claim, a
+        // case-sensitive URI. There is no `type` claim in the profile — do not write one.
+        var vct = string.IsNullOrWhiteSpace(config.Vct) ? config.CredentialType : config.Vct;
+        claims["vct"] = vct;
 
         // Step 2: Calculate expiry
         var issuedAt = DateTimeOffset.UtcNow;
@@ -69,10 +71,19 @@ public class CredentialIssuer : ICredentialIssuer
         // Step 5: Generate credential ID
         var credentialId = $"urn:uuid:{Guid.NewGuid()}";
 
+        // Step 6: Thread the authored display name into the display carrier so it survives
+        // to IssuedCredentialInfo.DisplayConfigJson / CredentialEntity independently of vct.
+        var displayConfig = config.DisplayConfig;
+        if (!string.IsNullOrWhiteSpace(config.DisplayName))
+        {
+            displayConfig ??= new CredentialDisplayConfig();
+            displayConfig.CredentialName = config.DisplayName;
+        }
+
         return new IssuedCredentialInfo
         {
             CredentialId = credentialId,
-            Type = config.CredentialType,
+            Type = vct,
             IssuerDid = issuerDid,
             SubjectDid = recipientDid,
             Claims = claims,
@@ -81,8 +92,8 @@ public class CredentialIssuer : ICredentialIssuer
             RawToken = token.RawToken,
             UsagePolicy = config.UsagePolicy.ToString(),
             MaxPresentations = config.MaxPresentations,
-            DisplayConfigJson = config.DisplayConfig != null
-                ? JsonSerializer.Serialize(config.DisplayConfig)
+            DisplayConfigJson = displayConfig != null
+                ? JsonSerializer.Serialize(displayConfig)
                 : null
         };
     }

@@ -198,6 +198,7 @@ public sealed class InboundCredentialDetector : IInboundCredentialDetector
                 IssuerOrgName = extract.IssuerOrgName,
                 SubjectDid = walletAddress,
                 ClaimsJson = extract.ClaimsJson,
+                DisplayConfigJson = extract.DisplayConfigJson,
                 IssuedAt = extract.IssuedAt,
                 ExpiresAt = extract.ExpiresAt,
                 RawToken = extract.RawToken,
@@ -518,6 +519,11 @@ public sealed class InboundCredentialDetector : IInboundCredentialDetector
             expiresAt = parsedExpires;
         }
 
+        var displayConfigJson = credential.TryGetProperty("displayConfig", out var displayEl)
+            && displayEl.ValueKind == JsonValueKind.String
+                ? displayEl.GetString()
+                : null;
+
         var issuerOrgName = credential.TryGetProperty("issuerOrgName", out var orgEl) ? orgEl.GetString() : null;
         var blueprintId = credential.TryGetProperty("issuanceBlueprintId", out var bpEl) ? bpEl.GetString() : null;
         var instanceId = credential.TryGetProperty("issuanceInstanceId", out var instEl) ? instEl.GetString() : null;
@@ -545,6 +551,7 @@ public sealed class InboundCredentialDetector : IInboundCredentialDetector
             RawToken = rawToken!,
             IssuerOrgName = issuerOrgName,
             ClaimsJson = claimsJson,
+            DisplayConfigJson = displayConfigJson,
             IssuedAt = issuedAt,
             ExpiresAt = expiresAt,
             TransactionId = txId,

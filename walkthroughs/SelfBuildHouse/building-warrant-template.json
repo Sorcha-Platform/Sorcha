@@ -55,7 +55,7 @@
         "isStartingAction": true,
         "credentialRequirements": [
           {
-            "type": "PlanningPermissionCredential",
+            "type": "https://sorcha.dev/vc/planning-permission/v1",
             "requiredClaims": [
               { "claimName": "permitReference" },
               { "claimName": "siteAddress" }
@@ -818,6 +818,8 @@
         ],
         "credentialIssuanceConfig": {
           "credentialType": "BuildingWarrantCredential",
+          "vct": "https://sorcha.dev/vc/building-warrant/v1",
+          "displayName": "Building Warrant",
           "recipientParticipantId": "self-builder",
           "expiryDuration": "P1095D",
           "claimMappings": [
@@ -911,7 +913,7 @@
         "requiredPriorActions": [1, 4],
         "credentialRequirements": [
           {
-            "type": "BuildingWarrantCredential",
+            "type": "https://sorcha.dev/vc/building-warrant/v1",
             "requiredClaims": [
               { "claimName": "warrantReference" }
             ],
@@ -1405,6 +1407,8 @@
         ],
         "credentialIssuanceConfig": {
           "credentialType": "CompletionCertificateCredential",
+          "vct": "https://sorcha.dev/vc/completion-certificate/v1",
+          "displayName": "Completion Certificate",
           "recipientParticipantId": "self-builder",
           "claimMappings": [
             { "claimName": "completionRef", "sourceField": "/completionRef" },

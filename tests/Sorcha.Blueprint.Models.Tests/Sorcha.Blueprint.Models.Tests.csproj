@@ -34,6 +34,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Common\Sorcha.Blueprint.Models\Sorcha.Blueprint.Models.csproj" />
+    <ProjectReference Include="..\..\src\Common\Sorcha.CitizenWallet.Abstractions\Sorcha.CitizenWallet.Abstractions.csproj" />
   </ItemGroup>
 
 </Project>

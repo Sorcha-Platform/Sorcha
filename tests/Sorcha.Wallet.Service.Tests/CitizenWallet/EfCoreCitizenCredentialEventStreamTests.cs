@@ -131,6 +131,45 @@ public class EfCoreCitizenCredentialEventStreamTests
     }
 
     [Fact]
+    public async Task ReadAsync_AddedKind_WithDisplayConfigJson_PopulatesDisplayMetaCredentialName()
+    {
+        // Credential VCT decoupling (Task 4): the authored displayName (Task 3.5) must
+        // survive onto the sync-out payload so the PWA card shows it instead of a
+        // humanized vct.
+        var (stream, db) = CreateSut();
+        var pid = Guid.NewGuid();
+        var credential = NewCredential("urn:credential:1", "ws1qcitizen");
+        credential.DisplayConfigJson = """{"credentialName":"Assured Identity"}""";
+        await SeedAsync(db, pid, (1L, 0, credential.Id, credential));
+
+        var events = await stream.ReadAsync(pid, afterSeq: 0L);
+
+        var evt = events.Should().ContainSingle().Subject;
+        var payload = evt.Payload.Should().BeOfType<CachedCredentialPayload>().Subject;
+        payload.DisplayMeta.Should().NotBeNull();
+        payload.DisplayMeta!["credentialName"]!.GetValue<string>().Should().Be("Assured Identity");
+    }
+
+    [Fact]
+    public async Task ReadAsync_AddedKind_WithoutDisplayConfigJson_LeavesDisplayMetaNull()
+    {
+        // Legacy credentials (issued before Task 3.5, or with no authored display name)
+        // must keep the PWA's Humanize(vct) fallback rather than surfacing a synthetic
+        // DisplayMeta.
+        var (stream, db) = CreateSut();
+        var pid = Guid.NewGuid();
+        var credential = NewCredential("urn:credential:1", "ws1qcitizen");
+        credential.DisplayConfigJson = null;
+        await SeedAsync(db, pid, (1L, 0, credential.Id, credential));
+
+        var events = await stream.ReadAsync(pid, afterSeq: 0L);
+
+        var evt = events.Should().ContainSingle().Subject;
+        var payload = evt.Payload.Should().BeOfType<CachedCredentialPayload>().Subject;
+        payload.DisplayMeta.Should().BeNull();
+    }
+
+    [Fact]
     public async Task ReadAsync_RevokedKind_ProducesRevokedCredentialEntry()
     {
         var (stream, db) = CreateSut();

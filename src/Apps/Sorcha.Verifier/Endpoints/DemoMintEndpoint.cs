@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
+using Sorcha.CitizenWallet.Abstractions.Constants;
 using Sorcha.Verifier.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;using Sorcha.Verifier.Engine;
@@ -98,7 +99,7 @@ public static class DemoMintEndpoint
             ["sub"] = $"did:sorcha:device:{deviceThumbprint}",
             ["iat"] = nowUnix,
             ["exp"] = DateTimeOffset.UtcNow.AddDays(365).ToUnixTimeSeconds(),
-            ["vct"] = "https://sorcha.dev/vc/citizen-device-delegation/v1",
+            ["vct"] = VctUris.CitizenDeviceDelegationV1,
             ["delegated_capabilities"] = new[] { "presentation.holder-key-binding" },
             ["cnf"] = new Dictionary<string, object> { ["jwk"] = body.DeviceJwk },
             // Status-list bit deliberately omitted in demo mode — wallet's NoopStatusListService

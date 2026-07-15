@@ -252,13 +252,13 @@ foreach ($sid in $scenariosToRun) {
             if ($aid -eq 1) {
                 $p = Get-SorchaCredentialPresentation -WalletUrl $walletUrl `
                     -WalletAddress $selfBuilderWallet `
-                    -CredentialType "PlanningPermissionCredential" `
+                    -CredentialType "https://sorcha.dev/vc/planning-permission/v1" `
                     -Token $selfBuilderToken
                 if ($p) { return @($p) }
             } elseif ($aid -ge 5) {
                 $p = Get-SorchaCredentialPresentation -WalletUrl $walletUrl `
                     -WalletAddress $selfBuilderWallet `
-                    -CredentialType "BuildingWarrantCredential" `
+                    -CredentialType "https://sorcha.dev/vc/building-warrant/v1" `
                     -Token $selfBuilderToken
                 if ($p) { return @($p) }
             }

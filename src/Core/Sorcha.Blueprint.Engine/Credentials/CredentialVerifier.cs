@@ -213,7 +213,7 @@ public class CredentialVerifier : ICredentialVerifier
     }
 
     private static bool TypeMatches(string credentialType, string requirementType) =>
-        string.Equals(credentialType, requirementType, StringComparison.OrdinalIgnoreCase);
+        string.Equals(credentialType, requirementType, StringComparison.Ordinal);
 
     private readonly record struct MatchOutcome(VerifiedCredentialDetail? Detail, CredentialValidationError? Error)
     {

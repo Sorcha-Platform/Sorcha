@@ -196,6 +196,15 @@ public interface IWalletServiceClient
     /// <param name="holderJwk">Feature 137 — recipient holder's public JWK (slot 108) for the SD-JWT
     /// <c>cnf</c> key-confirmation binding. When supplied, the issued credential is bound to the holder
     /// key so only the holder can present it. Null leaves the credential unbound (pre-137 behaviour).</param>
+    /// <param name="trustAnchor">Feature 181 US4 — the credential's X.509 trust anchor selector.</param>
+    /// <param name="vct">Canonical SD-JWT VC type identifier (the <c>vct</c> claim). MUST be an absolute
+    /// URI, case-sensitive exact match per SD-JWT VC §3.2.2.1. When null, <paramref name="credentialType"/>
+    /// is used as the vct (defensive fallback for legacy callers). Decoupling the vct from the bare
+    /// credential type is what lets the citizen's stored credential carry the canonical URI.</param>
+    /// <param name="displayName">Authored human-readable credential name shown on the wallet card
+    /// (e.g. "Assured Identity"), decoupled from the vct URI. When supplied, the issuer records it as
+    /// <c>credentialName</c> in the credential's display config so the citizen card never depends on
+    /// parsing the URI.</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Issued credential information including the signed SD-JWT VC token</returns>
     Task<CredentialIssuanceResult> IssueCredentialAsync(
@@ -214,6 +223,8 @@ public interface IWalletServiceClient
         string? tenantId = null,
         JsonElement? holderJwk = null,
         string? trustAnchor = null,
+        string? vct = null,
+        string? displayName = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -499,6 +510,13 @@ public class CredentialIssuanceResult
     /// (multi-node audit CRITICAL #2).
     /// </summary>
     public string? RegisterId { get; init; }
+
+    /// <summary>
+    /// Serialised issuer-defined display config (<c>CredentialDisplayConfig</c> JSON) carrying the
+    /// authored <c>credentialName</c>. Threaded from the issuance endpoint so the SorchaLocalWallet
+    /// register envelope can carry it to the citizen entity. Null when no display name was supplied.
+    /// </summary>
+    public string? DisplayConfigJson { get; init; }
 }
 
 /// <summary>

@@ -3,6 +3,7 @@
 
 using System;
 using System.Net.Http;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -239,4 +240,42 @@ public sealed class SyncServiceTests
         IssuerDid = "did:sorcha:org:test",
         IssuedAt = DateTimeOffset.UtcNow,
     };
+
+    // ---- Credential VCT decoupling (Task 4) — display label mapping ------
+
+    [Fact]
+    public void ToCachedCredential_PopulatesDisplayLabel_FromDisplayMetaCredentialName()
+    {
+        var payload = NewPayload() with
+        {
+            DisplayMeta = new JsonObject { ["credentialName"] = "Assured Identity" },
+        };
+
+        var cached = SyncService.ToCachedCredential(payload);
+
+        cached.DisplayLabel.Should().Be("Assured Identity");
+    }
+
+    [Fact]
+    public void ToCachedCredential_NoDisplayMeta_LeavesDisplayLabelNull()
+    {
+        var payload = NewPayload() with { DisplayMeta = null };
+
+        var cached = SyncService.ToCachedCredential(payload);
+
+        cached.DisplayLabel.Should().BeNull();
+    }
+
+    [Fact]
+    public void ToCachedCredential_DisplayMetaWithoutCredentialName_LeavesDisplayLabelNull()
+    {
+        var payload = NewPayload() with
+        {
+            DisplayMeta = new JsonObject { ["issuerName"] = "Riverside Council" },
+        };
+
+        var cached = SyncService.ToCachedCredential(payload);
+
+        cached.DisplayLabel.Should().BeNull();
+    }
 }

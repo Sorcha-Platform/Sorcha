@@ -869,7 +869,7 @@ tokens (every real PWA sign-in, Feature 136) never carry, so every genuine citiz
   "dataSchemas": [ { "type": "object", "properties": { "email": { "type": "string" } } } ],
   "calculations": null,
   "credentialRequirements": null,
-  "credentialIssuanceConfig": { "credentialType": "AssuredIdentityCredential", "claimMappings": [ ], "recipientParticipantId": "citizen" }
+  "credentialIssuanceConfig": { "credentialType": "AssuredIdentityCredential", "vct": "https://sorcha.dev/vc/assured-identity/v1", "displayName": "Assured Identity", "claimMappings": [ ], "recipientParticipantId": "citizen" }
 }
 ```
 

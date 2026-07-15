@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sorcha.CitizenWallet.Abstractions.Models;
@@ -130,6 +131,7 @@ public sealed class EfCoreCitizenCredentialEventStream : ICitizenCredentialEvent
                 ExpiresAt = entity.ExpiresAt,
                 StatusListUri = null,
                 StatusListIndex = null,
+                DisplayMeta = BuildDisplayMeta(entity.DisplayConfigJson),
             },
             CitizenCredentialEventKind.Revoked => new RevokedCredentialEntry
             {
@@ -151,6 +153,41 @@ public sealed class EfCoreCitizenCredentialEventStream : ICitizenCredentialEvent
                 RevokedAt = DateTimeOffset.UtcNow,
             },
         };
+    }
+
+    /// <summary>
+    /// Extracts the authored <c>credentialName</c> (Credential VCT decoupling, Task 3.5)
+    /// from the stored <see cref="CredentialEntity.DisplayConfigJson"/> and wraps it as the
+    /// sync-out <c>DisplayMeta</c> shape. Returns null on missing/malformed/empty input so
+    /// legacy credentials (issued before Task 3.5, or with no authored display name) keep
+    /// the PWA's <c>Humanize(vct)</c> fallback rather than surfacing a synthetic label.
+    /// </summary>
+    private static JsonObject? BuildDisplayMeta(string? displayConfigJson)
+    {
+        if (string.IsNullOrWhiteSpace(displayConfigJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            var parsed = JsonNode.Parse(displayConfigJson);
+            var credentialName = parsed?["credentialName"]?.GetValue<string>();
+            return string.IsNullOrWhiteSpace(credentialName)
+                ? null
+                : new JsonObject { ["credentialName"] = credentialName };
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+        catch (InvalidOperationException)
+        {
+            // Node shape didn't match expectations (e.g. displayConfigJson parsed to a
+            // non-object, or credentialName is present but not a string) — fall back to
+            // the Humanize(vct) path rather than throwing out of an event-stream read.
+            return null;
+        }
     }
 
     private static CredentialRevocationReason MapRevocationReason(CredentialStatus status) =>

@@ -1254,6 +1254,19 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                             location = $"actions[{action.Id}].credentialIssuanceConfig"
                         });
                     }
+
+                    // Feature: credential VCT decoupling (design §7) — a declared vct must be an
+                    // absolute URI (SD-JWT VC vct is a URI). Reject rather than mint an
+                    // unmatchable credential. Do NOT apply this to the credentialType fallback.
+                    if (!string.IsNullOrWhiteSpace(issuance.Vct) && !Uri.TryCreate(issuance.Vct, UriKind.Absolute, out _))
+                    {
+                        errors.Add(new
+                        {
+                            code = "INVALID_CREDENTIAL_VCT",
+                            message = $"Action '{action.Title}' credentialIssuanceConfig.vct '{issuance.Vct}' is not an absolute URI. The vct must be an absolute URI, e.g. https://sorcha.dev/vc/{{type}}/v1.",
+                            location = $"actions[{action.Id}].credentialIssuanceConfig"
+                        });
+                    }
                 }
             }
         }

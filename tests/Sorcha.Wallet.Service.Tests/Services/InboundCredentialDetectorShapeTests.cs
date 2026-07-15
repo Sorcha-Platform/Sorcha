@@ -273,6 +273,53 @@ public class InboundCredentialDetectorShapeTests
     }
 
     [Fact]
+    public void DisplayConfig_Present_IsParsedIntoExtract()
+    {
+        // Credential VCT decoupling: the SorchaLocalWallet envelope now carries the issuer-authored
+        // display config (serialised CredentialDisplayConfig) under "displayConfig". The detector must
+        // read it into the extract so the citizen entity's DisplayConfigJson is populated — and the
+        // vct URI arrives in credentialType, becoming the citizen entity's Type.
+        const string WithDisplayConfigJson = /*lang=json,strict*/ """
+        {
+          "/credential": {
+            "credentialId": "urn:uuid:vct-decoupling-test-1",
+            "credentialType": "https://credentials.sorcha.dev/assured-identity",
+            "issuerDid": "did:sorcha:org:ws11qgovernment",
+            "displayConfig": "{\"credentialName\":\"Assured Identity\"}",
+            "issuedAt": "2026-04-15T10:30:00+00:00",
+            "rawToken": "eyJhbGciOiJFZERTQSJ9.test.token"
+          }
+        }
+        """;
+
+        var doc = JsonSerializer.Deserialize<JsonElement>(WithDisplayConfigJson);
+        var field = InboundCredentialDetector.FindCredentialField(doc);
+        field.Should().NotBeNull();
+
+        var extract = InboundCredentialDetector.TryParseExtract(field!.Value, "tx-vct-decoupling");
+
+        extract.Should().NotBeNull();
+        extract!.CredentialType.Should().Be("https://credentials.sorcha.dev/assured-identity",
+            "the vct URI rides in credentialType and becomes the citizen entity's Type");
+        extract.DisplayConfigJson.Should().Be("{\"credentialName\":\"Assured Identity\"}");
+        extract.DisplayConfigJson.Should().Contain("credentialName");
+    }
+
+    [Fact]
+    public void DisplayConfig_Absent_ExtractHasNullDisplayConfig()
+    {
+        // Legacy / no-display-name issuance omits displayConfig — the parser must leave it null,
+        // never throw or fabricate a value.
+        var doc = JsonSerializer.Deserialize<JsonElement>(WriterShapeJson);
+        var field = InboundCredentialDetector.FindCredentialField(doc);
+
+        var extract = InboundCredentialDetector.TryParseExtract(field!.Value, "tx-no-display");
+
+        extract.Should().NotBeNull();
+        extract!.DisplayConfigJson.Should().BeNull();
+    }
+
+    [Fact]
     public void OptionalFields_Absent_StillParses()
     {
         // ExpiresAt, BlueprintId, and InstanceId are all optional in

@@ -76,6 +76,45 @@ public class CredentialMatcherTests
     }
 
     [Fact]
+    public void Match_TypeCaseMismatch_DoesNotMatch()
+    {
+        // SD-JWT VC §3.2.2.1 / OpenID4VP DCQL: vct/type matching is exact and case-sensitive.
+        var requirements = new[]
+        {
+            new CredentialRequirement { Type = "https://sorcha.dev/vc/Assured-Identity/v1" } // wrong case
+        };
+
+        var credentials = new List<CredentialEntity>
+        {
+            CreateCredential("cred-1", "https://sorcha.dev/vc/assured-identity/v1", "did:sorcha:issuer:gov")
+        };
+
+        var result = _matcher.Match(requirements, credentials);
+
+        result["https://sorcha.dev/vc/Assured-Identity/v1"].Should().BeNull();
+    }
+
+    [Fact]
+    public void Match_TypeCaseMatch_Matches()
+    {
+        // Positive control — identical casing still matches.
+        var requirements = new[]
+        {
+            new CredentialRequirement { Type = "https://sorcha.dev/vc/assured-identity/v1" }
+        };
+
+        var credentials = new List<CredentialEntity>
+        {
+            CreateCredential("cred-1", "https://sorcha.dev/vc/assured-identity/v1", "did:sorcha:issuer:gov")
+        };
+
+        var result = _matcher.Match(requirements, credentials);
+
+        result["https://sorcha.dev/vc/assured-identity/v1"].Should().NotBeNull();
+        result["https://sorcha.dev/vc/assured-identity/v1"]!.Id.Should().Be("cred-1");
+    }
+
+    [Fact]
     public void Match_IssuerFilter_RejectsUntrustedIssuer()
     {
         var requirements = new[]

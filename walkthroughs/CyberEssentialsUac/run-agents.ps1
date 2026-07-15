@@ -199,7 +199,7 @@ while ((Get-Date) -lt $credDeadline) {
         $walletCreds = Invoke-SorchaApi -Method GET -Uri $walletCredUrl -Headers $subjectSession.Headers
         $items = if ($walletCreds.credentials) { $walletCreds.credentials } else { $walletCreds }
         if ($items) {
-            $postureCred = @($items) | Where-Object { $_.type -eq "CyberEssentialsUacPosture" } | Select-Object -First 1
+            $postureCred = @($items) | Where-Object { $_.type -eq "https://sorcha.dev/vc/cyber-essentials-uac/v1" } | Select-Object -First 1
             if ($postureCred) { break }
         }
     } catch { }
@@ -235,7 +235,7 @@ Write-WtInfo "S1-4: Fetching CyberEssentialsUacPosture presentation from subject
 $pres = Get-SorchaCredentialPresentation `
     -WalletUrl       $sorchaEnv.WalletUrl `
     -WalletAddress   $state.roles.'subject-org'.walletAddress `
-    -CredentialType  "CyberEssentialsUacPosture" `
+    -CredentialType  "https://sorcha.dev/vc/cyber-essentials-uac/v1" `
     -Token           $subjectSession.Token
 
 Assert ($pres -ne $null) "subject-org holds a presentable CyberEssentialsUacPosture credential"
@@ -357,7 +357,7 @@ function Get-PostureCount {
     try {
         $r = Invoke-SorchaApi -Method GET -Uri $url -Headers $headers
         $items = if ($r.credentials) { $r.credentials } else { $r }
-        return (@($items) | Where-Object { $_.type -eq "CyberEssentialsUacPosture" }).Count
+        return (@($items) | Where-Object { $_.type -eq "https://sorcha.dev/vc/cyber-essentials-uac/v1" }).Count
     } catch { return 0 }
 }
 $postureWalletUrl = "$($sorchaEnv.WalletUrl)/v1/wallets/$($state.roles.'subject-org'.walletAddress)/credentials/?status=All"

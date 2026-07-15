@@ -22,6 +22,26 @@ public class CredentialIssuanceConfig
     public string CredentialType { get; set; } = string.Empty;
 
     /// <summary>
+    /// Canonical SD-JWT VC type identifier (the <c>vct</c> claim). MUST be an absolute URI,
+    /// lowercase kebab-case: <c>https://sorcha.dev/vc/{type}/v1</c>. This is the machine
+    /// matching identity — a verifier's request and the held credential match on this string
+    /// (case-sensitive exact, per SD-JWT VC §3.2.2.1). When null, <see cref="CredentialType"/>
+    /// is used as the vct (defensive fallback for hand-authored/legacy configs).
+    /// </summary>
+    [JsonPropertyName("vct")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Vct { get; set; }
+
+    /// <summary>
+    /// Human-readable label shown on the credential card (e.g. "Assured Identity"). Decoupled
+    /// from <see cref="Vct"/> so display never depends on parsing the URI. When null, the wallet
+    /// falls back to humanising the vct.
+    /// </summary>
+    [JsonPropertyName("displayName")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? DisplayName { get; set; }
+
+    /// <summary>
     /// Maps action data fields to credential claims.
     /// </summary>
     [DataAnnotations.Required]

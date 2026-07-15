@@ -125,6 +125,8 @@
         ],
         "credentialIssuanceConfig": {
           "credentialType": "CouncilDigitalIdCredential",
+          "vct": "https://sorcha.dev/vc/council-digital-id/v1",
+          "displayName": "Council Digital ID",
           "claimMappings": [
             { "claimName": "holder_name", "sourceField": "/fullName" },
             { "claimName": "date_of_birth", "sourceField": "/dateOfBirth" },

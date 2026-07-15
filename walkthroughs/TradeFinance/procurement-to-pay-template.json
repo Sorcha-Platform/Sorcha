@@ -959,6 +959,8 @@
         ],
         "credentialIssuanceConfig": {
           "credentialType": "VerifiedInvoiceCredential",
+          "vct": "https://sorcha.dev/vc/verified-invoice/v1",
+          "displayName": "Verified Invoice",
           "recipientParticipantId": "sales-mgr",
           "expiryDuration": "P90D",
           "claimMappings": [

@@ -263,7 +263,12 @@ public sealed class SyncService : ISyncService
         // check. A future revision can add ICredentialCache.RemoveAsync.
     }
 
-    private static CachedCredential ToCachedCredential(CachedCredentialPayload payload) => new()
+    /// <summary>
+    /// Maps a wire <see cref="CachedCredentialPayload"/> to the local cache shape.
+    /// Internal (not private) so <c>Sorcha.Wallet.Pwa.Tests</c> (an
+    /// <c>InternalsVisibleTo</c> friend assembly) can exercise the mapping directly.
+    /// </summary>
+    internal static CachedCredential ToCachedCredential(CachedCredentialPayload payload) => new()
     {
         // The cache uses Guid as an opaque local key; the canonical credential id
         // (urn:credential:...) survives in payload.RawSdJwt + the presentation
@@ -274,6 +279,9 @@ public sealed class SyncService : ISyncService
         RawSdJwt = payload.Jwt,
         AvailableClaimNames = [],
         IssuerDid = payload.IssuerDid,
+        // Credential VCT decoupling (Task 4): the authored display name, when the
+        // issuer supplied one, wins over CredentialDisplay.Humanize(vct) on the card.
+        DisplayLabel = payload.DisplayMeta?["credentialName"]?.GetValue<string>(),
     };
 
     private static Guid StringToCacheGuid(string credentialId)

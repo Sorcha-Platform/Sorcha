@@ -1,7 +1,7 @@
 {
   "$comment": "POS (point-of-sale) presentation request for the membership credential. Off-register verification via Sorcha.Verifier (PresentationRequestBuilder.CreateAsync). The verifier requests ONLY memberNumber + tier; identity (name, DOB) is withheld by omission because DCQL claims list only what may be disclosed. The discount a tier earns is the verifier's policy (verifierProfile.tierDiscountMap) and is NEVER read from the credential. This file documents both the builder inputs and the exact DCQL query the builder emits (Feature 181 — DCQL replaced Presentation Exchange).",
   "verifierRequest": {
-    "requiredVct": "MembershipCredential/v1",
+    "requiredVct": "https://sorcha.dev/vc/membership/v1",
     "requiredClaims": ["memberNumber", "tier"],
     "optionalClaims": [],
     "purpose": "Verify membership at point of sale",
@@ -13,7 +13,7 @@
         "id": "credential",
         "format": "dc+sd-jwt",
         "meta": {
-          "vct_values": ["MembershipCredential/v1"]
+          "vct_values": ["https://sorcha.dev/vc/membership/v1"]
         },
         "claims": [
           { "path": ["memberNumber"] },

@@ -159,7 +159,7 @@ Sorcha blueprints define multi-participant workflows as JSON documents. Each blu
       "sender": "applicant",
       "credentialRequirements": [
         {
-          "type": "AssuredIdentityCredential",
+          "type": "https://sorcha.dev/vc/assured-identity/v1",
           "presentationSource": "HaipExternalWallet",
           "requiredClaims": [ { "claimName": "givenName" }, { "claimName": "dateOfBirth" } ]
         }
@@ -604,7 +604,7 @@ Watermark states (Draft/Pending/Issued/None), stacked-cards behaviour for `crede
 ```jsonc
 "credentialRequirements": [
   {
-    "type": "AssuredIdentityCredential",
+    "type": "https://sorcha.dev/vc/assured-identity/v1",
     "presentationSource": "HaipExternalWallet",
     "trustPolicy": {
       "sources": [
@@ -625,12 +625,15 @@ Watermark states (Draft/Pending/Issued/None), stacked-cards behaviour for `crede
 - `presentationSource: "HaipExternalWallet"` runs the OpenID4VP `direct_post` flow (Feature 098) — required for citizen-facing services that accept external wallets and for credential-bootstrapped open submissions.
 - `trustPolicy` replaced the removed `acceptedIssuers` field (F135). A null/empty `trustPolicy` accepts any issuer (`OPEN_CREDENTIAL_ISSUER` warning at publish time); a `did-allowlist` source is the direct equivalent of the old issuer list, and a `register` source trusts register-resolved issuers. Full shape: the F135 section of the `sorcha-architecture` skill. **Do not write `acceptedIssuers`** — it is silently ignored.
 - Multiple requirements are AND-combined.
+- `type` above is the canonical, **case-sensitive** VCT URI (`Sorcha.CitizenWallet.Abstractions.Constants.VctUris`, e.g. `VctUris.AssuredIdentityV1`) — for a platform-catalogued credential type it must match the issuer's `vct` exactly (`Ordinal` comparison). A missed URI/casing means the requirement silently never matches.
 
 ### Issuing a credential on action completion
 
 ```jsonc
 "credentialIssuanceConfig": {
-  "credentialType": "PlanningPermit",
+  "credentialType": "PlanningPermissionCredential",
+  "vct": "https://sorcha.dev/vc/planning-permission/v1",
+  "displayName": "Planning Permission",
   "claimMappings": [
     { "claimName": "applicantName", "sourceField": "/applicantName" },
     { "claimName": "siteAddress",   "sourceField": "/siteAddress"   }
@@ -644,6 +647,9 @@ Watermark states (Draft/Pending/Issued/None), stacked-cards behaviour for `crede
 }
 ```
 
+- `vct` (new) is the canonical, case-sensitive absolute URI written to `claims["vct"]` — the SD-JWT VC's **sole** type identifier (SD-JWT VC §3.2.2.1; Sorcha no longer emits a `type` claim). Always set it from `VctUris` for a platform-catalogued type — don't hand-write the URI.
+- `displayName` (new) is the authored human card label (e.g. "Planning Permission"). When omitted, the card falls back to `Humanize(vct)` — which reads badly for a URI (`Humanize("https://.../planning-permission/v1")` → "V1"), so set it explicitly for any URI-`vct` credential.
+- `credentialType` is now a short-name/fallback/readable id, written only when `vct` is omitted. It is no longer the matching identity.
 - `targetAudience: "SorchaLocalWallet"` (Feature 106): the engine seals an X25519-wrapped, AEAD-encrypted SD-JWT VC into the action transaction; the credential peer-replicates and is detected by the holder's Wallet Service regardless of node. Default for on-platform issuance.
 - `targetAudience: "HaipExternalWallet"` (Feature 104): mints an OpenID4VCI offer instead of writing to a wallet. **MUST be paired with a separate Claim action** carrying `x-credential-offer` and `outputMapping` from the issuing route — see Credential Claim Actions below.
 - `targetAudience: "SorchaInternal"` is **deprecated** — bypasses the register and breaks on multi-node deployments. Always prefer `SorchaLocalWallet`.
@@ -667,7 +673,9 @@ Composes `SorchaLocalWallet` issuance with **Open Participants & Late Binding** 
     { "id": 2, "sender": "verifier", "schemaRef": "VerifierDecision/v1" },
     { "id": 3, "sender": "verifier",
       "credentialIssuanceConfig": {
-        "credentialType": "AssuredIdentityCredential/v1",
+        "credentialType": "AssuredIdentityCredential",
+        "vct": "https://sorcha.dev/vc/assured-identity/v1",
+        "displayName": "Assured Identity",
         "targetAudience": "SorchaLocalWallet",
         "recipientParticipantId": "applicant",
         "claimMappings": [

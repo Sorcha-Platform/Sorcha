@@ -42,7 +42,7 @@
         "isStartingAction": true,
         "credentialRequirements": [
           {
-            "type": "AssuredIdentityCredential",
+            "type": "https://sorcha.dev/vc/assured-identity/v1",
             "presentationSource": "SorchaWallet",
             "requiredClaims": [
               { "claimName": "givenName" },
@@ -115,6 +115,8 @@
         "requiredPriorActions": [2],
         "credentialIssuanceConfig": {
           "credentialType": "BlueBadgeCredential",
+          "vct": "https://sorcha.dev/vc/blue-badge/v1",
+          "displayName": "Blue Badge",
           "targetAudience": "SorchaLocalWallet",
           "recipientParticipantId": "citizen",
           "claimMappings": [

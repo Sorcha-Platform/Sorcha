@@ -61,7 +61,7 @@ public class CredentialMatcher
         foreach (var credential in credentials)
         {
             // Type match
-            if (!string.Equals(credential.Type, requirement.Type, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(credential.Type, requirement.Type, StringComparison.Ordinal))
                 continue;
 
             // Issuer check (feature 135: issuer allowlist now lives on the trust policy)
@@ -135,7 +135,7 @@ public class CredentialMatcher
             CredentialEntity? match = null;
             foreach (var credential in credentials)
             {
-                if (!string.Equals(credential.Type, requirement.Type, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(credential.Type, requirement.Type, StringComparison.Ordinal))
                     continue;
 
                 // Feature 120 US5 — equivalence-aware allowlist match.
