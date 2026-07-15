@@ -48,6 +48,13 @@ public static class ServiceCollectionExtensions
                               Sorcha.UI.Core.Services.Feedback.InlineFeedback>();
         services.AddSingleton<IPresentationEngine, PresentationEngine>();
         services.AddSingleton<IDeviceKeyService, WebCryptoDeviceKeyService>();
+
+        // Citizen OID4VP device-bound cnf (Phase 1, #1195): override the Components.User default
+        // (NullDeviceKeyProvider) so DeviceKeyRenderer binds the SD-JWT cnf to this device's public
+        // signing JWK. AddCitizenWalletServices runs AFTER AddSorchaUserComponents (which TryAdds the
+        // default), so this plain AddSingleton wins.
+        services.AddSingleton<Sorcha.UI.Core.Services.DeviceKeys.IDeviceKeyProvider, PwaDeviceKeyProvider>();
+
         services.AddSingleton<ICredentialCache, IndexedDbCredentialCache>();
 
         // Feature 185 (in-person / offline presentation).

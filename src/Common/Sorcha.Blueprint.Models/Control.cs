@@ -204,5 +204,19 @@ public enum ControlTypes
     /// cannot edit it. Feature 137 (cross-node submission, C3).
     /// </summary>
     [DataAnnotations.Display(Name = "Holder Key")]
-    HolderKey
+    HolderKey,
+
+    /// <summary>
+    /// Read-only device-key capture. Dispatched when an object field carries
+    /// <c>format: "sorcha-device-key"</c>. Citizen OID4VP device-bound <c>cnf</c>
+    /// (Phase 1, #1195, Option A): the renderer writes THIS DEVICE's public signing
+    /// JWK into the <c>/{field}/holderJwk</c> slot so the issued SD-JWT binds
+    /// <c>cnf.jwk</c> to the device key, while the wallet's delivery keys
+    /// (<c>/{field}/encryptionPublicKey</c>, <c>/{field}/algorithm</c>) still come
+    /// from the Wallet Service holder-keys endpoint for the on-register AEAD envelope.
+    /// A device-signed KB-JWT then verifies against <c>cnf</c> under standard OID4VP.
+    /// Public material only — the user cannot edit it.
+    /// </summary>
+    [DataAnnotations.Display(Name = "Device Key")]
+    DeviceKey
 }

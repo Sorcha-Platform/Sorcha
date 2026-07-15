@@ -1,0 +1,142 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using System.Text.Json
+@using Microsoft.Extensions.Logging
+@using Sorcha.Blueprint.Models
+@using Sorcha.UI.Core.Models.Forms
+@using Sorcha.UI.Core.Services.DeviceKeys
+@using Sorcha.UI.Core.Services.HolderKeys
+
+@inject IDeviceKeyProvider Device
+@inject IHolderKeyClient HolderKeys
+@inject ILogger<DeviceKeyRenderer> Logger
+
+@*
+    Citizen OID4VP device-bound cnf (Phase 1, #1195)
+
+    Dispatched by FormSchemaService when an object property carries
+    format: "sorcha-device-key". Option A: the SD-JWT holder-binding key (cnf)
+    IS this device's key, so the renderer captures the device's PUBLIC signing
+    JWK and writes it into the /holderJwk slot the issuer reads at
+    credential-issuance time (ActionExecutionService.ResolveCarriedHolderKeys) —
+    the existing F137 issuance path is UNCHANGED, only which key /holderJwk
+    carries changes. A device-signed KB-JWT then verifies against cnf under
+    standard OID4VP.
+
+    The wallet's DELIVERY keys (encryptionPublicKey + algorithm) still come from
+    GET /api/v1/wallet/holder-keys — those wrap the on-register AEAD envelope and
+    stay the wallet's keys, NOT the device key.
+
+    On init the renderer writes the three sibling pointers via FormContext.SetValue
+    (sibling fan-out, like HolderKeyRenderer):
+        {Scope}/holderJwk             — THIS DEVICE's public JWK (→ cnf, Option A)
+        {Scope}/encryptionPublicKey   — base64 wallet public key
+        {Scope}/algorithm             — ED25519 | NISTP256
+
+    The user cannot edit the key material — the control is display-only. If either
+    fetch fails the renderer shows a retry affordance rather than silently
+    submitting an unbindable application.
+*@
+
+<div class="device-key-field" data-testid="device-key-field">
+    @switch (_state)
+    {
+        case State.Loading:
+            <MudAlert Severity="Severity.Normal" Dense="true" Variant="Variant.Outlined" Class="my-1">
+                <div class="d-flex align-center gap-2">
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                    <span>Securing your device identity…</span>
+                </div>
+            </MudAlert>
+            break;
+
+        case State.Captured:
+            <MudAlert Severity="Severity.Success" Dense="true" Variant="Variant.Outlined"
+                      Icon="@Icons.Material.Filled.Smartphone" Class="my-1" data-testid="device-key-captured">
+                Device identity captured — your credential will be bound to this device and delivered securely to this wallet.
+            </MudAlert>
+            break;
+
+        case State.Error:
+            <MudAlert Severity="Severity.Warning" Dense="true" Variant="Variant.Outlined" Class="my-1"
+                      data-testid="device-key-error">
+                <div class="d-flex align-center justify-space-between gap-2">
+                    <span>We couldn't secure your device identity keys.</span>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Refresh"
+                               OnClick="LoadAsync"
+                               data-testid="device-key-retry">
+                        Retry
+                    </MudButton>
+                </div>
+            </MudAlert>
+            break;
+    }
+</div>
+
+@code {
+    [CascadingParameter] public FormContext? FormContext { get; set; }
+    [Parameter, EditorRequired] public Control Control { get; set; } = new();
+    [Parameter] public bool IsDisabled { get; set; }
+
+    private enum State { Loading, Captured, Error }
+
+    private State _state = State.Loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // If the keys are already present (re-render, review/read-only view, or a
+        // resumed draft) skip the fetch — the captured values stay authoritative.
+        if (FormContext is not null
+            && FormContext.GetValue<object>($"{Control.Scope}/encryptionPublicKey") is not null)
+        {
+            _state = State.Captured;
+            return;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (FormContext is null)
+        {
+            _state = State.Error;
+            return;
+        }
+
+        _state = State.Loading;
+        StateHasChanged();
+
+        try
+        {
+            // The cnf/holder-binding key is THE DEVICE KEY (Option A) …
+            var deviceJwk = await Device.GetDevicePublicJwkAsync();
+            // … while the on-register AEAD envelope still uses the wallet's delivery keys.
+            var keys = await HolderKeys.GetHolderKeysAsync();
+
+            if (deviceJwk is null
+                || keys is null
+                || string.IsNullOrEmpty(keys.EncryptionPublicKey)
+                || string.IsNullOrEmpty(keys.Algorithm))
+            {
+                _state = State.Error;
+                return;
+            }
+
+            // Sibling fan-out — write the three nested pointers the issuer reads at
+            // credential-issuance time (ActionExecutionService.ResolveCarriedHolderKeys).
+            FormContext.SetValue($"{Control.Scope}/holderJwk", deviceJwk.Value);
+            FormContext.SetValue($"{Control.Scope}/encryptionPublicKey", keys.EncryptionPublicKey);
+            FormContext.SetValue($"{Control.Scope}/algorithm", keys.Algorithm);
+
+            _state = State.Captured;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Device-key autofill failed for scope {Scope}", Control.Scope);
+            _state = State.Error;
+        }
+    }
+}

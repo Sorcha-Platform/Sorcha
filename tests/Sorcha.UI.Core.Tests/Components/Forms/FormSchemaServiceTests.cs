@@ -228,6 +228,31 @@ public class FormSchemaServiceTests
     }
 
     [Fact]
+    public void AutoGenerateForm_ObjectWithSorchaDeviceKeyFormat_DispatchesToDeviceKey()
+    {
+        // Citizen OID4VP device-bound cnf (Phase 1, #1195): an object field with format
+        // "sorcha-device-key" routes to the DeviceKey control (captured read-only by
+        // DeviceKeyRenderer, which binds cnf to the device key) and is NOT recursed into as a
+        // primitive group, even though it is type:object.
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "email":     { "type": "string", "format": "email", "title": "Email" },
+                "deviceKeys": { "type": "object", "format": "sorcha-device-key" }
+            }
+        }
+        """);
+
+        var form = _sut.AutoGenerateForm(new[] { schema });
+
+        var deviceKeys = form.Elements.FirstOrDefault(e => e.Scope == "/deviceKeys");
+        deviceKeys.Should().NotBeNull();
+        deviceKeys!.ControlType.Should().Be(Sorcha.Blueprint.Models.ControlTypes.DeviceKey);
+        deviceKeys.Elements.Should().BeEmpty(because: "a device-key field is not recursed into");
+    }
+
+    [Fact]
     public void AutoGenerateForm_StringWithFileReferenceFormat_DispatchesToFile()
     {
         // Feature 085 file-attachment primitive: a string field with format "file-reference"

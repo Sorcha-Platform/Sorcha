@@ -351,6 +351,23 @@ public class FormSchemaService : IFormSchemaService
             };
         }
 
+        // Citizen OID4VP device-bound cnf (Phase 1, #1195): an object field carrying
+        // `format: "sorcha-device-key"` is captured read-only by DeviceKeyRenderer, which writes
+        // THIS DEVICE's public signing JWK into /holderJwk (the SD-JWT cnf key, Option A) plus the
+        // wallet's delivery keys (/encryptionPublicKey, /algorithm) from the holder-keys endpoint.
+        // Checked before the object-recursion branch so a device-key field is never recursed into.
+        if (schema.TryGetProperty("format", out var deviceKeyFormatEl)
+            && deviceKeyFormatEl.GetString() == "sorcha-device-key")
+        {
+            return new Control
+            {
+                ControlType = ControlTypes.DeviceKey,
+                Title = title ?? propertyName,
+                Scope = scope,
+                Rule = TryParseXRule(schema)
+            };
+        }
+
         // Object-typed properties recurse into their children. Feature 103
         // ships four core primitives as schema objects (PersonName,
         // DateOfBirth, EmailAddress, PostalAddress) — the form renderer
