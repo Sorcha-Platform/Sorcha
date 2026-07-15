@@ -27,19 +27,22 @@ Per the SD-JWT VC profile Sorcha implements, `vct` **should be a URI / collision
 
 | Concern | Field | Written to | Fallback when null |
 |---|---|---|---|
-| **Machine matching identity** | new `Vct` (string, optional, absolute URI) | `claims["vct"]`, `claims["type"]`, and `CredentialEntity.Type` — **all three kept equal**, or matching breaks | `CredentialType` |
+| **Machine matching identity** | new `Vct` (string, optional, absolute URI) | `claims["vct"]` (the SD-JWT VC type claim — see §2.1) and the internal `CredentialEntity.Type` storage column | `CredentialType` |
 | **Human display label** | new `DisplayName` (string, optional) | the credential's display carrier → PWA card name | `Humanize(vct)` (current behaviour) |
 | **Short internal type name** | existing `CredentialType` (`[Required]`, unchanged) | nothing new; it is the `Vct` fallback and a human-readable blueprint id | — |
 
 The two fallbacks remain as **defensive graceful-degradation** (a hand-authored or external config that omits `Vct` still mints *something* usable), but they are no longer a load-bearing path: **every blueprint shipped in the repo is converted to set `Vct` explicitly** (§6). After this change there is one naming world — canonical URIs — not two. The fallback only catches an authoring omission; it is not the way any real credential is issued.
 
-### 2.1 Why `type`/`vct`/`CredentialEntity.Type` must all agree
+### 2.1 `vct` only — drop the non-standard `type` claim
 
-- `CredentialVerifier.ReadCredentialType` (blueprint-side) reads `vct`, falls back to `type`.
-- `CredentialMatcher` matches on `CredentialEntity.Type`.
+SD-JWT VC (§3.2.2.1) defines **`vct` as the sole credential-type identifier; there is no `type` claim** in the profile. Today `CredentialIssuer.cs:45` writes both `claims["vct"]` and `claims["type"]` from the same field — the `type` claim is a non-standard artefact. Since blueprints are sacrificial, we do the conformant thing: **the wire SD-JWT carries `vct` only.**
+
+Internally, the canonical VCT must still land identically in the three places that read it, but those are Sorcha storage/logic, not wire claims:
+- `CredentialVerifier.ReadCredentialType` (blueprint-side) reads the `vct` claim (its `type` fallback becomes dead — harmless, `vct` is always present).
+- `CredentialMatcher` matches on the internal `CredentialEntity.Type` **storage column**, populated from the credential's `vct` at ingest.
 - `PresentationEngine` (PWA) matches on `CachedCredential.MatchIdentifier` = `Vct`, sourced from the synced `CredentialEntity.Type`.
 
-So the canonical VCT must land identically in all three. Issuance sets `vct = type = Vct ?? CredentialType`, and `CredentialEntity.Type` (the stored value that feeds sync + matching) is that same string. The short `CredentialType` name is **not** emitted as a separate claim.
+So issuance sets `claims["vct"] = Vct ?? CredentialType` and stops writing `claims["type"]`; `CredentialEntity.Type` (an internal column name we leave as-is) holds that same VCT string. The short `CredentialType` name is never emitted as a claim.
 
 ## 3. Display gets its own source (it cannot come from the URI)
 
@@ -52,12 +55,14 @@ So the canonical VCT must land identically in all three. Issuance sets `vct = ty
 
 Concretely, the sync-out path (`EfCoreCitizenCredentialEventStream.BuildPayload`, which today emits no label) must populate `DisplayMeta.credentialName` from the stored display config, and `ISyncService.ToCachedCredential` must map it to `DisplayLabel`. These are the two spots the label is currently dropped.
 
-## 4. Case-insensitive matching everywhere
+## 4. Case-SENSITIVE exact matching everywhere (spec-conformant)
 
-The PWA matcher (`PresentationEngine.MatchCandidates`) uses `StringComparison.Ordinal` (case-sensitive); the blueprint-side matchers use `OrdinalIgnoreCase`. For this fix both sides carry the identical URI, so exact match works — but the inconsistency is a latent trap (a capitalisation typo would pass server-side and silently fail on the phone, the exact class of bug being fixed).
+**Corrects an earlier draft of this design.** SD-JWT VC §3.2.2.1 requires the `vct` value to be a **case-sensitive** `StringOrURI`, and OpenID4VP DCQL matches `vct_values` by exact string. So case-sensitive exact match is the standard; a case-insensitive comparison would be **non-conformant**.
 
-- Change `PresentationEngine.MatchCandidates` to `OrdinalIgnoreCase` so both sides agree.
-- Document the convention: **VCT URIs are lowercase.** (Advisory; the case-insensitive compare is the safety net.)
+- The PWA matcher (`PresentationEngine.MatchCandidates`, `StringComparison.Ordinal`) is already conformant — **leave it case-sensitive.**
+- The blueprint-side matchers (`CredentialVerifier`, `CredentialMatcher`) use `OrdinalIgnoreCase` — the deviation. Align them **to `Ordinal`** for strict conformance. Behaviourally inert given the invariant below, but it removes a non-standard leniency.
+- Consistency is guaranteed **not** by a lenient compare but by the **single `VctUris` definition + conformance test** (§5): every issue and require side references one constant, so casing (and the whole path) is identical by construction. That is strictly stronger than case-folding — it also catches a wrong *path*, not just wrong case.
+- Convention: **VCT URIs are lowercase kebab-case.** Not a safety net (the compare is exact) — just a house style so the single definitions are predictable.
 
 ## 5. Anti-drift — one definition per type, conformance-tested
 
@@ -110,11 +115,11 @@ The credential already in a wallet was minted with `vct = AssuredIdentityCredent
 
 **Model** — `Sorcha.Blueprint.Models/Credentials/CredentialIssuanceConfig.cs` (+`Vct`, +`DisplayName`).
 
-**Issuance** — `Sorcha.Blueprint.Engine/Credentials/CredentialIssuer.cs` (write `vct=type=Vct??CredentialType`; write `DisplayName` to display config). The Wallet Service direct-issue path (`CredentialEndpoints.cs:705-706`) mirrors the same rule. (HAIP + mdoc paths are out of scope — they don't feed the PWA verifier in the failing flow; note them in the plan as follow-ups.)
+**Issuance** — `Sorcha.Blueprint.Engine/Credentials/CredentialIssuer.cs` (write `claims["vct"] = Vct ?? CredentialType`; **stop writing `claims["type"]`**; write `DisplayName` to display config). The Wallet Service direct-issue path (`CredentialEndpoints.cs:705-706`) mirrors the same rule. (HAIP + mdoc paths are out of scope — they don't feed the PWA verifier in the failing flow; note them in the plan as follow-ups.)
 
 **Sync / display carrier** — `EfCoreCitizenCredentialEventStream.BuildPayload` (populate `DisplayMeta.credentialName`), `ISyncService.ToCachedCredential` (map to `DisplayLabel`).
 
-**Matcher** — `PresentationEngine.MatchCandidates` (`Ordinal` → `OrdinalIgnoreCase`).
+**Matcher** — `CredentialVerifier` + `CredentialMatcher` (`OrdinalIgnoreCase` → `Ordinal`, spec conformance). `PresentationEngine.MatchCandidates` stays `Ordinal` (already conformant).
 
 **Constants + presets** — `VctUris` (one constant per type in §6's table), `DefaultPresetCatalogue` + any C# VCT literal (reference the constants).
 
@@ -138,4 +143,17 @@ The credential already in a wallet was minted with `vct = AssuredIdentityCredent
 - **SC-3** Every credential type is now a canonical URI VCT with an authored `displayName`; the bare-name world is gone. The optional-field fallback survives only as defensive degradation for an omitted `Vct`.
 - **SC-4** Every cross-blueprint issue↔require pair (Assured Identity ← blue-badge / driving-licence / membership, and any others) still matches after conversion, proven by the parametrised conformance test.
 - **SC-5** The AIAS blueprint VCT and the verifier preset constant cannot drift without a failing test.
-- **SC-6** A capitalisation-only VCT difference no longer produces a silent phone-only no-match.
+- **SC-6** VCT matching is case-sensitive exact everywhere (SD-JWT VC / DCQL conformant); consistency is enforced by the single `VctUris` definition + conformance test, not by lenient comparison.
+
+## 12. Standards conformance
+
+Checked against the SD-JWT VC profile (`draft-ietf-oauth-sd-jwt-vc`, §3.2.2.1) and OpenID4VP DCQL:
+
+| Rule | Spec | This design |
+|---|---|---|
+| `vct` REQUIRED, sole type identifier | §3.2.2.1 | ✓ `vct` written on every credential; it is the only type claim |
+| `vct` MUST be a case-sensitive `StringOrURI` + Collision-Resistant Name | §3.2.2.1 | ✓ canonical `https://sorcha.dev/vc/{type}/v1` URIs |
+| No `type` claim in the profile | §3.2.2.1 | ✓ **fixed** — stop emitting the non-standard `claims["type"]` |
+| `vct` matched case-sensitively / exactly | §3.2.2.1 + DCQL `vct_values` exact match | ✓ **corrected** — case-sensitive everywhere; earlier case-insensitive draft was non-conformant |
+
+No standard is broken by this change; two pre-existing deviations (the `type` claim and the blueprint-side case-insensitive match) are corrected by it.
