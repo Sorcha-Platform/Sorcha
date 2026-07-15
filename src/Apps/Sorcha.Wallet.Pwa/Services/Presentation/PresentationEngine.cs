@@ -103,6 +103,7 @@ public sealed class PresentationEngine : IPresentationEngine
                 ClientId = clientId,
                 ResponseUri = GetRequiredString(root, "response_uri"),
                 Nonce = GetRequiredString(root, "nonce"),
+                State = GetRequiredString(root, "state"),
                 Query = query,
                 // Feature 185: an mdoc query carries `doctype_value`, NOT `vct_values` — so demanding vct
                 // here rejected every mso_mdoc request outright, even though F181's DCQL vocabulary has

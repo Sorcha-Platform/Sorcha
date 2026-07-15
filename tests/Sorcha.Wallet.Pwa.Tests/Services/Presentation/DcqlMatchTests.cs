@@ -148,6 +148,7 @@ public class DcqlMatchTests
             ClientId = "did:sorcha:org:verifier",
             ResponseUri = "https://verifier.test/cb",
             Nonce = "nonce-1",
+            State = "state-1",
             Query = query,
             RequiredVct = query.Credentials[0].Meta.VctValues![0],
             RequiredClaims = required,

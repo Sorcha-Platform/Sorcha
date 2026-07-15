@@ -109,6 +109,7 @@ public sealed class VerifierAuthTests
             ["client_id"] = clientId,
             ["response_uri"] = "https://verify.test/r/sess-1/response",
             ["nonce"] = "n0nce",
+            ["state"] = "state-1",
             ["response_mode"] = "direct_post",
             ["dcql_query"] = JsonSerializer.Deserialize<JsonElement>(DcqlRequestBuilder.ToJson(query)),
         };

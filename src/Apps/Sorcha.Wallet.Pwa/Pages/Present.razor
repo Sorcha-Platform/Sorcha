@@ -24,10 +24,10 @@
 @using Sorcha.Wallet.Pwa.Services
 @using Sorcha.Wallet.Pwa.Services.Device
 @using Sorcha.Wallet.Pwa.Services.Presentation
+@using Sorcha.Verifier.Engine.Dcql
 @inject IPresentationEngine Engine
 @inject ICredentialCache Credentials
 @inject IDeviceKeyService DeviceKey
-@inject IDelegationStore Delegation
 @inject IStatusListService StatusList
 @inject HttpClient Http
 @inject IJSRuntime JS
@@ -398,9 +398,22 @@
             var vp = await Engine.BuildVpTokenAsync(
                 _selected, approved, _request, deviceJwk, DeviceKey.SignAsync);
 
-            var delegationJwt = await Delegation.GetCurrentAsync();
-            var body = new { vpToken = vp, delegation = delegationJwt };
-            var resp = await Http.PostAsJsonAsync(_request.ResponseUri, body);
+            // Standard OpenID4VP 1.0 direct_post (§8.2): vp_token is ALWAYS the object-keyed
+            // envelope, even for the single-ask flow — a bare compact string is the retired
+            // dialect and HAIP rejects it. Wrap via DcqlVpToken so the wire shape is byte-identical
+            // to the multi-credential envelope path.
+            var queryId = _request.Query.Credentials[0].Id;
+            var vpTokenEnvelope = new DcqlVpToken
+            {
+                Presentations = new Dictionary<string, IReadOnlyList<string>> { [queryId] = [vp] },
+            }.ToJson();
+
+            var form = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["vp_token"] = vpTokenEnvelope,
+                ["state"] = _request.State,
+            });
+            var resp = await Http.PostAsync(_request.ResponseUri, form);
             if (resp.IsSuccessStatusCode)
             {
                 _responseStatus = "ok";
@@ -608,9 +621,12 @@
             var vpTokenEnvelope = await Engine.BuildVpTokenEnvelopeAsync(
                 consented, _request, deviceJwk, DeviceKey.SignAsync);
 
-            var delegationJwt = await Delegation.GetCurrentAsync();
-            var body = new { vpToken = vpTokenEnvelope, delegation = delegationJwt };
-            var resp = await Http.PostAsJsonAsync(_request.ResponseUri, body);
+            var form = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["vp_token"] = vpTokenEnvelope,
+                ["state"] = _request.State,
+            });
+            var resp = await Http.PostAsync(_request.ResponseUri, form);
             if (resp.IsSuccessStatusCode)
             {
                 _responseStatus = "ok";

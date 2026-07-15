@@ -47,6 +47,7 @@ public sealed class PresentationEngineTests
 
         parsed.ClientId.Should().Be(ClientId);
         parsed.Nonce.Should().Be("n0nce");
+        parsed.State.Should().Be("state-1");
         parsed.RequiredVct.Should().Be(Vct);
         parsed.RequiredClaims.Should().ContainSingle().Which.Should().Be("givenName");
         parsed.OptionalClaims.Should().ContainSingle().Which.Should().Be("familyName");
@@ -117,6 +118,27 @@ public sealed class PresentationEngineTests
         Func<Task> act = () => _engine.ParseAsync(MakeDeepLink(), Fetch(jwt));
         (await act.Should().ThrowAsync<FormatException>())
             .WithMessage("*response_uri*");
+    }
+
+    [Fact]
+    public async Task ParseAsync_MissingState_ThrowsFormatException()
+    {
+        var query = DcqlRequestBuilder.Build([DcqlCredentialAsk.SdJwt("cred1", Vct, ["givenName"])]);
+        var jwt = MakeRequestObjectJwt(query, state: null);
+        Func<Task> act = () => _engine.ParseAsync(MakeDeepLink(), Fetch(jwt));
+        (await act.Should().ThrowAsync<FormatException>())
+            .WithMessage("*state*");
+    }
+
+    [Fact]
+    public async Task ParseAsync_StatePresent_IsCapturedVerbatim()
+    {
+        var query = DcqlRequestBuilder.Build([DcqlCredentialAsk.SdJwt("cred1", Vct, ["givenName"])]);
+        var jwt = MakeRequestObjectJwt(query, state: "8f14e45f-ceea-4f0a-9a0c-example");
+
+        var parsed = await _engine.ParseAsync(MakeDeepLink(), Fetch(jwt));
+
+        parsed.State.Should().Be("8f14e45f-ceea-4f0a-9a0c-example");
     }
 
     [Fact]
@@ -368,6 +390,7 @@ public sealed class PresentationEngineTests
             ClientId = ClientId,
             ResponseUri = "https://verify.test/r/x/response",
             Nonce = "abc",
+            State = "state-1",
             Query = new DcqlQuery
             {
                 Credentials = [new DcqlCredentialQuery
@@ -456,13 +479,15 @@ public sealed class PresentationEngineTests
         string? clientId = ClientId,
         string? responseUri = "https://verify.test/r/sess-1/response",
         string? nonce = "n0nce",
-        string? responseMode = "direct_post")
+        string? responseMode = "direct_post",
+        string? state = "state-1")
     {
         var payload = new Dictionary<string, object>();
         if (clientId is not null) payload["client_id"] = clientId;
         if (responseUri is not null) payload["response_uri"] = responseUri;
         if (nonce is not null) payload["nonce"] = nonce;
         if (responseMode is not null) payload["response_mode"] = responseMode;
+        if (state is not null) payload["state"] = state;
         payload["dcql_query"] = JsonSerializer.Deserialize<JsonElement>(DcqlRequestBuilder.ToJson(query));
 
         var headerSeg = Base64Url.EncodeToString(
