@@ -117,10 +117,10 @@
               },
               "holderKeys": {
                 "type": "object",
-                "title": "Identity keys",
-                "description": "Your wallet's public delivery keys. Captured automatically and read-only — the credential is bound to your holder key and encrypted to your wallet so only you can use it. Feature 137 (cross-node submission).",
-                "format": "sorcha-holder-key",
-                "x-holder-key": { "required": true }
+                "title": "Device binding",
+                "description": "Your device's public signing key plus your wallet's delivery keys. Captured automatically and read-only — the credential is bound to THIS device (standard OID4VP holder binding, #1195) and encrypted to your wallet so only you can present it. Feature 137 (cross-node submission).",
+                "format": "sorcha-device-key",
+                "x-device-key": { "required": true }
               }
             },
             "required": ["name", "dob", "email", "address"]
