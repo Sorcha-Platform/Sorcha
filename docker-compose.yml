@@ -716,6 +716,7 @@ services:
       ApiGateway__BaseUrl: http://api-gateway:8080
       ServiceAuth__ClientId: service-verifier
       ServiceAuth__ClientSecret: verifier-service-secret
+      ServiceAuth__Scopes: "blueprints:read"
       Verifier__HaipBaseUrl: http://haip-service:8080
     networks:
       - sorcha-network
