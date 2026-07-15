@@ -393,6 +393,8 @@ public class WalletServiceClient : IWalletServiceClient
         string? tenantId = null,
         JsonElement? holderJwk = null,
         string? trustAnchor = null,
+        string? vct = null,
+        string? displayName = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -418,7 +420,9 @@ public class WalletServiceClient : IWalletServiceClient
                 issuerOrgName,
                 tenantId,
                 holderJwk,
-                trustAnchor
+                trustAnchor,
+                vct,
+                displayName
             };
 
             var response = await _httpClient.PostAsJsonAsync(

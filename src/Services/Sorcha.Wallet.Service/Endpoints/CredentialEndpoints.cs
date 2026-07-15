@@ -701,11 +701,23 @@ public static class CredentialEndpoints
         //    embed a W3C BitstringStatusListEntry credentialStatus claim BEFORE signing so
         //    external verifiers can determine lifecycle state from the token alone.
         // SD-JWT VC (draft-ietf-oauth-sd-jwt-vc §3.2.2.1): vct is the SOLE type claim — no
-        // `type` claim in the profile.
+        // `type` claim in the profile. Credential VCT decoupling: the vct URI (not the bare
+        // CredentialType) is also stamped onto every stored CredentialEntity.Type and the
+        // response Type below — because the SorchaLocalWallet register envelope copies the
+        // response Type into credentialType, that is what propagates the URI to the citizen.
+        var vct = string.IsNullOrWhiteSpace(request.Vct) ? request.CredentialType : request.Vct;
         var claims = new Dictionary<string, object>(request.Claims)
         {
-            ["vct"] = string.IsNullOrWhiteSpace(request.Vct) ? request.CredentialType : request.Vct
+            ["vct"] = vct
         };
+
+        // Credential VCT decoupling: serialise the authored display name into the issuer-defined
+        // display config so the citizen card shows credentialName without parsing the URI. Match
+        // the plain JsonSerializer.Serialize used elsewhere in this handler; CredentialDisplayConfig
+        // carries [JsonPropertyName("credentialName")] so the emitted key is stable.
+        string? displayConfigJson = string.IsNullOrWhiteSpace(request.DisplayName)
+            ? null
+            : JsonSerializer.Serialize(new CredentialDisplayConfig { CredentialName = request.DisplayName });
 
         if (!string.IsNullOrEmpty(request.StatusListUrl) && request.StatusListIndex.HasValue)
         {
@@ -803,7 +815,7 @@ public static class CredentialEndpoints
         var issuerEntity = new CredentialEntity
         {
             Id = credentialId,
-            Type = request.CredentialType,
+            Type = vct,
             IssuerDid = walletAddress,
             SubjectDid = request.RecipientWallet,
             ClaimsJson = claimsJson,
@@ -816,7 +828,8 @@ public static class CredentialEndpoints
             WalletAddress = walletAddress,
             CreatedAt = DateTimeOffset.UtcNow,
             StatusListUrl = request.StatusListUrl,
-            StatusListIndex = request.StatusListIndex
+            StatusListIndex = request.StatusListIndex,
+            DisplayConfigJson = displayConfigJson
         };
         await store.StoreAsync(issuerEntity, cancellationToken);
 
@@ -833,7 +846,7 @@ public static class CredentialEndpoints
                 var recipientEntity = new CredentialEntity
                 {
                     Id = credentialId,
-                    Type = request.CredentialType,
+                    Type = vct,
                     IssuerDid = walletAddress,
                     SubjectDid = request.RecipientWallet,
                     ClaimsJson = claimsJson,
@@ -845,7 +858,8 @@ public static class CredentialEndpoints
                     WalletAddress = request.RecipientWallet,
                     CreatedAt = DateTimeOffset.UtcNow,
                     StatusListUrl = request.StatusListUrl,
-                    StatusListIndex = request.StatusListIndex
+                    StatusListIndex = request.StatusListIndex,
+                    DisplayConfigJson = displayConfigJson
                 };
                 await store.StoreAsync(recipientEntity, cancellationToken);
 
@@ -878,13 +892,14 @@ public static class CredentialEndpoints
         return Results.Ok(new IssuedCredentialResponse
         {
             CredentialId = credentialId,
-            Type = request.CredentialType,
+            Type = vct,
             IssuerDid = walletAddress,
             SubjectDid = request.RecipientWallet,
             Claims = claims,
             IssuedAt = issuedAt,
             ExpiresAt = expiresAt,
-            RawToken = token.RawToken
+            RawToken = token.RawToken,
+            DisplayConfigJson = displayConfigJson
         });
     }
 }
@@ -932,6 +947,14 @@ public class IssueCredentialRequest
     /// </summary>
     [StringLength(512)]
     public string? Vct { get; init; }
+
+    /// <summary>
+    /// Authored human-readable credential name shown on the wallet card (e.g. "Assured Identity"),
+    /// decoupled from the vct URI. When supplied, the issuer serialises it as <c>credentialName</c>
+    /// in the credential's display config so the citizen card never depends on parsing the URI.
+    /// </summary>
+    [StringLength(256)]
+    public string? DisplayName { get; init; }
 
     [Required]
     public required Dictionary<string, object> Claims { get; init; }
@@ -1041,4 +1064,11 @@ public class IssuedCredentialResponse
     public required DateTimeOffset IssuedAt { get; init; }
     public DateTimeOffset? ExpiresAt { get; init; }
     public required string RawToken { get; init; }
+
+    /// <summary>
+    /// Serialised issuer-defined display config (<c>CredentialDisplayConfig</c> JSON) carrying the
+    /// authored <c>credentialName</c>. Null when no display name was supplied. Threaded so the
+    /// SorchaLocalWallet register envelope can carry it to the citizen entity.
+    /// </summary>
+    public string? DisplayConfigJson { get; init; }
 }

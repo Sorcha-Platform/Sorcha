@@ -61,6 +61,14 @@ public sealed record InboundCredentialExtract
     /// <summary>Serialised JSON of the credential claims.</summary>
     public required string ClaimsJson { get; init; }
 
+    /// <summary>
+    /// Serialised issuer-defined display config (<c>CredentialDisplayConfig</c> JSON) carrying the
+    /// authored <c>credentialName</c>, as sealed into the register envelope by the issuing flow.
+    /// Null when the issuer supplied no display name. Credential VCT decoupling — lets the citizen
+    /// card show the authored name without parsing the vct URI.
+    /// </summary>
+    public string? DisplayConfigJson { get; init; }
+
     /// <summary>Issuance timestamp embedded in the credential.</summary>
     public required DateTimeOffset IssuedAt { get; init; }
 

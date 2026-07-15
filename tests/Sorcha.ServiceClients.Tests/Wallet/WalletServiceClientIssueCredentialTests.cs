@@ -133,6 +133,110 @@ public class WalletServiceClientIssueCredentialTests
         doc.RootElement.TryGetProperty("tenantId", out _).Should().BeFalse();
     }
 
+    [Fact]
+    public async Task IssueCredentialAsync_WithVctAndDisplayName_IncludesBothInRequestBody_AndMapsDisplayConfigOut()
+    {
+        // Credential VCT decoupling: the client must carry the canonical vct URI and the authored
+        // display name on the wire, and surface the response's displayConfigJson back on the result.
+        string? capturedBody = null;
+        var handler = new Mock<HttpMessageHandler>();
+        handler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .Returns<HttpRequestMessage, CancellationToken>(async (req, ct) =>
+            {
+                capturedBody = req.Content is null ? null : await req.Content.ReadAsStringAsync(ct);
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        JsonSerializer.Serialize(new
+                        {
+                            credentialId = "urn:uuid:test",
+                            type = "https://credentials.sorcha.dev/assured-identity",
+                            issuerDid = "did:sorcha:w:issuer",
+                            subjectDid = "did:sorcha:w:recipient",
+                            claims = new Dictionary<string, object> { ["foo"] = "bar" },
+                            issuedAt = DateTimeOffset.UtcNow,
+                            rawToken = "eyJ.test.token",
+                            displayConfigJson = "{\"credentialName\":\"Assured Identity\"}",
+                        }, JsonOptions),
+                        System.Text.Encoding.UTF8,
+                        "application/json"),
+                };
+            });
+
+        var client = BuildClient(handler);
+
+        var result = await client.IssueCredentialAsync(
+            issuerWalletAddress: "ws1qissuer",
+            credentialType: "AssuredIdentityCredential",
+            claims: new Dictionary<string, object> { ["foo"] = "bar" },
+            recipientWallet: "ws1qrecipient",
+            vct: "https://credentials.sorcha.dev/assured-identity",
+            displayName: "Assured Identity");
+
+        capturedBody.Should().NotBeNullOrEmpty();
+        using var doc = JsonDocument.Parse(capturedBody!);
+        doc.RootElement.TryGetProperty("vct", out var vctEl).Should().BeTrue(
+            "the citizen entity's Type is stamped from the vct URI the client sends");
+        vctEl.GetString().Should().Be("https://credentials.sorcha.dev/assured-identity");
+        doc.RootElement.TryGetProperty("displayName", out var displayEl).Should().BeTrue(
+            "the issuer records the authored credential name from the client-supplied displayName");
+        displayEl.GetString().Should().Be("Assured Identity");
+
+        result.DisplayConfigJson.Should().Be("{\"credentialName\":\"Assured Identity\"}",
+            "the client must surface the response displayConfigJson so the envelope can carry it to the citizen");
+    }
+
+    [Fact]
+    public async Task IssueCredentialAsync_WithoutVctOrDisplayName_OmitsBothFromRequestBody()
+    {
+        // Backward-compat: legacy callers that supply neither must not put null placeholders on the
+        // wire (WalletServiceClient uses WhenWritingNull) so the server falls back to CredentialType.
+        string? capturedBody = null;
+        var handler = new Mock<HttpMessageHandler>();
+        handler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .Returns<HttpRequestMessage, CancellationToken>(async (req, ct) =>
+            {
+                capturedBody = req.Content is null ? null : await req.Content.ReadAsStringAsync(ct);
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        JsonSerializer.Serialize(new
+                        {
+                            credentialId = "urn:uuid:test",
+                            type = "TestCredential",
+                            issuerDid = "did:sorcha:w:issuer",
+                            subjectDid = "did:sorcha:w:recipient",
+                            claims = new Dictionary<string, object> { ["foo"] = "bar" },
+                            issuedAt = DateTimeOffset.UtcNow,
+                            rawToken = "eyJ.test.token",
+                        }, JsonOptions),
+                        System.Text.Encoding.UTF8,
+                        "application/json"),
+                };
+            });
+
+        var client = BuildClient(handler);
+
+        await client.IssueCredentialAsync(
+            issuerWalletAddress: "ws1qissuer",
+            credentialType: "TestCredential",
+            claims: new Dictionary<string, object> { ["foo"] = "bar" },
+            recipientWallet: "ws1qrecipient");
+
+        capturedBody.Should().NotBeNullOrEmpty();
+        using var doc = JsonDocument.Parse(capturedBody!);
+        doc.RootElement.TryGetProperty("vct", out _).Should().BeFalse();
+        doc.RootElement.TryGetProperty("displayName", out _).Should().BeFalse();
+    }
+
     private static WalletServiceClient BuildClient(Mock<HttpMessageHandler> handler)
     {
         var http = new HttpClient(handler.Object);
