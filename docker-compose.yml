@@ -718,6 +718,7 @@ services:
       ServiceAuth__ClientSecret: verifier-service-secret
       ServiceAuth__Scopes: "blueprints:read"
       Verifier__HaipBaseUrl: http://haip-service:8080
+      ServiceClients__TenantService__Address: http://tenant-service:8080
     networks:
       - sorcha-network
     depends_on:
