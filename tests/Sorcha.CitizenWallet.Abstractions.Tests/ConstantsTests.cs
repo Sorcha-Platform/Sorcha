@@ -51,6 +51,7 @@ public sealed class ConstantsTests
     [InlineData("ForestProductDppV1", "https://sorcha.dev/vc/forest-product-dpp/v1")]
     [InlineData("CyberEssentialsUacV1", "https://sorcha.dev/vc/cyber-essentials-uac/v1")]
     [InlineData("RefurbishmentCertificateV1", "https://sorcha.dev/vc/refurbishment-certificate/v1")]
+    [InlineData("BuildingPermitV1", "https://sorcha.dev/vc/building-permit/v1")]
     public void VctUris_CanonicalConstants_HaveExpectedLowercaseUri(string field, string expected)
     {
         var value = (string)typeof(VctUris).GetField(field)!.GetValue(null)!;

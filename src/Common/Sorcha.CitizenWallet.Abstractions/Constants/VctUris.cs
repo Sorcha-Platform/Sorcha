@@ -78,4 +78,8 @@ public static class VctUris
     /// <summary>Refurbishment certificate credential v1.</summary>
     public const string RefurbishmentCertificateV1 =
         "https://sorcha.dev/vc/refurbishment-certificate/v1";
+
+    /// <summary>Building permit credential v1.</summary>
+    public const string BuildingPermitV1 =
+        "https://sorcha.dev/vc/building-permit/v1";
 }

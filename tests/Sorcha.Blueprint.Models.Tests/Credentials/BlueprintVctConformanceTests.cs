@@ -41,6 +41,7 @@ public class BlueprintVctConformanceTests
         ["ForestProductDPPCredential"] = VctUris.ForestProductDppV1,
         ["CyberEssentialsUacPosture"] = VctUris.CyberEssentialsUacV1,
         ["RefurbishmentCertificateCredential"] = VctUris.RefurbishmentCertificateV1,
+        ["BuildingPermitCredential"] = VctUris.BuildingPermitV1,
     };
 
     private static readonly HashSet<string> CanonicalUris = new(Canonical.Values, StringComparer.Ordinal);
@@ -137,16 +138,20 @@ public class BlueprintVctConformanceTests
 
         var (known, expected) = Resolve(credentialType);
 
-        // Only credential nodes we recognise (known platform type) or that already declare a vct are subject
-        // to the guarantee. A credentialIssuanceConfig for a non-platform type (no vct) is left alone.
-        if (!known && string.IsNullOrEmpty(vct))
+        // A credentialIssuanceConfig with neither a credentialType nor a vct has nothing to check.
+        if (string.IsNullOrEmpty(credentialType) && string.IsNullOrEmpty(vct))
         {
             return;
         }
 
         if (string.IsNullOrEmpty(vct))
         {
-            violations.Add($"{relFile}: {path} — credentialType '{credentialType}' is missing its canonical 'vct' (expected '{expected}')");
+            // credentialType is populated but not recognised, and there is no vct to fall back on — this is
+            // either a brand-new platform type that hasn't been added to VctUris/Canonical yet, or a typo.
+            // Either way it must be surfaced, not silently skipped, so future bare types can't slip through.
+            violations.Add(known
+                ? $"{relFile}: {path} — credentialType '{credentialType}' is missing its canonical 'vct' (expected '{expected}')"
+                : $"{relFile}: {path} — credentialType '{credentialType}' is not a known VctUris type — add it to VctUris + the Canonical map");
             return;
         }
 

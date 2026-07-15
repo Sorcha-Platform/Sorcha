@@ -660,6 +660,8 @@
         },
         "credentialIssuanceConfig": {
           "credentialType": "BuildingPermitCredential",
+          "vct": "https://sorcha.dev/vc/building-permit/v1",
+          "displayName": "Building Permit",
           "recipientParticipantId": "contractor",
           "expiryDuration": "P1095D",
           "claimMappings": [
