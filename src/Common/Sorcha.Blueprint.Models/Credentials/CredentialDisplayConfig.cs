@@ -40,4 +40,12 @@ public class CredentialDisplayConfig
     [JsonPropertyName("highlightClaims")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Dictionary<string, string>? HighlightClaims { get; set; }
+
+    /// <summary>
+    /// Authored human-readable credential name shown on the card (e.g. "Assured Identity"),
+    /// decoupled from the vct URI. Sourced from CredentialIssuanceConfig.DisplayName at issuance.
+    /// </summary>
+    [JsonPropertyName("credentialName")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CredentialName { get; set; }
 }

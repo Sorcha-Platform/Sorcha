@@ -52,7 +52,7 @@ public class CredentialIssuerTests
     }
 
     [Fact]
-    public async Task IssueAsync_AddsStandardClaims_TypeAndVct()
+    public async Task IssueAsync_AddsStandardClaims_VctOnly_NoTypeClaim()
     {
         // Arrange
         var config = CreateConfig("IdentityAttestation");
@@ -65,8 +65,65 @@ public class CredentialIssuerTests
             new byte[] { 1, 2, 3 }, "EdDSA");
 
         // Assert
-        result.Claims.Should().ContainKey("type").WhoseValue.Should().Be("IdentityAttestation");
+        // SD-JWT VC (draft-ietf-oauth-sd-jwt-vc §3.2.2.1): vct is the SOLE type claim.
         result.Claims.Should().ContainKey("vct").WhoseValue.Should().Be("IdentityAttestation");
+        result.Claims.Should().NotContainKey("type", "SD-JWT VC has no type claim");
+    }
+
+    [Fact]
+    public async Task IssueAsync_WithVct_WritesVctClaim_AndNoTypeClaim()
+    {
+        // Arrange
+        var config = CreateConfig("AssuredIdentityCredential");
+        config.Vct = "https://sorcha.dev/vc/assured-identity/v1";
+        SetupSdJwtService();
+
+        // Act
+        var result = await _issuer.IssueAsync(
+            config, new Dictionary<string, object>(), "did:issuer:1", "did:recipient:1",
+            new byte[] { 1, 2, 3 }, "EdDSA");
+
+        // Assert
+        result.Claims["vct"].Should().Be("https://sorcha.dev/vc/assured-identity/v1");
+        result.Claims.Should().NotContainKey("type", "SD-JWT VC has no type claim");
+        result.Type.Should().Be("https://sorcha.dev/vc/assured-identity/v1");
+    }
+
+    [Fact]
+    public async Task IssueAsync_WithoutVct_FallsBackToCredentialType()
+    {
+        // Arrange
+        var config = CreateConfig("LegacyBareName");
+        config.Vct = null;
+        SetupSdJwtService();
+
+        // Act
+        var result = await _issuer.IssueAsync(
+            config, new Dictionary<string, object>(), "did:issuer:1", "did:recipient:1",
+            new byte[] { 1, 2, 3 }, "EdDSA");
+
+        // Assert
+        result.Claims["vct"].Should().Be("LegacyBareName");
+        result.Claims.Should().NotContainKey("type");
+        result.Type.Should().Be("LegacyBareName");
+    }
+
+    [Fact]
+    public async Task IssueAsync_WithDisplayName_CarriesCredentialNameInDisplayConfigJson()
+    {
+        // Arrange
+        var config = CreateConfig("AssuredIdentityCredential");
+        config.DisplayName = "Assured Identity";
+        SetupSdJwtService();
+
+        // Act
+        var result = await _issuer.IssueAsync(
+            config, new Dictionary<string, object>(), "did:issuer:1", "did:recipient:1",
+            new byte[] { 1, 2, 3 }, "EdDSA");
+
+        // Assert
+        result.DisplayConfigJson.Should().NotBeNull();
+        result.DisplayConfigJson.Should().Contain("\"credentialName\":\"Assured Identity\"");
     }
 
     [Fact]

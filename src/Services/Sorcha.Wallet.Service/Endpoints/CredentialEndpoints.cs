@@ -700,10 +700,11 @@ public static class CredentialEndpoints
         //    Feature 093 US2: if the caller supplied a pre-allocated status list URL + index,
         //    embed a W3C BitstringStatusListEntry credentialStatus claim BEFORE signing so
         //    external verifiers can determine lifecycle state from the token alone.
+        // SD-JWT VC (draft-ietf-oauth-sd-jwt-vc §3.2.2.1): vct is the SOLE type claim — no
+        // `type` claim in the profile.
         var claims = new Dictionary<string, object>(request.Claims)
         {
-            ["type"] = request.CredentialType,
-            ["vct"] = request.CredentialType
+            ["vct"] = string.IsNullOrWhiteSpace(request.Vct) ? request.CredentialType : request.Vct
         };
 
         if (!string.IsNullOrEmpty(request.StatusListUrl) && request.StatusListIndex.HasValue)
@@ -923,6 +924,14 @@ public class IssueCredentialRequest
     [Required(AllowEmptyStrings = false)]
     [StringLength(256)]
     public required string CredentialType { get; init; }
+
+    /// <summary>
+    /// Canonical SD-JWT VC type identifier (the <c>vct</c> claim). MUST be an absolute URI,
+    /// case-sensitive exact match per SD-JWT VC §3.2.2.1. When null, <see cref="CredentialType"/>
+    /// is used as the vct (defensive fallback for legacy callers).
+    /// </summary>
+    [StringLength(512)]
+    public string? Vct { get; init; }
 
     [Required]
     public required Dictionary<string, object> Claims { get; init; }
