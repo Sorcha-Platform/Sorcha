@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.Extensions.Options;
+using Sorcha.CitizenWallet.Abstractions.Constants;
 using Sorcha.UI.Components.User.Models.Verification;
 
 namespace Sorcha.UI.Components.User.Services.Verification;
@@ -14,7 +15,7 @@ namespace Sorcha.UI.Components.User.Services.Verification;
 /// </summary>
 public sealed class DefaultPresetCatalogue : IVerificationPresetCatalogue
 {
-    private const string AssuredIdentityVct = "https://sorcha.dev/vc/assured-identity/v1";
+    private const string AssuredIdentityVct = VctUris.AssuredIdentityV1;
 
     /// <summary>
     /// Builtin presets, used when no presets are configured. Mirrors the desk verifier's original
