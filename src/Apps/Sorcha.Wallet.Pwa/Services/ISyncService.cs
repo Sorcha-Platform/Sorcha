@@ -277,7 +277,14 @@ public sealed class SyncService : ISyncService
         Id = StringToCacheGuid(payload.Id),
         Vct = payload.Vct,
         RawSdJwt = payload.Jwt,
-        AvailableClaimNames = [],
+        // Extract the disclosable claim names from the SD-JWT so DCQL claim matching works.
+        // Leaving this empty made PresentationEngine.MatchCandidates reject every request that
+        // requires claims (i.e. every real verifier preset), regardless of vct — the credential
+        // would always report "None of your credentials match".
+        AvailableClaimNames = SdJwtReader.ReadDisclosedClaims(payload.Jwt)
+            .Select(c => c.Name)
+            .Distinct(StringComparer.Ordinal)
+            .ToList(),
         IssuerDid = payload.IssuerDid,
         // Credential VCT decoupling (Task 4): the authored display name, when the
         // issuer supplied one, wins over CredentialDisplay.Humanize(vct) on the card.
