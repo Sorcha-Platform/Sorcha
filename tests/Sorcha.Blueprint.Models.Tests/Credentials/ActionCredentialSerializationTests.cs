@@ -160,6 +160,28 @@ public class ActionCredentialSerializationTests
     }
 
     [Fact]
+    public void Deserialize_CredentialIssuanceConfigWithVctAndDisplayName_RoundTrips()
+    {
+        var json = """
+        {
+            "credentialType": "AssuredIdentityCredential",
+            "vct": "https://sorcha.dev/vc/assured-identity/v1",
+            "displayName": "Assured Identity",
+            "recipientParticipantId": "applicant",
+            "claimMappings": [
+                { "claimName": "x", "sourceField": "/x" }
+            ]
+        }
+        """;
+
+        var config = JsonSerializer.Deserialize<CredentialIssuanceConfig>(json, Options);
+
+        config.Should().NotBeNull();
+        config!.Vct.Should().Be("https://sorcha.dev/vc/assured-identity/v1");
+        config.DisplayName.Should().Be("Assured Identity");
+    }
+
+    [Fact]
     public void Serialize_FullRoundTrip_PreservesAllData()
     {
         var original = new Action
