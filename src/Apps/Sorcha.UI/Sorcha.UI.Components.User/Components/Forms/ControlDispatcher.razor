@@ -70,6 +70,10 @@
             <HolderKeyRenderer Control="Control" IsDisabled="_isDisabled" />
             break;
 
+        case ControlTypes.DeviceKey:
+            <DeviceKeyRenderer Control="Control" IsDisabled="_isDisabled" />
+            break;
+
         default:
             <UnsupportedControlRenderer Control="Control" />
             break;

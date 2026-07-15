@@ -19,6 +19,13 @@ public sealed record ParsedPresentationRequest
     public required string Nonce { get; init; }
 
     /// <summary>
+    /// Verifier-supplied <c>state</c> from the request object. Echoed back verbatim as the
+    /// <c>state</c> form field on <c>direct_post</c> (OpenID4VP 1.0 §8.2) — HAIP validates it
+    /// against the request id for CSRF protection.
+    /// </summary>
+    public required string State { get; init; }
+
+    /// <summary>
     /// The full DCQL query (Feature 181 US2 — the multi-credential source of truth).
     /// The single-query convenience fields below are derived from <c>Query.Credentials[0]</c>
     /// for the single-ask flow; the per-query <see cref="Match"/> path consumes <see cref="Query"/> directly.

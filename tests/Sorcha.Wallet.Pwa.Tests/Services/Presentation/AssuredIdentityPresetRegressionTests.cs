@@ -97,6 +97,7 @@ public class AssuredIdentityPresetRegressionTests
             ClientId = "did:sorcha:org:verifier",
             ResponseUri = "https://verifier.test/cb",
             Nonce = "nonce-1",
+            State = "state-1",
             Query = query,
             RequiredVct = preset.RequiredVct,
             RequiredClaims = preset.RequiredClaims,

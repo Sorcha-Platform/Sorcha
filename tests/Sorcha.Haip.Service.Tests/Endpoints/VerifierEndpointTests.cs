@@ -72,9 +72,9 @@ public class VerifierEndpointTests
             Task.FromResult<TrustAnchorSet?>(root is null ? null : new TrustAnchorSet { Roots = [root], CheckRevocation = false });
     }
 
-    private static HaipPresentationVerifier BuildSdJwtVerifier()
+    private static HaipPresentationVerifier BuildSdJwtVerifier(byte[]? trustedRoot = null)
     {
-        var registry = new TrustResolverRegistry([new X509TenantTrustSourceResolver(new FakeAnchors(null))]);
+        var registry = new TrustResolverRegistry([new X509TenantTrustSourceResolver(new FakeAnchors(trustedRoot))]);
         return new HaipPresentationVerifier(
             new SdJwtService(),
             new TrustEvaluator(registry, null),
@@ -130,7 +130,8 @@ public class VerifierEndpointTests
         string? vpToken,
         string? presentationSubmission = null,
         string? state = null,
-        MdocPresentationVerifier? mdocVerifier = null) =>
+        MdocPresentationVerifier? mdocVerifier = null,
+        HaipPresentationVerifier? sdJwtVerifier = null) =>
         (Task<IResult>)Handler("HandleDirectPost").Invoke(
             null,
             [
@@ -139,7 +140,7 @@ public class VerifierEndpointTests
                 presentationSubmission,
                 state ?? requestId.ToString(),
                 _store,
-                BuildSdJwtVerifier(),
+                sdJwtVerifier ?? BuildSdJwtVerifier(),
                 mdocVerifier ?? BuildMdocVerifier(),
                 null, // PresentationCallbackRelay — optional, not exercised here
                 NullLoggerFactory.Instance,
@@ -427,6 +428,47 @@ public class VerifierEndpointTests
         stored!.State.Should().Be(PresentationRequestState.Verified);
         stored.SubmittedVpToken.Should().Be(envelope, "the raw envelope is stored for client re-validation");
         stored.PresentationSubmission.Should().BeNull("presentation_submission is retired with the PE dialect");
+    }
+
+    // --- device-cnf SD-JWT via standard OID4VP, NO delegation (#1195 SC-1/SC-2/SC-3) -----------
+
+    [Fact]
+    public async Task HandleDirectPost_DeviceCnf_SdJwt_VerifiesWithNoDelegation()
+    {
+        // Arrange: the citizen wallet's Phase-1 output — an SD-JWT VC whose cnf.jwk is the DEVICE
+        // key (P-256), presented with a device-signed KB-JWT and an x5c chain to a test root. The
+        // request requires the one claim the presentation discloses (licenseType); vct/credentialType
+        // is not gated by the verifier (requiredCredentialType is advisory), so the real match contract
+        // is: object-keyed envelope under the DEFAULT query id + required-claim presence + trusted root.
+        var request = await CreateRequestAsync(requiredClaims: [DeviceCnfPresentationFactory.DisclosedClaim]);
+
+        var (presentation, rootCertDer) = await DeviceCnfPresentationFactory.CreateAsync(
+            new SdJwtService(), audience: request.ClientId, nonce: request.Nonce);
+
+        // OID4VP 1.0 object-keyed vp_token envelope, keyed to the server's default query id ("credential").
+        var envelope = JsonSerializer.Serialize(
+            new Dictionary<string, string[]> { [VerifierEndpoints.DefaultQueryId] = [presentation] });
+
+        // Act: drive the REAL HandleDirectPost with ONLY vp_token + state (no delegation parameter
+        // exists on the handler) via a root-trusting SD-JWT verifier. #1195 SC-3: a verified result
+        // obtained here inherently proves delegation is absent from the standard OID4VP path.
+        var (status, body) = await ExecuteAsync(await InvokeDirectPostAsync(
+            request.Id, vpToken: envelope, state: request.Id.ToString(),
+            sdJwtVerifier: BuildSdJwtVerifier(trustedRoot: rootCertDer)));
+
+        // Assert: the device-cnf presentation verifies end-to-end through the standard HAIP path.
+        status.Should().Be(200, "a device-cnf SD-JWT with a device-signed KB-JWT must verify: {0}", body);
+
+        var stored = await _store.GetAsync(request.Id);
+        stored.Should().NotBeNull();
+        stored!.State.Should().Be(PresentationRequestState.Verified);
+        stored.Result.Should().NotBeNull();
+        stored.Result!.IsValid.Should().BeTrue();
+        stored.Result.HolderKeyVerified.Should().BeTrue(
+            "the KB-JWT was signed by the private half of the device cnf key");
+        stored.Result.X5cChainValid.Should().BeTrue();
+        stored.Result.VerifiedClaims.Should().ContainKey(DeviceCnfPresentationFactory.DisclosedClaim);
+        stored.PresentationSubmission.Should().BeNull("no PE dialect, and no delegation artefact, on the wire");
     }
 
     /// <summary>

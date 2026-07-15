@@ -58,6 +58,7 @@ public sealed class ConsentSheetTests : BunitContext
         ClientId = "did:sorcha:org:council",
         ResponseUri = "https://verify.example/direct-post",
         Nonce = "n-1",
+        State = "state-1",
         Query = new DcqlQuery { Credentials = [] },
         RequiredVct = "IdentityCredential",
         RequiredClaims = [],

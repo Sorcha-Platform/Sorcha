@@ -51,6 +51,12 @@ public static class ServiceCollectionExtensions
         // Feature 173: anonymous client for the three social-link step-up endpoints (F168 contract).
         services.AddScoped<IAnonymousSocialLinkClientService, AnonymousSocialLinkClientService>();
 
+        // Citizen OID4VP device-bound cnf (Phase 1, #1195): default device-key provider so DeviceKeyRenderer
+        // stays DI-resolvable in the web host (where it renders its error state — the device-bound apply is
+        // PWA-only for Phase 1). TryAdd so a PWA host override (PwaDeviceKeyProvider) wins.
+        services.TryAddSingleton<Sorcha.UI.Core.Services.DeviceKeys.IDeviceKeyProvider,
+                                 Sorcha.UI.Core.Services.DeviceKeys.NullDeviceKeyProvider>();
+
         // Feature 174 follow-up: getUserMedia-backed camera for portrait-capture form fields
         // (backs PortraitCaptureControl). TryAdd so a host stub (e.g. a PWA without the JS module)
         // can override it.
