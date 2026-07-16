@@ -1,17 +1,31 @@
 [
   {
     "actionName": "Verify Assured Identity Application",
-    "condition": { "==": [ { "var": "checks.postcodeExists" }, false ] },
+    "condition": {
+      "==": [
+        {
+          "var": "checks.postcodeExists"
+        },
+        false
+      ]
+    },
     "decision": "submit",
     "payload": {
       "decision": "rejected",
       "reasonCode": "postcode-not-found",
-      "verificationNotes": "AIAS could not locate that address on any map. We assure real people at real places — try a postcode that exists."
+      "verificationNotes": "AIAS could not locate that address on any map. We assure real people at real places \u2014 try a postcode that exists."
     }
   },
   {
     "actionName": "Verify Assured Identity Application",
-    "condition": { "==": [ { "var": "checks.profane" }, true ] },
+    "condition": {
+      "==": [
+        {
+          "var": "checks.profane"
+        },
+        true
+      ]
+    },
     "decision": "submit",
     "payload": {
       "decision": "rejected",
@@ -21,7 +35,14 @@
   },
   {
     "actionName": "Verify Assured Identity Application",
-    "condition": { "==": [ { "var": "checks.emailVerified" }, false ] },
+    "condition": {
+      "==": [
+        {
+          "var": "checks.emailVerified"
+        },
+        false
+      ]
+    },
     "decision": "submit",
     "payload": {
       "decision": "rejected",
@@ -31,11 +52,27 @@
   },
   {
     "actionName": "Verify Assured Identity Application",
-    "condition": { "==": [ true, true ] },
+    "condition": {
+      "==": [
+        true,
+        true
+      ]
+    },
     "decision": "submit",
     "payload": {
       "decision": "approved",
-      "verificationNotes": "Assured by AIAS — address found, language clean, email verified. Welcome aboard."
+      "verificationNotes": "Assured by AIAS \u2014 address found, language clean, email verified. Welcome aboard."
     }
+  },
+  {
+    "actionName": "Issue device-bound Assured Identity",
+    "condition": {
+      "==": [
+        1,
+        1
+      ]
+    },
+    "decision": "submit",
+    "payload": {}
   }
 ]
