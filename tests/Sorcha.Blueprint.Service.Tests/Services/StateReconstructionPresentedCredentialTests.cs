@@ -84,7 +84,8 @@ public class StateReconstructionPresentedCredentialTests
         DateTime timeStamp,
         string kind = "success",
         object? verifiedClaims = null,
-        bool omitVerifiedClaims = false)
+        bool omitVerifiedClaims = false,
+        object? actionPayload = null)
     {
         // Shape mirrors ITransactionBuilderService.BuildPresentationOutcomeAsync's plaintext
         // transactionPayload, as sealed by the validator (Payloads[0].Data = base64url(JSON)).
@@ -103,6 +104,10 @@ public class StateReconstructionPresentedCredentialTests
         if (!omitVerifiedClaims)
         {
             payload["verifiedClaims"] = verifiedClaims ?? new Dictionary<string, object> { ["givenName"] = VerifiedGivenName };
+        }
+        if (actionPayload is not null)
+        {
+            payload["actionPayload"] = actionPayload;
         }
 
         return new TransactionModel
@@ -251,6 +256,77 @@ public class StateReconstructionPresentedCredentialTests
         result.ActionData["1"].GetProperty("presentedCredential").GetProperty("givenName").GetString()
             .Should().Be(VerifiedGivenName,
                 "the payload-smuggled presentedCredential must be stripped and the sealed verified outcome must win");
+    }
+
+    [Fact]
+    public async Task ReconstructAsync_SuccessOutcomeWithActionPayload_ContributesGatedActionPayload()
+    {
+        // Async SorchaWallet path — the gated action's submitted payload (e.g. the deviceKey the
+        // AIAS issuance action's holderKeySourceField "/deviceKey/holderJwk" resolves) is sealed
+        // ONLY inside the outcome tx's actionPayload (no regular Action tx is ever written for a
+        // presentation-gated action). Reconstruction must surface it as the gated action's data.
+        SetupRegister(
+        [
+            OutcomeTx("tx-out-1", DateTime.UtcNow.AddMinutes(-5),
+                actionPayload: new { deviceKey = new { holderJwk = "the-device-jwk" } })
+        ]);
+
+        var result = await ReconstructForIssuanceActionAsync();
+
+        result.ActionData.Should().ContainKey("1");
+        result.ActionData["1"].GetProperty("deviceKey").GetProperty("holderJwk").GetString()
+            .Should().Be("the-device-jwk",
+                "the outcome tx's actionPayload is the only durable record of the gated action's submitted payload");
+        result.ActionData["1"].GetProperty("presentedCredential").GetProperty("givenName").GetString()
+            .Should().Be(VerifiedGivenName, "verified claims still surface alongside the action payload");
+    }
+
+    [Fact]
+    public async Task ReconstructAsync_OutcomeActionPayloadSmugglesPresentedCredential_ReservedKeyStaysVerified()
+    {
+        // The actionPayload is the CITIZEN's draft submission — client-supplied. A presentedCredential
+        // field smuggled inside it must be stripped; the reserved key carries verifiedClaims only.
+        SetupRegister(
+        [
+            OutcomeTx("tx-out-1", DateTime.UtcNow.AddMinutes(-5),
+                actionPayload: new
+                {
+                    deviceKey = new { holderJwk = "the-device-jwk" },
+                    presentedCredential = new { givenName = SpoofGivenName }
+                })
+        ]);
+
+        var result = await ReconstructForIssuanceActionAsync();
+
+        result.ActionData["1"].GetProperty("deviceKey").GetProperty("holderJwk").GetString()
+            .Should().Be("the-device-jwk");
+        result.ActionData["1"].GetProperty("presentedCredential").GetProperty("givenName").GetString()
+            .Should().Be(VerifiedGivenName,
+                "a presentedCredential smuggled inside the client-supplied actionPayload must never win over verifiedClaims");
+    }
+
+    [Fact]
+    public async Task ReconstructAsync_OrdinaryActionTxPresent_ActionTxWinsOverOutcomeActionPayload()
+    {
+        // When a regular Action tx exists for the same action, it stays authoritative for action
+        // data — the outcome's actionPayload contribution is a fallback only, so no existing flow
+        // changes. The verified presentedCredential still folds on top.
+        SetupRegister(
+        [
+            DevModeActionTx("tx-act-1", DateTime.UtcNow.AddMinutes(-10), new
+            {
+                deviceKey = new { holderJwk = "from-action-tx" }
+            }),
+            OutcomeTx("tx-out-1", DateTime.UtcNow.AddMinutes(-5),
+                actionPayload: new { deviceKey = new { holderJwk = "from-outcome" } })
+        ], devMode: true);
+
+        var result = await ReconstructForIssuanceActionAsync();
+
+        result.ActionData["1"].GetProperty("deviceKey").GetProperty("holderJwk").GetString()
+            .Should().Be("from-action-tx", "an ordinary Action tx wins for action data; the outcome contribution is the fallback");
+        result.ActionData["1"].GetProperty("presentedCredential").GetProperty("givenName").GetString()
+            .Should().Be(VerifiedGivenName);
     }
 
     [Fact]
