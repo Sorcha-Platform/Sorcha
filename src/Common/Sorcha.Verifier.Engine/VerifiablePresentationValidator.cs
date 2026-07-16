@@ -20,9 +20,13 @@ namespace Sorcha.Verifier.Engine;
 /// <list type="number">
 ///   <item>Parse the SD-JWT VC compact form (<c>credential.disclosure1.disclosureN.kbjwt</c>).</item>
 ///   <item>Extract the holder JWK from the credential's <c>cnf.jwk</c> claim.</item>
-///   <item>Verify the device delegation credential's signature with that holder JWK,
-///         extract the device JWK from its <c>cnf.jwk</c>, and check its status-list bit.</item>
-///   <item>Verify the KB-JWT signature with the device JWK.</item>
+///   <item>When a device delegation credential is supplied, verify its signature with that
+///         holder JWK, extract the device JWK from its <c>cnf.jwk</c>, and check its status-list bit;
+///         the KB-JWT is then verified with the device JWK. When NO delegation is supplied
+///         (server-custody, #1195 Phase 2) the KB-JWT is verified directly against the credential's
+///         own <c>cnf.jwk</c> holder key — a legitimate server-side wallet holds cnf and signs.</item>
+///   <item>Verify the KB-JWT signature with the delegation device JWK (delegation model) or the
+///         credential's own holder JWK (server-custody model).</item>
 ///   <item>Verify KB-JWT <c>nonce</c> + <c>aud</c> match the verifier session.</item>
 ///   <item>Verify required claim names appear in the disclosed claim set.</item>
 /// </list>
@@ -156,10 +160,27 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             // ES256-only verifier reject Ed25519-holder presentations, so it's the first thing to surface.
             layerState.HolderKey = DescribeJwk(holderJwk);
 
-            // ── 4. Validate holder→device delegation credential ───────────────────
-            JsonElement deviceJwk = default;
+            // ── 4. Establish the KB-JWT signing key (two custody models) ──────────
+            //   The presentation carries its custody model implicitly, in whether a device
+            //   delegation credential accompanies it:
+            //
+            //   • DELEGATION model (F114/F127 device-bound wallets, the desk/doorstep verifiers):
+            //     the holder key signs a device delegation credential whose cnf is the device key,
+            //     and the KB-JWT is device-signed. The delegation's signature (holder key), expiry,
+            //     and status-list bit are all verified here. Behaviour is unchanged when a
+            //     delegation credential is supplied.
+            //
+            //   • SERVER-CUSTODY model (#1195 Phase 2, design §2): NO delegation. A legitimate
+            //     server-side wallet holds the credential's own cnf holder key and signs the KB-JWT
+            //     directly with it — there is no device key and nothing to delegate. The KB-JWT is
+            //     verified straight against the credential's cnf.jwk (same semantics as
+            //     SdJwtService.VerifyPresentationAsync on the HAIP path). This is what the Task-6
+            //     "bind to device" flow posts (holder-signed vp_token, no delegation).
+            JsonElement kbSigningKey;
+            bool serverCustody;
             if (!string.IsNullOrWhiteSpace(delegationCredential))
             {
+                serverCustody = false;
                 layerState.DelegationAlg = HeaderAlg(delegationCredential);
 
                 var delegationErrors = await ValidateDelegationAsync(
@@ -172,17 +193,23 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
 
                 var delegationPayload = TryParseJwtPayload(delegationCredential);
                 if (delegationPayload is null
-                    || !TryExtractCnfJwk(delegationPayload.Value, out deviceJwk))
+                    || !TryExtractCnfJwk(delegationPayload.Value, out var deviceJwk))
                 {
                     errors.Add("Delegation credential is missing cnf.jwk (device key).");
                     return Failure(errors, BuildLayers(false));
                 }
                 layerState.DeviceKey = DescribeJwk(deviceJwk);
+                kbSigningKey = deviceJwk;
             }
             else
             {
-                errors.Add("Delegation credential is required for citizen wallet presentations.");
-                return Failure(errors, BuildLayers(false));
+                // Server-custody: the KB-JWT MUST be signed by the credential's own cnf holder key
+                // (extracted at step 3). The missing-cnf case already rejected loudly above with
+                // "Credential is missing cnf.jwk (holder key binding)" — so reaching here with no
+                // delegation guarantees a holder key to verify against.
+                serverCustody = true;
+                layerState.ServerCustody = true;
+                kbSigningKey = holderJwk;
             }
 
             // ── 4b. Verify the credential's issuer signature ──────────────────────
@@ -235,10 +262,18 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
                 layerState.IssuerSignature = IssuerLayer.UnresolvedNotRequired;
             }
 
-            // ── 5. Verify KB-JWT signature with the device key ────────────────────
-            if (!VerifyJwsSignature(kbJwt, deviceJwk, out var kbPayload))
+            // ── 5. Verify KB-JWT signature ────────────────────────────────────────
+            //   Delegation model → the delegation's device key; server-custody → the credential's
+            //   own cnf holder key. VerifyJwsSignature dispatches on the KB-JWT header alg
+            //   (ES256 via ECDsa, EdDSA via BouncyCastle, ES256K), so an Ed25519 holder key — the
+            //   default Sorcha wallet, signing its own KB-JWT under server-custody — verifies just
+            //   as a P-256 device or holder key does. The two custody models raise DISTINCT named
+            //   errors so the verdict never conflates "wrong device key" with "holder key mismatch".
+            if (!VerifyJwsSignature(kbJwt, kbSigningKey, out var kbPayload))
             {
-                errors.Add("KB-JWT signature verification failed against device key.");
+                errors.Add(serverCustody
+                    ? "Key binding mismatch: KB-JWT not signed by the credential's cnf key."
+                    : "KB-JWT signature verification failed against device key.");
                 return Failure(errors, BuildLayers(false));
             }
 
@@ -898,6 +933,7 @@ internal sealed class LayerState
     public string? HolderKey;     // credential cnf.jwk "kty / crv" (e.g. "OKP / Ed25519")
     public string? DelegationAlg; // device-delegation JWS header alg (e.g. "EdDSA")
     public string? DeviceKey;     // delegation cnf.jwk "kty / crv" (always "EC / P-256" today)
+    public bool ServerCustody;    // #1195 Phase 2 — no delegation; the credential's holder key signs the KB-JWT directly
 
     // IssuerSignature
     public IssuerLayer IssuerSignature = IssuerLayer.NotChecked;
@@ -941,7 +977,13 @@ internal sealed class LayerState
             // the diagnostic that explains Ed25519-vs-P-256 behaviour (the default Sorcha wallet is
             // Ed25519, so its credential cnf.jwk is OKP / Ed25519 and the delegation is EdDSA-signed).
             if (!string.IsNullOrEmpty(HolderKey)) detail["holder-key"] = HolderKey;
-            if (!string.IsNullOrEmpty(DelegationAlg) || !string.IsNullOrEmpty(DeviceKey))
+            if (ServerCustody)
+            {
+                // Honest verdict trail — there is genuinely no delegation in server-custody. Say so
+                // rather than fabricate a delegation line; the holder key (above) signed the KB-JWT.
+                detail["delegation"] = "server-custody (none) · holder cnf signs KB-JWT";
+            }
+            else if (!string.IsNullOrEmpty(DelegationAlg) || !string.IsNullOrEmpty(DeviceKey))
             {
                 detail["delegation"] =
                     $"{DelegationAlg ?? "?"} · device key {DeviceKey ?? "?"}";

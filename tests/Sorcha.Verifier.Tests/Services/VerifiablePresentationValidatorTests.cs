@@ -143,14 +143,20 @@ public sealed class VerifiablePresentationValidatorTests
     }
 
     [Fact]
-    public async Task ValidateAsync_MissingDelegation_Rejected()
+    public async Task ValidateAsync_NoDelegation_DeviceSignedKbJwt_RejectedAsKeyBindingMismatch()
     {
+        // #1195 Phase 2 (C-1): a delegation-free present is now VALID under server-custody — but only
+        // when the KB-JWT is signed by the credential's OWN cnf holder key. The Mint bundle's KB-JWT
+        // is DEVICE-signed (it is built for the delegation model), so presenting it with no delegation
+        // is the wrong-key case: it must reject with the NAMED key-binding-mismatch error, distinct
+        // from the delegation-model errors. (The legitimate holder-signed server-custody path is
+        // covered by ServerCustodyPresentationTests.)
         var bundle = TestVpFactory.Mint(Vct, Claims(("givenName", "Stuart")), ClientId, Nonce);
 
         var outcome = await _validator.ValidateAsync(Session(), bundle.VpToken, null);
 
         outcome.Accepted.Should().BeFalse();
-        outcome.Errors.Should().Contain(e => e.Contains("Delegation credential is required", StringComparison.Ordinal));
+        outcome.Errors.Should().Contain(e => e.Contains("Key binding mismatch", StringComparison.Ordinal));
     }
 
     [Fact]

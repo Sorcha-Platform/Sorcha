@@ -770,6 +770,15 @@ public static class CredentialEndpoints
 
             if (deviceBoundPlan is not null)
             {
+                // M-3 (#1195 Phase 2) — eviction-then-mint-failure window: PrepareAsync ran the
+                // LRU policy and may already have EVICTED (revoked) the oldest copy before we reach
+                // the signing below. If signing then fails, the user is momentarily below the cap
+                // (e.g. 2 copies instead of 3). This is fail-safe BY DESIGN: the invariant is
+                // "never MORE than 3, never an orphaned status slot" — being temporarily under is
+                // harmless and self-heals on retry (the citizen re-binds and a fresh slot is taken).
+                // We deliberately do NOT try to "un-evict": resurrecting a revoked copy would be the
+                // more dangerous failure mode.
+                //
                 // Override any engine-supplied allocation with the wallet-owned F114 slot so
                 // the citizen status-list publisher can flip it on eviction. F114 lists are
                 // IETF Token Status List (statuslist+jwt), so force the IETF claim shape.
