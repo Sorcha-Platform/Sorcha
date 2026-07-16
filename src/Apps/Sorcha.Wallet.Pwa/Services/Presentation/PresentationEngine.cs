@@ -410,11 +410,15 @@ public sealed class PresentationEngine : IPresentationEngine
             }
         }
 
-        // KB-JWT — header carries the device-key thumbprint as kid; payload binds nonce+aud.
+        // KB-JWT — header carries the signing key's thumbprint as kid; payload binds nonce+aud.
+        // The alg follows the SIGNING key's JWK (#1195 Phase 2): the device key is EC P-256
+        // (ES256), but a holder-cnf root presented server-custody may sign under an Ed25519
+        // holder key (EdDSA). Hardcoding ES256 here was the mirror image of the verifier-side
+        // "ES256-only verifier rejected Ed25519-holder presentations" bug.
         var kid = ComputeJwkThumbprint(deviceJwk);
         var header = new Dictionary<string, object>
         {
-            ["alg"] = "ES256",
+            ["alg"] = JoseAlgorithmFor(deviceJwk),
             ["typ"] = "kb+jwt",
             ["kid"] = kid,
         };
@@ -495,14 +499,27 @@ public sealed class PresentationEngine : IPresentationEngine
         }
     }
 
-    /// <summary>Compute the RFC 7638 JWK thumbprint for an EC P-256 public JWK.</summary>
+    /// <summary>
+    /// Compute the RFC 7638 JWK thumbprint. Handles EC (P-256 — canonical members
+    /// crv, kty, x, y) and OKP (Ed25519 — canonical members crv, kty, x). The OKP arm
+    /// exists for the holder-cnf root (#1195 Phase 2): the citizen's server-custodied
+    /// holder key is Ed25519 for the default wallet algorithm.
+    /// </summary>
     internal static string ComputeJwkThumbprint(JsonElement jwk)
     {
         var crv = jwk.GetProperty("crv").GetString();
         var kty = jwk.GetProperty("kty").GetString();
         var x = jwk.GetProperty("x").GetString();
-        var y = jwk.GetProperty("y").GetString();
-        var canonical = $"{{\"crv\":\"{crv}\",\"kty\":\"{kty}\",\"x\":\"{x}\",\"y\":\"{y}\"}}";
+        var canonical = string.Equals(kty, "OKP", StringComparison.Ordinal)
+            ? $"{{\"crv\":\"{crv}\",\"kty\":\"{kty}\",\"x\":\"{x}\"}}"
+            : $"{{\"crv\":\"{crv}\",\"kty\":\"{kty}\",\"x\":\"{x}\",\"y\":\"{jwk.GetProperty("y").GetString()}\"}}";
         return Base64Url.EncodeToString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
+
+    /// <summary>The JOSE alg for a signing key's public JWK: OKP/Ed25519 → EdDSA; EC P-256 → ES256.</summary>
+    internal static string JoseAlgorithmFor(JsonElement jwk) =>
+        jwk.TryGetProperty("kty", out var kty) &&
+        string.Equals(kty.GetString(), "OKP", StringComparison.Ordinal)
+            ? "EdDSA"
+            : "ES256";
 }

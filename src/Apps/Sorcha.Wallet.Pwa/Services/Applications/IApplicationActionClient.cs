@@ -256,8 +256,16 @@ public sealed class HttpApplicationActionClient : IApplicationActionClient
 
             if (response.IsSuccessStatusCode)
             {
+                // #1195 Phase 2 — a presentation-gated action (F111) answers success-shaped
+                // but AwaitingPresentation: surface the minted presentation request so the
+                // wallet can drive the presentation leg (DeviceBindingService). A body that
+                // doesn't parse degrades to the plain success shape (older servers).
+                var (awaiting, requestId, requestUri) = await TryReadPresentationGateAsync(response, ct);
                 return new ApplicationSubmissionResult(
-                    ApplicationSubmissionStatus.Success, context.InstanceId, ErrorCode: null, ErrorDetail: null);
+                    ApplicationSubmissionStatus.Success, context.InstanceId, ErrorCode: null, ErrorDetail: null,
+                    AwaitingPresentation: awaiting,
+                    PresentationRequestId: requestId,
+                    PresentationRequestUri: requestUri);
             }
 
             var detail = await SafeReadAsync(response, ct);
@@ -283,6 +291,45 @@ public sealed class HttpApplicationActionClient : IApplicationActionClient
     private static async Task<string?> SafeReadAsync(HttpResponseMessage r, CancellationToken ct)
     {
         try { return await r.Content.ReadAsStringAsync(ct); } catch { return null; }
+    }
+
+    /// <summary>
+    /// Reads the F111 presentation-gate fields off a successful execute response
+    /// (<c>awaitingPresentation</c> + <c>presentationRequest.requestId/presentationRequestUri</c>,
+    /// server shape <c>ActionSubmissionResponse</c>). Best-effort: an unparseable body is
+    /// treated as a plain (non-gated) success, never a failure.
+    /// </summary>
+    private static async Task<(bool Awaiting, Guid? RequestId, string? RequestUri)> TryReadPresentationGateAsync(
+        HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ExecuteResponseDto>(JsonOptions, ct);
+            if (body is not { AwaitingPresentation: true } ||
+                string.IsNullOrEmpty(body.PresentationRequest?.PresentationRequestUri))
+            {
+                return (false, null, null);
+            }
+            return (true, body.PresentationRequest.RequestId, body.PresentationRequest.PresentationRequestUri);
+        }
+        catch
+        {
+            return (false, null, null);
+        }
+    }
+
+    /// <summary>Narrow wire shape of the execute response — only the presentation-gate fields.</summary>
+    private sealed class ExecuteResponseDto
+    {
+        public bool AwaitingPresentation { get; set; }
+        public PresentationRequestDto? PresentationRequest { get; set; }
+    }
+
+    /// <summary>Wire shape of <c>ActionSubmissionResponse.PresentationRequest</c> (the fields the wallet consumes).</summary>
+    private sealed class PresentationRequestDto
+    {
+        public Guid? RequestId { get; set; }
+        public string? PresentationRequestUri { get; set; }
     }
 
     /// <summary>

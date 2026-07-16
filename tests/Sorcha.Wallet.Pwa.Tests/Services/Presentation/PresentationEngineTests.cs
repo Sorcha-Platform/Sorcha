@@ -279,6 +279,35 @@ public sealed class PresentationEngineTests
     }
 
     [Fact]
+    public async Task BuildVpTokenAsync_OkpHolderJwk_EmitsEdDsaHeaderAndOkpThumbprint()
+    {
+        // #1195 Phase 2 — a holder-cnf ROOT presented server-custody signs under the
+        // citizen's Ed25519 holder key. The KB-JWT header must say EdDSA (hardcoded
+        // ES256 was the mirror of the verifier-side "ES256-only rejected Ed25519-holder
+        // presentations" bug) and kid must be the RFC 7638 OKP thumbprint (crv, kty, x).
+        var (cred, _) = MakeRealCredential(Vct, ("givenName", "Stuart"));
+        var req = MakeRequest(["givenName"], []);
+        var match = _engine.Match(req, [cred]).Single();
+
+        var holderJwk = JsonSerializer.Deserialize<JsonElement>(
+            """{"kty":"OKP","crv":"Ed25519","x":"holderX"}""");
+
+        var vp = await _engine.BuildVpTokenAsync(
+            match, ["givenName"], req, holderJwk,
+            (_, _) => Task.FromResult(new byte[] { 1, 2, 3 }));
+
+        var (_, _, kbJwt) = PresentationEngine.SplitSdJwt(vp);
+        var header = JsonSerializer.Deserialize<JsonElement>(
+            Base64Url.DecodeFromChars(kbJwt!.Split('.')[0]));
+
+        header.GetProperty("alg").GetString().Should().Be("EdDSA");
+
+        var expectedThumbprint = Base64Url.EncodeToString(SHA256.HashData(
+            Encoding.UTF8.GetBytes("{\"crv\":\"Ed25519\",\"kty\":\"OKP\",\"x\":\"holderX\"}")));
+        header.GetProperty("kid").GetString().Should().Be(expectedThumbprint);
+    }
+
+    [Fact]
     public async Task BuildVpTokenAsync_ApprovedClaimsMissingRequired_Throws()
     {
         var (cred, _) = MakeRealCredential(Vct, ("givenName", "Stuart"));

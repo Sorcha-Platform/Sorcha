@@ -40,11 +40,21 @@ public sealed record ApplicationSubmissionRequest(
 /// <param name="InstanceId">Created blueprint-instance id on success; null otherwise.</param>
 /// <param name="ErrorCode">Stable error code on failure; null on success.</param>
 /// <param name="ErrorDetail">Human-readable diagnostic on failure; null on success.</param>
+/// <param name="AwaitingPresentation">
+/// #1195 Phase 2 — true when the submitted action is gated on a credential presentation
+/// (F111): the action has NOT completed; the server minted a presentation request the
+/// wallet must now fulfil. Mirrors <c>ActionSubmissionResponse.AwaitingPresentation</c>.
+/// </param>
+/// <param name="PresentationRequestId">The F111 presentation request id, when awaiting.</param>
+/// <param name="PresentationRequestUri">The <c>openid4vp://…</c> authorization request URI, when awaiting.</param>
 public sealed record ApplicationSubmissionResult(
     ApplicationSubmissionStatus Status,
     Guid? InstanceId,
     string? ErrorCode,
-    string? ErrorDetail);
+    string? ErrorDetail,
+    bool AwaitingPresentation = false,
+    Guid? PresentationRequestId = null,
+    string? PresentationRequestUri = null);
 
 /// <summary>Submission outcome class — drives UI branching.</summary>
 public enum ApplicationSubmissionStatus

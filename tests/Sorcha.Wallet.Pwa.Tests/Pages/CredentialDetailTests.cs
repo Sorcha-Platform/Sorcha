@@ -30,8 +30,17 @@ namespace Sorcha.Wallet.Pwa.Tests.Pages;
 public sealed class CredentialDetailTests : ComponentTestFixture
 {
     private readonly Mock<ICredentialCache> _cache = new();
+    private readonly Mock<IDeviceBindingService> _binding = new();
+    private readonly Mock<Sorcha.UI.Core.Services.Feedback.IInlineFeedback> _feedback = new();
 
-    public CredentialDetailTests() => Services.AddSingleton(_cache.Object);
+    public CredentialDetailTests()
+    {
+        Services.AddSingleton(_cache.Object);
+        Services.AddSingleton(_binding.Object);
+        Services.AddSingleton(_feedback.Object);
+        // Default: not bindable (non-AIAS credentials, uninitialised device, …).
+        _binding.Setup(b => b.CanBind(It.IsAny<CachedCredential>())).Returns(false);
+    }
 
     // The detail page uses MudExpansionPanels, which asserts a MudPopoverProvider
     // in the tree (provided by MainLayout in the app).
@@ -110,5 +119,37 @@ public sealed class CredentialDetailTests : ComponentTestFixture
         var cut = Render(PageWithProvider(Guid.NewGuid()));
 
         cut.Markup.Should().Contain("Credential not found");
+    }
+
+    // ── #1195 Phase 2 — "Bind to device" visibility per CanBind ──────────────
+
+    [Fact]
+    public void BindButton_CanBindTrue_IsVisible()
+    {
+        var id = Guid.NewGuid();
+        _cache.Setup(c => c.ListAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<CachedCredential> { CredWithClaims(id) });
+        _binding.Setup(b => b.CanBind(It.Is<CachedCredential>(c => c.Id == id))).Returns(true);
+
+        var cut = Render(PageWithProvider(id));
+
+        cut.FindAll("[data-testid=credential-detail-bind-button]").Should().ContainSingle();
+        _binding.Verify(b => b.InitializeAsync(It.IsAny<CancellationToken>()), Times.Once,
+            "the page must prime the binding service before asking CanBind");
+    }
+
+    [Fact]
+    public void BindButton_CanBindFalse_IsAbsent()
+    {
+        var id = Guid.NewGuid();
+        _cache.Setup(c => c.ListAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<CachedCredential> { CredWithClaims(id) });
+        _binding.Setup(b => b.CanBind(It.IsAny<CachedCredential>())).Returns(false);
+
+        var cut = Render(PageWithProvider(id));
+
+        cut.FindAll("[data-testid=credential-detail-bind-button]").Should().BeEmpty();
+        // The rest of the page is unaffected — the Present affordance stays.
+        cut.FindAll("[data-testid=credential-detail-present-button]").Should().ContainSingle();
     }
 }
