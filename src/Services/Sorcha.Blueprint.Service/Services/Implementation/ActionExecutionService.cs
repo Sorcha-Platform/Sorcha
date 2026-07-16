@@ -79,6 +79,24 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
     /// </summary>
     private const int MaxExecutionDepth = 1000;
 
+    /// <summary>
+    /// Stable claim-source prefix for a verified credential presentation's disclosed claims
+    /// (Feature 174 / #1195 Phase 2, "one assurance, two bindings"). A
+    /// <c>credentialIssuanceConfig.claimMappings</c> entry with
+    /// <c>sourceField: "/presentedCredential/givenName"</c> resolves the <c>givenName</c> disclosed by
+    /// the verified, issuer-signed presentation captured at the action's <c>credentialRequirements</c>
+    /// gate — the mechanism by which a device-bound copy of a credential carries the assured claim set
+    /// forward from the verified root presentation (design §4.1), NOT from client-supplied payload.
+    /// <para>
+    /// SECURITY: values under this prefix are AUTHORITATIVE. They come only from a verified presentation
+    /// (the synchronous internal verifier this execution, or a prior gated action's reconstructed data)
+    /// and always take precedence over the submitted payload. A client MUST NOT be able to override or
+    /// spoof an identity claim by submitting a <c>presentedCredential</c> field — any payload-supplied
+    /// value at this key is dropped and replaced with the verified source, fail-closed.
+    /// </para>
+    /// </summary>
+    internal const string PresentedCredentialClaimSourceKey = "presentedCredential";
+
     /// <summary>Initialises a new instance of the <see cref="ActionExecutionService"/> class.</summary>
     public ActionExecutionService(
         IActionResolverService actionResolver,
@@ -269,7 +287,16 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             }
         }
 
-        // 4c. Verify credential presentations against action requirements
+        // 4c. Verify credential presentations against action requirements.
+        //
+        // Feature 174 / #1195 Phase 2 — the verified presentation's disclosed claims are the
+        // authoritative source for any issuance claim mapped from /presentedCredential/* (see
+        // PresentedCredentialClaimSourceKey). Captured here at the synchronous gate and threaded into
+        // the issuance source document below (step 8a-bis) so device-copy identity claims come from the
+        // verified, issuer-signed root presentation — never from client-supplied payload. Null when no
+        // synchronous presentation was verified this execution (e.g. an async SorchaWallet gate, or no
+        // credential requirement at all).
+        Dictionary<string, object>? verifiedPresentationClaims = null;
         var haipRequirement = actionDef.CredentialRequirements?
             .FirstOrDefault(r => r.PresentationSource == PresentationSource.HaipExternalWallet);
         if (actionDef.CredentialRequirements?.Any() == true)
@@ -362,6 +389,25 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                 _logger.LogInformation(
                     "Credential verification passed for action {ActionId}: {Count} credential(s) verified",
                     actionId, credentialResult.VerifiedCredentials.Count);
+
+                // Feature 174 / #1195 Phase 2 — capture the disclosed claims from the verified
+                // presentation(s) so they can be exposed under /presentedCredential/* at issuance
+                // (step 8a-bis). Merge across all verified credentials (a single root credential in
+                // the AIAS device-binding flow). Previously this result was dropped after logging,
+                // which meant a claim mapped from /presentedCredential/* fell through to whatever the
+                // client submitted — the vulnerability this closes.
+                if (credentialResult.VerifiedCredentials.Count > 0)
+                {
+                    var captured = new Dictionary<string, object>(StringComparer.Ordinal);
+                    foreach (var verified in credentialResult.VerifiedCredentials)
+                    {
+                        foreach (var claim in verified.VerifiedClaims)
+                        {
+                            captured[claim.Key] = claim.Value;
+                        }
+                    }
+                    verifiedPresentationClaims = captured;
+                }
             }
         }
 
@@ -521,6 +567,15 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             ? flattenedState.Where(kvp => kvp.Value != null).ToDictionary(kvp => kvp.Key, kvp => kvp.Value!)
             : new Dictionary<string, object>(instance.AccumulatedData);
 
+        // Feature 174 / #1195 Phase 2 — snapshot any /presentedCredential source carried forward from a
+        // prior gated action's reconstructed data BEFORE the payload overlay, so a client-supplied
+        // `presentedCredential` field can never masquerade as the verified source. Reinstated with
+        // precedence at step 8a-bis. See PresentedCredentialClaimSourceKey.
+        var reconstructedPresentedCredential =
+            mergedData.TryGetValue(PresentedCredentialClaimSourceKey, out var reconstructedPc)
+                ? reconstructedPc
+                : null;
+
         foreach (var kvp in request.PayloadData)
         {
             mergedData[kvp.Key] = kvp.Value;
@@ -548,6 +603,29 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         {
             ["registerId"] = instance.RegisterId
         };
+
+        // 8a-bis. Feature 174 / #1195 Phase 2 — expose the verified presentation's disclosed claims
+        //     under the stable /presentedCredential/* claim-source prefix (see
+        //     PresentedCredentialClaimSourceKey) and give them PRECEDENCE over client payload. A
+        //     claimMappings entry with sourceField "/presentedCredential/givenName" resolves the
+        //     givenName disclosed by the verified, issuer-signed root presentation — the device-copy's
+        //     identity claims are carried forward from that verified presentation (design §4.1), never
+        //     from client-supplied payload. Two supply routes: (a) this execution's synchronous gate
+        //     (verifiedPresentationClaims), (b) a prior gated action's reconstructed data
+        //     (reconstructedPresentedCredential, snapshotted pre-overlay at step 7). Whichever is
+        //     present is written here AFTER the payload overlay, so any payload-supplied
+        //     `presentedCredential` field is dropped. When neither is present the key is removed
+        //     outright — a client value must never be able to pose as a verified presentation
+        //     (fail-closed; /presentedCredential/* then resolves to nothing and the claim is dropped).
+        var trustedPresentedCredential = (object?)verifiedPresentationClaims ?? reconstructedPresentedCredential;
+        if (trustedPresentedCredential is not null)
+        {
+            mergedData[PresentedCredentialClaimSourceKey] = trustedPresentedCredential;
+        }
+        else
+        {
+            mergedData.Remove(PresentedCredentialClaimSourceKey);
+        }
 
         // 8b. HAIP credential mint (Feature 097 + Feature 104 wave 14b).
         //     Moved to run BEFORE routing so the minted offer data can be
