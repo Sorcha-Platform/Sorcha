@@ -305,7 +305,27 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
                 layerState.LivePresentationFailed = true;
             }
 
-            // ── 7. Extract disclosed claims and check required set ────────────────
+            // ── 7. Anchor disclosures, extract disclosed claims, check required set ──
+            // #1195 Phase 2 (Task 6 fix round) — RFC 9901 disclosure anchoring: every
+            // disclosure segment MUST be committed by the credential (its SHA-256 digest in an
+            // _sd array of the payload, or of an already-accepted disclosure's value — nested
+            // SD). Without this, a presenter could append fabricated [salt, name, value]
+            // segments — or OVERRIDE a legitimate claim's value with a forged duplicate — and
+            // have them emitted as verified claims. The KB-JWT cannot protect against this:
+            // its signer IS the presenter. Tampering rejects the whole presentation, loudly.
+            var unanchored = FindUnanchoredDisclosures(credentialPayload.Value, disclosureSegments);
+            if (unanchored.Count > 0)
+            {
+                foreach (var name in unanchored)
+                {
+                    errors.Add(
+                        $"Disclosure '{name}' is not committed by the credential " +
+                        "(no matching _sd digest) — the presentation is tampered or malformed.");
+                }
+                layerState.LivePresentationFailed = true;
+                return Failure(errors, BuildLayers(false));
+            }
+
             disclosed = ParseDisclosures(disclosureSegments);
             foreach (var required in session.RequiredClaims)
             {
@@ -428,6 +448,119 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
         if (inner.ValueKind != JsonValueKind.Object) return false;
         jwk = inner;
         return true;
+    }
+
+    /// <summary>
+    /// RFC 9901 disclosure anchoring (#1195 Phase 2, Task 6 fix round). Returns the display
+    /// names of every disclosure segment whose SHA-256 digest is NOT committed by the
+    /// credential — i.e. not present in any <c>_sd</c> array of the credential payload or of an
+    /// already-anchored disclosure's value (nested selective disclosure). Runs to fixpoint so
+    /// nested disclosures anchor regardless of segment order. An empty result means every
+    /// presented disclosure is issuer-committed.
+    /// </summary>
+    internal static IReadOnlyList<string> FindUnanchoredDisclosures(
+        JsonElement credentialPayload,
+        IReadOnlyList<string> segments)
+    {
+        if (segments.Count == 0) return [];
+
+        var committed = new HashSet<string>(StringComparer.Ordinal);
+        CollectSdDigests(credentialPayload, committed);
+
+        var anchored = new bool[segments.Count];
+        bool progressed = true;
+        while (progressed)
+        {
+            progressed = false;
+            for (var i = 0; i < segments.Count; i++)
+            {
+                if (anchored[i]) continue;
+                var digest = Base64Url.EncodeToString(
+                    SHA256.HashData(Encoding.ASCII.GetBytes(segments[i])));
+                if (!committed.Contains(digest)) continue;
+
+                anchored[i] = true;
+                progressed = true;
+
+                // Nested SD: the disclosed value may itself carry _sd arrays that commit
+                // further disclosures (e.g. address sub-fields).
+                try
+                {
+                    using var doc = JsonDocument.Parse(Base64Url.DecodeFromChars(segments[i]));
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array &&
+                        doc.RootElement.GetArrayLength() is 2 or 3)
+                    {
+                        CollectSdDigests(doc.RootElement[doc.RootElement.GetArrayLength() - 1], committed);
+                    }
+                }
+                catch
+                {
+                    // A segment that anchors but doesn't parse contributes no nested digests;
+                    // ParseDisclosures drops it downstream.
+                }
+            }
+        }
+
+        var unanchoredNames = new List<string>();
+        for (var i = 0; i < segments.Count; i++)
+        {
+            if (anchored[i]) continue;
+            unanchoredNames.Add(ReadDisclosureDisplayName(segments[i]));
+        }
+        return unanchoredNames;
+    }
+
+    /// <summary>Recursively collect every string entry of every <c>_sd</c> array in <paramref name="element"/>.</summary>
+    private static void CollectSdDigests(JsonElement element, HashSet<string> sink)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (property.NameEquals("_sd") && property.Value.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var digest in property.Value.EnumerateArray())
+                        {
+                            if (digest.ValueKind == JsonValueKind.String)
+                            {
+                                sink.Add(digest.GetString()!);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        CollectSdDigests(property.Value, sink);
+                    }
+                }
+                break;
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                {
+                    CollectSdDigests(item, sink);
+                }
+                break;
+        }
+    }
+
+    /// <summary>Best-effort claim name of a disclosure segment for error messages; never throws.</summary>
+    private static string ReadDisclosureDisplayName(string segment)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(Base64Url.DecodeFromChars(segment));
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return "<malformed>";
+            return doc.RootElement.GetArrayLength() switch
+            {
+                3 => doc.RootElement[1].GetString() ?? "<unnamed>",
+                2 => doc.RootElement[0].GetString() ?? "<unnamed>",
+                _ => "<malformed>",
+            };
+        }
+        catch
+        {
+            return "<malformed>";
+        }
     }
 
     /// <summary>

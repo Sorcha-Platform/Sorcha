@@ -101,13 +101,14 @@ public class AiasDeviceRegistrationBlueprintTests
             .Be(Sorcha.Blueprint.Models.Credentials.PresentationSource.SorchaWallet,
                 "the citizen presents from their on-device Sorcha Wallet PWA (F127), not HAIP");
         requirement.RequiredClaims.Should().NotBeNull();
-        // Task 6b (D) — FULL disclosure for the bind gate (design §4.1): the consumer filters
-        // disclosed claims to the gate's requiredClaims, so the gate must require the COMPLETE
-        // assured claim set the apply blueprint issues (its claimMappings are the source of
-        // truth) or the device copy is minted with holes (no email/address/portrait).
+        // Task 6 fix round — optional-claim gate semantics. The gate requires ONLY the
+        // mandatory identity core every root provably carries. middleName/fullName/portrait
+        // are OPTIONAL at apply time (claim mappings skip missing sources), so requiring them
+        // would refuse the bind to every citizen without a middle name. Full disclosure of the
+        // copy comes from the consumer's PASS-THROUGH of all verified disclosed claims
+        // (design §4.1), not from this list — the requiredClaims are the entitlement gate.
         requirement.RequiredClaims!.Select(c => c.ClaimName).Should().BeEquivalentTo(
-            "givenName", "middleName", "familyName", "fullName",
-            "dateOfBirth", "email", "address", "portrait");
+            "givenName", "familyName", "dateOfBirth");
     }
 
     [Fact]

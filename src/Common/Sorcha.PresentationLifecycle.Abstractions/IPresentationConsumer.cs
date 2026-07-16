@@ -17,7 +17,11 @@ namespace Sorcha.PresentationLifecycle.Abstractions;
 ///   <item><description><see cref="VerifyAsync"/> is synchronous w.r.t. the caller's await — no background processing after return.</description></item>
 ///   <item><description>Consumers MUST NOT write to the register directly; they return an outcome, the lifecycle service writes it.</description></item>
 ///   <item><description>Consumer-level idempotency is NOT required; the lifecycle service guards via a Redis sentinel.</description></item>
-///   <item><description>VerifiedClaims MUST be filtered to the claims the blueprint's requiredClaims asked for — minimal disclosure.</description></item>
+///   <item><description>VerifiedClaims MUST contain only claims from the VERIFIED presentation
+///   (issuer-committed, digest-anchored) and MUST cover every requiredClaim (the gate). Claims
+///   beyond the required set MAY be included when the citizen consented to disclose them —
+///   minimal disclosure is enforced at the wallet's consent, not by server-side truncation
+///   (#1195 Phase 2: the full-disclosure bind gate copies exactly what the root carries).</description></item>
 ///   <item><description>VerifierDiagnostics format is consumer-defined; SHOULD NOT contain PII.</description></item>
 /// </list>
 /// </remarks>

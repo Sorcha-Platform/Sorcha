@@ -192,20 +192,21 @@ public sealed class SorchaWalletPresentationConsumer : IPresentationConsumer
                 PresentationSubmissionHash: null);
         }
 
-        // Filter disclosed claims to the verifier-session's required set. Minimal
-        // disclosure invariant — the consumer surfaces only what the blueprint
-        // asked for. The wallet may include more in the VP; what crosses the
-        // boundary into F111's outcome record is the strict required subset.
+        // Task 6 fix round (#1195 Phase 2) — requiredClaims act as the GATE, and the emitted
+        // VerifiedClaims are the FULL verified disclosure set (design §4.1 full-disclosure
+        // bind: the device copy mirrors exactly what the root carries; optional claims like
+        // middleName degrade gracefully instead of refusing citizens who don't have one).
+        // Minimal disclosure is enforced where it belongs: at the wallet's consent sheet
+        // (only consented disclosures enter the vp_token) and by the validator's RFC 9901
+        // digest anchoring (only issuer-committed disclosures reach DisclosedClaims) — so
+        // nothing here is client-controlled beyond what the issuer signed and the citizen
+        // chose to disclose.
         var requiredClaimSet = new HashSet<string>(session.RequiredClaims, StringComparer.Ordinal);
-        var filteredClaims = outcome.DisclosedClaims
-            .Where(kv => requiredClaimSet.Contains(kv.Key))
-            .ToDictionary(
-                kv => kv.Key,
-                kv => (object)(kv.Value ?? string.Empty),
-                StringComparer.Ordinal);
 
-        // Are any required claims missing? Decline with SchemaMismatch.
-        var missing = requiredClaimSet.Except(filteredClaims.Keys).ToList();
+        // The gate: every required claim must be present in the verified disclosure set.
+        var missing = requiredClaimSet
+            .Where(r => !outcome.DisclosedClaims.ContainsKey(r))
+            .ToList();
         if (missing.Count > 0)
         {
             _logger.LogWarning(
@@ -222,10 +223,16 @@ public sealed class SorchaWalletPresentationConsumer : IPresentationConsumer
                 PresentationSubmissionHash: null);
         }
 
-        var submissionHash = ComputePresentationHash(session, filteredClaims);
+        // The pass-through: everything the validator verified, verbatim.
+        var verifiedClaims = outcome.DisclosedClaims.ToDictionary(
+            kv => kv.Key,
+            kv => (object)(kv.Value ?? string.Empty),
+            StringComparer.Ordinal);
+
+        var submissionHash = ComputePresentationHash(session, verifiedClaims);
         return new PresentationOutcome(
             Kind: PresentationOutcomeKind.Success,
-            VerifiedClaims: filteredClaims,
+            VerifiedClaims: verifiedClaims,
             Reason: null,
             VerifierDiagnostics: null,
             PresentationSubmissionHash: $"sha256:{submissionHash}");

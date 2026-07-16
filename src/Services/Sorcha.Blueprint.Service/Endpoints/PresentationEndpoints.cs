@@ -273,8 +273,10 @@ public static class PresentationEndpoints
             .WithDescription(
                 "Feature 127 supplement to F111's presentation lifecycle. The token returned by " +
                 "InitiateAsync authenticates the caller as the council page that originated the " +
-                "flow. Single-use; consumed on first fetch. Claims are returned in plaintext, " +
-                "filtered to the requiredClaims declared on the action's credentialRequirement. " +
+                "flow. Single-use; consumed on first fetch. Claims are returned in plaintext — " +
+                "every claim the citizen consented to disclose and the validator verified " +
+                "(requiredClaims gate the presentation; they no longer truncate the emitted set — " +
+                "#1195 Phase 2 full-disclosure pass-through). " +
                 "Returns 200 + status=pending while the wallet's outcome hasn't been written; " +
                 "returns 410 on decline / abandonment / claims-expired; returns 401 when the " +
                 "token is invalid or doesn't match the path's presentationRequestId.");

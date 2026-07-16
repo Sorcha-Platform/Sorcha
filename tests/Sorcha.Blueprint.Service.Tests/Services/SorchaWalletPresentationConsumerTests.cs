@@ -110,11 +110,14 @@ public sealed class SorchaWalletPresentationConsumerTests
     }
 
     [Fact]
-    public async Task VerifyAsync_FiltersClaimsToRequiredSet_MinimalDisclosure()
+    public async Task VerifyAsync_EmitsAllVerifiedDisclosedClaims_RequiredClaimsActOnlyAsGate()
     {
-        // Validator returns more claims than asked for; the consumer must
-        // filter to the strict required set per the IPresentationConsumer
-        // contract's minimal-disclosure invariant.
+        // Task 6 fix round — full-disclosure pass-through (design §4.1): requiredClaims GATE
+        // the presentation (must all be present), but VerifiedClaims carries EVERY claim the
+        // validator verified from the citizen's consented disclosure. Minimal disclosure is
+        // enforced at the wallet's consent sheet (what enters the vp_token) and by the
+        // validator's digest anchoring (only issuer-committed disclosures verify) — not by a
+        // server-side truncation that would mint device copies with holes.
         var session = NewSession("givenName");
         _validator
             .Setup(v => v.ValidateAsync(session, It.IsAny<string>(), null, It.IsAny<CancellationToken>()))
@@ -124,8 +127,9 @@ public sealed class SorchaWalletPresentationConsumerTests
                 DisclosedClaims = new Dictionary<string, object?>
                 {
                     ["givenName"] = "Sarah",
-                    ["familyName"] = "Example",  // not in required — must be filtered out
-                    ["secretClaim"] = "private"  // not in required — must be filtered out
+                    ["familyName"] = "Example",
+                    ["email"] = "sarah@example.org",
+                    ["portrait"] = "base64…"
                 },
                 Errors = [],
                 CompletedAt = DateTimeOffset.UtcNow
@@ -136,7 +140,44 @@ public sealed class SorchaWalletPresentationConsumerTests
             CancellationToken.None);
 
         outcome.Kind.Should().Be(PresentationOutcomeKind.Success);
-        outcome.VerifiedClaims!.Keys.Should().BeEquivalentTo(new[] { "givenName" });
+        outcome.VerifiedClaims!.Keys.Should().BeEquivalentTo(
+            new[] { "givenName", "familyName", "email", "portrait" },
+            "every verified disclosed claim passes through — the copy mirrors the root");
+    }
+
+    [Fact]
+    public async Task VerifyAsync_RootWithoutOptionalClaim_PassesGate_AndCopiesOnlyWhatTheRootCarries()
+    {
+        // A citizen with no middle name: the root never carried the claim, the gate requires
+        // only the core, and the emitted set gracefully omits it — no failure, no hole.
+        var session = NewSession("givenName", "familyName", "dateOfBirth");
+        _validator
+            .Setup(v => v.ValidateAsync(session, It.IsAny<string>(), null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new VerificationOutcome
+            {
+                Accepted = true,
+                DisclosedClaims = new Dictionary<string, object?>
+                {
+                    ["givenName"] = "Sarah",
+                    ["familyName"] = "Example",
+                    ["dateOfBirth"] = "1968-04-12",
+                    ["email"] = "sarah@example.org",
+                    ["address"] = "12 Brae Road"
+                    // no middleName, no fullName, no portrait — the root never carried them
+                },
+                Errors = [],
+                CompletedAt = DateTimeOffset.UtcNow
+            });
+
+        var outcome = await _sut.VerifyAsync(NewContext(),
+            new SorchaWalletVerificationPayload { VpToken = "vp", Session = session },
+            CancellationToken.None);
+
+        outcome.Kind.Should().Be(PresentationOutcomeKind.Success,
+            "an absent OPTIONAL claim must never fail the bind");
+        outcome.VerifiedClaims!.Keys.Should().BeEquivalentTo(
+            new[] { "givenName", "familyName", "dateOfBirth", "email", "address" });
+        outcome.VerifiedClaims!.Should().NotContainKey("middleName");
     }
 
     [Fact]
