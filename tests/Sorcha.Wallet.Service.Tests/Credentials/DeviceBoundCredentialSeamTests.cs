@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Buffers.Text;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 
@@ -13,6 +14,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
 using Sorcha.Cryptography;
+using Sorcha.ServiceClients.PlatformUserDevice;
 using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Service.Credentials;
 using Sorcha.Wallet.Service.Services.Implementation;
@@ -99,14 +101,218 @@ public sealed class DeviceBoundCredentialSeamTests : IDisposable
         holderKey.Setup(k => k.GetHolderJwkThumbprintAsync(Wallet, It.IsAny<CancellationToken>()))
             .ReturnsAsync(JsonWebKeyThumbprint.Compute(HolderJwk));
 
+        var deviceClient = new Mock<IPlatformUserDeviceClient>();
+        deviceClient.Setup(c => c.ListAsync(UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformUserDeviceLookupResult>());
+
         var lookup = new EfCoreDeviceBoundCredentialLookup(
-            _db, store.Object, holderKey.Object, NullLogger<EfCoreDeviceBoundCredentialLookup>.Instance);
+            _db, store.Object, holderKey.Object, deviceClient.Object,
+            NullLogger<EfCoreDeviceBoundCredentialLookup>.Instance);
 
         var copies = await lookup.GetLiveCopiesAsync(UserId, Vct, default);
 
         copies.Should().ContainSingle("only the live device copy counts (root excluded, revoked excluded)");
         copies[0].CredentialId.Should().Be("device");
         copies[0].DeviceKeyThumbprint.Should().Be(JsonWebKeyThumbprint.Compute(DeviceJwk));
+    }
+
+    private static PlatformUserDeviceLookupResult RegisteredDevice(Guid deviceId, string label, string thumbprint) =>
+        new(DeviceId: deviceId,
+            PlatformUserId: UserId,
+            Label: label,
+            DevicePublicJwkThumbprint: thumbprint,
+            DevicePublicJwkJson: "{}",
+            Platform: "iOS",
+            Status: "Active",
+            EnrolledAt: DateTimeOffset.UtcNow.AddDays(-30),
+            DelegationExpiresAt: DateTimeOffset.UtcNow.AddDays(30),
+            DelegationCredentialJti: "jti-1",
+            StatusListId: 0,
+            StatusListIndex: 0);
+
+    [Fact]
+    public async Task Lookup_ThumbprintMatchesRegisteredDevice_PopulatesDeviceIdAndLabel()
+    {
+        // Fix round 1 (eviction notify): the copy's cnf thumbprint IS the Tenant registry's
+        // DevicePublicJwkThumbprint, so the lookup resolves DeviceId/Label for the F118 notice.
+        var deviceThumbprint = JsonWebKeyThumbprint.Compute(DeviceJwk);
+        var registeredDeviceId = Guid.Parse("55555555-5555-5555-5555-555555555555");
+
+        var store = new Mock<ICredentialStore>();
+        store.Setup(s => s.GetByWalletAsync(Wallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<CredentialEntity>
+            {
+                Credential("device", RawTokenWithCnf(DeviceJwk), CredentialStatus.Active),
+            });
+        var holderKey = new Mock<IHolderKeyService>();
+        holderKey.Setup(k => k.GetHolderJwkThumbprintAsync(Wallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonWebKeyThumbprint.Compute(HolderJwk));
+        var deviceClient = new Mock<IPlatformUserDeviceClient>();
+        deviceClient.Setup(c => c.ListAsync(UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformUserDeviceLookupResult>
+            {
+                RegisteredDevice(Guid.NewGuid(), "Other phone", "some-other-thumbprint"),
+                RegisteredDevice(registeredDeviceId, "Stuart's iPhone", deviceThumbprint),
+            });
+
+        var lookup = new EfCoreDeviceBoundCredentialLookup(
+            _db, store.Object, holderKey.Object, deviceClient.Object,
+            NullLogger<EfCoreDeviceBoundCredentialLookup>.Instance);
+
+        var copies = await lookup.GetLiveCopiesAsync(UserId, Vct, default);
+
+        var copy = copies.Should().ContainSingle().Subject;
+        copy.DeviceId.Should().Be(registeredDeviceId, "the registry device with the matching thumbprint is the bound device");
+        copy.DeviceLabel.Should().Be("Stuart's iPhone");
+    }
+
+    [Fact]
+    public async Task Lookup_RegistryUnavailable_DegradesToDeterministicDeviceIdWithNullLabel()
+    {
+        // Fix round 1: a Tenant outage must be non-fatal to the mint. The copy is still
+        // returned (the cap still counts it); the DeviceId degrades to a deterministic
+        // thumbprint-derived Guid so the F118 notice still fires (never Guid.Empty, which
+        // CitizenDeviceInboxWriter short-circuits into silence).
+        var store = new Mock<ICredentialStore>();
+        store.Setup(s => s.GetByWalletAsync(Wallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<CredentialEntity>
+            {
+                Credential("device", RawTokenWithCnf(DeviceJwk), CredentialStatus.Active),
+            });
+        var holderKey = new Mock<IHolderKeyService>();
+        holderKey.Setup(k => k.GetHolderJwkThumbprintAsync(Wallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonWebKeyThumbprint.Compute(HolderJwk));
+        var deviceClient = new Mock<IPlatformUserDeviceClient>();
+        deviceClient.Setup(c => c.ListAsync(UserId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("tenant unreachable"));
+
+        var lookup = new EfCoreDeviceBoundCredentialLookup(
+            _db, store.Object, holderKey.Object, deviceClient.Object,
+            NullLogger<EfCoreDeviceBoundCredentialLookup>.Instance);
+
+        var copies = await lookup.GetLiveCopiesAsync(UserId, Vct, default);
+
+        var copy = copies.Should().ContainSingle("registry outage must not hide live copies from the cap").Subject;
+        copy.DeviceId.Should().NotBe(Guid.Empty, "the eviction notice must still fire (writer no-ops on Guid.Empty)");
+        copy.DeviceLabel.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Eviction_EndToEnd_NotifiesInboxWithRegistryResolvedDeviceIdAndLabel()
+    {
+        // Fix round 1, end-to-end: REAL lookup (thumbprints from stored tokens + faked Tenant
+        // registry) feeding the REAL policy — a 4th distinct device evicts the oldest copy and
+        // the F118 inbox notice carries the registry-resolved DeviceId + label.
+        var oldestJwk = JsonSerializer.Deserialize<JsonElement>(
+            """{"kty":"EC","crv":"P-256","x":"oldest-x-00000000000000000000000000000000000","y":"oldest-y-00000000000000000000000000000000000"}""");
+        var secondJwk = JsonSerializer.Deserialize<JsonElement>(
+            """{"kty":"EC","crv":"P-256","x":"second-x-00000000000000000000000000000000000","y":"second-y-00000000000000000000000000000000000"}""");
+        var thirdJwk = JsonSerializer.Deserialize<JsonElement>(
+            """{"kty":"EC","crv":"P-256","x":"third-x-000000000000000000000000000000000000","y":"third-y-000000000000000000000000000000000000"}""");
+
+        var now = DateTimeOffset.UtcNow;
+        var oldest = Credential("cred-oldest", RawTokenWithCnf(oldestJwk), CredentialStatus.Active);
+        oldest.IssuedAt = now.AddDays(-10);
+        var second = Credential("cred-2", RawTokenWithCnf(secondJwk), CredentialStatus.Active);
+        second.IssuedAt = now.AddDays(-5);
+        var third = Credential("cred-3", RawTokenWithCnf(thirdJwk), CredentialStatus.Active);
+        third.IssuedAt = now.AddDays(-1);
+
+        var store = new Mock<ICredentialStore>();
+        store.Setup(s => s.GetByWalletAsync(Wallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<CredentialEntity> { second, oldest, third });
+
+        var holderKey = new Mock<IHolderKeyService>();
+        holderKey.Setup(k => k.GetHolderJwkThumbprintAsync(Wallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonWebKeyThumbprint.Compute(HolderJwk));
+
+        var oldestDeviceId = Guid.Parse("66666666-6666-6666-6666-666666666666");
+        var deviceClient = new Mock<IPlatformUserDeviceClient>();
+        deviceClient.Setup(c => c.ListAsync(UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformUserDeviceLookupResult>
+            {
+                RegisteredDevice(oldestDeviceId, "Old iPad", JsonWebKeyThumbprint.Compute(oldestJwk)),
+                RegisteredDevice(Guid.NewGuid(), "Pixel", JsonWebKeyThumbprint.Compute(secondJwk)),
+                RegisteredDevice(Guid.NewGuid(), "iPhone", JsonWebKeyThumbprint.Compute(thirdJwk)),
+            });
+
+        var lookup = new EfCoreDeviceBoundCredentialLookup(
+            _db, store.Object, holderKey.Object, deviceClient.Object,
+            NullLogger<EfCoreDeviceBoundCredentialLookup>.Instance);
+
+        var revoker = new Mock<IDeviceBoundCredentialRevoker>();
+        revoker.Setup(r => r.RevokeAsync(UserId, It.IsAny<DeviceBoundCredentialCopy>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var inbox = new Mock<ICitizenDeviceInboxWriter>();
+        inbox.Setup(i => i.WriteDeviceRevokedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var policy = new DeviceBoundCredentialPolicy(
+            lookup, revoker.Object, inbox.Object, NullLogger<DeviceBoundCredentialPolicy>.Instance);
+
+        var result = await policy.ReconcileAsync(UserId, Vct, "thumbprint-of-a-4th-device", default);
+
+        result.Kind.Should().Be(DeviceBindKind.NewWithEviction);
+        result.EvictedCredentialId.Should().Be("cred-oldest");
+        inbox.Verify(
+            i => i.WriteDeviceRevokedAsync(UserId, oldestDeviceId, "Old iPad", It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Eviction_RegistryUnavailable_StillEvictsAndNotifiesWithDegradedDeviceId()
+    {
+        // Fix round 1: Tenant outage is non-fatal — eviction (revoke) still happens, the
+        // mint still proceeds (NewWithEviction returned), and the notice degrades to the
+        // deterministic thumbprint-derived DeviceId with no label rather than going silent.
+        var oldestJwk = JsonSerializer.Deserialize<JsonElement>(
+            """{"kty":"EC","crv":"P-256","x":"oldest-x-00000000000000000000000000000000000","y":"oldest-y-00000000000000000000000000000000000"}""");
+        var secondJwk = JsonSerializer.Deserialize<JsonElement>(
+            """{"kty":"EC","crv":"P-256","x":"second-x-00000000000000000000000000000000000","y":"second-y-00000000000000000000000000000000000"}""");
+        var thirdJwk = JsonSerializer.Deserialize<JsonElement>(
+            """{"kty":"EC","crv":"P-256","x":"third-x-000000000000000000000000000000000000","y":"third-y-000000000000000000000000000000000000"}""");
+
+        var now = DateTimeOffset.UtcNow;
+        var oldest = Credential("cred-oldest", RawTokenWithCnf(oldestJwk), CredentialStatus.Active);
+        oldest.IssuedAt = now.AddDays(-10);
+        var second = Credential("cred-2", RawTokenWithCnf(secondJwk), CredentialStatus.Active);
+        second.IssuedAt = now.AddDays(-5);
+        var third = Credential("cred-3", RawTokenWithCnf(thirdJwk), CredentialStatus.Active);
+        third.IssuedAt = now.AddDays(-1);
+
+        var store = new Mock<ICredentialStore>();
+        store.Setup(s => s.GetByWalletAsync(Wallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<CredentialEntity> { second, oldest, third });
+        var holderKey = new Mock<IHolderKeyService>();
+        holderKey.Setup(k => k.GetHolderJwkThumbprintAsync(Wallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonWebKeyThumbprint.Compute(HolderJwk));
+        var deviceClient = new Mock<IPlatformUserDeviceClient>();
+        deviceClient.Setup(c => c.ListAsync(UserId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("tenant unreachable"));
+
+        var lookup = new EfCoreDeviceBoundCredentialLookup(
+            _db, store.Object, holderKey.Object, deviceClient.Object,
+            NullLogger<EfCoreDeviceBoundCredentialLookup>.Instance);
+
+        var revoker = new Mock<IDeviceBoundCredentialRevoker>();
+        revoker.Setup(r => r.RevokeAsync(UserId, It.IsAny<DeviceBoundCredentialCopy>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var inbox = new Mock<ICitizenDeviceInboxWriter>();
+        inbox.Setup(i => i.WriteDeviceRevokedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var policy = new DeviceBoundCredentialPolicy(
+            lookup, revoker.Object, inbox.Object, NullLogger<DeviceBoundCredentialPolicy>.Instance);
+
+        var result = await policy.ReconcileAsync(UserId, Vct, "thumbprint-of-a-4th-device", default);
+
+        result.Kind.Should().Be(DeviceBindKind.NewWithEviction, "the mint proceeds despite the registry outage");
+        revoker.Verify(
+            r => r.RevokeAsync(UserId, It.Is<DeviceBoundCredentialCopy>(c => c.CredentialId == "cred-oldest"), It.IsAny<CancellationToken>()),
+            Times.Once);
+        inbox.Verify(
+            i => i.WriteDeviceRevokedAsync(UserId, It.Is<Guid>(g => g != Guid.Empty), null, It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]

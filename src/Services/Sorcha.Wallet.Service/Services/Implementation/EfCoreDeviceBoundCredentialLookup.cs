@@ -7,6 +7,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 
 using Sorcha.Cryptography;
+using Sorcha.ServiceClients.PlatformUserDevice;
 using Sorcha.Wallet.Core.Data;
 using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Service.Credentials;
@@ -31,6 +32,7 @@ public sealed class EfCoreDeviceBoundCredentialLookup : IDeviceBoundCredentialLo
     private readonly WalletDbContext _db;
     private readonly ICredentialStore _store;
     private readonly IHolderKeyService _holderKeyService;
+    private readonly IPlatformUserDeviceClient _deviceClient;
     private readonly ILogger<EfCoreDeviceBoundCredentialLookup> _logger;
 
     /// <summary>Initialises a new <see cref="EfCoreDeviceBoundCredentialLookup"/>.</summary>
@@ -38,11 +40,13 @@ public sealed class EfCoreDeviceBoundCredentialLookup : IDeviceBoundCredentialLo
         WalletDbContext db,
         ICredentialStore store,
         IHolderKeyService holderKeyService,
+        IPlatformUserDeviceClient deviceClient,
         ILogger<EfCoreDeviceBoundCredentialLookup> logger)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _holderKeyService = holderKeyService ?? throw new ArgumentNullException(nameof(holderKeyService));
+        _deviceClient = deviceClient ?? throw new ArgumentNullException(nameof(deviceClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -63,6 +67,29 @@ public sealed class EfCoreDeviceBoundCredentialLookup : IDeviceBoundCredentialLo
         {
             return Array.Empty<DeviceBoundCredentialCopy>();
         }
+
+        // Fix round 1 (eviction notify): the copy's cnf thumbprint IS the device's Tenant
+        // registry identity — PlatformUserDevice.DevicePublicJwkThumbprint is the same RFC 7638
+        // thumbprint. Resolve the registry once so each copy carries a real DeviceId/Label for
+        // the F118 eviction notice. Non-fatal: a Tenant outage must never block the mint (only
+        // the revoke is fatal), so failure degrades to the deterministic-fallback path below.
+        IReadOnlyList<PlatformUserDeviceLookupResult> registeredDevices;
+        try
+        {
+            registeredDevices = await _deviceClient.ListAsync(userId, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Device-bound lookup: Tenant device registry unavailable for user {UserId} — " +
+                "eviction notices will degrade to thumbprint-derived device ids (no label)",
+                userId);
+            registeredDevices = Array.Empty<PlatformUserDeviceLookupResult>();
+        }
+
+        var devicesByThumbprint = registeredDevices
+            .GroupBy(d => d.DevicePublicJwkThumbprint, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
 
         var copies = new List<DeviceBoundCredentialCopy>();
 
@@ -112,19 +139,44 @@ public sealed class EfCoreDeviceBoundCredentialLookup : IDeviceBoundCredentialLo
                     continue; // this is the holder-bound web root, not a device copy
                 }
 
+                // Device id/label from the Tenant registry via the thumbprint link. When the
+                // registry has no match (or was unavailable), fall back to a DETERMINISTIC
+                // thumbprint-derived Guid so the F118 eviction notice still fires —
+                // CitizenDeviceInboxWriter short-circuits Guid.Empty into silence, and an
+                // eviction notice without a device label ("your device") beats no notice.
+                // Determinism preserves the writer's (userId, deviceId) idempotency key.
+                var (deviceId, deviceLabel) =
+                    devicesByThumbprint.TryGetValue(thumbprint, out var registered)
+                        ? (registered.DeviceId, (string?)registered.Label)
+                        : (DeterministicDeviceId(thumbprint), null);
+
                 copies.Add(new DeviceBoundCredentialCopy(
                     CredentialId: credential.Id,
                     DeviceKeyThumbprint: thumbprint,
                     IssuedAt: credential.IssuedAt,
-                    // The stored credential carries no device linkage — device id/label are
-                    // resolved cross-service (Tenant registry) which is out of scope here.
-                    // The F118 eviction notice degrades to a no-op (non-fatal) without them.
-                    DeviceId: Guid.Empty,
-                    DeviceLabel: null));
+                    DeviceId: deviceId,
+                    DeviceLabel: deviceLabel));
             }
         }
 
         return copies;
+    }
+
+    /// <summary>
+    /// Deterministic (version-5-style) Guid derived from the device-key thumbprint. Used when
+    /// the Tenant device registry has no row for the thumbprint (or is unreachable) so the
+    /// F118 eviction notice still fires with a stable, dedupable device identity. Mirrors the
+    /// hash-to-Guid shape of <c>CitizenDeviceInboxWriter.DeterministicSourceEventId</c>.
+    /// </summary>
+    private static Guid DeterministicDeviceId(string deviceKeyThumbprint)
+    {
+        var input = $"sorcha.device-bound.device-id:{deviceKeyThumbprint}";
+        var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(input));
+        var guidBytes = new byte[16];
+        Array.Copy(bytes, guidBytes, 16);
+        guidBytes[6] = (byte)((guidBytes[6] & 0x0F) | 0x50);
+        guidBytes[8] = (byte)((guidBytes[8] & 0x3F) | 0x80);
+        return new Guid(guidBytes);
     }
 
     /// <summary>
