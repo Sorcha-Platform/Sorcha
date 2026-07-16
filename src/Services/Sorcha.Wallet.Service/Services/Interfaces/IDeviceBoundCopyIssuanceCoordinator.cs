@@ -17,6 +17,22 @@ namespace Sorcha.Wallet.Service.Services.Interfaces;
 public sealed record DeviceBoundMintPlan(string StatusListUrl, int StatusListIndex);
 
 /// <summary>
+/// The device-bound copy policy REFUSED the mint: the cap could not be honoured because the
+/// eviction/replacement revoke failed (or the reconcile itself refused). Distinct from an
+/// infrastructure fault so the endpoint can map refusal → 409 (not retryable as-is) and
+/// anything else → 503 (transient, retryable). Carries the causing exception as
+/// <see cref="Exception.InnerException"/>; the message never reaches the client.
+/// </summary>
+public sealed class DeviceBoundPolicyRefusalException : Exception
+{
+    /// <summary>Initialises a new <see cref="DeviceBoundPolicyRefusalException"/>.</summary>
+    public DeviceBoundPolicyRefusalException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}
+
+/// <summary>
 /// Runs the device-bound credential copy policy (Feature 1195, Phase 2) at the mint
 /// entrypoint. Detects whether an incoming issuance is a <em>device-bound copy</em>
 /// (vs the holder-bound web root), enforces the max-3 cap with LRU eviction via

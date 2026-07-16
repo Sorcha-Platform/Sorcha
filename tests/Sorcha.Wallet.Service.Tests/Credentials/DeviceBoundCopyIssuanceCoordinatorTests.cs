@@ -159,18 +159,40 @@ public class DeviceBoundCopyIssuanceCoordinatorTests
     }
 
     [Fact]
-    public async Task PrepareAsync_ReconcileThrows_PropagatesAndAllocatesNoSlot()
+    public async Task PrepareAsync_ReconcileThrows_SurfacesTypedRefusalAndAllocatesNoSlot()
     {
+        // Fix round 2: a reconcile/revoke failure is a POLICY REFUSAL — surfaced as the typed
+        // exception (endpoint maps it to 409) with the cause preserved as InnerException.
         ArrangeCitizenWithDeviceCnf();
         _policy.Setup(p => p.ReconcileAsync(UserId, Vct, DeviceThumbprint, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("status list unavailable"));
 
         var act = async () => await CreateCoordinator().PrepareAsync(Recipient, Vct, DeviceJwk, OrgId, default);
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("status list unavailable");
+        (await act.Should().ThrowAsync<DeviceBoundPolicyRefusalException>())
+            .WithInnerException<InvalidOperationException>().WithMessage("status list unavailable");
         // No partial state: a slot is never allocated when the policy aborts.
         _statusList.Verify(
             s => s.AllocateIndexAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task PrepareAsync_HolderKeyResolutionFaults_PropagatesRawInfrastructureFault()
+    {
+        // Fix round 2: an infrastructure fault (holder-key resolution) is NOT a policy refusal —
+        // it propagates raw so the endpoint maps it to 503 (retryable).
+        _holderAddress.Setup(l => l.ResolvePlatformUserIdAsync(Recipient, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UserId);
+        _holderKey.Setup(k => k.GetHolderJwkThumbprintAsync(Recipient, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("key derivation backend unavailable"));
+
+        var act = async () => await CreateCoordinator().PrepareAsync(Recipient, Vct, DeviceJwk, OrgId, default);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("key derivation backend unavailable");
+        _policy.Verify(
+            p => p.ReconcileAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 

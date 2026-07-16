@@ -161,16 +161,42 @@ public sealed class IssueCredentialDeviceBoundTests
     }
 
     [Fact]
-    public async Task IssueCredential_CoordinatorThrows_AbortsMintAndStoresNothing()
+    public async Task IssueCredential_PolicyRefusal_Returns409AndStoresNothing()
     {
+        // Fix round 2: a cap-policy REFUSAL (eviction/replacement revoke failed) is 409 —
+        // retrying as-is won't help until the conflicting copy state changes.
         _coordinator.Setup(c => c.PrepareAsync(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<JsonElement>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("eviction revoke failed"));
+            .ThrowsAsync(new DeviceBoundPolicyRefusalException(
+                "cap refused", new InvalidOperationException("eviction revoke failed")));
 
         var result = await InvokeAsync(WalletAddress, DeviceBoundRequest());
 
-        result.GetType().Name.Should().NotContain("Ok", "a policy abort must not mint a credential");
-        _stored.Should().BeEmpty("no credential is signed or stored when the policy aborts");
+        var problem = result.Should().BeOfType<Microsoft.AspNetCore.Http.HttpResults.ProblemHttpResult>().Subject;
+        problem.StatusCode.Should().Be(StatusCodes.Status409Conflict);
+        AssertNothingMinted();
+    }
+
+    [Fact]
+    public async Task IssueCredential_CoordinatorInfrastructureFault_Returns503AndStoresNothing()
+    {
+        // Fix round 2: a transient infrastructure fault (holder-key resolution, status-list
+        // allocation) is 503 so the PWA client can retry; the message leaks no internal detail.
+        _coordinator.Setup(c => c.PrepareAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<JsonElement>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("redis connection refused at 10.0.0.5"));
+
+        var result = await InvokeAsync(WalletAddress, DeviceBoundRequest());
+
+        var problem = result.Should().BeOfType<Microsoft.AspNetCore.Http.HttpResults.ProblemHttpResult>().Subject;
+        problem.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+        problem.ProblemDetails.Detail.Should().NotContain("10.0.0.5", "internal fault detail must not leak to the client");
+        AssertNothingMinted();
+    }
+
+    private void AssertNothingMinted()
+    {
+        _stored.Should().BeEmpty("no credential is signed or stored when the coordinator aborts");
         _sdJwt.Verify(s => s.CreateTokenAsync(
                 It.IsAny<Dictionary<string, object>>(), It.IsAny<IEnumerable<string>?>(), It.IsAny<string>(),
                 It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<JsonElement>(),

@@ -741,16 +741,31 @@ public static class CredentialEndpoints
                 deviceBoundPlan = await deviceBoundCoordinator.PrepareAsync(
                     request.RecipientWallet, vct, request.HolderJwk.Value, deviceBoundOrgId, cancellationToken);
             }
-            catch (Exception ex)
+            catch (DeviceBoundPolicyRefusalException ex)
             {
+                // Policy REFUSAL — the cap could not be honoured (eviction/replacement revoke
+                // failed). 409: retrying as-is won't help until the copy state changes.
                 logger.LogWarning(ex,
-                    "Device-bound copy policy aborted issuance of '{Vct}' for recipient {Recipient} — no credential issued",
+                    "Device-bound copy policy refused issuance of '{Vct}' for recipient {Recipient} — no credential issued",
                     vct, request.RecipientWallet);
                 return Results.Problem(
                     title: "Device-bound credential policy failed",
                     detail: "The device-bound credential copy could not be issued: the eviction policy "
                         + "could not revoke an existing copy. No credential was issued.",
                     statusCode: StatusCodes.Status409Conflict);
+            }
+            catch (Exception ex)
+            {
+                // Infrastructure FAULT (holder-key resolution, status-slot allocation, …) —
+                // transient and retryable, so 503. Generic detail: never leak internals.
+                logger.LogError(ex,
+                    "Device-bound copy coordination faulted issuing '{Vct}' for recipient {Recipient} — no credential issued",
+                    vct, request.RecipientWallet);
+                return Results.Problem(
+                    title: "Credential issuance temporarily unavailable",
+                    detail: "The credential could not be issued right now. Please retry shortly. "
+                        + "No credential was issued.",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
             }
 
             if (deviceBoundPlan is not null)

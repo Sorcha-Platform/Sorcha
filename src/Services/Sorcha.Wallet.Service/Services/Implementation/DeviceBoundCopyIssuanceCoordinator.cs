@@ -84,6 +84,11 @@ public sealed class DeviceBoundCopyIssuanceCoordinator : IDeviceBoundCopyIssuanc
             return null;
         }
 
+        // FAIL-CLOSED BY DESIGN: a holder-key resolution fault propagates and aborts the mint.
+        // Degrading here would either misclassify a device copy as the web root (minting it
+        // WITHOUT a revocable status slot — a permanently unrevocable artifact) or bypass the
+        // device cap entirely. Transient faults are retryable by the caller (the endpoint maps
+        // them to 503), and holder thumbprints are Redis-cached (24h) so faults are rare.
         var holderThumbprint = await _holderKeyService
             .GetHolderJwkThumbprintAsync(recipientWalletAddress, ct)
             .ConfigureAwait(false);
@@ -94,19 +99,33 @@ public sealed class DeviceBoundCopyIssuanceCoordinator : IDeviceBoundCopyIssuanc
             return null;
         }
 
-        // 3. It is a device-bound copy. Enforce the cap (may evict the oldest via the
-        //    status-list + inbox). A revoke failure throws — the caller aborts issuance.
-        var disposition = await _policy
-            .ReconcileAsync(platformUserId.Value, credentialVct, deviceThumbprint, ct)
-            .ConfigureAwait(false);
-
-        // 4. A ReplaceExisting disposition is an idempotent re-bind of the same device — the
-        //    policy leaves the prior same-thumbprint copy to the mint path. Revoke it so the
-        //    new copy replaces it in place (one live copy per device thumbprint).
-        if (disposition.Kind == DeviceBindKind.ReplaceExisting)
+        // 3+4. It is a device-bound copy. Enforce the cap (may evict the oldest via the
+        //      status-list + inbox); on ReplaceExisting (idempotent re-bind of the same device)
+        //      revoke the prior same-thumbprint copy so the new one replaces it in place.
+        //      Failures in this block are POLICY REFUSALS — the cap could not be honoured
+        //      (revoke failed / reconcile refused) — surfaced as the typed exception so the
+        //      endpoint maps them to 409 (vs 503 for infrastructure faults elsewhere).
+        try
         {
-            await RevokePriorCopyForThumbprintAsync(platformUserId.Value, credentialVct, deviceThumbprint, ct)
+            var disposition = await _policy
+                .ReconcileAsync(platformUserId.Value, credentialVct, deviceThumbprint, ct)
                 .ConfigureAwait(false);
+
+            if (disposition.Kind == DeviceBindKind.ReplaceExisting)
+            {
+                await RevokePriorCopyForThumbprintAsync(platformUserId.Value, credentialVct, deviceThumbprint, ct)
+                    .ConfigureAwait(false);
+            }
+
+            _logger.LogInformation(
+                "Device-bound copy reconcile: user={UserId} vct={Vct} disposition={Disposition}",
+                platformUserId.Value, credentialVct, disposition.Kind);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw new DeviceBoundPolicyRefusalException(
+                $"Device-bound copy policy refused the mint for user {platformUserId.Value}: " +
+                "the cap could not be honoured (eviction/replacement revoke failed).", ex);
         }
 
         // 5. Allocate a wallet-owned (F114) status-list slot so the copy is revocable. Done
@@ -118,9 +137,8 @@ public sealed class DeviceBoundCopyIssuanceCoordinator : IDeviceBoundCopyIssuanc
         var statusListUrl = _statusList.BuildStatusListUri(issuerOrgId, listId);
 
         _logger.LogInformation(
-            "Device-bound copy mint plan: user={UserId} vct={Vct} disposition={Disposition} " +
-            "statusSlot={Org}/{ListId}#{Index}",
-            platformUserId.Value, credentialVct, disposition.Kind, issuerOrgId, listId, index);
+            "Device-bound copy mint plan: user={UserId} vct={Vct} statusSlot={Org}/{ListId}#{Index}",
+            platformUserId.Value, credentialVct, issuerOrgId, listId, index);
 
         return new DeviceBoundMintPlan(statusListUrl, index);
     }
