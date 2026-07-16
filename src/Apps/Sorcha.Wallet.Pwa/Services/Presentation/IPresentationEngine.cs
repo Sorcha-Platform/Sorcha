@@ -107,18 +107,27 @@ public interface IPresentationEngine
     /// <para>The layer is the guard for the recorded trap: device-signing the holder-<c>cnf</c> root
     /// produces a KB-JWT that fails verification downstream with no local error. The root is therefore
     /// NEVER paired with device-signing, and a device copy this device cannot sign for (a DIFFERENT
-    /// device's key, or a credential with no readable <c>cnf</c>) is never selected.</para>
+    /// device's key) is never selected. Discrimination is by RFC 7638 <c>cnf.jwk</c> thumbprint against
+    /// BOTH keys — never by key type, which would misclassify a P-256 wallet's EC holder root. A
+    /// credential with no readable <c>cnf</c> is legacy/unbound and keeps its Phase-1 device-signed
+    /// behaviour (there is no binding for a verifier to check).</para>
     /// </summary>
     /// <param name="request">The parsed present request.</param>
     /// <param name="credentials">The wallet's cached credentials (root + any device copies).</param>
     /// <param name="deviceThumbprint">RFC 7638 thumbprint of THIS device's key
     /// (<c>IDeviceKeyService.GetThumbprintAsync</c>), or <c>null</c> on a host without a usable device
-    /// key — in which case no device copy is signable and only the root (server custody) is selectable.</param>
+    /// key — in which case no device copy is signable here.</param>
+    /// <param name="holderThumbprint">RFC 7638 thumbprint of the citizen's server-custodied holder key
+    /// (compute from <c>IHolderKeyClient.GetHolderKeysAsync().HolderJwk</c>), or <c>null</c> when it
+    /// could not be resolved — in which case a bound credential that is not THIS device's copy cannot be
+    /// classified and selection fails CLOSED with
+    /// <see cref="PresentationSelectionOutcome.HolderKeyUnavailable"/> rather than guessing.</param>
     /// <param name="surface">The present surface. Defaults to <see cref="PresentationSurface.Auto"/>.</param>
     PresentationSelection Select(
         ParsedPresentationRequest request,
         IReadOnlyList<CachedCredential> credentials,
         string? deviceThumbprint,
+        string? holderThumbprint,
         PresentationSurface surface = PresentationSurface.Auto);
 }
 
@@ -172,9 +181,18 @@ public enum PresentationSelectionOutcome
     /// <summary>
     /// An in-person / offline present was requested, the root can satisfy it, but THIS device holds no
     /// device-<c>cnf</c> copy yet. The UI routes to the Task 6 "Bind to device" flow — this is a DISTINCT
-    /// outcome, never a present that cannot verify.
+    /// outcome, never a present that cannot verify. <see cref="PresentationSelection.RootToBind"/> carries
+    /// the root so the UI can deep-link its credential card.
     /// </summary>
     BindDeviceFirst = 2,
+
+    /// <summary>
+    /// The citizen's holder-key thumbprint could not be resolved, and the only candidates are bound
+    /// credentials that are not THIS device's copy — they cannot be told apart (root vs a foreign
+    /// device's copy), so selection fails CLOSED rather than risking a presentation that cannot verify.
+    /// A retry after the holder key becomes reachable resolves it.
+    /// </summary>
+    HolderKeyUnavailable = 3,
 }
 
 /// <summary>
@@ -195,6 +213,11 @@ public sealed record PresentationSelection
     /// <see cref="Outcome"/> is <see cref="PresentationSelectionOutcome.Selected"/>.</summary>
     public PresentationSigningMode SigningMode { get; init; }
 
+    /// <summary>The holder-<c>cnf</c> root behind a
+    /// <see cref="PresentationSelectionOutcome.BindDeviceFirst"/> outcome, so the UI can route straight
+    /// to its credential card (the Task 6 bind button surface). Null for every other outcome.</summary>
+    public CredentialMatch? RootToBind { get; init; }
+
     /// <summary>A selected credential + its signing mode.</summary>
     internal static PresentationSelection Selected(CredentialMatch match, PresentationSigningMode mode) =>
         new() { Outcome = PresentationSelectionOutcome.Selected, Match = match, SigningMode = mode };
@@ -204,8 +227,12 @@ public sealed record PresentationSelection
         new() { Outcome = PresentationSelectionOutcome.NoMatch };
 
     /// <summary>The root is presentable but this device must be bound first.</summary>
-    internal static PresentationSelection BindFirst { get; } =
-        new() { Outcome = PresentationSelectionOutcome.BindDeviceFirst };
+    internal static PresentationSelection BindFirst(CredentialMatch root) =>
+        new() { Outcome = PresentationSelectionOutcome.BindDeviceFirst, RootToBind = root };
+
+    /// <summary>Bound-but-unclassifiable candidates and no holder thumbprint — fail closed.</summary>
+    internal static PresentationSelection HolderKeyUnavailable { get; } =
+        new() { Outcome = PresentationSelectionOutcome.HolderKeyUnavailable };
 }
 
 /// <summary>

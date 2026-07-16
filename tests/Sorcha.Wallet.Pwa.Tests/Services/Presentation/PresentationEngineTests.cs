@@ -424,7 +424,8 @@ public sealed class PresentationEngineTests
         var deviceCopy = MakeCnfCredential(Vct, deviceJwk, "givenName");
         var req = MakeRequest(["givenName"], []);
 
-        var selection = _engine.Select(req, [root, deviceCopy], deviceThumbprint, PresentationSurface.InPerson);
+        var selection = _engine.Select(
+            req, [root, deviceCopy], deviceThumbprint, HolderThumbprint, PresentationSurface.InPerson);
 
         selection.Outcome.Should().Be(PresentationSelectionOutcome.Selected);
         selection.Match!.Credential.Id.Should().Be(deviceCopy.Id);
@@ -442,7 +443,8 @@ public sealed class PresentationEngineTests
         var deviceCopy = MakeCnfCredential(Vct, deviceJwk, "givenName");
         var req = MakeRequest(["givenName"], []);
 
-        var selection = _engine.Select(req, [root, deviceCopy], deviceThumbprint, PresentationSurface.Remote);
+        var selection = _engine.Select(
+            req, [root, deviceCopy], deviceThumbprint, HolderThumbprint, PresentationSurface.Remote);
 
         selection.Outcome.Should().Be(PresentationSelectionOutcome.Selected);
         selection.Match!.Credential.Id.Should().Be(root.Id);
@@ -459,19 +461,21 @@ public sealed class PresentationEngineTests
         var root = MakeCnfCredential(Vct, OkpHolderJwk, "givenName");
         var req = MakeRequest(["givenName"], []);
 
-        var selection = _engine.Select(req, [root], deviceThumbprint, PresentationSurface.InPerson);
+        var selection = _engine.Select(
+            req, [root], deviceThumbprint, HolderThumbprint, PresentationSurface.InPerson);
 
         // NOT a doomed present, and NOT the root (device-signing the root cannot verify).
         selection.Outcome.Should().Be(PresentationSelectionOutcome.BindDeviceFirst);
         selection.Match.Should().BeNull();
+        // The outcome carries the root so the UI can deep-link its credential card (the bind surface).
+        selection.RootToBind!.Credential.Id.Should().Be(root.Id);
     }
 
     [Fact]
     public void Select_DifferentDeviceCopy_IsNeverSelectedForDeviceSigning()
     {
-        // A copy bound to ANOTHER device (its cnf thumbprint ≠ this device's) can neither be
-        // device-signed here nor server-custody signed (its cnf is not the holder key). It must
-        // never be selected on any surface.
+        // A copy bound to ANOTHER device (its cnf thumbprint ≠ this device's AND ≠ the holder's) can
+        // neither be device-signed here nor server-custody signed. Never selected on any surface.
         using var thisDevice = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         using var otherDevice = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var thisThumbprint = ThumbprintOf(JwkOf(thisDevice));
@@ -481,14 +485,15 @@ public sealed class PresentationEngineTests
         var req = MakeRequest(["givenName"], []);
 
         // In person: no copy for THIS device → bind first, and the other-device copy is not device-signed.
-        var inPerson = _engine.Select(req, [root, otherDeviceCopy], thisThumbprint, PresentationSurface.InPerson);
+        var inPerson = _engine.Select(
+            req, [root, otherDeviceCopy], thisThumbprint, HolderThumbprint, PresentationSurface.InPerson);
         inPerson.Outcome.Should().Be(PresentationSelectionOutcome.BindDeviceFirst);
         inPerson.Match.Should().BeNull();
 
         // Auto / remote fall back to the ROOT (server custody), never the other-device copy.
         foreach (var surface in new[] { PresentationSurface.Auto, PresentationSurface.Remote })
         {
-            var s = _engine.Select(req, [root, otherDeviceCopy], thisThumbprint, surface);
+            var s = _engine.Select(req, [root, otherDeviceCopy], thisThumbprint, HolderThumbprint, surface);
             s.Outcome.Should().Be(PresentationSelectionOutcome.Selected);
             s.Match!.Credential.Id.Should().Be(root.Id);
             s.Match.Credential.Id.Should().NotBe(otherDeviceCopy.Id);
@@ -508,9 +513,9 @@ public sealed class PresentationEngineTests
         var otherDeviceCopy = MakeCnfCredential(Vct, JwkOf(otherDevice), "givenName");
         var req = MakeRequest(["givenName"], []);
 
-        _engine.Select(req, [otherDeviceCopy], thisThumbprint, PresentationSurface.InPerson)
+        _engine.Select(req, [otherDeviceCopy], thisThumbprint, HolderThumbprint, PresentationSurface.InPerson)
             .Outcome.Should().Be(PresentationSelectionOutcome.NoMatch);
-        _engine.Select(req, [otherDeviceCopy], thisThumbprint, PresentationSurface.Auto)
+        _engine.Select(req, [otherDeviceCopy], thisThumbprint, HolderThumbprint, PresentationSurface.Auto)
             .Outcome.Should().Be(PresentationSelectionOutcome.NoMatch);
     }
 
@@ -525,7 +530,8 @@ public sealed class PresentationEngineTests
         var deviceCopy = MakeCnfCredential(Vct, deviceJwk, "givenName");
         var req = MakeRequest(["givenName"], []);
 
-        var selection = _engine.Select(req, [root, deviceCopy], deviceThumbprint, PresentationSurface.Auto);
+        var selection = _engine.Select(
+            req, [root, deviceCopy], deviceThumbprint, HolderThumbprint, PresentationSurface.Auto);
 
         selection.Outcome.Should().Be(PresentationSelectionOutcome.Selected);
         selection.Match!.Credential.Id.Should().Be(deviceCopy.Id);
@@ -543,12 +549,13 @@ public sealed class PresentationEngineTests
         var root = MakeCnfCredential(Vct, OkpHolderJwk, "givenName");
         var req = MakeRequest(["givenName"], []);
 
-        var remote = _engine.Select(req, [root, deviceCopy], deviceThumbprint: null, PresentationSurface.Remote);
+        var remote = _engine.Select(
+            req, [root, deviceCopy], deviceThumbprint: null, HolderThumbprint, PresentationSurface.Remote);
         remote.Outcome.Should().Be(PresentationSelectionOutcome.Selected);
         remote.Match!.Credential.Id.Should().Be(root.Id);
         remote.SigningMode.Should().Be(PresentationSigningMode.ServerCustody);
 
-        _engine.Select(req, [root, deviceCopy], deviceThumbprint: null, PresentationSurface.InPerson)
+        _engine.Select(req, [root, deviceCopy], deviceThumbprint: null, HolderThumbprint, PresentationSurface.InPerson)
             .Outcome.Should().Be(PresentationSelectionOutcome.BindDeviceFirst);
     }
 
@@ -561,14 +568,120 @@ public sealed class PresentationEngineTests
         var root = MakeCnfCredential("https://sorcha.dev/vc/other/v1", OkpHolderJwk, "givenName");
         var req = MakeRequest(["givenName"], []);   // asks for Vct, which is not held
 
-        _engine.Select(req, [root], deviceThumbprint, PresentationSurface.Remote)
+        _engine.Select(req, [root], deviceThumbprint, HolderThumbprint, PresentationSurface.Remote)
             .Outcome.Should().Be(PresentationSelectionOutcome.NoMatch);
+    }
+
+    [Fact]
+    public void Select_P256HolderWallet_RootAndCopyDiscriminatedByThumbprintNotKeyType()
+    {
+        // Fix round 1 — a P-256 wallet's holder key is EC, so its root's cnf is EC too: by KEY TYPE the
+        // root and a device copy are indistinguishable. Discrimination MUST be by RFC 7638 thumbprint
+        // against the holder key (the Task 5 server-side rule), or every P-256 wallet's root would be
+        // misclassified and selection would break for those users.
+        using var holderKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var deviceKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var holderJwk = JwkOf(holderKey);
+        var deviceJwk = JwkOf(deviceKey);
+        var holderThumbprint = ThumbprintOf(holderJwk);
+        var deviceThumbprint = ThumbprintOf(deviceJwk);
+
+        var ecRoot = MakeCnfCredential(Vct, holderJwk, "givenName");
+        var deviceCopy = MakeCnfCredential(Vct, deviceJwk, "givenName");
+        var req = MakeRequest(["givenName"], []);
+
+        var remote = _engine.Select(
+            req, [ecRoot, deviceCopy], deviceThumbprint, holderThumbprint, PresentationSurface.Remote);
+        remote.Outcome.Should().Be(PresentationSelectionOutcome.Selected);
+        remote.Match!.Credential.Id.Should().Be(ecRoot.Id);
+        remote.SigningMode.Should().Be(PresentationSigningMode.ServerCustody);
+
+        var inPerson = _engine.Select(
+            req, [ecRoot, deviceCopy], deviceThumbprint, holderThumbprint, PresentationSurface.InPerson);
+        inPerson.Outcome.Should().Be(PresentationSelectionOutcome.Selected);
+        inPerson.Match!.Credential.Id.Should().Be(deviceCopy.Id);
+        inPerson.SigningMode.Should().Be(PresentationSigningMode.Device);
+
+        // And with only the EC root cached, in person still answers bind-first — not a doomed present.
+        var bindFirst = _engine.Select(
+            req, [ecRoot], deviceThumbprint, holderThumbprint, PresentationSurface.InPerson);
+        bindFirst.Outcome.Should().Be(PresentationSelectionOutcome.BindDeviceFirst);
+        bindFirst.RootToBind!.Credential.Id.Should().Be(ecRoot.Id);
+    }
+
+    [Fact]
+    public void Select_HolderThumbprintUnavailable_BoundCandidateOnly_FailsClosedWithNamedOutcome()
+    {
+        // Fix round 1 — without the holder thumbprint, a bound credential that is not THIS device's
+        // copy could be the root OR a foreign device's copy. Selection must fail CLOSED with the named
+        // outcome, never guess (a guessed server-custody sign over a foreign copy cannot verify).
+        using var deviceKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var deviceThumbprint = ThumbprintOf(JwkOf(deviceKey));
+
+        var root = MakeCnfCredential(Vct, OkpHolderJwk, "givenName");
+        var req = MakeRequest(["givenName"], []);
+
+        foreach (var surface in new[]
+                 { PresentationSurface.Auto, PresentationSurface.Remote, PresentationSurface.InPerson })
+        {
+            var s = _engine.Select(req, [root], deviceThumbprint, holderThumbprint: null, surface);
+            s.Outcome.Should().Be(PresentationSelectionOutcome.HolderKeyUnavailable,
+                $"an unclassifiable bound credential must fail closed on {surface}");
+            s.Match.Should().BeNull();
+        }
+    }
+
+    [Fact]
+    public void Select_HolderThumbprintUnavailable_ThisDeviceCopyPresent_StillSelectsCopy()
+    {
+        // The this-device copy is DEFINITIVELY classifiable (its cnf thumbprint is ours) — no holder
+        // thumbprint needed. Selecting it is not a guess; only unclassifiable-only caches fail closed.
+        using var deviceKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var deviceJwk = JwkOf(deviceKey);
+        var deviceThumbprint = ThumbprintOf(deviceJwk);
+
+        var root = MakeCnfCredential(Vct, OkpHolderJwk, "givenName");
+        var deviceCopy = MakeCnfCredential(Vct, deviceJwk, "givenName");
+        var req = MakeRequest(["givenName"], []);
+
+        var s = _engine.Select(
+            req, [root, deviceCopy], deviceThumbprint, holderThumbprint: null, PresentationSurface.Remote);
+
+        s.Outcome.Should().Be(PresentationSelectionOutcome.Selected);
+        s.Match!.Credential.Id.Should().Be(deviceCopy.Id);
+        s.SigningMode.Should().Be(PresentationSigningMode.Device);
+    }
+
+    [Fact]
+    public void Select_LegacyCredentialWithoutCnf_KeepsPhase1DeviceSignedBehaviour()
+    {
+        // A pre-Phase-2 credential carries no cnf — there is no binding for a verifier to check, so the
+        // Phase-1 device-signed present still verifies. Routing Present.razor through Select must NOT
+        // regress these: they stay selectable (device-signed) on every surface.
+        using var deviceKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var deviceThumbprint = ThumbprintOf(JwkOf(deviceKey));
+
+        var (legacy, _) = MakeRealCredential(Vct, ("givenName", "Stuart"));
+        var req = MakeRequest(["givenName"], []);
+
+        foreach (var surface in new[]
+                 { PresentationSurface.Auto, PresentationSurface.Remote, PresentationSurface.InPerson })
+        {
+            var s = _engine.Select(req, [legacy], deviceThumbprint, HolderThumbprint, surface);
+            s.Outcome.Should().Be(PresentationSelectionOutcome.Selected,
+                $"a legacy no-cnf credential must stay presentable on {surface}");
+            s.Match!.Credential.Id.Should().Be(legacy.Id);
+            s.SigningMode.Should().Be(PresentationSigningMode.Device);
+        }
     }
 
     // ────────────────────────── helpers ──────────────────────────
 
     /// <summary>A holder-cnf root's confirmation key is the citizen's Ed25519 (OKP) holder key.</summary>
     private const string OkpHolderJwk = """{"kty":"OKP","crv":"Ed25519","x":"holderRootPublicKeyX"}""";
+
+    /// <summary>RFC 7638 thumbprint of <see cref="OkpHolderJwk"/> — the default holder thumbprint input.</summary>
+    private static readonly string HolderThumbprint = ThumbprintOf(OkpHolderJwk);
 
     private static string ThumbprintOf(string jwkJson)
         => PresentationEngine.ComputeJwkThumbprint(JsonSerializer.Deserialize<JsonElement>(jwkJson));

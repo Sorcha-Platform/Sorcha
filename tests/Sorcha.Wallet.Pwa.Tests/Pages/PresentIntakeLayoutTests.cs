@@ -9,7 +9,9 @@ using Bunit;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using Sorcha.ServiceClients.CitizenWallet;
 using Sorcha.UI.Core.Models.Presentation;
+using Sorcha.UI.Core.Services.HolderKeys;
 using Sorcha.Verifier.Engine.Dcql;
 using Sorcha.UI.Testing;
 using Sorcha.Wallet.Pwa.Models.Device;
@@ -44,6 +46,9 @@ public sealed class PresentIntakeLayoutTests : ComponentTestFixture
         Services.AddSingleton(_delegation.Object);
         Services.AddSingleton(_statusList.Object);
         Services.AddSingleton(_log.Object);
+        // Task 7 wiring — the page resolves the selection inputs (holder + wallet clients).
+        Services.AddSingleton(new Mock<ICitizenWalletClient>().Object);
+        Services.AddSingleton(new Mock<IHolderKeyClient>().Object);
         Services.AddSingleton<Microsoft.Extensions.Logging.ILogger<PresentPage>>(
             Microsoft.Extensions.Logging.Abstractions.NullLogger<PresentPage>.Instance);
         Services.AddScoped<System.Net.Http.HttpClient>(_ =>
