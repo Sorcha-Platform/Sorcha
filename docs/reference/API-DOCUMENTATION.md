@@ -1453,6 +1453,24 @@ Resolves the caller's slot-108 holder public JWK (for the SD-JWT `cnf` binding) 
 ```
 `401` — missing/invalid citizen token. `404` — no wallet resolvable for the caller (indistinguishable from non-existence).
 
+##### POST /api/v1/wallet/presentations/sign-kb
+
+Signs a KB-JWT signing input with the **authenticated caller's** server-custodied slot-108 holder key (#1195 Phase 2, Task 6a). Lets the wallet PWA present a holder-`cnf` credential (e.g. the `AssuredIdentityCredential` root) without the holder private key ever leaving server custody. Consumer-tier (`RequireConsumerAudience`), rate-limited (`Strict`). The signing wallet is resolved from the JWT only — the body carries no wallet address, so a citizen can only sign under their own holder key.
+
+**Request:**
+```json
+{ "signingInput": "<base64url(header)>.<base64url(payload)>" }
+```
+
+The decoded header MUST carry `typ: "kb+jwt"` (the endpoint refuses to sign anything else — the same key signs device delegation credentials, so it must never be a general-purpose signing oracle) and an `alg` matching the holder key's algorithm (EC P-256 → `ES256`, OKP Ed25519 → `EdDSA`).
+
+**Response:** `200 OK`
+```json
+{ "signature": "<base64url raw signature>", "algorithm": "EdDSA" }
+```
+
+`400` — not a KB-JWT header, or header `alg` mismatches the holder key (named error). `401` — missing/invalid citizen token. `404` — no wallet resolvable for the caller.
+
 #### 11. Cross-Device Presentation History (Feature 114 US5)
 
 The citizen's durable, cross-device record of presentations they have made. Reported presentations (via `POST /api/v1/wallet/presentations/log`) are persisted to a per-citizen Wallet Service store so the same history appears on any device the citizen pairs. **There is no register/ledger write** — a free-standing offline presentation has no originating register; these are citizen-owned convenience records carrying disclosed claim **names only**, never values.

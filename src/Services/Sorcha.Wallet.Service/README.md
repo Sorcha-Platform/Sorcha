@@ -207,6 +207,20 @@ OPENTELEMETRY__ZIPKINENDPOINT="https://zipkin.yourcompany.com"
 | DELETE | `/api/v1/wallets/{walletAddress}/access/{subject}` | Revoke access |
 | GET | `/api/v1/wallets/{walletAddress}/access/{subject}/check` | Check if subject has access |
 
+### Citizen Wallet — Server-Custody KB-JWT Signing (#1195 Phase 2)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/wallet/presentations/sign-kb` | Sign a KB-JWT signing input with the **authenticated caller's** slot-108 holder key (consumer-tier, `Strict` rate limit) |
+
+Lets the wallet PWA present a holder-`cnf` credential (the web-issued `AssuredIdentityCredential`
+root) with the holder private key staying in server custody. The signing wallet is resolved from
+the citizen JWT only — the body carries no wallet address. The endpoint signs **only** inputs whose
+decoded header is `typ: "kb+jwt"` (never a general-purpose signing oracle — the same key signs
+device delegation credentials), and refuses with a named 400 when the header `alg` cannot match the
+holder key's real algorithm (EC P-256 → `ES256`, OKP Ed25519 → `EdDSA`). The rest of the citizen
+wallet surface (`/api/v1/wallet/*`, Feature 114) is documented in `docs/reference/API-DOCUMENTATION.md`.
+
 ### Ethereum Auxiliary Identity (Features 180 / 181)
 
 A wallet exposes an **auxiliary Ethereum identity** — a secp256k1 key derived on demand from its existing

@@ -102,4 +102,15 @@ public interface ICitizenWalletClient
     /// in flight. Scoped to the calling citizen by the platform via the forwarded JWT.
     /// </summary>
     Task<PendingApplicationResponse> GetPendingApplicationAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Signs a KB-JWT signing input with the authenticated citizen's server-custodied holder
+    /// key (#1195 Phase 2, Task 6a). Calls <c>POST /api/v1/wallet/presentations/sign-kb</c>.
+    /// Used by the wallet PWA to present a holder-<c>cnf</c> credential (e.g. the
+    /// AssuredIdentityCredential root) — the holder private key never leaves the server.
+    /// The header must carry <c>typ: "kb+jwt"</c> and an <c>alg</c> matching the holder JWK's
+    /// algorithm; the server refuses anything else with a named 400.
+    /// </summary>
+    Task<KbJwtSignResponse> SignKbJwtAsync(
+        KbJwtSignRequest request, CancellationToken ct = default);
 }

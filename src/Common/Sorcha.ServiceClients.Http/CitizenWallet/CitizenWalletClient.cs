@@ -174,6 +174,21 @@ public sealed class CitizenWalletClient : ICitizenWalletClient
     }
 
     /// <inheritdoc />
+    public async Task<KbJwtSignResponse> SignKbJwtAsync(
+        KbJwtSignRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var response = await _httpClient.PostAsJsonAsync(
+            "api/v1/wallet/presentations/sign-kb", request, JsonOptions, ct);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<KbJwtSignResponse>(SorchaJson.Options, ct)
+            ?? throw new InvalidOperationException(
+                "Wallet Service returned an empty body for /presentations/sign-kb.");
+    }
+
+    /// <inheritdoc />
     public async Task<PendingApplicationResponse> GetPendingApplicationAsync(CancellationToken ct = default)
     {
         var response = await _httpClient.GetAsync("api/v1/wallet/pending-applications", ct);

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Buffers.Text;
 using System.Security.Claims;
+using System.Text;
+using System.Text.Json;
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
@@ -158,6 +161,25 @@ public static class CitizenWalletEndpoints
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized);
 
+        group.MapPost("/presentations/sign-kb", SignKbJwt)
+            .WithName("SignCitizenKbJwt")
+            .WithSummary("Sign a KB-JWT signing input with the caller's holder key (server custody)")
+            .WithDescription(
+                "#1195 Phase 2 (Task 6a). Signs the supplied compact JWS signing input " +
+                "(base64url(header).base64url(payload)) with the AUTHENTICATED citizen's slot-108 " +
+                "holder key, so the wallet PWA can present a holder-cnf credential (e.g. the " +
+                "AssuredIdentityCredential root) without the holder private key ever leaving " +
+                "server custody. The decoded header MUST carry typ 'kb+jwt' — the endpoint " +
+                "refuses to sign anything else (the same key signs device delegations, so it " +
+                "must never act as a general-purpose signing oracle). The header alg must match " +
+                "the holder key's real algorithm; a mismatch is a named 400, never a signature " +
+                "that silently fails downstream verification. The signing wallet is resolved " +
+                "from the JWT only — the body carries no wallet address. Rate-limited (Strict).")
+            .Produces<KbJwtSignResponse>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
+
         group.MapGet("/presentations", ListPresentations)
             .WithName("ListCitizenPresentations")
             .WithSummary("List the citizen's presentation history (US5)")
@@ -210,6 +232,143 @@ public static class CitizenWalletEndpoints
         await store.DeleteAsync(platformUserId.Value, id, ct);
         return Results.NoContent();
     }
+
+    /// <summary>
+    /// #1195 Phase 2 (Task 6a) — server-custody KB-JWT signing. Signs the ASCII bytes of the
+    /// supplied compact JWS signing input with the authenticated caller's slot-108 holder key
+    /// (<see cref="IHolderKeyService.SignAsync"/>). Security invariants: (1) the signing wallet is
+    /// resolved from the caller's JWT only — the body has no wallet field; (2) only a
+    /// <c>typ: "kb+jwt"</c> header is ever signed (oracle guard — the same key signs device
+    /// delegation credentials); (3) a header <c>alg</c> that cannot match the holder key's real
+    /// algorithm is a named 400 (never-silent: an unusable signature would otherwise surface as an
+    /// inexplicable downstream verification failure).
+    /// </summary>
+    private static async Task<IResult> SignKbJwt(
+        [FromBody] KbJwtSignRequest request,
+        HttpContext context,
+        IValidator<KbJwtSignRequest> validator,
+        IHolderKeyService holderKeys,
+        IWalletRepository walletRepository,
+        ILogger<Program> logger,
+        CancellationToken ct)
+    {
+        var validation = await validator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+        {
+            return Results.ValidationProblem(validation.ToDictionary());
+        }
+
+        if (!TryReadKbJwtHeaderAlg(request.SigningInput, out var headerAlg, out var refusal))
+        {
+            return Results.Problem(
+                title: "Not a KB-JWT signing input",
+                detail: refusal,
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var (platformUserId, citizenWallet, _) = await ResolveCitizenContextAsync(context, walletRepository, ct);
+        if (platformUserId is null || citizenWallet is null) return Results.Unauthorized();
+
+        try
+        {
+            var (signature, algorithm) = await holderKeys.SignAsync(
+                citizenWallet, Encoding.ASCII.GetBytes(request.SigningInput), ct);
+
+            var joseAlg = ToJoseAlgorithm(algorithm);
+            if (!string.Equals(headerAlg, joseAlg, StringComparison.Ordinal))
+            {
+                logger.LogWarning(
+                    "KB-JWT sign refused for wallet {Wallet}: header alg {HeaderAlg} does not match holder key alg {KeyAlg}",
+                    citizenWallet, headerAlg, joseAlg);
+                return Results.Problem(
+                    title: "KB-JWT alg mismatch",
+                    detail: $"The KB-JWT header declares alg '{headerAlg}' but the holder key signs '{joseAlg}'. " +
+                            "Build the header with the holder JWK's algorithm (EC P-256 → ES256, OKP Ed25519 → EdDSA).",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            return Results.Ok(new KbJwtSignResponse
+            {
+                Signature = Base64Url.EncodeToString(signature),
+                Algorithm = joseAlg
+            });
+        }
+        catch (KeyNotFoundException)
+        {
+            // No wallet resolvable for the caller — 404, indistinguishable from
+            // non-existence (matches the rest of the citizen surface).
+            return Results.NotFound();
+        }
+        catch (NotSupportedException ex)
+        {
+            logger.LogWarning(ex,
+                "KB-JWT sign for wallet {Wallet} rejected — unsupported holder key algorithm.", citizenWallet);
+            return Results.Problem(
+                title: "Unsupported holder key algorithm",
+                detail: ex.Message,
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+    }
+
+    /// <summary>
+    /// Decode the header segment of a compact JWS signing input and enforce the KB-JWT oracle
+    /// guard: <c>typ</c> MUST be <c>"kb+jwt"</c> and <c>alg</c> MUST be present. Returns the
+    /// declared <c>alg</c> on success; a human-readable refusal reason otherwise.
+    /// </summary>
+    private static bool TryReadKbJwtHeaderAlg(string signingInput, out string headerAlg, out string refusal)
+    {
+        headerAlg = string.Empty;
+        refusal = string.Empty;
+
+        var dot = signingInput.IndexOf('.');
+        if (dot <= 0 || dot == signingInput.Length - 1 || signingInput.IndexOf('.', dot + 1) >= 0)
+        {
+            refusal = "SigningInput must be exactly base64url(header).base64url(payload).";
+            return false;
+        }
+
+        try
+        {
+            using var header = JsonDocument.Parse(Base64Url.DecodeFromChars(signingInput.AsSpan(0, dot)));
+            var root = header.RootElement;
+
+            if (!root.TryGetProperty("typ", out var typ) || typ.ValueKind != JsonValueKind.String ||
+                !string.Equals(typ.GetString(), "kb+jwt", StringComparison.Ordinal))
+            {
+                refusal = "The header typ must be 'kb+jwt' — this endpoint signs Key Binding JWTs only.";
+                return false;
+            }
+
+            if (!root.TryGetProperty("alg", out var alg) || alg.ValueKind != JsonValueKind.String ||
+                string.IsNullOrEmpty(alg.GetString()))
+            {
+                refusal = "The header must declare alg.";
+                return false;
+            }
+
+            headerAlg = alg.GetString()!;
+            return true;
+        }
+        catch (Exception ex) when (ex is FormatException or JsonException)
+        {
+            refusal = "The header segment does not decode to JSON.";
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Normalise a wallet-style algorithm name (what <see cref="IHolderKeyService.SignAsync"/>
+    /// returns, e.g. <c>ED25519</c>) to the JOSE identifier used in JWS headers. Token sets mirror
+    /// <c>HolderKeyService</c>'s own JWK-building dispatch.
+    /// </summary>
+    private static string ToJoseAlgorithm(string walletAlgorithm) =>
+        walletAlgorithm.ToUpperInvariant() switch
+        {
+            "ED25519" or "EDDSA" => "EdDSA",
+            "ES256" or "P-256" or "P256" or "NIST-P256" or "NISTP256" or "ECDSA-P256" or "SECP256R1" => "ES256",
+            _ => throw new NotSupportedException(
+                $"Holder key algorithm '{walletAlgorithm}' has no JOSE mapping (only Ed25519 and P-256 are supported).")
+        };
 
     private static async Task<IResult> ReportPresentationLog(
         [FromBody] PresentationLogReportRequest request,
