@@ -471,6 +471,121 @@ public class VerifierEndpointTests
         stored.PresentationSubmission.Should().BeNull("no PE dialect, and no delegation artefact, on the wire");
     }
 
+    // --- #1195 Phase 2: AIAS holder/device custody parity + wrong-key negatives ----------------
+    //
+    // The model under test: ONE assured identity, TWO bindings that share the AIAS vct. A holder-cnf
+    // web root (server-custody: the wallet service signs the KB-JWT with the holder key) and a
+    // device-cnf copy (the on-device P-256 key signs the KB-JWT in person) must BOTH verify through
+    // the identical standard OID4VP path — the verifier cannot, and must not, tell them apart. The
+    // trap the phase guards against is a KB-JWT signed by the WRONG key: it must fail loudly with a
+    // named key-binding error and emit no verified claims.
+
+    /// <summary>Executes an object-keyed AIAS presentation through the real HandleDirectPost.</summary>
+    private async Task<(int Status, string Body, PresentationRequest Stored)> PostAiasAsync(
+        DeviceCnfPresentationFactory.Binding cnf, DeviceCnfPresentationFactory.Binding? kbSigner)
+    {
+        // Require the full assured claim set so the endpoint proves the AIAS claims actually flowed.
+        var request = await CreateRequestAsync(
+            requiredClaims: [.. DeviceCnfPresentationFactory.AiasDisclosedClaims]);
+
+        var (presentation, rootCertDer) = await DeviceCnfPresentationFactory.CreateAiasAsync(
+            new SdJwtService(), audience: request.ClientId, nonce: request.Nonce, cnf: cnf, kbSigner: kbSigner);
+
+        var envelope = JsonSerializer.Serialize(
+            new Dictionary<string, string[]> { [VerifierEndpoints.DefaultQueryId] = [presentation] });
+
+        var (status, body) = await ExecuteAsync(await InvokeDirectPostAsync(
+            request.Id, vpToken: envelope, state: request.Id.ToString(),
+            sdJwtVerifier: BuildSdJwtVerifier(trustedRoot: rootCertDer)));
+
+        var stored = (await _store.GetAsync(request.Id))!;
+        return (status, body, stored);
+    }
+
+    [Fact]
+    public async Task HandleDirectPost_DeviceCnf_AiasCopy_DeviceSignedKb_Verifies()
+    {
+        // Step 1 — a device-bound AIAS copy: cnf.jwk is the on-device key, KB-JWT device-signed.
+        var (status, body, stored) = await PostAiasAsync(
+            cnf: DeviceCnfPresentationFactory.Binding.Device, kbSigner: null);
+
+        status.Should().Be(200, "a device-signed KB-JWT over a device-cnf AIAS copy must verify: {0}", body);
+        stored.State.Should().Be(PresentationRequestState.Verified);
+        stored.Result.Should().NotBeNull();
+        stored.Result!.IsValid.Should().BeTrue();
+        stored.Result.HolderKeyVerified.Should().BeTrue("the KB-JWT was signed by the private half of the device cnf key");
+        stored.Result.X5cChainValid.Should().BeTrue();
+        // The real AIAS assured claim set flowed end-to-end.
+        stored.Result.VerifiedClaims.Should().ContainKeys("givenName", "familyName", "dateOfBirth");
+        // The AIAS vct is surfaced but NOT gated against the request's declared type (#1198, pre-existing).
+        // Verified-claim values are JsonElement; compare the string form.
+        stored.Result.VerifiedClaims.Should().ContainKey("vct");
+        stored.Result.VerifiedClaims["vct"].ToString().Should().Be(DeviceCnfPresentationFactory.AiasVct);
+    }
+
+    [Fact]
+    public async Task HandleDirectPost_HolderCnf_AiasRoot_ServerCustodySignedKb_Verifies()
+    {
+        // Step 2 — the web root presented server-custody: cnf.jwk is the holder key, and the KB-JWT is
+        // signed by that same holder key (what the wallet service does when it signs on the holder's
+        // behalf). It must verify through the IDENTICAL path as the device copy — proving custody parity.
+        var (status, body, stored) = await PostAiasAsync(
+            cnf: DeviceCnfPresentationFactory.Binding.Holder, kbSigner: null);
+
+        status.Should().Be(200, "a holder-key-signed KB-JWT over a holder-cnf AIAS root must verify: {0}", body);
+        stored.State.Should().Be(PresentationRequestState.Verified);
+        stored.Result.Should().NotBeNull();
+        stored.Result!.IsValid.Should().BeTrue();
+        stored.Result.HolderKeyVerified.Should().BeTrue("the KB-JWT was signed by the private half of the holder cnf key");
+        stored.Result.X5cChainValid.Should().BeTrue();
+        stored.Result.VerifiedClaims.Should().ContainKeys("givenName", "familyName", "dateOfBirth");
+    }
+
+    [Fact]
+    public async Task HandleDirectPost_DeviceKeySignsHolderCnfRoot_FailsWithNamedKeyBindingError()
+    {
+        // NEGATIVE (the trap) — a device key signs a KB-JWT over a holder-cnf root. The KB signature
+        // does not verify against the credential's cnf (holder) key → a loud, NAMED key-binding failure.
+        var (status, body, stored) = await PostAiasAsync(
+            cnf: DeviceCnfPresentationFactory.Binding.Holder,
+            kbSigner: DeviceCnfPresentationFactory.Binding.Device);
+
+        status.Should().Be(400, "a wrong-key KB-JWT must be rejected, not silently accepted");
+        var json = ParseJson(body);
+        json.GetProperty("error").GetString().Should().Be("invalid_presentation");
+        json.GetProperty("error_description").GetString().Should().Contain(
+            "Key binding mismatch", "the failure must name the key-binding mismatch, not a generic error");
+
+        // Nothing downstream may treat this as success.
+        stored.State.Should().Be(PresentationRequestState.Denied);
+        stored.Result.Should().NotBeNull();
+        stored.Result!.IsValid.Should().BeFalse();
+        stored.Result.HolderKeyVerified.Should().BeFalse();
+        stored.Result.VerifiedClaims.Should().BeEmpty("no claims may be emitted from a key-binding failure");
+    }
+
+    [Fact]
+    public async Task HandleDirectPost_HolderKeySignsDeviceCnfCopy_FailsWithNamedKeyBindingError()
+    {
+        // NEGATIVE (mirror) — a holder key signs a KB-JWT over a device-cnf copy. Same explicit shape:
+        // the KB signature does not verify against the copy's cnf (device) key.
+        var (status, body, stored) = await PostAiasAsync(
+            cnf: DeviceCnfPresentationFactory.Binding.Device,
+            kbSigner: DeviceCnfPresentationFactory.Binding.Holder);
+
+        status.Should().Be(400, "a wrong-key KB-JWT must be rejected, not silently accepted");
+        var json = ParseJson(body);
+        json.GetProperty("error").GetString().Should().Be("invalid_presentation");
+        json.GetProperty("error_description").GetString().Should().Contain(
+            "Key binding mismatch", "the failure must name the key-binding mismatch, not a generic error");
+
+        stored.State.Should().Be(PresentationRequestState.Denied);
+        stored.Result.Should().NotBeNull();
+        stored.Result!.IsValid.Should().BeFalse();
+        stored.Result.HolderKeyVerified.Should().BeFalse();
+        stored.Result.VerifiedClaims.Should().BeEmpty("no claims may be emitted from a key-binding failure");
+    }
+
     /// <summary>
     /// Mints a self-signed mdoc DeviceResponse bound to the request's OpenID4VP session
     /// (client_id / nonce / response_uri) so the endpoint's mdoc path verifies for real.

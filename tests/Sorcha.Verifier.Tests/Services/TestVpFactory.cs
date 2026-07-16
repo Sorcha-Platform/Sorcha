@@ -44,7 +44,9 @@ internal static class TestVpFactory
         DateTimeOffset? kbJwtIssuedAt = null,
         DateTimeOffset? kbJwtExpiresAt = null,
         bool omitKbJwtExp = false,
-        string credentialTyp = "dc+sd-jwt")
+        string credentialTyp = "dc+sd-jwt",
+        Dictionary<string, object>? extraPayloadClaims = null,
+        IEnumerable<string>? extraDisclosureSegments = null)
     {
         var issuer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var holder = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -76,6 +78,19 @@ internal static class TestVpFactory
             ["_sd_alg"] = "sha-256",
             ["cnf"] = new Dictionary<string, object> { ["jwk"] = JsonDocument.Parse(holderJwk).RootElement },
         };
+        // Fix round 2 (anchoring completeness) — lets tests add payload claims (e.g. an
+        // array carrying {"...": digest} markers) or OVERRIDE defaults (e.g. _sd_alg).
+        if (extraPayloadClaims is not null)
+        {
+            foreach (var (name, value) in extraPayloadClaims)
+            {
+                credentialPayload[name] = value;
+            }
+        }
+        if (extraDisclosureSegments is not null)
+        {
+            disclosures.AddRange(extraDisclosureSegments);
+        }
         var credentialJwt = SignEs256(
             new Dictionary<string, object> { ["alg"] = "ES256", ["typ"] = credentialTyp },
             credentialPayload, issuer);
@@ -238,6 +253,129 @@ internal static class TestVpFactory
         ECDsa IssuerKey,
         string StatusListUri,
         int StatusListIndex);
+
+    /// <summary>
+    /// A delegation-free SERVER-CUSTODY presentation (#1195 Phase 2). The vp_token carries an
+    /// SD-JWT VC with <c>cnf</c> = the holder key and a KB-JWT the holder key itself signed —
+    /// there is NO delegation credential. Exposes the issuer key (for issuer-signature tests)
+    /// and the holder's public JWK.
+    /// </summary>
+    public sealed record ServerCustodyBundle(
+        string VpToken,
+        ECDsa IssuerKey,
+        JsonElement HolderJwk,
+        string Issuer);
+
+    private const string TestIssuer = "did:sorcha:org:test";
+
+    private static (string CredentialJwt, List<string> Disclosures) BuildCredential(
+        string vct, Dictionary<string, JsonElement> disclosedClaims, string holderJwkJson, ECDsa issuer)
+    {
+        var disclosures = new List<string>();
+        var sdHashes = new List<string>();
+        foreach (var (name, value) in disclosedClaims)
+        {
+            var (segment, hash) = MintDisclosure(name, value);
+            disclosures.Add(segment);
+            sdHashes.Add(hash);
+        }
+
+        var credentialPayload = new Dictionary<string, object>
+        {
+            ["iss"] = TestIssuer,
+            ["iat"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            ["vct"] = vct,
+            ["_sd"] = sdHashes,
+            ["_sd_alg"] = "sha-256",
+            ["cnf"] = new Dictionary<string, object> { ["jwk"] = JsonDocument.Parse(holderJwkJson).RootElement },
+        };
+        var credentialJwt = SignEs256(
+            new Dictionary<string, object> { ["alg"] = "ES256", ["typ"] = "dc+sd-jwt" },
+            credentialPayload, issuer);
+        return (credentialJwt, disclosures);
+    }
+
+    private static Dictionary<string, object> KbPayload(string verifierClientId, string verifierNonce) => new()
+    {
+        ["iat"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+        ["exp"] = DateTimeOffset.UtcNow.AddSeconds(120).ToUnixTimeSeconds(),
+        ["aud"] = verifierClientId,
+        ["nonce"] = verifierNonce,
+        ["sd_hash"] = "placeholder",
+    };
+
+    /// <summary>
+    /// Mint a server-custody presentation with a P-256 (EC) holder key. When
+    /// <paramref name="kbSignedByHolder"/> is true the KB-JWT is signed by the holder key (the
+    /// legitimate server-custody case); when false it is signed by an UNRELATED P-256 device key
+    /// while <c>cnf</c> stays the holder — the wrong-key negative that must reject as a key-binding
+    /// mismatch.
+    /// </summary>
+    public static ServerCustodyBundle MintServerCustodyP256(
+        string vct,
+        Dictionary<string, JsonElement> disclosedClaims,
+        string verifierClientId,
+        string verifierNonce,
+        bool kbSignedByHolder = true)
+    {
+        var issuer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var holder = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var holderJwkJson = ToJwk(holder);
+
+        var (credentialJwt, disclosures) = BuildCredential(vct, disclosedClaims, holderJwkJson, issuer);
+
+        var kbSigner = kbSignedByHolder ? holder : ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var kbJwt = SignEs256(
+            new Dictionary<string, object> { ["alg"] = "ES256", ["typ"] = "kb+jwt" },
+            KbPayload(verifierClientId, verifierNonce), kbSigner);
+
+        var vpToken = $"{credentialJwt}{string.Concat(disclosures.Select(d => "~" + d))}~{kbJwt}";
+        return new ServerCustodyBundle(
+            vpToken, issuer, JsonDocument.Parse(holderJwkJson).RootElement.Clone(), TestIssuer);
+    }
+
+    /// <summary>
+    /// Mint a server-custody presentation with an <b>Ed25519</b> (OKP) holder key — the default
+    /// Sorcha wallet algorithm. When <paramref name="kbSignedByHolder"/> is true the KB-JWT is an
+    /// honest EdDSA signature by the holder key; when false it is signed by an unrelated P-256
+    /// device key (the wrong-key negative on the EdDSA-holder path).
+    /// </summary>
+    public static ServerCustodyBundle MintServerCustodyEd25519(
+        string vct,
+        Dictionary<string, JsonElement> disclosedClaims,
+        string verifierClientId,
+        string verifierNonce,
+        bool kbSignedByHolder = true)
+    {
+        var issuer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+
+        var gen = new Ed25519KeyPairGenerator();
+        gen.Init(new Ed25519KeyGenerationParameters(new SecureRandom()));
+        var pair = gen.GenerateKeyPair();
+        var priv = (Ed25519PrivateKeyParameters)pair.Private;
+        var pub = (Ed25519PublicKeyParameters)pair.Public;
+        var holderJwkJson = ToOkpJwk(pub);
+
+        var (credentialJwt, disclosures) = BuildCredential(vct, disclosedClaims, holderJwkJson, issuer);
+
+        string kbJwt;
+        if (kbSignedByHolder)
+        {
+            kbJwt = SignEdDsa(
+                new Dictionary<string, object> { ["alg"] = "EdDSA", ["typ"] = "kb+jwt" },
+                KbPayload(verifierClientId, verifierNonce), priv);
+        }
+        else
+        {
+            kbJwt = SignEs256(
+                new Dictionary<string, object> { ["alg"] = "ES256", ["typ"] = "kb+jwt" },
+                KbPayload(verifierClientId, verifierNonce), ECDsa.Create(ECCurve.NamedCurves.nistP256));
+        }
+
+        var vpToken = $"{credentialJwt}{string.Concat(disclosures.Select(d => "~" + d))}~{kbJwt}";
+        return new ServerCustodyBundle(
+            vpToken, issuer, JsonDocument.Parse(holderJwkJson).RootElement.Clone(), TestIssuer);
+    }
 
     public static string SignEdDsa(Dictionary<string, object> header, Dictionary<string, object> payload, Ed25519PrivateKeyParameters signer)
     {

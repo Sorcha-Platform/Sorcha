@@ -107,6 +107,7 @@ public sealed class IssueCredentialStatusListUrlGuardTests
             null!, // IWalletInboxWriter — not reached by the URL guard
             null,  // IIssuanceKeyService (optional — F120)
             null,  // IOrgCertChainProvider (optional)
+            null,  // IDeviceBoundCopyIssuanceCoordinator (optional — F1195 Phase 2)
             CancellationToken.None
         ]);
         return await (Task<IResult>)result!;

@@ -1,0 +1,138 @@
+{
+  "id": "aias-device-registration-v1",
+  "title": "AIAS Bind Identity to Device",
+  "description": "AIAS conference demo (Feature 174 / #1195 Phase 2 — 'one assurance, two bindings'). The citizen already holds a web-issued, holder-cnf AssuredIdentityCredential. Driven by the 'Bind to device' button in the Citizen Wallet PWA, this workflow gates on PRESENTING that root credential (proving entitlement) and captures the phone's device public JWK, then mints a device-cnf copy of the AssuredIdentityCredential bound to that device key. The complete assured claim set is carried forward from the verified presentation via full disclosure. The issuing-agency name is injected via the {{issuerName}} token at provision time. Register selection is left to the publish/deploy tooling (same AIAS register as the apply blueprint) — no register id is baked in.",
+  "version": 1,
+  "category": "identity",
+  "tags": ["aias", "assured-identity", "identity", "device-binding", "device-cnf", "oid4vp", "verifiable-credential", "credential-presentation", "credential-bootstrapped", "portrait"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "aias-device-registration",
+    "title": "AIAS Bind Identity to Device",
+    "description": "Citizen presents their web-issued AssuredIdentityCredential to prove entitlement and captures their device public key; AIAS mints a device-bound (device-cnf) copy of the credential carrying the full assured claim set.",
+    "version": 1,
+    "metadata": {
+      "category": "Identity & Credentials",
+      "complexity": "Simple",
+      "actions": "2",
+      "features": "OpenID4VP, Credential Presentation Gate, Device Key Capture, Device-cnf Re-issuance, Verifiable Credential, Portrait Carry-Forward",
+      "sector": "Identity & Trust"
+    },
+    "participants": [
+      {
+        "id": "citizen",
+        "name": "Credential Holder",
+        "organisation": "Public",
+        "description": "Already holds a web-issued AssuredIdentityCredential and is binding it to a new device via their Citizen Wallet PWA"
+      },
+      {
+        "id": "aias-issuer",
+        "name": "AIAS Issuer",
+        "organisation": "{{issuerName}}",
+        "description": "The AIAS issuing service — mints a device-cnf copy of the citizen's AssuredIdentityCredential bound to the presented device key"
+      }
+    ],
+    "actions": [
+      {
+        "id": 1,
+        "title": "Bind your identity to this device",
+        "description": "Present your existing Assured Identity credential from your Citizen Wallet to prove it is yours, and this device's key is captured so AIAS can bind a copy of your credential to it. Nothing is issued until you have presented.",
+        "sender": "citizen",
+        "isStartingAction": true,
+        "credentialRequirements": [
+          {
+            "type": "https://sorcha.dev/vc/assured-identity/v1",
+            "presentationSource": "SorchaWallet",
+            "requiredClaims": [
+              { "claimName": "givenName" },
+              { "claimName": "familyName" },
+              { "claimName": "dateOfBirth" }
+            ]
+          }
+        ],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "x-introduction": "Bind your Assured Identity to this device. Your wallet presents your existing credential to prove it is yours, and this device's public key is captured automatically — the new copy is cryptographically bound to this device.",
+            "x-sections": [
+              { "title": "This device", "fields": ["deviceKey"] }
+            ],
+            "properties": {
+              "deviceKey": {
+                "type": "object",
+                "title": "This device's key",
+                "description": "This device's public key (device-cnf). Captured automatically and read-only — the device-bound copy of your credential is bound to this key so only this device can present it.",
+                "format": "sorcha-device-key",
+                "x-device-key": { "required": true }
+              }
+            }
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "citizen", "dataPointers": ["/*"] },
+          { "participantAddress": "aias-issuer", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "to-issue",
+            "nextActionIds": [2],
+            "isDefault": true,
+            "description": "Entitlement presented and device key captured — mint the device-bound copy"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Issue device-bound Assured Identity",
+        "description": "AIAS mints a device-cnf copy of the citizen's AssuredIdentityCredential bound to the presented device key. The full assured claim set (name, date of birth, email, address and portrait) is carried forward verbatim from the verified presentation via full disclosure.",
+        "sender": "aias-issuer",
+        "requiredPriorActions": [1],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "x-introduction": "Automatic device binding — no human decision. The device-bound copy is minted from the verified presentation.",
+            "properties": {}
+          }
+        ],
+        "credentialIssuanceConfig": {
+          "credentialType": "AssuredIdentityCredential",
+          "vct": "https://sorcha.dev/vc/assured-identity/v1",
+          "displayName": "Assured Identity",
+          "targetAudience": "SorchaLocalWallet",
+          "recipientParticipantId": "citizen",
+          "holderKeySourceField": "/deviceKey/holderJwk",
+          "issuanceCondition": { "==": [1, 1] },
+          "claimMappings": [
+            { "claimName": "givenName",   "sourceField": "/presentedCredential/givenName" },
+            { "claimName": "middleName",  "sourceField": "/presentedCredential/middleName" },
+            { "claimName": "familyName",  "sourceField": "/presentedCredential/familyName" },
+            { "claimName": "fullName",    "sourceField": "/presentedCredential/fullName" },
+            { "claimName": "dateOfBirth", "sourceField": "/presentedCredential/dateOfBirth" },
+            { "claimName": "email",       "sourceField": "/presentedCredential/email" },
+            { "claimName": "address",     "sourceField": "/presentedCredential/address" },
+            { "claimName": "portrait",    "sourceField": "/presentedCredential/portrait" }
+          ],
+          "disclosable": [
+            "givenName", "middleName", "familyName", "fullName", "dateOfBirth", "email",
+            "/address/line1", "/address/line2", "/address/town", "/address/region",
+            "/address/postcode", "/address/country",
+            "portrait"
+          ]
+        },
+        "disclosures": [
+          { "participantAddress": "aias-issuer", "dataPointers": ["/*"] },
+          { "participantAddress": "citizen", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "device-bound-terminal",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Device-bound copy issued — workflow complete"
+          }
+        ]
+      }
+    ]
+  }
+}

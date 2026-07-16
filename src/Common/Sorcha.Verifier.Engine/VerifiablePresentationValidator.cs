@@ -20,9 +20,13 @@ namespace Sorcha.Verifier.Engine;
 /// <list type="number">
 ///   <item>Parse the SD-JWT VC compact form (<c>credential.disclosure1.disclosureN.kbjwt</c>).</item>
 ///   <item>Extract the holder JWK from the credential's <c>cnf.jwk</c> claim.</item>
-///   <item>Verify the device delegation credential's signature with that holder JWK,
-///         extract the device JWK from its <c>cnf.jwk</c>, and check its status-list bit.</item>
-///   <item>Verify the KB-JWT signature with the device JWK.</item>
+///   <item>When a device delegation credential is supplied, verify its signature with that
+///         holder JWK, extract the device JWK from its <c>cnf.jwk</c>, and check its status-list bit;
+///         the KB-JWT is then verified with the device JWK. When NO delegation is supplied
+///         (server-custody, #1195 Phase 2) the KB-JWT is verified directly against the credential's
+///         own <c>cnf.jwk</c> holder key — a legitimate server-side wallet holds cnf and signs.</item>
+///   <item>Verify the KB-JWT signature with the delegation device JWK (delegation model) or the
+///         credential's own holder JWK (server-custody model).</item>
 ///   <item>Verify KB-JWT <c>nonce</c> + <c>aud</c> match the verifier session.</item>
 ///   <item>Verify required claim names appear in the disclosed claim set.</item>
 /// </list>
@@ -156,10 +160,27 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             // ES256-only verifier reject Ed25519-holder presentations, so it's the first thing to surface.
             layerState.HolderKey = DescribeJwk(holderJwk);
 
-            // ── 4. Validate holder→device delegation credential ───────────────────
-            JsonElement deviceJwk = default;
+            // ── 4. Establish the KB-JWT signing key (two custody models) ──────────
+            //   The presentation carries its custody model implicitly, in whether a device
+            //   delegation credential accompanies it:
+            //
+            //   • DELEGATION model (F114/F127 device-bound wallets, the desk/doorstep verifiers):
+            //     the holder key signs a device delegation credential whose cnf is the device key,
+            //     and the KB-JWT is device-signed. The delegation's signature (holder key), expiry,
+            //     and status-list bit are all verified here. Behaviour is unchanged when a
+            //     delegation credential is supplied.
+            //
+            //   • SERVER-CUSTODY model (#1195 Phase 2, design §2): NO delegation. A legitimate
+            //     server-side wallet holds the credential's own cnf holder key and signs the KB-JWT
+            //     directly with it — there is no device key and nothing to delegate. The KB-JWT is
+            //     verified straight against the credential's cnf.jwk (same semantics as
+            //     SdJwtService.VerifyPresentationAsync on the HAIP path). This is what the Task-6
+            //     "bind to device" flow posts (holder-signed vp_token, no delegation).
+            JsonElement kbSigningKey;
+            bool serverCustody;
             if (!string.IsNullOrWhiteSpace(delegationCredential))
             {
+                serverCustody = false;
                 layerState.DelegationAlg = HeaderAlg(delegationCredential);
 
                 var delegationErrors = await ValidateDelegationAsync(
@@ -172,17 +193,23 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
 
                 var delegationPayload = TryParseJwtPayload(delegationCredential);
                 if (delegationPayload is null
-                    || !TryExtractCnfJwk(delegationPayload.Value, out deviceJwk))
+                    || !TryExtractCnfJwk(delegationPayload.Value, out var deviceJwk))
                 {
                     errors.Add("Delegation credential is missing cnf.jwk (device key).");
                     return Failure(errors, BuildLayers(false));
                 }
                 layerState.DeviceKey = DescribeJwk(deviceJwk);
+                kbSigningKey = deviceJwk;
             }
             else
             {
-                errors.Add("Delegation credential is required for citizen wallet presentations.");
-                return Failure(errors, BuildLayers(false));
+                // Server-custody: the KB-JWT MUST be signed by the credential's own cnf holder key
+                // (extracted at step 3). The missing-cnf case already rejected loudly above with
+                // "Credential is missing cnf.jwk (holder key binding)" — so reaching here with no
+                // delegation guarantees a holder key to verify against.
+                serverCustody = true;
+                layerState.ServerCustody = true;
+                kbSigningKey = holderJwk;
             }
 
             // ── 4b. Verify the credential's issuer signature ──────────────────────
@@ -235,10 +262,18 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
                 layerState.IssuerSignature = IssuerLayer.UnresolvedNotRequired;
             }
 
-            // ── 5. Verify KB-JWT signature with the device key ────────────────────
-            if (!VerifyJwsSignature(kbJwt, deviceJwk, out var kbPayload))
+            // ── 5. Verify KB-JWT signature ────────────────────────────────────────
+            //   Delegation model → the delegation's device key; server-custody → the credential's
+            //   own cnf holder key. VerifyJwsSignature dispatches on the KB-JWT header alg
+            //   (ES256 via ECDsa, EdDSA via BouncyCastle, ES256K), so an Ed25519 holder key — the
+            //   default Sorcha wallet, signing its own KB-JWT under server-custody — verifies just
+            //   as a P-256 device or holder key does. The two custody models raise DISTINCT named
+            //   errors so the verdict never conflates "wrong device key" with "holder key mismatch".
+            if (!VerifyJwsSignature(kbJwt, kbSigningKey, out var kbPayload))
             {
-                errors.Add("KB-JWT signature verification failed against device key.");
+                errors.Add(serverCustody
+                    ? "Key binding mismatch: KB-JWT not signed by the credential's cnf key."
+                    : "KB-JWT signature verification failed against device key.");
                 return Failure(errors, BuildLayers(false));
             }
 
@@ -305,7 +340,47 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
                 layerState.LivePresentationFailed = true;
             }
 
-            // ── 7. Extract disclosed claims and check required set ────────────────
+            // ── 7. Anchor disclosures, extract disclosed claims, check required set ──
+            // #1195 Phase 2 (Task 6 fix round) — RFC 9901 disclosure anchoring: every
+            // disclosure segment MUST be committed by the credential (its SHA-256 digest in an
+            // _sd array or an array-element {"...": digest} marker of the payload, or of an
+            // already-accepted disclosure's value — nested SD). Without this, a presenter could
+            // append fabricated [salt, name, value] segments — or OVERRIDE a legitimate claim's
+            // value with a forged duplicate — and have them emitted as verified claims. The
+            // KB-JWT cannot protect against this: its signer IS the presenter. Tampering
+            // rejects the whole presentation, loudly.
+            //
+            // Fix round 2 — honour the payload's _sd_alg (RFC 9901 §4.1.1): sha-256 is the
+            // default and the only supported algorithm. Any OTHER declared value is its own
+            // DISTINCT rejection — digests computed under an unknown algorithm can never
+            // anchor, and reporting that as "unanchored disclosure" would accuse a legitimate
+            // credential of forgery. The error must tell the truth about why.
+            if (disclosureSegments.Count > 0)
+            {
+                var sdAlg = TryGetString(credentialPayload.Value, "_sd_alg");
+                if (sdAlg is not null && !string.Equals(sdAlg, "sha-256", StringComparison.OrdinalIgnoreCase))
+                {
+                    errors.Add(
+                        $"Unsupported _sd_alg '{sdAlg}' — this verifier supports sha-256 only; " +
+                        "disclosure anchoring cannot be evaluated.");
+                    layerState.LivePresentationFailed = true;
+                    return Failure(errors, BuildLayers(false));
+                }
+            }
+
+            var unanchored = FindUnanchoredDisclosures(credentialPayload.Value, disclosureSegments);
+            if (unanchored.Count > 0)
+            {
+                foreach (var name in unanchored)
+                {
+                    errors.Add(
+                        $"Disclosure '{name}' is not committed by the credential " +
+                        "(no matching _sd digest) — the presentation is tampered or malformed.");
+                }
+                layerState.LivePresentationFailed = true;
+                return Failure(errors, BuildLayers(false));
+            }
+
             disclosed = ParseDisclosures(disclosureSegments);
             foreach (var required in session.RequiredClaims)
             {
@@ -428,6 +503,132 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
         if (inner.ValueKind != JsonValueKind.Object) return false;
         jwk = inner;
         return true;
+    }
+
+    /// <summary>
+    /// RFC 9901 disclosure anchoring (#1195 Phase 2, Task 6 fix rounds 1+2). Returns the
+    /// display names of every disclosure segment whose SHA-256 digest is NOT committed by the
+    /// credential — i.e. not present in any <c>_sd</c> array OR any array-element
+    /// <c>{"...": "&lt;digest&gt;"}</c> marker of the credential payload or of an
+    /// already-anchored disclosure's value (nested selective disclosure). Runs to fixpoint so
+    /// nested disclosures anchor regardless of segment order. An empty result means every
+    /// presented disclosure is issuer-committed.
+    /// </summary>
+    internal static IReadOnlyList<string> FindUnanchoredDisclosures(
+        JsonElement credentialPayload,
+        IReadOnlyList<string> segments)
+    {
+        if (segments.Count == 0) return [];
+
+        var committed = new HashSet<string>(StringComparer.Ordinal);
+        CollectSdDigests(credentialPayload, committed);
+
+        var anchored = new bool[segments.Count];
+        bool progressed = true;
+        while (progressed)
+        {
+            progressed = false;
+            for (var i = 0; i < segments.Count; i++)
+            {
+                if (anchored[i]) continue;
+                var digest = Base64Url.EncodeToString(
+                    SHA256.HashData(Encoding.ASCII.GetBytes(segments[i])));
+                if (!committed.Contains(digest)) continue;
+
+                anchored[i] = true;
+                progressed = true;
+
+                // Nested SD: the disclosed value may itself carry _sd arrays that commit
+                // further disclosures (e.g. address sub-fields).
+                try
+                {
+                    using var doc = JsonDocument.Parse(Base64Url.DecodeFromChars(segments[i]));
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array &&
+                        doc.RootElement.GetArrayLength() is 2 or 3)
+                    {
+                        CollectSdDigests(doc.RootElement[doc.RootElement.GetArrayLength() - 1], committed);
+                    }
+                }
+                catch
+                {
+                    // A segment that anchors but doesn't parse contributes no nested digests;
+                    // ParseDisclosures drops it downstream.
+                }
+            }
+        }
+
+        var unanchoredNames = new List<string>();
+        for (var i = 0; i < segments.Count; i++)
+        {
+            if (anchored[i]) continue;
+            unanchoredNames.Add(ReadDisclosureDisplayName(segments[i]));
+        }
+        return unanchoredNames;
+    }
+
+    /// <summary>
+    /// Recursively collect every digest the credential commits: string entries of <c>_sd</c>
+    /// arrays (object-property SD) and the values of <c>{"...": "&lt;digest&gt;"}</c>
+    /// array-element markers (RFC 9901 array SD — fix round 2). Harvesting a marker anywhere
+    /// in an anchored subtree is deliberate lenience: digests are unguessable SHA-256 values,
+    /// so over-collection can never anchor a forged disclosure.
+    /// </summary>
+    private static void CollectSdDigests(JsonElement element, HashSet<string> sink)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (property.NameEquals("_sd") && property.Value.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var digest in property.Value.EnumerateArray())
+                        {
+                            if (digest.ValueKind == JsonValueKind.String)
+                            {
+                                sink.Add(digest.GetString()!);
+                            }
+                        }
+                    }
+                    else if (property.NameEquals("...") && property.Value.ValueKind == JsonValueKind.String)
+                    {
+                        // RFC 9901 array-element marker: {"...": "<digest>"} commits a
+                        // 2-element [salt, value] disclosure for that array position.
+                        sink.Add(property.Value.GetString()!);
+                    }
+                    else
+                    {
+                        CollectSdDigests(property.Value, sink);
+                    }
+                }
+                break;
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                {
+                    CollectSdDigests(item, sink);
+                }
+                break;
+        }
+    }
+
+    /// <summary>Best-effort claim name of a disclosure segment for error messages; never throws.</summary>
+    private static string ReadDisclosureDisplayName(string segment)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(Base64Url.DecodeFromChars(segment));
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return "<malformed>";
+            return doc.RootElement.GetArrayLength() switch
+            {
+                3 => doc.RootElement[1].GetString() ?? "<unnamed>",
+                2 => doc.RootElement[0].GetString() ?? "<unnamed>",
+                _ => "<malformed>",
+            };
+        }
+        catch
+        {
+            return "<malformed>";
+        }
     }
 
     /// <summary>
@@ -732,6 +933,7 @@ internal sealed class LayerState
     public string? HolderKey;     // credential cnf.jwk "kty / crv" (e.g. "OKP / Ed25519")
     public string? DelegationAlg; // device-delegation JWS header alg (e.g. "EdDSA")
     public string? DeviceKey;     // delegation cnf.jwk "kty / crv" (always "EC / P-256" today)
+    public bool ServerCustody;    // #1195 Phase 2 — no delegation; the credential's holder key signs the KB-JWT directly
 
     // IssuerSignature
     public IssuerLayer IssuerSignature = IssuerLayer.NotChecked;
@@ -775,7 +977,13 @@ internal sealed class LayerState
             // the diagnostic that explains Ed25519-vs-P-256 behaviour (the default Sorcha wallet is
             // Ed25519, so its credential cnf.jwk is OKP / Ed25519 and the delegation is EdDSA-signed).
             if (!string.IsNullOrEmpty(HolderKey)) detail["holder-key"] = HolderKey;
-            if (!string.IsNullOrEmpty(DelegationAlg) || !string.IsNullOrEmpty(DeviceKey))
+            if (ServerCustody)
+            {
+                // Honest verdict trail — there is genuinely no delegation in server-custody. Say so
+                // rather than fabricate a delegation line; the holder key (above) signed the KB-JWT.
+                detail["delegation"] = "server-custody (none) · holder cnf signs KB-JWT";
+            }
+            else if (!string.IsNullOrEmpty(DelegationAlg) || !string.IsNullOrEmpty(DeviceKey))
             {
                 detail["delegation"] =
                     $"{DelegationAlg ?? "?"} · device key {DeviceKey ?? "?"}";

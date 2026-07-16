@@ -54,6 +54,9 @@ public sealed class ProximityAffordanceTests : ComponentTestFixture
         Services.AddSingleton(_delegation.Object);
         Services.AddSingleton(_statusList.Object);
         Services.AddSingleton(_log.Object);
+        // Task 7 wiring — the page resolves the selection inputs (holder + wallet clients).
+        Services.AddSingleton(new Mock<Sorcha.ServiceClients.CitizenWallet.ICitizenWalletClient>().Object);
+        Services.AddSingleton(new Mock<Sorcha.UI.Core.Services.HolderKeys.IHolderKeyClient>().Object);
         Services.AddSingleton<Microsoft.Extensions.Logging.ILogger<PresentPage>>(
             Microsoft.Extensions.Logging.Abstractions.NullLogger<PresentPage>.Instance);
         Services.AddScoped<System.Net.Http.HttpClient>(_ => new System.Net.Http.HttpClient());

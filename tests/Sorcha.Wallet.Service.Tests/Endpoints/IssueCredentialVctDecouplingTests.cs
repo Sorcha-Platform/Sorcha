@@ -181,6 +181,7 @@ public sealed class IssueCredentialVctDecouplingTests
             _inboxWriter.Object,
             _issuanceKey.Object,
             null,  // IOrgCertChainProvider (optional)
+            null,  // IDeviceBoundCopyIssuanceCoordinator (optional — F1195 Phase 2)
             CancellationToken.None
         ]);
         return await (Task<IResult>)result!;

@@ -90,34 +90,73 @@ public sealed class SorchaWalletPresentationConsumer : IPresentationConsumer
                 PresentationSubmissionHash: null);
         }
 
-        if (payload.Session is null)
+        // #1195 Phase 2 (Task 6b) — T032 landed: when the caller supplies no session (the
+        // wallet posts only {vpToken}), rebuild the VerifierSession from the pending-state
+        // fields the lifecycle persisted at initiation. Every refusal here is NAMED and
+        // distinct — wrong nonce (validator: "KB-JWT nonce does not match session"),
+        // expired session, and genuinely-unknown session are three different answers.
+        var session = payload.Session;
+        if (session is null)
         {
-            // The lifecycle service (T032) is expected to populate
-            // payload.Session from the pending state + blueprint metadata
-            // before dispatching here. Until that wiring lands, this branch
-            // surfaces a clear, debuggable error rather than fabricating a
-            // session that wouldn't match what the wallet signed against.
-            _logger.LogWarning(
-                "Sorcha-wallet consumer received payload without a VerifierSession (requestId={RequestId}); " +
-                "T032 lifecycle dispatch must populate Session from pending state.",
-                context.PresentationRequestId);
-            return new PresentationOutcome(
-                Kind: PresentationOutcomeKind.Decline,
-                VerifiedClaims: null,
-                Reason: PresentationDeclineReason.VerifierError,
-                VerifierDiagnostics: new Dictionary<string, object>
-                {
-                    ["error"] = "session-missing",
-                    ["requestId"] = context.PresentationRequestId
-                },
-                PresentationSubmissionHash: null);
+            if (string.IsNullOrEmpty(context.Nonce) || string.IsNullOrEmpty(context.CredentialType))
+            {
+                // Legacy pending entry (pre-session-wiring) or a caller that never initiated —
+                // no nonce means nothing the KB-JWT could be verified against. Named decline.
+                _logger.LogWarning(
+                    "Sorcha-wallet consumer cannot rebuild a VerifierSession for requestId={RequestId}: " +
+                    "the pending state carries no nonce/credentialType (pre-T032 entry?).",
+                    context.PresentationRequestId);
+                return new PresentationOutcome(
+                    Kind: PresentationOutcomeKind.Decline,
+                    VerifiedClaims: null,
+                    Reason: PresentationDeclineReason.VerifierError,
+                    VerifierDiagnostics: new Dictionary<string, object>
+                    {
+                        ["error"] = "session-missing",
+                        ["requestId"] = context.PresentationRequestId
+                    },
+                    PresentationSubmissionHash: null);
+            }
+
+            var expiresAt = context.ExpiresAt ?? context.InitiatedAt.AddMinutes(5);
+            if (DateTimeOffset.UtcNow > expiresAt)
+            {
+                _logger.LogWarning(
+                    "Sorcha-wallet outcome for requestId={RequestId} arrived after the session expired at {ExpiresAt:O}.",
+                    context.PresentationRequestId, expiresAt);
+                return new PresentationOutcome(
+                    Kind: PresentationOutcomeKind.Decline,
+                    VerifiedClaims: null,
+                    Reason: PresentationDeclineReason.VerifierError,
+                    VerifierDiagnostics: new Dictionary<string, object>
+                    {
+                        ["error"] = "session-expired",
+                        ["requestId"] = context.PresentationRequestId,
+                        ["expiresAt"] = expiresAt
+                    },
+                    PresentationSubmissionHash: null);
+            }
+
+            session = new VerifierSession
+            {
+                SessionId = context.PresentationRequestId.ToString("N"),
+                // MUST match the client_id the request object was served with — the wallet's
+                // KB-JWT binds aud to it. Same resolution rule as BuildInitiationAsync.
+                ClientId = ResolveClientId(context),
+                Nonce = context.Nonce,
+                RequiredVct = context.CredentialType,
+                RequiredClaims = context.RequiredClaimNames ?? [],
+                Purpose = "credential-gate",
+                CreatedAt = context.InitiatedAt,
+                ExpiresAt = expiresAt
+            };
         }
 
         VerificationOutcome outcome;
         try
         {
             outcome = await _validator.ValidateAsync(
-                payload.Session,
+                session,
                 payload.VpToken,
                 payload.DelegationCredential,
                 cancellationToken);
@@ -153,20 +192,21 @@ public sealed class SorchaWalletPresentationConsumer : IPresentationConsumer
                 PresentationSubmissionHash: null);
         }
 
-        // Filter disclosed claims to the verifier-session's required set. Minimal
-        // disclosure invariant — the consumer surfaces only what the blueprint
-        // asked for. The wallet may include more in the VP; what crosses the
-        // boundary into F111's outcome record is the strict required subset.
-        var requiredClaimSet = new HashSet<string>(payload.Session.RequiredClaims, StringComparer.Ordinal);
-        var filteredClaims = outcome.DisclosedClaims
-            .Where(kv => requiredClaimSet.Contains(kv.Key))
-            .ToDictionary(
-                kv => kv.Key,
-                kv => (object)(kv.Value ?? string.Empty),
-                StringComparer.Ordinal);
+        // Task 6 fix round (#1195 Phase 2) — requiredClaims act as the GATE, and the emitted
+        // VerifiedClaims are the FULL verified disclosure set (design §4.1 full-disclosure
+        // bind: the device copy mirrors exactly what the root carries; optional claims like
+        // middleName degrade gracefully instead of refusing citizens who don't have one).
+        // Minimal disclosure is enforced where it belongs: at the wallet's consent sheet
+        // (only consented disclosures enter the vp_token) and by the validator's RFC 9901
+        // digest anchoring (only issuer-committed disclosures reach DisclosedClaims) — so
+        // nothing here is client-controlled beyond what the issuer signed and the citizen
+        // chose to disclose.
+        var requiredClaimSet = new HashSet<string>(session.RequiredClaims, StringComparer.Ordinal);
 
-        // Are any required claims missing? Decline with SchemaMismatch.
-        var missing = requiredClaimSet.Except(filteredClaims.Keys).ToList();
+        // The gate: every required claim must be present in the verified disclosure set.
+        var missing = requiredClaimSet
+            .Where(r => !outcome.DisclosedClaims.ContainsKey(r))
+            .ToList();
         if (missing.Count > 0)
         {
             _logger.LogWarning(
@@ -183,10 +223,16 @@ public sealed class SorchaWalletPresentationConsumer : IPresentationConsumer
                 PresentationSubmissionHash: null);
         }
 
-        var submissionHash = ComputePresentationHash(payload.Session, filteredClaims);
+        // The pass-through: everything the validator verified, verbatim.
+        var verifiedClaims = outcome.DisclosedClaims.ToDictionary(
+            kv => kv.Key,
+            kv => (object)(kv.Value ?? string.Empty),
+            StringComparer.Ordinal);
+
+        var submissionHash = ComputePresentationHash(session, verifiedClaims);
         return new PresentationOutcome(
             Kind: PresentationOutcomeKind.Success,
-            VerifiedClaims: filteredClaims,
+            VerifiedClaims: verifiedClaims,
             Reason: null,
             VerifierDiagnostics: null,
             PresentationSubmissionHash: $"sha256:{submissionHash}");
@@ -208,7 +254,7 @@ public sealed class SorchaWalletPresentationConsumer : IPresentationConsumer
         // gate. The request object is unsigned in this flow (alg "none"), so client_id
         // is a display identity; US6 (Feature 181) signs it with the verifier
         // certificate and makes it cryptographically load-bearing.
-        var clientId = context.VerifierClientId ?? "did:sorcha:org:UNKNOWN";
+        var clientId = ResolveClientId(context);
 
         // Feature 181 (T014) — the ask is expressed in DCQL inside a SERVED request
         // object (the request_uri form every Sorcha producer converges on), built via
@@ -305,6 +351,15 @@ public sealed class SorchaWalletPresentationConsumer : IPresentationConsumer
         var body = JsonSerializer.SerializeToUtf8Bytes(payload);
         return $"{B64Url(header)}.{B64Url(body)}.";
     }
+
+    /// <summary>
+    /// The ONE client_id resolution rule, shared by <see cref="BuildInitiationAsync"/> (what the
+    /// request object serves) and the Task 6b session reconstruction (what the KB-JWT's <c>aud</c>
+    /// is verified against). A drift between the two would make every wallet presentation fail
+    /// the audience check.
+    /// </summary>
+    private static string ResolveClientId(PresentationInitiationContext context)
+        => context.VerifierClientId ?? "did:sorcha:org:UNKNOWN";
 
     private static PresentationDeclineReason MapDeclineReason(IReadOnlyList<string> errors)
     {

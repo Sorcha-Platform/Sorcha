@@ -118,4 +118,24 @@ public sealed record PendingPresentation
     /// register. Set after the initiated tx is submitted.
     /// </summary>
     public string? InitiatedTransactionId { get; init; }
+
+    // ── #1195 Phase 2 (Task 6b, T032) — verifier-session fields ─────────────────────────
+    // Persisted at initiation so the callback path can rebuild the VerifierSession the
+    // sorcha-wallet consumer's validator needs (nonce echo, vct + required-claim checks,
+    // KB-JWT audience binding). All nullable: legacy pending entries written before the
+    // session wiring deserialize with nulls and keep their previous behaviour
+    // (session-missing decline). Single-use + TTL-bound by construction — the pending row
+    // IS the session record (deleted post-outcome; Redis TTL = validity window).
+
+    /// <summary>The nonce the consumer embedded in the request object; the KB-JWT must echo it.</summary>
+    public string? Nonce { get; init; }
+
+    /// <summary>The verifier client_id served in the request object (null ⇒ the consumer's placeholder fallback).</summary>
+    public string? VerifierClientId { get; init; }
+
+    /// <summary>Required credential type (vct) from the gating requirement.</summary>
+    public string? CredentialType { get; init; }
+
+    /// <summary>Required claim names from the gating requirement.</summary>
+    public List<string>? RequiredClaimNames { get; init; }
 }

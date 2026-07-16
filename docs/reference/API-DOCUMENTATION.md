@@ -888,7 +888,7 @@ found; `403` if the caller is not a recorded participant on the instance.
 
 ### Timebound Presentation Lifecycle (Feature 111)
 
-Three-event on-register lifecycle for timebound credential presentations. When an action carries `credentialRequirements` targeting HaipExternalWallet and the citizen submits without pre-attached presentations, `/execute` returns **`202 Accepted`** with `AwaitingPresentation=true` and a QR code. A `PresentationInitiated` transaction is written to the register immediately. The action does NOT complete until the verifier callback writes a `PresentationOutcome` with `kind=success`. Retry after a decline is first-class; a second attempt after a successful outcome returns **`409 Conflict`**.
+Three-event on-register lifecycle for timebound credential presentations. When an action carries `credentialRequirements` targeting HaipExternalWallet **or SorchaWallet** (#1195 Phase 2, Task 6b) and the citizen submits without pre-attached presentations, `/execute` returns **`202 Accepted`** with `AwaitingPresentation=true` and a QR code / authorization request URI. A `PresentationInitiated` transaction is written to the register immediately. The action does NOT complete until the verifier callback writes a `PresentationOutcome` with `kind=success`. Retry after a decline is first-class; a second attempt after a successful outcome returns **`409 Conflict`**.
 
 #### `POST /api/instances/{instanceId}/actions/{actionId}/execute` — 202 semantics
 
@@ -945,6 +945,10 @@ Wallet-facing, intentionally unauthenticated for OpenID4VP wallet interoperabili
 State values: `awaiting-presentation` · `success` · `decline` · `abandoned` · `abandoned-with-late-outcome` · `expired`.
 
 The register's transaction stream is the authoritative history — query `PresentationInitiated` / `PresentationOutcome` / `PresentationAbandoned` transactions from the Register Service for the full event record.
+
+#### `POST /api/presentations/callbacks/sorcha-wallet/{presentationRequestId}`
+
+**#1195 Phase 2 (Task 6b)** — the Citizen Wallet PWA's direct_post target for a `SorchaWallet`-gated presentation (this URI is the `response_uri` in the served request object). **Consumer-tier** (`RequireConsumerAudience`) — the citizen's own token authorises the post; the literal route segment outranks the generic `{consumerName}` template, so every sorcha-wallet post lands here. Body: `{ "vpToken": "<compact SD-JWT presentation with KB-JWT>" }`. Verification happens server-side in the sorcha-wallet consumer against the verifier session persisted on pending state at initiation (nonce, vct, required claims, client_id — single-use, TTL-bound). Refusals are named: `session-missing` (unknown/pre-wiring attempt), `session-expired` (post-window), and validator errors (nonce mismatch, vct mismatch, missing claims) decline with distinct reasons. Response shape matches the generic callback below.
 
 #### `POST /api/presentations/callbacks/{consumerName}/{presentationRequestId}`
 
@@ -1452,6 +1456,24 @@ Resolves the caller's slot-108 holder public JWK (for the SD-JWT `cnf` binding) 
 }
 ```
 `401` — missing/invalid citizen token. `404` — no wallet resolvable for the caller (indistinguishable from non-existence).
+
+##### POST /api/v1/wallet/presentations/sign-kb
+
+Signs a KB-JWT signing input with the **authenticated caller's** server-custodied slot-108 holder key (#1195 Phase 2, Task 6a). Lets the wallet PWA present a holder-`cnf` credential (e.g. the `AssuredIdentityCredential` root) without the holder private key ever leaving server custody. Consumer-tier (`RequireConsumerAudience`), rate-limited (`Strict`). The signing wallet is resolved from the JWT only — the body carries no wallet address, so a citizen can only sign under their own holder key.
+
+**Request:**
+```json
+{ "signingInput": "<base64url(header)>.<base64url(payload)>" }
+```
+
+The decoded header MUST carry `typ: "kb+jwt"` (the endpoint refuses to sign anything else — the same key signs device delegation credentials, so it must never be a general-purpose signing oracle) and an `alg` matching the holder key's algorithm (EC P-256 → `ES256`, OKP Ed25519 → `EdDSA`).
+
+**Response:** `200 OK`
+```json
+{ "signature": "<base64url raw signature>", "algorithm": "EdDSA" }
+```
+
+`400` — not a KB-JWT header, or header `alg` mismatches the holder key (named error). `401` — missing/invalid citizen token. `404` — no wallet resolvable for the caller.
 
 #### 11. Cross-Device Presentation History (Feature 114 US5)
 

@@ -110,11 +110,14 @@ public sealed class SorchaWalletPresentationConsumerTests
     }
 
     [Fact]
-    public async Task VerifyAsync_FiltersClaimsToRequiredSet_MinimalDisclosure()
+    public async Task VerifyAsync_EmitsAllVerifiedDisclosedClaims_RequiredClaimsActOnlyAsGate()
     {
-        // Validator returns more claims than asked for; the consumer must
-        // filter to the strict required set per the IPresentationConsumer
-        // contract's minimal-disclosure invariant.
+        // Task 6 fix round — full-disclosure pass-through (design §4.1): requiredClaims GATE
+        // the presentation (must all be present), but VerifiedClaims carries EVERY claim the
+        // validator verified from the citizen's consented disclosure. Minimal disclosure is
+        // enforced at the wallet's consent sheet (what enters the vp_token) and by the
+        // validator's digest anchoring (only issuer-committed disclosures verify) — not by a
+        // server-side truncation that would mint device copies with holes.
         var session = NewSession("givenName");
         _validator
             .Setup(v => v.ValidateAsync(session, It.IsAny<string>(), null, It.IsAny<CancellationToken>()))
@@ -124,8 +127,9 @@ public sealed class SorchaWalletPresentationConsumerTests
                 DisclosedClaims = new Dictionary<string, object?>
                 {
                     ["givenName"] = "Sarah",
-                    ["familyName"] = "Example",  // not in required — must be filtered out
-                    ["secretClaim"] = "private"  // not in required — must be filtered out
+                    ["familyName"] = "Example",
+                    ["email"] = "sarah@example.org",
+                    ["portrait"] = "base64…"
                 },
                 Errors = [],
                 CompletedAt = DateTimeOffset.UtcNow
@@ -136,7 +140,44 @@ public sealed class SorchaWalletPresentationConsumerTests
             CancellationToken.None);
 
         outcome.Kind.Should().Be(PresentationOutcomeKind.Success);
-        outcome.VerifiedClaims!.Keys.Should().BeEquivalentTo(new[] { "givenName" });
+        outcome.VerifiedClaims!.Keys.Should().BeEquivalentTo(
+            new[] { "givenName", "familyName", "email", "portrait" },
+            "every verified disclosed claim passes through — the copy mirrors the root");
+    }
+
+    [Fact]
+    public async Task VerifyAsync_RootWithoutOptionalClaim_PassesGate_AndCopiesOnlyWhatTheRootCarries()
+    {
+        // A citizen with no middle name: the root never carried the claim, the gate requires
+        // only the core, and the emitted set gracefully omits it — no failure, no hole.
+        var session = NewSession("givenName", "familyName", "dateOfBirth");
+        _validator
+            .Setup(v => v.ValidateAsync(session, It.IsAny<string>(), null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new VerificationOutcome
+            {
+                Accepted = true,
+                DisclosedClaims = new Dictionary<string, object?>
+                {
+                    ["givenName"] = "Sarah",
+                    ["familyName"] = "Example",
+                    ["dateOfBirth"] = "1968-04-12",
+                    ["email"] = "sarah@example.org",
+                    ["address"] = "12 Brae Road"
+                    // no middleName, no fullName, no portrait — the root never carried them
+                },
+                Errors = [],
+                CompletedAt = DateTimeOffset.UtcNow
+            });
+
+        var outcome = await _sut.VerifyAsync(NewContext(),
+            new SorchaWalletVerificationPayload { VpToken = "vp", Session = session },
+            CancellationToken.None);
+
+        outcome.Kind.Should().Be(PresentationOutcomeKind.Success,
+            "an absent OPTIONAL claim must never fail the bind");
+        outcome.VerifiedClaims!.Keys.Should().BeEquivalentTo(
+            new[] { "givenName", "familyName", "dateOfBirth", "email", "address" });
+        outcome.VerifiedClaims!.Should().NotContainKey("middleName");
     }
 
     [Fact]
@@ -200,6 +241,128 @@ public sealed class SorchaWalletPresentationConsumerTests
         outcome.Reason.Should().Be(PresentationDeclineReason.VerifierError);
         outcome.VerifierDiagnostics.Should().NotBeNull();
         outcome.VerifierDiagnostics!["error"].Should().Be("session-missing");
+    }
+
+    // ── #1195 Phase 2 / Task 6b (C) — session reconstruction from pending context (T032) ──
+
+    /// <summary>A context carrying the session fields the lifecycle now persists on pending state.</summary>
+    private static PresentationInitiationContext ContextWithSession(
+        string? verifierClientId = null,
+        DateTimeOffset? expiresAt = null) => new(
+        PresentationRequestId: Guid.Parse("11111111-1111-1111-1111-111111111111"),
+        InstanceId: Guid.Parse("22222222-2222-2222-2222-222222222222"),
+        ActionId: 1,
+        RegisterId: "reg-test",
+        BlueprintId: "bp-test",
+        SubmitterWallet: "ws11qqtest",
+        RequirementsDigest: new byte[32],
+        InitiatedAt: DateTimeOffset.UtcNow.AddMinutes(-1),
+        VerifierClientId: verifierClientId,
+        CredentialType: "https://sorcha.dev/vc/assured-identity/v1",
+        RequiredClaimNames: ["givenName", "familyName"],
+        PublicBaseUrl: "https://gateway.example",
+        Nonce: "ctx-nonce-1",
+        ExpiresAt: expiresAt ?? DateTimeOffset.UtcNow.AddMinutes(5));
+
+    [Fact]
+    public async Task VerifyAsync_NoPayloadSession_ReconstructsSessionFromContext()
+    {
+        // The wallet posts only {vpToken} — the session the validator needs is rebuilt
+        // from the pending-presentation context (nonce, vct, required claims, client id).
+        VerifierSession? seen = null;
+        _validator
+            .Setup(v => v.ValidateAsync(It.IsAny<VerifierSession>(), "vp-token", null, It.IsAny<CancellationToken>()))
+            .Callback((VerifierSession s, string _, string? _, CancellationToken _) => seen = s)
+            .ReturnsAsync(new VerificationOutcome
+            {
+                Accepted = true,
+                DisclosedClaims = new Dictionary<string, object?>
+                {
+                    ["givenName"] = "Sarah",
+                    ["familyName"] = "Example"
+                },
+                Errors = [],
+                CompletedAt = DateTimeOffset.UtcNow
+            });
+
+        var outcome = await _sut.VerifyAsync(
+            ContextWithSession(verifierClientId: "did:sorcha:org:aias"),
+            new SorchaWalletVerificationPayload { VpToken = "vp-token", Session = null },
+            CancellationToken.None);
+
+        outcome.Kind.Should().Be(PresentationOutcomeKind.Success);
+        seen.Should().NotBeNull("the consumer must rebuild the VerifierSession from the context");
+        seen!.Nonce.Should().Be("ctx-nonce-1", "the KB-JWT nonce check binds to the initiation nonce");
+        seen.RequiredVct.Should().Be("https://sorcha.dev/vc/assured-identity/v1");
+        seen.RequiredClaims.Should().BeEquivalentTo(["givenName", "familyName"]);
+        seen.ClientId.Should().Be("did:sorcha:org:aias",
+            "the KB-JWT aud check must bind to the SAME client_id the request object carried");
+    }
+
+    [Fact]
+    public async Task VerifyAsync_ReconstructedSession_ClientIdFallback_MatchesTheRequestObjectPlaceholder()
+    {
+        // BuildInitiationAsync serves client_id 'did:sorcha:org:UNKNOWN' when no verifier DID
+        // resolves; the reconstructed session must use the SAME fallback or the wallet's
+        // aud-bound KB-JWT can never verify.
+        VerifierSession? seen = null;
+        _validator
+            .Setup(v => v.ValidateAsync(It.IsAny<VerifierSession>(), It.IsAny<string>(), null, It.IsAny<CancellationToken>()))
+            .Callback((VerifierSession s, string _, string? _, CancellationToken _) => seen = s)
+            .ReturnsAsync(new VerificationOutcome
+            {
+                Accepted = true,
+                DisclosedClaims = new Dictionary<string, object?>
+                {
+                    ["givenName"] = "S",
+                    ["familyName"] = "E"
+                },
+                Errors = [],
+                CompletedAt = DateTimeOffset.UtcNow
+            });
+
+        await _sut.VerifyAsync(
+            ContextWithSession(verifierClientId: null),
+            new SorchaWalletVerificationPayload { VpToken = "vp", Session = null },
+            CancellationToken.None);
+
+        var descriptor = await _sut.BuildInitiationAsync(
+            ContextWithSession(verifierClientId: null), CancellationToken.None);
+        var servedClientId = System.Web.HttpUtility.ParseQueryString(
+            new Uri(descriptor.AuthorizationRequestUri.Replace("openid4vp://authorize", "https://x/a")).Query)["client_id"];
+
+        seen!.ClientId.Should().Be(servedClientId,
+            "session ClientId and request-object client_id must come from the same resolution rule");
+    }
+
+    [Fact]
+    public async Task VerifyAsync_ContextSessionExpired_DeclinesNamed_AndNeverValidates()
+    {
+        var outcome = await _sut.VerifyAsync(
+            ContextWithSession(expiresAt: DateTimeOffset.UtcNow.AddMinutes(-2)),
+            new SorchaWalletVerificationPayload { VpToken = "vp", Session = null },
+            CancellationToken.None);
+
+        outcome.Kind.Should().Be(PresentationOutcomeKind.Decline);
+        outcome.VerifierDiagnostics.Should().NotBeNull();
+        outcome.VerifierDiagnostics!["error"].Should().Be("session-expired",
+            "an expired session must be distinguishable from an unknown one");
+        _validator.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task VerifyAsync_ContextWithoutNonce_StaysSessionMissing()
+    {
+        // A context that predates the session wiring (no nonce persisted) cannot form a
+        // verifiable session — the named session-missing decline is preserved.
+        var outcome = await _sut.VerifyAsync(
+            NewContext(),
+            new SorchaWalletVerificationPayload { VpToken = "vp", Session = null },
+            CancellationToken.None);
+
+        outcome.Kind.Should().Be(PresentationOutcomeKind.Decline);
+        outcome.VerifierDiagnostics!["error"].Should().Be("session-missing");
+        _validator.VerifyNoOtherCalls();
     }
 
     [Fact]

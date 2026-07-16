@@ -271,6 +271,16 @@ public static class ServiceCollectionExtensions
             .AddHttpMessageHandler<BearerTokenHandler>()
             .AddHttpMessageHandler<ServerClockHandler>();
 
+        // #1195 Phase 2 (Task 6) — "Bind to device": presents the holder-cnf AIAS root
+        // server-custody (KB-JWT signed by the wallet service via /presentations/sign-kb)
+        // and drives the device-registration blueprint. The typed HttpClient carries the
+        // bearer chain for the direct_post + request-object fetch.
+        services.AddSingleton(new DeviceBindingOptions());
+        services.AddHttpClient<IDeviceBindingService, DeviceBindingService>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+
         // Feature 128 — shared has-any-device probe. Drives the wallet PWA
         // pairing-takeover trigger (sub-PR A3) and the Sorcha Web nag-banner
         // trigger (sub-PR B). Registered Singleton so the cached value +

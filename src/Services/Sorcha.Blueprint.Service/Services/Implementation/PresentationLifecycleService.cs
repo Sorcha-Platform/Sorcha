@@ -157,6 +157,10 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         //    HAIP delegates to its external service; non-HAIP consumers use the
         //    F127 BuildInitiationAsync extension on IPresentationConsumer.
         InitiationDescriptor descriptor;
+        // #1195 Phase 2 (Task 6b) — hoisted so the pending record can persist the verifier
+        // client_id the request object was served with (session reconstruction at callback
+        // time). Stays null on the HAIP path (HAIP owns its own session state).
+        string? verifierClientId = null;
         if (consumerName == "haip")
         {
             if (_haipClient is null)
@@ -206,7 +210,6 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             // emit a real client_id instead of did:sorcha:org:UNKNOWN. Best-effort:
             // a null result (no org id, unpublished DID doc, or transport failure)
             // leaves the consumer's placeholder fallback intact and never blocks the gate.
-            string? verifierClientId = null;
             if (_orgDidClient is not null
                 && !string.IsNullOrWhiteSpace(blueprint.OrganizationId)
                 && Guid.TryParse(blueprint.OrganizationId, out var orgGuid))
@@ -284,7 +287,16 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             OutcomeDetailLevel = (config.OutcomeDetailLevel ?? OutcomeDetailLevel.Minimal)
                 .ToString().ToLowerInvariant(),
             ValidityWindowSeconds = validityWindow,
-            CreatedAt = DateTimeOffset.UtcNow
+            CreatedAt = DateTimeOffset.UtcNow,
+            // #1195 Phase 2 (Task 6b, T032) — persist the verifier-session fields so the
+            // callback can rebuild the VerifierSession (nonce echo, vct/claim checks,
+            // KB-JWT audience). The pending row is the session record: single-use
+            // (deleted post-outcome) and TTL-bound (validity window).
+            Nonce = descriptor.Nonce,
+            VerifierClientId = verifierClientId,
+            CredentialType = credentialRequirement.Type,
+            RequiredClaimNames = credentialRequirement.RequiredClaims?
+                .Select(c => c.ClaimName).ToList()
         };
         await _pendingStore.StoreAsync(pending, cancellationToken);
 
@@ -464,7 +476,15 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             BlueprintId: pending.BlueprintId,
             SubmitterWallet: pending.SubmitterWallet,
             RequirementsDigest: Convert.FromHexString(pending.CredentialRequirementDigestHex),
-            InitiatedAt: pending.CreatedAt);
+            InitiatedAt: pending.CreatedAt,
+            // #1195 Phase 2 (Task 6b, T032) — the verifier-session fields persisted at
+            // initiation ride back to the consumer so it can rebuild the VerifierSession.
+            // Null on legacy pending entries ⇒ the consumer keeps its session-missing decline.
+            VerifierClientId: pending.VerifierClientId,
+            CredentialType: pending.CredentialType,
+            RequiredClaimNames: pending.RequiredClaimNames,
+            Nonce: pending.Nonce,
+            ExpiresAt: pending.CreatedAt.AddSeconds(pending.ValidityWindowSeconds));
 
         var outcome = await consumer.VerifyAsync(context, verifierPayload, cancellationToken);
 

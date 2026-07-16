@@ -19,6 +19,7 @@ using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Core.Services.Interfaces;
 using Sorcha.Wallet.Service.Credentials;
 using Sorcha.Wallet.Service.Services.Implementation;
+using Sorcha.Wallet.Service.Services.Interfaces;
 
 using StackExchange.Redis;
 
@@ -577,6 +578,7 @@ public static class CredentialEndpoints
         Sorcha.Wallet.Service.Services.Implementation.IWalletInboxWriter inboxWriter,
         Sorcha.Wallet.Service.Services.Interfaces.IIssuanceKeyService? issuanceKeyService = null,
         IOrgCertChainProvider? orgCertChainProvider = null,
+        Sorcha.Wallet.Service.Services.Interfaces.IDeviceBoundCopyIssuanceCoordinator? deviceBoundCoordinator = null,
         CancellationToken cancellationToken = default)
     {
         // 1. Get the issuer wallet
@@ -719,7 +721,74 @@ public static class CredentialEndpoints
             ? null
             : JsonSerializer.Serialize(new CredentialDisplayConfig { CredentialName = request.DisplayName });
 
-        if (!string.IsNullOrEmpty(request.StatusListUrl) && request.StatusListIndex.HasValue)
+        // Feature 1195 Phase 2 — device-bound copy cap + eviction. A device-bound AIAS copy
+        // carries a cnf that is NOT the recipient's holder key; the coordinator detects this,
+        // runs the max-3 LRU policy BEFORE signing, and allocates a wallet-owned (F114)
+        // status-list slot so the copy is revocable. The holder-bound web root, a non-citizen
+        // recipient, and unbound mints return null → issuance proceeds unchanged. A thrown
+        // reconcile (eviction revoke failed) aborts the mint — no credential is signed or stored.
+        var effectiveStatusListUrl = request.StatusListUrl;
+        var effectiveStatusListIndex = request.StatusListIndex;
+        var effectiveStatusForm = request.StatusClaimForm;
+
+        if (deviceBoundCoordinator is not null
+            && request.HolderJwk.HasValue
+            && Guid.TryParse(request.TenantId, out var deviceBoundOrgId))
+        {
+            DeviceBoundMintPlan? deviceBoundPlan;
+            try
+            {
+                deviceBoundPlan = await deviceBoundCoordinator.PrepareAsync(
+                    request.RecipientWallet, vct, request.HolderJwk.Value, deviceBoundOrgId, cancellationToken);
+            }
+            catch (DeviceBoundPolicyRefusalException ex)
+            {
+                // Policy REFUSAL — the cap could not be honoured (eviction/replacement revoke
+                // failed). 409: retrying as-is won't help until the copy state changes.
+                logger.LogWarning(ex,
+                    "Device-bound copy policy refused issuance of '{Vct}' for recipient {Recipient} — no credential issued",
+                    vct, request.RecipientWallet);
+                return Results.Problem(
+                    title: "Device-bound credential policy failed",
+                    detail: "The device-bound credential copy could not be issued: the eviction policy "
+                        + "could not revoke an existing copy. No credential was issued.",
+                    statusCode: StatusCodes.Status409Conflict);
+            }
+            catch (Exception ex)
+            {
+                // Infrastructure FAULT (holder-key resolution, status-slot allocation, …) —
+                // transient and retryable, so 503. Generic detail: never leak internals.
+                logger.LogError(ex,
+                    "Device-bound copy coordination faulted issuing '{Vct}' for recipient {Recipient} — no credential issued",
+                    vct, request.RecipientWallet);
+                return Results.Problem(
+                    title: "Credential issuance temporarily unavailable",
+                    detail: "The credential could not be issued right now. Please retry shortly. "
+                        + "No credential was issued.",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+
+            if (deviceBoundPlan is not null)
+            {
+                // M-3 (#1195 Phase 2) — eviction-then-mint-failure window: PrepareAsync ran the
+                // LRU policy and may already have EVICTED (revoked) the oldest copy before we reach
+                // the signing below. If signing then fails, the user is momentarily below the cap
+                // (e.g. 2 copies instead of 3). This is fail-safe BY DESIGN: the invariant is
+                // "never MORE than 3, never an orphaned status slot" — being temporarily under is
+                // harmless and self-heals on retry (the citizen re-binds and a fresh slot is taken).
+                // We deliberately do NOT try to "un-evict": resurrecting a revoked copy would be the
+                // more dangerous failure mode.
+                //
+                // Override any engine-supplied allocation with the wallet-owned F114 slot so
+                // the citizen status-list publisher can flip it on eviction. F114 lists are
+                // IETF Token Status List (statuslist+jwt), so force the IETF claim shape.
+                effectiveStatusListUrl = deviceBoundPlan.StatusListUrl;
+                effectiveStatusListIndex = deviceBoundPlan.StatusListIndex;
+                effectiveStatusForm = Sorcha.Wallet.Service.Models.StatusClaimForm.IetfTokenStatusList;
+            }
+        }
+
+        if (!string.IsNullOrEmpty(effectiveStatusListUrl) && effectiveStatusListIndex.HasValue)
         {
             var purpose = string.IsNullOrWhiteSpace(request.StatusListPurpose)
                 ? "revocation"
@@ -729,14 +798,14 @@ public static class CredentialEndpoints
             // wallets can read status via IETF Token Status List semantics; internal
             // callers keep the W3C shape to preserve spec 093 behaviour. Exactly one
             // shape is embedded per credential — callers cannot opt into both.
-            if (request.StatusClaimForm == Sorcha.Wallet.Service.Models.StatusClaimForm.IetfTokenStatusList)
+            if (effectiveStatusForm == Sorcha.Wallet.Service.Models.StatusClaimForm.IetfTokenStatusList)
             {
                 claims["status"] = new Dictionary<string, object>
                 {
                     ["status_list"] = new Dictionary<string, object>
                     {
-                        ["uri"] = request.StatusListUrl!,
-                        ["idx"] = request.StatusListIndex.Value,
+                        ["uri"] = effectiveStatusListUrl!,
+                        ["idx"] = effectiveStatusListIndex.Value,
                     },
                 };
             }
@@ -744,11 +813,11 @@ public static class CredentialEndpoints
             {
                 claims["credentialStatus"] = new Dictionary<string, object>
                 {
-                    ["id"] = $"{request.StatusListUrl}#{request.StatusListIndex.Value}",
+                    ["id"] = $"{effectiveStatusListUrl}#{effectiveStatusListIndex.Value}",
                     ["type"] = "BitstringStatusListEntry",
                     ["statusPurpose"] = purpose,
-                    ["statusListIndex"] = request.StatusListIndex.Value.ToString(),
-                    ["statusListCredential"] = request.StatusListUrl!
+                    ["statusListIndex"] = effectiveStatusListIndex.Value.ToString(),
+                    ["statusListCredential"] = effectiveStatusListUrl!
                 };
             }
         }
@@ -827,8 +896,8 @@ public static class CredentialEndpoints
             IssuerOrgName = request.IssuerOrgName,
             WalletAddress = walletAddress,
             CreatedAt = DateTimeOffset.UtcNow,
-            StatusListUrl = request.StatusListUrl,
-            StatusListIndex = request.StatusListIndex,
+            StatusListUrl = effectiveStatusListUrl,
+            StatusListIndex = effectiveStatusListIndex,
             DisplayConfigJson = displayConfigJson
         };
         await store.StoreAsync(issuerEntity, cancellationToken);
@@ -857,8 +926,8 @@ public static class CredentialEndpoints
                     IssuanceBlueprintId = request.IssuanceBlueprintId,
                     WalletAddress = request.RecipientWallet,
                     CreatedAt = DateTimeOffset.UtcNow,
-                    StatusListUrl = request.StatusListUrl,
-                    StatusListIndex = request.StatusListIndex,
+                    StatusListUrl = effectiveStatusListUrl,
+                    StatusListIndex = effectiveStatusListIndex,
                     DisplayConfigJson = displayConfigJson
                 };
                 await store.StoreAsync(recipientEntity, cancellationToken);

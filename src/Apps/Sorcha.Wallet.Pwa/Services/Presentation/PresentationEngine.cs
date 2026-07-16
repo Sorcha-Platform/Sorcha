@@ -334,6 +334,8 @@ public sealed class PresentationEngine : IPresentationEngine
         ParsedPresentationRequest request,
         JsonElement deviceJwk,
         Func<byte[], CancellationToken, Task<byte[]>> deviceSigner,
+        JsonElement? holderJwk = null,
+        Func<byte[], CancellationToken, Task<byte[]>>? holderSigner = null,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(consented);
@@ -343,7 +345,10 @@ public sealed class PresentationEngine : IPresentationEngine
             throw new InvalidOperationException("A presentation must carry at least one consented query.");
         }
 
-        // One SD-JWT presentation per query, each validated against its own required-claim set.
+        // One SD-JWT presentation per query, each validated against its own required-claim set and
+        // signed under ITS OWN mode (#1195 Phase 2, Task 7 fix round 2). Mixed modes compose: every
+        // presentation carries an independent KB-JWT and the verifier validates each against its own
+        // credential's cnf — there is no envelope-level signature.
         var presentations = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         foreach (var c in consented)
         {
@@ -351,8 +356,34 @@ public sealed class PresentationEngine : IPresentationEngine
             {
                 throw new InvalidOperationException($"Duplicate query id '{c.QueryId}' in the consented set.");
             }
+
+            JsonElement jwk;
+            Func<byte[], CancellationToken, Task<byte[]>> signer;
+            if (c.SigningMode == PresentationSigningMode.ServerCustody)
+            {
+                // FAIL LOUD, never fall back: a device-signed holder-cnf root is the recorded trap —
+                // it fails verification downstream with no local error.
+                if (holderJwk is null || holderSigner is null)
+                {
+                    throw new InvalidOperationException(
+                        $"Query '{c.QueryId}' requires server-custody signing but no holder signer was provided.");
+                }
+                jwk = holderJwk.Value;
+                signer = holderSigner;
+            }
+            else
+            {
+                if (deviceJwk.ValueKind == JsonValueKind.Undefined)
+                {
+                    throw new InvalidOperationException(
+                        $"Query '{c.QueryId}' requires device signing but no device key was provided.");
+                }
+                jwk = deviceJwk;
+                signer = deviceSigner;
+            }
+
             var vp = await BuildSinglePresentationAsync(
-                c.Match, c.ApprovedClaims, c.RequiredClaims, request, deviceJwk, deviceSigner, ct);
+                c.Match, c.ApprovedClaims, c.RequiredClaims, request, jwk, signer, ct);
             presentations[c.QueryId] = [vp];
         }
 
@@ -410,11 +441,15 @@ public sealed class PresentationEngine : IPresentationEngine
             }
         }
 
-        // KB-JWT — header carries the device-key thumbprint as kid; payload binds nonce+aud.
+        // KB-JWT — header carries the signing key's thumbprint as kid; payload binds nonce+aud.
+        // The alg follows the SIGNING key's JWK (#1195 Phase 2): the device key is EC P-256
+        // (ES256), but a holder-cnf root presented server-custody may sign under an Ed25519
+        // holder key (EdDSA). Hardcoding ES256 here was the mirror image of the verifier-side
+        // "ES256-only verifier rejected Ed25519-holder presentations" bug.
         var kid = ComputeJwkThumbprint(deviceJwk);
         var header = new Dictionary<string, object>
         {
-            ["alg"] = "ES256",
+            ["alg"] = JoseAlgorithmFor(deviceJwk),
             ["typ"] = "kb+jwt",
             ["kid"] = kid,
         };
@@ -495,14 +530,156 @@ public sealed class PresentationEngine : IPresentationEngine
         }
     }
 
-    /// <summary>Compute the RFC 7638 JWK thumbprint for an EC P-256 public JWK.</summary>
+    /// <summary>
+    /// Compute the RFC 7638 JWK thumbprint. Handles EC (P-256 — canonical members
+    /// crv, kty, x, y) and OKP (Ed25519 — canonical members crv, kty, x). The OKP arm
+    /// exists for the holder-cnf root (#1195 Phase 2): the citizen's server-custodied
+    /// holder key is Ed25519 for the default wallet algorithm.
+    /// </summary>
     internal static string ComputeJwkThumbprint(JsonElement jwk)
     {
         var crv = jwk.GetProperty("crv").GetString();
         var kty = jwk.GetProperty("kty").GetString();
         var x = jwk.GetProperty("x").GetString();
-        var y = jwk.GetProperty("y").GetString();
-        var canonical = $"{{\"crv\":\"{crv}\",\"kty\":\"{kty}\",\"x\":\"{x}\",\"y\":\"{y}\"}}";
+        var canonical = string.Equals(kty, "OKP", StringComparison.Ordinal)
+            ? $"{{\"crv\":\"{crv}\",\"kty\":\"{kty}\",\"x\":\"{x}\"}}"
+            : $"{{\"crv\":\"{crv}\",\"kty\":\"{kty}\",\"x\":\"{x}\",\"y\":\"{jwk.GetProperty("y").GetString()}\"}}";
         return Base64Url.EncodeToString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
+
+    /// <inheritdoc />
+    public PresentationSelection Select(
+        ParsedPresentationRequest request,
+        IReadOnlyList<CachedCredential> credentials,
+        string? deviceThumbprint,
+        string? holderThumbprint,
+        PresentationSurface surface = PresentationSurface.Auto)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(credentials);
+
+        // Only credentials that actually satisfy the request are candidates. Classify each by its key
+        // binding relative to THIS device: a copy we can device-sign, the holder-cnf root (server
+        // custody), a legacy unbound credential (Phase-1 device-signed), a foreign device's copy
+        // (never selectable here), or unclassifiable (bound, but no holder thumbprint to compare).
+        CredentialMatch? deviceCopy = null;
+        CredentialMatch? root = null;
+        var unbound = new List<CredentialMatch>();
+        var sawUnknown = false;
+        foreach (var candidate in Match(request, credentials))
+        {
+            switch (ClassifyBinding(candidate.Credential.RawSdJwt, deviceThumbprint, holderThumbprint))
+            {
+                case CredentialBinding.ThisDevice:
+                    deviceCopy ??= candidate;
+                    break;
+                case CredentialBinding.HolderRoot:
+                    root ??= candidate;
+                    break;
+                case CredentialBinding.Unbound:
+                    unbound.Add(candidate);
+                    break;
+                case CredentialBinding.Unknown:
+                    sawUnknown = true;
+                    break;
+                // CredentialBinding.Foreign — never selectable on this device.
+            }
+        }
+
+        // The root + this-device copy are ONE credential family — one identity, two bindings — so
+        // they collapse to a single per-surface representative and never offer a picker between
+        // themselves. Every legacy unbound credential is a genuinely DISTINCT candidate.
+        PresentationCandidate? boundRepresentative = surface switch
+        {
+            // In person / offline: device-signed only. The root itself is never presentable here —
+            // device-signing it produces a KB-JWT that fails verification with no local error.
+            PresentationSurface.InPerson => deviceCopy is not null
+                ? new PresentationCandidate(deviceCopy, PresentationSigningMode.Device)
+                : null,
+
+            // Web / remote: the root (server custody) first; a this-device copy stands in without one.
+            PresentationSurface.Remote => root is not null
+                ? new PresentationCandidate(root, PresentationSigningMode.ServerCustody)
+                : deviceCopy is not null
+                    ? new PresentationCandidate(deviceCopy, PresentationSigningMode.Device)
+                    : null,
+
+            // Auto (default): prefer the copy this device can sign for, else the root.
+            _ => deviceCopy is not null
+                ? new PresentationCandidate(deviceCopy, PresentationSigningMode.Device)
+                : root is not null
+                    ? new PresentationCandidate(root, PresentationSigningMode.ServerCustody)
+                    : null,
+        };
+
+        var candidates = new List<PresentationCandidate>(1 + unbound.Count);
+        if (boundRepresentative is not null) candidates.Add(boundRepresentative);
+        candidates.AddRange(unbound.Select(u => new PresentationCandidate(u, PresentationSigningMode.Device)));
+
+        if (candidates.Count == 1)
+            return PresentationSelection.Selected(candidates[0].Match, candidates[0].SigningMode);
+        if (candidates.Count > 1)
+            return PresentationSelection.Choice(candidates);
+
+        // Nothing presentable. In person, a root that COULD satisfy the ask is the distinct
+        // bind-first outcome (route to the Task 6 button) — never a doomed present. Otherwise an
+        // unclassifiable bound candidate fails closed; an empty field is a plain no-match.
+        if (surface == PresentationSurface.InPerson && root is not null)
+            return PresentationSelection.BindFirst(root);
+        return sawUnknown ? PresentationSelection.HolderKeyUnavailable : PresentationSelection.None;
+    }
+
+    /// <summary>The key binding of a cached credential relative to THIS device (#1195 Phase 2, Task 7).</summary>
+    internal enum CredentialBinding
+    {
+        /// <summary>Its <c>cnf</c> thumbprint is the citizen's holder key — the root, presented server-custody.</summary>
+        HolderRoot,
+
+        /// <summary>Its <c>cnf</c> thumbprint is THIS device's key — a device copy this device can sign.</summary>
+        ThisDevice,
+
+        /// <summary>No readable <c>cnf</c> — a legacy credential; keeps its Phase-1 device-signed behaviour.</summary>
+        Unbound,
+
+        /// <summary>A different device's copy (cnf matches neither key) — never selectable here.</summary>
+        Foreign,
+
+        /// <summary>Bound to SOMETHING that is not this device, and no holder thumbprint to compare —
+        /// root and foreign copy cannot be told apart. Selection fails closed, never guesses.</summary>
+        Unknown,
+    }
+
+    /// <summary>
+    /// Classify a cached credential's key binding relative to THIS device. Discrimination is purely by
+    /// RFC 7638 <c>cnf.jwk</c> thumbprint (via <see cref="DeviceBindingService.TryGetCnfJwkThumbprint"/>,
+    /// the Task 6 helper) against BOTH the device key and the holder key — the same rule the Task 5
+    /// server-side policy uses. Key-TYPE discrimination is deliberately absent: a P-256 wallet's holder
+    /// key (and therefore its root's <c>cnf</c>) is EC, indistinguishable from a device key by type.
+    /// This layer guards the recorded trap: device-signing the root, or signing a foreign device's copy,
+    /// yields a KB-JWT that fails verification downstream with no local error.
+    /// </summary>
+    internal static CredentialBinding ClassifyBinding(
+        string rawSdJwt, string? deviceThumbprint, string? holderThumbprint)
+    {
+        if (!DeviceBindingService.TryGetCnfJwkThumbprint(rawSdJwt, out var cnfThumbprint))
+            return CredentialBinding.Unbound;
+
+        if (!string.IsNullOrEmpty(deviceThumbprint) &&
+            string.Equals(cnfThumbprint, deviceThumbprint, StringComparison.Ordinal))
+            return CredentialBinding.ThisDevice;
+
+        if (string.IsNullOrEmpty(holderThumbprint))
+            return CredentialBinding.Unknown;
+
+        return string.Equals(cnfThumbprint, holderThumbprint, StringComparison.Ordinal)
+            ? CredentialBinding.HolderRoot
+            : CredentialBinding.Foreign;
+    }
+
+    /// <summary>The JOSE alg for a signing key's public JWK: OKP/Ed25519 → EdDSA; EC P-256 → ES256.</summary>
+    internal static string JoseAlgorithmFor(JsonElement jwk) =>
+        jwk.TryGetProperty("kty", out var kty) &&
+        string.Equals(kty.GetString(), "OKP", StringComparison.Ordinal)
+            ? "EdDSA"
+            : "ES256";
 }

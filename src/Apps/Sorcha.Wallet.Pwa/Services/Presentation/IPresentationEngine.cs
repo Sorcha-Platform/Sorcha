@@ -74,10 +74,20 @@ public interface IPresentationEngine
     /// signed by the device key and only the approved disclosure subset for that query.
     /// </summary>
     /// <param name="consented">The per-query disclosure plan the citizen approved (one entry per
-    /// query being presented).</param>
+    /// query being presented). Each entry carries its own <see cref="ConsentedQuery.SigningMode"/> —
+    /// mixed modes within one envelope are valid: every query's presentation is an independent
+    /// SD-JWT with its own KB-JWT, and the verifier validates each against its own credential's
+    /// <c>cnf</c> (no envelope-level signature exists).</param>
     /// <param name="request">The original request (nonce + audience binding).</param>
-    /// <param name="deviceJwk">Public JWK of the device key.</param>
+    /// <param name="deviceJwk">Public JWK of the device key — used by
+    /// <see cref="PresentationSigningMode.Device"/> entries.</param>
     /// <param name="deviceSigner">Async delegate that signs raw bytes with the device key.</param>
+    /// <param name="holderJwk">Public JWK of the citizen's server-custodied holder key — REQUIRED when
+    /// any entry is <see cref="PresentationSigningMode.ServerCustody"/> (#1195 Phase 2: the holder-cnf
+    /// root must never be device-signed; that KB-JWT fails verification with no local error).</param>
+    /// <param name="holderSigner">Async delegate for server-custody signing (the Task 6a
+    /// <c>sign-kb</c> endpoint). Absent while a ServerCustody entry exists ⇒ the build FAILS LOUDLY —
+    /// it never falls back to device-signing.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The JSON object-keyed <c>vp_token</c> string ready for the direct_post body.</returns>
     Task<string> BuildVpTokenEnvelopeAsync(
@@ -85,7 +95,178 @@ public interface IPresentationEngine
         ParsedPresentationRequest request,
         System.Text.Json.JsonElement deviceJwk,
         Func<byte[], CancellationToken, Task<byte[]>> deviceSigner,
+        System.Text.Json.JsonElement? holderJwk = null,
+        Func<byte[], CancellationToken, Task<byte[]>>? holderSigner = null,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// #1195 Phase 2 (Task 7) — choose the RIGHT credential + signing path for the present
+    /// <paramref name="surface"/>, so a presentation that cannot verify downstream is never even
+    /// attempted (standing requirement: no silent verification failures). A citizen may hold BOTH a
+    /// holder-<c>cnf</c> AIAS root (web-issued; presents SERVER-CUSTODY — the wallet service signs the
+    /// KB-JWT) AND device-<c>cnf</c> copies bound to specific devices (this device signs).
+    ///
+    /// <para>Selection rule (design §6):</para>
+    /// <list type="bullet">
+    /// <item><b>In-person / offline / device-mediated</b> → a device-<c>cnf</c> copy bound to THIS device
+    /// (device signs). None on this device but the root is present ⇒
+    /// <see cref="PresentationSelectionOutcome.BindDeviceFirst"/> — the UI routes to the Task 6 "Bind to
+    /// device" button; NEVER a doomed present.</item>
+    /// <item><b>Web / remote / server-mediated</b> → the holder-<c>cnf</c> root (server custody).</item>
+    /// <item><b>Auto</b> (default) → prefer a device copy this device can sign for, else the root.</item>
+    /// </list>
+    ///
+    /// <para>The layer is the guard for the recorded trap: device-signing the holder-<c>cnf</c> root
+    /// produces a KB-JWT that fails verification downstream with no local error. The root is therefore
+    /// NEVER paired with device-signing, and a device copy this device cannot sign for (a DIFFERENT
+    /// device's key) is never selected. Discrimination is by RFC 7638 <c>cnf.jwk</c> thumbprint against
+    /// BOTH keys — never by key type, which would misclassify a P-256 wallet's EC holder root. A
+    /// credential with no readable <c>cnf</c> is legacy/unbound and keeps its Phase-1 device-signed
+    /// behaviour (there is no binding for a verifier to check).</para>
+    /// </summary>
+    /// <param name="request">The parsed present request.</param>
+    /// <param name="credentials">The wallet's cached credentials (root + any device copies).</param>
+    /// <param name="deviceThumbprint">RFC 7638 thumbprint of THIS device's key
+    /// (<c>IDeviceKeyService.GetThumbprintAsync</c>), or <c>null</c> on a host without a usable device
+    /// key — in which case no device copy is signable here.</param>
+    /// <param name="holderThumbprint">RFC 7638 thumbprint of the citizen's server-custodied holder key
+    /// (compute from <c>IHolderKeyClient.GetHolderKeysAsync().HolderJwk</c>), or <c>null</c> when it
+    /// could not be resolved — in which case a bound credential that is not THIS device's copy cannot be
+    /// classified and selection fails CLOSED with
+    /// <see cref="PresentationSelectionOutcome.HolderKeyUnavailable"/> rather than guessing.</param>
+    /// <param name="surface">The present surface. Defaults to <see cref="PresentationSurface.Auto"/>.</param>
+    PresentationSelection Select(
+        ParsedPresentationRequest request,
+        IReadOnlyList<CachedCredential> credentials,
+        string? deviceThumbprint,
+        string? holderThumbprint,
+        PresentationSurface surface = PresentationSurface.Auto);
+}
+
+/// <summary>
+/// The present surface, which decides WHICH credential + signing path a presentation uses
+/// (#1195 Phase 2, design §6). The tier follows the surface, not the credential the citizen
+/// picked — a device copy is device-signed in person; the root is server-custody signed remotely.
+/// </summary>
+public enum PresentationSurface
+{
+    /// <summary>
+    /// No explicit surface signal: prefer a device-<c>cnf</c> copy this device can sign for, else the
+    /// holder-<c>cnf</c> root (server custody). The additive default so existing callers are unaffected.
+    /// </summary>
+    Auto = 0,
+
+    /// <summary>
+    /// In-person / offline / device-mediated present (F185 proximity): REQUIRES a device-<c>cnf</c>
+    /// copy bound to this device. No copy but a bindable root present ⇒ <see cref="PresentationSelectionOutcome.BindDeviceFirst"/>.
+    /// </summary>
+    InPerson = 1,
+
+    /// <summary>
+    /// Web / remote / server-mediated present (<c>openid4vp://</c> <c>direct_post</c>): the holder-<c>cnf</c>
+    /// root, signed server-custody. Falls back to a this-device copy only when no root is cached.
+    /// </summary>
+    Remote = 2,
+}
+
+/// <summary>Which key signs the KB-JWT for the selected credential (#1195 Phase 2).</summary>
+public enum PresentationSigningMode
+{
+    /// <summary>THIS device's key signs the KB-JWT (<c>IDeviceKeyService.SignAsync</c>) — a device-<c>cnf</c> copy.</summary>
+    Device = 0,
+
+    /// <summary>The wallet service signs the KB-JWT under the citizen's holder key (server custody,
+    /// <c>POST /api/v1/wallet/presentations/sign-kb</c>) — the holder-<c>cnf</c> root.</summary>
+    ServerCustody = 1,
+}
+
+/// <summary>The kind of a <see cref="PresentationSelection"/> result.</summary>
+public enum PresentationSelectionOutcome
+{
+    /// <summary>A credential was selected; <see cref="PresentationSelection.Match"/> and
+    /// <see cref="PresentationSelection.SigningMode"/> are set.</summary>
+    Selected = 0,
+
+    /// <summary>No cached credential can satisfy this request on this surface.</summary>
+    NoMatch = 1,
+
+    /// <summary>
+    /// An in-person / offline present was requested, the root can satisfy it, but THIS device holds no
+    /// device-<c>cnf</c> copy yet. The UI routes to the Task 6 "Bind to device" flow — this is a DISTINCT
+    /// outcome, never a present that cannot verify. <see cref="PresentationSelection.RootToBind"/> carries
+    /// the root so the UI can deep-link its credential card.
+    /// </summary>
+    BindDeviceFirst = 2,
+
+    /// <summary>
+    /// The citizen's holder-key thumbprint could not be resolved, and the only candidates are bound
+    /// credentials that are not THIS device's copy — they cannot be told apart (root vs a foreign
+    /// device's copy), so selection fails CLOSED rather than risking a presentation that cannot verify.
+    /// A retry after the holder key becomes reachable resolves it.
+    /// </summary>
+    HolderKeyUnavailable = 3,
+
+    /// <summary>
+    /// After collapsing the root + this-device-copy pair (the same credential family — one identity,
+    /// two bindings) into one per-surface representative, MULTIPLE genuinely distinct credentials
+    /// still match the ask. The citizen picks, exactly as before Task 7 —
+    /// <see cref="PresentationSelection.Candidates"/> carries the choices with their signing modes.
+    /// </summary>
+    ChoiceRequired = 4,
+}
+
+/// <summary>One pickable candidate in a <see cref="PresentationSelectionOutcome.ChoiceRequired"/>
+/// outcome: the credential plus HOW its KB-JWT is signed — the picker must carry the pairing through,
+/// never re-derive it.</summary>
+public sealed record PresentationCandidate(CredentialMatch Match, PresentationSigningMode SigningMode);
+
+/// <summary>
+/// The result of <see cref="IPresentationEngine.Select"/>: which credential to present and how to sign it,
+/// or a distinct non-present outcome. The caller must not re-derive the signing path — pairing the wrong
+/// signer with the wrong credential is exactly the failure this layer prevents.
+/// </summary>
+public sealed record PresentationSelection
+{
+    /// <summary>The result kind.</summary>
+    public required PresentationSelectionOutcome Outcome { get; init; }
+
+    /// <summary>The selected credential + disclosure plan. Non-null only when <see cref="Outcome"/> is
+    /// <see cref="PresentationSelectionOutcome.Selected"/>.</summary>
+    public CredentialMatch? Match { get; init; }
+
+    /// <summary>How to sign the KB-JWT for <see cref="Match"/>. Meaningful only when
+    /// <see cref="Outcome"/> is <see cref="PresentationSelectionOutcome.Selected"/>.</summary>
+    public PresentationSigningMode SigningMode { get; init; }
+
+    /// <summary>The holder-<c>cnf</c> root behind a
+    /// <see cref="PresentationSelectionOutcome.BindDeviceFirst"/> outcome, so the UI can route straight
+    /// to its credential card (the Task 6 bind button surface). Null for every other outcome.</summary>
+    public CredentialMatch? RootToBind { get; init; }
+
+    /// <summary>The distinct pickable candidates behind a
+    /// <see cref="PresentationSelectionOutcome.ChoiceRequired"/> outcome (each with its signing mode),
+    /// in selection-preference order. Null for every other outcome.</summary>
+    public IReadOnlyList<PresentationCandidate>? Candidates { get; init; }
+
+    /// <summary>A selected credential + its signing mode.</summary>
+    internal static PresentationSelection Selected(CredentialMatch match, PresentationSigningMode mode) =>
+        new() { Outcome = PresentationSelectionOutcome.Selected, Match = match, SigningMode = mode };
+
+    /// <summary>Nothing on this device can satisfy the request on this surface.</summary>
+    internal static PresentationSelection None { get; } =
+        new() { Outcome = PresentationSelectionOutcome.NoMatch };
+
+    /// <summary>The root is presentable but this device must be bound first.</summary>
+    internal static PresentationSelection BindFirst(CredentialMatch root) =>
+        new() { Outcome = PresentationSelectionOutcome.BindDeviceFirst, RootToBind = root };
+
+    /// <summary>Bound-but-unclassifiable candidates and no holder thumbprint — fail closed.</summary>
+    internal static PresentationSelection HolderKeyUnavailable { get; } =
+        new() { Outcome = PresentationSelectionOutcome.HolderKeyUnavailable };
+
+    /// <summary>Multiple genuinely distinct candidates — the citizen picks.</summary>
+    internal static PresentationSelection Choice(IReadOnlyList<PresentationCandidate> candidates) =>
+        new() { Outcome = PresentationSelectionOutcome.ChoiceRequired, Candidates = candidates };
 }
 
 /// <summary>
@@ -97,8 +278,13 @@ public interface IPresentationEngine
 /// <param name="Match">The credential the citizen chose for this query.</param>
 /// <param name="RequiredClaims">This query's required claim names.</param>
 /// <param name="ApprovedClaims">Claim names approved for disclosure (must cover every required claim).</param>
+/// <param name="SigningMode">Which key signs THIS query's KB-JWT (#1195 Phase 2, Task 7 fix round 2).
+/// Defaults to <see cref="PresentationSigningMode.Device"/> — the pre-Phase-2 behaviour. Callers must
+/// set <see cref="PresentationSigningMode.ServerCustody"/> for a holder-<c>cnf</c> root (classify via
+/// <c>PresentationEngine.ClassifyBinding</c>); device-signing the root is the recorded silent-failure trap.</param>
 public sealed record ConsentedQuery(
     string QueryId,
     CredentialMatch Match,
     IReadOnlyList<string> RequiredClaims,
-    IReadOnlyList<string> ApprovedClaims);
+    IReadOnlyList<string> ApprovedClaims,
+    PresentationSigningMode SigningMode = PresentationSigningMode.Device);

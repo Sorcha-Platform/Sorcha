@@ -112,6 +112,23 @@ public class StateReconstructionService : IStateReconstructionService
         var branchStates = new Dictionary<string, BranchState>();
         string? previousTransactionId = null;
 
+        // Feature 174 / #1195 Phase 2 — verified-presentation claims contributed by sealed
+        // PresentationOutcome success transactions, keyed by the gated action id. Folded into
+        // that action's reconstructed data under the reserved `presentedCredential` key after
+        // the main loop (so an Action tx for the same action can never clobber it, and the
+        // loop's timestamp ordering gives latest-sealed-wins for free).
+        var presentedCredentialByAction = new Dictionary<string, JsonElement>();
+
+        // Feature 174 / #1195 Phase 2 (continuation) — the gated action's own submitted payload.
+        // On the async presentation path NO regular Action tx is ever sealed for the gated action
+        // (execution returns AwaitingPresentation before any tx build; the outcome path writes only
+        // the lifecycle tx; the projector/advance only touch instance state). The outcome tx's
+        // `actionPayload` is therefore the ONLY durable record of what the citizen submitted (e.g.
+        // the deviceKey that a later issuance action's holderKeySourceField resolves). Contributed
+        // as the gated action's data AFTER the loop, and only as a FALLBACK — an ordinary Action tx
+        // for the same action stays authoritative so no existing flow changes.
+        var outcomeActionPayloadByAction = new Dictionary<string, (JsonElement Payload, string TxId)>();
+
         foreach (var tx in transactions.OrderBy(t => t.TimeStamp))
         {
             // Track the chain head on every instance tx — including rejections and
@@ -136,13 +153,45 @@ public class StateReconstructionService : IStateReconstructionService
                 continue;
             }
 
+            // Feature 174 / #1195 Phase 2 — async SorchaWallet gate. A sealed PresentationOutcome
+            // lifecycle tx for a required prior action contributes ONLY its verifiedClaims, surfaced
+            // under the reserved `presentedCredential` key so a later issuance action's claim
+            // mappings resolve /presentedCredential/* from the verified presentation. Trust posture:
+            // the outcome tx is written by the lifecycle service only AFTER verification, is sealed
+            // on the register, and is read here exactly like F145's RoutingDecision — the same
+            // tamper-evidence as any other sealed transaction. Guards: only kind=success outcomes
+            // contribute; malformed/missing verifiedClaims contribute nothing (fail closed); the
+            // loop's timestamp ordering means the latest sealed success outcome wins. Nothing else
+            // from a lifecycle tx feeds reconstructed action data.
+            if (tx.MetaData?.TransactionType == Sorcha.Register.Models.Enums.TransactionType.PresentationOutcome)
+            {
+                var contribution = TryExtractOutcomeContributions(tx);
+                if (contribution is not null)
+                {
+                    var gatedActionKey = txActionId.Value.ToString();
+                    presentedCredentialByAction[gatedActionKey] = contribution.Value.VerifiedClaims;
+                    if (contribution.Value.ActionPayload.HasValue)
+                    {
+                        outcomeActionPayloadByAction[gatedActionKey] =
+                            (contribution.Value.ActionPayload.Value, tx.TxId);
+                    }
+                }
+                continue;
+            }
+
             // Decrypt the payload using delegated access (or read plaintext for DevMode registers)
             var decryptedData = await DecryptTransactionPayloadAsync(
                 tx, delegationToken, participantWallets, registerDevMode, cancellationToken);
 
             if (decryptedData.HasValue)
             {
-                actionData[txActionId.Value.ToString()] = decryptedData.Value;
+                // Feature 174 / #1195 Phase 2 — `presentedCredential` is a RESERVED key that only a
+                // sealed PresentationOutcome success tx (above) may populate. Strip it from regular
+                // action-tx payloads so a client can never smuggle a spoofed presentedCredential
+                // through a prior action's submitted data and have it surface as the verified source
+                // at issuance (fail closed).
+                actionData[txActionId.Value.ToString()] =
+                    StripReservedPresentedCredential(decryptedData.Value, tx.TxId);
             }
 
             // Track branch states if present
@@ -151,6 +200,32 @@ public class StateReconstructionService : IStateReconstructionService
             {
                 branchStates[branchId] = BranchState.Active;
             }
+        }
+
+        // Feature 174 / #1195 Phase 2 (continuation) — fall back to the outcome tx's actionPayload
+        // as the gated action's data when no ordinary Action tx supplied any (the async-path case).
+        // The actionPayload is the CITIZEN's client-supplied draft submission, so the reserved-key
+        // strip applies to it exactly as to a regular Action tx's payload — `presentedCredential`
+        // remains populated only from verifiedClaims (folded below, after this).
+        foreach (var (gatedActionKey, (outcomePayload, outcomeTxId)) in outcomeActionPayloadByAction)
+        {
+            if (!actionData.ContainsKey(gatedActionKey))
+            {
+                actionData[gatedActionKey] = StripReservedPresentedCredential(outcomePayload, outcomeTxId);
+            }
+        }
+
+        // Feature 174 / #1195 Phase 2 — fold the verified-presentation claims into the gated
+        // action's reconstructed data under the reserved `presentedCredential` key. Merging AFTER
+        // the loop (and after the actionPayload fallback above) means neither an Action tx nor the
+        // client-supplied actionPayload can ever clobber the verified contribution, and the key
+        // ends up at the data root so AccumulatedState.GetFlattenedData surfaces it for the
+        // issuance source document.
+        foreach (var (gatedActionKey, verifiedClaims) in presentedCredentialByAction)
+        {
+            actionData[gatedActionKey] = MergePresentedCredentialIntoActionData(
+                actionData.TryGetValue(gatedActionKey, out var existing) ? existing : (JsonElement?)null,
+                verifiedClaims);
         }
 
         var state = new AccumulatedState
@@ -581,5 +656,131 @@ public class StateReconstructionService : IStateReconstructionService
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Feature 174 / #1195 Phase 2 — the reconstruction-relevant parts of a sealed
+    /// <c>PresentationOutcome</c> success transaction: the verifier-produced disclosed claims
+    /// (always present when the contribution is non-null) and the citizen's draft action payload
+    /// (present only when the outcome recorded one).
+    /// </summary>
+    private readonly record struct OutcomeContribution(JsonElement VerifiedClaims, JsonElement? ActionPayload);
+
+    /// <summary>
+    /// Feature 174 / #1195 Phase 2 — extracts the <c>verifiedClaims</c> object (and, when present,
+    /// the <c>actionPayload</c> object) from a sealed <c>PresentationOutcome</c> transaction's
+    /// plaintext payload (<c>ITransactionBuilderService.BuildPresentationOutcomeAsync</c> shape: the
+    /// validator seals the outcome's canonical JSON into <c>Payloads[0].Data</c> base64url-encoded).
+    /// Returns null — contributing nothing, fail closed — unless the payload parses, carries
+    /// <c>kind == "success"</c>, and has an object-valued <c>verifiedClaims</c>. A missing or
+    /// non-object <c>actionPayload</c> is simply omitted (the claims contribution stands alone).
+    /// </summary>
+    private OutcomeContribution? TryExtractOutcomeContributions(Sorcha.Register.Models.TransactionModel transaction)
+    {
+        try
+        {
+            var payload = transaction.Payloads?.FirstOrDefault();
+            if (payload == null || string.IsNullOrEmpty(payload.Data))
+            {
+                return null;
+            }
+
+            var payloadBytes = Sorcha.TransactionHandler.Services.ContentEncodings.DecodeBase64Auto(payload.Data);
+            using var doc = JsonDocument.Parse(payloadBytes);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            if (!root.TryGetProperty("kind", out var kindEl)
+                || kindEl.ValueKind != JsonValueKind.String
+                || !string.Equals(kindEl.GetString(), "success", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            if (!root.TryGetProperty("verifiedClaims", out var claimsEl)
+                || claimsEl.ValueKind != JsonValueKind.Object)
+            {
+                _logger.LogWarning(
+                    "PresentationOutcome tx {TxId} has kind=success but missing/malformed verifiedClaims — contributing nothing (fail closed)",
+                    transaction.TxId);
+                return null;
+            }
+
+            JsonElement? actionPayload = null;
+            if (root.TryGetProperty("actionPayload", out var actionPayloadEl)
+                && actionPayloadEl.ValueKind == JsonValueKind.Object)
+            {
+                actionPayload = actionPayloadEl.Clone();
+            }
+
+            return new OutcomeContribution(claimsEl.Clone(), actionPayload);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to read verifiedClaims from PresentationOutcome tx {TxId} — contributing nothing (fail closed)",
+                transaction.TxId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Feature 174 / #1195 Phase 2 — removes the reserved <c>presentedCredential</c> root property
+    /// from a regular action transaction's reconstructed payload. Only a sealed
+    /// <c>PresentationOutcome</c> success tx may populate that key (via
+    /// <see cref="TryExtractVerifiedClaimsFromOutcome"/>); a client-submitted field of the same name
+    /// sealed inside an Action tx must never surface as the verified claim source at issuance.
+    /// See <c>ActionExecutionService.PresentedCredentialClaimSourceKey</c> for the prefix contract.
+    /// </summary>
+    private JsonElement StripReservedPresentedCredential(JsonElement data, string txId)
+    {
+        if (data.ValueKind != JsonValueKind.Object
+            || !data.TryGetProperty(ActionExecutionService.PresentedCredentialClaimSourceKey, out _))
+        {
+            return data;
+        }
+
+        _logger.LogWarning(
+            "Action tx {TxId} payload carried the reserved '{ReservedKey}' key — stripped during reconstruction " +
+            "(only a sealed PresentationOutcome success tx may populate it)",
+            txId, ActionExecutionService.PresentedCredentialClaimSourceKey);
+
+        var rebuilt = new JsonObject();
+        foreach (var property in data.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, ActionExecutionService.PresentedCredentialClaimSourceKey, StringComparison.Ordinal))
+            {
+                rebuilt[property.Name] = JsonNode.Parse(property.Value.GetRawText());
+            }
+        }
+
+        using var doc = JsonDocument.Parse(rebuilt.ToJsonString());
+        return doc.RootElement.Clone();
+    }
+
+    /// <summary>
+    /// Feature 174 / #1195 Phase 2 — folds the verified-presentation claims into the gated action's
+    /// reconstructed data as <c>{ ..., "presentedCredential": { ...claims } }</c>, overwriting any
+    /// same-named property (the verified source always wins) and creating the action-data object
+    /// when the outcome tx is the action's only data-bearing transaction.
+    /// </summary>
+    private static JsonElement MergePresentedCredentialIntoActionData(JsonElement? existing, JsonElement verifiedClaims)
+    {
+        var merged = new JsonObject();
+        if (existing is { ValueKind: JsonValueKind.Object } existingObj)
+        {
+            foreach (var property in existingObj.EnumerateObject())
+            {
+                merged[property.Name] = JsonNode.Parse(property.Value.GetRawText());
+            }
+        }
+
+        merged[ActionExecutionService.PresentedCredentialClaimSourceKey] = JsonNode.Parse(verifiedClaims.GetRawText());
+
+        using var doc = JsonDocument.Parse(merged.ToJsonString());
+        return doc.RootElement.Clone();
     }
 }
