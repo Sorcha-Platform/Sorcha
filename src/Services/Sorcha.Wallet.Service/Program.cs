@@ -210,7 +210,20 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDelegation
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDeviceRevocationService,
     Sorcha.Wallet.Service.Services.Implementation.DeviceRevocationService>();
 
-// IDeviceBoundCredentialPolicy is registered in Task 5 alongside its lookup/revoker seams — registering it earlier fails ValidateOnBuild.
+// Feature 1195 (Phase 2): device-bound credential copy cap + LRU eviction. The policy and
+// its two seams (lookup + revoker) MUST be registered together — registering the policy
+// without concrete seams fails Development ValidateOnBuild at boot. The coordinator is the
+// mint-path entrypoint (CredentialEndpoints.IssueCredential) that runs the discriminator +
+// policy + F114 status-slot allocation. All scoped (they consume WalletDbContext / the
+// scoped citizen status-list + holder services).
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDeviceBoundCredentialLookup,
+    Sorcha.Wallet.Service.Services.Implementation.EfCoreDeviceBoundCredentialLookup>();
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDeviceBoundCredentialRevoker,
+    Sorcha.Wallet.Service.Services.Implementation.DeviceBoundCredentialRevoker>();
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDeviceBoundCredentialPolicy,
+    Sorcha.Wallet.Service.Services.Implementation.DeviceBoundCredentialPolicy>();
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDeviceBoundCopyIssuanceCoordinator,
+    Sorcha.Wallet.Service.Services.Implementation.DeviceBoundCopyIssuanceCoordinator>();
 
 // Feature 114 (US5): citizen presentation-log reporting. The reporter dedupes
 // each reported entry (Redis SET-NX, 24h) and forwards new ones via the forwarder

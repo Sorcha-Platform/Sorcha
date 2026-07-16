@@ -19,6 +19,7 @@ using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Core.Services.Interfaces;
 using Sorcha.Wallet.Service.Credentials;
 using Sorcha.Wallet.Service.Services.Implementation;
+using Sorcha.Wallet.Service.Services.Interfaces;
 
 using StackExchange.Redis;
 
@@ -577,6 +578,7 @@ public static class CredentialEndpoints
         Sorcha.Wallet.Service.Services.Implementation.IWalletInboxWriter inboxWriter,
         Sorcha.Wallet.Service.Services.Interfaces.IIssuanceKeyService? issuanceKeyService = null,
         IOrgCertChainProvider? orgCertChainProvider = null,
+        Sorcha.Wallet.Service.Services.Interfaces.IDeviceBoundCopyIssuanceCoordinator? deviceBoundCoordinator = null,
         CancellationToken cancellationToken = default)
     {
         // 1. Get the issuer wallet
@@ -719,7 +721,50 @@ public static class CredentialEndpoints
             ? null
             : JsonSerializer.Serialize(new CredentialDisplayConfig { CredentialName = request.DisplayName });
 
-        if (!string.IsNullOrEmpty(request.StatusListUrl) && request.StatusListIndex.HasValue)
+        // Feature 1195 Phase 2 — device-bound copy cap + eviction. A device-bound AIAS copy
+        // carries a cnf that is NOT the recipient's holder key; the coordinator detects this,
+        // runs the max-3 LRU policy BEFORE signing, and allocates a wallet-owned (F114)
+        // status-list slot so the copy is revocable. The holder-bound web root, a non-citizen
+        // recipient, and unbound mints return null → issuance proceeds unchanged. A thrown
+        // reconcile (eviction revoke failed) aborts the mint — no credential is signed or stored.
+        var effectiveStatusListUrl = request.StatusListUrl;
+        var effectiveStatusListIndex = request.StatusListIndex;
+        var effectiveStatusForm = request.StatusClaimForm;
+
+        if (deviceBoundCoordinator is not null
+            && request.HolderJwk.HasValue
+            && Guid.TryParse(request.TenantId, out var deviceBoundOrgId))
+        {
+            DeviceBoundMintPlan? deviceBoundPlan;
+            try
+            {
+                deviceBoundPlan = await deviceBoundCoordinator.PrepareAsync(
+                    request.RecipientWallet, vct, request.HolderJwk.Value, deviceBoundOrgId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "Device-bound copy policy aborted issuance of '{Vct}' for recipient {Recipient} — no credential issued",
+                    vct, request.RecipientWallet);
+                return Results.Problem(
+                    title: "Device-bound credential policy failed",
+                    detail: "The device-bound credential copy could not be issued: the eviction policy "
+                        + "could not revoke an existing copy. No credential was issued.",
+                    statusCode: StatusCodes.Status409Conflict);
+            }
+
+            if (deviceBoundPlan is not null)
+            {
+                // Override any engine-supplied allocation with the wallet-owned F114 slot so
+                // the citizen status-list publisher can flip it on eviction. F114 lists are
+                // IETF Token Status List (statuslist+jwt), so force the IETF claim shape.
+                effectiveStatusListUrl = deviceBoundPlan.StatusListUrl;
+                effectiveStatusListIndex = deviceBoundPlan.StatusListIndex;
+                effectiveStatusForm = Sorcha.Wallet.Service.Models.StatusClaimForm.IetfTokenStatusList;
+            }
+        }
+
+        if (!string.IsNullOrEmpty(effectiveStatusListUrl) && effectiveStatusListIndex.HasValue)
         {
             var purpose = string.IsNullOrWhiteSpace(request.StatusListPurpose)
                 ? "revocation"
@@ -729,14 +774,14 @@ public static class CredentialEndpoints
             // wallets can read status via IETF Token Status List semantics; internal
             // callers keep the W3C shape to preserve spec 093 behaviour. Exactly one
             // shape is embedded per credential — callers cannot opt into both.
-            if (request.StatusClaimForm == Sorcha.Wallet.Service.Models.StatusClaimForm.IetfTokenStatusList)
+            if (effectiveStatusForm == Sorcha.Wallet.Service.Models.StatusClaimForm.IetfTokenStatusList)
             {
                 claims["status"] = new Dictionary<string, object>
                 {
                     ["status_list"] = new Dictionary<string, object>
                     {
-                        ["uri"] = request.StatusListUrl!,
-                        ["idx"] = request.StatusListIndex.Value,
+                        ["uri"] = effectiveStatusListUrl!,
+                        ["idx"] = effectiveStatusListIndex.Value,
                     },
                 };
             }
@@ -744,11 +789,11 @@ public static class CredentialEndpoints
             {
                 claims["credentialStatus"] = new Dictionary<string, object>
                 {
-                    ["id"] = $"{request.StatusListUrl}#{request.StatusListIndex.Value}",
+                    ["id"] = $"{effectiveStatusListUrl}#{effectiveStatusListIndex.Value}",
                     ["type"] = "BitstringStatusListEntry",
                     ["statusPurpose"] = purpose,
-                    ["statusListIndex"] = request.StatusListIndex.Value.ToString(),
-                    ["statusListCredential"] = request.StatusListUrl!
+                    ["statusListIndex"] = effectiveStatusListIndex.Value.ToString(),
+                    ["statusListCredential"] = effectiveStatusListUrl!
                 };
             }
         }
@@ -827,8 +872,8 @@ public static class CredentialEndpoints
             IssuerOrgName = request.IssuerOrgName,
             WalletAddress = walletAddress,
             CreatedAt = DateTimeOffset.UtcNow,
-            StatusListUrl = request.StatusListUrl,
-            StatusListIndex = request.StatusListIndex,
+            StatusListUrl = effectiveStatusListUrl,
+            StatusListIndex = effectiveStatusListIndex,
             DisplayConfigJson = displayConfigJson
         };
         await store.StoreAsync(issuerEntity, cancellationToken);
@@ -857,8 +902,8 @@ public static class CredentialEndpoints
                     IssuanceBlueprintId = request.IssuanceBlueprintId,
                     WalletAddress = request.RecipientWallet,
                     CreatedAt = DateTimeOffset.UtcNow,
-                    StatusListUrl = request.StatusListUrl,
-                    StatusListIndex = request.StatusListIndex,
+                    StatusListUrl = effectiveStatusListUrl,
+                    StatusListIndex = effectiveStatusListIndex,
                     DisplayConfigJson = displayConfigJson
                 };
                 await store.StoreAsync(recipientEntity, cancellationToken);
