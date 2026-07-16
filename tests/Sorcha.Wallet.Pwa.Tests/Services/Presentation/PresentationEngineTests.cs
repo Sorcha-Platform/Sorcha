@@ -411,7 +411,209 @@ public sealed class PresentationEngineTests
         await act.Should().ThrowAsync<InvalidOperationException>();
     }
 
+    // ─────────────── Select — per-surface credential + signing choice (Task 7) ───────────────
+
+    [Fact]
+    public void Select_InPerson_RootAndThisDeviceCopyCached_ReturnsDeviceCopyDeviceSign()
+    {
+        using var deviceKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var deviceJwk = JwkOf(deviceKey);
+        var deviceThumbprint = ThumbprintOf(deviceJwk);
+
+        var root = MakeCnfCredential(Vct, OkpHolderJwk, "givenName");
+        var deviceCopy = MakeCnfCredential(Vct, deviceJwk, "givenName");
+        var req = MakeRequest(["givenName"], []);
+
+        var selection = _engine.Select(req, [root, deviceCopy], deviceThumbprint, PresentationSurface.InPerson);
+
+        selection.Outcome.Should().Be(PresentationSelectionOutcome.Selected);
+        selection.Match!.Credential.Id.Should().Be(deviceCopy.Id);
+        selection.SigningMode.Should().Be(PresentationSigningMode.Device);
+    }
+
+    [Fact]
+    public void Select_Remote_RootAndThisDeviceCopyCached_ReturnsRootServerCustody()
+    {
+        using var deviceKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var deviceJwk = JwkOf(deviceKey);
+        var deviceThumbprint = ThumbprintOf(deviceJwk);
+
+        var root = MakeCnfCredential(Vct, OkpHolderJwk, "givenName");
+        var deviceCopy = MakeCnfCredential(Vct, deviceJwk, "givenName");
+        var req = MakeRequest(["givenName"], []);
+
+        var selection = _engine.Select(req, [root, deviceCopy], deviceThumbprint, PresentationSurface.Remote);
+
+        selection.Outcome.Should().Be(PresentationSelectionOutcome.Selected);
+        selection.Match!.Credential.Id.Should().Be(root.Id);
+        // The root is NEVER device-signed — that KB-JWT fails verification with no local error.
+        selection.SigningMode.Should().Be(PresentationSigningMode.ServerCustody);
+    }
+
+    [Fact]
+    public void Select_InPerson_OnlyRootCached_ReturnsBindDeviceFirst()
+    {
+        using var deviceKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var deviceThumbprint = ThumbprintOf(JwkOf(deviceKey));
+
+        var root = MakeCnfCredential(Vct, OkpHolderJwk, "givenName");
+        var req = MakeRequest(["givenName"], []);
+
+        var selection = _engine.Select(req, [root], deviceThumbprint, PresentationSurface.InPerson);
+
+        // NOT a doomed present, and NOT the root (device-signing the root cannot verify).
+        selection.Outcome.Should().Be(PresentationSelectionOutcome.BindDeviceFirst);
+        selection.Match.Should().BeNull();
+    }
+
+    [Fact]
+    public void Select_DifferentDeviceCopy_IsNeverSelectedForDeviceSigning()
+    {
+        // A copy bound to ANOTHER device (its cnf thumbprint ≠ this device's) can neither be
+        // device-signed here nor server-custody signed (its cnf is not the holder key). It must
+        // never be selected on any surface.
+        using var thisDevice = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var otherDevice = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var thisThumbprint = ThumbprintOf(JwkOf(thisDevice));
+
+        var root = MakeCnfCredential(Vct, OkpHolderJwk, "givenName");
+        var otherDeviceCopy = MakeCnfCredential(Vct, JwkOf(otherDevice), "givenName");
+        var req = MakeRequest(["givenName"], []);
+
+        // In person: no copy for THIS device → bind first, and the other-device copy is not device-signed.
+        var inPerson = _engine.Select(req, [root, otherDeviceCopy], thisThumbprint, PresentationSurface.InPerson);
+        inPerson.Outcome.Should().Be(PresentationSelectionOutcome.BindDeviceFirst);
+        inPerson.Match.Should().BeNull();
+
+        // Auto / remote fall back to the ROOT (server custody), never the other-device copy.
+        foreach (var surface in new[] { PresentationSurface.Auto, PresentationSurface.Remote })
+        {
+            var s = _engine.Select(req, [root, otherDeviceCopy], thisThumbprint, surface);
+            s.Outcome.Should().Be(PresentationSelectionOutcome.Selected);
+            s.Match!.Credential.Id.Should().Be(root.Id);
+            s.Match.Credential.Id.Should().NotBe(otherDeviceCopy.Id);
+            s.SigningMode.Should().Be(PresentationSigningMode.ServerCustody);
+        }
+    }
+
+    [Fact]
+    public void Select_OnlyDifferentDeviceCopy_NoRoot_ReturnsNoMatch()
+    {
+        // Nothing usable on this device: an other-device copy alone can't be presented AND can't be
+        // bound (binding needs the root). Not a bind-first prompt — a plain no-match.
+        using var thisDevice = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var otherDevice = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var thisThumbprint = ThumbprintOf(JwkOf(thisDevice));
+
+        var otherDeviceCopy = MakeCnfCredential(Vct, JwkOf(otherDevice), "givenName");
+        var req = MakeRequest(["givenName"], []);
+
+        _engine.Select(req, [otherDeviceCopy], thisThumbprint, PresentationSurface.InPerson)
+            .Outcome.Should().Be(PresentationSelectionOutcome.NoMatch);
+        _engine.Select(req, [otherDeviceCopy], thisThumbprint, PresentationSurface.Auto)
+            .Outcome.Should().Be(PresentationSelectionOutcome.NoMatch);
+    }
+
+    [Fact]
+    public void Select_Auto_PrefersThisDeviceCopyOverRoot()
+    {
+        using var deviceKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var deviceJwk = JwkOf(deviceKey);
+        var deviceThumbprint = ThumbprintOf(deviceJwk);
+
+        var root = MakeCnfCredential(Vct, OkpHolderJwk, "givenName");
+        var deviceCopy = MakeCnfCredential(Vct, deviceJwk, "givenName");
+        var req = MakeRequest(["givenName"], []);
+
+        var selection = _engine.Select(req, [root, deviceCopy], deviceThumbprint, PresentationSurface.Auto);
+
+        selection.Outcome.Should().Be(PresentationSelectionOutcome.Selected);
+        selection.Match!.Credential.Id.Should().Be(deviceCopy.Id);
+        selection.SigningMode.Should().Be(PresentationSigningMode.Device);
+    }
+
+    [Fact]
+    public void Select_NullDeviceThumbprint_NoDeviceKey_SelectsRootServerCustody()
+    {
+        // A host with no usable device key (non-PWA / bridge absent) can never device-sign, so even a
+        // device copy in the cache is not signable here. Auto/Remote fall to the root; in person, with a
+        // copy present but unsignable and the root bindable, the answer is bind-first.
+        using var deviceKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var deviceCopy = MakeCnfCredential(Vct, JwkOf(deviceKey), "givenName");
+        var root = MakeCnfCredential(Vct, OkpHolderJwk, "givenName");
+        var req = MakeRequest(["givenName"], []);
+
+        var remote = _engine.Select(req, [root, deviceCopy], deviceThumbprint: null, PresentationSurface.Remote);
+        remote.Outcome.Should().Be(PresentationSelectionOutcome.Selected);
+        remote.Match!.Credential.Id.Should().Be(root.Id);
+        remote.SigningMode.Should().Be(PresentationSigningMode.ServerCustody);
+
+        _engine.Select(req, [root, deviceCopy], deviceThumbprint: null, PresentationSurface.InPerson)
+            .Outcome.Should().Be(PresentationSelectionOutcome.BindDeviceFirst);
+    }
+
+    [Fact]
+    public void Select_RequestVctNotHeld_ReturnsNoMatch()
+    {
+        using var deviceKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var deviceThumbprint = ThumbprintOf(JwkOf(deviceKey));
+
+        var root = MakeCnfCredential("https://sorcha.dev/vc/other/v1", OkpHolderJwk, "givenName");
+        var req = MakeRequest(["givenName"], []);   // asks for Vct, which is not held
+
+        _engine.Select(req, [root], deviceThumbprint, PresentationSurface.Remote)
+            .Outcome.Should().Be(PresentationSelectionOutcome.NoMatch);
+    }
+
     // ────────────────────────── helpers ──────────────────────────
+
+    /// <summary>A holder-cnf root's confirmation key is the citizen's Ed25519 (OKP) holder key.</summary>
+    private const string OkpHolderJwk = """{"kty":"OKP","crv":"Ed25519","x":"holderRootPublicKeyX"}""";
+
+    private static string ThumbprintOf(string jwkJson)
+        => PresentationEngine.ComputeJwkThumbprint(JsonSerializer.Deserialize<JsonElement>(jwkJson));
+
+    /// <summary>
+    /// Build a cached SD-JWT credential carrying a <c>cnf.jwk</c> in its payload (so the selection
+    /// layer can read its key binding) plus real disclosures for <paramref name="claimNames"/>.
+    /// </summary>
+    private static CachedCredential MakeCnfCredential(string vct, string cnfJwkJson, params string[] claimNames)
+    {
+        var headerSeg = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            alg = "ES256",
+            typ = "dc+sd-jwt",
+        }));
+        var payloadSeg = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object>
+        {
+            ["iss"] = "did:sorcha:org:test",
+            ["vct"] = vct,
+            ["iat"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            ["cnf"] = new Dictionary<string, object>
+            {
+                ["jwk"] = JsonSerializer.Deserialize<JsonElement>(cnfJwkJson),
+            },
+        }));
+        var credentialJwt = $"{headerSeg}.{payloadSeg}.sig";
+
+        var disclosures = new List<string>();
+        Span<byte> salt = stackalloc byte[16];
+        foreach (var name in claimNames)
+        {
+            RandomNumberGenerator.Fill(salt);
+            disclosures.Add(Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(
+                new object[] { Base64Url.EncodeToString(salt), name, "value" })));
+        }
+
+        return new CachedCredential
+        {
+            Id = Guid.NewGuid(),
+            Vct = vct,
+            RawSdJwt = credentialJwt + string.Concat(disclosures.Select(d => "~" + d)),
+            AvailableClaimNames = claimNames,
+        };
+    }
+
 
     private static ParsedPresentationRequest MakeRequest(IReadOnlyList<string> required, IReadOnlyList<string> optional)
         => new()

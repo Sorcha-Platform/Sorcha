@@ -516,6 +516,124 @@ public sealed class PresentationEngine : IPresentationEngine
         return Base64Url.EncodeToString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
 
+    /// <inheritdoc />
+    public PresentationSelection Select(
+        ParsedPresentationRequest request,
+        IReadOnlyList<CachedCredential> credentials,
+        string? deviceThumbprint,
+        PresentationSurface surface = PresentationSurface.Auto)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(credentials);
+
+        // Only credentials that actually satisfy the request are candidates. Classify each by its key
+        // binding relative to THIS device: a copy we can device-sign, the holder-cnf root (server
+        // custody), or something unusable here (a DIFFERENT device's copy / no readable cnf).
+        CredentialMatch? deviceCopy = null;
+        CredentialMatch? root = null;
+        foreach (var candidate in Match(request, credentials))
+        {
+            switch (ClassifyBinding(candidate.Credential.RawSdJwt, deviceThumbprint))
+            {
+                case CredentialBinding.ThisDevice:
+                    deviceCopy ??= candidate;
+                    break;
+                case CredentialBinding.HolderRoot:
+                    root ??= candidate;
+                    break;
+                // CredentialBinding.Unusable — never selectable on this device.
+            }
+        }
+
+        switch (surface)
+        {
+            // In person / offline: ONLY a device-cnf copy this device can sign. No copy but a bindable
+            // root ⇒ the distinct bind-first outcome (route to the Task 6 button); never the root
+            // (device-signing it cannot verify), never a doomed present.
+            case PresentationSurface.InPerson:
+                if (deviceCopy is not null)
+                    return PresentationSelection.Selected(deviceCopy, PresentationSigningMode.Device);
+                return root is not null ? PresentationSelection.BindFirst : PresentationSelection.None;
+
+            // Web / remote: the holder-cnf root, server custody. Only when no root is cached does a
+            // this-device copy stand in (device-signed — still verifies).
+            case PresentationSurface.Remote:
+                if (root is not null)
+                    return PresentationSelection.Selected(root, PresentationSigningMode.ServerCustody);
+                return deviceCopy is not null
+                    ? PresentationSelection.Selected(deviceCopy, PresentationSigningMode.Device)
+                    : PresentationSelection.None;
+
+            // Auto (default): prefer a device copy this device can sign for, else the root.
+            default:
+                if (deviceCopy is not null)
+                    return PresentationSelection.Selected(deviceCopy, PresentationSigningMode.Device);
+                return root is not null
+                    ? PresentationSelection.Selected(root, PresentationSigningMode.ServerCustody)
+                    : PresentationSelection.None;
+        }
+    }
+
+    /// <summary>The key binding of a cached credential relative to THIS device (#1195 Phase 2, Task 7).</summary>
+    internal enum CredentialBinding
+    {
+        /// <summary>Its <c>cnf</c> is the Ed25519 (OKP) holder key — the root, presented server-custody.</summary>
+        HolderRoot,
+
+        /// <summary>Its <c>cnf</c> thumbprint is THIS device's key — a device copy this device can sign.</summary>
+        ThisDevice,
+
+        /// <summary>A different device's copy, or no readable <c>cnf</c> — never selectable here.</summary>
+        Unusable,
+    }
+
+    /// <summary>
+    /// Classify a cached credential's key binding relative to THIS device. The this-device
+    /// discrimination reuses <see cref="DeviceBindingService.TryGetCnfJwkThumbprint"/> (the Task 6
+    /// helper) — a match on the RFC 7638 thumbprint means this device can device-sign it. Otherwise the
+    /// holder-<c>cnf</c> root is told apart from a DIFFERENT device's copy by its <c>cnf.jwk.kty</c>: the
+    /// citizen's server-custodied holder key is Ed25519 (OKP) by design (see
+    /// <see cref="ComputeJwkThumbprint"/>), whereas device keys are EC P-256. Anything else is unusable
+    /// here — the guard for the recorded trap (device-signing the root, or signing a foreign device's
+    /// copy, yields a KB-JWT that fails verification with no local error).
+    /// </summary>
+    internal static CredentialBinding ClassifyBinding(string rawSdJwt, string? deviceThumbprint)
+    {
+        if (!DeviceBindingService.TryGetCnfJwkThumbprint(rawSdJwt, out var cnfThumbprint))
+            return CredentialBinding.Unusable;
+
+        if (!string.IsNullOrEmpty(deviceThumbprint) &&
+            string.Equals(cnfThumbprint, deviceThumbprint, StringComparison.Ordinal))
+            return CredentialBinding.ThisDevice;
+
+        return string.Equals(CnfKeyType(rawSdJwt), "OKP", StringComparison.Ordinal)
+            ? CredentialBinding.HolderRoot
+            : CredentialBinding.Unusable;
+    }
+
+    /// <summary>Reads <c>cnf.jwk.kty</c> from an SD-JWT credential's payload, or null when absent.</summary>
+    private static string? CnfKeyType(string rawSdJwt)
+    {
+        if (string.IsNullOrWhiteSpace(rawSdJwt)) return null;
+        try
+        {
+            var parts = rawSdJwt.Split('~')[0].Split('.');
+            if (parts.Length < 2) return null;
+            using var payload = JsonDocument.Parse(Base64Url.DecodeFromChars(parts[1]));
+            return payload.RootElement.TryGetProperty("cnf", out var cnf) &&
+                   cnf.ValueKind == JsonValueKind.Object &&
+                   cnf.TryGetProperty("jwk", out var jwk) &&
+                   jwk.ValueKind == JsonValueKind.Object &&
+                   jwk.TryGetProperty("kty", out var kty)
+                ? kty.GetString()
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// <summary>The JOSE alg for a signing key's public JWK: OKP/Ed25519 → EdDSA; EC P-256 → ES256.</summary>
     internal static string JoseAlgorithmFor(JsonElement jwk) =>
         jwk.TryGetProperty("kty", out var kty) &&
