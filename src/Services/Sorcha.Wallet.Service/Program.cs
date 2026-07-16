@@ -210,12 +210,7 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDelegation
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDeviceRevocationService,
     Sorcha.Wallet.Service.Services.Implementation.DeviceRevocationService>();
 
-// Feature 1195 (Phase 2, Task 4): device-bound credential cap + LRU eviction policy.
-// Registered here so it is DI-available; wiring into the mint path is Task 5. The
-// IDeviceBoundCredentialLookup / IDeviceBoundCredentialRevoker seams it composes are
-// supplied by Task 5 (no registration yet — this policy is not resolved until then).
-builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDeviceBoundCredentialPolicy,
-    Sorcha.Wallet.Service.Services.Implementation.DeviceBoundCredentialPolicy>();
+// IDeviceBoundCredentialPolicy is registered in Task 5 alongside its lookup/revoker seams — registering it earlier fails ValidateOnBuild.
 
 // Feature 114 (US5): citizen presentation-log reporting. The reporter dedupes
 // each reported entry (Redis SET-NX, 24h) and forwards new ones via the forwarder

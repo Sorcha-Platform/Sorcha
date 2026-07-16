@@ -16,6 +16,8 @@ public enum DeviceBindKind
     /// <summary>
     /// The device key thumbprint matches an existing live copy — the mint is an idempotent
     /// re-issue for the same device. No eviction; the live-copy count is unchanged.
+    /// The policy does NOT revoke the prior same-thumbprint copy — replacing the stored
+    /// copy is the caller's (the mint path's) responsibility.
     /// </summary>
     ReplaceExisting,
 

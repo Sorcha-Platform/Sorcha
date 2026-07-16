@@ -75,7 +75,7 @@ public sealed class DeviceBoundCredentialPolicy : IDeviceBoundCredentialPolicy
         }
 
         // Cap reached — evict the oldest (least-recently-issued) live copy to make room.
-        var oldest = liveCopies.OrderBy(c => c.IssuedAt).First();
+        var oldest = liveCopies.OrderBy(c => c.IssuedAt).ThenBy(c => c.CredentialId).First();
 
         // Revoke BEFORE returning. A revoke failure propagates so issuance aborts — no inbox
         // write, no disposition. This must run before the (non-fatal) inbox notification.
