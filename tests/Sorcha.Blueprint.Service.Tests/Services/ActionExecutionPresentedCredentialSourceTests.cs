@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -220,5 +221,48 @@ public class ActionExecutionPresentedCredentialSourceTests
             "a client-supplied payload value can never override an identity claim sourced from the verified presentation");
         _capturedOfferClaims["givenName"].Should().NotBe(
             PayloadSpoofGivenName, "the payload spoof must not win");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_PresentedCredentialFromReconstructedPriorAction_FeedsIssuanceOverPayload()
+    {
+        // Async SorchaWallet path (two-action shape): the gated prior action's verified claims arrive
+        // at the issuance action via state reconstruction (StateReconstructionService surfaces the
+        // sealed PresentationOutcome's verifiedClaims under the reserved presentedCredential key).
+        // The issuance action has NO synchronous gate of its own — the reconstructed source must feed
+        // the claim mapping and beat a payload spoof.
+        var blueprint = GateAndIssueBlueprint();
+        // Remove the synchronous gate from the executing action — claims come from reconstruction only.
+        blueprint.Actions!.First().CredentialRequirements = null;
+        SetupFlow(blueprint);
+
+        // Reconstructed prior-action data carries the verified presentation under presentedCredential.
+        var priorActionData = JsonSerializer.Deserialize<JsonElement>(
+            $$"""{ "presentedCredential": { "givenName": "{{PresentedGivenName}}" } }""");
+        _stateReconstruction.Setup(x => x.ReconstructAsync(
+                It.IsAny<BlueprintModel>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AccumulatedState
+            {
+                ActionData = new Dictionary<string, JsonElement> { ["1"] = priorActionData }
+            });
+
+        var request = new ActionSubmissionRequest
+        {
+            BlueprintId = "bp-1", ActionId = "1", SenderWallet = "wallet-citizen", RegisterAddress = "reg-1",
+            PayloadData = new Dictionary<string, object>
+            {
+                ["presentedCredential"] = new Dictionary<string, object> { ["givenName"] = PayloadSpoofGivenName },
+            },
+        };
+
+        await CreateService().ExecuteAsync("inst-1", 1, request, "delg-token");
+
+        _capturedOfferClaims.Should().NotBeNull();
+        _capturedOfferClaims!.Should().ContainKey("givenName");
+        _capturedOfferClaims["givenName"]!.ToString().Should().Be(
+            PresentedGivenName,
+            "the reconstructed verified presentation (sealed outcome tx) must feed the issuance claim, " +
+            "and a payload spoof must never override it");
     }
 }
