@@ -399,6 +399,103 @@ public sealed class PresentationEngineTests
     }
 
     [Fact]
+    public async Task BuildVpTokenEnvelopeAsync_MixedModes_RootServerCustodySigned_CopyDeviceSigned()
+    {
+        // #1195 Phase 2 (Task 7 fix round 2) — mixed signing modes within ONE envelope: each query's
+        // presentation is an independent SD-JWT with its own KB-JWT, verified per-query against its own
+        // credential's cnf. A ServerCustody entry must be signed by the HOLDER signer, a Device entry by
+        // the DEVICE signer — a device-signed root is the recorded silent-verification-failure trap.
+        const string AddressVct = "https://sorcha.dev/vc/address/v1";
+        var (rootCred, _) = MakeRealCredential(Vct, ("givenName", "Stuart"));
+        var (copyCred, _) = MakeRealCredential(AddressVct, ("postcode", "EH1 1AA"));
+
+        var req = MakeRequest(["givenName"], []);
+        using var deviceEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var holderEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var deviceJwk = JsonSerializer.Deserialize<JsonElement>(JwkOf(deviceEcdsa));
+        var holderJwk = JsonSerializer.Deserialize<JsonElement>(JwkOf(holderEcdsa));
+
+        var deviceSigned = 0;
+        var holderSigned = 0;
+        Func<byte[], CancellationToken, Task<byte[]>> deviceSigner = (data, _) =>
+        {
+            deviceSigned++;
+            return Task.FromResult(deviceEcdsa.SignData(data, HashAlgorithmName.SHA256));
+        };
+        Func<byte[], CancellationToken, Task<byte[]>> holderSigner = (data, _) =>
+        {
+            holderSigned++;
+            return Task.FromResult(holderEcdsa.SignData(data, HashAlgorithmName.SHA256));
+        };
+
+        var rootMatch = new CredentialMatch { Credential = rootCred, SatisfiedRequired = ["givenName"], AvailableOptional = [] };
+        var copyMatch = new CredentialMatch { Credential = copyCred, SatisfiedRequired = ["postcode"], AvailableOptional = [] };
+        var consented = new List<ConsentedQuery>
+        {
+            new("identity", rootMatch, ["givenName"], ["givenName"], PresentationSigningMode.ServerCustody),
+            new("address", copyMatch, ["postcode"], ["postcode"], PresentationSigningMode.Device),
+        };
+
+        var json = await _engine.BuildVpTokenEnvelopeAsync(
+            consented, req, deviceJwk, deviceSigner, holderJwk, holderSigner);
+
+        deviceSigned.Should().Be(1);
+        holderSigned.Should().Be(1);
+
+        var envelope = DcqlVpToken.Parse(json);
+
+        // The ServerCustody presentation's KB-JWT verifies against the HOLDER key and carries its kid.
+        AssertKbJwtSignedBy(envelope.Presentations["identity"][0], holderEcdsa, holderJwk);
+        // The Device presentation's KB-JWT verifies against the DEVICE key and carries its kid.
+        AssertKbJwtSignedBy(envelope.Presentations["address"][0], deviceEcdsa, deviceJwk);
+    }
+
+    [Fact]
+    public async Task BuildVpTokenEnvelopeAsync_ServerCustodyEntryWithoutHolderSigner_ThrowsLoudly()
+    {
+        // Never a silent fallback to device-signing the root — that KB-JWT fails verification
+        // downstream with no local error.
+        var (rootCred, _) = MakeRealCredential(Vct, ("givenName", "Stuart"));
+        var req = MakeRequest(["givenName"], []);
+        using var deviceEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var deviceJwk = JsonSerializer.Deserialize<JsonElement>(JwkOf(deviceEcdsa));
+
+        var rootMatch = new CredentialMatch { Credential = rootCred, SatisfiedRequired = ["givenName"], AvailableOptional = [] };
+        var consented = new List<ConsentedQuery>
+        {
+            new("identity", rootMatch, ["givenName"], ["givenName"], PresentationSigningMode.ServerCustody),
+        };
+
+        var deviceSignerCalls = 0;
+        Func<byte[], CancellationToken, Task<byte[]>> deviceSigner = (data, _) =>
+        {
+            deviceSignerCalls++;
+            return Task.FromResult(deviceEcdsa.SignData(data, HashAlgorithmName.SHA256));
+        };
+
+        Func<Task> act = async () => await _engine.BuildVpTokenEnvelopeAsync(
+            consented, req, deviceJwk, deviceSigner);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*server-custody*");
+        deviceSignerCalls.Should().Be(0, "the device signer must NEVER sign a server-custody entry");
+    }
+
+    /// <summary>Assert a presentation's KB-JWT verifies against <paramref name="key"/> and its kid is the JWK's thumbprint.</summary>
+    private static void AssertKbJwtSignedBy(string vp, ECDsa key, JsonElement jwk)
+    {
+        var (_, _, kbJwt) = PresentationEngine.SplitSdJwt(vp);
+        kbJwt.Should().NotBeNullOrEmpty();
+        var parts = kbJwt!.Split('.');
+        var signingInput = Encoding.ASCII.GetBytes($"{parts[0]}.{parts[1]}");
+        var signature = Base64Url.DecodeFromChars(parts[2]);
+        key.VerifyData(signingInput, signature, HashAlgorithmName.SHA256).Should().BeTrue();
+
+        var header = JsonSerializer.Deserialize<JsonElement>(Base64Url.DecodeFromChars(parts[0]));
+        header.GetProperty("kid").GetString().Should().Be(PresentationEngine.ComputeJwkThumbprint(jwk));
+    }
+
+    [Fact]
     public async Task BuildVpTokenEnvelopeAsync_Empty_Throws()
     {
         var req = MakeRequest(["givenName"], []);
@@ -650,6 +747,76 @@ public sealed class PresentationEngineTests
         s.Outcome.Should().Be(PresentationSelectionOutcome.Selected);
         s.Match!.Credential.Id.Should().Be(deviceCopy.Id);
         s.SigningMode.Should().Be(PresentationSigningMode.Device);
+    }
+
+    [Fact]
+    public void Select_TwoDistinctCredentials_ReturnsChoiceRequiredWithBoth()
+    {
+        // Fix round 2 — two GENUINELY distinct credentials (not a root/copy pair) matching the ask
+        // must offer the citizen a pick, exactly as before Task 7.
+        using var deviceKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var deviceThumbprint = ThumbprintOf(JwkOf(deviceKey));
+
+        var (legacyA, _) = MakeRealCredential(Vct, ("givenName", "Stuart"));
+        var (legacyB, _) = MakeRealCredential(Vct, ("givenName", "Stiubhart"));
+        var req = MakeRequest(["givenName"], []);
+
+        var s = _engine.Select(
+            req, [legacyA, legacyB], deviceThumbprint, HolderThumbprint, PresentationSurface.Remote);
+
+        s.Outcome.Should().Be(PresentationSelectionOutcome.ChoiceRequired);
+        s.Match.Should().BeNull();
+        s.Candidates.Should().HaveCount(2);
+        s.Candidates!.Select(c => c.Match.Credential.Id)
+            .Should().BeEquivalentTo([legacyA.Id, legacyB.Id]);
+        s.Candidates.Should().OnlyContain(c => c.SigningMode == PresentationSigningMode.Device);
+    }
+
+    [Fact]
+    public void Select_RootPlusCopyPairOnly_AutoSelectsNoPicker()
+    {
+        // Fix round 2 — the root + this-device copy are ONE credential family (one identity, two
+        // bindings): they collapse to the per-surface representative and never offer a picker.
+        using var deviceKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var deviceJwk = JwkOf(deviceKey);
+        var deviceThumbprint = ThumbprintOf(deviceJwk);
+
+        var root = MakeCnfCredential(Vct, OkpHolderJwk, "givenName");
+        var deviceCopy = MakeCnfCredential(Vct, deviceJwk, "givenName");
+        var req = MakeRequest(["givenName"], []);
+
+        foreach (var surface in new[]
+                 { PresentationSurface.Auto, PresentationSurface.Remote, PresentationSurface.InPerson })
+        {
+            var s = _engine.Select(req, [root, deviceCopy], deviceThumbprint, HolderThumbprint, surface);
+            s.Outcome.Should().Be(PresentationSelectionOutcome.Selected,
+                $"a root+copy pair is one identity and must auto-select on {surface}, no picker");
+        }
+    }
+
+    [Fact]
+    public void Select_BoundFamilyPlusDistinctLegacy_OffersPickerWithPerCandidateSigningModes()
+    {
+        // Fix round 2 — the bound family collapses to ONE representative, but a distinct legacy
+        // credential is a real alternative: the citizen picks, and each candidate carries ITS OWN
+        // signing mode (the picker must never re-derive the pairing).
+        using var deviceKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var deviceThumbprint = ThumbprintOf(JwkOf(deviceKey));
+
+        var root = MakeCnfCredential(Vct, OkpHolderJwk, "givenName");
+        var (legacy, _) = MakeRealCredential(Vct, ("givenName", "Stuart"));
+        var req = MakeRequest(["givenName"], []);
+
+        var s = _engine.Select(
+            req, [root, legacy], deviceThumbprint, HolderThumbprint, PresentationSurface.Remote);
+
+        s.Outcome.Should().Be(PresentationSelectionOutcome.ChoiceRequired);
+        s.Candidates.Should().HaveCount(2);
+        var rootCandidate = s.Candidates!.Single(c => c.Match.Credential.Id == root.Id);
+        rootCandidate.SigningMode.Should().Be(PresentationSigningMode.ServerCustody,
+            "the root candidate must stay paired with server-custody signing even inside a picker");
+        s.Candidates!.Single(c => c.Match.Credential.Id == legacy.Id)
+            .SigningMode.Should().Be(PresentationSigningMode.Device);
     }
 
     [Fact]

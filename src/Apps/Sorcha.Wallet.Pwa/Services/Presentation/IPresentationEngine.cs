@@ -74,10 +74,20 @@ public interface IPresentationEngine
     /// signed by the device key and only the approved disclosure subset for that query.
     /// </summary>
     /// <param name="consented">The per-query disclosure plan the citizen approved (one entry per
-    /// query being presented).</param>
+    /// query being presented). Each entry carries its own <see cref="ConsentedQuery.SigningMode"/> —
+    /// mixed modes within one envelope are valid: every query's presentation is an independent
+    /// SD-JWT with its own KB-JWT, and the verifier validates each against its own credential's
+    /// <c>cnf</c> (no envelope-level signature exists).</param>
     /// <param name="request">The original request (nonce + audience binding).</param>
-    /// <param name="deviceJwk">Public JWK of the device key.</param>
+    /// <param name="deviceJwk">Public JWK of the device key — used by
+    /// <see cref="PresentationSigningMode.Device"/> entries.</param>
     /// <param name="deviceSigner">Async delegate that signs raw bytes with the device key.</param>
+    /// <param name="holderJwk">Public JWK of the citizen's server-custodied holder key — REQUIRED when
+    /// any entry is <see cref="PresentationSigningMode.ServerCustody"/> (#1195 Phase 2: the holder-cnf
+    /// root must never be device-signed; that KB-JWT fails verification with no local error).</param>
+    /// <param name="holderSigner">Async delegate for server-custody signing (the Task 6a
+    /// <c>sign-kb</c> endpoint). Absent while a ServerCustody entry exists ⇒ the build FAILS LOUDLY —
+    /// it never falls back to device-signing.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The JSON object-keyed <c>vp_token</c> string ready for the direct_post body.</returns>
     Task<string> BuildVpTokenEnvelopeAsync(
@@ -85,6 +95,8 @@ public interface IPresentationEngine
         ParsedPresentationRequest request,
         System.Text.Json.JsonElement deviceJwk,
         Func<byte[], CancellationToken, Task<byte[]>> deviceSigner,
+        System.Text.Json.JsonElement? holderJwk = null,
+        Func<byte[], CancellationToken, Task<byte[]>>? holderSigner = null,
         CancellationToken ct = default);
 
     /// <summary>
@@ -193,7 +205,20 @@ public enum PresentationSelectionOutcome
     /// A retry after the holder key becomes reachable resolves it.
     /// </summary>
     HolderKeyUnavailable = 3,
+
+    /// <summary>
+    /// After collapsing the root + this-device-copy pair (the same credential family — one identity,
+    /// two bindings) into one per-surface representative, MULTIPLE genuinely distinct credentials
+    /// still match the ask. The citizen picks, exactly as before Task 7 —
+    /// <see cref="PresentationSelection.Candidates"/> carries the choices with their signing modes.
+    /// </summary>
+    ChoiceRequired = 4,
 }
+
+/// <summary>One pickable candidate in a <see cref="PresentationSelectionOutcome.ChoiceRequired"/>
+/// outcome: the credential plus HOW its KB-JWT is signed — the picker must carry the pairing through,
+/// never re-derive it.</summary>
+public sealed record PresentationCandidate(CredentialMatch Match, PresentationSigningMode SigningMode);
 
 /// <summary>
 /// The result of <see cref="IPresentationEngine.Select"/>: which credential to present and how to sign it,
@@ -218,6 +243,11 @@ public sealed record PresentationSelection
     /// to its credential card (the Task 6 bind button surface). Null for every other outcome.</summary>
     public CredentialMatch? RootToBind { get; init; }
 
+    /// <summary>The distinct pickable candidates behind a
+    /// <see cref="PresentationSelectionOutcome.ChoiceRequired"/> outcome (each with its signing mode),
+    /// in selection-preference order. Null for every other outcome.</summary>
+    public IReadOnlyList<PresentationCandidate>? Candidates { get; init; }
+
     /// <summary>A selected credential + its signing mode.</summary>
     internal static PresentationSelection Selected(CredentialMatch match, PresentationSigningMode mode) =>
         new() { Outcome = PresentationSelectionOutcome.Selected, Match = match, SigningMode = mode };
@@ -233,6 +263,10 @@ public sealed record PresentationSelection
     /// <summary>Bound-but-unclassifiable candidates and no holder thumbprint — fail closed.</summary>
     internal static PresentationSelection HolderKeyUnavailable { get; } =
         new() { Outcome = PresentationSelectionOutcome.HolderKeyUnavailable };
+
+    /// <summary>Multiple genuinely distinct candidates — the citizen picks.</summary>
+    internal static PresentationSelection Choice(IReadOnlyList<PresentationCandidate> candidates) =>
+        new() { Outcome = PresentationSelectionOutcome.ChoiceRequired, Candidates = candidates };
 }
 
 /// <summary>
@@ -244,8 +278,13 @@ public sealed record PresentationSelection
 /// <param name="Match">The credential the citizen chose for this query.</param>
 /// <param name="RequiredClaims">This query's required claim names.</param>
 /// <param name="ApprovedClaims">Claim names approved for disclosure (must cover every required claim).</param>
+/// <param name="SigningMode">Which key signs THIS query's KB-JWT (#1195 Phase 2, Task 7 fix round 2).
+/// Defaults to <see cref="PresentationSigningMode.Device"/> — the pre-Phase-2 behaviour. Callers must
+/// set <see cref="PresentationSigningMode.ServerCustody"/> for a holder-<c>cnf</c> root (classify via
+/// <c>PresentationEngine.ClassifyBinding</c>); device-signing the root is the recorded silent-failure trap.</param>
 public sealed record ConsentedQuery(
     string QueryId,
     CredentialMatch Match,
     IReadOnlyList<string> RequiredClaims,
-    IReadOnlyList<string> ApprovedClaims);
+    IReadOnlyList<string> ApprovedClaims,
+    PresentationSigningMode SigningMode = PresentationSigningMode.Device);

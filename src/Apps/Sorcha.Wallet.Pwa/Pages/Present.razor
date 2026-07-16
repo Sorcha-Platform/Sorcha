@@ -169,6 +169,14 @@
         <NoMatchingCredentialDialog RequiredVct="@_request?.RequiredVct"
                                     OnCancel="Reset" />
     }
+    else if (_phase == Phase.PickCredential && _pickerMatches is not null)
+    {
+        @* Fix round 2 — the picker returns for genuinely DISTINCT candidates (the root +
+           this-device-copy pair of one credential family is collapsed by the selection layer). *@
+        <CredentialPickerDialog Matches="_pickerMatches"
+                                OnChosen="OnCredentialChosen"
+                                OnCancel="Reset" />
+    }
     else if (_phase == Phase.BindFirst)
     {
         @* #1195 Phase 2 (Task 7) — the selection layer answered BindDeviceFirst: the citizen's
@@ -237,7 +245,7 @@
 @code {
     private const string VideoElementId = "sorcha-qr-scan-video";
 
-    private enum Phase { AwaitingDeepLink, NoMatch, BindFirst, Consent, PickAlternative, PickQueryCredential, MultiConsent, Done }
+    private enum Phase { AwaitingDeepLink, NoMatch, BindFirst, PickCredential, Consent, PickAlternative, PickQueryCredential, MultiConsent, Done }
 
     // Feature 185. False until proven otherwise — an affordance the device cannot honour must not appear.
     private bool _proximitySupported;
@@ -252,6 +260,10 @@
     // selection layer together with the credential; this page must never re-derive it.
     private PresentationSigningMode _signingMode = PresentationSigningMode.Device;
     private CredentialMatch? _bindRoot;
+    // Fix round 2 — ChoiceRequired state: each candidate carries its own signing mode; the picker
+    // maps the chosen match back to its candidate so the pairing is carried through, not re-derived.
+    private IReadOnlyList<PresentationCandidate>? _candidates;
+    private IReadOnlyList<CredentialMatch>? _pickerMatches;
     private Dictionary<string, bool> _optionalToggles = new();
     private string _responseStatus = string.Empty;
     private string _responseMessage = string.Empty;
@@ -382,6 +394,11 @@
                     _bindRoot = selection.RootToBind;
                     _phase = Phase.BindFirst;
                     break;
+                case PresentationSelectionOutcome.ChoiceRequired:
+                    _candidates = selection.Candidates;
+                    _pickerMatches = selection.Candidates!.Select(c => c.Match).ToList();
+                    _phase = Phase.PickCredential;
+                    break;
                 case PresentationSelectionOutcome.HolderKeyUnavailable:
                     // Fail-closed, named — never a guessed present that cannot verify.
                     _error = "Your wallet's holder key couldn't be reached, so the right credential " +
@@ -405,6 +422,18 @@
                 _error = ex.Message;
             }
         }
+    }
+
+    /// <summary>Fix round 2 — the citizen's pick maps back to its candidate so the credential keeps
+    /// the signing mode the selection layer paired it with (never re-derived here).</summary>
+    private void OnCredentialChosen(CredentialMatch? match)
+    {
+        if (match is null || _candidates is null) return;
+        var candidate = _candidates.FirstOrDefault(c => ReferenceEquals(c.Match, match));
+        if (candidate is null) return;
+        _selected = candidate.Match;
+        _signingMode = candidate.SigningMode;
+        EnterConsent();
     }
 
     private void EnterConsent()
@@ -697,7 +726,16 @@
         _error = null;
         try
         {
+            // #1195 Phase 2 (Task 7 fix round 2) — classify EACH consented query by cnf thumbprint:
+            // a holder-cnf root presents SERVER-CUSTODY, a this-device copy / legacy credential
+            // device-signs. Mixed modes compose (per-presentation KB-JWTs; no envelope signature).
+            // A device-signed root is the recorded silent-verification-failure trap.
+            var deviceThumbprint = await TryGetDeviceThumbprintAsync();
+            var holderThumbprint = await TryGetHolderThumbprintAsync();
+
             var consented = new List<ConsentedQuery>();
+            var anyServerCustody = false;
+            var anyDeviceSigned = false;
             foreach (var id in _activeQueryIds)
             {
                 if (!_selections.TryGetValue(id, out var sel)) continue;
@@ -706,7 +744,29 @@
                     ? toggles.Where(kv => kv.Value).Select(kv => kv.Key)
                     : Enumerable.Empty<string>();
                 var approved = sel.SatisfiedRequired.Concat(optional).ToList();
-                consented.Add(new ConsentedQuery(id, sel, qm.RequiredClaims, approved));
+
+                PresentationSigningMode mode;
+                switch (PresentationEngine.ClassifyBinding(
+                    sel.Credential.RawSdJwt, deviceThumbprint, holderThumbprint))
+                {
+                    case PresentationEngine.CredentialBinding.HolderRoot:
+                        mode = PresentationSigningMode.ServerCustody;
+                        anyServerCustody = true;
+                        break;
+                    case PresentationEngine.CredentialBinding.ThisDevice:
+                    case PresentationEngine.CredentialBinding.Unbound:
+                        mode = PresentationSigningMode.Device;
+                        anyDeviceSigned = true;
+                        break;
+                    default:
+                        // Foreign copy / unclassifiable — named, never a doomed present.
+                        _error = $"'{sel.Credential.DisplayLabel ?? sel.Credential.Vct}' can't be " +
+                                 "presented from this device, so nothing was shared. " +
+                                 "Present it from the device it's bound to, or try again once your " +
+                                 "wallet's holder key is reachable.";
+                        return;
+                }
+                consented.Add(new ConsentedQuery(id, sel, qm.RequiredClaims, approved, mode));
             }
 
             if (consented.Count == 0)
@@ -715,11 +775,33 @@
                 return;
             }
 
-            var deviceJwk = await DeviceKey.GetPublicJwkAsync();
+            JsonElement? holderJwk = null;
+            Func<byte[], CancellationToken, Task<byte[]>>? holderSigner = null;
+            if (anyServerCustody)
+            {
+                var holderKeys = await HolderKeys.GetHolderKeysAsync();
+                if (holderKeys is null)
+                {
+                    _error = "Your wallet's holder key couldn't be reached, so this presentation " +
+                             "can't be signed. Check your connection and try again.";
+                    return;
+                }
+                holderJwk = holderKeys.HolderJwk;
+                holderSigner = SignWithHolderKeyAsync;
+            }
+
+            // The device pair is only resolved when a device-signed entry exists — a host without a
+            // device key can still present a pure server-custody envelope.
+            JsonElement deviceJwk = default;
+            if (anyDeviceSigned)
+            {
+                deviceJwk = await DeviceKey.GetPublicJwkAsync();
+            }
+
             // One SD-JWT presentation per consented query, assembled into the object-keyed
-            // OpenID4VP 1.0 vp_token envelope.
+            // OpenID4VP 1.0 vp_token envelope — each signed under ITS OWN mode.
             var vpTokenEnvelope = await Engine.BuildVpTokenEnvelopeAsync(
-                consented, _request, deviceJwk, DeviceKey.SignAsync);
+                consented, _request, deviceJwk, DeviceKey.SignAsync, holderJwk, holderSigner);
 
             var form = new FormUrlEncodedContent(new Dictionary<string, string>
             {
@@ -780,6 +862,8 @@
         _selected = null;
         _signingMode = PresentationSigningMode.Device;
         _bindRoot = null;
+        _candidates = null;
+        _pickerMatches = null;
         _optionalToggles = new();
         _cachedCreds = [];
         _result = null;

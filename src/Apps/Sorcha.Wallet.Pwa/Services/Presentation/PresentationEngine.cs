@@ -334,6 +334,8 @@ public sealed class PresentationEngine : IPresentationEngine
         ParsedPresentationRequest request,
         JsonElement deviceJwk,
         Func<byte[], CancellationToken, Task<byte[]>> deviceSigner,
+        JsonElement? holderJwk = null,
+        Func<byte[], CancellationToken, Task<byte[]>>? holderSigner = null,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(consented);
@@ -343,7 +345,10 @@ public sealed class PresentationEngine : IPresentationEngine
             throw new InvalidOperationException("A presentation must carry at least one consented query.");
         }
 
-        // One SD-JWT presentation per query, each validated against its own required-claim set.
+        // One SD-JWT presentation per query, each validated against its own required-claim set and
+        // signed under ITS OWN mode (#1195 Phase 2, Task 7 fix round 2). Mixed modes compose: every
+        // presentation carries an independent KB-JWT and the verifier validates each against its own
+        // credential's cnf — there is no envelope-level signature.
         var presentations = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         foreach (var c in consented)
         {
@@ -351,8 +356,34 @@ public sealed class PresentationEngine : IPresentationEngine
             {
                 throw new InvalidOperationException($"Duplicate query id '{c.QueryId}' in the consented set.");
             }
+
+            JsonElement jwk;
+            Func<byte[], CancellationToken, Task<byte[]>> signer;
+            if (c.SigningMode == PresentationSigningMode.ServerCustody)
+            {
+                // FAIL LOUD, never fall back: a device-signed holder-cnf root is the recorded trap —
+                // it fails verification downstream with no local error.
+                if (holderJwk is null || holderSigner is null)
+                {
+                    throw new InvalidOperationException(
+                        $"Query '{c.QueryId}' requires server-custody signing but no holder signer was provided.");
+                }
+                jwk = holderJwk.Value;
+                signer = holderSigner;
+            }
+            else
+            {
+                if (deviceJwk.ValueKind == JsonValueKind.Undefined)
+                {
+                    throw new InvalidOperationException(
+                        $"Query '{c.QueryId}' requires device signing but no device key was provided.");
+                }
+                jwk = deviceJwk;
+                signer = deviceSigner;
+            }
+
             var vp = await BuildSinglePresentationAsync(
-                c.Match, c.ApprovedClaims, c.RequiredClaims, request, deviceJwk, deviceSigner, ct);
+                c.Match, c.ApprovedClaims, c.RequiredClaims, request, jwk, signer, ct);
             presentations[c.QueryId] = [vp];
         }
 
@@ -533,7 +564,7 @@ public sealed class PresentationEngine : IPresentationEngine
         // (never selectable here), or unclassifiable (bound, but no holder thumbprint to compare).
         CredentialMatch? deviceCopy = null;
         CredentialMatch? root = null;
-        CredentialMatch? unbound = null;
+        var unbound = new List<CredentialMatch>();
         var sawUnknown = false;
         foreach (var candidate in Match(request, credentials))
         {
@@ -546,7 +577,7 @@ public sealed class PresentationEngine : IPresentationEngine
                     root ??= candidate;
                     break;
                 case CredentialBinding.Unbound:
-                    unbound ??= candidate;
+                    unbound.Add(candidate);
                     break;
                 case CredentialBinding.Unknown:
                     sawUnknown = true;
@@ -555,42 +586,47 @@ public sealed class PresentationEngine : IPresentationEngine
             }
         }
 
-        switch (surface)
+        // The root + this-device copy are ONE credential family — one identity, two bindings — so
+        // they collapse to a single per-surface representative and never offer a picker between
+        // themselves. Every legacy unbound credential is a genuinely DISTINCT candidate.
+        PresentationCandidate? boundRepresentative = surface switch
         {
-            // In person / offline: device-signed only. A device-cnf copy first; a legacy unbound
-            // credential still device-signs (nothing for the verifier to check it against). A root
-            // WITHOUT a copy ⇒ the distinct bind-first outcome (route to the Task 6 button); never
-            // the root itself (device-signing it cannot verify), never a doomed present.
-            case PresentationSurface.InPerson:
-                if (deviceCopy is not null)
-                    return PresentationSelection.Selected(deviceCopy, PresentationSigningMode.Device);
-                if (unbound is not null)
-                    return PresentationSelection.Selected(unbound, PresentationSigningMode.Device);
-                if (root is not null)
-                    return PresentationSelection.BindFirst(root);
-                return sawUnknown ? PresentationSelection.HolderKeyUnavailable : PresentationSelection.None;
+            // In person / offline: device-signed only. The root itself is never presentable here —
+            // device-signing it produces a KB-JWT that fails verification with no local error.
+            PresentationSurface.InPerson => deviceCopy is not null
+                ? new PresentationCandidate(deviceCopy, PresentationSigningMode.Device)
+                : null,
 
-            // Web / remote: the holder-cnf root, server custody. Without a root, a this-device copy or
-            // a legacy unbound credential stands in (device-signed — still verifies).
-            case PresentationSurface.Remote:
-                if (root is not null)
-                    return PresentationSelection.Selected(root, PresentationSigningMode.ServerCustody);
-                if (deviceCopy is not null)
-                    return PresentationSelection.Selected(deviceCopy, PresentationSigningMode.Device);
-                if (unbound is not null)
-                    return PresentationSelection.Selected(unbound, PresentationSigningMode.Device);
-                return sawUnknown ? PresentationSelection.HolderKeyUnavailable : PresentationSelection.None;
+            // Web / remote: the root (server custody) first; a this-device copy stands in without one.
+            PresentationSurface.Remote => root is not null
+                ? new PresentationCandidate(root, PresentationSigningMode.ServerCustody)
+                : deviceCopy is not null
+                    ? new PresentationCandidate(deviceCopy, PresentationSigningMode.Device)
+                    : null,
 
-            // Auto (default): prefer a device copy this device can sign for, else the root, else legacy.
-            default:
-                if (deviceCopy is not null)
-                    return PresentationSelection.Selected(deviceCopy, PresentationSigningMode.Device);
-                if (root is not null)
-                    return PresentationSelection.Selected(root, PresentationSigningMode.ServerCustody);
-                if (unbound is not null)
-                    return PresentationSelection.Selected(unbound, PresentationSigningMode.Device);
-                return sawUnknown ? PresentationSelection.HolderKeyUnavailable : PresentationSelection.None;
-        }
+            // Auto (default): prefer the copy this device can sign for, else the root.
+            _ => deviceCopy is not null
+                ? new PresentationCandidate(deviceCopy, PresentationSigningMode.Device)
+                : root is not null
+                    ? new PresentationCandidate(root, PresentationSigningMode.ServerCustody)
+                    : null,
+        };
+
+        var candidates = new List<PresentationCandidate>(1 + unbound.Count);
+        if (boundRepresentative is not null) candidates.Add(boundRepresentative);
+        candidates.AddRange(unbound.Select(u => new PresentationCandidate(u, PresentationSigningMode.Device)));
+
+        if (candidates.Count == 1)
+            return PresentationSelection.Selected(candidates[0].Match, candidates[0].SigningMode);
+        if (candidates.Count > 1)
+            return PresentationSelection.Choice(candidates);
+
+        // Nothing presentable. In person, a root that COULD satisfy the ask is the distinct
+        // bind-first outcome (route to the Task 6 button) — never a doomed present. Otherwise an
+        // unclassifiable bound candidate fails closed; an empty field is a plain no-match.
+        if (surface == PresentationSurface.InPerson && root is not null)
+            return PresentationSelection.BindFirst(root);
+        return sawUnknown ? PresentationSelection.HolderKeyUnavailable : PresentationSelection.None;
     }
 
     /// <summary>The key binding of a cached credential relative to THIS device (#1195 Phase 2, Task 7).</summary>

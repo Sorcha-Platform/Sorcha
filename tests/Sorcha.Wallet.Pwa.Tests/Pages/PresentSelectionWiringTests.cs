@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Text;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
@@ -236,6 +237,138 @@ public sealed class PresentSelectionWiringTests : ComponentTestFixture
                 "a NoMatch outcome keeps the existing no-matching-credential dialog"));
     }
 
+    [Fact]
+    public async Task Continue_ChoiceRequired_ShowsPickerAndChosenCandidateKeepsItsSigningMode()
+    {
+        // Fix round 2 — genuinely distinct candidates restore the picker, and the chosen
+        // credential keeps the signing mode its candidate carried (never re-derived).
+        var rootMatch = MakeMatch();
+        var legacyMatch = MakeMatch();
+        _engine.Setup(e => e.Select(
+                It.IsAny<ParsedPresentationRequest>(), It.IsAny<IReadOnlyList<CachedCredential>>(),
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<PresentationSurface>()))
+            .Returns(Choice(
+            [
+                new PresentationCandidate(rootMatch, PresentationSigningMode.ServerCustody),
+                new PresentationCandidate(legacyMatch, PresentationSigningMode.Device),
+            ]));
+
+        JsonElement? jwkPassedToBuild = null;
+        SetupBuildVpToken(jwk => jwkPassedToBuild = jwk);
+        _walletClient.Setup(w => w.SignKbJwtAsync(It.IsAny<KbJwtSignRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new KbJwtSignResponse
+            {
+                Signature = Base64Url.EncodeToString(new byte[] { 9, 9 }),
+                Algorithm = "EdDSA",
+            });
+
+        var cut = await ContinueAsync();
+
+        // The picker is offered with both distinct candidates.
+        cut.WaitForAssertion(() =>
+            cut.FindAll("[data-testid=credential-picker-candidate]").Should().HaveCount(2,
+                "distinct candidates must offer the citizen a pick, exactly as before Task 7"));
+
+        // Choose the FIRST candidate — the server-custody root.
+        await cut.InvokeAsync(() =>
+            cut.FindAll("[data-testid=credential-picker-candidate]")[0].Click());
+        cut.WaitForAssertion(() =>
+            cut.FindAll("[data-testid=consent-sheet]").Should().ContainSingle());
+
+        await cut.InvokeAsync(() => cut.Find("[data-testid=consent-confirm]").Click());
+
+        cut.WaitForAssertion(() =>
+        {
+            // The chosen ROOT candidate carried ServerCustody — the wallet service signs, never the device.
+            _walletClient.Verify(w => w.SignKbJwtAsync(
+                It.IsAny<KbJwtSignRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _deviceKey.Verify(d => d.SignAsync(It.IsAny<byte[]>(), It.IsAny<CancellationToken>()), Times.Never);
+            jwkPassedToBuild!.Value.GetRawText().Should().Be(HolderJwk.GetRawText());
+        });
+    }
+
+    [Fact]
+    public async Task ConfirmMulti_RootQueryIsServerCustodySigned_CopyQueryDeviceSigned_NeverDeviceSignedRoot()
+    {
+        // Fix round 2 — the multi-credential (F181 US2) flow classifies EACH consented query by cnf
+        // thumbprint: the holder-cnf root goes server-custody, the device-cnf copy device-signs.
+        // A device-signed root is the recorded silent-verification-failure trap.
+        const string AddressVct = "https://sorcha.dev/vc/address/v1";
+        var deviceThumbprint = PresentationEngine.ComputeJwkThumbprint(DeviceJwk);
+        _deviceKey.Setup(d => d.GetThumbprintAsync(It.IsAny<CancellationToken>()))
+                  .ReturnsAsync(deviceThumbprint);
+
+        var rootCred = MakeCnfCredential(Vct, HolderJwk);           // cnf = holder key → root
+        var copyCred = MakeCnfCredential(AddressVct, DeviceJwk);    // cnf = THIS device → copy
+
+        var request = MakeMultiRequest(("identity", Vct), ("address", AddressVct));
+        _engine.Setup(e => e.ParseAsync(
+                It.IsAny<string>(), It.IsAny<Func<string, CancellationToken, Task<string>>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(request);
+        _engine.Setup(e => e.MatchQuery(
+                It.IsAny<ParsedPresentationRequest>(), It.IsAny<IReadOnlyList<CachedCredential>>()))
+            .Returns(new DcqlMatchResult
+            {
+                Satisfiable = true,
+                PerQuery =
+                [
+                    MakeQueryMatch("identity", Vct, rootCred),
+                    MakeQueryMatch("address", AddressVct, copyCred),
+                ],
+                UnsatisfiedRequiredQueryIds = [],
+                SetChoices = [],
+            });
+
+        IReadOnlyList<ConsentedQuery>? capturedConsented = null;
+        JsonElement? capturedHolderJwk = null;
+        Func<byte[], CancellationToken, Task<byte[]>>? capturedHolderSigner = null;
+        _engine.Setup(e => e.BuildVpTokenEnvelopeAsync(
+                It.IsAny<IReadOnlyList<ConsentedQuery>>(), It.IsAny<ParsedPresentationRequest>(),
+                It.IsAny<JsonElement>(), It.IsAny<Func<byte[], CancellationToken, Task<byte[]>>>(),
+                It.IsAny<JsonElement?>(), It.IsAny<Func<byte[], CancellationToken, Task<byte[]>>?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback((IReadOnlyList<ConsentedQuery> consented, ParsedPresentationRequest _,
+                JsonElement _, Func<byte[], CancellationToken, Task<byte[]>> _,
+                JsonElement? holderJwk, Func<byte[], CancellationToken, Task<byte[]>>? holderSigner,
+                CancellationToken _) =>
+            {
+                capturedConsented = consented;
+                capturedHolderJwk = holderJwk;
+                capturedHolderSigner = holderSigner;
+            })
+            .ReturnsAsync("""{"identity":["vp"],"address":["vp"]}""");
+        _walletClient.Setup(w => w.SignKbJwtAsync(It.IsAny<KbJwtSignRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new KbJwtSignResponse
+            {
+                Signature = Base64Url.EncodeToString(new byte[] { 9 }),
+                Algorithm = "EdDSA",
+            });
+
+        var cut = await ContinueAsync();
+        cut.WaitForAssertion(() =>
+            cut.FindAll("[data-testid=consent-sheet]").Should().ContainSingle());
+        await cut.InvokeAsync(() => cut.Find("[data-testid=consent-confirm]").Click());
+
+        cut.WaitForAssertion(() => capturedConsented.Should().NotBeNull());
+
+        // The root's query is server-custody; the copy's is device-signed. NEVER a device-signed root.
+        capturedConsented!.Single(c => c.QueryId == "identity").SigningMode
+            .Should().Be(PresentationSigningMode.ServerCustody,
+                "device-signing the holder-cnf root fails verification downstream with no local error");
+        capturedConsented.Single(c => c.QueryId == "address").SigningMode
+            .Should().Be(PresentationSigningMode.Device);
+
+        // The page supplied the holder signing leg for the server-custody entry.
+        capturedHolderJwk.Should().NotBeNull();
+        capturedHolderJwk!.Value.GetRawText().Should().Be(HolderJwk.GetRawText());
+        capturedHolderSigner.Should().NotBeNull();
+        await capturedHolderSigner!(new byte[] { 1, 2 }, CancellationToken.None);
+        _walletClient.Verify(w => w.SignKbJwtAsync(
+            It.IsAny<KbJwtSignRequest>(), It.IsAny<CancellationToken>()), Times.Once,
+            "the holder signer must round-trip the Task 6a sign-kb endpoint");
+    }
+
     // ────────────────────────── helpers ──────────────────────────
 
     /// <summary>Render the page, paste a deep link, and press Continue.</summary>
@@ -299,9 +432,61 @@ public sealed class PresentSelectionWiringTests : ComponentTestFixture
         AvailableOptional = [],
     };
 
+    /// <summary>A two-query DCQL request so the page takes the multi-credential (F181 US2) path.</summary>
+    private static ParsedPresentationRequest MakeMultiRequest(params (string Id, string Vct)[] queries) => new()
+    {
+        ClientId = "did:sorcha:verifier:1",
+        ResponseUri = "https://verify.test/r/x/response",
+        Nonce = "n",
+        State = "s",
+        Query = new DcqlQuery
+        {
+            Credentials = queries.Select(q => new DcqlCredentialQuery
+            {
+                Id = q.Id,
+                Format = DcqlFormats.SdJwtVc,
+                Meta = new DcqlCredentialMeta { VctValues = [q.Vct] },
+            }).ToList(),
+        },
+        RequiredVct = queries[0].Vct,
+        RequiredClaims = [],
+        OptionalClaims = [],
+    };
+
+    private static DcqlQueryMatch MakeQueryMatch(string queryId, string vct, CachedCredential credential) => new()
+    {
+        QueryId = queryId,
+        Vct = vct,
+        RequiredClaims = [],
+        OptionalClaims = [],
+        Candidates =
+        [
+            new CredentialMatch { Credential = credential, SatisfiedRequired = [], AvailableOptional = [] },
+        ],
+    };
+
+    /// <summary>A cached SD-JWT whose payload carries the given cnf.jwk — classified by REAL thumbprint logic.</summary>
+    private static CachedCredential MakeCnfCredential(string vct, JsonElement cnfJwk)
+    {
+        var headerSeg = Base64Url.EncodeToString(
+            JsonSerializer.SerializeToUtf8Bytes(new { alg = "ES256", typ = "dc+sd-jwt" }));
+        var payloadSeg = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(
+            new Dictionary<string, object> { ["vct"] = vct, ["cnf"] = new Dictionary<string, object> { ["jwk"] = cnfJwk } }));
+        return new CachedCredential
+        {
+            Id = Guid.NewGuid(),
+            Vct = vct,
+            RawSdJwt = $"{headerSeg}.{payloadSeg}.sig",
+            AvailableClaimNames = [],
+        };
+    }
+
     // PresentationSelection factories are internal to the PWA assembly; build results directly.
     private static PresentationSelection Selected(CredentialMatch match, PresentationSigningMode mode) =>
         new() { Outcome = PresentationSelectionOutcome.Selected, Match = match, SigningMode = mode };
+
+    private static PresentationSelection Choice(IReadOnlyList<PresentationCandidate> candidates) =>
+        new() { Outcome = PresentationSelectionOutcome.ChoiceRequired, Candidates = candidates };
 
     private static PresentationSelection BindFirst(CredentialMatch root) =>
         new() { Outcome = PresentationSelectionOutcome.BindDeviceFirst, RootToBind = root };
