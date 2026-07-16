@@ -297,8 +297,14 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         // synchronous presentation was verified this execution (e.g. an async SorchaWallet gate, or no
         // credential requirement at all).
         Dictionary<string, object>? verifiedPresentationClaims = null;
+        // #1195 Phase 2 (Task 6b, A) — the F111 async lifecycle fires for BOTH external-wallet
+        // presentation sources. HAIP keeps first pick (byte-identical behaviour for existing
+        // blueprints); a SorchaWallet requirement now also initiates instead of falling through
+        // to the internal synchronous verifier (which could never satisfy an async wallet gate).
         var haipRequirement = actionDef.CredentialRequirements?
-            .FirstOrDefault(r => r.PresentationSource == PresentationSource.HaipExternalWallet);
+            .FirstOrDefault(r => r.PresentationSource == PresentationSource.HaipExternalWallet)
+            ?? actionDef.CredentialRequirements?
+            .FirstOrDefault(r => r.PresentationSource == PresentationSource.SorchaWallet);
         if (actionDef.CredentialRequirements?.Any() == true)
         {
             var hasSubmittedPresentations = request.CredentialPresentations is { Count: > 0 };
@@ -364,10 +370,11 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             {
                 // Deployment-configuration error: this branch is only reachable when
                 // IPresentationLifecycleService is not registered. Fail fast rather
-                // than silently skipping the HAIP requirement.
+                // than silently skipping the presentation requirement.
                 throw new InvalidOperationException(
-                    "HAIP presentation requested but IPresentationLifecycleService is not registered. " +
-                    "Ensure PresentationLifecycleOptions and related services are wired in the DI container.");
+                    $"An external-wallet presentation ({haipRequirement.PresentationSource}) was requested " +
+                    "but IPresentationLifecycleService is not registered. Ensure PresentationLifecycleOptions " +
+                    "and related services are wired in the DI container.");
             }
             else if (_credentialVerifier != null)
             {

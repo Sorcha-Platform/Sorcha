@@ -90,28 +90,59 @@ public static class PresentationEndpoints
                 "scanner; no instance, register, or consumer metadata is included. " +
                 "The register's transaction stream is the authoritative history.");
 
-        app.MapPost("/callbacks/{consumerName}/{presentationRequestId:guid}", async (
+        // Shared dispatch for both callback routes below.
+        static async Task<IResult> DispatchCallbackAsync(
+            string consumerName,
+            Guid presentationRequestId,
+            JsonElement verifierPayload,
+            IPresentationLifecycleService lifecycle,
+            CancellationToken ct)
+        {
+            try
+            {
+                var result = await lifecycle.HandleOutcomeAsync(
+                    consumerName, presentationRequestId, verifierPayload, ct);
+                return Results.Ok(new PresentationCallbackResponse(
+                    Kind: result.Kind.ToString(),
+                    OutcomeTransactionId: result.OutcomeTransactionId,
+                    IdempotentReplay: result.IsIdempotentReplay,
+                    LateAfterAbandonment: result.IsLateAfterAbandonment));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        }
+
+        // #1195 Phase 2 (Task 6b, B) — the sorcha-wallet consumer's callback IS the wallet's
+        // direct_post target (BuildInitiationAsync serves it as response_uri), and the poster
+        // is always the Citizen Wallet PWA holding a CONSUMER-tier token. The literal segment
+        // outranks the {consumerName} template in route matching, so this route takes every
+        // sorcha-wallet post; all other consumers stay on the service-tier route below.
+        app.MapPost("/callbacks/sorcha-wallet/{presentationRequestId:guid}", (
+                Guid presentationRequestId,
+                [FromBody] JsonElement verifierPayload,
+                IPresentationLifecycleService lifecycle,
+                CancellationToken ct) => DispatchCallbackAsync(
+                    Services.Implementation.SorchaWalletPresentationConsumer.ConsumerNameValue,
+                    presentationRequestId, verifierPayload, lifecycle, ct))
+            .WithName("SorchaWalletPresentationCallback")
+            .WithSummary("Citizen-wallet direct_post target for a sorcha-wallet presentation outcome")
+            .WithDescription(
+                "The Sorcha Wallet PWA posts its {vpToken} outcome payload here (this URI is the " +
+                "response_uri in the served request object). Consumer-tier: the citizen's own " +
+                "token authorises the post; verification happens server-side in the sorcha-wallet " +
+                "consumer against the session persisted at initiation. Idempotent by " +
+                "presentationRequestId; unknown/expired attempts return a named 400.")
+            .RequireAuthorization(AuthorizationPolicies.RequireConsumerAudience);
+
+        app.MapPost("/callbacks/{consumerName}/{presentationRequestId:guid}", (
                 string consumerName,
                 Guid presentationRequestId,
                 [FromBody] JsonElement verifierPayload,
                 IPresentationLifecycleService lifecycle,
-                CancellationToken ct) =>
-            {
-                try
-                {
-                    var result = await lifecycle.HandleOutcomeAsync(
-                        consumerName, presentationRequestId, verifierPayload, ct);
-                    return Results.Ok(new PresentationCallbackResponse(
-                        Kind: result.Kind.ToString(),
-                        OutcomeTransactionId: result.OutcomeTransactionId,
-                        IdempotentReplay: result.IsIdempotentReplay,
-                        LateAfterAbandonment: result.IsLateAfterAbandonment));
-                }
-                catch (InvalidOperationException ex)
-                {
-                    return Results.BadRequest(new { error = ex.Message });
-                }
-            })
+                CancellationToken ct) => DispatchCallbackAsync(
+                    consumerName, presentationRequestId, verifierPayload, lifecycle, ct))
             .WithName("PresentationCallback")
             .WithSummary("Verifier callback for a presentation outcome")
             .WithDescription(

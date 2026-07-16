@@ -101,8 +101,13 @@ public class AiasDeviceRegistrationBlueprintTests
             .Be(Sorcha.Blueprint.Models.Credentials.PresentationSource.SorchaWallet,
                 "the citizen presents from their on-device Sorcha Wallet PWA (F127), not HAIP");
         requirement.RequiredClaims.Should().NotBeNull();
-        requirement.RequiredClaims!.Select(c => c.ClaimName).Should()
-            .Contain(new[] { "givenName", "familyName", "dateOfBirth" });
+        // Task 6b (D) — FULL disclosure for the bind gate (design §4.1): the consumer filters
+        // disclosed claims to the gate's requiredClaims, so the gate must require the COMPLETE
+        // assured claim set the apply blueprint issues (its claimMappings are the source of
+        // truth) or the device copy is minted with holes (no email/address/portrait).
+        requirement.RequiredClaims!.Select(c => c.ClaimName).Should().BeEquivalentTo(
+            "givenName", "middleName", "familyName", "fullName",
+            "dateOfBirth", "email", "address", "portrait");
     }
 
     [Fact]

@@ -230,6 +230,18 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
             services.RemoveAll<IPendingPresentationStore>();
             services.AddSingleton<IPendingPresentationStore>(PendingStore);
 
+            // #1195 Phase 2 (Task 6b) — the sorcha-wallet initiation path (first exercised by
+            // SorchaWalletExecuteIntegrationTests) mints a ClaimsFetchToken and stashes the
+            // served request object; the outcome path stashes disclosed claims. The production
+            // Redis stores dereference the base factory's null GetDatabase() and NRE (same
+            // reason the seal coordinator is replaced above) — swap in in-memory doubles.
+            services.RemoveAll<IClaimsFetchTokenStore>();
+            services.AddSingleton<IClaimsFetchTokenStore, InMemoryClaimsFetchTokenStore>();
+            services.RemoveAll<IRequestObjectStore>();
+            services.AddSingleton<IRequestObjectStore, InMemoryRequestObjectStore>();
+            services.RemoveAll<IDisclosedClaimsStore>();
+            services.AddSingleton<IDisclosedClaimsStore, InMemoryDisclosedClaimsStore>();
+
             services.RemoveAll<IPresentationRateLimiter>();
             services.AddSingleton<IPresentationRateLimiter>(RateLimiter);
 
@@ -277,6 +289,51 @@ internal sealed class NoOpPresentationSealCoordinator : IPresentationSealCoordin
 
     public Task<SweepResult> RunRecoverySweepAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(new SweepResult(0, 0));
+}
+
+/// <summary>In-memory test double for <see cref="IClaimsFetchTokenStore"/> (no TTL enforcement).</summary>
+internal sealed class InMemoryClaimsFetchTokenStore : IClaimsFetchTokenStore
+{
+    private readonly ConcurrentDictionary<string, Guid> _tokens = new();
+
+    public Task StoreAsync(string token, Guid presentationRequestId, TimeSpan ttl, CancellationToken ct = default)
+    {
+        _tokens[token] = presentationRequestId;
+        return Task.CompletedTask;
+    }
+
+    public Task<Guid?> GetAndRemoveAsync(string token, CancellationToken ct = default)
+        => Task.FromResult<Guid?>(_tokens.TryRemove(token, out var id) ? id : null);
+}
+
+/// <summary>In-memory test double for <see cref="IRequestObjectStore"/> (no TTL enforcement).</summary>
+internal sealed class InMemoryRequestObjectStore : IRequestObjectStore
+{
+    private readonly ConcurrentDictionary<Guid, string> _objects = new();
+
+    public Task StoreAsync(Guid presentationRequestId, string requestObjectJwt, TimeSpan ttl, CancellationToken ct = default)
+    {
+        _objects[presentationRequestId] = requestObjectJwt;
+        return Task.CompletedTask;
+    }
+
+    public Task<string?> GetAsync(Guid presentationRequestId, CancellationToken ct = default)
+        => Task.FromResult(_objects.GetValueOrDefault(presentationRequestId));
+}
+
+/// <summary>In-memory test double for <see cref="IDisclosedClaimsStore"/> (no TTL enforcement).</summary>
+internal sealed class InMemoryDisclosedClaimsStore : IDisclosedClaimsStore
+{
+    private readonly ConcurrentDictionary<Guid, IReadOnlyDictionary<string, object>> _claims = new();
+
+    public Task StoreAsync(Guid presentationRequestId, IReadOnlyDictionary<string, object> claims, TimeSpan ttl, CancellationToken ct = default)
+    {
+        _claims[presentationRequestId] = claims;
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyDictionary<string, object>?> GetAsync(Guid presentationRequestId, CancellationToken ct = default)
+        => Task.FromResult(_claims.GetValueOrDefault(presentationRequestId));
 }
 
 /// <summary>

@@ -46,8 +46,13 @@
             "presentationSource": "SorchaWallet",
             "requiredClaims": [
               { "claimName": "givenName" },
+              { "claimName": "middleName" },
               { "claimName": "familyName" },
-              { "claimName": "dateOfBirth" }
+              { "claimName": "fullName" },
+              { "claimName": "dateOfBirth" },
+              { "claimName": "email" },
+              { "claimName": "address" },
+              { "claimName": "portrait" }
             ]
           }
         ],

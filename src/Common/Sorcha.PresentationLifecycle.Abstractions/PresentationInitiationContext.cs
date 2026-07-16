@@ -44,6 +44,15 @@ namespace Sorcha.PresentationLifecycle.Abstractions;
 /// <paramref name="RequiredClaimNames"/> (back-compatible with pre-US2 callers).
 /// Carried as JSON to keep this abstractions assembly free of a DCQL model
 /// dependency.</param>
+/// <param name="Nonce">#1195 Phase 2 (Task 6b, T032) — the nonce the consumer's
+/// initiation embedded in the request object. Persisted on pending state at
+/// initiation and carried back on the callback so the consumer can rebuild the
+/// verifier session (the KB-JWT must echo this nonce). Null on legacy pending
+/// entries written before the session wiring.</param>
+/// <param name="ExpiresAt">#1195 Phase 2 (Task 6b, T032) — when the pending
+/// attempt's validity window closes (CreatedAt + validity window). Lets the
+/// consumer refuse a late outcome with a NAMED session-expired decline instead
+/// of an opaque failure. Null on legacy pending entries.</param>
 public sealed record PresentationInitiationContext(
     Guid PresentationRequestId,
     Guid InstanceId,
@@ -57,4 +66,6 @@ public sealed record PresentationInitiationContext(
     string? CredentialType = null,
     IReadOnlyList<string>? RequiredClaimNames = null,
     string? PublicBaseUrl = null,
-    string? DeclaredDcqlQueryJson = null);
+    string? DeclaredDcqlQueryJson = null,
+    string? Nonce = null,
+    DateTimeOffset? ExpiresAt = null);

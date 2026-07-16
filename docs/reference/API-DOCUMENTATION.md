@@ -888,7 +888,7 @@ found; `403` if the caller is not a recorded participant on the instance.
 
 ### Timebound Presentation Lifecycle (Feature 111)
 
-Three-event on-register lifecycle for timebound credential presentations. When an action carries `credentialRequirements` targeting HaipExternalWallet and the citizen submits without pre-attached presentations, `/execute` returns **`202 Accepted`** with `AwaitingPresentation=true` and a QR code. A `PresentationInitiated` transaction is written to the register immediately. The action does NOT complete until the verifier callback writes a `PresentationOutcome` with `kind=success`. Retry after a decline is first-class; a second attempt after a successful outcome returns **`409 Conflict`**.
+Three-event on-register lifecycle for timebound credential presentations. When an action carries `credentialRequirements` targeting HaipExternalWallet **or SorchaWallet** (#1195 Phase 2, Task 6b) and the citizen submits without pre-attached presentations, `/execute` returns **`202 Accepted`** with `AwaitingPresentation=true` and a QR code / authorization request URI. A `PresentationInitiated` transaction is written to the register immediately. The action does NOT complete until the verifier callback writes a `PresentationOutcome` with `kind=success`. Retry after a decline is first-class; a second attempt after a successful outcome returns **`409 Conflict`**.
 
 #### `POST /api/instances/{instanceId}/actions/{actionId}/execute` — 202 semantics
 
@@ -945,6 +945,10 @@ Wallet-facing, intentionally unauthenticated for OpenID4VP wallet interoperabili
 State values: `awaiting-presentation` · `success` · `decline` · `abandoned` · `abandoned-with-late-outcome` · `expired`.
 
 The register's transaction stream is the authoritative history — query `PresentationInitiated` / `PresentationOutcome` / `PresentationAbandoned` transactions from the Register Service for the full event record.
+
+#### `POST /api/presentations/callbacks/sorcha-wallet/{presentationRequestId}`
+
+**#1195 Phase 2 (Task 6b)** — the Citizen Wallet PWA's direct_post target for a `SorchaWallet`-gated presentation (this URI is the `response_uri` in the served request object). **Consumer-tier** (`RequireConsumerAudience`) — the citizen's own token authorises the post; the literal route segment outranks the generic `{consumerName}` template, so every sorcha-wallet post lands here. Body: `{ "vpToken": "<compact SD-JWT presentation with KB-JWT>" }`. Verification happens server-side in the sorcha-wallet consumer against the verifier session persisted on pending state at initiation (nonce, vct, required claims, client_id — single-use, TTL-bound). Refusals are named: `session-missing` (unknown/pre-wiring attempt), `session-expired` (post-window), and validator errors (nonce mismatch, vct mismatch, missing claims) decline with distinct reasons. Response shape matches the generic callback below.
 
 #### `POST /api/presentations/callbacks/{consumerName}/{presentationRequestId}`
 
