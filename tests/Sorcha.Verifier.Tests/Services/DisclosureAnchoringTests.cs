@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Text;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -90,5 +91,94 @@ public sealed class DisclosureAnchoringTests
 
         outcome.Accepted.Should().BeTrue(string.Join(", ", outcome.Errors));
         outcome.DisclosedClaims.Should().ContainKeys("givenName", "familyName");
+    }
+
+    // ── Fix round 2: RFC 9901 anchoring completeness ─────────────────────────────
+
+    /// <summary>Mint an RFC 9901 array-element disclosure: base64url(JSON [salt, value]). Returns (segment, digest).</summary>
+    private static (string Segment, string Digest) MintArrayElementDisclosure(string salt, string value)
+    {
+        var segment = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(
+            new object[] { salt, value }));
+        var digest = Base64Url.EncodeToString(
+            System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(segment)));
+        return (segment, digest);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_LegitimateArrayElementDisclosure_AnchorsAndVerifies()
+    {
+        // RFC 9901 array SD: the payload carries an array whose selectively-disclosable
+        // element is the {"...": "<digest>"} marker; the matching 2-element [salt, value]
+        // disclosure rides in the vp_token. A legitimate credential using this shape must
+        // anchor cleanly — reporting it as "unanchored" (forgery) was the fix-round-2 gap.
+        var (segment, digest) = MintArrayElementDisclosure("elem-salt-1", "GB");
+        var bundle = TestVpFactory.Mint(Vct,
+            VpValidatorTestHarness.Claims(("givenName", "Stuart")),
+            VpValidatorTestHarness.ClientId, VpValidatorTestHarness.Nonce,
+            extraPayloadClaims: new Dictionary<string, object>
+            {
+                ["nationalities"] = new object[]
+                {
+                    new Dictionary<string, object> { ["..."] = digest },
+                    "IE", // non-disclosable sibling element stays inline
+                },
+            },
+            extraDisclosureSegments: [segment]);
+
+        var validator = VpValidatorTestHarness.BuildValidator();
+        var outcome = await validator.ValidateAsync(
+            VpValidatorTestHarness.Session(), bundle.VpToken, bundle.Delegation);
+
+        outcome.Accepted.Should().BeTrue(
+            "an issuer-committed array-element disclosure is legitimate, not forgery: " +
+            string.Join(", ", outcome.Errors));
+        outcome.DisclosedClaims.Should().ContainKey("givenName");
+    }
+
+    [Fact]
+    public async Task ValidateAsync_ForgedArrayElementDisclosure_IsRejected_WithNamedError()
+    {
+        // A 2-element [salt, value] disclosure whose digest appears in NO marker and no _sd
+        // array is still a forgery and must reject, naming the segment.
+        var (forgedSegment, _) = MintArrayElementDisclosure("forged-elem-salt", "attacker-value");
+        var bundle = TestVpFactory.Mint(Vct,
+            VpValidatorTestHarness.Claims(("givenName", "Stuart")),
+            VpValidatorTestHarness.ClientId, VpValidatorTestHarness.Nonce,
+            extraDisclosureSegments: [forgedSegment]);
+
+        var validator = VpValidatorTestHarness.BuildValidator();
+        var outcome = await validator.ValidateAsync(
+            VpValidatorTestHarness.Session(), bundle.VpToken, bundle.Delegation);
+
+        outcome.Accepted.Should().BeFalse("an uncommitted array-element disclosure is a forgery");
+        outcome.Errors.Should().Contain(e =>
+                e.Contains("not committed", StringComparison.OrdinalIgnoreCase) &&
+                e.Contains("forged-elem-salt"),
+            "the refusal must identify the forged segment — never silent");
+    }
+
+    [Fact]
+    public async Task ValidateAsync_UnsupportedSdAlg_RejectsWithDistinctNamedError_NotUnanchored()
+    {
+        // _sd_alg other than sha-256: digests computed under an unknown algorithm can never
+        // anchor here — but calling that "unanchored disclosure" would accuse a legitimate
+        // credential of forgery. The rejection must be its own named reason.
+        var bundle = TestVpFactory.Mint(Vct,
+            VpValidatorTestHarness.Claims(("givenName", "Stuart")),
+            VpValidatorTestHarness.ClientId, VpValidatorTestHarness.Nonce,
+            extraPayloadClaims: new Dictionary<string, object> { ["_sd_alg"] = "sha-384" });
+
+        var validator = VpValidatorTestHarness.BuildValidator();
+        var outcome = await validator.ValidateAsync(
+            VpValidatorTestHarness.Session(), bundle.VpToken, bundle.Delegation);
+
+        outcome.Accepted.Should().BeFalse("sha-256 is the only supported _sd_alg — fail closed");
+        outcome.Errors.Should().Contain(e =>
+                e.Contains("_sd_alg", StringComparison.OrdinalIgnoreCase) &&
+                e.Contains("sha-384"),
+            "the error must name the unsupported algorithm");
+        outcome.Errors.Should().NotContain(e => e.Contains("not committed", StringComparison.OrdinalIgnoreCase),
+            "an unsupported algorithm must NOT be misclassified as a forged/unanchored disclosure");
     }
 }

@@ -308,11 +308,31 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             // ── 7. Anchor disclosures, extract disclosed claims, check required set ──
             // #1195 Phase 2 (Task 6 fix round) — RFC 9901 disclosure anchoring: every
             // disclosure segment MUST be committed by the credential (its SHA-256 digest in an
-            // _sd array of the payload, or of an already-accepted disclosure's value — nested
-            // SD). Without this, a presenter could append fabricated [salt, name, value]
-            // segments — or OVERRIDE a legitimate claim's value with a forged duplicate — and
-            // have them emitted as verified claims. The KB-JWT cannot protect against this:
-            // its signer IS the presenter. Tampering rejects the whole presentation, loudly.
+            // _sd array or an array-element {"...": digest} marker of the payload, or of an
+            // already-accepted disclosure's value — nested SD). Without this, a presenter could
+            // append fabricated [salt, name, value] segments — or OVERRIDE a legitimate claim's
+            // value with a forged duplicate — and have them emitted as verified claims. The
+            // KB-JWT cannot protect against this: its signer IS the presenter. Tampering
+            // rejects the whole presentation, loudly.
+            //
+            // Fix round 2 — honour the payload's _sd_alg (RFC 9901 §4.1.1): sha-256 is the
+            // default and the only supported algorithm. Any OTHER declared value is its own
+            // DISTINCT rejection — digests computed under an unknown algorithm can never
+            // anchor, and reporting that as "unanchored disclosure" would accuse a legitimate
+            // credential of forgery. The error must tell the truth about why.
+            if (disclosureSegments.Count > 0)
+            {
+                var sdAlg = TryGetString(credentialPayload.Value, "_sd_alg");
+                if (sdAlg is not null && !string.Equals(sdAlg, "sha-256", StringComparison.OrdinalIgnoreCase))
+                {
+                    errors.Add(
+                        $"Unsupported _sd_alg '{sdAlg}' — this verifier supports sha-256 only; " +
+                        "disclosure anchoring cannot be evaluated.");
+                    layerState.LivePresentationFailed = true;
+                    return Failure(errors, BuildLayers(false));
+                }
+            }
+
             var unanchored = FindUnanchoredDisclosures(credentialPayload.Value, disclosureSegments);
             if (unanchored.Count > 0)
             {
@@ -451,9 +471,10 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
     }
 
     /// <summary>
-    /// RFC 9901 disclosure anchoring (#1195 Phase 2, Task 6 fix round). Returns the display
-    /// names of every disclosure segment whose SHA-256 digest is NOT committed by the
-    /// credential — i.e. not present in any <c>_sd</c> array of the credential payload or of an
+    /// RFC 9901 disclosure anchoring (#1195 Phase 2, Task 6 fix rounds 1+2). Returns the
+    /// display names of every disclosure segment whose SHA-256 digest is NOT committed by the
+    /// credential — i.e. not present in any <c>_sd</c> array OR any array-element
+    /// <c>{"...": "&lt;digest&gt;"}</c> marker of the credential payload or of an
     /// already-anchored disclosure's value (nested selective disclosure). Runs to fixpoint so
     /// nested disclosures anchor regardless of segment order. An empty result means every
     /// presented disclosure is issuer-committed.
@@ -510,7 +531,13 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
         return unanchoredNames;
     }
 
-    /// <summary>Recursively collect every string entry of every <c>_sd</c> array in <paramref name="element"/>.</summary>
+    /// <summary>
+    /// Recursively collect every digest the credential commits: string entries of <c>_sd</c>
+    /// arrays (object-property SD) and the values of <c>{"...": "&lt;digest&gt;"}</c>
+    /// array-element markers (RFC 9901 array SD — fix round 2). Harvesting a marker anywhere
+    /// in an anchored subtree is deliberate lenience: digests are unguessable SHA-256 values,
+    /// so over-collection can never anchor a forged disclosure.
+    /// </summary>
     private static void CollectSdDigests(JsonElement element, HashSet<string> sink)
     {
         switch (element.ValueKind)
@@ -527,6 +554,12 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
                                 sink.Add(digest.GetString()!);
                             }
                         }
+                    }
+                    else if (property.NameEquals("...") && property.Value.ValueKind == JsonValueKind.String)
+                    {
+                        // RFC 9901 array-element marker: {"...": "<digest>"} commits a
+                        // 2-element [salt, value] disclosure for that array position.
+                        sink.Add(property.Value.GetString()!);
                     }
                     else
                     {

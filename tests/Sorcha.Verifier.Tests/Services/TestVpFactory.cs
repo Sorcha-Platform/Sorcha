@@ -44,7 +44,9 @@ internal static class TestVpFactory
         DateTimeOffset? kbJwtIssuedAt = null,
         DateTimeOffset? kbJwtExpiresAt = null,
         bool omitKbJwtExp = false,
-        string credentialTyp = "dc+sd-jwt")
+        string credentialTyp = "dc+sd-jwt",
+        Dictionary<string, object>? extraPayloadClaims = null,
+        IEnumerable<string>? extraDisclosureSegments = null)
     {
         var issuer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var holder = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -76,6 +78,19 @@ internal static class TestVpFactory
             ["_sd_alg"] = "sha-256",
             ["cnf"] = new Dictionary<string, object> { ["jwk"] = JsonDocument.Parse(holderJwk).RootElement },
         };
+        // Fix round 2 (anchoring completeness) — lets tests add payload claims (e.g. an
+        // array carrying {"...": digest} markers) or OVERRIDE defaults (e.g. _sd_alg).
+        if (extraPayloadClaims is not null)
+        {
+            foreach (var (name, value) in extraPayloadClaims)
+            {
+                credentialPayload[name] = value;
+            }
+        }
+        if (extraDisclosureSegments is not null)
+        {
+            disclosures.AddRange(extraDisclosureSegments);
+        }
         var credentialJwt = SignEs256(
             new Dictionary<string, object> { ["alg"] = "ES256", ["typ"] = credentialTyp },
             credentialPayload, issuer);
