@@ -300,6 +300,37 @@ public sealed class SyncServiceTests
             "the DCQL matcher checks required claims against AvailableClaimNames");
     }
 
+    [Fact]
+    public async Task SyncAsync_ReplacedCredential_CachesWithVctAndClaims_SoItStaysMatchable()
+    {
+        // Regression (#1195 live 2026-07-17): the Replaced delta branch cached Vct = string.Empty and
+        // AvailableClaimNames = [], so a replaced credential could never satisfy a presentation request
+        // for its own type — "None of your credentials match https://sorcha.dev/vc/assured-identity/v1".
+        var fullName = SdJwtDisclosure("salt1", "fullName", "Ada Lovelace");
+        var jwt = SdJwtBody(new
+            {
+                vct = "https://sorcha.dev/vc/assured-identity/v1",
+                _sd = new[] { SdJwtDigest(fullName) },
+            })
+            + "~" + fullName + "~";
+
+        _client.Setup(c => c.SyncAsync(null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SyncResponse
+            {
+                SyncToken = "cursor-r",
+                Credentials = new SyncCredentialChanges
+                {
+                    Replaced = new[] { new ReplacedCredentialEntry { OldId = "urn:old", NewId = "urn:new", Jwt = jwt } },
+                },
+            });
+
+        await _sut.SyncAsync();
+
+        var cached = (await _cache.ListAsync()).Should().ContainSingle().Subject;
+        cached.Vct.Should().Be("https://sorcha.dev/vc/assured-identity/v1");
+        cached.AvailableClaimNames.Should().Contain("fullName");
+    }
+
     private static string SdJwtBody(object payload) =>
         "eyJhbGciOiJFUzI1NiJ9." +
         System.Buffers.Text.Base64Url.EncodeToString(

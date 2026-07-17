@@ -250,12 +250,18 @@ public sealed class SyncService : ISyncService
         }
         foreach (var replaced in delta.Credentials.Replaced)
         {
+            // Populate Vct + claim names from the new credential's SD-JWT — leaving them empty
+            // (the pre-fix behaviour) made a replaced credential unmatchable: PresentationEngine
+            // matches on Vct, so an empty match identifier reports "None of your credentials match"
+            // for the exact type the citizen holds. Mirrors the Added path (ToCachedCredential).
             await _cache.UpsertAsync(new CachedCredential
             {
                 Id = StringToCacheGuid(replaced.NewId),
-                Vct = string.Empty,
+                Vct = SdJwtReader.ReadVct(replaced.Jwt),
                 RawSdJwt = replaced.Jwt,
-                AvailableClaimNames = [],
+                AvailableClaimNames = SdJwtReader.ReadDisclosedClaims(replaced.Jwt)
+                    .Select(c => c.Name)
+                    .ToList(),
             }, ct);
         }
         // Revoked entries are surfaced via the cache's existence; v1 leaves the

@@ -66,6 +66,21 @@ public sealed class SdJwtReaderTests
     }
 
     [Fact]
+    public void ReadVct_ReadsCanonicalUriVct()
+    {
+        var sd = JwtBody(new { vct = "https://sorcha.dev/vc/assured-identity/v1" }) + "~";
+        SdJwtReader.ReadVct(sd).Should().Be("https://sorcha.dev/vc/assured-identity/v1");
+    }
+
+    [Fact]
+    public void ReadVct_NoVctOrNull_ReturnsEmpty()
+    {
+        SdJwtReader.ReadVct(JwtBody(new { exp = 1L }) + "~").Should().BeEmpty();
+        SdJwtReader.ReadVct(null).Should().BeEmpty();
+        SdJwtReader.ReadVct("just.a.jwt").Should().BeEmpty();
+    }
+
+    [Fact]
     public void ReadDisclosedClaims_ObjectValue_RendersFieldNamesNotRawJson()
     {
         // A disclosure whose VALUE is an object must not print as {"town":"Edinburgh"}.

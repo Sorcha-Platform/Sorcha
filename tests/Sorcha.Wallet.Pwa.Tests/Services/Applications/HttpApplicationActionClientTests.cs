@@ -44,7 +44,7 @@ public sealed class HttpApplicationActionClientTests
         // "forbidden", never asked to guess that it means "you must be offline".
         var client = Create(req =>
         {
-            if (req.RequestUri!.AbsolutePath.EndsWith($"/api/instances/{InstanceId:N}", StringComparison.Ordinal))
+            if (req.RequestUri!.AbsolutePath.EndsWith($"/api/instances/{InstanceId:D}", StringComparison.Ordinal))
             {
                 return Ok(InstanceJson);
             }
@@ -62,7 +62,7 @@ public sealed class HttpApplicationActionClientTests
     {
         var client = Create(req =>
         {
-            if (req.RequestUri!.AbsolutePath.EndsWith($"/api/instances/{InstanceId:N}", StringComparison.Ordinal))
+            if (req.RequestUri!.AbsolutePath.EndsWith($"/api/instances/{InstanceId:D}", StringComparison.Ordinal))
             {
                 return Ok(InstanceJson);
             }
@@ -79,7 +79,7 @@ public sealed class HttpApplicationActionClientTests
     {
         var client = Create(req =>
         {
-            if (req.RequestUri!.AbsolutePath.EndsWith($"/api/instances/{InstanceId:N}", StringComparison.Ordinal))
+            if (req.RequestUri!.AbsolutePath.EndsWith($"/api/instances/{InstanceId:D}", StringComparison.Ordinal))
             {
                 return Ok(InstanceJson);
             }
@@ -96,7 +96,7 @@ public sealed class HttpApplicationActionClientTests
     {
         var client = Create(req =>
         {
-            if (req.RequestUri!.AbsolutePath.EndsWith($"/api/instances/{InstanceId:N}", StringComparison.Ordinal))
+            if (req.RequestUri!.AbsolutePath.EndsWith($"/api/instances/{InstanceId:D}", StringComparison.Ordinal))
             {
                 return Ok(InstanceJson);
             }
@@ -119,11 +119,11 @@ public sealed class HttpApplicationActionClientTests
                 hitBlueprintEndpoint = true;
                 return new HttpResponseMessage(HttpStatusCode.Forbidden);
             }
-            if (req.RequestUri!.AbsolutePath.EndsWith($"/api/instances/{InstanceId:N}", StringComparison.Ordinal))
+            if (req.RequestUri!.AbsolutePath.EndsWith($"/api/instances/{InstanceId:D}", StringComparison.Ordinal))
             {
                 return Ok(InstanceJson);
             }
-            if (req.RequestUri!.AbsolutePath.EndsWith($"/api/instances/{InstanceId:N}/actions/1", StringComparison.Ordinal))
+            if (req.RequestUri!.AbsolutePath.EndsWith($"/api/instances/{InstanceId:D}/actions/1", StringComparison.Ordinal))
             {
                 return Ok(ActionSchemaJson);
             }
@@ -148,6 +148,39 @@ public sealed class HttpApplicationActionClientTests
         var result = await client.LoadFormAsync(InstanceId);
 
         result.Status.Should().Be(ApplicationFormLoadStatus.Forbidden);
+    }
+
+    // Regression for the #1195 Phase 2 live bind failure (2026-07-17): the server generates, stores
+    // (text column), and matches instance ids in the canonical hyphenated ("D") Guid form
+    // (Guid.NewGuid().ToString()); this client formatted the URL Guid as ":N" (no hyphens), so every
+    // GET /api/instances/{id} 404'd — surfacing as "The device-binding workflow could not be prepared
+    // (NotFound)". The handler here serves ONLY the hyphenated path, reproducing the server, so it fails
+    // against the ":N" implementation and passes against ":D".
+    [Fact]
+    public async Task LoadFormAsync_UsesCanonicalHyphenatedInstanceId_MatchesServerStoredForm()
+    {
+        string? requestedInstancePath = null;
+        var client = Create(req =>
+        {
+            var path = req.RequestUri!.AbsolutePath;
+            if (path.EndsWith($"/api/instances/{InstanceId:D}", StringComparison.Ordinal))
+            {
+                requestedInstancePath = path;
+                return Ok(InstanceJson);
+            }
+            if (path.EndsWith($"/api/instances/{InstanceId:D}/actions/1", StringComparison.Ordinal))
+            {
+                return Ok(ActionSchemaJson);
+            }
+            // The server has no route for the no-hyphen ("N") form — it 404s exactly as n1 did.
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        }, keys: Keys());
+
+        var result = await client.LoadFormAsync(InstanceId);
+
+        result.Status.Should().Be(ApplicationFormLoadStatus.Loaded);
+        requestedInstancePath.Should().NotBeNull("the client must request the hyphenated instance id the server stores");
+        requestedInstancePath.Should().Contain("-", "the instance id in the URL must be the canonical hyphenated Guid form");
     }
 
     private static HolderKeysView Keys() => new() { WalletAddress = "ws1qcitizen" };
