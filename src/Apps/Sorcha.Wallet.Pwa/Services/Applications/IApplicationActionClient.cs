@@ -140,7 +140,7 @@ public sealed class HttpApplicationActionClient : IApplicationActionClient
     {
         try
         {
-            var instanceResponse = await _http.GetAsync($"api/instances/{instanceId:N}", ct);
+            var instanceResponse = await _http.GetAsync($"api/instances/{instanceId:D}", ct);
             if (!instanceResponse.IsSuccessStatusCode)
             {
                 return ClassifyFailure(instanceId, "instance", instanceResponse.StatusCode);
@@ -157,7 +157,7 @@ public sealed class HttpApplicationActionClient : IApplicationActionClient
             // Instance-scoped, consumer-readable read — NOT GET /api/blueprints/{id} (authoring-only,
             // Feature 147). See the class remarks for why.
             var actionResponse = await _http.GetAsync(
-                $"api/instances/{instanceId:N}/actions/{actionId}", ct);
+                $"api/instances/{instanceId:D}/actions/{actionId}", ct);
             if (!actionResponse.IsSuccessStatusCode)
             {
                 return ClassifyFailure(instanceId, "action", actionResponse.StatusCode);
@@ -243,7 +243,7 @@ public sealed class HttpApplicationActionClient : IApplicationActionClient
         var execBody = new ActionExecuteBody(
             BlueprintId: context.BlueprintId,
             ActionId: context.ActionId.ToString(),
-            InstanceId: context.InstanceId.ToString("N"),
+            InstanceId: context.InstanceId.ToString("D"),
             SenderWallet: context.SenderWallet,
             RegisterAddress: context.RegisterId,
             PayloadData: payloadData);
@@ -251,7 +251,7 @@ public sealed class HttpApplicationActionClient : IApplicationActionClient
         try
         {
             var response = await _http.PostAsJsonAsync(
-                $"api/instances/{context.InstanceId:N}/actions/{context.ActionId}/execute",
+                $"api/instances/{context.InstanceId:D}/actions/{context.ActionId}/execute",
                 execBody, JsonOptions, ct);
 
             if (response.IsSuccessStatusCode)

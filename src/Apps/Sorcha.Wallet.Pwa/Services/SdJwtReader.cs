@@ -110,6 +110,29 @@ public static class SdJwtReader
         return null;
     }
 
+    /// <summary>Reads the credential's <c>vct</c> claim (the JWT body before the first '~'); empty when absent.</summary>
+    public static string ReadVct(string? rawSdJwt)
+    {
+        if (string.IsNullOrWhiteSpace(rawSdJwt)) return string.Empty;
+
+        var jwt = rawSdJwt.Split('~')[0];
+        var parts = jwt.Split('.');
+        if (parts.Length < 2) return string.Empty;
+
+        try
+        {
+            var bytes = Base64Url.DecodeFromChars(parts[1]);
+            using var doc = JsonDocument.Parse(bytes);
+            if (doc.RootElement.TryGetProperty("vct", out var vct) && vct.ValueKind == JsonValueKind.String)
+                return vct.GetString() ?? string.Empty;
+        }
+        catch
+        {
+            // Not a decodable JWT body — treat as "no vct known".
+        }
+        return string.Empty;
+    }
+
     // --- Disclosure reconstruction (ports the server's NestedDisclosure.Reconstruct /
     // SdJwtClaimProjection algorithm into pure BCL — System.Text.Json[.Nodes] only, no
     // Sorcha.Cryptography, since this runs in Blazor WebAssembly.) ---
