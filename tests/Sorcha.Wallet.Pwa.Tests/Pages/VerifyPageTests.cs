@@ -44,4 +44,13 @@ public sealed class VerifyPageTests
         hasSharedControl.Should().BeTrue(
             because: "the rewired Verify.razor must reference the shared control components from Sorcha.UI.Components.User");
     }
+
+    [Fact]
+    public void VerifyRazor_RendersVerdictTrailPanel_NotHardcodedSuccess()
+    {
+        var content = File.ReadAllText(VerifyRazorPath);   // reuse this file's path constant
+        content.Should().Contain("VerdictTrailPanel");
+        content.Should().Contain("OnOutcome");
+        content.Should().NotContain("The credential was presented and verified successfully");
+    }
 }

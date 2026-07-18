@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using MudBlazor.Services;
+using Sorcha.CitizenWallet.Abstractions.Constants;
 using Sorcha.UI.Components.User.Extensions;
 using Sorcha.UI.Components.User.Models.Verification;
 using Sorcha.Verifier.Engine;
@@ -17,10 +18,11 @@ using Xunit;
 namespace Sorcha.UI.Core.Tests.Verification;
 
 /// <summary>
-/// bUnit tests for <see cref="VerdictTrailPanel"/> (Feature 163, US3). Proves headline, disclosed/
-/// withheld split, and the first three layers render without any network call; and that the layer-4
-/// affordance invokes <see cref="IRegisterAnchorClient"/> and re-renders with the anchor result
-/// (FR-014, R-006).
+/// bUnit tests for <see cref="VerdictTrailPanel"/> (Feature 174). Proves the preset-adaptive
+/// treatments — the age hero + minimal-disclosure note vs the identity portrait/name lead — the
+/// pass/warn/fail banner states, the collapsed four-layer trust trail, and that the register-anchor
+/// layer stays an on-demand affordance that only invokes <see cref="IRegisterAnchorClient"/> when
+/// the operator triggers it (FR-014, R-006).
 /// </summary>
 public class VerdictTrailPanelTests : BunitContext
 {
@@ -28,6 +30,12 @@ public class VerdictTrailPanelTests : BunitContext
         "age-over-18", "Age over 18?", "Confirm age over 18",
         "https://sorcha.example/vc/citizen/v1",
         ["age_over_18"], [], ["age_over_18", "portrait"]);
+
+    private static readonly VerificationPreset IdentityPreset = new(
+        "confirm-identity", "Confirm identity", "Confirm the person's identity",
+        VctUris.AssuredIdentityV1,
+        ["fullName", "portrait"], ["dateOfBirth"],
+        ["age_over_18", "portrait", "fullName", "dateOfBirth"]);
 
     private readonly Mock<IRegisterAnchorClient> _mockAnchorClient = new();
 
@@ -47,6 +55,117 @@ public class VerdictTrailPanelTests : BunitContext
             [
                 new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = LayerStatus.Pass, Headline = "Valid KB-JWT" },
                 new ValidationLayerResult { Layer = ValidationLayer.IssuerSignature, Status = LayerStatus.Pass, Headline = "Verified" },
+                new ValidationLayerResult { Layer = ValidationLayer.Revocation, Status = LayerStatus.Pass, Headline = "Not revoked" },
+            ],
+        };
+    }
+
+    private static VerificationOutcome BuildIdentityOutcome()
+    {
+        return new VerificationOutcome
+        {
+            Accepted = true,
+            DisclosedClaims = new Dictionary<string, object?>
+            {
+                ["fullName"] = "Stuart Fraser",
+                ["portrait"] = "aGVsbG8=",
+            },
+            Errors = [],
+            CompletedAt = DateTimeOffset.UtcNow,
+            IssuerSignature = IssuerSignatureStatus.Verified,
+            Layers =
+            [
+                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = LayerStatus.Pass, Headline = "Valid KB-JWT" },
+                new ValidationLayerResult { Layer = ValidationLayer.IssuerSignature, Status = LayerStatus.Pass, Headline = "Verified" },
+                new ValidationLayerResult { Layer = ValidationLayer.Revocation, Status = LayerStatus.Pass, Headline = "Not revoked" },
+            ],
+        };
+    }
+
+    private static VerificationOutcome BuildRejectedOutcomeWithClaims()
+    {
+        // A rejected outcome that STILL carries disclosed claims — the panel must not present these as
+        // trusted identity on a fail (design §2.3).
+        return new VerificationOutcome
+        {
+            Accepted = false,
+            DisclosedClaims = new Dictionary<string, object?>
+            {
+                ["fullName"] = "Stuart Fraser",
+                ["portrait"] = "aGVsbG8=",
+            },
+            Errors = ["nonce mismatch"],
+            CompletedAt = DateTimeOffset.UtcNow,
+            IssuerSignature = IssuerSignatureStatus.NotVerified,
+            Layers =
+            [
+                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = LayerStatus.Fail, Headline = "nonce mismatch" },
+            ],
+        };
+    }
+
+    private static VerificationOutcome BuildWarnOutcome()
+    {
+        return new VerificationOutcome
+        {
+            Accepted = true,
+            DisclosedClaims = new Dictionary<string, object?>
+            {
+                ["fullName"] = "Stuart Fraser",
+            },
+            Errors = [],
+            CompletedAt = DateTimeOffset.UtcNow,
+            IssuerSignature = IssuerSignatureStatus.NotVerified,
+            Layers =
+            [
+                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = LayerStatus.Pass, Headline = "Valid KB-JWT" },
+                new ValidationLayerResult { Layer = ValidationLayer.IssuerSignature, Status = LayerStatus.Unverified, Headline = "Issuer key unresolved" },
+                new ValidationLayerResult { Layer = ValidationLayer.Revocation, Status = LayerStatus.Pass, Headline = "Not revoked" },
+            ],
+        };
+    }
+
+    private static VerificationOutcome BuildAgeRejectedOutcomeWithClaims()
+    {
+        // A rejected age outcome that STILL carries a positive age answer + portrait — the hero must not
+        // present it as confirmed (§2.3), and must name the reason.
+        return new VerificationOutcome
+        {
+            Accepted = false,
+            DisclosedClaims = new Dictionary<string, object?>
+            {
+                ["age_over_18"] = true,
+                ["portrait"] = "aGVsbG8=",
+            },
+            Errors = ["nonce mismatch"],
+            CompletedAt = DateTimeOffset.UtcNow,
+            IssuerSignature = IssuerSignatureStatus.NotVerified,
+            Layers =
+            [
+                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = LayerStatus.Fail, Headline = "nonce mismatch" },
+            ],
+        };
+    }
+
+    private static VerificationOutcome BuildAgeWarnOutcome()
+    {
+        // Accepted but the issuer signature could not be checked — a warn. The hero must name the
+        // reduced assurance (SC-4), not read as a plain pass.
+        return new VerificationOutcome
+        {
+            Accepted = true,
+            DisclosedClaims = new Dictionary<string, object?>
+            {
+                ["age_over_18"] = true,
+                ["portrait"] = "aGVsbG8=",
+            },
+            Errors = [],
+            CompletedAt = DateTimeOffset.UtcNow,
+            IssuerSignature = IssuerSignatureStatus.NotVerified,
+            Layers =
+            [
+                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = LayerStatus.Pass, Headline = "Valid KB-JWT" },
+                new ValidationLayerResult { Layer = ValidationLayer.IssuerSignature, Status = LayerStatus.Unverified, Headline = "Issuer key unresolved" },
                 new ValidationLayerResult { Layer = ValidationLayer.Revocation, Status = LayerStatus.Pass, Headline = "Not revoked" },
             ],
         };
@@ -73,49 +192,115 @@ public class VerdictTrailPanelTests : BunitContext
         Services.AddSorchaUserComponents(config);
     }
 
+    private IRenderedComponent<VerdictTrailPanel> Render(VerdictViewModel verdict)
+        => Render<VerdictTrailPanel>(p => p.Add(x => x.Verdict, verdict));
+
     [Fact]
-    public void VerdictTrailPanel_ThreeOfflineLayers_RendersHeadlineAndLayers()
+    public void AgeTreatment_LeadsWithHero_AndMinimalDisclosureNote()
     {
-        // US3 scenario 1 — headline, disclosed/withheld split, and all three offline layers render
-        // with no network call on first display.
         var verdict = VerdictViewModel.From(AgePreset, BuildOutcomeWithThreeLayers());
-        var cut = Render<VerdictTrailPanel>(p => p.Add(x => x.Verdict, verdict));
+        var cut = Render(verdict);
 
-        cut.Find("[data-testid='verdict-headline']").TextContent
-            .Should().Contain("Over 18");
-
-        cut.Find("[data-testid='trail-LivePresentation']").Should().NotBeNull();
-        cut.Find("[data-testid='trail-IssuerSignature']").Should().NotBeNull();
-        cut.Find("[data-testid='trail-Revocation']").Should().NotBeNull();
-
-        // No anchor client calls on initial render
-        _mockAnchorClient.Verify(
-            c => c.CheckAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never);
+        cut.Find("[data-testid=age-hero]").TextContent.Should().Contain("Over 18");
+        cut.Find("[data-testid=minimal-disclosure]").TextContent.Should().Contain("did not learn their name");
+        cut.FindAll("[data-testid=holder-name]").Should().BeEmpty();   // age screen hides the name
     }
 
     [Fact]
-    public void VerdictTrailPanel_DisclosedAndWithheld_Renders()
+    public void AgeTreatment_Fail_DoesNotPresentConfirmedAnswer_AndNamesReason()
     {
-        // US3 scenario 2 (partial) — disclosed claim and withheld indicator render.
-        var verdict = VerdictViewModel.From(AgePreset, BuildOutcomeWithThreeLayers());
-        var cut = Render<VerdictTrailPanel>(p => p.Add(x => x.Verdict, verdict));
+        // §2.3 — a rejected age outcome carrying age_over_18 == true must NOT read as confirmed.
+        var verdict = VerdictViewModel.From(AgePreset, BuildAgeRejectedOutcomeWithClaims());
+        var cut = Render(verdict);
 
-        cut.Find("[data-testid='trail-disclosure']").Should().NotBeNull();
-        var disclosedClaims = cut.FindAll("[data-testid='disclosed-claim']");
-        disclosedClaims.Should().NotBeEmpty();
+        var hero = cut.Find("[data-testid=age-hero]");
+        hero.GetAttribute("class").Should().Contain("verdict-fail");
+        hero.TextContent.Should().NotContain("confirmed");
+        hero.TextContent.Should().NotContain("proved the threshold");
+        hero.TextContent.Should().Contain("Not verified");
+        hero.TextContent.Should().Contain("nonce mismatch");
+        cut.FindAll("[data-testid=portrait]").Should().BeEmpty();   // identity suppressed on fail
     }
 
     [Fact]
-    public async Task VerdictTrailPanel_AnchorButton_CallsAnchorClientAndReRendersWithLayer4()
+    public void AgeTreatment_Warn_ShowsReducedAssuranceText()
     {
-        // US3 scenario 3 — trigger the layer-4 affordance; IRegisterAnchorClient.CheckAsync is called
-        // and the trail re-renders with the RegisterAnchor layer.
-        var verdict = VerdictViewModel.From(AgePreset, BuildOutcomeWithThreeLayers());
-        var cut = Render<VerdictTrailPanel>(p => p.Add(x => x.Verdict, verdict));
+        // SC-4 — a warn must be named, not merely coloured amber, so it can't read as a plain pass.
+        var verdict = VerdictViewModel.From(AgePreset, BuildAgeWarnOutcome());
+        var cut = Render(verdict);
 
-        // Verify-anchor button must be present (RegisterAnchorId = "reg-001" from disclosed claims)
-        var anchorButton = cut.Find("[data-testid='verify-anchor']");
+        var hero = cut.Find("[data-testid=age-hero]");
+        hero.GetAttribute("class").Should().Contain("verdict-warn");
+        hero.TextContent.Should().Contain("reduced assurance");
+        hero.TextContent.Should().NotContain("proved the threshold");
+    }
+
+    [Fact]
+    public void IdentityTreatment_LeadsWithPortraitAndName_AndWithheldLine()
+    {
+        var verdict = VerdictViewModel.From(IdentityPreset, BuildIdentityOutcome());
+        var cut = Render(verdict);
+
+        cut.Find("[data-testid=holder-name]").TextContent.Should().Contain("Stuart Fraser");
+        cut.Find("[data-testid=portrait]").Should().NotBeNull();
+        cut.Find("[data-testid=withheld-claims]").TextContent.Should().Contain("Date of birth");
+        cut.FindAll("[data-testid=age-hero]").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void PassVerdict_ShowsPassBanner()
+    {
+        var verdict = VerdictViewModel.From(IdentityPreset, BuildIdentityOutcome());
+        var cut = Render(verdict);
+        cut.Find("[data-testid=verdict-banner]").GetAttribute("class").Should().Contain("verdict-pass");
+    }
+
+    [Fact]
+    public void FailVerdict_ShowsFailBanner_AndDoesNotPresentDisclosedIdentityAsTrusted()
+    {
+        // Design §2.3 — even when a rejected presentation carries disclosed claims, the panel must
+        // NOT surface the portrait, holder name, or disclosure card as trusted identity.
+        var verdict = VerdictViewModel.From(IdentityPreset, BuildRejectedOutcomeWithClaims());
+        var cut = Render(verdict);
+
+        cut.Find("[data-testid=verdict-banner]").GetAttribute("class").Should().Contain("verdict-fail");
+        cut.FindAll("[data-testid=holder-name]").Should().BeEmpty();
+        cut.FindAll("[data-testid=portrait]").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void WarnVerdict_ShowsWarnBanner_NeverAPlainPass()
+    {
+        var verdict = VerdictViewModel.From(IdentityPreset, BuildWarnOutcome());
+        var cut = Render(verdict);
+        var cls = cut.Find("[data-testid=verdict-banner]").GetAttribute("class");
+        cls.Should().Contain("verdict-warn");
+        cls.Should().NotContain("verdict-pass");
+    }
+
+    [Fact]
+    public void TrustTrail_RendersFourLayerRows_AndAnchorIsOnDemand()
+    {
+        var verdict = VerdictViewModel.From(AgePreset, BuildOutcomeWithThreeLayers());
+        var cut = Render(verdict);
+        cut.Find("[data-testid=trail-LivePresentation]").Should().NotBeNull();
+        cut.Find("[data-testid=trail-IssuerSignature]").Should().NotBeNull();
+        cut.Find("[data-testid=trail-Revocation]").Should().NotBeNull();
+        // Anchor layer is the on-demand affordance until checked.
+        _mockAnchorClient.Verify(c => c.CheckAsync(It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AnchorButton_WhenTriggered_CallsAnchorClientAndAppendsRegisterAnchorLayer()
+    {
+        // Preserved from Feature 163 — the layer-4 affordance invokes IRegisterAnchorClient once and
+        // appends the RegisterAnchor layer to the verdict's trail (data-testids adapted to new markup).
+        var verdict = VerdictViewModel.From(AgePreset, BuildOutcomeWithThreeLayers());
+        var cut = Render(verdict);
+
+        // Verify-anchor button must be present (RegisterAnchorId = "reg-001" from disclosed claims).
+        var anchorButton = cut.Find("[data-testid=verify-anchor]");
         anchorButton.Should().NotBeNull();
 
         await anchorButton.ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
@@ -125,7 +310,6 @@ public class VerdictTrailPanelTests : BunitContext
             c => c.CheckAsync("reg-001", It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Once);
 
-        // RegisterAnchor layer must now be in the Verdict.Layers list
         verdict.Layers.Should().Contain(l => l.Layer == ValidationLayer.RegisterAnchor);
     }
 }

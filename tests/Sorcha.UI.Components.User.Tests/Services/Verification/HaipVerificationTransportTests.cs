@@ -185,6 +185,52 @@ public sealed class HaipVerificationTransportTests
     }
 
     [Fact]
+    public async Task PollSessionAsync_Verified_SurfacesOutcomeWithDisclosedClaims()
+    {
+        // Arrange — a Verified poll with HAIP's authoritative result attached must surface a
+        // non-null Outcome carrying the disclosed claims (Task 2 — VerificationOutcome transport seam).
+        _clientMock.Setup(x => x.PollResultAsync("req-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HaipPollResult(
+                "Verified", "eyJ.eyJ.sig~", null,
+                IsValid: true,
+                VerifiedClaims: new Dictionary<string, object?> { ["fullName"] = "Stuart Fraser" },
+                Errors: [],
+                HolderKeyVerified: true));
+
+        var sut = CreateSut();
+
+        // Act
+        var poll = await sut.PollSessionAsync("req-1");
+
+        // Assert
+        poll.IsComplete.Should().BeTrue();
+        poll.Outcome.Should().NotBeNull();
+        poll.Outcome!.Accepted.Should().BeTrue();
+        poll.Outcome.DisclosedClaims.Should().ContainKey("fullName");
+    }
+
+    [Fact]
+    public async Task PollSessionAsync_Denied_SurfacesFailVerdict()
+    {
+        // Arrange — a Denied poll is a reached verdict (a genuine credential rejection), not a
+        // session-lifecycle failure. It must surface a completed poll with a Fail Outcome naming
+        // the reason (SC-4), not the bare "Verification unavailable" error state.
+        _clientMock.Setup(x => x.PollResultAsync("req-denied", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HaipPollResult("Denied", null, null));
+
+        var sut = CreateSut();
+
+        // Act
+        var poll = await sut.PollSessionAsync("req-denied");
+
+        // Assert
+        poll.IsComplete.Should().BeTrue(because: "a Denied credential is a reached verdict");
+        poll.Outcome.Should().NotBeNull();
+        poll.Outcome!.Accepted.Should().BeFalse();
+        poll.Outcome.Errors.Should().NotBeEmpty(because: "the fail verdict must name the reason (SC-4)");
+    }
+
+    [Fact]
     public async Task PollSessionAsync_Pending_IsNotTerminal()
     {
         // Arrange

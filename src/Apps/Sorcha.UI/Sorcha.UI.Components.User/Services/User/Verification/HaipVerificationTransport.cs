@@ -3,6 +3,7 @@
 
 using Microsoft.Extensions.Logging;
 using Sorcha.UI.Components.User.Models.Verification;
+using Sorcha.Verifier.Engine.Models;
 
 namespace Sorcha.UI.Components.User.Services.Verification;
 
@@ -60,14 +61,42 @@ public sealed class HaipVerificationTransport : IVerificationTransport
         string sessionId,
         CancellationToken ct = default)
     {
-        var session = await PollAsync(sessionId, ct);
-        var isComplete = session.State == VerificationSessionState.Complete;
-        var isTerminal = session.State != VerificationSessionState.Pending;
+        HaipPollResult poll;
+        try
+        {
+            poll = await _client.PollResultAsync(sessionId, ct);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Poll fault for session {SessionId}.", sessionId);
+            return new VerificationSessionPoll(IsComplete: false, VpToken: null,
+                PresentationSubmission: null, IsTerminal: true, Outcome: null);
+        }
+
+        var state = MapState(poll.State);
+        var isDenied = string.Equals(poll.State, "Denied", StringComparison.OrdinalIgnoreCase);
+        var reachedVerdict = state == VerificationSessionState.Complete || isDenied;
+
+        VerificationOutcome? outcome = null;
+        if (reachedVerdict)
+        {
+            var accepted = state == VerificationSessionState.Complete;   // HAIP state is the authoritative verdict
+            outcome = HaipOutcomeMapper.Map(
+                accepted: accepted,
+                disclosedClaims: poll.VerifiedClaims ?? new Dictionary<string, object?>(),
+                errors: poll.Errors ?? (accepted ? Array.Empty<string>() : new[] { "The credential was declined." }),
+                holderKeyVerified: poll.HolderKeyVerified,
+                vpToken: poll.VpToken,
+                completedAt: DateTimeOffset.UtcNow);
+        }
+
         return new VerificationSessionPoll(
-            IsComplete: isComplete,
-            VpToken: session.VpToken,
-            PresentationSubmission: null,
-            IsTerminal: isTerminal);
+            IsComplete: reachedVerdict,
+            VpToken: poll.VpToken,
+            PresentationSubmission: poll.PresentationSubmission,
+            IsTerminal: state != VerificationSessionState.Pending,
+            Outcome: outcome);
     }
 
     /// <summary>

@@ -2364,6 +2364,32 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         // dictionaries and JsonElement objects. Missing segments log a
         // warning and skip the claim rather than failing the whole issue.
         var claims = BuildClaimsFromMappings(config.ClaimMappings, mergedData!, warnings);
+
+        // Derive age_over_NN booleans from dateOfBirth for any age-threshold claim the blueprint
+        // maps (e.g. { "claimName": "age_over_18", "sourceField": "/dob/dateOfBirth" }). Issuing the
+        // boolean instead of the raw date is the EUDI/ISO 18013-5 minimal-disclosure pattern the
+        // verifier "Age over 18?" preset matches. Fail-closed: if the DOB is missing/unparseable the
+        // claim is omitted rather than defaulted.
+        var ageToday = DateOnly.FromDateTime(DateTime.UtcNow);
+        foreach (var mapping in config.ClaimMappings)
+        {
+            if (!AgeClaimDeriver.AgeOverClaimThreshold(mapping.ClaimName, out var threshold))
+                continue;
+
+            var dobString = TryResolveJsonPointer(mergedData!, mapping.SourceField, out var dobValue)
+                ? dobValue?.ToString()
+                : null;
+
+            if (AgeClaimDeriver.TryDeriveAgeOver(dobString, ageToday, threshold, out var isOver))
+            {
+                claims[mapping.ClaimName] = isOver;
+            }
+            else
+            {
+                claims.Remove(mapping.ClaimName);   // drop the raw-date copy BuildClaimsFromMappings made
+                warnings.Add($"[WARN_CRED_AGE_DERIVE] {mapping.ClaimName}: dateOfBirth missing or unparseable; claim omitted.");
+            }
+        }
         // Wallet client expects non-nullable values. Safe because
         // TryResolveJsonPointer returns false on null-valued segments —
         // BuildClaimsFromMappings never produces a null value. If that

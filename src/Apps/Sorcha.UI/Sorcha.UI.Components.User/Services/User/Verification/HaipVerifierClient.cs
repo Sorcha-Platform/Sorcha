@@ -56,11 +56,31 @@ public sealed class HaipVerifierClient : IHaipVerifierClient
         var result = await response.Content.ReadFromJsonAsync<PollResultDto>(JsonDefaults.Api, ct)
             ?? throw new InvalidOperationException("HAIP verifier returned an empty poll response.");
 
+        IReadOnlyDictionary<string, object?>? claims = null;
+        if (result.Result?.VerifiedClaims is { Count: > 0 } vc)
+        {
+            claims = vc.ToDictionary(kvp => kvp.Key, kvp => JsonElementToObject(kvp.Value));
+        }
+
         return new HaipPollResult(
             result.State ?? "Pending",
             result.VpToken,
-            result.PresentationSubmission);
+            result.PresentationSubmission,
+            IsValid: result.Result?.IsValid,
+            VerifiedClaims: claims,
+            Errors: result.Result?.Errors,
+            HolderKeyVerified: result.Result?.HolderKeyVerified ?? false);
     }
+
+    private static object? JsonElementToObject(JsonElement e) => e.ValueKind switch
+    {
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        JsonValueKind.String => e.GetString(),
+        JsonValueKind.Number => e.TryGetInt64(out var l) ? l : e.GetDouble(),
+        JsonValueKind.Null or JsonValueKind.Undefined => null,
+        _ => e.GetRawText(),
+    };
 
     private sealed record CreateRequestDto(
         [property: JsonPropertyName("credentialType")] string CredentialType,
@@ -73,5 +93,12 @@ public sealed class HaipVerifierClient : IHaipVerifierClient
     private sealed record PollResultDto(
         [property: JsonPropertyName("state")] string? State,
         [property: JsonPropertyName("vpToken")] string? VpToken,
-        [property: JsonPropertyName("presentationSubmission")] string? PresentationSubmission);
+        [property: JsonPropertyName("presentationSubmission")] string? PresentationSubmission,
+        [property: JsonPropertyName("result")] VerificationResultDto? Result);
+
+    private sealed record VerificationResultDto(
+        [property: JsonPropertyName("isValid")] bool IsValid,
+        [property: JsonPropertyName("verifiedClaims")] Dictionary<string, JsonElement>? VerifiedClaims,
+        [property: JsonPropertyName("errors")] List<string>? Errors,
+        [property: JsonPropertyName("holderKeyVerified")] bool HolderKeyVerified);
 }
