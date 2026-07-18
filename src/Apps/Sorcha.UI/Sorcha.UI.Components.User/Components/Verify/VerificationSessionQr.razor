@@ -11,6 +11,7 @@
 @using QRCoder
 @using Sorcha.UI.Components.User.Models.Verification
 @using Sorcha.UI.Components.User.Services.Verification
+@using Sorcha.Verifier.Engine.Models
 @inject IVerificationTransport Transport
 @implements IAsyncDisposable
 
@@ -56,6 +57,9 @@
 
     /// <summary>Raised once with the vp_token when polling reports completion.</summary>
     [Parameter] public EventCallback<string> OnCompleted { get; set; }
+
+    /// <summary>Raised once with the computed verdict when polling reports completion (may be null).</summary>
+    [Parameter] public EventCallback<VerificationOutcome?> OnOutcome { get; set; }
 
     private CancellationTokenSource? _cts;
     private Task? _pollTask;
@@ -114,7 +118,11 @@
                 var poll = await Transport.PollSessionAsync(sessionId, ct);
                 if (poll.IsComplete)
                 {
-                    if (!_disposed) await OnCompleted.InvokeAsync(poll.VpToken ?? "");
+                    if (!_disposed)
+                    {
+                        await OnOutcome.InvokeAsync(poll.Outcome);
+                        await OnCompleted.InvokeAsync(poll.VpToken ?? "");
+                    }
                     return;
                 }
                 if (poll.IsTerminal)

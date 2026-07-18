@@ -13,6 +13,7 @@
 @using Microsoft.AspNetCore.Components
 @using Sorcha.UI.Core.Components.Verify
 @using Sorcha.UI.Components.User.Models.Verification
+@using Sorcha.Verifier.Engine.Models
 
 <PageTitle>Sorcha Verifier</PageTitle>
 
@@ -31,29 +32,44 @@
     {
         <VerificationSessionQr Question="@_selectedQuestion"
                                CancellationToken="@_pageCts.Token"
+                               OnOutcome="@HandleOutcomeAsync"
                                OnCompleted="@HandleCompletedAsync" />
     }
     else
     {
-        <MudPaper Elevation="2" Class="pa-6 text-center">
-            <MudIcon Icon="Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Large" Class="mb-3" />
-            <MudText Typo="Typo.h5" Class="mb-2">Verification Complete</MudText>
-            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-                The credential was presented and verified successfully.
-            </MudText>
-            <MudButton Variant="Variant.Outlined" OnClick="@Reset">Verify another</MudButton>
-        </MudPaper>
+        @if (_verdict is not null)
+        {
+            <VerdictTrailPanel Verdict="_verdict" OnVerifyAnother="@Reset" />
+        }
+        else
+        {
+            <MudPaper Elevation="2" Class="pa-6 text-center">
+                <MudText Typo="Typo.h6" Class="mb-2">Verification received</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                    The presentation was received but no verdict was available.
+                </MudText>
+                <MudButton Variant="Variant.Outlined" OnClick="@Reset">Verify another</MudButton>
+            </MudPaper>
+        }
     }
 </MudContainer>
 
 @code {
     private VerificationPreset? _selectedQuestion;
     private bool _complete;
+    private VerdictViewModel? _verdict;
     private CancellationTokenSource _pageCts = new();
 
     private Task SelectQuestionAsync(VerificationPreset question)
     {
         _selectedQuestion = question;
+        return Task.CompletedTask;
+    }
+
+    private Task HandleOutcomeAsync(VerificationOutcome? outcome)
+    {
+        if (outcome is not null && _selectedQuestion is not null)
+            _verdict = VerdictViewModel.From(_selectedQuestion, outcome);
         return Task.CompletedTask;
     }
 
@@ -67,6 +83,7 @@
     {
         _selectedQuestion = null;
         _complete = false;
+        _verdict = null;
     }
 
     public void Dispose() => _pageCts.Dispose();

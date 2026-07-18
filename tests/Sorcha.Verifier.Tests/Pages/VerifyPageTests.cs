@@ -45,4 +45,13 @@ public sealed class VerifyPageTests
         content.Should().NotContain("IPresentationRequestBuilder",
             because: "the desk index page should not inject the legacy presentation request builder");
     }
+
+    [Fact]
+    public void DeskIndexRazor_RendersVerdictTrailPanel_NotHardcodedSuccess()
+    {
+        var content = File.ReadAllText(IndexRazorPath);   // reuse the path constant already in this file
+        content.Should().Contain("VerdictTrailPanel");
+        content.Should().Contain("OnOutcome");
+        content.Should().NotContain("The credential was presented and verified successfully");
+    }
 }
