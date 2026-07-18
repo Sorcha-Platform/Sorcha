@@ -185,6 +185,31 @@ public sealed class HaipVerificationTransportTests
     }
 
     [Fact]
+    public async Task PollSessionAsync_Verified_SurfacesOutcomeWithDisclosedClaims()
+    {
+        // Arrange — a Verified poll with HAIP's authoritative result attached must surface a
+        // non-null Outcome carrying the disclosed claims (Task 2 — VerificationOutcome transport seam).
+        _clientMock.Setup(x => x.PollResultAsync("req-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HaipPollResult(
+                "Verified", "eyJ.eyJ.sig~", null,
+                IsValid: true,
+                VerifiedClaims: new Dictionary<string, object?> { ["fullName"] = "Stuart Fraser" },
+                Errors: [],
+                HolderKeyVerified: true));
+
+        var sut = CreateSut();
+
+        // Act
+        var poll = await sut.PollSessionAsync("req-1");
+
+        // Assert
+        poll.IsComplete.Should().BeTrue();
+        poll.Outcome.Should().NotBeNull();
+        poll.Outcome!.Accepted.Should().BeTrue();
+        poll.Outcome.DisclosedClaims.Should().ContainKey("fullName");
+    }
+
+    [Fact]
     public async Task PollSessionAsync_Pending_IsNotTerminal()
     {
         // Arrange

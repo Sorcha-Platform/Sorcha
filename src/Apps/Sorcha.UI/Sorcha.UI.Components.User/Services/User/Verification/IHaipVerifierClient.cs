@@ -27,8 +27,19 @@ public interface IHaipVerifierClient
 /// <param name="AuthorizationRequestUri">The <c>openid4vp://</c> deep link for QR rendering.</param>
 public sealed record HaipCreateResult(string RequestId, string AuthorizationRequestUri);
 
-/// <summary>Result from polling a HAIP presentation request.</summary>
-/// <param name="State">String state from the HAIP server: Pending, Complete, Expired, etc.</param>
-/// <param name="VpToken">The raw vp_token when state is complete; null otherwise.</param>
-/// <param name="PresentationSubmission">The presentation_submission when present.</param>
-public sealed record HaipPollResult(string State, string? VpToken, string? PresentationSubmission);
+/// <summary>Result of polling a HAIP verification request.</summary>
+/// <param name="State">Server-side state string (Pending / Submitted / Verified / Denied / Expired / Cancelled).</param>
+/// <param name="VpToken">The raw vp_token when submitted; null otherwise.</param>
+/// <param name="PresentationSubmission">The OID4VP presentation_submission, when present.</param>
+/// <param name="IsValid">HAIP's authoritative validity, when a result object is present.</param>
+/// <param name="VerifiedClaims">Disclosed claim name → value, from HAIP's verified result.</param>
+/// <param name="Errors">HAIP's rejection reasons, when present.</param>
+/// <param name="HolderKeyVerified">Whether HAIP verified the holder key binding.</param>
+public sealed record HaipPollResult(
+    string State,
+    string? VpToken,
+    string? PresentationSubmission,
+    bool? IsValid = null,
+    IReadOnlyDictionary<string, object?>? VerifiedClaims = null,
+    IReadOnlyList<string>? Errors = null,
+    bool HolderKeyVerified = false);
