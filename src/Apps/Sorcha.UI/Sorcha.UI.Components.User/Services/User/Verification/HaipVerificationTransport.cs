@@ -75,26 +75,27 @@ public sealed class HaipVerificationTransport : IVerificationTransport
         }
 
         var state = MapState(poll.State);
-        var isComplete = state == VerificationSessionState.Complete;
-        var isTerminal = state != VerificationSessionState.Pending;
+        var isDenied = string.Equals(poll.State, "Denied", StringComparison.OrdinalIgnoreCase);
+        var reachedVerdict = state == VerificationSessionState.Complete || isDenied;
 
         VerificationOutcome? outcome = null;
-        if (isComplete)
+        if (reachedVerdict)
         {
+            var accepted = state == VerificationSessionState.Complete;   // HAIP state is the authoritative verdict
             outcome = HaipOutcomeMapper.Map(
-                accepted: poll.IsValid ?? true,
+                accepted: accepted,
                 disclosedClaims: poll.VerifiedClaims ?? new Dictionary<string, object?>(),
-                errors: poll.Errors ?? [],
+                errors: poll.Errors ?? (accepted ? Array.Empty<string>() : new[] { "The credential was declined." }),
                 holderKeyVerified: poll.HolderKeyVerified,
                 vpToken: poll.VpToken,
                 completedAt: DateTimeOffset.UtcNow);
         }
 
         return new VerificationSessionPoll(
-            IsComplete: isComplete,
+            IsComplete: reachedVerdict,
             VpToken: poll.VpToken,
             PresentationSubmission: poll.PresentationSubmission,
-            IsTerminal: isTerminal,
+            IsTerminal: state != VerificationSessionState.Pending,
             Outcome: outcome);
     }
 

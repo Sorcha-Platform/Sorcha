@@ -210,6 +210,27 @@ public sealed class HaipVerificationTransportTests
     }
 
     [Fact]
+    public async Task PollSessionAsync_Denied_SurfacesFailVerdict()
+    {
+        // Arrange — a Denied poll is a reached verdict (a genuine credential rejection), not a
+        // session-lifecycle failure. It must surface a completed poll with a Fail Outcome naming
+        // the reason (SC-4), not the bare "Verification unavailable" error state.
+        _clientMock.Setup(x => x.PollResultAsync("req-denied", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HaipPollResult("Denied", null, null));
+
+        var sut = CreateSut();
+
+        // Act
+        var poll = await sut.PollSessionAsync("req-denied");
+
+        // Assert
+        poll.IsComplete.Should().BeTrue(because: "a Denied credential is a reached verdict");
+        poll.Outcome.Should().NotBeNull();
+        poll.Outcome!.Accepted.Should().BeFalse();
+        poll.Outcome.Errors.Should().NotBeEmpty(because: "the fail verdict must name the reason (SC-4)");
+    }
+
+    [Fact]
     public async Task PollSessionAsync_Pending_IsNotTerminal()
     {
         // Arrange
