@@ -622,6 +622,7 @@ All users must have a verified email address before accessing the platform.
 | OIDC (IDP returns `email_verified: true`) | Email is trusted and marked as verified immediately — no additional verification required |
 | OIDC (no `email_verified` claim, or `false`) | User is redirected to a "Complete your profile" page and must verify their email via a token-based flow |
 | Local email/password account | A verification email is sent on registration with a time-limited token (24 hours) |
+| Passkey (WebAuthn) signup with a real email | A verification email is sent on registration completion (`register/verify`), identical to the email/password path — a passkey does not establish email ownership. Skipped for passkey-only signups that use a synthetic `@placeholder.local` address, and for users who are already verified. |
 
 ### Token-Based Verification Flow
 
