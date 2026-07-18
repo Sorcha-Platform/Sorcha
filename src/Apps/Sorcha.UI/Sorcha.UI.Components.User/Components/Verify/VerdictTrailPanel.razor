@@ -21,7 +21,10 @@
         <div class="age-hero @BannerClass" data-testid="age-hero">
             <div class="age-num">@AgeHeadline<span>@AgeSuffix</span></div>
             <div class="age-lbl">@AgeLabel</div>
-            <div class="age-sub">The holder proved the threshold. Their birth date was never revealed.</div>
+            @if (Verdict.AgeOver18 == true)
+            {
+                <div class="age-sub">The holder proved the threshold. Their birth date was never revealed.</div>
+            }
         </div>
     }
     else
@@ -35,54 +38,60 @@
         </div>
     }
 
-    @* ---- Portrait ---- *@
-    @if (!string.IsNullOrEmpty(Verdict.PortraitBase64))
+    @* ---- Disclosed identity — only on a passing verdict (design §2.3: a FAIL never presents
+           disclosed identity as trusted). The banner/age-hero and the trust trail below stay
+           unconditional so the operator still sees the outcome and which layer failed. ---- *@
+    @if (Verdict.OverallPass)
     {
-        <div class="portrait-wrap">
-            <div class="portrait @(Verdict.IsAgeTreatment ? "sm" : "lg")">
-                <img src="@PortraitSrc(Verdict.PortraitBase64)" alt="Holder portrait" data-testid="portrait" />
+        @* ---- Portrait ---- *@
+        @if (!string.IsNullOrEmpty(Verdict.PortraitBase64))
+        {
+            <div class="portrait-wrap">
+                <div class="portrait @(Verdict.IsAgeTreatment ? "sm" : "lg")">
+                    <img src="@PortraitSrc(Verdict.PortraitBase64)" alt="Holder portrait" data-testid="portrait" />
+                </div>
+                <div class="compare">@(Verdict.IsAgeTreatment ? "Confirm it's the same person" : "Compare to the person present")</div>
+                @if (!Verdict.IsAgeTreatment && HolderName is not null)
+                {
+                    <div class="name" data-testid="holder-name">@HolderName</div>
+                }
             </div>
-            <div class="compare">@(Verdict.IsAgeTreatment ? "Confirm it's the same person" : "Compare to the person present")</div>
-            @if (!Verdict.IsAgeTreatment && HolderName is not null)
+        }
+
+        @* ---- Minimal-disclosure statement (age only) ---- *@
+        @if (Verdict.MinimalDisclosureNote is not null)
+        {
+            <div class="privacy" data-testid="minimal-disclosure">
+                <b>Minimal disclosure.</b> @Verdict.MinimalDisclosureNote
+            </div>
+        }
+
+        @* ---- Shared with you ---- *@
+        <div class="disc">
+            <h3>Shared with you</h3>
+            @foreach (var d in Verdict.Disclosed)
             {
-                <div class="name" data-testid="holder-name">@HolderName</div>
+                <div class="row" data-testid="disclosed-claim">
+                    <span class="lbl">@Humanize(d.Key)</span>
+                    <span class="val">@DisplayValue(d)</span>
+                </div>
+            }
+            @if (Verdict.Withheld.Count > 0)
+            {
+                <div class="withheld" data-testid="withheld-claims">
+                    <b>Withheld:</b> @string.Join(" · ", Verdict.Withheld.Select(Humanize))
+                </div>
             }
         </div>
-    }
 
-    @* ---- Minimal-disclosure statement (age only) ---- *@
-    @if (Verdict.MinimalDisclosureNote is not null)
-    {
-        <div class="privacy" data-testid="minimal-disclosure">
-            <b>Minimal disclosure.</b> @Verdict.MinimalDisclosureNote
-        </div>
-    }
-
-    @* ---- Shared with you ---- *@
-    <div class="disc">
-        <h3>Shared with you</h3>
-        @foreach (var d in Verdict.Disclosed)
+        @* ---- Issuer line ---- *@
+        @if (!string.IsNullOrEmpty(Verdict.IssuerDid) || !string.IsNullOrEmpty(Verdict.IssuerDisplayName))
         {
-            <div class="row" data-testid="disclosed-claim">
-                <span class="lbl">@Humanize(d.Key)</span>
-                <span class="val">@DisplayValue(d)</span>
+            <div class="issuer" data-testid="issuer-line">
+                <span class="seal">✓</span>
+                <span>Issued by <b>@(Verdict.IssuerDisplayName ?? Verdict.IssuerDid)</b> · signature @(Verdict.IssuerSignatureVerified ? "verified" : "not verified")</span>
             </div>
         }
-        @if (Verdict.Withheld.Count > 0)
-        {
-            <div class="withheld" data-testid="withheld-claims">
-                <b>Withheld:</b> @string.Join(" · ", Verdict.Withheld)
-            </div>
-        }
-    </div>
-
-    @* ---- Issuer line ---- *@
-    @if (!string.IsNullOrEmpty(Verdict.IssuerDid) || !string.IsNullOrEmpty(Verdict.IssuerDisplayName))
-    {
-        <div class="issuer" data-testid="issuer-line">
-            <span class="seal">✓</span>
-            <span>Issued by <b>@(Verdict.IssuerDisplayName ?? Verdict.IssuerDid)</b> · signature @(Verdict.IssuerSignatureVerified ? "verified" : "not verified")</span>
-        </div>
     }
 
     @* ---- Trust trail (collapsed) ---- *@
@@ -199,7 +208,7 @@
         ? (Verdict.IssuerSignatureVerified ? "Genuine credential · issuer confirmed · not revoked" : "Issuer signature could not be checked")
         : (Verdict.Errors.Count > 0 ? Verdict.Errors[0] : "A verification check failed");
 
-    private string AgeHeadline => Verdict.AgeOver18 == true ? "18" : "18";
+    private string AgeHeadline => "18";
     private string AgeSuffix => "+";
     private string AgeLabel => Verdict.AgeOver18 == true ? "Over 18 — confirmed"
         : Verdict.AgeOver18 == false ? "Not over 18" : "Could not confirm";

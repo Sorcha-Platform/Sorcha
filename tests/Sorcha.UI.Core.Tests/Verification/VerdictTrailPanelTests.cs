@@ -82,12 +82,18 @@ public class VerdictTrailPanelTests : BunitContext
         };
     }
 
-    private static VerificationOutcome BuildRejectedOutcome()
+    private static VerificationOutcome BuildRejectedOutcomeWithClaims()
     {
+        // A rejected outcome that STILL carries disclosed claims — the panel must not present these as
+        // trusted identity on a fail (design §2.3).
         return new VerificationOutcome
         {
             Accepted = false,
-            DisclosedClaims = new Dictionary<string, object?>(),
+            DisclosedClaims = new Dictionary<string, object?>
+            {
+                ["fullName"] = "Stuart Fraser",
+                ["portrait"] = "aGVsbG8=",
+            },
             Errors = ["nonce mismatch"],
             CompletedAt = DateTimeOffset.UtcNow,
             IssuerSignature = IssuerSignatureStatus.NotVerified,
@@ -162,7 +168,7 @@ public class VerdictTrailPanelTests : BunitContext
 
         cut.Find("[data-testid=holder-name]").TextContent.Should().Contain("Stuart Fraser");
         cut.Find("[data-testid=portrait]").Should().NotBeNull();
-        cut.Find("[data-testid=withheld-claims]").TextContent.Should().Contain("dateOfBirth");
+        cut.Find("[data-testid=withheld-claims]").TextContent.Should().Contain("Date of birth");
         cut.FindAll("[data-testid=age-hero]").Should().BeEmpty();
     }
 
@@ -177,9 +183,14 @@ public class VerdictTrailPanelTests : BunitContext
     [Fact]
     public void FailVerdict_ShowsFailBanner_AndDoesNotPresentDisclosedIdentityAsTrusted()
     {
-        var verdict = VerdictViewModel.From(IdentityPreset, BuildRejectedOutcome());
+        // Design §2.3 — even when a rejected presentation carries disclosed claims, the panel must
+        // NOT surface the portrait, holder name, or disclosure card as trusted identity.
+        var verdict = VerdictViewModel.From(IdentityPreset, BuildRejectedOutcomeWithClaims());
         var cut = Render(verdict);
+
         cut.Find("[data-testid=verdict-banner]").GetAttribute("class").Should().Contain("verdict-fail");
+        cut.FindAll("[data-testid=holder-name]").Should().BeEmpty();
+        cut.FindAll("[data-testid=portrait]").Should().BeEmpty();
     }
 
     [Fact]
