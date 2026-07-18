@@ -162,6 +162,7 @@ public static class PublicPasskeyEndpoints
         IIdentityRepository identityRepository,
         IOrganizationRepository organizationRepository,
         ITokenService tokenService,
+        IEmailVerificationService emailVerificationService,
         TenantDbContext db,
         ILogger<Program> logger,
         CancellationToken ct)
@@ -247,6 +248,15 @@ public static class PublicPasskeyEndpoints
             var tokenResponse = await tokenService.GenerateUserTokenAsync(
                 userIdentity, publicOrg, platformUser.Id, registrationTier, cancellationToken: ct);
 
+            // Passkey signup does NOT establish email ownership — unlike email+password (which
+            // verifies via the emailed token) or social login (which trusts the IdP's verified
+            // claim). Without this, a passkey-first user is created with EmailVerified=false and
+            // never receives a verification email, permanently dead-ending them at any flow gated
+            // on email_verified (e.g. the AIAS Assured Identity journey). Send the same verification
+            // email as the password path — guarded so real, not-yet-verified emails only.
+            await SendPasskeySignupVerificationEmailAsync(
+                userIdentity, platformUser, emailVerificationService, logger, ct);
+
             logger.LogInformation(
                 "Public passkey registration completed for PlatformUser {PlatformUserId}",
                 platformUser.Id);
@@ -268,6 +278,49 @@ public static class PublicPasskeyEndpoints
             {
                 ["attestation_response"] = [ex.Message]
             });
+        }
+    }
+
+    /// <summary>
+    /// Sends the email-verification email for a passkey signup, mirroring the email+password path
+    /// (<c>RegistrationService</c>). Guarded so it only fires for a REAL, not-yet-verified email:
+    /// <list type="bullet">
+    /// <item>an already-verified user (e.g. adding a passkey to an existing account) is skipped;</item>
+    /// <item>the <c>@placeholder.local</c> synthetic address used when no email was supplied is skipped.</item>
+    /// </list>
+    /// The dispatch is wrapped in try/catch and is non-fatal — a transient email failure must NOT
+    /// fail the passkey registration; the user can re-request verification from the login page.
+    /// </summary>
+    internal static async Task SendPasskeySignupVerificationEmailAsync(
+        UserIdentity userIdentity,
+        PlatformUser platformUser,
+        IEmailVerificationService emailVerificationService,
+        ILogger logger,
+        CancellationToken ct)
+    {
+        // Guard 1: don't re-verify an already-verified user.
+        if (platformUser.EmailVerified)
+        {
+            return;
+        }
+
+        // Guard 2: only send to a real email — skip the placeholder used for passkey-only signups.
+        if (string.IsNullOrWhiteSpace(platformUser.Email)
+            || platformUser.Email.EndsWith("@placeholder.local", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            await emailVerificationService.GenerateAndSendVerificationAsync(userIdentity, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex,
+                "Failed to send passkey-signup verification email for user {Email} (UserId: {UserId}). "
+                + "User can re-request verification from the login page.",
+                userIdentity.Email, userIdentity.Id);
         }
     }
 
