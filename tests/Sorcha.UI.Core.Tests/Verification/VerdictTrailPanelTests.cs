@@ -125,6 +125,52 @@ public class VerdictTrailPanelTests : BunitContext
         };
     }
 
+    private static VerificationOutcome BuildAgeRejectedOutcomeWithClaims()
+    {
+        // A rejected age outcome that STILL carries a positive age answer + portrait — the hero must not
+        // present it as confirmed (§2.3), and must name the reason.
+        return new VerificationOutcome
+        {
+            Accepted = false,
+            DisclosedClaims = new Dictionary<string, object?>
+            {
+                ["age_over_18"] = true,
+                ["portrait"] = "aGVsbG8=",
+            },
+            Errors = ["nonce mismatch"],
+            CompletedAt = DateTimeOffset.UtcNow,
+            IssuerSignature = IssuerSignatureStatus.NotVerified,
+            Layers =
+            [
+                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = LayerStatus.Fail, Headline = "nonce mismatch" },
+            ],
+        };
+    }
+
+    private static VerificationOutcome BuildAgeWarnOutcome()
+    {
+        // Accepted but the issuer signature could not be checked — a warn. The hero must name the
+        // reduced assurance (SC-4), not read as a plain pass.
+        return new VerificationOutcome
+        {
+            Accepted = true,
+            DisclosedClaims = new Dictionary<string, object?>
+            {
+                ["age_over_18"] = true,
+                ["portrait"] = "aGVsbG8=",
+            },
+            Errors = [],
+            CompletedAt = DateTimeOffset.UtcNow,
+            IssuerSignature = IssuerSignatureStatus.NotVerified,
+            Layers =
+            [
+                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = LayerStatus.Pass, Headline = "Valid KB-JWT" },
+                new ValidationLayerResult { Layer = ValidationLayer.IssuerSignature, Status = LayerStatus.Unverified, Headline = "Issuer key unresolved" },
+                new ValidationLayerResult { Layer = ValidationLayer.Revocation, Status = LayerStatus.Pass, Headline = "Not revoked" },
+            ],
+        };
+    }
+
     public VerdictTrailPanelTests()
     {
         _mockAnchorClient
@@ -158,6 +204,35 @@ public class VerdictTrailPanelTests : BunitContext
         cut.Find("[data-testid=age-hero]").TextContent.Should().Contain("Over 18");
         cut.Find("[data-testid=minimal-disclosure]").TextContent.Should().Contain("did not learn their name");
         cut.FindAll("[data-testid=holder-name]").Should().BeEmpty();   // age screen hides the name
+    }
+
+    [Fact]
+    public void AgeTreatment_Fail_DoesNotPresentConfirmedAnswer_AndNamesReason()
+    {
+        // §2.3 — a rejected age outcome carrying age_over_18 == true must NOT read as confirmed.
+        var verdict = VerdictViewModel.From(AgePreset, BuildAgeRejectedOutcomeWithClaims());
+        var cut = Render(verdict);
+
+        var hero = cut.Find("[data-testid=age-hero]");
+        hero.GetAttribute("class").Should().Contain("verdict-fail");
+        hero.TextContent.Should().NotContain("confirmed");
+        hero.TextContent.Should().NotContain("proved the threshold");
+        hero.TextContent.Should().Contain("Not verified");
+        hero.TextContent.Should().Contain("nonce mismatch");
+        cut.FindAll("[data-testid=portrait]").Should().BeEmpty();   // identity suppressed on fail
+    }
+
+    [Fact]
+    public void AgeTreatment_Warn_ShowsReducedAssuranceText()
+    {
+        // SC-4 — a warn must be named, not merely coloured amber, so it can't read as a plain pass.
+        var verdict = VerdictViewModel.From(AgePreset, BuildAgeWarnOutcome());
+        var cut = Render(verdict);
+
+        var hero = cut.Find("[data-testid=age-hero]");
+        hero.GetAttribute("class").Should().Contain("verdict-warn");
+        hero.TextContent.Should().Contain("reduced assurance");
+        hero.TextContent.Should().NotContain("proved the threshold");
     }
 
     [Fact]

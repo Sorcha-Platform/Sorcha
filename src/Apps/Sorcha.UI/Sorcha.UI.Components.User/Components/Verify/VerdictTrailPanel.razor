@@ -21,10 +21,7 @@
         <div class="age-hero @BannerClass" data-testid="age-hero">
             <div class="age-num">@AgeHeadline<span>@AgeSuffix</span></div>
             <div class="age-lbl">@AgeLabel</div>
-            @if (Verdict.AgeOver18 == true)
-            {
-                <div class="age-sub">The holder proved the threshold. Their birth date was never revealed.</div>
-            }
+            <div class="age-sub">@AgeSubtitle</div>
         </div>
     }
     else
@@ -210,8 +207,21 @@
 
     private string AgeHeadline => "18";
     private string AgeSuffix => "+";
-    private string AgeLabel => Verdict.AgeOver18 == true ? "Over 18 — confirmed"
-        : Verdict.AgeOver18 == false ? "Not over 18" : "Could not confirm";
+
+    // The age label mirrors the identity banner: a fail never presents the disclosed answer as
+    // confirmed (§2.3), and a warn is named (not just coloured) so it can't read as a plain pass (SC-4).
+    private string AgeLabel => !Verdict.OverallPass ? "Not verified"
+        : Verdict.AgeOver18 == true ? "Over 18 — confirmed"
+        : Verdict.AgeOver18 == false ? "Not over 18"
+        : "Could not confirm";
+
+    private string AgeSubtitle => !Verdict.OverallPass
+        ? (Verdict.Errors.Count > 0 ? Verdict.Errors[0] : "A verification check failed")
+        : !Verdict.IssuerSignatureVerified
+            ? "Verified with reduced assurance — the issuer signature could not be checked."
+            : Verdict.AgeOver18 == true
+                ? "The holder proved the threshold. Their birth date was never revealed."
+                : "";
 
     private string? HolderName => Verdict.Disclosed
         .FirstOrDefault(d => d.Key is "fullName").Value is { Length: > 0 } n ? n : null;
