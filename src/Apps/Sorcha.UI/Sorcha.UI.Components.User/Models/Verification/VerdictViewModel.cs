@@ -50,6 +50,15 @@ public sealed class VerdictViewModel
     /// <summary>The credential id (jti) read from the disclosed claims / outcome, for the layer-4 check.</summary>
     public string? CredentialId { get; private init; }
 
+    /// <summary>True when the asked preset is an age-threshold check — drives the age hero treatment.</summary>
+    public bool IsAgeTreatment { get; private init; }
+
+    /// <summary>The minimal-disclosure statement shown on the age treatment; null for the identity treatment.</summary>
+    public string? MinimalDisclosureNote { get; private init; }
+
+    /// <summary>Whether the credential's issuer signature was cryptographically verified (drives warn vs pass).</summary>
+    public bool IssuerSignatureVerified { get; private init; }
+
     private const string PortraitClaim = "portrait";
     private const string AgeClaim = "age_over_18";
     private const string AnchorClaim = "registerAnchor";
@@ -87,6 +96,11 @@ public sealed class VerdictViewModel
 
         var overallPass = outcome.Accepted && outcome.Layers.All(l => l.Status != LayerStatus.Fail);
 
+        // The treatment follows the ASKED question, not what happened to be disclosed: an age-threshold
+        // preset requires age_over_18 and does NOT ask for the name.
+        var isAge = question.RequiredClaims.Contains(AgeClaim)
+                    && !question.RequiredClaims.Contains("fullName");
+
         var vm = new VerdictViewModel
         {
             OverallPass = overallPass,
@@ -100,6 +114,12 @@ public sealed class VerdictViewModel
             Errors = outcome.Errors,
             RegisterAnchorId = disclosed.TryGetValue(AnchorClaim, out var r) ? r?.ToString() : null,
             CredentialId = TryGetCredentialId(outcome),
+            IsAgeTreatment = isAge,
+            MinimalDisclosureNote = isAge
+                ? "You learned only that they're over 18 — and saw their photo to match the face. "
+                  + "You did not learn their name, birth date, or exact age."
+                : null,
+            IssuerSignatureVerified = outcome.IssuerSignature == IssuerSignatureStatus.Verified,
         };
         vm.Layers.AddRange(outcome.Layers);
         return vm;

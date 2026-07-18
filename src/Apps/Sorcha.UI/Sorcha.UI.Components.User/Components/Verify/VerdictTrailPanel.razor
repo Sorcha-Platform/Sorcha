@@ -2,10 +2,10 @@
     SPDX-License-Identifier: MIT
     Copyright (c) 2026 Sorcha Contributors
 
-    Shared verdict trail panel (Feature 163, US3). Renders the four-layer verification trail from a
-    VerdictViewModel: headline, issuer identity, portrait/age chips, disclosed/withheld claim split,
-    and the three offline layers (LivePresentation, IssuerSignature, Revocation). Provides an
-    on-demand layer-4 RegisterAnchor check via IRegisterAnchorClient with no network call on first render.
+    Shared verdict panel (Feature 174). Renders a VerificationOutcome as a preset-adaptive verdict:
+    the identity treatment leads with the portrait + name; the age treatment leads with the answer and
+    a minimal-disclosure statement. Below, a collapsed four-layer trust trail (Live presentation ·
+    Issuer signature · Not revoked · Register-anchored), with the register-anchor checked on demand.
 *@
 @namespace Sorcha.UI.Core.Components.Verify
 @using Sorcha.UI.Components.User.Models.Verification
@@ -14,106 +14,127 @@
 @inject IRegisterAnchorClient AnchorClient
 
 <div class="verdict-trail-panel" data-testid="verdict-trail-panel">
-    @* Headline *@
-    <div class="verdict-headline @(Verdict.OverallPass ? "verdict-pass" : "verdict-fail")"
-         data-testid="verdict-headline">
-        @Verdict.Headline &nbsp; @(Verdict.OverallPass ? "✓" : "✗")
-    </div>
 
-    @* Portrait *@
-    @if (!string.IsNullOrEmpty(Verdict.PortraitBase64))
+    @* ---- Verdict lead: age hero OR identity banner ---- *@
+    @if (Verdict.IsAgeTreatment)
     {
-        <img src="@PortraitSrc(Verdict.PortraitBase64)"
-             alt="portrait"
-             data-testid="portrait"
-             style="width:70px;height:88px;border-radius:6px;object-fit:cover;" />
+        <div class="age-hero @BannerClass" data-testid="age-hero">
+            <div class="age-num">@AgeHeadline<span>@AgeSuffix</span></div>
+            <div class="age-lbl">@AgeLabel</div>
+            <div class="age-sub">The holder proved the threshold. Their birth date was never revealed.</div>
+        </div>
     }
-
-    @* Age chip *@
-    @if (Verdict.AgeOver18 is not null)
+    else
     {
-        <span class="verdict-chip" data-testid="age-chip">
-            age_over_18 = @(Verdict.AgeOver18.Value ? "true" : "false")
-        </span>
-    }
-
-    @* Issuer identity *@
-    @if (!string.IsNullOrEmpty(Verdict.IssuerDid))
-    {
-        <div class="verdict-issuer" data-testid="issuer-did">
-            Issued by <b>@(Verdict.IssuerDisplayName ?? Verdict.IssuerDid)</b>
+        <div class="verdict-banner @BannerClass" data-testid="verdict-banner">
+            <span class="tick">@BannerGlyph</span>
+            <span>
+                <span class="vt">@BannerTitle</span>
+                <span class="vs">@BannerSubtitle</span>
+            </span>
         </div>
     }
 
-    @* Disclosed / withheld claim split *@
-    <MudExpansionPanels Class="mt-3" MultiExpansion="true">
-        <MudExpansionPanel data-testid="trail-disclosure">
-            <TitleContent>
-                <div class="d-flex justify-space-between align-center" style="width:100%">
-                    <span>Selective disclosure</span>
-                    <span style="color:var(--mud-palette-success)">@Verdict.Disclosed.Count shared</span>
-                </div>
-            </TitleContent>
-            <ChildContent>
-                <div class="trail-detail">
-                    @foreach (var d in Verdict.Disclosed)
-                    {
-                        <div data-testid="disclosed-claim"><code>@d.Key = @d.Value</code></div>
-                    }
-                    @if (Verdict.Withheld.Count > 0)
-                    {
-                        <div class="trail-withheld" data-testid="withheld-claims">
-                            WITHHELD: @string.Join(" · ", Verdict.Withheld)
-                        </div>
-                    }
-                </div>
-            </ChildContent>
-        </MudExpansionPanel>
-
-        @* Validation layers *@
-        @foreach (var layer in Verdict.Layers)
-        {
-            <MudExpansionPanel data-testid="@($"trail-{layer.Layer}")">
-                <TitleContent>
-                    <div class="d-flex justify-space-between align-center" style="width:100%">
-                        <span>@LayerTitle(layer.Layer)</span>
-                        <span style="color:@StatusColour(layer.Status)">
-                            @StatusGlyph(layer.Status) @layer.Headline
-                        </span>
-                    </div>
-                </TitleContent>
-                <ChildContent>
-                    <div class="trail-detail">
-                        @foreach (var kv in layer.Detail)
-                        {
-                            <div><code>@kv.Key</code> &nbsp; @kv.Value</div>
-                        }
-                    </div>
-                </ChildContent>
-            </MudExpansionPanel>
-        }
-    </MudExpansionPanels>
-
-    @* Layer-4 affordance *@
-    @if (!Verdict.Layers.Any(l => l.Layer == ValidationLayer.RegisterAnchor))
+    @* ---- Portrait ---- *@
+    @if (!string.IsNullOrEmpty(Verdict.PortraitBase64))
     {
-        @if (string.IsNullOrEmpty(Verdict.RegisterAnchorId))
+        <div class="portrait-wrap">
+            <div class="portrait @(Verdict.IsAgeTreatment ? "sm" : "lg")">
+                <img src="@PortraitSrc(Verdict.PortraitBase64)" alt="Holder portrait" data-testid="portrait" />
+            </div>
+            <div class="compare">@(Verdict.IsAgeTreatment ? "Confirm it's the same person" : "Compare to the person present")</div>
+            @if (!Verdict.IsAgeTreatment && HolderName is not null)
+            {
+                <div class="name" data-testid="holder-name">@HolderName</div>
+            }
+        </div>
+    }
+
+    @* ---- Minimal-disclosure statement (age only) ---- *@
+    @if (Verdict.MinimalDisclosureNote is not null)
+    {
+        <div class="privacy" data-testid="minimal-disclosure">
+            <b>Minimal disclosure.</b> @Verdict.MinimalDisclosureNote
+        </div>
+    }
+
+    @* ---- Shared with you ---- *@
+    <div class="disc">
+        <h3>Shared with you</h3>
+        @foreach (var d in Verdict.Disclosed)
         {
-            <div class="mt-3 trail-unverified" data-testid="anchor-na">
-                Register anchor: not applicable
+            <div class="row" data-testid="disclosed-claim">
+                <span class="lbl">@Humanize(d.Key)</span>
+                <span class="val">@DisplayValue(d)</span>
             </div>
         }
-        else
+        @if (Verdict.Withheld.Count > 0)
         {
-            <MudButton Class="mt-3"
-                       Variant="Variant.Outlined"
-                       Color="Color.Primary"
-                       Disabled="@_anchorChecking"
-                       OnClick="VerifyAnchorAsync"
-                       data-testid="verify-anchor">
-                @(_anchorChecking ? "Verifying…" : "Verify against the register")
-            </MudButton>
+            <div class="withheld" data-testid="withheld-claims">
+                <b>Withheld:</b> @string.Join(" · ", Verdict.Withheld)
+            </div>
         }
+    </div>
+
+    @* ---- Issuer line ---- *@
+    @if (!string.IsNullOrEmpty(Verdict.IssuerDid) || !string.IsNullOrEmpty(Verdict.IssuerDisplayName))
+    {
+        <div class="issuer" data-testid="issuer-line">
+            <span class="seal">✓</span>
+            <span>Issued by <b>@(Verdict.IssuerDisplayName ?? Verdict.IssuerDid)</b> · signature @(Verdict.IssuerSignatureVerified ? "verified" : "not verified")</span>
+        </div>
+    }
+
+    @* ---- Trust trail (collapsed) ---- *@
+    <details class="trail" data-testid="verify-trail">
+        <summary>How this was verified <span class="caret">›</span></summary>
+        <div class="layers">
+            @foreach (var layer in Verdict.Layers)
+            {
+                <div class="layer" data-testid="@($"trail-{layer.Layer}")">
+                    <span class="ic @StatusClass(layer.Status)">@StatusGlyph(layer.Status)</span>
+                    <span class="lx">
+                        <span class="lt">@LayerTitle(layer.Layer)</span>
+                        <span class="ld">@layer.Headline</span>
+                    </span>
+                    <span class="st @StatusClass(layer.Status)">@StatusWord(layer.Status)</span>
+                </div>
+            }
+            @if (!Verdict.Layers.Any(l => l.Layer == ValidationLayer.RegisterAnchor))
+            {
+                @if (string.IsNullOrEmpty(Verdict.RegisterAnchorId))
+                {
+                    <div class="layer" data-testid="anchor-na">
+                        <span class="ic q">?</span>
+                        <span class="lx">
+                            <span class="lt">Register-anchored</span>
+                            <span class="ld">Not applicable for this credential</span>
+                        </span>
+                        <span class="st na">n/a</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="layer layer-action" data-testid="trail-RegisterAnchor">
+                        <span class="ic q">?</span>
+                        <span class="lx">
+                            <span class="lt">Register-anchored</span>
+                            <span class="ld">Confirm it exists on the Sorcha register</span>
+                        </span>
+                        <button class="st act" disabled="@_anchorChecking" @onclick="VerifyAnchorAsync" data-testid="verify-anchor">
+                            @(_anchorChecking ? "Checking…" : "Tap to check")
+                        </button>
+                    </div>
+                }
+            }
+        </div>
+    </details>
+
+    @if (OnVerifyAnother.HasDelegate)
+    {
+        <div class="foot">
+            <button class="btn primary" @onclick="OnVerifyAnother" data-testid="verify-another">Verify another</button>
+        </div>
     }
 </div>
 
@@ -123,6 +144,9 @@
 
     /// <summary>Raised after the on-demand layer-4 register anchor check completes.</summary>
     [Parameter] public EventCallback OnAnchorChecked { get; set; }
+
+    /// <summary>Optional "verify another" affordance; the foot renders only when a host supplies it.</summary>
+    [Parameter] public EventCallback OnVerifyAnother { get; set; }
 
     private bool _anchorChecking;
 
@@ -163,29 +187,66 @@
         }
     }
 
-    private static string PortraitSrc(string token)
-        => token.StartsWith("data:") ? token : $"data:image/jpeg;base64,{token}";
+    private string BannerClass => Verdict.OverallPass
+        ? (Verdict.IssuerSignatureVerified ? "verdict-pass" : "verdict-warn")
+        : "verdict-fail";
+
+    private string BannerGlyph => Verdict.OverallPass ? "✓" : "✗";
+    private string BannerTitle => Verdict.OverallPass
+        ? (Verdict.IssuerSignatureVerified ? "Identity verified" : "Verified with reduced assurance")
+        : "Not verified";
+    private string BannerSubtitle => Verdict.OverallPass
+        ? (Verdict.IssuerSignatureVerified ? "Genuine credential · issuer confirmed · not revoked" : "Issuer signature could not be checked")
+        : (Verdict.Errors.Count > 0 ? Verdict.Errors[0] : "A verification check failed");
+
+    private string AgeHeadline => Verdict.AgeOver18 == true ? "18" : "18";
+    private string AgeSuffix => "+";
+    private string AgeLabel => Verdict.AgeOver18 == true ? "Over 18 — confirmed"
+        : Verdict.AgeOver18 == false ? "Not over 18" : "Could not confirm";
+
+    private string? HolderName => Verdict.Disclosed
+        .FirstOrDefault(d => d.Key is "fullName").Value is { Length: > 0 } n ? n : null;
+
+    private static string DisplayValue(KeyValuePair<string, string> d) =>
+        d.Key == "portrait" ? "Shown above"
+        : d.Value is "True" or "true" ? "Yes"
+        : d.Value is "False" or "false" ? "No"
+        : d.Value;
+
+    private static string Humanize(string claim) => claim switch
+    {
+        "fullName" => "Full name",
+        "givenName" => "First name",
+        "familyName" => "Last name",
+        "dateOfBirth" => "Date of birth",
+        "age_over_18" => "Age over 18",
+        "portrait" => "Photo",
+        "email" => "Email",
+        _ => claim,
+    };
 
     private static string LayerTitle(ValidationLayer layer) => layer switch
     {
         ValidationLayer.LivePresentation => "Live presentation",
         ValidationLayer.IssuerSignature => "Issuer signature",
         ValidationLayer.Revocation => "Not revoked",
-        ValidationLayer.RegisterAnchor => "On the public register",
+        ValidationLayer.RegisterAnchor => "Register-anchored",
         _ => layer.ToString(),
     };
 
     private static string StatusGlyph(LayerStatus s) => s switch
     {
-        LayerStatus.Pass => "✓",
-        LayerStatus.Fail => "✗",
-        _ => "⚠",
+        LayerStatus.Pass => "✓", LayerStatus.Fail => "✗", _ => "?",
+    };
+    private static string StatusWord(LayerStatus s) => s switch
+    {
+        LayerStatus.Pass => "Pass", LayerStatus.Fail => "Fail", _ => "Unverified",
+    };
+    private static string StatusClass(LayerStatus s) => s switch
+    {
+        LayerStatus.Pass => "ok", LayerStatus.Fail => "bad", _ => "q",
     };
 
-    private static string StatusColour(LayerStatus s) => s switch
-    {
-        LayerStatus.Pass => "var(--mud-palette-success)",
-        LayerStatus.Fail => "var(--mud-palette-error)",
-        _ => "var(--mud-palette-warning)",
-    };
+    private static string PortraitSrc(string token) =>
+        token.StartsWith("data:") ? token : $"data:image/jpeg;base64,{token}";
 }
