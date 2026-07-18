@@ -192,12 +192,13 @@
             { "claimName": "familyName",  "sourceField": "/name/familyName" },
             { "claimName": "fullName",    "sourceField": "/name/fullName" },
             { "claimName": "dateOfBirth", "sourceField": "/dob/dateOfBirth" },
+            { "claimName": "age_over_18", "sourceField": "/dob/dateOfBirth" },
             { "claimName": "email",       "sourceField": "/email/email" },
             { "claimName": "address",     "sourceField": "/address" },
             { "claimName": "portrait",    "sourceField": "/portrait/tokenImageBase64" }
           ],
           "disclosable": [
-            "givenName", "middleName", "familyName", "fullName", "dateOfBirth", "email",
+            "givenName", "middleName", "familyName", "fullName", "dateOfBirth", "age_over_18", "email",
             "/address/line1", "/address/line2", "/address/town", "/address/region",
             "/address/postcode", "/address/country",
             "portrait"
