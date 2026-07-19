@@ -64,6 +64,18 @@ public sealed class VerdictViewModel
     private const string AnchorClaim = "registerAnchor";
 
     /// <summary>
+    /// SD-JWT / VC machine fields that must never appear in the operator-facing "Shared with you"
+    /// list — they are credential plumbing (type, status, key binding, timestamps, anchor key), not
+    /// disclosed identity attributes. Filtered from the display pairs; the raw disclosed set is still
+    /// used for the portrait / age / anchor lookups.
+    /// </summary>
+    private static readonly HashSet<string> NonDisplayClaims = new(StringComparer.Ordinal)
+    {
+        "vct", "credentialStatus", "status", "cnf", "iss", "iat", "exp", "nbf",
+        "sub", "jti", "id", "_sd", "_sd_alg", AnchorClaim,
+    };
+
+    /// <summary>
     /// Build the view model from a completed <paramref name="outcome"/> and the chosen
     /// <paramref name="question"/> preset. Known credential claims and required VCT come from the
     /// preset so the verdict can be computed client-side without a server session store (R-001).
@@ -82,6 +94,11 @@ public sealed class VerdictViewModel
         var withheld = known.Where(c => !disclosed.ContainsKey(c)).ToList();
 
         var disclosedPairs = disclosed
+            .Where(kvp => !NonDisplayClaims.Contains(kvp.Key))
+            // Skip structured (object/array) values — e.g. an undisclosed `address` surfaced as its
+            // raw {"_sd":[…]} digest — which would dump machine JSON into the operator's view. The
+            // portrait is exempt (it renders separately as a marker row).
+            .Where(kvp => kvp.Key == PortraitClaim || !LooksLikeStructuredJson(kvp.Value))
             .Select(kvp => new KeyValuePair<string, string>(
                 kvp.Key,
                 kvp.Key == PortraitClaim ? "<portrait>" : kvp.Value?.ToString() ?? ""))
@@ -149,4 +166,15 @@ public sealed class VerdictViewModel
         string s when bool.TryParse(s, out var b) => b,
         _ => null,
     };
+
+    /// <summary>
+    /// True when the value stringifies to a JSON object/array (starts with <c>{</c> or <c>[</c>) —
+    /// the shape an undisclosed nested claim (e.g. a partially-disclosed address carrying its raw
+    /// <c>_sd</c> digests) takes. Such values are machine plumbing, not a human-readable disclosure.
+    /// </summary>
+    private static bool LooksLikeStructuredJson(object? value)
+    {
+        var s = value?.ToString()?.TrimStart();
+        return !string.IsNullOrEmpty(s) && (s[0] == '{' || s[0] == '[');
+    }
 }

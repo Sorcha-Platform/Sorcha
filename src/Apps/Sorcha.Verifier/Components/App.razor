@@ -12,6 +12,9 @@
     <meta name="theme-color" content="#090A14" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
     <link rel="stylesheet" href="@Assets["_content/MudBlazor/MudBlazor.min.css"]" />
+    @* Blazor CSS-isolation bundle — carries VerdictTrailPanel's scoped styles (and any other
+       component-scoped CSS). Without this link the verdict panel renders unstyled. *@
+    <link rel="stylesheet" href="@Assets["Sorcha.Verifier.styles.css"]" />
     <link rel="stylesheet" href="css/verify.css" />
     <HeadOutlet />
 </head>
