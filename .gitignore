@@ -296,3 +296,6 @@ BenchmarkDotNet.Artifacts/
 
 # Phone screenshots for UX review — local only, never commit
 _screenshots/
+
+# Storyboard WIP (screenshots + notes) — local only, never commit
+walkthroughs/_storyboards/
