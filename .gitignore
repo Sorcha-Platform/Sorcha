@@ -293,3 +293,6 @@ deploy/
 
 # BenchmarkDotNet run artifacts
 BenchmarkDotNet.Artifacts/
+
+# Phone screenshots for UX review — local only, never commit
+_screenshots/
