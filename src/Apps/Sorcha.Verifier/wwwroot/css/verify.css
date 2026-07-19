@@ -108,6 +108,9 @@ body::before {
 .verify-shell { position: relative; z-index: 1; }
 .verify-intro { color: var(--ink-2); }
 .verify-heading { color: var(--ink); font-weight: 700; }
+/* the shared panel is phone-width (420px) by default; give the desk verifier a slightly roomier
+   card (verify.css loads after the scoped bundle, so this wins on the desk only — the PWA is unaffected) */
+.verify-shell .verdict-trail-panel { max-width: 560px; }
 
 /* ---- Ask state (QuestionSelectionPanel — themed by CSS only) ---- */
 .question-selection-panel .mud-button-root.mud-button-outlined {
@@ -141,6 +144,16 @@ body::before {
     font-size: 1.05rem; font-weight: 700; color: var(--ink); text-align: center;
 }
 .verify-pending-purpose { font-size: .85rem; color: var(--ink-2); text-align: center; margin-top: -8px; }
+
+/* cancel / back out of the QR session, returning to the question picker */
+.verify-cancel {
+    font: inherit; font-size: .82rem; font-weight: 600; color: var(--ink-2);
+    background: transparent; border: 1px solid var(--line); border-radius: 9px;
+    padding: 8px 20px; margin-top: 2px; cursor: pointer;
+    transition: border-color .15s, color .15s;
+}
+.verify-cancel:hover { border-color: var(--primary); color: var(--ink); }
+.verify-cancel:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.55); }
 
 .verification-session-qr [data-testid="qr-active"] {
     display: flex; flex-direction: column; align-items: center; gap: 14px;
