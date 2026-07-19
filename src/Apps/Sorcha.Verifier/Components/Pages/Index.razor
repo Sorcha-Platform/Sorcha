@@ -17,9 +17,8 @@
 
 <PageTitle>Sorcha Verifier</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
-    <MudText Typo="Typo.h4" Class="mb-1">Sorcha Verifier</MudText>
-    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-6">
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8 verify-shell">
+    <MudText Typo="Typo.body2" Class="mb-6 verify-intro">
         Ask a question, show the QR. The citizen approves in their wallet, and the verified
         result — with its full validation trail — appears here.
     </MudText>
@@ -30,10 +29,21 @@
     }
     else if (!_complete)
     {
-        <VerificationSessionQr Question="@_selectedQuestion"
-                               CancellationToken="@_pageCts.Token"
-                               OnOutcome="@HandleOutcomeAsync"
-                               OnCompleted="@HandleCompletedAsync" />
+        <div class="verify-pending">
+            <div class="verify-pending-title">@_selectedQuestion.Label</div>
+            @if (!string.IsNullOrWhiteSpace(_selectedQuestion.Purpose))
+            {
+                <div class="verify-pending-purpose">@_selectedQuestion.Purpose</div>
+            }
+            <VerificationSessionQr Question="@_selectedQuestion"
+                                   CancellationToken="@_pageCts.Token"
+                                   OnOutcome="@HandleOutcomeAsync"
+                                   OnCompleted="@HandleCompletedAsync" />
+            <div class="verify-waiting" data-testid="verify-waiting">
+                <span class="verify-waiting-pulse"></span>
+                Waiting for the citizen's wallet…
+            </div>
+        </div>
     }
     else
     {

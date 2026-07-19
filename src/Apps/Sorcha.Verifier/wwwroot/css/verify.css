@@ -1,0 +1,195 @@
+/* SPDX-License-Identifier: MIT */
+/* Copyright (c) 2026 Sorcha Contributors */
+
+/* Sorcha Verifier desk — refined identity page shell.
+   DARK is the default (operator kiosk); light via @media (prefers-color-scheme: light).
+   Loaded AFTER MudBlazor.min.css so these rules win over the Mud dark palette surfaces. */
+
+:root {
+    --bg-0: #090A14; --bg-1: #0F1020;
+    --surface: #14152A; --surface-alt: #191A31; --surface-hi: #1E2140;
+    --primary: #6366F1; --primary-btn: #4F46E5; --primary-btn-hover: #5B52EC;
+    --violet: #818CF8; --violet-ink: #A5B4FC;
+    --ink: #F4F5FF; --ink-2: #A9A8C2; --ink-3: #726F90;
+    --line: #262A44; --line-2: #2B2940;
+    --good: #54D08A; --good-bg: #12261C; --good-line: #245C3C;
+    --warn: #E5B45C; --warn-bg: #2A2213; --warn-line: #5E4C22;
+    --bad: #F2848D; --bad-bg: #2A1418; --bad-line: #5E2B31;
+    --grid: rgba(99, 102, 241, 0.10);
+}
+
+@media (prefers-color-scheme: light) {
+    :root {
+        --bg-0: #EEEFF6; --bg-1: #F5F5FB;
+        --surface: #FFFFFF; --surface-alt: #F7F7FC; --surface-hi: #FFFFFF;
+        --primary: #4F46E5; --primary-btn: #4F46E5; --primary-btn-hover: #4338CA;
+        --violet: #6366F1; --violet-ink: #4338CA;
+        --ink: #16172A; --ink-2: #54536B; --ink-3: #8A8AA1;
+        --line: #E7E6F2; --line-2: #E7E6F2;
+        --good: #12894F; --good-bg: #E7F6EE; --good-line: #BFE6D0;
+        --warn: #A86A12; --warn-bg: #FBF1DE; --warn-line: #EED9AD;
+        --bad: #C02C39; --bad-bg: #FBE9EB; --bad-line: #F0C4C9;
+        --grid: rgba(99, 102, 241, 0.07);
+    }
+}
+
+/* ---- page background (static, no JS/canvas) ---- */
+html, body {
+    background: var(--bg-1);
+    color: var(--ink);
+}
+body {
+    background:
+        radial-gradient(120% 90% at 50% -10%, rgba(99, 102, 241, 0.13), transparent 60%),
+        linear-gradient(160deg, var(--bg-0), var(--bg-1));
+    background-attachment: fixed;
+    min-height: 100vh;
+}
+/* faint 56px grid, faded toward the bottom */
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 56px 56px;
+    -webkit-mask-image: radial-gradient(130% 100% at 50% 0%, #000 55%, transparent 100%);
+    mask-image: radial-gradient(130% 100% at 50% 0%, #000 55%, transparent 100%);
+}
+
+/* let the page background show through the Mud surfaces */
+.mud-layout { background: transparent !important; }
+.mud-main-content { background: transparent !important; position: relative; z-index: 1; }
+.verify-main { padding-top: 64px; }
+
+/* ---- top bar ---- */
+.verify-appbar.mud-appbar {
+    background: color-mix(in srgb, var(--bg-0) 62%, transparent) !important;
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+    box-shadow: none !important;
+    color: var(--ink);
+}
+.verify-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.verify-brand-icon { width: 30px; height: 30px; border-radius: 8px; display: block; flex: 0 0 auto; }
+.verify-wordmark { font-weight: 700; font-size: 1.05rem; color: var(--ink); letter-spacing: -.01em; white-space: nowrap; }
+.verify-wordmark-alt { color: var(--ink-3); font-weight: 700; }
+
+.verify-env-chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: .75rem; color: var(--ink-2);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 5px 11px; margin-right: 12px; white-space: nowrap;
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
+}
+.verify-env-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--good);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 25%, transparent);
+}
+
+/* install button (id/class/onclick/display:none preserved in markup) — ghost restyle */
+.sorcha-install-btn {
+    font: inherit; font-size: .82rem; font-weight: 600;
+    color: var(--violet-ink);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 9px; padding: 7px 14px;
+    cursor: pointer; white-space: nowrap;
+    transition: border-color .15s, color .15s;
+}
+.sorcha-install-btn:hover { border-color: var(--primary); color: var(--violet-ink); }
+.sorcha-install-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.55); }
+
+/* ---- page content shell ---- */
+.verify-shell { position: relative; z-index: 1; }
+.verify-intro { color: var(--ink-2); }
+.verify-heading { color: var(--ink); font-weight: 700; }
+
+/* ---- Ask state (QuestionSelectionPanel — themed by CSS only) ---- */
+.question-selection-panel .mud-button-root.mud-button-outlined {
+    border-color: var(--line);
+    color: var(--ink);
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 14px 16px;
+    text-transform: none;
+    font-weight: 600;
+    justify-content: flex-start;
+    transition: border-color .15s, background .15s;
+}
+.question-selection-panel .mud-button-root.mud-button-outlined:hover {
+    border-color: var(--primary);
+    background: var(--surface-hi);
+}
+.question-selection-panel .mud-button-root.mud-button-text {
+    color: var(--violet-ink);
+    text-transform: none;
+    font-weight: 600;
+}
+.question-selection-panel .mud-button-root:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.55);
+}
+
+/* ---- Pending state (VerificationSessionQr — themed by CSS only) ---- */
+.verify-pending { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.verify-pending-title {
+    font-size: 1.05rem; font-weight: 700; color: var(--ink); text-align: center;
+}
+.verify-pending-purpose { font-size: .85rem; color: var(--ink-2); text-align: center; margin-top: -8px; }
+
+.verification-session-qr [data-testid="qr-active"] {
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+.verification-session-qr [data-testid="qr-active"] img {
+    background: #fff;
+    padding: 16px;
+    border-radius: 18px;
+    border: 1px solid var(--line);
+    box-shadow: 0 12px 34px rgba(0, 0, 0, .40);
+}
+/* constrain the openid4vp:// request URI: monospace, bordered chip, truncated */
+.verification-session-qr [data-testid="deep-link"] {
+    display: block;
+    max-width: 288px;
+    margin: 0 auto;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .72rem;
+    color: var(--violet-ink);
+    text-decoration: none;
+    background: var(--surface-alt);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    padding: 8px 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.verification-session-qr [data-testid="deep-link"]:hover { border-color: var(--primary); }
+.verification-session-qr [data-testid="deep-link"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.55);
+}
+
+/* "Waiting for the citizen's wallet…" pulse */
+.verify-waiting {
+    display: inline-flex; align-items: center; gap: 9px;
+    font-size: .84rem; color: var(--ink-2);
+}
+.verify-waiting-pulse {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--primary);
+    animation: verify-pulse 1.6s ease-in-out infinite;
+}
+@keyframes verify-pulse {
+    0%, 100% { opacity: .35; transform: scale(.85); box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent); }
+    50% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 0%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .verify-waiting-pulse { animation: none; opacity: 1; }
+    * { scroll-behavior: auto !important; }
+}
