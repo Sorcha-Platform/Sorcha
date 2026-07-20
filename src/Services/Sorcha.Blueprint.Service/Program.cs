@@ -1252,10 +1252,27 @@ var actionsGroup = app.MapGroup("/api/actions")
 // Get available blueprints for a wallet/register combination
 // </summary>
 actionsGroup.MapGet("/{wallet}/{register}/blueprints", async (
-    string wallet, // TODO: Filter by wallet access permissions
+    string wallet,
     string register,
-    IPublishedBlueprintStore publishedStore) =>
+    HttpContext httpContext,
+    IPublishedBlueprintStore publishedStore,
+    Sorcha.ServiceClients.Wallet.IWalletServiceClient walletClient,
+    CancellationToken ct) =>
 {
+    // Authorize: the caller must own the {wallet} they are querying as. CanExecuteBlueprints is only
+    // "any authenticated user", so without this any authenticated caller could pass any wallet in the
+    // path. Resolve the caller's wallets the same way the rest of the service does — the wallet_address
+    // claim, else a Wallet-Service owner lookup, since consumer-tier tokens omit the claim (Feature 136);
+    // a gate reading the claim alone would 403 every real citizen. Fail closed on an empty resolved set.
+    var callerWallets = await Sorcha.Blueprint.Service.Services.Infrastructure.ParticipantWalletResolver
+        .ResolveUserWalletAddressesAsync(httpContext, walletClient, logger, ct);
+    if (!callerWallets.Any(w => string.Equals(w, wallet, StringComparison.OrdinalIgnoreCase)))
+    {
+        return Results.Problem(
+            "You do not own the wallet in this request.",
+            statusCode: StatusCodes.Status403Forbidden);
+    }
+
     // Get only blueprints published to this specific register
     var publishedForRegister = await publishedStore.GetByRegisterAsync(register);
     var availableBlueprints = publishedForRegister.Select(pub =>
@@ -1294,8 +1311,12 @@ actionsGroup.MapGet("/{wallet}/{register}/blueprints", async (
 })
 .WithName("GetAvailableBlueprints")
 .WithSummary("Get available blueprints")
-.WithDescription("Retrieve blueprints and actions available to a specific wallet/register combination")
-.CacheOutput(policy => policy.Expire(TimeSpan.FromMinutes(5)).Tag("blueprints"));
+.WithDescription("Retrieve blueprints and actions available to a specific wallet/register combination. "
+    + "The caller must own the wallet in the path (403 otherwise).")
+.Produces(StatusCodes.Status403Forbidden);
+// No .CacheOutput here: the endpoint is now caller-specific, and the previous route-only cache policy
+// (keyed on {wallet}/{register} with no VaryBy on caller identity) could serve one caller's authorized
+// result to another. It was also inert under an auth-required group, so nothing is lost by dropping it.
 
 // Get a single published blueprint (with full action schemas) for a wallet /
 // register / blueprintId. Returns the latest version published to this
@@ -1304,11 +1325,24 @@ actionsGroup.MapGet("/{wallet}/{register}/blueprints", async (
 // the 404 bug where non-authoring nodes could not start submissions.
 // (.WithSummary / .WithDescription on the endpoint provide the OpenAPI doc.)
 actionsGroup.MapGet("/{wallet}/{register}/blueprints/{blueprintId}", async (
-    string wallet, // TODO: Filter by wallet access permissions
+    string wallet,
     string register,
     string blueprintId,
-    IPublishedBlueprintStore publishedStore) =>
+    HttpContext httpContext,
+    IPublishedBlueprintStore publishedStore,
+    Sorcha.ServiceClients.Wallet.IWalletServiceClient walletClient,
+    CancellationToken ct) =>
 {
+    // Same ownership gate as the list endpoint above — the caller must own {wallet}.
+    var callerWallets = await Sorcha.Blueprint.Service.Services.Infrastructure.ParticipantWalletResolver
+        .ResolveUserWalletAddressesAsync(httpContext, walletClient, logger, ct);
+    if (!callerWallets.Any(w => string.Equals(w, wallet, StringComparison.OrdinalIgnoreCase)))
+    {
+        return Results.Problem(
+            "You do not own the wallet in this request.",
+            statusCode: StatusCodes.Status403Forbidden);
+    }
+
     var publishedForRegister = await publishedStore.GetByRegisterAsync(register);
     var match = publishedForRegister
         .Where(pub => string.Equals(pub.BlueprintId, blueprintId, StringComparison.OrdinalIgnoreCase))
@@ -1324,8 +1358,9 @@ actionsGroup.MapGet("/{wallet}/{register}/blueprints/{blueprintId}", async (
 })
 .WithName("GetPublishedBlueprintDetail")
 .WithSummary("Get published blueprint detail")
-.WithDescription("Retrieve a single published blueprint including full action schemas. Sourced from the published blueprint store — works on any node, not just the authoring node.")
-.CacheOutput(policy => policy.Expire(TimeSpan.FromMinutes(5)).Tag("blueprints"));
+.WithDescription("Retrieve a single published blueprint including full action schemas. Sourced from the published blueprint store — works on any node, not just the authoring node. The caller must own the wallet in the path (403 otherwise).")
+.Produces(StatusCodes.Status403Forbidden);
+// No .CacheOutput — see the note on the sibling list endpoint above.
 
 // <summary>
 // Get actions for a wallet/register (paginated)
