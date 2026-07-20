@@ -24,6 +24,30 @@ public class PostcodeExistsCheckTests
         handler.Calls.Should().Be(1);
     }
 
+    /// <summary>
+    /// Regression for #1192. The online path used to receive the RAW postcode while only the offline
+    /// paths used the normalised one, so a real postcode with stray internal whitespace — e.g.
+    /// "EH9 1 JA", produced by the address-lookup autofill — was sent verbatim to postcodes.io.
+    /// Its /validate route is not space-tolerant: it answered result:false for a genuine Edinburgh
+    /// address, the AIAS agent rejected the application "postcode-not-found", and no credential was
+    /// issued. Asserting on the URI rather than the result, because a stub returning result:true
+    /// would pass regardless of what was actually requested.
+    /// </summary>
+    [Fact]
+    public async Task EvaluateAsync_PostcodeWithStrayWhitespace_QueriesNormalisedPostcode()
+    {
+        var handler = StubHttpMessageHandler.Json("""{ "status": 200, "result": true }""");
+        var check = new PostcodeExistsCheck("postcodeExists", "/address", handler.Client(), Fixture);
+
+        var result = await check.EvaluateAsync(AddressPayload("eh9 1 JA"), default);
+
+        handler.LastRequestUri!.AbsoluteUri.Should().Contain("/postcodes/EH91JA/validate");
+        result.Value.Should().BeTrue();
+
+        // Detail keeps the raw value — the rejection reason should echo what the citizen typed.
+        result.Detail.Should().Be("eh9 1 JA");
+    }
+
     [Fact]
     public async Task EvaluateAsync_LiveLookupInvalid_ReturnsFalse()
     {

@@ -48,6 +48,12 @@ internal sealed class StubHttpMessageHandler : HttpMessageHandler
 
     public int Calls { get; private set; }
 
+    /// <summary>
+    /// The absolute URI of the most recent request. Lets a test assert what was actually put on the
+    /// wire — the postcode check normalises before the lookup, and only the URI proves it.
+    /// </summary>
+    public Uri? LastRequestUri { get; private set; }
+
     private StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) => _responder = responder;
 
     /// <summary>Returns 200 with the given JSON body for every request.</summary>
@@ -65,6 +71,7 @@ internal sealed class StubHttpMessageHandler : HttpMessageHandler
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         Calls++;
+        LastRequestUri = request.RequestUri;
         return Task.FromResult(_responder(request));
     }
 
