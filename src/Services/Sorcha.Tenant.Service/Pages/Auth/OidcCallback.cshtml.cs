@@ -173,9 +173,21 @@ public class OidcCallbackModel : PageModel
                 }
             }
 
-            // Provision or match the user account
-            var (user, isFirstLogin) = await _oidcProvisioningService.ProvisionOrMatchUserAsync(
-                exchangeResult.OrgId, exchangeResult.Claims!, ct);
+            // Provision or match the user account. Refused when the IdP did not verify the email —
+            // email is the only identity key on this path, so an unverified one is unsafe (#1212).
+            UserIdentity user;
+            bool isFirstLogin;
+            try
+            {
+                (user, isFirstLogin) = await _oidcProvisioningService.ProvisionOrMatchUserAsync(
+                    exchangeResult.OrgId, exchangeResult.Claims!, ct);
+            }
+            catch (OidcEmailNotVerifiedException ex)
+            {
+                _logger.LogWarning("OIDC callback refused: {Reason}", ex.Message);
+                ErrorMessage = ex.Message;
+                return Page();
+            }
 
             // Check if profile completion is required (missing email or display name)
             var needsProfile = await _oidcProvisioningService.DetermineProfileCompletionAsync(user);
