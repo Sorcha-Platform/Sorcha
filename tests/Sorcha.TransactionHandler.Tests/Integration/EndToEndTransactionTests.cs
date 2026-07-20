@@ -58,9 +58,10 @@ public class EndToEndTransactionTests
         Assert.NotNull(transaction.SenderWallet);
         Assert.Equal(TransactionVersion.V1, transaction.Version);
 
-        // Verify the transaction signature
+        // V1 in-model verify fails closed — it cannot check the signature (no recoverable public
+        // key; see Transaction.VerifyAsync). The signing assertions above are the real subject here.
         var verifyStatus = await transaction.VerifyAsync();
-        Assert.Equal(TransactionStatus.Success, verifyStatus);
+        Assert.Equal(TransactionStatus.VerificationNotImplemented, verifyStatus);
     }
 
     [Fact]
