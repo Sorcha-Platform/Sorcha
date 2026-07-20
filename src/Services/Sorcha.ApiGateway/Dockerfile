@@ -21,6 +21,16 @@ RUN dotnet restore "src/Services/Sorcha.ApiGateway/Sorcha.ApiGateway.csproj"
 # Copy source code
 COPY src/ ./src/
 
+# Unified versioning: the root Directory.Build.props derives the version from
+# GITHUB_RUN_NUMBER / GITHUB_RUN_ATTEMPT (else <Major>.0.0-dev). MSBuild reads env
+# vars as properties, so surfacing the build-args as ENV here makes the published
+# assembly carry 2.<run>.<attempt> — matching the image tag. Declared AFTER
+# restore so the (cacheable) restore layer isn't invalidated every run.
+ARG GITHUB_RUN_NUMBER
+ARG GITHUB_RUN_ATTEMPT
+ENV GITHUB_RUN_NUMBER=${GITHUB_RUN_NUMBER}
+ENV GITHUB_RUN_ATTEMPT=${GITHUB_RUN_ATTEMPT}
+
 # AI-discoverability (spec 117): the gateway embeds the canonical root llms.txt + docs/llms-full.txt
 # (see Sorcha.ApiGateway.csproj <EmbeddedResource>) to serve them at /llms.txt and /llms-full.txt.
 # They live outside src/, so copy them into the build context before the build resolves the embed.

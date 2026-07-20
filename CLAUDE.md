@@ -349,6 +349,18 @@ Full reference: the **`jwt` skill** ("Tiered audiences + issuer hardening"). Met
 ```
 
 - **NEVER hard-code `<Version>` / `<AssemblyVersion>` / `<FileVersion>` in a `.csproj`.** New projects inherit automatically.
+- **Every `Dockerfile` MUST declare the build-args** — docker build-args are *opt-in*, so a Dockerfile
+  without `ARG GITHUB_RUN_NUMBER` / `ARG GITHUB_RUN_ATTEMPT` (plus the matching `ENV`) silently
+  discards what `docker-publish.yml` passes it. The assembly then ships stamped `2.0.0-dev` while the
+  image is tagged `2.<run>.<attempt>` — tag and payload disagree and **nothing fails**. Put the block
+  after the `COPY src/ …` line (post-restore, so the cacheable restore layer isn't invalidated).
+  Enforced by `scripts/check-dockerfile-version-args.ps1` (CI: `version-args-gate`).
+- **Never hand-bump the local `-dev` version** in the root props. It is always `<Major>.0.0-dev`. A
+  deployed artefact reporting `-dev` means the Dockerfile is missing the ARG block — fix that, not
+  the version string.
+- **Display the version via `SorchaVersion.Current`** (`Sorcha.UI.Core.Utilities`, in
+  `Sorcha.UI.Components.User`) — never re-resolve the assembly attribute per surface and never
+  hardcode a version in a `.razor` page.
 - Publish workflows **derive** the version (`dotnet pack`/`build` reads the env in CI) — do **not** reintroduce "bump `<Version>` + commit" steps. Docker images are tagged `:2.<run>.<attempt>`.
 - A **Major** bump is a deliberate edit to `<SorchaMajor>` in the root `Directory.Build.props`.
 

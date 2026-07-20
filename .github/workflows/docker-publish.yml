@@ -144,7 +144,11 @@ jobs:
           # Pass the run identifiers into the build so the published assembly's
           # version matches the :2.<run>.<attempt> image tag below (the root
           # Directory.Build.props derives the version from these env vars).
-          # Dockerfiles that don't declare the matching ARG simply ignore these.
+          # NOTE: docker build-args are OPT-IN. A Dockerfile that does not declare the
+          # matching ARG silently discards these, and its assembly ships stamped with the
+          # local -dev version while the image is tagged 2.<run>.<attempt> — the tag and
+          # the payload then disagree. Every Dockerfile here MUST carry the ARG/ENV block
+          # (guarded by scripts/check-dockerfile-version-args.ps1).
           build-args: |
             GITHUB_RUN_NUMBER=${{ github.run_number }}
             GITHUB_RUN_ATTEMPT=${{ github.run_attempt }}

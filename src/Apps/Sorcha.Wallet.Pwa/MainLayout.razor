@@ -193,20 +193,9 @@
     /// </summary>
     public event Action? OutstandingWorkChanged;
 
-    // Build version for the bottom-right badge. Stamped at build time by the unified
-    // versioning standard (root Directory.Build.props): 2.<run>.<attempt> on CI images,
-    // 2.0.0-dev locally. InformationalVersion may carry a "+<commit>" suffix — trim it.
-    private static readonly string AppVersion = ResolveAppVersion();
-
-    private static string ResolveAppVersion()
-    {
-        var asm = typeof(MainLayout).Assembly;
-        var info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        var trimmed = info?.Split('+')[0];
-        return string.IsNullOrWhiteSpace(trimmed)
-            ? (asm.GetName().Version?.ToString() ?? "dev")
-            : trimmed;
-    }
+    // Build version for the bottom-right badge — resolved through the shared helper so the PWA
+    // badge, the web footer, and the web About panels can never disagree. See SorchaVersion.
+    private static readonly string AppVersion = Sorcha.UI.Core.Utilities.SorchaVersion.Current;
 
     // ── Shell surface for the Home hero (Feature 141) ──────────────────────
     // The Home page cascades to this layout instance so its gradient hero can

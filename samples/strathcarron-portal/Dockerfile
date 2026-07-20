@@ -22,6 +22,16 @@ COPY ["samples/Directory.Build.props", "samples/"]
 # entirety before restore. Slightly worse layer caching; far more
 # robust against transitive-reference changes.
 COPY src/ src/
+
+# Unified versioning: the root Directory.Build.props derives the version from
+# GITHUB_RUN_NUMBER / GITHUB_RUN_ATTEMPT (else <Major>.0.0-dev). MSBuild reads env
+# vars as properties, so surfacing the build-args as ENV here makes the published
+# assembly carry 2.<run>.<attempt> — matching the image tag. Declared AFTER
+# restore so the (cacheable) restore layer isn't invalidated every run.
+ARG GITHUB_RUN_NUMBER
+ARG GITHUB_RUN_ATTEMPT
+ENV GITHUB_RUN_NUMBER=${GITHUB_RUN_NUMBER}
+ENV GITHUB_RUN_ATTEMPT=${GITHUB_RUN_ATTEMPT}
 COPY samples/strathcarron-portal/ samples/strathcarron-portal/
 
 RUN dotnet restore "samples/strathcarron-portal/Sorcha.Sample.StrathcarronPortal.csproj"

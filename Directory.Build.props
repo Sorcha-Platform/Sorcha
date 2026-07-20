@@ -30,7 +30,15 @@
 
     <!-- Package / NuGet version (allows the -dev prerelease suffix locally). -->
     <Version>$(SorchaMajor).$(SorchaMinor).$(SorchaPatch)</Version>
-    <Version Condition="'$(GITHUB_RUN_NUMBER)' == ''">$(SorchaMajor).0.7-dev</Version>
+    <!--
+      Local builds are ALWAYS <Major>.0.0-dev. Do NOT hand-bump this to .1-dev, .2-dev, …:
+      a committed version bump is exactly what this scheme exists to eliminate, and a
+      moving local number cannot distinguish "new build" from "CI version didn't reach the
+      artefact". If a deployed artefact reports a -dev version, that is the bug — the
+      container's Dockerfile is missing the ARG/ENV block that surfaces GITHUB_RUN_NUMBER
+      to MSBuild (docker build-args are opt-in and silently dropped otherwise).
+    -->
+    <Version Condition="'$(GITHUB_RUN_NUMBER)' == ''">$(SorchaMajor).0.0-dev</Version>
 
     <!-- Assembly identity must be purely numeric (x.x.x.x). -->
     <AssemblyVersion>$(SorchaMajor).$(SorchaMinor).$(SorchaPatch).0</AssemblyVersion>

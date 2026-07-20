@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Unified-versioning CI gate. Fails when any Dockerfile omits the
+# ARG/ENV GITHUB_RUN_NUMBER + GITHUB_RUN_ATTEMPT block.
+#
+# Docker build-args are opt-in: an undeclared ARG is silently discarded, so the
+# image ships an assembly stamped <Major>.0.0-dev while being tagged
+# 2.<run>.<attempt>. Nothing else in CI catches that disagreement.
+#
+# See scripts/check-dockerfile-version-args.ps1 and CLAUDE.md ("Unified
+# versioning") for the wider scheme.
+
+name: version-args-gate
+
+on:
+  pull_request:
+    paths:
+      - "**/Dockerfile*"
+      - "Directory.Build.props"
+      - "scripts/check-dockerfile-version-args.ps1"
+      - ".github/workflows/version-args-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  dockerfile-version-args:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run unified-versioning gate
+        shell: pwsh
+        run: ./scripts/check-dockerfile-version-args.ps1
