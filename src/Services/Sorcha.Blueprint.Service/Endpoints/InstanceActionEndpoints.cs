@@ -46,7 +46,10 @@ public static class InstanceActionEndpoints
                 + "resolved from the wallet_address claim when present, else via a Wallet-Service lookup "
                 + "by owner (consumer-tier tokens carry no wallet_address per Feature 136) — 403 if none "
                 + "of the caller's wallets is a participant on the instance; 404 if the instance, "
-                + "blueprint, or action is not found.")
+                + "blueprint, or action is not found. A STARTING action whose sender is an open "
+                + "participant (no wallet bound in the published blueprint, Feature 103) is readable "
+                + "by any authenticated caller, because the citizen it exists for is not late-bound "
+                + "into the instance until they submit and its schema is a blank form.")
             .Produces<InstanceActionSchemaResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound);
@@ -92,14 +95,23 @@ public static class InstanceActionEndpoints
         var isParticipant = callerWallets.Count > 0
             && instance.ParticipantWallets.Values.Any(participantWallet =>
                 callerWallets.Any(w => string.Equals(w, participantWallet, StringComparison.OrdinalIgnoreCase)));
-        if (!isParticipant)
+
+        // Resolved BEFORE the gate decides, because an open-participant starting action has to be
+        // readable by someone who is not yet a participant — see IsOpenStartingAction. Ordering is
+        // deliberate: a caller who fails the gate gets 403 whether or not the blueprint/action
+        // exists, so a non-participant still cannot probe for which actions are present (#1183).
+        var blueprint = await actionResolver.GetBlueprintAsync(instance.BlueprintId, cancellationToken);
+        var action = blueprint is null
+            ? null
+            : actionResolver.GetActionDefinition(blueprint, actionId.ToString());
+
+        if (!isParticipant && !IsOpenStartingAction(blueprint, action))
         {
             return Results.Problem(
                 "You are not a participant on this instance.",
                 statusCode: StatusCodes.Status403Forbidden);
         }
 
-        var blueprint = await actionResolver.GetBlueprintAsync(instance.BlueprintId, cancellationToken);
         if (blueprint is null)
         {
             return Results.NotFound(new
@@ -109,7 +121,6 @@ public static class InstanceActionEndpoints
             });
         }
 
-        var action = actionResolver.GetActionDefinition(blueprint, actionId.ToString());
         if (action is null)
         {
             return Results.NotFound(new { error = $"Action {actionId} not found in blueprint {instance.BlueprintId}." });
@@ -127,6 +138,41 @@ public static class InstanceActionEndpoints
         };
 
         return Results.Ok(response);
+    }
+
+    /// <summary>
+    /// Whether this action is a STARTING action whose sender is an OPEN participant — i.e. one the
+    /// published blueprint deliberately left unbound (<c>WalletAddress == null</c>), to be late-bound
+    /// to whoever submits first (Feature 103; publish-time guardrail <c>VAL_BP_010</c> rejects a
+    /// pre-bound open participant).
+    ///
+    /// Such a caller is NOT in <c>instance.ParticipantWallets</c> until they submit, so the plain
+    /// participant gate would refuse the very person the action exists for — a citizen opening a
+    /// "start an application on your phone" form would 403 before typing anything (#1183). This was
+    /// latent rather than live: an open starting action has no wallet on its sender, so it never
+    /// appears in a pending-actions list, and no PWA route reached a starting action's schema.
+    ///
+    /// Nothing participant-specific is disclosed by allowing the read — a starting action's schema
+    /// is a blank form. Authentication is still required (the group carries
+    /// <c>CanExecuteBlueprints</c>), and WHO may actually submit remains the submit path's decision:
+    /// <c>ActionExecutionService</c> applies its strict wallet-equality check only when
+    /// <c>WalletAddress</c> is non-null, and late-binds otherwise. This read gate is deliberately
+    /// consistent with that rule rather than stricter than it.
+    /// </summary>
+    private static bool IsOpenStartingAction(
+        Sorcha.Blueprint.Models.Blueprint? blueprint,
+        Sorcha.Blueprint.Models.Action? action)
+    {
+        if (blueprint is null || action is null || !action.IsStartingAction)
+        {
+            return false;
+        }
+
+        var sender = blueprint.Participants
+            .FirstOrDefault(p => string.Equals(p.Id, action.Sender, StringComparison.OrdinalIgnoreCase));
+
+        // No resolvable sender participant is treated as NOT open — fail closed.
+        return sender is not null && string.IsNullOrEmpty(sender.WalletAddress);
     }
 
     /// <summary>
