@@ -319,6 +319,81 @@ public class ControlBlueprintVersionResolverTests
 
     #endregion
 
+    #region Historical config fail-loud (#4)
+
+    // BuildResolvedVersionAsync is private, and control-transaction detection is currently a no-op
+    // (TransactionMetaData.ActionId is a uint, so its ToString never matches the "control.*" action
+    // ids — filed separately), so no multi-version history can be built through the public API. These
+    // tests reach the method directly to pin the fail-loud contract regardless of that.
+
+    private System.Threading.Tasks.Task<ResolvedControlBlueprintVersion?> InvokeBuildResolvedVersion(
+        string registerId, ControlBlueprintVersionInfo versionInfo)
+    {
+        var method = typeof(ControlBlueprintVersionResolver).GetMethod(
+            "BuildResolvedVersionAsync",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        method.Should().NotBeNull();
+        return (System.Threading.Tasks.Task<ResolvedControlBlueprintVersion?>)method!.Invoke(
+            _resolver, [registerId, versionInfo, CancellationToken.None])!;
+    }
+
+    [Fact]
+    public async Task BuildResolvedVersion_SupersededHistoricalVersion_FailsClosed_NotAlie()
+    {
+        // The whole point of #4: only the CURRENT config is retrievable, so a superseded historical
+        // version cannot be resolved without reconstruction. It used to return today's config stamped
+        // with the old version's number — a confident false answer. It must now fail loud instead.
+        var registerId = "test-register";
+        _genesisConfigServiceMock.Setup(g => g.GetFullConfigAsync(registerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateTestGenesisConfig(registerId));
+
+        var supersededV2 = new ControlBlueprintVersionInfo
+        {
+            RegisterId = registerId,
+            VersionNumber = 2,
+            TransactionId = "tx-2",
+            ActiveFrom = DateTimeOffset.UtcNow.AddHours(-2),
+            ChangeType = "ConfigUpdate",
+            IsActive = false,   // superseded — this is the case that used to lie
+        };
+
+        var act = () => InvokeBuildResolvedVersion(registerId, supersededV2);
+
+        (await act.Should().ThrowAsync<NotSupportedException>())
+            .WithMessage("*version 2*")
+            .WithMessage("*not implemented*");
+    }
+
+    [Fact]
+    public async Task BuildResolvedVersion_ActiveVersion_ReturnsCurrentConfig_Truthfully()
+    {
+        // The active version's config genuinely IS the current config, so this stays honest and must
+        // NOT throw — this is what GetActiveVersionAsync relies on.
+        var registerId = "test-register";
+        var config = CreateTestGenesisConfig(registerId);
+        _genesisConfigServiceMock.Setup(g => g.GetFullConfigAsync(registerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(config);
+
+        var activeV2 = new ControlBlueprintVersionInfo
+        {
+            RegisterId = registerId,
+            VersionNumber = 2,
+            TransactionId = "tx-2",
+            ActiveFrom = DateTimeOffset.UtcNow.AddHours(-1),
+            ChangeType = "ConfigUpdate",
+            IsActive = true,
+        };
+
+        var result = await InvokeBuildResolvedVersion(registerId, activeV2);
+
+        result.Should().NotBeNull();
+        result!.VersionNumber.Should().Be(2);
+        result.Configuration.Should().Be(config);
+        result.IsActive.Should().BeTrue();
+    }
+
+    #endregion
+
     #region InvalidateCache Tests
 
     [Fact]
