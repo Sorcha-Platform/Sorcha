@@ -427,17 +427,35 @@ public class CredentialApiService : ICredentialApiService
     };
 
     /// <summary>
-    /// A nested object renders as its field names, not its JSON. Protocol keys are
-    /// dropped so a stray digest array degrades to an empty string, never a blob.
+    /// Summarises a nested object claim for a credential card as its VALUES, comma-joined —
+    /// an <c>address</c> renders "10 High St, Falkirk, FK1 1AA". It used to render the field
+    /// NAMES ("line1, town, postcode, country"), which read as placeholder text to the citizen
+    /// (#1188). Values only, without the "Line1: " labels the detail view uses, because on a
+    /// compact card an address reads naturally as a plain address.
+    ///
+    /// The blob-proofing this method was built for is preserved and in fact tightened: only
+    /// SCALAR properties contribute. Anything array-valued is skipped rather than named, so an
+    /// unresolved SD-JWT digest array cannot reach a card even under a key that escaped the
+    /// <c>_</c>-prefix drop — which is how one reached a citizen's card on n1. Nested objects
+    /// recurse through this same scalar-only path, so depth can never turn into raw JSON.
+    /// An object with nothing scalar to say renders as an empty string, as before.
     /// </summary>
     private static string SummariseObject(JsonElement el)
     {
-        var fields = el.EnumerateObject()
+        var values = el.EnumerateObject()
             .Where(p => !p.Name.StartsWith('_'))
-            .Select(p => p.Name)
+            .Select(p => p.Value.ValueKind switch
+            {
+                JsonValueKind.String => p.Value.GetString() ?? string.Empty,
+                JsonValueKind.Number => p.Value.ToString(),
+                JsonValueKind.True or JsonValueKind.False => p.Value.GetBoolean().ToString(),
+                JsonValueKind.Object => SummariseObject(p.Value),
+                _ => string.Empty
+            })
+            .Where(v => !string.IsNullOrWhiteSpace(v))
             .ToList();
 
-        return fields.Count == 0 ? string.Empty : string.Join(", ", fields);
+        return values.Count == 0 ? string.Empty : string.Join(", ", values);
     }
 
     private static CredentialDetailViewModel MapToDetailViewModel(CredentialDetailResponse entity)
