@@ -71,8 +71,10 @@ public static class OrgKeyEndpoints
             .WithName("RevokeOrgKey")
             .WithSummary("Revoke a derived organisation key")
             .WithDescription(
-                "Permanently revokes a derived key and locks the associated wallet. " +
-                "If the key was used for Identity purposes, a DID revocation event is triggered.")
+                "Permanently revokes a derived key (marks it Revoked) and locks the associated wallet. "
+                + "This changes org-key state only; it does NOT update any published DID document. A "
+                + "VCIssuance key stays resolvable in the org's did.json until it is revoked via "
+                + "POST /api/v1/orgs/{orgId}/issuance-key/revoke, which republishes the document.")
             .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
@@ -220,13 +222,18 @@ public static class OrgKeyEndpoints
         try
         {
             await orgKeyService.RevokeKeyAsync(orgId, derivedKeyId, ct);
+            // Report only what actually happened. The previous response carried
+            // didRevocationPublished:false — a field describing a capability this path does not have
+            // (it never publishes a DID document), which read as "we tried and it didn't publish"
+            // rather than "this endpoint does not touch DID documents at all". Dropped rather than
+            // hard-coded, so the response stops advertising a phantom capability. DID-document
+            // revocation for VCIssuance keys is a separate pipeline — see the endpoint description.
             return Results.Ok(new
             {
                 derivedKeyId,
                 status = "Revoked",
                 revokedAt = DateTime.UtcNow,
-                walletLocked = true,
-                didRevocationPublished = false // TODO: Will be true when DID revocation service is available
+                walletLocked = true
             });
         }
         catch (KeyNotFoundException)
