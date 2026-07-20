@@ -235,10 +235,24 @@ public sealed class InstanceActionEndpointsTests
         // Fast-path claim resolves to CitizenWallet, but the instance's recorded participant is a
         // different wallet — no Wallet Service call needed (claim fast path short-circuits).
         var instance = MakeInstance(OtherWallet);
+        var action = MakeAction();   // IsStartingAction defaults false — a mid-workflow action.
+        var blueprint = new BlueprintModel
+        {
+            Id = "bp-1", Title = "AIAS", Description = "desc-desc", Actions = [action],
+            Participants = [new Participant { Id = "citizen", Name = "Citizen", WalletAddress = OtherWallet }],
+        };
+
         var instanceStore = new Mock<IInstanceStore>();
         instanceStore.Setup(s => s.GetAsync("inst-1", It.IsAny<CancellationToken>())).ReturnsAsync(instance);
 
-        var resolver = new Mock<IActionResolverService>(MockBehavior.Strict);
+        // #1183 changed the ordering: the blueprint is now resolved BEFORE the gate decides, because
+        // an open-participant starting action must be readable by a not-yet-bound citizen. So a
+        // non-participant costs one extra (cached) blueprint lookup where it previously cost none —
+        // the resolver is no longer strict-with-no-calls here. The gate's verdict is unchanged.
+        var resolver = new Mock<IActionResolverService>();
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetActionDefinition(blueprint, "1")).Returns(action);
+
         var walletClient = new Mock<IWalletServiceClient>(MockBehavior.Strict);
 
         var result = await InvokeAsync(
@@ -247,8 +261,103 @@ public sealed class InstanceActionEndpointsTests
         result.GetType().Name.Should().Contain("ProblemHttpResult");
         var problem = (ProblemHttpResult)result;
         problem.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
-        resolver.VerifyNoOtherCalls();
         walletClient.VerifyNoOtherCalls();
+    }
+
+    /// <summary>
+    /// #1183 — an open-participant STARTING action (sender left unbound in the published blueprint
+    /// per Feature 103) must be readable by a citizen who is not yet a participant, because
+    /// late-binding only happens at submit. Previously this 403'd: the citizen could not open the
+    /// blank form they were meant to fill in.
+    /// </summary>
+    [Fact]
+    public async Task GetInstanceActionSchema_OpenParticipantStartingAction_ReadableByNonParticipant()
+    {
+        var instance = MakeInstance(OtherWallet);
+        var action = MakeAction();
+        action.IsStartingAction = true;
+        var blueprint = new BlueprintModel
+        {
+            Id = "bp-1", Title = "AIAS", Description = "desc-desc", Actions = [action],
+            // Open participant: WalletAddress deliberately null (VAL_BP_010 enforces this at publish).
+            Participants = [new Participant { Id = "citizen", Name = "Citizen", WalletAddress = null }],
+        };
+
+        var instanceStore = new Mock<IInstanceStore>();
+        instanceStore.Setup(s => s.GetAsync("inst-1", It.IsAny<CancellationToken>())).ReturnsAsync(instance);
+
+        var resolver = new Mock<IActionResolverService>();
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetActionDefinition(blueprint, "1")).Returns(action);
+
+        var result = await InvokeAsync(
+            ContextWithWallet(CitizenWallet), "inst-1", 1,
+            instanceStore.Object, resolver.Object, WalletClientReturningNothing().Object);
+
+        var ok = result.Should().BeOfType<Ok<InstanceActionSchemaResponse>>().Subject;
+        ok.Value!.ActionId.Should().Be(1);
+    }
+
+    /// <summary>
+    /// The open-participant allowance is scoped to STARTING actions only. A pre-bound sender on a
+    /// starting action is a closed participant (and is itself a publish-time error, VAL_BP_010), so
+    /// it must not open the door.
+    /// </summary>
+    [Fact]
+    public async Task GetInstanceActionSchema_StartingActionWithBoundSender_StillForbiddenToNonParticipant()
+    {
+        var instance = MakeInstance(OtherWallet);
+        var action = MakeAction();
+        action.IsStartingAction = true;
+        var blueprint = new BlueprintModel
+        {
+            Id = "bp-1", Title = "AIAS", Description = "desc-desc", Actions = [action],
+            Participants = [new Participant { Id = "citizen", Name = "Citizen", WalletAddress = OtherWallet }],
+        };
+
+        var instanceStore = new Mock<IInstanceStore>();
+        instanceStore.Setup(s => s.GetAsync("inst-1", It.IsAny<CancellationToken>())).ReturnsAsync(instance);
+
+        var resolver = new Mock<IActionResolverService>();
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetActionDefinition(blueprint, "1")).Returns(action);
+
+        var result = await InvokeAsync(
+            ContextWithWallet(CitizenWallet), "inst-1", 1,
+            instanceStore.Object, resolver.Object, WalletClientReturningNothing().Object);
+
+        ((ProblemHttpResult)result).StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+    }
+
+    /// <summary>
+    /// The reordering must not turn the gate into a probe. A non-participant asking for an action
+    /// that does NOT exist must get the same 403 as one asking for an action that does — otherwise
+    /// 404-vs-403 leaks which actions a blueprint contains.
+    /// </summary>
+    [Fact]
+    public async Task GetInstanceActionSchema_NonParticipant_CannotDistinguishMissingActionFromForbidden()
+    {
+        var instance = MakeInstance(OtherWallet);
+        var blueprint = new BlueprintModel
+        {
+            Id = "bp-1", Title = "AIAS", Description = "desc-desc", Actions = [],
+            Participants = [new Participant { Id = "citizen", Name = "Citizen", WalletAddress = OtherWallet }],
+        };
+
+        var instanceStore = new Mock<IInstanceStore>();
+        instanceStore.Setup(s => s.GetAsync("inst-1", It.IsAny<CancellationToken>())).ReturnsAsync(instance);
+
+        var resolver = new Mock<IActionResolverService>();
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetActionDefinition(blueprint, "99")).Returns((Sorcha.Blueprint.Models.Action?)null);
+
+        var result = await InvokeAsync(
+            ContextWithWallet(CitizenWallet), "inst-1", 99,
+            instanceStore.Object, resolver.Object, WalletClientReturningNothing().Object);
+
+        ((ProblemHttpResult)result).StatusCode.Should().Be(
+            StatusCodes.Status403Forbidden,
+            "a non-participant must not learn whether the action exists");
     }
 
     [Fact]
@@ -259,10 +368,22 @@ public sealed class InstanceActionEndpointsTests
         // wallet", so 403 is correct fail-closed behaviour, not the old "gate reads a claim citizens
         // never carry" bug.
         var instance = MakeInstance(CitizenWallet);
+        var action = MakeAction();   // Not a starting action — the open-participant door stays shut.
+        var blueprint = new BlueprintModel
+        {
+            Id = "bp-1", Title = "AIAS", Description = "desc-desc", Actions = [action],
+            Participants = [new Participant { Id = "citizen", Name = "Citizen", WalletAddress = CitizenWallet }],
+        };
+
         var instanceStore = new Mock<IInstanceStore>();
         instanceStore.Setup(s => s.GetAsync("inst-1", It.IsAny<CancellationToken>())).ReturnsAsync(instance);
 
-        var resolver = new Mock<IActionResolverService>(MockBehavior.Strict);
+        // Non-strict since #1183: the blueprint is now resolved before the gate decides (see the
+        // comment on GetInstanceActionSchema_WalletNotAParticipant_ReturnsForbidden).
+        var resolver = new Mock<IActionResolverService>();
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetActionDefinition(blueprint, "1")).Returns(action);
+
         var walletClient = WalletClientReturningNothing();
 
         var result = await InvokeAsync(

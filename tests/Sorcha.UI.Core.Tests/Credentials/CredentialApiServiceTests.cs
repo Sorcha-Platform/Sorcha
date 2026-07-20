@@ -337,6 +337,59 @@ public class CredentialApiServiceTests
         }
     }
 
+    /// <summary>
+    /// #1188 — an object claim on a card rendered its FIELD NAMES ("line1, town, postcode,
+    /// country"), which reads as placeholder text to the citizen. It must render the values.
+    /// Values only, no "Line1: " labels — on a compact card an address reads as an address.
+    /// </summary>
+    [Fact]
+    public async Task GetCredentialsAsync_ObjectClaim_RendersValuesNotFieldNames()
+    {
+        var json = """
+        [{
+          "id": "urn:credential:1", "type": "AssuredIdentityCredential",
+          "issuerDid": "did:sorcha:org:ws11q", "subjectDid": "did:sorcha:w:ws11q",
+          "status": "Active", "issuedAt": "2026-07-01T00:00:00Z",
+          "claimsJson": "{\"address\":{\"line1\":\"10 High St\",\"town\":\"Falkirk\",\"postcode\":\"FK1 1AA\"}}",
+          "disclosableClaims": []
+        }]
+        """;
+        var service = CreateServiceReturning(json);
+
+        var result = await service.GetCredentialsAsync("ws11q");
+
+        var address = result[0].HighlightClaims.Single(c => c.ClaimName == "address").Value;
+        address.Should().Be("10 High St, Falkirk, FK1 1AA");
+        address.Should().NotContain("line1", "field names read as placeholder text to the citizen");
+        address.Should().NotContain("postcode");
+    }
+
+    /// <summary>
+    /// The blob-proofing that predates #1188 must survive rendering values. An array-valued
+    /// property is skipped rather than named, so an unresolved SD-JWT digest array cannot reach
+    /// a card even under a key that escaped the <c>_</c>-prefix drop — the n1 defect's shape.
+    /// </summary>
+    [Fact]
+    public async Task GetCredentialsAsync_ObjectClaim_SkipsArrayValuedPropertiesEntirely()
+    {
+        var json = """
+        [{
+          "id": "urn:credential:1", "type": "AssuredIdentityCredential",
+          "issuerDid": "did:sorcha:org:ws11q", "subjectDid": "did:sorcha:w:ws11q",
+          "status": "Active", "issuedAt": "2026-07-01T00:00:00Z",
+          "claimsJson": "{\"address\":{\"town\":\"Falkirk\",\"sd\":[\"zSH_kfTeW2Mlc\"]}}",
+          "disclosableClaims": []
+        }]
+        """;
+        var service = CreateServiceReturning(json);
+
+        var result = await service.GetCredentialsAsync("ws11q");
+
+        var address = result[0].HighlightClaims.Single(c => c.ClaimName == "address").Value;
+        address.Should().Be("Falkirk");
+        address.Should().NotContain("zSH_kfTeW2Mlc");
+    }
+
     [Fact]
     public async Task GetCredentialsAsync_BuildsClaimSummaryOfNamesNotValues()
     {

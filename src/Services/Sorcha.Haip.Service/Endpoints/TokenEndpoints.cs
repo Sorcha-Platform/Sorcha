@@ -39,6 +39,13 @@ public static class TokenEndpoints
         IConfiguration configuration,
         CancellationToken ct)
     {
+        // RFC 6749 §5.1: a response carrying a token MUST NOT be cached. Set here, before any
+        // branch, so every exit path carries it — the success path is the one that matters, but
+        // an error response is equally not worth caching, and setting it once removes the chance
+        // that a future early-return quietly ships a cacheable token.
+        httpContext.Response.Headers.CacheControl = "no-store";
+        httpContext.Response.Headers.Pragma = "no-cache";
+
         // Read form-encoded body (OAuth 2.0 §4.1.3)
         var form = await httpContext.Request.ReadFormAsync(ct);
         var grantType = form["grant_type"].FirstOrDefault() ?? string.Empty;
@@ -76,8 +83,6 @@ public static class TokenEndpoints
         // Store the access token → offer mapping for later correlation
         await tokenStore.StoreAsync(accessToken, offerId.Value, ct);
 
-        // TODO: RFC 6749 §5.1 requires Cache-Control: no-store on token responses.
-        // Add a CachedResult wrapper (similar to Blueprint Service) to set the header.
         return Results.Ok(new TokenResponse
         {
             AccessToken = accessToken,

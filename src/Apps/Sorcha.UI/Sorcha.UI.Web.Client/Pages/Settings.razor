@@ -370,10 +370,7 @@
                                 @Loc.T("settings.about.versionInfo")
                             </MudText>
                             <MudText Typo="Typo.body2" Class="mb-1">
-                                <strong>@Loc.T("settings.about.version")</strong> 1.0.0-preview
-                            </MudText>
-                            <MudText Typo="Typo.body2" Class="mb-1">
-                                <strong>@Loc.T("settings.about.build")</strong> @_buildNumber
+                                <strong>@Loc.T("settings.about.version")</strong> @Sorcha.UI.Core.Utilities.SorchaVersion.Current
                             </MudText>
                             <MudText Typo="Typo.body2" Class="mb-1">
                                 <strong>@Loc.T("settings.about.framework")</strong> .NET 10.0
@@ -455,7 +452,6 @@
     private List<Profile> _profiles = new();
     private Profile? _activeProfile;
     private bool _loading = true;
-    private string _buildNumber = $"{DateTime.Now:yyyyMMdd}.{DateTime.Now:HHmm}";
 
     // Feature 150 — after retiring the Accounts + Security tabs the order is
     // Appearance=0, Language=1, Notifications=2, so the /settings/notifications

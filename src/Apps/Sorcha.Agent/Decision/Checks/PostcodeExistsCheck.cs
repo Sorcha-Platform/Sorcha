@@ -82,7 +82,7 @@ public sealed class PostcodeExistsCheck : IExternalCheck
 
         try
         {
-            var exists = await ValidateOnlineAsync(postcode, ct);
+            var exists = await ValidateOnlineAsync(normalized, ct);
             return new ExternalCheckResult(Name, exists, postcode);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)

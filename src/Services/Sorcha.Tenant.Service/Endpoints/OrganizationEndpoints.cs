@@ -329,6 +329,7 @@ public static class OrganizationEndpoints
         Guid organizationId,
         Guid userId,
         IIdentityRepository identityRepository,
+        IPlatformUserService platformUserService,
         TenantDbContext dbContext,
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
@@ -339,14 +340,31 @@ public static class OrganizationEndpoints
             return TypedResults.NotFound();
         }
 
-        // TODO: FailedLoginCount, LockedUntil, LockedPermanently removed from UserIdentity.
-        // Account lockout will be handled by PlatformUser in a future task.
-        // For now, just reactivate the user status if suspended.
         if (targetUser.Status == IdentityStatus.Suspended)
         {
             targetUser.Status = IdentityStatus.Active;
         }
         await identityRepository.UpdateUserAsync(targetUser, cancellationToken);
+
+        // Clear the brute-force lockout state, which lives on PlatformUser (the cross-org identity
+        // anchor) rather than on the org-scoped UserIdentity. This endpoint used to reactivate a
+        // Suspended status and nothing else, on the grounds that lockout "will be handled by
+        // PlatformUser in a future task" — but that task has since landed
+        // (PlatformUserService.ValidatePasswordAsync enforces tiered thresholds and sets
+        // FailedLoginCount / LockedUntil / LockedPermanently). So an admin unlocking a
+        // brute-force-locked account cleared nothing, while the audit entry below recorded
+        // AccountUnlockedByAdmin as a success — the log asserted an unlock that had not happened.
+        //
+        // Not found is tolerated rather than fatal: a UserIdentity whose PlatformUser is missing is
+        // already an inconsistency, and the status reactivation above is still worth keeping.
+        var platformUser = await platformUserService.GetByIdAsync(targetUser.PlatformUserId, cancellationToken);
+        if (platformUser is not null)
+        {
+            platformUser.FailedLoginCount = 0;
+            platformUser.LockedUntil = null;
+            platformUser.LockedPermanently = false;
+            await platformUserService.UpdateAsync(platformUser, cancellationToken);
+        }
 
         dbContext.AuditLogEntries.Add(new AuditLogEntry
         {

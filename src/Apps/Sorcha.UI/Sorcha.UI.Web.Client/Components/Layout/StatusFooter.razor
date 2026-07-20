@@ -30,17 +30,13 @@
 </MudAppBar>
 
 @code {
-    private string _version = "0.0.0";
+    private string _version = Sorcha.UI.Core.Utilities.SorchaVersion.Current;
     private bool _isConnected = true;
     private int _pendingActionCount = 0;
     private Timer? _healthTimer;
 
     protected override void OnInitialized()
     {
-        _version = Assembly.GetExecutingAssembly()
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
-            ?.InformationalVersion?.Split('+')[0] ?? "0.0.0";
-
         _healthTimer = new Timer(async _ => await CheckHealthAsync(), null,
             TimeSpan.Zero, TimeSpan.FromSeconds(30));
     }
