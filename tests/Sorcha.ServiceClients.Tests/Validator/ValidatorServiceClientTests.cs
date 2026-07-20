@@ -184,6 +184,58 @@ public class ValidatorServiceClientTests
         result.ErrorMessage.Should().Contain("InternalServerError");
     }
 
+    [Fact]
+    public async Task GetOperationalValidatorsAsync_MapsTheValidatorArray()
+    {
+        var responseJson = """
+        {
+          "registerId": "reg-1",
+          "count": 2,
+          "validators": [
+            { "validatorId": "ws1qval1", "publicKey": "pk1", "grpcEndpoint": "http://v1:5001", "status": "active", "registeredAt": "2026-07-01T00:00:00+00:00", "orderIndex": 0 },
+            { "validatorId": "ws1qval2", "publicKey": "pk2", "grpcEndpoint": "http://v2:5001", "status": "active", "registeredAt": "2026-07-02T00:00:00+00:00", "orderIndex": 1 }
+          ]
+        }
+        """;
+        var client = CreateClient(new HttpClient(new FakeHttpHandler(HttpStatusCode.OK, responseJson)));
+
+        var result = await client.GetOperationalValidatorsAsync("reg-1");
+
+        result.Should().HaveCount(2);
+        result[0].ValidatorId.Should().Be("ws1qval1");
+        result[0].Status.Should().Be("active");
+        result[0].OrderIndex.Should().Be(0);
+        result[1].ValidatorId.Should().Be("ws1qval2");
+    }
+
+    [Fact]
+    public async Task GetOperationalValidatorsAsync_GenuinelyNoneOnline_ReturnsEmpty()
+    {
+        var client = CreateClient(new HttpClient(new FakeHttpHandler(
+            HttpStatusCode.OK, """{ "registerId": "reg-1", "count": 0, "validators": [] }""")));
+
+        var result = await client.GetOperationalValidatorsAsync("reg-1");
+
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetOperationalValidatorsAsync_ServiceUnreachable_Throws_NotEmptyList()
+    {
+        // The whole point: a transport fault must NOT masquerade as "no validators online".
+        var client = CreateClient(new HttpClient(new FakeHttpHandler(new HttpRequestException("connection refused"))));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.GetOperationalValidatorsAsync("reg-1"));
+    }
+
+    [Fact]
+    public async Task GetOperationalValidatorsAsync_NonSuccessStatus_Throws_NotEmptyList()
+    {
+        var client = CreateClient(new HttpClient(new FakeHttpHandler(HttpStatusCode.InternalServerError, "{}")));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.GetOperationalValidatorsAsync("reg-1"));
+    }
+
     /// <summary>
     /// Fake HTTP message handler for testing
     /// </summary>
