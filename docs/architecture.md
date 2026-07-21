@@ -19,7 +19,7 @@ This document is the architectural overview. It is the entry point for an AI age
 
 ## Architecture in One Paragraph
 
-Seven services, each with a single responsibility. **Blueprints** define multi-step workflows with JSON-Schema-validated payloads and conditional routing — the process logic. **Wallets** hold BIP32/39/44 hierarchical-deterministic keys and sign every action — the identity and accountability layer. **Registers** are append-only ledgers with Merkle-chained dockets — the tamper-evident record. The **Validator** runs quorum consensus to seal transactions. The **Peer** service replicates state across participants over gRPC, with no central authority. **Tenant** handles multi-tenant isolation, JWT issuance, and platform-org topology. The **API Gateway** (YARP) is the single external surface and the home of the well-known discoverability endpoints. The **HAIP Service** is the boundary to the OpenID4VC / EUDI / GOV.UK Wallet ecosystem. Every protocol, data format, and cryptographic primitive is a published standard. Nothing is proprietary.
+Eight services, each with a single responsibility. **Blueprints** define multi-step workflows with JSON-Schema-validated payloads and conditional routing — the process logic. **Wallets** hold BIP32/39/44 hierarchical-deterministic keys and sign every action — the identity and accountability layer. **Registers** are append-only ledgers with Merkle-chained dockets — the tamper-evident record. The **Validator** runs quorum consensus to seal transactions. The **Peer** service replicates state across participants over gRPC, with no central authority. **Tenant** handles multi-tenant isolation, JWT issuance, and platform-org topology. The **API Gateway** (YARP) is the single external surface and the home of the well-known discoverability endpoints. The **HAIP Service** is the boundary to the OpenID4VC / EUDI / GOV.UK Wallet ecosystem. Every protocol, data format, and cryptographic primitive is a published standard. Nothing is proprietary.
 
 ## Service Topology
 
@@ -41,16 +41,16 @@ Seven services, each with a single responsibility. **Blueprints** define multi-s
 
 | Service | Responsibility | Persistent store |
 |---|---|---|
-| Blueprint | Workflow definitions, instance state, schema validation, SignalR notifications | Redis + MongoDB |
-| Register | Append-only ledger of signed transactions, Merkle-dockets, OData query | MongoDB |
-| Wallet | BIP32/39/44 keys, signing operations, citizen wallet PWA backend | PostgreSQL |
-| Tenant | Multi-tenant auth, JWT issuance, participant identity, register invitations, transactional email | PostgreSQL |
-| Validator | Quorum consensus over transaction batches, chain-integrity verification | Redis |
-| Peer | gRPC peer-to-peer replication, register sync, no central coordinator | MongoDB |
-| API Gateway | YARP reverse proxy, rate limiting, well-known endpoints, CORS surface | (stateless) |
-| HAIP | OpenID4VCI issuer + OpenID4VP verifier — the boundary to the wallet ecosystem | PostgreSQL |
+| Blueprint | Workflow definitions, instance state, schema validation, SignalR notifications | PostgreSQL + Redis |
+| Register | Append-only ledger of signed transactions, Merkle-dockets, OData query | MongoDB + Redis |
+| Wallet | BIP32/39/44 keys, signing operations, citizen wallet PWA backend | PostgreSQL + Redis |
+| Tenant | Multi-tenant auth, JWT issuance, participant identity, register invitations, transactional email | PostgreSQL + Redis |
+| Validator | Quorum consensus over transaction batches, chain-integrity verification | Redis (reads the Register's Mongo for the governance roster) |
+| Peer | gRPC peer-to-peer replication, register sync, no central coordinator | PostgreSQL + Redis (reads the Register's Mongo system-register) |
+| API Gateway | YARP reverse proxy, rate limiting, well-known endpoints, CORS surface | Redis (rate-limit / data-protection) |
+| HAIP | OpenID4VCI issuer + OpenID4VP verifier — the boundary to the wallet ecosystem | Redis only (no database) |
 
-The full service map, port assignments, and Aspire orchestration topology live in [`docs/reference/architecture.md`](reference/architecture.md) and [`docs/getting-started/PORT-CONFIGURATION.md`](getting-started/PORT-CONFIGURATION.md).
+Every HTTP service is fronted by the gateway; Wallet and HAIP have no host-published port (reached only through the gateway), and Peer additionally exposes a gRPC port for the cross-node mesh. Port assignments and the Aspire orchestration topology live in [`docs/getting-started/PORT-CONFIGURATION.md`](getting-started/PORT-CONFIGURATION.md); the full project tree is in [`docs/reference/project-structure.md`](reference/project-structure.md).
 
 ## How an Action Becomes Evidence
 
@@ -110,7 +110,8 @@ These surfaces are tested and gated by the `ai-discoverability-check` CI workflo
 | Topic | File |
 |---|---|
 | Project tree (every directory) | [`docs/reference/project-structure.md`](reference/project-structure.md) |
-| Service-by-service breakdown with diagrams | [`docs/reference/architecture.md`](reference/architecture.md) |
+| Service-by-service detail | each service's own `src/Services/Sorcha.*.Service/README.md` |
+| Full REST/gRPC reference | [`docs/reference/API-DOCUMENTATION.md`](reference/API-DOCUMENTATION.md) |
 | Constitutional principles | [`.specify/constitution.md`](../.specify/constitution.md) |
 | Active development guidelines and patterns | [`CLAUDE.md`](../CLAUDE.md) |
 | Cross-cutting feature notes (Open Participants, x-review, Citizen Wallet PWA, etc.) | `.claude/skills/sorcha-architecture/SKILL.md` |

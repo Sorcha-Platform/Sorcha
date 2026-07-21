@@ -1320,7 +1320,7 @@ _logger.LogInformation(
 
 - `/docs/reference/validator-service-design.md` - Design specification
 - `/docs/alpha-validator-service-analysis.md` - Alpha Validator analysis
-- `/docs/reference/architecture.md` - Sorcha architecture
+- `/docs/architecture.md` - Sorcha architecture
 - `/docs/blueprint-schema.md` - Blueprint data format
 - `/.specify/UNIFIED-DESIGN-SUMMARY.md` - Unified design
 - `/.specify/MASTER-PLAN.md` - Implementation roadmap

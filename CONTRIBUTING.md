@@ -47,7 +47,7 @@ dotnet test
 ### Running the Application
 
 ```bash
-dotnet run --project src/Sorcha.AppHost
+dotnet run --project src/Apps/Sorcha.AppHost
 ```
 
 ## Coding Guidelines
@@ -223,10 +223,10 @@ tests/
 
 Documentation lives in the `docs/` directory:
 
-- `docs/reference/architecture.md` - System architecture
+- `docs/architecture.md` - System architecture
 - `docs/getting-started/getting-started.md` - Getting started guide
-- `docs/blueprint-schema.md` - Blueprint definition schema
-- `docs/api-reference.md` - API documentation
+- `docs/guides/blueprints/blueprint-format.md` - Blueprint definition schema
+- `docs/reference/API-DOCUMENTATION.md` - API documentation
 
 ### Documentation Style
 

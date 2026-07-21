@@ -28,4 +28,4 @@ Sorcha is composed of 7 microservices orchestrated by .NET Aspire.
               │PostgreSQL │   │  MongoDB  │     │   Redis     │
 ```
 
-See the [Architecture Reference](../reference/architecture.md) for detailed diagrams.
+See the [Architecture Reference](../architecture.md) for detailed diagrams.

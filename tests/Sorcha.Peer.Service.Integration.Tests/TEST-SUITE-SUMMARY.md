@@ -444,7 +444,7 @@ Pipeline configuration provided:
 - **Test README**: [README.md](README.md)
 - **Quick Start**: [QUICKSTART.md](QUICKSTART.md)
 - **Testing Guide**: [docs/guides/testing/peer-service-integration-testing.md](../../docs/guides/testing/peer-service-integration-testing.md)
-- **Architecture**: [docs/architecture.md](../../docs/reference/architecture.md)
+- **Architecture**: [docs/architecture.md](../../docs/architecture.md)
 
 ### External Resources
 - [ASP.NET Core Integration Testing](https://learn.microsoft.com/en-us/aspnet/core/test/integration-tests)

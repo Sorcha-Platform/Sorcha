@@ -23,7 +23,7 @@ The good news: the repo has authoritative content for the same subjects, just no
 
 | Topic | Available source(s) |
 |---|---|
-| Architecture | `CLAUDE.md` § Architecture · `docs/reference/architecture.md` · `docs/reference/project-structure.md` · `.specify/constitution.md` |
+| Architecture | `CLAUDE.md` § Architecture · `docs/architecture.md` · `docs/reference/project-structure.md` · `.specify/constitution.md` |
 | Strategic framing & voice | `docs/strategic-context.md` ✅ (exists; canonical per spec) |
 | OpenID4VC + HAIP integration | Specs 094/097/098 in `specs/` · `.claude/skills/sorcha-architecture/SKILL.md` § verifiable credentials · `.claude/skills/verifiable-credentials/SKILL.md` |
 | Applicability (DPP, trade finance, IPC-1782, municipal) | `walkthroughs/TradeFinance/`, `walkthroughs/AssuredIdentity/` (real implementations) · `docs/strategic-context.md` § Target Markets · individual feature specs |
@@ -45,7 +45,7 @@ Under option (1):
 
 | Doc | Expected effort | Notes |
 |---|---|---|
-| `docs/architecture.md` (T098) | Medium | Substantial existing content in CLAUDE.md + docs/reference/architecture.md to lift. |
+| `docs/architecture.md` (T098) | Medium | Substantial existing content in CLAUDE.md + docs/architecture.md to lift. |
 | `docs/openid4vc-haip-integration.md` (T099) | Medium-heavy | Specs 094/097/098 are dense and need synthesising into a single coherent narrative. |
 | `docs/applicability.md` (T100) | Medium | Walkthroughs (TradeFinance, AssuredIdentity) provide the worked examples; rest is strategic-context. |
 | `docs/security-model.md` (T101) | Heavy | Synthesises constitution + multiple specs; honest-gaps section needs care to land accurately. |

@@ -364,7 +364,7 @@ This is a multi-app .NET 10 monorepo. New code lives in `src/Apps/Sorcha.Citizen
 
 - [ ] T153 [P] Modify `docs/reference/PORT-CONFIGURATION.md` to add ports 7400 (Sorcha.Citizen.Wallet) and 7401 (Sorcha.Citizen.Verifier), plus the new gateway routes.
 - [ ] T154 [P] Modify `docs/reference/API-DOCUMENTATION.md` to append the new `/api/v1/wallet/*`, `/api/v1/me/devices/*`, and `/api/v1/wallet/status/*` endpoints. Reference the OpenAPI YAML files in `specs/114-citizen-wallet-pwa/contracts/` as canonical.
-- [ ] T155 [P] Modify `docs/reference/architecture.md` to add the wallet topology (citizen device + reference verifier + the three extended services), updating the diagram if present.
+- [ ] T155 [P] Modify `docs/architecture.md` to add the wallet topology (citizen device + reference verifier + the three extended services), updating the diagram if present.
 - [ ] T156 [P] Modify `docs/reference/development-status.md` — set Citizen Wallet to "100% v1 complete" once all prior tasks are done.
 - [ ] T157 [P] Modify `.claude/skills/sorcha-architecture/SKILL.md` to add a new "Citizen Wallet PWA (Feature 114)" section: holder key derivation context, device delegation credential VCT, status list URL pattern, OfflinePresentationConsumer name. Cross-reference the design doc and spec.
 - [ ] T158 [P] Modify `.claude/skills/verifiable-credentials/SKILL.md` to add OID4VP holder + offline presentation guidance pointing at the new `IPresentationEngine` and `IVerifiablePresentationValidator`.
@@ -442,7 +442,7 @@ Task: "Add unit tests in tests/Sorcha.Tenant.Service.Tests/PlatformUserDevice/Pl
 ```bash
 Task: "Update docs/reference/PORT-CONFIGURATION.md"
 Task: "Update docs/reference/API-DOCUMENTATION.md"
-Task: "Update docs/reference/architecture.md"
+Task: "Update docs/architecture.md"
 Task: "Update .claude/skills/sorcha-architecture/SKILL.md"
 Task: "Update .claude/skills/verifiable-credentials/SKILL.md"
 Task: "Update .claude/skills/blazor/SKILL.md"

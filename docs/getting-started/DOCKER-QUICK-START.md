@@ -90,7 +90,7 @@ open http://localhost:18888
 |---------|-----|-------------|
 | **PostgreSQL** | `localhost:5432` | User: `sorcha`, Password: `sorcha_dev_password` |
 | **MongoDB** | `localhost:27017` | User: `sorcha`, Password: `sorcha_dev_password` |
-| **Redis** | `localhost:6379` | No authentication |
+| **Redis** | `localhost:16379` (→ 6379 in-container) | No authentication |
 | **Aspire Dashboard** | `http://localhost:18888` | Observability dashboard |
 
 ### P2P Network
@@ -390,7 +390,7 @@ See [DEPLOYMENT.md](../guides/DEPLOYMENT.md) for full production deployment guid
 - **Deployment Guide**: [DEPLOYMENT.md](../guides/DEPLOYMENT.md)
 - **Docker Networking**: See [Network Architecture](#network-architecture) section above
 - **Port Configuration**: [PORT-CONFIGURATION.md](PORT-CONFIGURATION.md)
-- **Architecture**: [architecture.md](../reference/architecture.md)
+- **Architecture**: [architecture.md](../architecture.md)
 
 ---
 

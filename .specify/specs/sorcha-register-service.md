@@ -2276,7 +2276,7 @@ The following items are explicitly out of scope for this specification:
 
 ### Internal Documentation
 - [Sorcha Constitution](../constitution.md)
-- [Sorcha Architecture](../../docs/reference/architecture.md)
+- [Sorcha Architecture](../../docs/architecture.md)
 - [Wallet Service Specification](sorcha-wallet-service.md)
 - [Transaction Handler Specification](sorcha-transaction-handler.md)
 - [Cryptography Specification](sorcha-cryptography-rewrite.md)

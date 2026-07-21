@@ -145,12 +145,9 @@ var signRequest = new
 
 ## See Also
 
-- [PERFORMANCE-RESULTS.md](../PERFORMANCE-RESULTS.md) - **Complete test results and analysis** ⭐
 - [PAYLOAD-SERIALIZATION-GUIDE.md](../../../docs/guides/PAYLOAD-SERIALIZATION-GUIDE.md) - API documentation with examples
-- [SOLUTION-SUMMARY.md](../SOLUTION-SUMMARY.md) - Full explanation of the JSON serialization issue
-- [STATUS-FINAL.md](../STATUS-FINAL.md) - Final status and deliverables
+- [../README.md](../README.md) - Benchmark overview; run outputs are written to `../results/`
 - `test-single-transaction.ps1` - PowerShell version (shows the problem)
-- `SYSTEM-SPECS.md` - System specifications for reproducibility
 
 ## Performance Baseline
 
@@ -177,7 +174,7 @@ The harness includes a comprehensive performance test suite (`--performance` fla
 - ✅ Concurrency testing (1-32 parallel, optimal at 16 concurrent)
 - ✅ Formatted report generation
 
-**Results:** See [PERFORMANCE-RESULTS.md](../PERFORMANCE-RESULTS.md) for complete analysis
+**Results:** run outputs are written to `../results/` (see `../README.md`).
 
 **Future Enhancements:**
 - [ ] Long-running soak tests (24+ hours)

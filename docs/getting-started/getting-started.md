@@ -222,7 +222,7 @@ Should show `10.0.100` or later.
 
 Now that you have Sorcha running, explore:
 
-- [Architecture Overview](../reference/architecture.md) - Understand the system design
+- [Architecture Overview](../architecture.md) - Understand the system design
 - [Blueprint Format](../guides/blueprints/blueprint-format.md) - Learn the blueprint format
 - [API Reference](../reference/API-DOCUMENTATION.md) - Explore the REST API
 - [Contributing](../../CONTRIBUTING.md) - Help improve Sorcha

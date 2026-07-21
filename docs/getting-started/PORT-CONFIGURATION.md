@@ -138,5 +138,5 @@ environment (Docker vs Aspire), correct protocol (HTTP vs HTTPS), and the servic
 ## See also
 
 - [Development Status](../reference/development-status.md)
-- [Architecture Overview](../reference/architecture.md)
+- [Architecture Overview](../architecture.md)
 - [API Documentation](../reference/API-DOCUMENTATION.md)

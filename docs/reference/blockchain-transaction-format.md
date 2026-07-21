@@ -414,7 +414,7 @@ All implementations MUST:
 - [Universal Wallet Interop Spec](https://w3c-ccg.github.io/universal-wallet-interop-spec/)
 
 ### Sorcha Documentation
-- [Architecture](architecture.md)
+- [Architecture](../architecture.md)
 - [JSON-LD Implementation Summary](../guides/blueprints/json-ld-implementation-summary.md)
 - [Blueprint Architecture](../guides/blueprints/blueprint-architecture.md)
 - [Register Service Specification](../../.specify/specs/sorcha-register-service.md)

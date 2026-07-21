@@ -293,7 +293,7 @@ docs/
 ├── superpowers/specs/2026-04-26-citizen-wallet-pwa-design.md  # source design (already committed)
 ├── reference/PORT-CONFIGURATION.md                      # MODIFIED — add 7400, 7401
 ├── reference/API-DOCUMENTATION.md                       # MODIFIED — append wallet endpoints
-└── reference/architecture.md                            # MODIFIED — add wallet topology
+└── architecture.md                            # MODIFIED — add wallet topology
 .claude/skills/                                          # MODIFIED — propagate per task #9
 ├── sorcha-architecture/SKILL.md                         # add Citizen Wallet PWA section
 ├── verifiable-credentials/SKILL.md                      # add OID4VP holder + offline section

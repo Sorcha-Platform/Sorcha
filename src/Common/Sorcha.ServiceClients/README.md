@@ -1,122 +1,86 @@
 # Sorcha.ServiceClients
 
-**Consolidated gRPC/HTTP clients for inter-service communication**
+**Consolidated gRPC + HTTP clients for inter-service communication**
 
 ## Purpose
 
-This library provides unified client implementations for all Sorcha microservices, eliminating duplication across service projects. All services should reference this library instead of creating their own client implementations.
+Unified client implementations for Sorcha's services so consumers don't hand-roll (and duplicate) their own. Reference this library and call `AddServiceClients(...)` to register everything.
 
-## Architecture
+## Two-project layout
 
-Each service has:
-- **Interface** (`I{Service}Client`) - Defines all methods needed by ANY consumer
-- **Implementation** (`{Service}Client`) - gRPC or HTTP client implementation
-- **Models** - Shared DTOs and response types
+- **`Sorcha.ServiceClients`** (this project) — the umbrella. Holds the **gRPC** clients (`IDocketSyncClient`, `IRegisterAddressClient`, `IWalletNotificationClient`), the **Peer** client (`IPeerServiceClient`), the DID resolver wiring, and the single `AddServiceClients(...)` DI entry point.
+- **`Sorcha.ServiceClients.Http`** — the **HTTP REST** typed clients. `AddServiceClients` delegates their registration here (`AddHttpServiceClients`). This is where the `I{Service}ServiceClient` interfaces live.
 
-## Supported Services
+## Supported clients
 
-| Service | Protocol | Status | Interface |
-|---------|----------|--------|-----------|
-| Wallet Service | gRPC (planned) / HTTP (current) | Stub | `IWalletServiceClient` |
-| Register Service | gRPC (planned) / HTTP (current) | Stub | `IRegisterServiceClient` |
-| Blueprint Service | gRPC (planned) / HTTP (current) | Stub | `IBlueprintServiceClient` |
-| Peer Service | gRPC | Partial | `IPeerServiceClient` |
-| Validator Service | gRPC | Complete | Via proto |
-| Tenant Service | HTTP | Planned | `ITenantServiceClient` |
+| Client | Protocol | Where | Interface |
+|--------|----------|-------|-----------|
+| Wallet | HTTP | `Sorcha.ServiceClients.Http` | `IWalletServiceClient` |
+| Register | HTTP | `Sorcha.ServiceClients.Http` | `IRegisterServiceClient` |
+| Blueprint | HTTP | `Sorcha.ServiceClients.Http` | `IBlueprintServiceClient` |
+| Tenant | HTTP | `Sorcha.ServiceClients.Http` | `ITenantServiceClient` |
+| Validator | HTTP | `Sorcha.ServiceClients.Http` | `IValidatorServiceClient` |
+| HAIP | HTTP | `Sorcha.ServiceClients.Http` | `IHaipServiceClient` |
+| Participant / Passkey / Register-Invitation | HTTP | `Sorcha.ServiceClients.Http` | `IParticipantServiceClient`, `IPasskeyServiceClient`, `IRegisterInvitationServiceClient` |
+| Peer | gRPC | `Sorcha.ServiceClients` | `IPeerServiceClient` |
+| Docket sync / Register address / Wallet notification | gRPC | `Sorcha.ServiceClients` | `IDocketSyncClient`, `IRegisterAddressClient`, `IWalletNotificationClient` |
+| Validator (submit) | gRPC | Validator Service protos | via proto |
+
+> The HTTP clients are current and in use across the platform — not stubs. Service-to-service HTTP calls attach a service-tier bearer via `ServiceAuthMessageHandler`.
 
 ## Usage
 
-### 1. Add Package Reference
+### 1. Reference the project
 
 ```xml
 <ProjectReference Include="..\..\Common\Sorcha.ServiceClients\Sorcha.ServiceClients.csproj" />
 ```
 
-### 2. Register Clients in DI
+### 2. Register clients in DI
 
 ```csharp
-// Program.cs
+// Program.cs — registers the HTTP clients (via Sorcha.ServiceClients.Http),
+// the gRPC clients, the Peer client, and the DID resolvers.
 builder.Services.AddServiceClients(builder.Configuration);
 ```
 
-### 3. Inject and Use
+### 3. Inject and use
 
 ```csharp
-public class MyService
+public class MyService(IWalletServiceClient walletClient)
 {
-    private readonly IWalletServiceClient _walletClient;
-
-    public MyService(IWalletServiceClient walletClient)
-    {
-        _walletClient = walletClient;
-    }
-
-    public async Task DoWork()
-    {
-        var wallet = await _walletClient.CreateWalletAsync(...);
-    }
+    public Task DoWork() => walletClient.GetWalletsByOwnerAsync(ownerId);
 }
 ```
 
 ## Configuration
 
-Configure service endpoints in `appsettings.json`:
+Client addresses resolve via .NET Aspire service discovery when running under the AppHost. Overrides bind from configuration, e.g.:
 
 ```json
 {
   "ServiceClients": {
-    "WalletService": {
-      "Address": "https://localhost:7001",
-      "UseGrpc": false
-    },
-    "RegisterService": {
-      "Address": "https://localhost:7002",
-      "UseGrpc": false
-    },
-    "BlueprintService": {
-      "Address": "https://localhost:7003",
-      "UseGrpc": false
-    },
-    "PeerService": {
-      "Address": "https://localhost:7004",
-      "UseGrpc": true
-    }
+    "WalletService":    { "Address": "http://wallet-service:8080" },
+    "RegisterService":  { "Address": "http://register-service:8080" },
+    "BlueprintService": { "Address": "http://blueprint-service:8080" },
+    "ValidatorService": { "Address": "http://validator-service:8080" },
+    "PeerService":      { "Address": "http://peer-service:5000" }
   }
 }
 ```
 
-## Design Principles
+(Container-internal ports are `8080` for HTTP services and `5000` for the Peer gRPC endpoint; host-published ports differ — see `docs/getting-started/PORT-CONFIGURATION.md`.)
 
-1. **Single Source of Truth** - One client implementation per service
-2. **Comprehensive Interfaces** - Include ALL methods needed by ANY consumer
-3. **Service Discovery** - Use .NET Aspire service discovery when available
-4. **Resilience** - Built-in retry policies and circuit breakers
-5. **Protocol Agnostic** - Support both gRPC and HTTP where needed
+## Design principles
 
-## Migration from Service-Specific Clients
-
-### Before (Duplicated)
-```
-src/Services/Sorcha.Validator.Service/Clients/WalletServiceClient.cs
-src/Services/Sorcha.Blueprint.Service/Clients/WalletServiceClient.cs
-```
-
-### After (Consolidated)
-```
-src/Common/Sorcha.ServiceClients/Wallet/WalletServiceClient.cs
-```
-
-All services now reference `Sorcha.ServiceClients` and inject `IWalletServiceClient`.
+1. **Single source of truth** — one client implementation per service; consumers don't re-roll them.
+2. **Comprehensive interfaces** — an interface carries all methods any consumer needs.
+3. **Service discovery** — Aspire discovery when available, config override otherwise.
+4. **Resilience** — retry/backoff on the HTTP handlers.
+5. **Protocol-appropriate** — HTTP for REST surfaces, gRPC for peer/replication/notification streams.
 
 ## Contributing
 
-When adding new methods:
-1. Add method to the interface (`I{Service}Client`)
-2. Implement in the client class (`{Service}Client`)
-3. Update this README with the new functionality
-4. Add integration tests in `tests/Sorcha.ServiceClients.Tests`
+When adding a method: add it to the interface, implement it in the client, update this README, and add a test under `tests/Sorcha.ServiceClients.Tests`.
 
-## Status
-
-**Current Phase:** Consolidation in progress
-**Target Completion:** Sprint 11 (US3 - Consensus implementation)
+> **Do not re-declare Wallet HTTP DTOs.** The canonical `WalletDto` / `CreateWallet*` / `SignTransaction*` / `WalletAddressDto` / `AddressListResponse` live only in `Sorcha.Wallet.Contracts` (CI-gated by `wallet-contracts-gate`).

@@ -4,7 +4,7 @@ A decentralised register platform for secure, multi-participant data flow orches
 
 Sorcha implements the **DAD** (Disclosure, Alteration, Destruction) security model - creating cryptographically secured registers where disclosure is managed through defined schemas, alteration is recorded on immutable ledgers, and destruction risk is eliminated through peer network replication.
 
-**Current Status:** 100% MVD Complete | Production Readiness: 30%
+**Current Status:** MVD complete; hardening toward production. Current feature/task state lives in `.specify/MASTER-TASKS.md` and `docs/reference/development-status.md` — not tracked as a fixed percentage here (it only goes stale).
 
 ---
 
@@ -65,16 +65,17 @@ dotnet restore && dotnet build && dotnet test
               │PostgreSQL │   │  MongoDB  │     │   Redis     │
 ```
 
-**Key Services:**
-| Service | Status | Port (Docker/Aspire) | Purpose |
-|---------|--------|---------------------|---------|
-| Blueprint | 100% | 5000 / 7000 | Workflow management, SignalR |
-| Register | 100% | 5290 / 7290 | Distributed ledger, OData |
-| Wallet | 98% | internal / 7001 | Crypto operations, HD wallets |
-| Tenant | 98% | 5110 / 7110 | Multi-tenant auth, JWT issuer, Participant Identity, Platform Identity, Register Invitations |
-| Validator | 95% | internal / 7004 | Consensus, chain integrity |
-| Peer | 95% | 5002 / 7002 | P2P network, gRPC |
-| API Gateway | 95% | 80 / 7082 | YARP reverse proxy |
+**Key Services** (8 services; ports are Docker-host / Aspire-HTTPS — authoritative list: `docs/getting-started/PORT-CONFIGURATION.md`):
+| Service | Port (Docker/Aspire) | Purpose |
+|---------|---------------------|---------|
+| Blueprint | 5000 / 7000 | Workflow management, SignalR |
+| Register | 5380 / 7290 | Distributed ledger, OData |
+| Wallet | internal / 7001 | Crypto operations, HD wallets |
+| Tenant | 5450 / 7110 | Multi-tenant auth, JWT issuer, Participant Identity, Platform Identity, Register Invitations |
+| Validator | 5800 (HTTP), 5801 (gRPC) / 7004 | Consensus, chain integrity |
+| Peer | 50051 (gRPC) / 7002 | P2P network, gRPC |
+| HAIP | internal / — | OpenID4VCI/VP external-wallet surface (issue + verify), reached via the gateway |
+| API Gateway | 80 / 7082 | YARP reverse proxy |
 
 **Designer UI:** `/designer/blueprint` is the canonical route (replaces legacy `/designer` and `/designer/chat`). The page is a rail-driven Describe → Understand → Rehearse → Go live shell (Feature 142); Go-live is gated by a server-side `RehearsalPass` on the executable-definition hash.
 
@@ -82,7 +83,7 @@ dotnet restore && dotnet build && dotnet test
 
 **Shared user-facing component library (Feature 122):** user-facing components shared between `Sorcha.UI` (web) and `Sorcha.Wallet.Pwa` (PWA) live in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User`. Admin / designer / explorer components remain in `Sorcha.UI.Core`. The PWA references `Sorcha.UI.Components.User` directly; `Sorcha.UI.Core` re-exports via ProjectReference so web hosts pick the same components up transparently. See `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/README.md` for placement rules.
 
-Full project tree: `docs/reference/project-structure.md`. Architecture diagrams: `docs/reference/architecture.md`.
+Full project tree: `docs/reference/project-structure.md`. Architecture diagrams: `docs/architecture.md`.
 
 ---
 
@@ -376,7 +377,7 @@ Full reference: the **`jwt` skill** ("Tiered audiences + issuer hardening"). Met
 | `docs/getting-started/PORT-CONFIGURATION.md` | Complete port assignments |
 | `docs/guides/AUTHENTICATION-SETUP.md` | JWT configuration guide |
 | `docs/reference/development-status.md` | Current completion status |
-| `docs/reference/architecture.md` | System architecture diagrams |
+| `docs/architecture.md` | System architecture diagrams |
 | `docs/reference/project-structure.md` | Full source tree |
 | `docs/reference/API-DOCUMENTATION.md` | Full REST/gRPC reference |
 | `walkthroughs/README.md` | Interactive demos and test scripts |
@@ -508,7 +509,8 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 
 ---
 
-**Version:** 3.0 | **Updated:** 2026-04-21 | Built with .NET 10 and .NET Aspire
+**This guide — revision 3.1 | Updated: 2026-07-21** | Built with .NET 10 and .NET Aspire
+_(This revision number is for CLAUDE.md itself; it is unrelated to the platform's build-derived `2.x` version — see §14.)_
 
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
