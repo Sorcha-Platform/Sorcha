@@ -1,7 +1,7 @@
 # Sorcha Platform - API Documentation
 
-**Version:** 2.4.0
-**Last Updated:** 2026-06-10
+**Version:** 2.5.0
+**Last Updated:** 2026-07-21
 **Status:** MVD Complete
 
 ---
@@ -20,12 +20,13 @@
 10. [Blueprint Service API](#blueprint-service-api)
 11. [Wallet Service API](#wallet-service-api)
 12. [Register Service API](#register-service-api)
-13. [Action Workflow API](#action-workflow-api)
-14. [Execution Helper API](#execution-helper-api)
-15. [Real-time Notifications (SignalR)](#real-time-notifications-signalr)
-16. [Error Handling](#error-handling)
-17. [Rate Limiting](#rate-limiting)
-18. [Code Examples](#code-examples)
+13. [HAIP Service API](#haip-service-api)
+14. [Action Workflow API](#action-workflow-api)
+15. [Execution Helper API](#execution-helper-api)
+16. [Real-time Notifications (SignalR)](#real-time-notifications-signalr)
+17. [Error Handling](#error-handling)
+18. [Rate Limiting](#rate-limiting)
+19. [Code Examples](#code-examples)
 
 ---
 
@@ -623,19 +624,27 @@ Content-Type: application/json
 
 ## Peer Service API
 
-The Peer Service manages P2P networking, system register replication, and peer discovery.
+The Peer Service manages P2P networking (over gRPC), system-register replication, and peer discovery. Nodes rendezvous via seed/anchor nodes (there is no central hub node — the earlier `n0/n1/n2` hub topology was retired in Feature 143).
 
-### Base Path: `/api/peers`
+**Auth:** the gateway applies `RequireAuthenticated` to `/api/peers/**` and to the peer-owned `/api/registers/*` replication routes; specific write/management operations require more (noted per route). The read/monitoring routes have no per-endpoint policy beyond the gateway's authenticated gate.
 
-### Endpoints
+### Peer management
 
-#### 1. Get All Peers
+**Base path:** `/api/peers`
 
-```http
-GET /api/peers
-```
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/peers` | Authenticated | List all known peers in the network |
+| GET | `/api/peers/{peerId}` | Authenticated | Detailed information about a specific peer |
+| GET | `/api/peers/stats` | Authenticated | Aggregated peer-network statistics |
+| GET | `/api/peers/health` | Authenticated | Peer-network health status |
+| GET | `/api/peers/quality` | Authenticated | Connection-quality metrics for all tracked peers |
+| GET | `/api/peers/connected` | Anonymous (count only; full list if authenticated) | Count of connected peers |
+| POST | `/api/peers/{peerId}/ban` | `CanManagePeers` (org member or service token) | Ban a peer from communication |
+| DELETE | `/api/peers/{peerId}/ban` | `CanManagePeers` | Unban a peer, restoring communication |
+| POST | `/api/peers/{peerId}/reset` | `CanManagePeers` | Reset a peer's failure count |
 
-**Response:** `200 OK`
+**Example — `GET /api/peers` →** `200 OK`
 ```json
 [
   {
@@ -643,69 +652,53 @@ GET /api/peers
     "address": "192.168.1.100",
     "port": 8080,
     "supportedProtocols": ["gRPC", "HTTP"],
-    "firstSeen": "2025-12-14T10:00:00Z",
-    "lastSeen": "2025-12-14T17:00:00Z",
+    "firstSeen": "2026-07-14T10:00:00Z",
+    "lastSeen": "2026-07-14T17:00:00Z",
     "failureCount": 0,
-    "isBootstrapNode": true,
+    "isSeedNode": true,
     "averageLatencyMs": 15.5
   }
 ]
 ```
 
-#### 2. Get Peer by ID
+### Register replication
 
-```http
-GET /api/peers/{peerId}
-```
+Peers advertise the registers they can serve and subscribe to registers they want replicated. These routes share the `/api/registers` prefix with the Register Service; the peer-owned replication routes below are distinguished by path.
 
-**Response:** `200 OK` (same structure as single peer above)
+**Base path:** `/api/registers`
 
-#### 3. Get Peer Statistics
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/registers/available` | Authenticated | List registers advertised across the peer network |
+| GET | `/api/registers/subscriptions` | Authenticated | List all register subscriptions on this node |
+| GET | `/api/registers/cache` | Authenticated | Register cache statistics |
+| POST | `/api/registers/{registerId}/advertise` | Authenticated (rate-limited) | Advertise (or remove advertisement for) a register |
+| POST | `/api/registers/bulk-advertise` | Authenticated | Bulk advertise / sync register advertisements |
+| POST | `/api/registers/{registerId}/subscribe` | Service token (`RequireService`, rate-limited) | Subscribe to a register for replication |
+| DELETE | `/api/registers/{registerId}/subscribe` | Service token (`RequireService`) | Unsubscribe from a register |
+| DELETE | `/api/registers/{registerId}/cache` | Authenticated | Purge cached data for a register |
 
-```http
-GET /api/peers/stats
-```
+### Node info & health
 
-**Response:** `200 OK`
-```json
-{
-  "totalPeers": 10,
-  "healthyPeers": 8,
-  "averageLatency": 25.3,
-  "throughput": 1500,
-  "networkHealth": "Good"
-}
-```
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/` | Anonymous | Basic service information and ports |
+| GET | `/api/health` | Anonymous | Service health check with metrics (also reachable via the gateway as `/peer/health`) |
 
-#### 4. Get Peer Health
+### gRPC surface
 
-```http
-GET /api/peers/health
-```
+The P2P transport is gRPC (container port `5000`, host-published `50051`). Reflection is enabled in Development only. Services:
 
-**Response:** `200 OK`
-```json
-{
-  "totalPeers": 10,
-  "healthyPeers": 8,
-  "unhealthyPeers": 2,
-  "healthPercentage": 80.0,
-  "peers": [
-    {
-      "peerId": "peer-123",
-      "address": "192.168.1.100",
-      "port": 8080,
-      "lastSeen": "2025-12-14T17:00:00Z",
-      "averageLatencyMs": 15.5
-    }
-  ]
-}
-```
+| Proto service | Purpose |
+|---|---|
+| `PeerDiscovery` | Peer discovery and exchange |
+| `PeerHeartbeat` | Liveness heartbeat |
+| `RegisterSync` | Register replication sync (docket/transaction streaming) |
+| `TransactionDistribution` | Transaction gossip / fan-out |
+| `DocketSyncService` | Docket-finalisation sync |
+| `PeerCommunication` | Relay / reverse-stream comms for NAT'd peers |
 
-**Hub Node URLs:**
-- **n0.sorcha.dev** - Primary hub node (Priority 0)
-- **n1.sorcha.dev** - Secondary hub node (Priority 1) - *Coming soon*
-- **n2.sorcha.dev** - Tertiary hub node (Priority 2) - *Coming soon*
+> There is also an internal `POST /api/internal/peer/distribute/{registerId}` (service-only, `CanWriteDockets`) that fans a signed submission out to a register's source peers (Feature 108). It is excluded from the OpenAPI/Scalar surface by design.
 
 ---
 
@@ -2005,6 +1998,48 @@ GET /health/sync
 **Top-level `status`** reflects the aggregate: `synced` if all registers are synced, `stalled` if any are stalled, otherwise `recovering`.
 
 **Staleness detection:** A register in `recovering` status is flagged as `isStale: true` if no progress has been made in the last 10 seconds.
+
+---
+
+## HAIP Service API
+
+The HAIP Service is Sorcha's boundary to the external wallet ecosystem — the OpenID4VCI **issuer** and OpenID4VP **verifier** that speak to holder wallets (EUDI Wallet, GOV.UK Wallet, and other HAIP 1.0 wallets). It issues SD-JWT VC / mdoc credentials to those wallets and verifies presentations from them.
+
+Sorcha's own internal credential flows do **not** go through this service — HAIP is specifically the *external* wallet interop surface.
+
+**Gateway routing:** HAIP routes are exposed at the gateway **root** (there is no `/haip` prefix) and forwarded 1:1 to the service. The issuer's base URL in emitted metadata is set by `Haip:IssuerUrl`. Wallet-facing endpoints are anonymous by protocol (the credential endpoint validates a Bearer access token inline so it can return OAuth-style error bodies); the service-to-service and verifier-management endpoints are authenticated.
+
+### OpenID4VCI — issuance (to external wallets)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/.well-known/openid-credential-issuer` | Anonymous | Issuer metadata (HAIP 1.0 §5) — supported credential types, endpoints, algorithms. Wallets fetch this to discover the issuer |
+| GET | `/.well-known/oauth-authorization-server` | Anonymous | OAuth 2.0 AS metadata — declares the pre-authorized-code grant and the token endpoint |
+| POST | `/token` | Anonymous | Exchange a pre-authorized code (`grant_type=urn:ietf:params:oauth:grant-type:pre-authorized_code`, form-encoded) for an access token + `c_nonce`. Response is `Cache-Control: no-store` |
+| POST | `/nonce` | Anonymous | Return a fresh `c_nonce` to bind into the wallet's JWT proof of possession |
+| POST | `/credential` | Bearer access token (validated inline) | Issue a credential to the wallet: takes the access token (correlated to a credential offer) + a JWT proof of possession, returns a minted SD-JWT VC (`dc+sd-jwt`) or mdoc (`mso_mdoc`) bound to the wallet's holder key via `cnf`. Missing/invalid Bearer → `401 invalid_token` |
+
+### Credential offers (service-to-service)
+
+Internal surface the Blueprint Service uses to drive an issuance workflow. Requires a **service token** (`RequireService`).
+
+**Base path:** `/api/v1/offers`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/v1/offers` | Service token | Create a Credential Offer with a pre-authorized code; returns the offer + a URI for QR rendering |
+| GET | `/api/v1/offers/{offerId}` | Service token | Get a Credential Offer's lifecycle state (`Pending` / `Exchanged` / `Expired`) — the Blueprint Service polls this |
+
+### OpenID4VP — verification (from external wallets)
+
+**Base path:** `/api/v1/verifier`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/v1/verifier/requests` | Authenticated (any tier) | Create a Presentation Request; returns the Authorization Request URI for QR rendering. Accepted from the Blueprint Service (service tier), the citizen wallet PWA (consumer tier), or the desk verifier (platform/org tier) |
+| GET | `/api/v1/verifier/requests/{requestId}/request-object` | Anonymous | The signed Request Object JWT (carries `dcql_query`, `nonce`, `response_mode`); the wallet fetches it via the `request_uri` from the QR code |
+| POST | `/api/v1/verifier/requests/{requestId}/direct-post` | Anonymous | The wallet submits its `vp_token` + `presentation_submission` via `direct_post`; the verifier validates and stores the result |
+| GET | `/api/v1/verifier/requests/{requestId}/result` | Authenticated (any tier) | Verification outcome once the wallet has posted — verified claims, accepted/rejected state, and any failure reasons |
 
 ---
 
