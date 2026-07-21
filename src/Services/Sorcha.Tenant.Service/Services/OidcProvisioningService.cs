@@ -9,6 +9,23 @@ using Sorcha.Tenant.Service.Models.Dtos;
 namespace Sorcha.Tenant.Service.Services;
 
 /// <summary>
+/// Thrown when an OIDC login is refused because the IdP did not assert <c>email_verified</c>. The OIDC
+/// provisioning path matches and creates users by email, so an unverified email cannot be trusted as an
+/// identity key (see <see cref="OidcProvisioningService.ProvisionOrMatchUserAsync"/> / #1212). Callers
+/// render this as a clean auth failure, not a 500.
+/// </summary>
+public sealed class OidcEmailNotVerifiedException : Exception
+{
+    /// <summary>The user-facing refusal message.</summary>
+    public const string UserFacingMessage =
+        "Your identity provider has not verified your email address, so sign-in cannot continue. "
+        + "Verify your email with your provider and try again.";
+
+    /// <summary>Creates the exception with the standard user-facing message.</summary>
+    public OidcEmailNotVerifiedException() : base(UserFacingMessage) { }
+}
+
+/// <summary>
 /// Provisions new users or matches returning users after OIDC authentication.
 /// Matches by ExternalIdpSubject (NOT email) to handle email changes at the IDP.
 /// New users are auto-provisioned with Member role and ProvisionedVia=Oidc.
@@ -33,6 +50,22 @@ public class OidcProvisioningService : IOidcProvisioningService
     public async Task<(UserIdentity User, bool IsFirstLogin)> ProvisionOrMatchUserAsync(
         Guid orgId, OidcUserClaims claims, CancellationToken cancellationToken)
     {
+        // Security gate (#1212): this method matches and provisions users purely by EMAIL — the IdP
+        // subject is not persisted (UserIdentity.ExternalIdpSubject was removed; subject-based matching
+        // is a follow-on that routes through PlatformSocialLogin). Email is not a safe key when the IdP
+        // does not assert it verified: controlling an unverified mailbox value would otherwise be enough
+        // to be matched onto an existing account (takeover), or to seed an account a later verified login
+        // collides with. So refuse unless email_verified is true — the same rule the social-login path
+        // (ResolveOrCreateSocialUserAsync) already enforces. This gates BOTH the match and the create
+        // below, and lives in the service so no caller can forget it.
+        if (!claims.EmailVerified)
+        {
+            _logger.LogWarning(
+                "OIDC login refused for org {OrgId}: the IdP did not assert email_verified for subject {Subject}",
+                orgId, claims.Subject);
+            throw new OidcEmailNotVerifiedException();
+        }
+
         // TODO: ExternalIdpSubject removed from UserIdentity — matching by external subject
         // will be handled by PlatformSocialLogin in a future task. For now, match by email as fallback.
         var existingUser = await _dbContext.UserIdentities

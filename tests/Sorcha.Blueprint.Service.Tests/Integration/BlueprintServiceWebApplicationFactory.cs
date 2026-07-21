@@ -35,6 +35,12 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
     public Mock<HttpMessageHandler> MockWalletHttpHandler { get; } = new();
     public Mock<HttpMessageHandler> MockRegisterHttpHandler { get; } = new();
 
+    /// <summary>The owner id (NameIdentifier) the <see cref="TestAuthenticationHandler"/> principal carries.</summary>
+    public const string TestPrincipalOwnerId = "00000000-0000-0000-0000-000000000123";
+
+    /// <summary>The single wallet the test principal owns, per the owner-keyed lookup mock.</summary>
+    public const string TestOwnedWalletAddress = "ws1qtestowned00000000000000000000000000000";
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         // Add test configuration for Redis connection string
@@ -155,6 +161,25 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
                 CreatedAt = DateTime.UtcNow.AddDays(-1),
                 UpdatedAt = DateTime.UtcNow
             });
+
+        // Owner-keyed wallet lookup — used by ParticipantWalletResolver's fallback (the test principal
+        // carries no wallet_address claim). The TestAuthenticationHandler's NameIdentifier is the owner
+        // key, so a wallet resolves for that owner and for no one else. Lets the #1213 catalogue
+        // ownership gate be exercised: the caller "owns" TestOwnedWalletAddress and nothing else.
+        mockWalletClient
+            .Setup(x => x.GetWalletsByOwnerAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string owner, CancellationToken _) =>
+                owner == TestPrincipalOwnerId
+                    ? new List<WalletInfo>
+                    {
+                        new WalletInfo
+                        {
+                            Address = TestOwnedWalletAddress,
+                            Name = "Owned Wallet", PublicKey = "pk", Algorithm = "ED25519",
+                            Status = "Active", Owner = owner, Tenant = "test-tenant",
+                        }
+                    }
+                    : new List<WalletInfo>());
 
         // Mock VerifySignatureAsync - required for action submission signature verification
         mockWalletClient

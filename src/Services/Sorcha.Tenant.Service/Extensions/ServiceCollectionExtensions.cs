@@ -353,6 +353,8 @@ public static class ServiceCollectionExtensions
         // service. Unconfigured ⇒ the SMS channel never resolves and SmsAvailable stays false.
         if (!string.IsNullOrEmpty(configuration["Sms:AcsConnectionString"]))
         {
+            // Bind SmsSettings so AcsSmsSender can read AllowNoOpSender / FromNumber via IOptions.
+            services.Configure<Services.Sms.SmsSettings>(configuration.GetSection("Sms"));
             services.AddSingleton<Services.Sms.ISmsSender, Services.Sms.AcsSmsSender>();
             services.AddScoped<IVerificationChannel, SmsOtpChannel>();
             services.AddScoped<ISmsPhoneVerificationService, SmsPhoneVerificationService>();
