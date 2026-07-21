@@ -458,7 +458,7 @@ The platform is feature-complete for MVD but requires the following for producti
 **See Also:**
 - [MASTER-PLAN.md](../../.specify/MASTER-PLAN.md) - Implementation phases
 - [MASTER-TASKS.md](../../.specify/MASTER-TASKS.md) - Task tracking
-- [architecture.md](architecture.md) - System architecture
+- [architecture.md](../architecture.md) - System architecture
 
 ## Feature 150 — Unified Account Security Surface (2026-06-11)
 

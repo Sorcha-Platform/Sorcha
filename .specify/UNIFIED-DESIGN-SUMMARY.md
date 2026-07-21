@@ -291,7 +291,7 @@ Notifies participants (SignalR)
 - BLUEPRINT-SERVICE-IMPLEMENTATION-PLAN.md - Detailed implementation plan (138 tasks, archived)
 
 **Updated Architecture:**
-- [docs/architecture.md](../docs/reference/architecture.md) - Updated architecture documentation
+- [docs/architecture.md](../docs/architecture.md) - Updated architecture documentation
 
 **Action Service Design (SUPERSEDED):**
 - ACTION-SERVICE-DESIGN.md - Original action service design (archived, merged into unified design)

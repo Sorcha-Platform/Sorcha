@@ -262,7 +262,7 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 |----------|---------|
 | [.specify/constitution.md](.specify/constitution.md) | Architectural principles |
 | [.specify/MASTER-TASKS.md](.specify/MASTER-TASKS.md) | Task tracking with priorities |
-| [docs/reference/architecture.md](docs/reference/architecture.md) | System architecture diagrams |
+| [docs/architecture.md](docs/architecture.md) | System architecture diagrams |
 | [docs/reference/API-DOCUMENTATION.md](docs/reference/API-DOCUMENTATION.md) | REST and gRPC endpoints |
 | [docs/guides/AUTHENTICATION-SETUP.md](docs/guides/AUTHENTICATION-SETUP.md) | JWT configuration |
 | [docs/getting-started/PORT-CONFIGURATION.md](docs/getting-started/PORT-CONFIGURATION.md) | Port assignments |

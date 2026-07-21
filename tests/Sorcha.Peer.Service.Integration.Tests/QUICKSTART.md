@@ -317,7 +317,7 @@ Add to `azure-pipelines.yml`:
 
 - **Full documentation:** [README.md](README.md)
 - **Report issues:** [GitHub Issues](https://github.com/SorchaProject/Sorcha/issues)
-- **Architecture docs:** [docs/architecture.md](../../docs/reference/architecture.md)
+- **Architecture docs:** [docs/architecture.md](../../docs/architecture.md)
 - **Peer Service docs:** [Sorcha.Peer.Service/README.md](../../src/Services/Sorcha.Peer.Service/README.md)
 
 ---

@@ -390,7 +390,7 @@ See [DEPLOYMENT.md](../guides/DEPLOYMENT.md) for full production deployment guid
 - **Deployment Guide**: [DEPLOYMENT.md](../guides/DEPLOYMENT.md)
 - **Docker Networking**: See [Network Architecture](#network-architecture) section above
 - **Port Configuration**: [PORT-CONFIGURATION.md](PORT-CONFIGURATION.md)
-- **Architecture**: [architecture.md](../reference/architecture.md)
+- **Architecture**: [architecture.md](../architecture.md)
 
 ---
 

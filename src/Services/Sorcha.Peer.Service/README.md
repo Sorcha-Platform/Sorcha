@@ -975,7 +975,7 @@ Enable detailed logging:
 
 ## Resources
 
-- **Architecture**: [docs/architecture.md](../../../docs/reference/architecture.md)
+- **Architecture**: [docs/architecture.md](../../../docs/architecture.md)
 - **Development Status**: [docs/development-status.md](../../../docs/reference/development-status.md)
 - **gRPC Documentation**: https://grpc.io/docs/languages/csharp/
 - **MongoDB .NET Driver**: https://www.mongodb.com/docs/drivers/csharp/

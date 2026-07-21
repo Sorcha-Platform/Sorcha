@@ -618,7 +618,7 @@
 - `CLAUDE.md`
 - `README.md`
 - `docs/reference/development-status.md`
-- `docs/reference/architecture.md`
+- `docs/architecture.md`
 - `.specify/MASTER-TASKS.md`
 
 **Acceptance Criteria**:

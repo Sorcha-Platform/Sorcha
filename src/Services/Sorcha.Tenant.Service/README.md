@@ -1065,7 +1065,7 @@ redis-cli ping  # Should return: PONG
 ## Resources
 
 - **Authentication Setup**: [docs/guides/AUTHENTICATION-SETUP.md](../../../docs/guides/AUTHENTICATION-SETUP.md)
-- **Architecture**: [docs/reference/architecture.md](../../../docs/reference/architecture.md)
+- **Architecture**: [docs/architecture.md](../../../docs/architecture.md)
 - **Development Status**: [docs/reference/development-status.md](../../../docs/reference/development-status.md)
 
 ---

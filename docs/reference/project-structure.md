@@ -184,7 +184,7 @@ All projects target **`net10.0`** (C# 14). Central package management via `Direc
 
 ## Related Documentation
 
-- [`architecture.md`](architecture.md) — Service diagrams and runtime topology
+- [`architecture.md`](../architecture.md) — Service diagrams and runtime topology
 - [`API-DOCUMENTATION.md`](API-DOCUMENTATION.md) — Full REST / gRPC endpoint reference
 - [`development-status.md`](development-status.md) — Per-service completion status
 - [`../getting-started/`](../getting-started/) — First-run setup

@@ -160,5 +160,5 @@ For a consolidated platform overview suitable for AI consumption, see [PLATFORM-
 
 - [.specify/constitution.md](../.specify/constitution.md) — Architectural principles
 - [.specify/MASTER-TASKS.md](../.specify/MASTER-TASKS.md) — Task tracking
-- [docs/reference/architecture.md](../docs/reference/architecture.md) — System architecture
+- [docs/architecture.md](../docs/architecture.md) — System architecture
 - [docs/reference/API-DOCUMENTATION.md](../docs/reference/API-DOCUMENTATION.md) — API reference
