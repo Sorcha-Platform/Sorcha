@@ -223,7 +223,7 @@ tests/
 
 Documentation lives in the `docs/` directory:
 
-- `docs/reference/architecture.md` - System architecture
+- `docs/architecture.md` - System architecture
 - `docs/getting-started/getting-started.md` - Getting started guide
 - `docs/blueprint-schema.md` - Blueprint definition schema
 - `docs/api-reference.md` - API documentation

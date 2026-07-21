@@ -2308,7 +2308,7 @@ Content-Security-Policy:
 **Internal Documentation:**
 - Sorcha.Admin (deprecated, replaced by Sorcha.UI)
 - [Sorcha Constitution](../constitution.md)
-- [Sorcha Architecture](../../docs/reference/architecture.md)
+- [Sorcha Architecture](../../docs/architecture.md)
 
 **External References:**
 - [.NET MAUI Documentation](https://learn.microsoft.com/dotnet/maui/)

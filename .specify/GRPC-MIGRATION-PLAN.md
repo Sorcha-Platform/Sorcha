@@ -676,7 +676,7 @@ Register Service
 - [ ] Document .proto file locations and structure
 
 **4.2.2: Update Architecture Documentation (2h)**
-- [ ] Update `docs/reference/architecture.md` with gRPC service diagram
+- [ ] Update `docs/architecture.md` with gRPC service diagram
 - [ ] Update `docs/guides/AUTHENTICATION-SETUP.md` for gRPC auth flow
 - [ ] Create `docs/GRPC-GUIDE.md` for developers
 - [ ] Document mTLS certificate management
@@ -701,7 +701,7 @@ Register Service
 - `.specify/specs/sorcha-tenant-service.md`
 - `.specify/specs/sorcha-wallet-service.md`
 - `.specify/specs/sorcha-register-service.md`
-- `docs/reference/architecture.md`
+- `docs/architecture.md`
 - `docs/guides/AUTHENTICATION-SETUP.md`
 - `docs/reference/API-DOCUMENTATION.md`
 
@@ -1040,7 +1040,7 @@ Register Service
 - `.specify/specs/sorcha-tenant-service.md`
 - `.specify/specs/sorcha-wallet-service.md`
 - `.specify/specs/sorcha-register-service.md`
-- `docs/reference/architecture.md`
+- `docs/architecture.md`
 - `docs/guides/AUTHENTICATION-SETUP.md`
 - `docs/reference/API-DOCUMENTATION.md`
 

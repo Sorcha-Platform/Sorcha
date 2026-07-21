@@ -122,7 +122,7 @@ Architecture, API documentation, and technical specifications.
 | Document | Description |
 |----------|-------------|
 | [API Documentation](reference/API-DOCUMENTATION.md) | Complete REST API reference for all services |
-| [Architecture Overview](reference/architecture.md) | High-level system architecture and service interactions |
+| [Architecture Overview](architecture.md) | High-level system architecture and service interactions |
 | [Project Structure](reference/project-structure.md) | Solution layout and project organization |
 | [Development Status](reference/development-status.md) | Overall platform completion and recent updates |
 | [Security Requirements](reference/SECURITY-REQUIREMENTS.md) | Component placement rules, crypto isolation, threat model |

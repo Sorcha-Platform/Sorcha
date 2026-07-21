@@ -91,4 +91,4 @@ Sorcha is a decentralised register platform for secure, multi-participant data f
 - [Port Configuration](../getting-started/PORT-CONFIGURATION.md) -- Complete port assignments
 - [Bootstrap Credentials](../getting-started/BOOTSTRAP-CREDENTIALS.md) -- Default credentials
 - [Authentication Setup](../guides/AUTHENTICATION-SETUP.md) -- JWT configuration
-- [Architecture Reference](../reference/architecture.md) -- System architecture diagrams
+- [Architecture Reference](../architecture.md) -- System architecture diagrams

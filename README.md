@@ -275,7 +275,7 @@ A map of the top-level directories — enough to orient a newcomer. For a full s
 | [API Documentation](docs/reference/API-DOCUMENTATION.md) | REST and gRPC endpoint reference |
 | [Blueprint Quick Start](docs/getting-started/blueprint-quick-start.md) | Creating your first blueprint |
 | [Port Configuration](docs/getting-started/PORT-CONFIGURATION.md) | Service ports and networking |
-| [Architecture](docs/reference/architecture.md) | System design and data flows |
+| [Architecture](docs/architecture.md) | System design and data flows |
 | [Deployment Guide](docs/guides/DEPLOYMENT.md) | Production deployment |
 | [Troubleshooting](docs/guides/TROUBLESHOOTING.md) | Common issues and solutions |
 

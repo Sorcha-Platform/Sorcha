@@ -1726,7 +1726,7 @@ public class ValidatorOrchestratorTests : IClassFixture<WebApplicationFactory<Pr
 
 ## Appendix B: Related Documentation
 
-- [architecture.md](architecture.md) - Overall Sorcha architecture
+- [architecture.md](../architecture.md) - Overall Sorcha architecture
 - [Blueprint Format](../guides/blueprints/blueprint-format.md) - Blueprint data format
 - [UNIFIED-DESIGN-SUMMARY.md](../../.specify/UNIFIED-DESIGN-SUMMARY.md) - Unified design summary
 

@@ -82,7 +82,7 @@ dotnet restore && dotnet build && dotnet test
 
 **Shared user-facing component library (Feature 122):** user-facing components shared between `Sorcha.UI` (web) and `Sorcha.Wallet.Pwa` (PWA) live in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User`. Admin / designer / explorer components remain in `Sorcha.UI.Core`. The PWA references `Sorcha.UI.Components.User` directly; `Sorcha.UI.Core` re-exports via ProjectReference so web hosts pick the same components up transparently. See `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/README.md` for placement rules.
 
-Full project tree: `docs/reference/project-structure.md`. Architecture diagrams: `docs/reference/architecture.md`.
+Full project tree: `docs/reference/project-structure.md`. Architecture diagrams: `docs/architecture.md`.
 
 ---
 
@@ -376,7 +376,7 @@ Full reference: the **`jwt` skill** ("Tiered audiences + issuer hardening"). Met
 | `docs/getting-started/PORT-CONFIGURATION.md` | Complete port assignments |
 | `docs/guides/AUTHENTICATION-SETUP.md` | JWT configuration guide |
 | `docs/reference/development-status.md` | Current completion status |
-| `docs/reference/architecture.md` | System architecture diagrams |
+| `docs/architecture.md` | System architecture diagrams |
 | `docs/reference/project-structure.md` | Full source tree |
 | `docs/reference/API-DOCUMENTATION.md` | Full REST/gRPC reference |
 | `walkthroughs/README.md` | Interactive demos and test scripts |

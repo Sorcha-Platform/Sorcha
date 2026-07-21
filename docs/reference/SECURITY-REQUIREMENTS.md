@@ -375,7 +375,7 @@ This document MUST be reviewed:
 
 ## Related Documentation
 
-- [Architecture](architecture.md) - Overall system architecture
+- [Architecture](../architecture.md) - Overall system architecture
 - [Validator Service Design](validator-service-design.md) - Validator service specification
 - [Register Service Specification](../../.specify/specs/sorcha-register-service.md) - Register service specification
 
