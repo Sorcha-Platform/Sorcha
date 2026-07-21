@@ -55,7 +55,7 @@ jobs:
           echo "Body:    $body"
           echo "Status:  $status"
           [ "$status" = "200" ] || { echo "Expected HTTP 200, got $status"; exit 1; }
-          echo "$body" | python -c 'import sys, json; d = json.load(sys.stdin); assert d.get("status") == "Healthy", d' || {
+          echo "$body" | python -c 'import sys, json; d = json.load(sys.stdin); assert d.get("status","").lower() == "healthy", d' || {
             echo "Aggregated health response did not report Healthy"
             exit 1
           }
