@@ -57,9 +57,14 @@ echo ""
 
 # When this installer was piped from curl, our stdin is the pipe — not a
 # keyboard — so the setup's prompts must read from the controlling terminal.
-# If there is no terminal at all (e.g. CI), fall back to an all-defaults run.
-if [ -r /dev/tty ]; then
-  exec bash scripts/sorcha-setup.sh "$@" </dev/tty
+# If there is no usable terminal (e.g. CI), fall back to an all-defaults run.
+#
+# Test that /dev/tty can actually be OPENED, not merely that it exists: on a
+# runner without a controlling terminal the device node is present and readable
+# by permission bits, yet open() fails with ENXIO. `[ -r /dev/tty ]` checks the
+# permission bits only, so it wrongly reports success there — attempt the open.
+if { : < /dev/tty; } 2>/dev/null; then
+  exec bash scripts/sorcha-setup.sh "$@" < /dev/tty
 else
   say "No interactive terminal detected — running with defaults (--quiet)."
   exec bash scripts/sorcha-setup.sh --quiet "$@"

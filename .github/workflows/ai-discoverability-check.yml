@@ -28,6 +28,10 @@ on:
     # Docker Engine, asserting the verify-installation curl returns 200.
     # Runs at 04:00 UTC; reports success / failure to the workflow run history.
     - cron: '0 4 * * *'
+  workflow_dispatch:
+    # Manual trigger — lets a maintainer run the clean-VM one-liner check
+    # on demand (e.g. to validate a change to the installer before relying on
+    # the nightly schedule).
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -87,46 +91,51 @@ jobs:
               ].join('\n')
             });
 
-  # T090 — nightly clean-VM run of the quickstart. Boots the full stack on
-  # an ubuntu-latest runner (which ships with Docker Engine), runs the setup
-  # script, then asserts the verify-installation curl returns 200 with every
-  # service Healthy. Confirms the agent-runnable claim for SC-010.
+  # T090 — nightly clean-VM run of the PUBLISHED one-liner. Deliberately does NOT
+  # check out the repo: it starts from a bare ubuntu-latest runner (Docker Engine
+  # + git + curl preinstalled) and runs the exact command from the README's
+  # "Try it in one line", which fetches scripts/install.sh from master, clones,
+  # and hands off to sorcha-setup.sh. This proves the whole user path — raw URL,
+  # clone, installer, setup, boot — not just the setup script from a checkout.
+  # Runs nightly and on manual dispatch. (PRs that touch the installer scripts are
+  # validated separately by installer-check.yml.)
   quickstart-on-clean-vm:
     name: Nightly clean-VM quickstart
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Confirm Docker Engine is available
+      - name: Confirm tooling (Docker, git, curl) is available
         run: |
           docker --version
           docker compose version
+          git --version
+          curl --version | head -1
 
-      - name: Run sorcha-setup.sh in quiet mode
+      - name: Install Sorcha via the published one-liner
         run: |
-          chmod +x scripts/sorcha-setup.sh
-          ./scripts/sorcha-setup.sh --quiet
+          set -euo pipefail
+          # Exactly the command documented in README → "Try it in one line".
+          curl -fsSL https://raw.githubusercontent.com/Sorcha-Platform/Sorcha/master/scripts/install.sh | bash -s -- --quiet
 
       - name: Verify installation
         run: |
           set -euo pipefail
-          # Quickstart's documented verify-installation curl. Asserts HTTP 200
-          # AND that the body parses as JSON with status == Healthy.
+          # Documented verify-installation curl. Asserts HTTP 200 AND that the
+          # body parses as JSON with status == Healthy.
           response=$(curl -sf -w '\nHTTP_STATUS:%{http_code}' http://localhost/api/health)
           status=$(echo "$response" | grep '^HTTP_STATUS:' | cut -d: -f2)
           body=$(echo "$response" | sed '/^HTTP_STATUS:/d')
           echo "Body:    $body"
           echo "Status:  $status"
           [ "$status" = "200" ] || { echo "Expected HTTP 200, got $status"; exit 1; }
-          echo "$body" | python -c 'import sys, json; d = json.load(sys.stdin); assert d.get("status") == "Healthy", d' || {
+          echo "$body" | python -c 'import sys, json; d = json.load(sys.stdin); assert d.get("status","").lower() == "healthy", d' || {
             echo "Aggregated health response did not report Healthy"
             exit 1
           }
 
       - name: Capture container logs on failure
         if: failure()
+        working-directory: sorcha
         run: docker compose logs --tail=200
