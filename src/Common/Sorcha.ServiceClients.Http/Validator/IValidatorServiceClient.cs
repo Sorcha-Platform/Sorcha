@@ -55,6 +55,51 @@ public interface IValidatorServiceClient
         string registerId,
         bool persistMemPool,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the validators currently operational (online) for a register — the live heartbeat set
+    /// held in the Validator Service's registry. Calls <c>GET /api/validators/{registerId}</c>.
+    /// </summary>
+    /// <remarks>
+    /// Transport / non-success faults are <b>propagated</b>, deliberately not swallowed to an empty
+    /// list: "the Validator Service could not be reached" and "no validators are online" are
+    /// different answers, and returning the former as the latter is exactly the confident-but-false
+    /// result the operational endpoint exists to avoid. The caller decides how to surface the fault
+    /// (the Register Service maps it to 503).
+    /// </remarks>
+    /// <param name="registerId">The register whose operational validators to list.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The operational validators; an empty list only if the register genuinely has none online.</returns>
+    Task<IReadOnlyList<OperationalValidatorSummary>> GetOperationalValidatorsAsync(
+        string registerId,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// A validator currently reporting operational on a register, as surfaced by the Validator Service's
+/// <c>GET /api/validators/{registerId}</c>. Only fields that endpoint actually returns are modelled —
+/// there is deliberately no last-heartbeat timestamp or leader flag here, because the source
+/// projection does not expose them and inventing them would be another false answer.
+/// </summary>
+public record OperationalValidatorSummary
+{
+    /// <summary>Validator's unique identifier (wallet address).</summary>
+    public required string ValidatorId { get; init; }
+
+    /// <summary>Validator's public key.</summary>
+    public string? PublicKey { get; init; }
+
+    /// <summary>gRPC endpoint for peer communication.</summary>
+    public string? GrpcEndpoint { get; init; }
+
+    /// <summary>Current status (lower-cased, as returned by the Validator Service).</summary>
+    public string? Status { get; init; }
+
+    /// <summary>When the validator registered.</summary>
+    public DateTimeOffset? RegisteredAt { get; init; }
+
+    /// <summary>Order index used for rotating leader election, when present.</summary>
+    public int? OrderIndex { get; init; }
 }
 
 /// <summary>

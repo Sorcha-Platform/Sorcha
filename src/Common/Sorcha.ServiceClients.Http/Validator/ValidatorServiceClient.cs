@@ -256,6 +256,47 @@ public class ValidatorServiceClient : IValidatorServiceClient
         return false;
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<OperationalValidatorSummary>> GetOperationalValidatorsAsync(
+        string registerId,
+        CancellationToken cancellationToken = default)
+    {
+        await SetAuthHeaderAsync(cancellationToken);
+
+        var response = await _httpClient.GetAsync(
+            $"/api/validators/{Uri.EscapeDataString(registerId)}",
+            cancellationToken);
+
+        // Do NOT swallow a failure to an empty list — see IValidatorServiceClient remarks. An
+        // unreachable Validator Service must surface as a fault so the caller can say "unknown",
+        // not silently report "no validators online".
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, cancellationToken);
+
+        var result = new List<OperationalValidatorSummary>();
+        if (payload.TryGetProperty("validators", out var validators)
+            && validators.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var v in validators.EnumerateArray())
+            {
+                result.Add(new OperationalValidatorSummary
+                {
+                    ValidatorId = v.TryGetProperty("validatorId", out var id) ? id.GetString() ?? string.Empty : string.Empty,
+                    PublicKey = v.TryGetProperty("publicKey", out var pk) ? pk.GetString() : null,
+                    GrpcEndpoint = v.TryGetProperty("grpcEndpoint", out var ep) ? ep.GetString() : null,
+                    Status = v.TryGetProperty("status", out var st) ? st.GetString() : null,
+                    RegisteredAt = v.TryGetProperty("registeredAt", out var ra) && ra.ValueKind != JsonValueKind.Null
+                        ? ra.GetDateTimeOffset() : null,
+                    OrderIndex = v.TryGetProperty("orderIndex", out var oi) && oi.ValueKind == JsonValueKind.Number
+                        ? oi.GetInt32() : null,
+                });
+            }
+        }
+
+        return result;
+    }
+
     private Task SetAuthHeaderAsync(CancellationToken cancellationToken) =>
         ServiceClientAuthHelper.SetAuthHeaderAsync(
             _httpClient, _serviceAuth, _logger, "Validator Service", cancellationToken);

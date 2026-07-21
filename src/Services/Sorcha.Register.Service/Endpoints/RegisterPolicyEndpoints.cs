@@ -4,6 +4,7 @@
 using System.ComponentModel.DataAnnotations;
 using Sorcha.Register.Core.Services;
 using Sorcha.Register.Models;
+using Sorcha.ServiceClients.Validator;
 
 namespace Sorcha.Register.Service.Endpoints;
 
@@ -216,27 +217,60 @@ public static class RegisterPolicyEndpoints
         .Produces<ApprovedValidatorsResponse>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized);
 
-        validatorGroup.MapGet("/operational", (
+        validatorGroup.MapGet("/operational", async (
+            IValidatorServiceClient validatorClient,
+            ILogger<Program> logger,
             string registerId,
             CancellationToken cancellationToken) =>
         {
-            // TODO: Operational validator state lives in Redis within the Validator Service.
-            // This endpoint needs cross-service resolution — either a service client call
-            // to the Validator Service or a shared Redis read. Returning empty for now.
-            return Results.Ok(new OperationalValidatorsResponse
+            // Operational (online) validator state lives in the Validator Service's registry, keyed
+            // by heartbeat TTL. Proxy to it rather than guess. Critically, a failure to reach it is
+            // surfaced as 503 (Unavailable) — NOT an empty list — because "we cannot tell who is
+            // online" and "no one is online" are different answers, and returning the former as the
+            // latter is the confident-but-false result this endpoint used to give unconditionally.
+            try
             {
-                RegisterId = registerId,
-                Validators = [],
-                Count = 0
-            });
+                var operational = await validatorClient.GetOperationalValidatorsAsync(registerId, cancellationToken);
+
+                var validators = operational
+                    .Select(v => new OperationalValidatorInfo
+                    {
+                        ValidatorId = v.ValidatorId,
+                        PublicKey = v.PublicKey,
+                        GrpcEndpoint = v.GrpcEndpoint,
+                        Status = v.Status,
+                        RegisteredAt = v.RegisteredAt,
+                        OrderIndex = v.OrderIndex,
+                    })
+                    .ToList();
+
+                return Results.Ok(new OperationalValidatorsResponse
+                {
+                    RegisterId = registerId,
+                    Validators = validators,
+                    Count = validators.Count
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "Could not resolve operational validators for register {RegisterId} from the Validator Service",
+                    registerId);
+                return Results.Problem(
+                    title: "Operational validator state is unavailable",
+                    detail: "The Validator Service could not be reached to determine which validators are online. "
+                        + "This is not the same as there being none online.",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
         })
         .WithName("GetOperationalValidators")
         .WithSummary("Get validators currently online for a register")
-        .WithDescription("Returns validators currently reporting operational heartbeats via the ValidatorRegistry. " +
-            "NOTE: This endpoint is a placeholder — operational state is managed by the Validator Service " +
-            "and requires cross-service integration to resolve.")
+        .WithDescription("Returns validators currently reporting operational heartbeats, resolved live from the "
+            + "Validator Service's registry. Returns 503 if the Validator Service cannot be reached — an empty "
+            + "list means there are genuinely none online, never that the state is unknown.")
         .Produces<OperationalValidatorsResponse>(StatusCodes.Status200OK)
-        .Produces(StatusCodes.Status401Unauthorized);
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status503ServiceUnavailable);
     }
 }
 
@@ -396,22 +430,45 @@ public class PolicyVersionEntry
 }
 
 /// <summary>
-/// Information about a validator that is currently operational
+/// Information about a validator that is currently operational.
 /// </summary>
+/// <remarks>
+/// Modelled on what the Validator Service's live registry actually exposes. It deliberately does
+/// NOT carry a last-heartbeat timestamp or an <c>IsLeader</c> flag: the registry's projection
+/// surfaces neither (heartbeats drive the TTL that keeps an entry in the operational set, but the
+/// timestamp is not returned, and leadership is rotating rather than a static per-validator fact).
+/// Presence in this list already means "reporting operational heartbeats"; inventing a heartbeat
+/// time or a leader flag would just be another confident-but-false field.
+/// </remarks>
 public class OperationalValidatorInfo
 {
     /// <summary>
-    /// Decentralized identifier (DID) of the validator
+    /// Validator's unique identifier (wallet address).
     /// </summary>
-    public string Did { get; set; } = string.Empty;
+    public string ValidatorId { get; set; } = string.Empty;
 
     /// <summary>
-    /// UTC timestamp of the last heartbeat received from this validator
+    /// Validator's public key.
     /// </summary>
-    public DateTimeOffset LastHeartbeat { get; set; }
+    public string? PublicKey { get; set; }
 
     /// <summary>
-    /// Whether this validator is the current leader
+    /// gRPC endpoint for peer communication.
     /// </summary>
-    public bool IsLeader { get; set; }
+    public string? GrpcEndpoint { get; set; }
+
+    /// <summary>
+    /// Current status as reported by the Validator Service.
+    /// </summary>
+    public string? Status { get; set; }
+
+    /// <summary>
+    /// When the validator registered.
+    /// </summary>
+    public DateTimeOffset? RegisteredAt { get; set; }
+
+    /// <summary>
+    /// Order index used for rotating leader election, when present.
+    /// </summary>
+    public int? OrderIndex { get; set; }
 }

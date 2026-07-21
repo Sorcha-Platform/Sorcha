@@ -119,23 +119,27 @@ public class TransactionTests
     }
 
     [Fact]
-    public async Task VerifyAsync_ShouldSucceedForValidSignature()
+    public async Task VerifyAsync_SignedTransaction_FailsClosedAsNotImplemented()
     {
-        // Arrange
+        // V1 in-model verify does not cryptographically check the signature — there is no
+        // recoverable public key on the transaction (see Transaction.VerifyAsync remarks). It must
+        // fail closed rather than return Success for a signature it never checked. This used to
+        // assert Success, which was the no-op affirming itself.
         var payloadManager = new PayloadManager(_symmetricCrypto, _cryptoModule, _hashProvider);
         var transaction = new Transaction(_cryptoModule, _hashProvider, payloadManager);
         var wallet = await TestHelpers.GenerateTestWalletAsync(WalletNetworks.ED25519);
 
         transaction.Recipients = new[] { wallet.Address };
 
-        // Sign the transaction
+        // Sign the transaction (the signing scaffolding does produce a signature).
         await transaction.SignAsync(wallet.PrivateKeyWif);
 
         // Act
         var status = await transaction.VerifyAsync();
 
         // Assert
-        Assert.Equal(TransactionStatus.Success, status);
+        Assert.Equal(TransactionStatus.VerificationNotImplemented, status);
+        Assert.NotEqual(TransactionStatus.Success, status);
     }
 
     [Fact]
