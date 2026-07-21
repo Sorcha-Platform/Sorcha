@@ -1,262 +1,122 @@
 # Getting Started with Sorcha
 
-This guide will help you get Sorcha up and running on your local development machine.
+This guide takes you from nothing to a running Sorcha instance and your first workflow. Sorcha runs as a set of containers orchestrated by Docker Compose; the fastest way in is the one-line installer.
 
 ## Prerequisites
 
-Before you begin, ensure you have the following installed:
+- **Docker** — Docker Desktop (macOS/Windows) or Docker Engine + Compose v2 (Linux). This is the only hard requirement to *run* Sorcha.
+- **git** — used by the installer to fetch the repository.
+- Ports **80**, **443**, and **8080** free on the host.
+- (Only if you want to *build/develop* the code, not just run it: the **.NET 10 SDK**.)
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) (version 10.0.100 or later)
-- [Git](https://git-scm.com/)
-- A code editor:
-  - [Visual Studio 2025](https://visualstudio.microsoft.com/) (recommended for Windows)
-  - [Visual Studio Code](https://code.visualstudio.com/) with C# extension
-  - [JetBrains Rider](https://www.jetbrains.com/rider/)
+## Install
 
-Optional:
-- [Docker Desktop](https://www.docker.com/products/docker-desktop) for containerization
+### Option A — one line (recommended)
 
-## Installation
+Downloads Sorcha, asks a few setup questions, generates your `.env` (including a JWT signing key), pulls the images, starts every service, and bootstraps the platform:
 
-### 1. Clone the Repository
+**macOS / Linux / WSL / Git Bash**
+```bash
+curl -fsSL https://raw.githubusercontent.com/Sorcha-Platform/Sorcha/master/scripts/install.sh | bash
+```
+
+**Windows PowerShell** (needs Git for Windows or WSL for the bash step)
+```powershell
+irm https://raw.githubusercontent.com/Sorcha-Platform/Sorcha/master/scripts/install.ps1 | iex
+```
+
+Add `--quiet` to accept all defaults without prompts (handy for CI). To review the script before running it, see the “Prefer to read it first?” note in the [project README](../../README.md#try-it-in-one-line).
+
+### Option B — manual
 
 ```bash
 git clone https://github.com/Sorcha-Platform/Sorcha.git
-cd sorcha
+cd Sorcha
+
+# Interactive setup — checks prerequisites, generates .env, pulls images, starts services
+./scripts/sorcha-setup.sh
+
+# …or bare-bones, using the shipped defaults:
+cp .env.example .env
+docker compose up -d
 ```
 
-### 2. Restore Dependencies
+Either way, on success the gateway comes up. Verify:
 
 ```bash
-dotnet restore
+curl -s http://localhost/api/health   # every service should report Healthy
 ```
 
-### 3. Build the Solution
+## First login
+
+| What | Where |
+|------|-------|
+| **Main UI** | http://localhost/app |
+| **Blueprint Designer** | http://localhost/app/designer/blueprint |
+| **API Gateway** | http://localhost/ |
+| **API docs (Scalar)** | http://localhost/scalar/ |
+| **Health** | http://localhost/api/health |
+| **Aspire dashboard** (traces/logs/metrics) | http://localhost:18888 |
+
+Default administrator (created on first run — **change it for anything but local dev**):
+
+| Field | Value |
+|-------|-------|
+| Email | `admin@sorcha.local` |
+| Password | `Dev_Pass_2025!` |
+
+See [`guides/AUTHENTICATION-SETUP.md`](../guides/AUTHENTICATION-SETUP.md) for production auth configuration.
+
+## Your first blueprint
+
+A **blueprint** is a multi-party workflow: participants, actions, per-action schemas, and routing between them.
+
+1. Open the **Designer** at http://localhost/app/designer/blueprint. It's a rail-driven **Describe → Understand → Rehearse → Go live** flow — describe the workflow in plain language, refine the actions/schemas, rehearse it, then publish. Go-live is gated by a server-side rehearsal pass.
+2. Prefer to hand-author? Blueprints are JSON/YAML — see [`guides/blueprints/blueprint-format.md`](../guides/blueprints/blueprint-format.md) and the ready-made templates in [`blueprints/`](../../blueprints/). The `blueprint-builder` skill generates them too.
+3. Publish the blueprint to a **register** (a distributed ledger), then participants complete actions in sequence — each signed by their wallet, validated, routed, and recorded immutably.
+
+For a full worked end-to-end run, pick a scenario in [`walkthroughs/`](../../walkthroughs/README.md).
+
+## Developing the code (optional)
+
+To debug with breakpoints, run the platform through **.NET Aspire** instead of Compose:
 
 ```bash
-dotnet build
+dotnet run --project src/Apps/Sorcha.AppHost
 ```
 
-This will build all projects in the solution.
-
-## Running Sorcha
-
-### Using .NET Aspire (Recommended)
-
-The easiest way to run Sorcha is using the .NET Aspire orchestration:
+This starts every service (on their HTTPS Aspire ports, e.g. Blueprint `7000`, Wallet `7001`, Register `7290`, Tenant `7110`) plus the Aspire dashboard at http://localhost:18888. The full port map is in [`PORT-CONFIGURATION.md`](PORT-CONFIGURATION.md).
 
 ```bash
-dotnet run --project src/Sorcha.AppHost
+dotnet restore && dotnet build      # build the solution
+dotnet test                         # run the test suite
+dotnet format                       # format code
 ```
 
-This will:
-- Start the Blueprint Engine API
-- Start the Blueprint Designer web UI
-- Launch the Aspire dashboard
-- Configure service discovery automatically
-
-The Aspire dashboard will open in your browser at `http://localhost:15888` (or similar).
-
-From the dashboard, you can:
-- View all running services
-- See logs and traces
-- Monitor health status
-- Access service endpoints
-
-### Running Services Individually
-
-If you prefer to run services separately:
-
-**Blueprint Engine (API):**
-```bash
-cd src/Sorcha.Blueprint.Engine
-dotnet run
-```
-The API will be available at `https://localhost:7001` and `http://localhost:5001`.
-
-**Blueprint Designer (Web UI):**
-```bash
-cd src/Sorcha.Blueprint.Designer
-dotnet run
-```
-The designer will be available at `https://localhost:7002` and `http://localhost:5002`.
-
-## Accessing the Application
-
-Once running, you can access:
-
-- **Aspire Dashboard**: `http://localhost:15888`
-- **Blueprint Designer**: `https://localhost:7002` (or the URL shown in console)
-- **Blueprint Engine API**: `https://localhost:7001` (or the URL shown in console)
-- **API Documentation**: `https://localhost:7001/scalar/v1` (interactive Scalar UI)
-- **OpenAPI Spec**: `https://localhost:7001/openapi/v1.json`
-
-## Your First Blueprint
-
-### 1. Open the Designer
-
-Navigate to the Blueprint Designer in your browser.
-
-### 2. Create a Blueprint
-
-(UI walkthrough will be added here)
-
-### 3. Execute the Blueprint
-
-Use the Designer UI or make a direct API call:
+## Common operations
 
 ```bash
-curl -X POST https://localhost:7001/blueprints/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "My First Blueprint",
-    "actions": [
-      {
-        "type": "log",
-        "message": "Hello from Sorcha!"
-      }
-    ]
-  }'
-```
-
-## Development Workflow
-
-### 1. Make Changes
-
-Edit the source code in your preferred editor.
-
-### 2. Hot Reload
-
-If running with `dotnet run`, many changes will be automatically reloaded without restarting.
-
-### 3. Run Tests
-
-```bash
-dotnet test
-```
-
-### 4. Format Code
-
-```bash
-dotnet format
-```
-
-## Project Structure
-
-```
-Sorcha/
-├── src/
-│   ├── Sorcha.AppHost/              # Aspire orchestration host
-│   ├── Sorcha.ServiceDefaults/      # Shared configurations
-│   ├── Sorcha.Blueprint.Engine/     # Execution engine (API)
-│   └── Sorcha.Blueprint.Designer/   # Visual designer (Web)
-├── tests/                           # Test projects
-├── docs/                            # Documentation
-├── .github/                         # GitHub workflows
-├── Sorcha.sln                       # Solution file
-└── README.md                        # Main readme
-```
-
-## Configuration
-
-Configuration files are located in each project:
-
-- `appsettings.json` - Default settings
-- `appsettings.Development.json` - Development overrides
-- `appsettings.Production.json` - Production settings
-
-### Common Settings
-
-**Blueprint Engine (appsettings.json):**
-```json
-{
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information"
-    }
-  },
-  "AllowedHosts": "*"
-}
-```
-
-**Environment Variables:**
-```bash
-# Set log level
-export ASPNETCORE_ENVIRONMENT=Development
-
-# Set custom ports
-export ASPNETCORE_URLS="https://localhost:8000;http://localhost:8001"
+docker compose ps                   # service status
+docker compose logs -f <service>    # follow a service's logs (e.g. blueprint-service)
+docker compose down                 # stop (keep data in volumes)
+docker compose down -v              # stop and delete all data
 ```
 
 ## Troubleshooting
 
-### Port Already in Use
+- **Port 80/443/8080 already in use** — free the port, or remap the gateway in `docker-compose.yml` (`ports:`) and re-run.
+- **HTTPS listener won't bind** — only affects port 443; HTTP on 80 still works. Generate a dev cert to enable HTTPS (see [`DOCKER-QUICK-START.md`](DOCKER-QUICK-START.md)).
+- **A service is unhealthy** — `docker compose logs <service>`; PostgreSQL/MongoDB may need a few seconds to initialise on first start.
+- More: [`../guides/TROUBLESHOOTING.md`](../guides/TROUBLESHOOTING.md).
 
-If you see port conflicts, you can change the ports in `Properties/launchSettings.json` for each project.
+## Next steps
 
-### SSL Certificate Issues
+- [`docs/architecture.md`](../architecture.md) — how the platform fits together, by service and data flow.
+- [`docs/reference/API-DOCUMENTATION.md`](../reference/API-DOCUMENTATION.md) — full REST/gRPC reference.
+- [`walkthroughs/README.md`](../../walkthroughs/README.md) — interactive end-to-end demos.
+- The **CLI**: `dotnet run --project src/Apps/Sorcha.Cli -- --help` (see [`src/Apps/Sorcha.Cli/README.md`](../../src/Apps/Sorcha.Cli/README.md)).
 
-Trust the development certificate:
-```bash
-dotnet dev-certs https --trust
-```
+## Getting help
 
-### Build Errors
-
-Clean and rebuild:
-```bash
-dotnet clean
-dotnet build
-```
-
-### .NET 10 Not Found
-
-Ensure you have .NET 10 SDK installed:
-```bash
-dotnet --version
-```
-
-Should show `10.0.100` or later.
-
-## Next Steps
-
-Now that you have Sorcha running, explore:
-
-- [Architecture Overview](../architecture.md) - Understand the system design
-- [Blueprint Format](../guides/blueprints/blueprint-format.md) - Learn the blueprint format
-- [API Reference](../reference/API-DOCUMENTATION.md) - Explore the REST API
-- [Contributing](../../CONTRIBUTING.md) - Help improve Sorcha
-
-## Getting Help
-
-- Check the [Troubleshooting Guide](../guides/TROUBLESHOOTING.md)
-- Browse [Documentation](../README.md)
-- Search [GitHub Issues](https://github.com/Sorcha-Platform/Sorcha/issues)
-- Ask in [GitHub Discussions](https://github.com/Sorcha-Platform/Sorcha/discussions)
-
-## Common Commands
-
-```bash
-# Restore packages
-dotnet restore
-
-# Build solution
-dotnet build
-
-# Run tests
-dotnet test
-
-# Run with Aspire
-dotnet run --project src/Sorcha.AppHost
-
-# Clean build artifacts
-dotnet clean
-
-# Format code
-dotnet format
-
-# Check for security vulnerabilities
-dotnet list package --vulnerable
-```
-
-Welcome to Sorcha! We're excited to have you here.
+- Search the [docs](../README.md) and existing [GitHub issues](https://github.com/Sorcha-Platform/Sorcha/issues).
+- Open a new issue with clear reproduction steps and environment details.
