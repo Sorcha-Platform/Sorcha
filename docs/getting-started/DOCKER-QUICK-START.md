@@ -90,7 +90,7 @@ open http://localhost:18888
 |---------|-----|-------------|
 | **PostgreSQL** | `localhost:5432` | User: `sorcha`, Password: `sorcha_dev_password` |
 | **MongoDB** | `localhost:27017` | User: `sorcha`, Password: `sorcha_dev_password` |
-| **Redis** | `localhost:6379` | No authentication |
+| **Redis** | `localhost:16379` (→ 6379 in-container) | No authentication |
 | **Aspire Dashboard** | `http://localhost:18888` | Observability dashboard |
 
 ### P2P Network
