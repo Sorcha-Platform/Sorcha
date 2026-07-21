@@ -210,6 +210,7 @@ graph TD
 | **Tenant Service** | Multi-tenant auth, JWT issuer, participant identity |
 | **Validator Service** | Transaction validation, consensus, docket building |
 | **Peer Service** | P2P network topology, gRPC replication |
+| **HAIP Service** | OpenID4VCI/VP external-wallet surface (credential issue + verify), reached via the gateway |
 
 ## Configuration
 

@@ -10,7 +10,7 @@ This constitution establishes the foundational principles, standards, and guidel
 
 ## Project Overview
 
-SORCHA is a decentralised register platform built on microservices architecture, providing secure, scalable blockchain capabilities through a suite of specialized services including Wallet, Tenant, Register, Peer, Blueprint, Action, and Validator services.
+SORCHA is a decentralised register platform built on microservices architecture, providing secure, scalable blockchain capabilities through a suite of specialized services: Blueprint, Register, Wallet, Tenant, Validator, Peer, HAIP, and the API Gateway. (The former standalone "Action" service was merged into the Blueprint Service.)
 
 ## Core Principles
 
@@ -47,7 +47,7 @@ SORCHA is a decentralised register platform built on microservices architecture,
 
 **Zero Trust Security Model**
 - All service-to-service communication must be authenticated
-- Implement API tokens for Dapr communication
+- Implement service tokens for service-to-service communication (orchestration is .NET Aspire, not Dapr)
 - Never commit secrets or sensitive configuration to source control
 - Use secret management (Azure Key Vault, Kubernetes secrets, local secret stores)
 
