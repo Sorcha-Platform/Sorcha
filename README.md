@@ -9,6 +9,32 @@ A decentralised register platform for secure, multi-participant data flow orches
 
 Sorcha lets organizations define structured workflows — called **blueprints** — where multiple parties exchange, validate, and record data with cryptographic guarantees. Every transaction is signed, every change is immutable, and every participant sees only what they're authorized to access.
 
+## Try it in one line
+
+With **Docker** and **git** installed, this downloads Sorcha, asks a few setup questions, generates your config, and brings the whole stack up:
+
+**macOS / Linux / WSL / Git Bash**
+```bash
+curl -fsSL https://raw.githubusercontent.com/Sorcha-Platform/Sorcha/master/scripts/install.sh | bash
+```
+
+**Windows PowerShell**
+```powershell
+irm https://raw.githubusercontent.com/Sorcha-Platform/Sorcha/master/scripts/install.ps1 | iex
+```
+
+When it finishes, open **http://localhost/app** and sign in with the credentials it prints. Add `--quiet` for a non-interactive, all-defaults install.
+
+<details><summary>Prefer to read the script before running it? (recommended for any <code>curl | bash</code>)</summary>
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Sorcha-Platform/Sorcha/master/scripts/install.sh -o sorcha-install.sh
+less sorcha-install.sh   # review it
+bash sorcha-install.sh
+```
+It clones this repo into `./sorcha` and hands off to [`scripts/sorcha-setup.sh`](scripts/sorcha-setup.sh) — the same interactive setup you can run yourself after a manual `git clone` (see [Quick Start](#quick-start)).
+</details>
+
 ## What Sorcha Does
 
 | Capability | Description |
@@ -32,7 +58,7 @@ Sorcha implements **DAD** (Disclosure, Alteration, Destruction):
 
 ## Quick Start
 
-For the full quickstart (every prerequisite with version constraint, every common failure mode with documented fix, the verify-installation curl), see **[`docs/quickstart.md`](docs/quickstart.md)**. That document is agent-runnable end-to-end and is the canonical setup reference.
+Fastest path is the [one-line installer above](#try-it-in-one-line). This section covers the manual equivalent and what the installer does under the hood. For the full quickstart (every prerequisite with version constraint, every common failure mode with documented fix, the verify-installation curl), see **[`docs/quickstart.md`](docs/quickstart.md)** — the canonical, agent-runnable setup reference.
 
 The short version:
 
