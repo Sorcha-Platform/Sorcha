@@ -130,16 +130,24 @@ public class Transaction : ITransaction
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Review M1 (DEFERRED — see the security-hardening backlog): this verify is a placeholder —
-    /// it computes the signing hash but never compares it against the signature (public-key
-    /// extraction is a "return success as placeholder" TODO), so it returns
-    /// <see cref="TransactionStatus.Success"/> for any signed transaction with valid payloads.
-    /// It is NOT on any live path (the V1 <c>TransactionFactory</c> is not DI-registered; the real
-    /// validator verifies via <c>ICryptoModule.VerifyAsync</c>) and has no non-test callers, so the
-    /// risk is purely latent. Making it fail loud is the right fix, but V1 is the module's only
-    /// implemented transaction version and an entire signing/verification test suite asserts this
-    /// behaviour — resolving it needs a decision (implement real V1 verification vs excise the V1
-    /// verify path + its no-op tests), which is out of scope for the mechanical Bucket-B pass.
+    /// <para>
+    /// This V1 in-model verify does NOT cryptographically verify the signature. The whole V1
+    /// sign/verify path is placeholder scaffolding: <see cref="SignAsync"/> never derives a
+    /// public key, hardcodes <c>SenderWallet = "ws1temp"</c>, and does not decode the WIF — so
+    /// there is no public key stored on or recoverable from the transaction to verify against.
+    /// Real verification is therefore impossible here without building the entire key-derivation
+    /// chain; the live validator path verifies via <c>ICryptoModule.VerifyAsync</c> with a
+    /// resolved key, and this type has no non-test callers (the V1 <c>TransactionFactory</c> is
+    /// not DI-registered).
+    /// </para>
+    /// <para>
+    /// It previously returned <see cref="TransactionStatus.Success"/> for any signed transaction
+    /// with valid payloads — affirming a signature it never checked. It now fails closed with
+    /// <see cref="TransactionStatus.VerificationNotImplemented"/> so nothing can build on a false
+    /// "verified". The payload check still runs first: an invalid payload is a real, detectable
+    /// failure worth surfacing, and a genuinely unsigned transaction still returns
+    /// <see cref="TransactionStatus.NotSigned"/>.
+    /// </para>
     /// </remarks>
     public async Task<TransactionStatus> VerifyAsync(
         CancellationToken cancellationToken = default)
@@ -149,20 +157,14 @@ public class Transaction : ITransaction
 
         try
         {
-            // Compute signing hash
-            var signingData = SerializeForSigning();
-            var hash1 = _hashProvider.ComputeHash(signingData, HashType.SHA256);
-            var hash2 = _hashProvider.ComputeHash(hash1, HashType.SHA256);
-
-            // TODO: Extract public key from wallet address
-            // For now, return success as placeholder
-
-            // Verify payloads
+            // Payloads are still genuinely checkable, so a bad payload is reported honestly.
             var payloadsValid = await PayloadManager.VerifyAllAsync();
             if (!payloadsValid)
                 return TransactionStatus.InvalidPayload;
 
-            return TransactionStatus.Success;
+            // Fail closed: the signature itself cannot be verified for V1 (no recoverable public
+            // key — see the remarks). Never return Success for an unchecked signature.
+            return TransactionStatus.VerificationNotImplemented;
         }
         catch
         {

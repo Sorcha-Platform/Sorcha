@@ -68,6 +68,52 @@ public class OidcProvisioningServiceTests : IDisposable
         user.Status.Should().Be(IdentityStatus.Active);
     }
 
+    /// <summary>
+    /// #1212 — the OIDC path matches and provisions purely by email (the IdP subject is not persisted),
+    /// so an unverified email cannot be trusted as an identity key. A login whose IdP did not assert
+    /// email_verified must be refused, not silently matched or provisioned.
+    /// </summary>
+    [Fact]
+    public async Task ProvisionOrMatchUserAsync_UnverifiedEmail_IsRefused()
+    {
+        var service = CreateService();
+        var claims = CreateClaims(sub: "oidc|unverified", email: "attacker@example.com", name: "Mallory",
+            emailVerified: false);
+
+        var act = () => service.ProvisionOrMatchUserAsync(_testOrgId, claims, CancellationToken.None);
+
+        await act.Should().ThrowAsync<OidcEmailNotVerifiedException>();
+    }
+
+    [Fact]
+    public async Task ProvisionOrMatchUserAsync_UnverifiedEmail_DoesNotMatchAnExistingUser()
+    {
+        // The takeover vector: an existing account must NOT be handed to a login carrying that email
+        // unverified. Refuse before matching, and leave the existing user's LastLoginAt untouched.
+        var service = CreateService();
+        var existing = new UserIdentity
+        {
+            OrganizationId = _testOrgId,
+            PlatformUserId = Guid.NewGuid(),
+            Email = "victim@example.com",
+            DisplayName = "Victim",
+            Roles = [UserRole.Consumer],
+            ProvisionedVia = ProvisioningMethod.Oidc,
+            LastLoginAt = DateTimeOffset.UtcNow.AddDays(-30),
+        };
+        _dbContext.UserIdentities.Add(existing);
+        await _dbContext.SaveChangesAsync();
+        var originalLogin = existing.LastLoginAt;
+
+        var claims = CreateClaims(sub: "oidc|attacker", email: "victim@example.com", name: "Not The Victim",
+            emailVerified: false);
+
+        var act = () => service.ProvisionOrMatchUserAsync(_testOrgId, claims, CancellationToken.None);
+
+        await act.Should().ThrowAsync<OidcEmailNotVerifiedException>();
+        existing.LastLoginAt.Should().Be(originalLogin, "an unverified login must not touch the existing account");
+    }
+
     [Fact]
     public async Task ProvisionOrMatchUserAsync_ReturningUser_ReturnsExistingAndUpdatesLastLoginAt()
     {
@@ -265,7 +311,7 @@ public class OidcProvisioningServiceTests : IDisposable
         string? upn = null,
         string? givenName = null,
         string? familyName = null,
-        bool emailVerified = false)
+        bool emailVerified = true)   // #1212: provisioning now requires a verified email; default the happy path to true
     {
         return new OidcUserClaims
         {

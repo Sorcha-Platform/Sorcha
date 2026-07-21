@@ -195,15 +195,19 @@ public class OrgKeyDerivationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task RevokeKeyAsync_IdentityKey_LogsDIDRevocation()
+    public async Task RevokeKeyAsync_IdentityKey_RevokesCleanly_WithoutClaimingADidRevocation()
     {
-        // Arrange
+        // Identity keys are never published into a DID document and nothing resolves them, so the DB
+        // revocation is the whole of it — there is no DID revocation to publish. This used to log
+        // "DID revocation event should be published (… not yet implemented)", implying a missing
+        // publish step for a key that is never published; that misleading warning is gone.
         var (_, derivedKey) = await SeedActiveKey(KeyUsage.Identity);
 
-        // Act
         await _sut.RevokeKeyAsync(OrgId, derivedKey.Id);
 
-        // Assert - verify logger was called with DID revocation message
+        var record = await _dbContext.DerivedKeyRecords.FindAsync(derivedKey.Id);
+        record!.Status.Should().Be(DerivedKeyStatus.Revoked);
+
         _loggerMock.Verify(
             x => x.Log(
                 LogLevel.Warning,
@@ -211,7 +215,36 @@ public class OrgKeyDerivationServiceTests : IDisposable
                 It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("DID revocation event should be published")),
                 It.IsAny<Exception?>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.Once);
+            Times.Never,
+            "Identity keys are not published to a DID document, so no phantom DID-revocation warning should be logged");
+    }
+
+    /// <summary>
+    /// The real "revoked-but-resolvable" inconsistency: the org DID document is built from
+    /// IssuanceKeyState (Active slots), not DerivedKeyRecord.Status. Revoking a VCIssuance key via this
+    /// F083 path leaves the key in the published did.json, still honoured by verifiers. Behaviour is
+    /// unchanged (the DB revoke still happens), but it must warn loudly rather than fail silently.
+    /// The unify-or-refuse decision is tracked separately.
+    /// </summary>
+    [Fact]
+    public async Task RevokeKeyAsync_VCIssuanceKey_WarnsThatTheDidDocumentIsNotUpdated()
+    {
+        var (_, derivedKey) = await SeedActiveKey(KeyUsage.VCIssuance);
+
+        await _sut.RevokeKeyAsync(OrgId, derivedKey.Id);
+
+        var record = await _dbContext.DerivedKeyRecords.FindAsync(derivedKey.Id);
+        record!.Status.Should().Be(DerivedKeyStatus.Revoked, "the DB revoke still happens");
+
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Warning,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("does NOT update the published org DID document")),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once,
+            "revoking a resolvable VCIssuance key via this path must warn that it stays in did.json");
     }
 
     #endregion

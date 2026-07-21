@@ -27,7 +27,7 @@ public class SigningVerificationTests
     }
 
     [Fact]
-    public async Task SignAndVerify_CompleteWorkflow_ShouldSucceed()
+    public async Task SignAndVerify_CompleteWorkflow_SigningSucceeds_VerifyFailsClosed()
     {
         // Arrange
         var builder = new TransactionBuilder(_cryptoModule, _hashProvider, _symmetricCrypto);
@@ -47,7 +47,7 @@ public class SigningVerificationTests
         var verifyStatus = await transaction.VerifyAsync();
 
         // Assert
-        Assert.Equal(TransactionStatus.Success, verifyStatus);
+        Assert.Equal(TransactionStatus.VerificationNotImplemented, verifyStatus);
         Assert.NotNull(transaction.Signature);
         Assert.NotNull(transaction.TxId);
     }
@@ -97,8 +97,9 @@ public class SigningVerificationTests
         Assert.True(ed25519Transaction.IsSuccess);
         Assert.NotNull(ed25519Transaction.Value!.Signature);
 
+        // Signing is the subject; V1 verify fails closed (see Transaction.VerifyAsync).
         var ed25519VerifyStatus = await ed25519Transaction.Value!.VerifyAsync();
-        Assert.Equal(TransactionStatus.Success, ed25519VerifyStatus);
+        Assert.Equal(TransactionStatus.VerificationNotImplemented, ed25519VerifyStatus);
     }
 
     [Fact]
@@ -118,7 +119,7 @@ public class SigningVerificationTests
     }
 
     [Fact]
-    public async Task SignedTransaction_IsImmutable_ShouldVerify()
+    public async Task SignedTransaction_IsImmutable_VerifyFailsClosed()
     {
         // Arrange
         var builder = new TransactionBuilder(_cryptoModule, _hashProvider, _symmetricCrypto);
@@ -137,14 +138,14 @@ public class SigningVerificationTests
         var verifyStatus = await transaction.VerifyAsync();
 
         // Assert - Transaction should be properly signed and immutable
-        Assert.Equal(TransactionStatus.Success, verifyStatus);
+        Assert.Equal(TransactionStatus.VerificationNotImplemented, verifyStatus);
         Assert.NotNull(transaction.Signature);
         Assert.NotNull(transaction.TxId);
         Assert.NotNull(transaction.Metadata);
     }
 
     [Fact]
-    public async Task MultipleTransactions_DifferentSigners_ShouldAllVerify()
+    public async Task MultipleTransactions_DifferentSigners_ProduceUniqueSignatures()
     {
         // Arrange - Create three different wallets and transactions
         var wallet1 = await TestHelpers.GenerateTestWalletAsync(WalletNetworks.ED25519);
@@ -175,9 +176,9 @@ public class SigningVerificationTests
             .Build().Value!;
 
         // Assert - All should verify
-        Assert.Equal(TransactionStatus.Success, await tx1.VerifyAsync());
-        Assert.Equal(TransactionStatus.Success, await tx2.VerifyAsync());
-        Assert.Equal(TransactionStatus.Success, await tx3.VerifyAsync());
+        Assert.Equal(TransactionStatus.VerificationNotImplemented, await tx1.VerifyAsync());
+        Assert.Equal(TransactionStatus.VerificationNotImplemented, await tx2.VerifyAsync());
+        Assert.Equal(TransactionStatus.VerificationNotImplemented, await tx3.VerifyAsync());
 
         // All should have unique signatures
         Assert.NotEqual(Convert.ToBase64String(tx1.Signature!), Convert.ToBase64String(tx2.Signature!));
@@ -218,7 +219,7 @@ public class SigningVerificationTests
     }
 
     [Fact]
-    public async Task TransactionWithPayloads_SignatureCoversAllData_ShouldVerify()
+    public async Task TransactionWithPayloads_SignatureCoversAllData_VerifyFailsClosed()
     {
         // Arrange
         var builder = new TransactionBuilder(_cryptoModule, _hashProvider, _symmetricCrypto);
@@ -243,7 +244,7 @@ public class SigningVerificationTests
         var verifyStatus = await transaction.VerifyAsync();
 
         // Assert
-        Assert.Equal(TransactionStatus.Success, verifyStatus);
+        Assert.Equal(TransactionStatus.VerificationNotImplemented, verifyStatus);
     }
 
     [Fact]
@@ -300,11 +301,11 @@ public class SigningVerificationTests
         Assert.True(transaction.Signature.Length > 0);
 
         var verifyStatus = await transaction.VerifyAsync();
-        Assert.Equal(TransactionStatus.Success, verifyStatus);
+        Assert.Equal(TransactionStatus.VerificationNotImplemented, verifyStatus);
     }
 
     [Fact]
-    public async Task TransactionChain_AllSignaturesVerify_ShouldSucceed()
+    public async Task TransactionChain_ProducesLinkedSignatures()
     {
         // Arrange - Create a chain of transactions
         var wallet = await TestHelpers.GenerateTestWalletAsync(WalletNetworks.ED25519);
@@ -336,9 +337,9 @@ public class SigningVerificationTests
             .Build().Value!;
 
         // Act & Assert - All signatures should verify
-        Assert.Equal(TransactionStatus.Success, await tx1.VerifyAsync());
-        Assert.Equal(TransactionStatus.Success, await tx2.VerifyAsync());
-        Assert.Equal(TransactionStatus.Success, await tx3.VerifyAsync());
+        Assert.Equal(TransactionStatus.VerificationNotImplemented, await tx1.VerifyAsync());
+        Assert.Equal(TransactionStatus.VerificationNotImplemented, await tx2.VerifyAsync());
+        Assert.Equal(TransactionStatus.VerificationNotImplemented, await tx3.VerifyAsync());
 
         // Verify chain integrity
         Assert.Equal(tx1.TxId, tx2.PreviousTxHash);

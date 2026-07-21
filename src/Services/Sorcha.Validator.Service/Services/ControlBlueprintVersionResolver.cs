@@ -334,34 +334,38 @@ public class ControlBlueprintVersionResolver : IControlBlueprintVersionResolver
         ControlBlueprintVersionInfo versionInfo,
         CancellationToken ct)
     {
-        // Get the configuration that was active at this version
-        // For now, we use the current genesis config and apply changes up to this version
-        // A more complete implementation would reconstruct the config at each version
-
+        // The only configuration this resolver can retrieve is the CURRENT one
+        // (GetFullConfigAsync). That is the genuine configuration of the ACTIVE version — but for a
+        // superseded historical version it is the wrong answer, and this method used to return it
+        // anyway, stamped with the historical version's number. A point-in-time query for "the
+        // control config as of version N" (or as-of a past timestamp) therefore silently received
+        // today's config wearing an old version's label.
+        //
+        // Reconstructing a historical config means replaying the control transactions onto the
+        // genesis configuration (the deltas are retained on-chain; see FindControlTransactionsAsync
+        // / DetermineChangeType), which is not implemented and no per-version snapshot is stored to
+        // shortcut it. Until that exists, this fails closed for superseded versions rather than
+        // returning a confident-but-wrong configuration: a caller that audits or validates against
+        // "the config as of that version" must not be handed the current one and told it is historic.
         var config = await _genesisConfigService.GetFullConfigAsync(registerId, ct);
 
-        // If this is the genesis version, use the config as-is
-        if (versionInfo.VersionNumber == 1)
+        if (!versionInfo.IsActive)
         {
-            return new ResolvedControlBlueprintVersion
-            {
-                RegisterId = registerId,
-                VersionNumber = 1,
-                TransactionId = versionInfo.TransactionId,
-                ActiveFrom = versionInfo.ActiveFrom,
-                Configuration = config,
-                IsActive = versionInfo.IsActive,
-                PreviousVersionTransactionId = null,
-                ChangeDescription = versionInfo.ChangeDescription
-            };
+            throw new NotSupportedException(
+                $"Cannot resolve the control-blueprint configuration as of version {versionInfo.VersionNumber} "
+                + $"on register '{registerId}': historical configuration reconstruction is not implemented, and "
+                + "only the active version's configuration is retrievable. Returning the current configuration "
+                + "labelled as this historical version would be incorrect. Version metadata (number, transaction, "
+                + "activation time) is available via GetVersionHistoryAsync without reconstructing the config.");
         }
 
-        // For later versions, we would need to reconstruct the config state
-        // For now, we return the current config with version metadata
-        // TODO: Implement proper config reconstruction by replaying control transactions
-
-        var history = await GetVersionHistoryAsync(registerId, ct);
-        var previousVersion = history.FirstOrDefault(v => v.VersionNumber == versionInfo.VersionNumber - 1);
+        // The active version's configuration genuinely IS the current configuration. For a
+        // genesis-only register this is version 1; after updates it is the latest version. Either
+        // way the label matches the payload, so this branch is honest.
+        var previousVersionTransactionId = versionInfo.VersionNumber == 1
+            ? null
+            : (await GetVersionHistoryAsync(registerId, ct))
+                .FirstOrDefault(v => v.VersionNumber == versionInfo.VersionNumber - 1)?.TransactionId;
 
         return new ResolvedControlBlueprintVersion
         {
@@ -369,9 +373,9 @@ public class ControlBlueprintVersionResolver : IControlBlueprintVersionResolver
             VersionNumber = versionInfo.VersionNumber,
             TransactionId = versionInfo.TransactionId,
             ActiveFrom = versionInfo.ActiveFrom,
-            Configuration = config, // Current config - TODO: reconstruct historical state
+            Configuration = config,
             IsActive = versionInfo.IsActive,
-            PreviousVersionTransactionId = previousVersion?.TransactionId,
+            PreviousVersionTransactionId = previousVersionTransactionId,
             ChangeDescription = versionInfo.ChangeDescription
         };
     }

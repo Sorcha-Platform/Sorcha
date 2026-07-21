@@ -216,9 +216,23 @@ public static class OidcEndpoints
             }
         }
 
-        // Provision or match the user using the extracted claims
-        var (user, isFirstLogin) = await provisioningService.ProvisionOrMatchUserAsync(
-            org.Id, exchangeResult.Claims!, cancellationToken);
+        // Provision or match the user using the extracted claims. Refused (403) when the IdP did not
+        // verify the email — email is the only identity key on this path, so an unverified one is unsafe.
+        UserIdentity user;
+        bool isFirstLogin;
+        try
+        {
+            (user, isFirstLogin) = await provisioningService.ProvisionOrMatchUserAsync(
+                org.Id, exchangeResult.Claims!, cancellationToken);
+        }
+        catch (OidcEmailNotVerifiedException ex)
+        {
+            return TypedResults.Json(new OidcCallbackResult
+            {
+                Success = false,
+                Error = ex.Message
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
 
         // Check if 2FA is required
         var totpStatus = await totpService.GetStatusAsync(user.Id, cancellationToken);

@@ -31,8 +31,9 @@ public class ActionApiIntegrationTests : IClassFixture<BlueprintServiceWebApplic
     [Fact]
     public async Task GetAvailableBlueprints_WithPublishedBlueprints_ReturnsBlueprints()
     {
-        // Arrange
-        var wallet = "test-wallet-001";
+        // Arrange — the caller must own the wallet in the path (#1213). The test principal owns
+        // TestOwnedWalletAddress via the factory's owner-keyed wallet mock.
+        var wallet = BlueprintServiceWebApplicationFactory.TestOwnedWalletAddress;
         var register = "test-register-001";
 
         // Create and publish a blueprint via the API
@@ -63,8 +64,8 @@ public class ActionApiIntegrationTests : IClassFixture<BlueprintServiceWebApplic
     [Fact]
     public async Task GetAvailableBlueprints_WithDifferentWalletRegister_ReturnsValidResponse()
     {
-        // Arrange - different wallet/register than other tests
-        var wallet = "test-wallet-002";
+        // Arrange - different register; caller must still own the wallet in the path (#1213).
+        var wallet = BlueprintServiceWebApplicationFactory.TestOwnedWalletAddress;
         var register = "test-register-002";
 
         // Act

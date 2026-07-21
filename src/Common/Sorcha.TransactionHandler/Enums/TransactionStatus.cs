@@ -50,5 +50,14 @@ public enum TransactionStatus
     /// <summary>
     /// Access denied to payload
     /// </summary>
-    AccessDenied = 8
+    AccessDenied = 8,
+
+    /// <summary>
+    /// The transaction is signed, but this transaction version cannot cryptographically
+    /// verify the signature — verification is not implemented for it. This is a fail-closed
+    /// result, never <see cref="Success"/>: a caller must treat it as "not verified", not
+    /// "verified". The live validator path verifies via <c>ICryptoModule.VerifyAsync</c>;
+    /// the V1 in-model verify is placeholder scaffolding with no production caller.
+    /// </summary>
+    VerificationNotImplemented = 9
 }
