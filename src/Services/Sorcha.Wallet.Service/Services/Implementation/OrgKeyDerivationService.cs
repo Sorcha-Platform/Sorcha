@@ -479,14 +479,32 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
             wallet.Status = WalletStatus.Locked;
         }
 
-        // If this is an Identity key, log that a DID revocation event should be published
-        if (record.KeyUsage == KeyUsage.Identity)
+        // A note on the DID side, per KeyUsage — because "revoke" here only changes the F083
+        // DerivedKeyRecord/wallet state, never a published DID document:
+        //
+        //  * Identity keys are NOT published into any did:sorcha:org document and nothing in the
+        //    codebase resolves or verifies against a KeyUsage.Identity key — so there is no DID
+        //    revocation to publish and the DB revocation above is the whole of it. (The earlier
+        //    "DID revocation service not yet implemented" TODO implied a missing publish step for a
+        //    key that is never published in the first place.)
+        //
+        //  * VCIssuance keys ARE resolvable — but through a DIFFERENT subsystem (Feature 120/149:
+        //    IssuanceKeyService + the Tenant OrgDidDocumentService). That org DID document is built
+        //    from IssuanceKeyState (Active slots only), NOT from DerivedKeyRecord.Status. Revoking a
+        //    VCIssuance key via THIS path marks the DerivedKeyRecord Revoked but leaves IssuanceKeyState
+        //    Active, so the key stays in the published did.json and is still honoured by verifiers.
+        //    That is a real "revoked-but-resolvable" inconsistency; the correct surface for a VCIssuance
+        //    key is POST /api/v1/orgs/{orgId}/issuance-key/revoke, which republishes the DID document.
+        //    Whether this endpoint should refuse VCIssuance keys or delegate to that pipeline is a
+        //    design decision tracked separately — until then, warn loudly rather than fail silently.
+        if (record.KeyUsage == KeyUsage.VCIssuance)
         {
-            // TODO: Publish DID revocation event when DID revocation service is available
             _logger.LogWarning(
-                "Identity key {DerivedKeyRecordId} revoked for wallet {WalletAddress}. " +
-                "DID revocation event should be published (DID revocation service not yet implemented).",
-                derivedKeyRecordId, record.WalletAddress);
+                "VCIssuance key {DerivedKeyRecordId} for wallet {WalletAddress} was revoked via the F083 org-key "
+                + "endpoint. This does NOT update the published org DID document — the key remains resolvable and "
+                + "honoured by verifiers until it is revoked via the issuance-key endpoint "
+                + "(POST /api/v1/orgs/{OrganizationId}/issuance-key/revoke). Revoke it there to drop it from did.json.",
+                derivedKeyRecordId, record.WalletAddress, record.OrganizationId);
         }
 
         await _db.SaveChangesAsync(ct);
