@@ -340,6 +340,25 @@ ask_configuration() {
     echo "Sorcha can use Claude AI for interactive blueprint design."
     ask "Anthropic API key (leave empty to skip)" "" ANTHROPIC_API_KEY
 
+    # Transactional email (Feature 112) — verification / invite / welcome emails.
+    echo ""
+    echo -e "${BOLD}Transactional Email (Optional)${NC}"
+    echo "The Tenant Service sends verification / invite / welcome emails."
+    echo "Leave the connection string empty for local dev (emails are skipped, not sent)."
+    ask "Azure Communication Services email connection string (leave empty to skip)" "" ACS_EMAIL_CONNECTION_STRING
+    if [ -n "$ACS_EMAIL_CONNECTION_STRING" ]; then
+        ask "From address for outbound email" "noreply@sorcha.dev" EMAIL_FROM_ADDRESS
+    else
+        EMAIL_FROM_ADDRESS="noreply@sorcha.dev"
+    fi
+    EMAIL_FROM_NAME="Sorcha Platform"
+    # Base URL used to build links in email bodies — derive from the installation name.
+    if [ "$INSTALLATION_NAME" = "localhost" ]; then
+        EMAIL_BASE_URL="http://localhost"
+    else
+        EMAIL_BASE_URL="https://${INSTALLATION_NAME}"
+    fi
+
     # Peer network
     echo ""
     echo -e "${BOLD}Peer Network (Optional)${NC}"
@@ -397,11 +416,26 @@ ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT}
 # AI Integration
 ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 
+# Transactional Email (Feature 112 — leave the ACS connection string empty for no email in dev)
+ACS_EMAIL_CONNECTION_STRING=${ACS_EMAIL_CONNECTION_STRING:-}
+EMAIL_BASE_URL=${EMAIL_BASE_URL:-http://localhost}
+EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS:-noreply@sorcha.dev}
+EMAIL_FROM_NAME=${EMAIL_FROM_NAME:-Sorcha Platform}
+
+# Social Login OAuth (optional — fill in to enable Google / GitHub sign-in;
+# see docs/guides/SOCIAL-LOGIN-SETUP.md)
+GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-}
+GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET:-}
+GITHUB_OAUTH_CLIENT_ID=${GITHUB_OAUTH_CLIENT_ID:-}
+GITHUB_OAUTH_CLIENT_SECRET=${GITHUB_OAUTH_CLIENT_SECRET:-}
+
 # Peer Network
 PEER_NODE_ID=${PEER_NODE_ID}
+PEER_PUBLIC_ADDRESS=${PEER_PUBLIC_ADDRESS:-}
 SEED_PEER_NODE_ID=${SEED_PEER_NODE_ID}
 SEED_PEER_HOST=${SEED_PEER_HOST}
 SEED_PEER_PORT=${SEED_PEER_PORT}
+SEED_PEER_ENABLE_TLS=${SEED_PEER_ENABLE_TLS:-false}
 ENVFILE
 
     success ".env file written"
