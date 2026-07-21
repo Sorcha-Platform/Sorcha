@@ -277,6 +277,8 @@ grpcurl -plaintext -d '{
 
 ## Configuration
 
+> ⚠️ **Stale-config warning (2026-07-21).** The `CentralNode:*` / hub-node (`n0`/`n1`/`n2`) configuration model described in the sections below is **superseded and no longer bound by the service.** `Program.cs` binds a single `PeerService` section (`builder.Configuration.GetSection("PeerService")` → `PeerServiceConfiguration`), whose sub-objects are `SeedNodes`, `RegisterSync`, `PeerDiscovery`, `Communication`, etc. — there is no `GetSection("CentralNode")` anywhere. The hub/central-node topology was replaced by seed/anchor rendezvous (Feature 143, which also retired the standalone `Sorcha.PeerRouter` app). Treat the `CentralNode`/PeerRouter material below as historical until this section is rewritten against `Core/PeerServiceConfiguration.cs`.
+
 ### appsettings.json Structure
 
 ```json

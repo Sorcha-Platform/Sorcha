@@ -111,13 +111,12 @@ public class RegisterManager
         _repository = repository;
     }
 
-    public async Task<Register> CreateRegisterAsync(string name, string tenantId)
+    public async Task<Register> CreateRegisterAsync(string name)
     {
         var register = new Register
         {
             Id = Guid.NewGuid().ToString("N"),
             Name = name,
-            TenantId = tenantId,
             Status = RegisterStatus.Online
         };
 
@@ -296,8 +295,7 @@ public class RegisterManagerTests
         var register = await _repository.InsertRegisterAsync(new Register
         {
             Id = "test-register",
-            Name = "Test",
-            TenantId = "tenant-1"
+            Name = "Test"
         });
 
         var docket = new Docket

@@ -17,10 +17,11 @@ This library provides a unified abstraction layer for multi-tier storage in the 
 | Interface | Purpose | Tier |
 |-----------|---------|------|
 | `ICacheStore` | High-performance key-value cache | Hot |
-| `IRepository<TEntity, TId>` | CRUD operations for relational data | Warm |
 | `IDocumentStore<TDocument, TId>` | Flexible schema document storage | Warm |
 | `IWormStore<TDocument, TId>` | Append-only immutable storage | Cold |
 | `IVerifiedCache<TDocument, TId>` | Cache with WORM verification | Hot + Cold |
+
+> **There is no generic `IRepository<T>` here (or anywhere).** Relational/operational persistence is done through **service-specific** repository interfaces (`IWalletRepository`, `IRegisterRepository`, `IInstanceStore`, `IActionStore`, …), each with its own EF Core / MongoDB / Redis / in-memory implementation chosen at registration time (see CLAUDE.md Pattern #5 / #10). This package provides the cross-cutting tiered seams above, not a generic entity repository.
 
 ### Verified Cache
 
@@ -148,32 +149,15 @@ public class MyService
 }
 ```
 
-### Repository (Relational Data)
+### Relational / operational data — service-specific repositories
+
+Relational persistence is **not** provided by a generic interface in this package. Each service defines its own repository interface and depends on it directly; the backend (EF Core / MongoDB / Redis / in-memory) is chosen at registration time (CLAUDE.md Pattern #5 / #10):
 
 ```csharp
-public class WalletService
+public class WalletService(IWalletRepository repository)
 {
-    private readonly IRepository<Wallet, Guid> _repository;
-
-    public async Task<Wallet> CreateWalletAsync(CreateWalletRequest request)
-    {
-        var wallet = new Wallet
-        {
-            Id = Guid.NewGuid(),
-            Name = request.Name,
-            Algorithm = request.Algorithm
-        };
-
-        await _repository.AddAsync(wallet);
-        await _repository.SaveChangesAsync();
-
-        return wallet;
-    }
-
-    public async Task<PagedResult<Wallet>> GetWalletsAsync(int page, int pageSize)
-    {
-        return await _repository.GetPagedAsync(page, pageSize);
-    }
+    public Task<Wallet> CreateWalletAsync(CreateWalletRequest request) =>
+        repository.AddAsync(new Wallet { Id = Guid.NewGuid(), Name = request.Name, Algorithm = request.Algorithm });
 }
 ```
 
@@ -254,8 +238,8 @@ public class DocketQueryService
 ┌─────────────────────────▼───────────────────────────────────┐
 │              Storage Abstractions Layer                      │
 │  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────┐ │
-│  │ ICacheStore  │ │ IRepository  │ │ IVerifiedCache       │ │
-│  │ IDocumentStore│ │ IWormStore  │ │ (Cache + WORM)       │ │
+│  │ ICacheStore  │ │ IDocumentStore│ │ IVerifiedCache       │ │
+│  │              │ │ IWormStore   │ │ (Cache + WORM)       │ │
 │  └──────────────┘ └──────────────┘ └──────────────────────┘ │
 └─────────────────────────┬───────────────────────────────────┘
                           │
@@ -337,9 +321,10 @@ public class MyServiceTests
 
 - `Sorcha.Storage.InMemory` - In-memory implementations for testing
 - `Sorcha.Storage.Redis` - Redis cache implementation
-- `Sorcha.Storage.EFCore` - Entity Framework Core repository
 - `Sorcha.Storage.MongoDB` - MongoDB document and WORM stores
 - `Sorcha.Register.Storage` - Register Service storage integration
+
+(There is no `Sorcha.Storage.EFCore` package — EF Core persistence lives in each service's own `EfCore*Store` against its service-specific repository interface.)
 
 ## License
 
