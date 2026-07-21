@@ -533,7 +533,7 @@ const client = new SorchaNotificationClient(`http://localhost/hubs/blueprint?acc
 
 client.on('InstanceAdvanced', async (instanceId) => {
   // Pull full detail via the authenticated REST endpoint.
-  const res = await fetch(`http://localhost/api/blueprints/instances/${instanceId}`, {
+  const res = await fetch(`http://localhost/api/instances/${instanceId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   updateUI(await res.json());

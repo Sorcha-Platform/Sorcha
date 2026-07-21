@@ -24,10 +24,8 @@ Sorcha/
 │   │       ├── Sorcha.UI.Core/                 # Shared admin/designer/explorer UI components
 │   │       ├── Sorcha.UI.Components.User/      # Shared user-facing components, web + PWA (Feature 122)
 │   │       ├── Sorcha.UI.Web/                  # Web host
-│   │       ├── Sorcha.UI.Web.Client/           # Web client (Blazor WASM)
-│   │       └── tests/                          # UI-scoped test projects
-│   │           ├── Sorcha.UI.Core.Tests/
-│   │           └── Sorcha.UI.Integration.Tests/
+│   │       └── Sorcha.UI.Web.Client/           # Web client (Blazor WASM)
+│   │                                            # (UI test projects live under top-level tests/, not here)
 │   ├── Common/                                 # Cross-cutting libraries (no business logic)
 │   │   ├── Sorcha.AddressLookup/               # Postal-address lookup abstractions
 │   │   ├── Sorcha.AtomicCache/                 # IAtomicDistributedCache (GETDEL + Lua CAS primitive)
@@ -70,7 +68,7 @@ Sorcha/
 │       ├── Sorcha.Tenant.Service/              # Multi-tenant auth, JWT, Participant/Platform Identity
 │       ├── Sorcha.Validator.Service/           # Consensus + chain integrity
 │       └── Sorcha.Wallet.Service/              # Crypto wallet management
-├── tests/                                      # ~52 top-level test projects (plus 2 UI-scoped tests under src/Apps/Sorcha.UI/tests)
+├── tests/                                      # 59 test projects (unit / integration / E2E), UI tests included
 │   ├── Sorcha.Testing/                         # Shared test factory / fixtures
 │   ├── {Project}.Tests/                        # Unit tests
 │   ├── {Project}.IntegrationTests/             # Integration tests (real DB/services)
@@ -93,7 +91,7 @@ Sorcha/
 └── Sorcha.sln                                  # Solution file
 ```
 
-**Counts (2026-06-03):** 7 standalone App projects + 4 UI projects (under `Sorcha.UI/`), 19 Common libraries, 10 Core libraries, 1 Providers project, 8 Services. Tests: ~52 top-level test projects (under `tests/`) + 2 UI-scoped test projects (under `src/Apps/Sorcha.UI/tests/`).
+**Counts (2026-07-21, csproj-verified):** 8 standalone App projects + 4 UI projects (under `Sorcha.UI/`), 26 Common libraries, 10 Core libraries, 1 Providers project, 8 Services. Tests: 59 test projects, **all under top-level `tests/`** — including the UI test projects (`Sorcha.UI.Core.Tests`, `Sorcha.UI.Components.User.Tests`, `Sorcha.UI.E2E.Tests`, `Sorcha.UI.Testing`). Undocumented Common libraries worth noting: `Sorcha.Mdoc` + `Sorcha.Proximity.*` (F185 mobile proximity), `Sorcha.Wallet.Contracts`, `Sorcha.Cryptography.Secp256k1`, `Sorcha.Reader`, `Sorcha.Serialization`.
 
 ## Layer Purposes
 
@@ -119,7 +117,7 @@ REST, gRPC, and background services. Each service owns its endpoints, mappers, D
 
 ### tests/
 
-Top-level test root. Naming: `{Project}.Tests` for unit, `{Project}.IntegrationTests` (or `.Integration.Tests`) for integration, `.E2E.Tests` for end-to-end, `.Benchmarks` for BenchmarkDotNet harnesses. `Sorcha.Testing` is a shared test-utilities project consumed by others. UI-scoped test projects live under `src/Apps/Sorcha.UI/tests/` so they travel with the UI solution.
+Top-level test root — **every** test project lives here, including the UI ones. Naming: `{Project}.Tests` for unit, `{Project}.IntegrationTests` (or `.Integration.Tests`) for integration, `.E2E.Tests` for end-to-end, `.Benchmarks` for BenchmarkDotNet harnesses. `Sorcha.Testing` / `Sorcha.UI.Testing` are shared test-utility projects consumed by others.
 
 ## Dependency Rules
 
@@ -172,7 +170,7 @@ All projects target **`net10.0`** (C# 14). Central package management via `Direc
 2. Match naming conventions above.
 3. Target `net10.0`; rely on `Directory.Packages.props` for package versions (no inline `Version=` attributes on `PackageReference`).
 4. Add to the solution: `dotnet sln add src/{Layer}/{Name}/{Name}.csproj`.
-5. Create a matching test project under `tests/` (or under `src/Apps/Sorcha.UI/tests/` for UI-internal tests).
+5. Create a matching test project under top-level `tests/` (this is where all test projects live, UI included).
 6. Verify layer dependency rules hold (no upward refs).
 7. Update this file and, if the project adds new endpoints or cross-cutting patterns, update `CLAUDE.md`, `docs/reference/API-DOCUMENTATION.md`, and the relevant skill under `.claude/skills/`.
 
@@ -181,7 +179,7 @@ All projects target **`net10.0`** (C# 14). Central package management via `Direc
 - **Business logic in `Common/`** — move to `Core/`. `Common/` is for models, abstractions, and framework-agnostic utilities.
 - **Inline package versions** — central versioning lives in `Directory.Packages.props`; adding `Version=` to a `PackageReference` breaks the build.
 - **Circular refs** — `Common/` never depends on `Core/` / `Services/` / `Apps/`.
-- **Test project in the wrong root** — UI-scoped tests belong under `src/Apps/Sorcha.UI/tests/`; everything else under top-level `tests/`.
+- **Test project in the wrong root** — all test projects (UI included) belong under top-level `tests/`, never under `src/`.
 - **Missing `Sorcha.Testing` reference** — integration tests should consume the shared factory rather than rolling their own service bootstraps.
 
 ## Related Documentation

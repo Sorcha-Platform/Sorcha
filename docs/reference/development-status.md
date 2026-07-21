@@ -45,7 +45,7 @@ This document provides an accurate, evidence-based assessment of the Sorcha plat
 
 ## Detailed Status by Service
 
-Per-service status snapshots are retained in `docs/reference/status/` (not published to the docs site). Current status is summarised inline below.
+The former per-service `docs/reference/status/*` snapshots have been removed — they were perpetually-stale point-in-time "% MVD" pages (see the currency note above). This document plus the CLAUDE.md service table are the current source. Current status is summarised inline below.
 
 | Service | Status | Details |
 |---------|--------|---------|

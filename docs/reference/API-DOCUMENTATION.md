@@ -2855,7 +2855,7 @@ await connection.start();
 
 // Thin signal: the payload is an instance id + timestamp. Pull full detail via REST.
 connection.on("InstanceAdvanced", async (instanceId) => {
-  const res = await fetch(`/api/blueprints/instances/${instanceId}`, {
+  const res = await fetch(`/api/instances/${instanceId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   updateUI(await res.json());

@@ -426,7 +426,7 @@ var connection = new HubConnectionBuilder()
 // Thin signal — the handler receives IDs/timestamps; fetch detail via REST.
 connection.On<string>("InstanceAdvanced", instanceId =>
 {
-    Console.WriteLine($"Instance {instanceId} advanced — GET /api/blueprints/instances/{instanceId}");
+    Console.WriteLine($"Instance {instanceId} advanced — GET /api/instances/{instanceId}");
 });
 
 await connection.StartAsync();
