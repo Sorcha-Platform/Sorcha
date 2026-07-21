@@ -508,6 +508,14 @@ EOF
         return 0
     fi
 
+    # openssl creates the .pfx 0600 (owner-only). The api-gateway / ui-web
+    # containers run hardened as a non-root uid and mount ./docker/certs read-only,
+    # so a 0600 file owned by the host user is unreadable inside the container —
+    # the gateway then dies at startup with "Access to '/https/aspnetapp.pfx' is
+    # denied". Make the dev cert world-readable (it is a throwaway self-signed
+    # dev key, never a production secret).
+    chmod 0644 "$pfx" 2>/dev/null || true
+
     success "Generated dev certificate at $pfx"
 }
 
