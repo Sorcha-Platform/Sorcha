@@ -24,10 +24,8 @@ Sorcha/
 │   │       ├── Sorcha.UI.Core/                 # Shared admin/designer/explorer UI components
 │   │       ├── Sorcha.UI.Components.User/      # Shared user-facing components, web + PWA (Feature 122)
 │   │       ├── Sorcha.UI.Web/                  # Web host
-│   │       ├── Sorcha.UI.Web.Client/           # Web client (Blazor WASM)
-│   │       └── tests/                          # UI-scoped test projects
-│   │           ├── Sorcha.UI.Core.Tests/
-│   │           └── Sorcha.UI.Integration.Tests/
+│   │       └── Sorcha.UI.Web.Client/           # Web client (Blazor WASM)
+│   │                                            # (UI test projects live under top-level tests/, not here)
 │   ├── Common/                                 # Cross-cutting libraries (no business logic)
 │   │   ├── Sorcha.AddressLookup/               # Postal-address lookup abstractions
 │   │   ├── Sorcha.AtomicCache/                 # IAtomicDistributedCache (GETDEL + Lua CAS primitive)
