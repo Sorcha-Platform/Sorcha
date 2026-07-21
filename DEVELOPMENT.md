@@ -69,47 +69,54 @@ See [docs/getting-started/PORT-CONFIGURATION.md](docs/getting-started/PORT-CONFI
 
 ```
 src/
-├── Apps/
+├── Apps/                            # 8 standalone apps + the Sorcha.UI group (4 projects)
 │   ├── Sorcha.AppHost/              # .NET Aspire orchestrator
-│   ├── Sorcha.Admin/                # Blazor WASM admin UI
+│   ├── Sorcha.Agent/               # Autonomous rules/decision agent (e.g. AIAS)
 │   ├── Sorcha.Cli/                  # Administrative CLI tool
 │   ├── Sorcha.Demo/                 # Demo application
 │   ├── Sorcha.McpServer/            # MCP Server for AI assistants
-│   └── Sorcha.UI/                   # Main Blazor WASM application
-│       ├── Sorcha.UI.Core/          # Shared UI components
-│       ├── Sorcha.UI.Web/           # Web host
-│       └── Sorcha.UI.Web.Client/    # Web client
-├── Common/                          # Cross-cutting libraries (15 projects)
+│   ├── Sorcha.Verifier/            # Desk verifier (web)
+│   ├── Sorcha.Verifier.Pwa/        # Doorstep verifier (PWA)
+│   ├── Sorcha.Wallet.Pwa/          # Citizen wallet (PWA)
+│   └── Sorcha.UI/                   # Main Blazor Web App
+│       ├── Sorcha.UI.Core/             # Admin/designer/explorer components
+│       ├── Sorcha.UI.Components.User/  # Shared user-facing components (web + PWA)
+│       ├── Sorcha.UI.Web/              # Web host
+│       └── Sorcha.UI.Web.Client/       # Web (WASM) client
+├── Common/                          # Cross-cutting libraries (26 projects)
 │   ├── Sorcha.Blueprint.Models/     # Domain models with JSON-LD
 │   ├── Sorcha.Cryptography/         # Multi-algorithm crypto
-│   ├── Sorcha.ServiceClients/       # Consolidated HTTP/gRPC clients
+│   ├── Sorcha.Mdoc/                # ISO 18013-5 mDoc (F185 proximity)
+│   ├── Sorcha.Proximity.*/         # BLE proximity sharing (F185)
+│   ├── Sorcha.ServiceClients/       # HTTP/gRPC service clients
 │   ├── Sorcha.ServiceDefaults/      # Aspire shared configuration
-│   ├── Sorcha.Storage.*/            # Storage abstraction (5 projects)
+│   ├── Sorcha.Storage.*/            # Storage abstraction (In-memory / MongoDB / Redis)
 │   ├── Sorcha.TransactionHandler/   # Transaction building/serialization
 │   ├── Sorcha.Validator.Core/       # Enclave-safe validation
-│   └── Sorcha.Wallet.Core/         # Wallet domain logic
-├── Core/                            # Business logic (5 projects)
-│   ├── Sorcha.Blueprint.Engine/     # Portable execution (WASM-compatible)
+│   └── Sorcha.Wallet.Contracts/    # Canonical wallet HTTP DTOs
+├── Core/                            # Business logic (10 projects)
+│   ├── Sorcha.Blueprint.Engine/     # Portable execution (WASM-compatible library)
 │   ├── Sorcha.Blueprint.Fluent/     # Fluent API for blueprint construction
-│   ├── Sorcha.Blueprint.Schemas/    # Schema management with caching
-│   └── Sorcha.Register.*/           # Register storage (3 projects)
-└── Services/                        # 7 microservices
+│   ├── Sorcha.Verifier.Engine/     # Presentation verification
+│   └── Sorcha.Register.*/           # Register storage (In-memory / MongoDB)
+├── Providers/                       # 1 project (address-lookup)
+└── Services/                        # 8 microservices
     ├── Sorcha.ApiGateway/           # YARP reverse proxy
     ├── Sorcha.Blueprint.Service/    # Workflow management + SignalR
+    ├── Sorcha.Haip.Service/         # OpenID4VCI/VP external-wallet surface (HAIP 1.0)
     ├── Sorcha.Peer.Service/         # P2P networking (gRPC)
     ├── Sorcha.Register.Service/     # Distributed ledger + OData
     ├── Sorcha.Tenant.Service/       # Multi-tenant auth + JWT
     ├── Sorcha.Validator.Service/    # Consensus + chain integrity
     └── Sorcha.Wallet.Service/       # Crypto wallet management
 
-tests/                               # 30 test projects
+tests/                               # 59 test projects (unit / integration / E2E)
 ├── *.Tests/                         # Unit tests per component
-├── *.IntegrationTests/              # Integration tests
-├── *.PerformanceTests/              # Performance/load tests
-└── Sorcha.UI.E2E.Tests/             # Playwright E2E tests
+├── *.E2E.Tests/                     # Playwright E2E (e.g. Sorcha.UI.E2E.Tests)
+└── ...
 ```
 
-**Project count:** 39 source projects, 30 test projects
+**Project count:** 57 source projects, 59 test projects (csproj-counted).
 
 ### Service Folder Convention
 
@@ -215,9 +222,9 @@ app.MapPost("/api/wallets", handler)
 builder.Services.AddServiceClients(builder.Configuration);
 ```
 
-**Use storage abstractions**:
+**Use storage abstractions** — depend on a service-specific repository interface (there is **no** generic `IRepository<T>`; it was removed). The concrete backend (EF Core / MongoDB / Redis / in-memory) is chosen at registration time. See CLAUDE.md Pattern #5.
 ```csharp
-public class WalletService(IRepository<Wallet> repository) { }
+public class WalletService(IWalletRepository repository) { }
 ```
 
 **JsonSchema.Net requires JsonElement** (not JsonNode):
@@ -279,7 +286,7 @@ See `scripts/README.md` for the full list.
 
 ## Development Status
 
-**Current:** 100% MVD (Minimum Viable Deliverable) | Production Readiness: 30%
+**Current:** MVD (Minimum Viable Deliverable) complete; hardening toward production. See `.specify/MASTER-TASKS.md` and `docs/reference/development-status.md` for current state (not pinned as a percentage here — it only goes stale).
 
 See [docs/reference/development-status.md](docs/reference/development-status.md) for detailed component status.
 
