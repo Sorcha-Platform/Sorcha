@@ -1,0 +1,65 @@
+name: Installer Check
+
+# Boots the full stack from the installer on any PR that touches the setup path,
+# so a broken installer — or a new compose env var without a default, or setup
+# config drift — is caught BEFORE merge. The nightly clean-VM one-liner check
+# (in ai-discoverability-check.yml) only runs post-merge against master, so this
+# is the pre-merge guard for the same "does it actually come up" question.
+#
+# It runs the checked-out scripts/install.sh, which detects the existing checkout
+# and hands off to scripts/sorcha-setup.sh (--quiet) — validating this PR's
+# installer + setup script + .env generation against this PR's compose files.
+
+on:
+  pull_request:
+    branches: [ master ]
+    paths:
+      - 'scripts/install.sh'
+      - 'scripts/install.ps1'
+      - 'scripts/sorcha-setup.sh'
+      - '.env.example'
+      - 'docker-compose.yml'
+      - '.github/workflows/installer-check.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install-and-boot:
+    name: Install and boot the stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Confirm Docker Engine is available
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Run the installer (detects checkout → runs sorcha-setup.sh --quiet)
+        run: |
+          set -euo pipefail
+          chmod +x scripts/install.sh scripts/sorcha-setup.sh
+          bash scripts/install.sh --quiet
+
+      - name: Verify installation
+        run: |
+          set -euo pipefail
+          response=$(curl -sf -w '\nHTTP_STATUS:%{http_code}' http://localhost/api/health)
+          status=$(echo "$response" | grep '^HTTP_STATUS:' | cut -d: -f2)
+          body=$(echo "$response" | sed '/^HTTP_STATUS:/d')
+          echo "Body:    $body"
+          echo "Status:  $status"
+          [ "$status" = "200" ] || { echo "Expected HTTP 200, got $status"; exit 1; }
+          echo "$body" | python -c 'import sys, json; d = json.load(sys.stdin); assert d.get("status") == "Healthy", d' || {
+            echo "Aggregated health response did not report Healthy"
+            exit 1
+          }
+
+      - name: Capture container logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
