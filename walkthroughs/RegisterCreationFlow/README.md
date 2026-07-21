@@ -347,7 +347,6 @@ sorcha wallet create --name "my-wallet" --algorithm ED25519
 | `test-register-creation-rest.ps1` | REST API walkthrough (legacy/debugging) |
 | `test-register-creation-with-real-signing.ps1` | Advanced real crypto testing |
 | `test-register-creation-docker.ps1` | Docker internal network testing |
-| `WALKTHROUGH-RESULTS.md` | Implementation results and findings |
 
 ## Next Steps
 
