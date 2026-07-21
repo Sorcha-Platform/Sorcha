@@ -137,8 +137,10 @@ Service will start at:
     }
   },
   "AllowedHosts": "*",
+  "EncryptionProvider": {
+    "Type": "LinuxSecretService"
+  },
   "Wallet": {
-    "EncryptionProvider": "Local",
     "KeyDerivationIterations": 100000,
     "EnableClientSideDerivation": true,
     "GapLimit": 20
@@ -150,19 +152,21 @@ Service will start at:
 }
 ```
 
+> **Encryption provider config lives under the `EncryptionProvider` section (`Type` property), NOT `Wallet:EncryptionProvider`.** The service binds `EncryptionProvider:Type` (`WalletServiceExtensions` → `EncryptionProviderOptions`, section name `"EncryptionProvider"`); an older `Wallet:EncryptionProvider` bare-string form appeared in these docs but is not read by the code. Valid `Type` values and per-provider settings (Azure Key Vault / AWS KMS / GCP KMS / LinuxSecretService) are documented in the **Cloud KMS Configuration** section below. Docker sets `EncryptionProvider__Type` (e.g. `LinuxSecretService`).
+
 ### Environment Variables
 
 For production deployment:
 
 ```bash
-# Encryption provider (Local, AzureKeyVault, AwsKms)
-WALLET__ENCRYPTIONPROVIDER="AzureKeyVault"
+# Encryption provider type (Local, LinuxSecretService, AzureKeyVault, AwsKms, GcpKms)
+EncryptionProvider__Type="AzureKeyVault"
 
-# Azure Key Vault settings (if using AzureKeyVault)
-AZURE__KEYVAULTURL="https://your-vault.vault.azure.net/"
+# Azure Key Vault settings (if Type=AzureKeyVault)
+EncryptionProvider__AzureKeyVault__VaultUri="https://your-vault.vault.azure.net/"
 
-# Database connection (when EF Core is implemented)
-CONNECTIONSTRINGS__WALLETDB="Server=.;Database=SorchaWallet;Trusted_Connection=True;"
+# Database connection (PostgreSQL — EF Core / EfCoreWalletRepository)
+ConnectionStrings__Wallet__Postgres="Host=postgres;Database=sorcha_wallet;Username=sorcha;Password=…"
 
 # Observability
 OPENTELEMETRY__ZIPKINENDPOINT="https://zipkin.yourcompany.com"
@@ -303,29 +307,22 @@ Sorcha.Wallet.Service/
 │   ├── AddressEndpoints.cs             # HD address management
 │   ├── AccountEndpoints.cs             # BIP44 account operations
 │   └── AccessEndpoints.cs              # Access delegation
-├── Services/
-│   ├── WalletService.cs                # Business logic
-│   ├── CryptographyService.cs          # Signing, encryption
-│   ├── AddressDerivationService.cs     # BIP44 derivation
-│   └── AccessControlService.cs         # Access management
-├── Repositories/
-│   ├── IWalletRepository.cs            # Repository interfaces
-│   ├── WalletRepository.cs             # In-memory implementation
-│   ├── IAddressRepository.cs
-│   └── AddressRepository.cs
-├── Models/
-│   ├── Wallet.cs                       # Domain models
-│   ├── WalletAddress.cs
-│   ├── AccessGrant.cs
-│   └── Account.cs
-└── appsettings.json                    # Configuration
+├── Services/                           # PresentationRequestService, EncryptionEventBridge, Implementation/, Interfaces/
+├── GrpcServices/                       # gRPC surface (wallet notifications)
+├── Mappers/  Validators/  Protos/
+├── Models/                             # Request/response DTOs
+└── appsettings.json
 
 External Libraries:
+├── Sorcha.Wallet.Contracts/            # Canonical wallet HTTP DTOs
 ├── Sorcha.Cryptography/                # Multi-algorithm crypto
-├── Sorcha.Wallet.Core/                 # Core wallet logic (EF Core, repositories, encryption)
+├── Sorcha.Wallet.Core/                 # Persistence lives HERE: Repositories/EfCoreWalletRepository (PostgreSQL sorcha_wallet)
+│                                       #   + Repositories/Implementation/InMemoryWalletRepository (tests) + encryption providers
 ├── Sorcha.Wallet.Portable/             # Portable wallet: entities, enums, derivation (NuGet package)
 └── NBitcoin/                           # BIP32/BIP39/BIP44 (via Wallet.Portable)
 ```
+
+> **The service has no `Repositories/` directory and no in-memory `WalletRepository`/`AddressRepository`** — those never existed here. The real store is `IWalletRepository` → `EfCoreWalletRepository` (PostgreSQL), which lives in the **`Sorcha.Wallet.Core`** library (this matches the Architecture → Repositories section above). Address registration is `IAddressRegistrationService`, not an `IAddressRepository`.
 
 ### Running Tests
 
@@ -562,7 +559,7 @@ Docker Compose configuration:
 ```yaml
 wallet-service:
   environment:
-    Wallet__EncryptionProvider: "AzureKeyVault"
+    EncryptionProvider__Type: "AzureKeyVault"
     Wallet__AzureKeyVault__VaultUrl: "https://your-vault.vault.azure.net/"
     Wallet__AzureKeyVault__UseManagedIdentity: "true"
     AZURE_TENANT_ID: "${AZURE_TENANT_ID}"
@@ -671,7 +668,7 @@ docker build -t sorcha-wallet-service:latest -f src/Services/Sorcha.Wallet.Servi
 # Run container
 docker run -d \
   -p 7084:8080 \
-  -e Wallet__EncryptionProvider="Local" \
+  -e EncryptionProvider__Type="Local" \
   --name wallet-service \
   sorcha-wallet-service:latest
 ```
@@ -1060,6 +1057,6 @@ Apache License 2.0 - See [LICENSE](https://github.com/Sorcha-Platform/Sorcha/blo
 
 ---
 
-**Last Updated**: 2026-03-03
+**Last Updated**: 2026-07-21
 **Maintained By**: Sorcha Contributors
 **Status**: 98% Complete

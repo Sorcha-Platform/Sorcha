@@ -346,7 +346,7 @@ fail-closed when the fetch is unavailable) and by the MCP `sorcha_disclosed_data
 
 **Auth:** JWT Bearer required.
 
-For full API documentation with request/response schemas, open **Scalar UI** at `https://localhost:7081/scalar`.
+For full API documentation with request/response schemas, open **Scalar UI** at `https://localhost:7000/scalar`.
 
 ---
 
@@ -412,37 +412,31 @@ promised.
 
 ### Project Structure
 
+Persistence is the **Store pattern** (EF Core over PostgreSQL `sorcha_blueprint`, with in-memory fallbacks) — there is **no** `Repositories/` layer and no in-memory `BlueprintRepository`; those never existed here. This matches the Architecture → Stores section above (`IBlueprintStore` / `IActionStore` / `IInstanceStore`, F113-audited).
+
 ```
 Sorcha.Blueprint.Service/
-├── Program.cs                      # Service entry point, DI configuration
-├── Endpoints/
-│   ├── BlueprintEndpoints.cs       # Blueprint CRUD and publishing
-│   ├── ActionEndpoints.cs          # Action workflows
-│   ├── TemplateEndpoints.cs        # Template management
-│   ├── ExecutionEndpoints.cs       # Execution helpers
-│   └── FileEndpoints.cs            # File attachments
+├── Program.cs                      # Service entry point, DI, endpoint mapping
+├── Endpoints/                      # Minimal-API endpoint groups (blueprints, actions, files, instance-action schema, …)
 ├── Hubs/
-│   └── BlueprintHub.cs               # SignalR real-time notifications
-├── Services/
-│   ├── BlueprintService.cs         # Business logic
-│   ├── ActionService.cs            # Action orchestration
-│   ├── TemplateService.cs          # Template processing
-│   └── ExecutionService.cs         # Execution engine integration
-├── Repositories/
-│   ├── IBlueprintRepository.cs     # Repository interfaces
-│   ├── BlueprintRepository.cs      # In-memory implementation
-│   ├── IActionRepository.cs
-│   └── ActionRepository.cs
-├── Models/
-│   ├── Blueprint.cs                # Domain models
-│   ├── Action.cs
-│   └── Template.cs
-└── appsettings.json                # Configuration
+│   ├── BlueprintHub.cs             # SignalR notifications (thin-signal, Feature 118)
+│   └── ChatHub.cs                  # AI-designer chat stream
+├── Services/                       # Business logic (ChatOrchestration, SchemaRefResolver, StatusListManager,
+│                                   #   InstanceBindingCache, CoreSchemaSeed, AnthropicProvider, …)
+├── Storage/                        # The Store seams + implementations:
+│   ├── IBlueprintStore.cs   / EfCoreBlueprintStore.cs   / InMemoryBlueprintStore.cs
+│   ├── IActionStore.cs      / EfCoreActionStore.cs      / InMemoryActionStore.cs
+│   ├── IInstanceStore.cs    / EfCoreInstanceStore.cs    / InMemoryInstanceStore.cs
+│   └── EfCoreTemplateStore.cs, EfCoreRehearsalPassStore.cs, EfCorePublishOverrideStore.cs, …
+├── Data/
+│   ├── BlueprintDbContext.cs       # EF Core context → PostgreSQL sorcha_blueprint
+│   ├── Entities/                   # Persistence entities
+│   └── Migrations/
+├── Models/                         # Request/response DTOs
+├── Templates/                      # Blueprint templates
+└── appsettings.json
 
-External Libraries:
-├── Sorcha.Blueprint.Models/        # Shared models
-├── Sorcha.Blueprint.Engine/        # Portable execution engine
-└── Sorcha.Blueprint.Fluent/        # Fluent API (optional)
+External libraries: Sorcha.Blueprint.Models (shared models), Sorcha.Blueprint.Engine (portable execution), Sorcha.Blueprint.Fluent (fluent API).
 ```
 
 ### Running Tests
@@ -502,7 +496,7 @@ The Blueprint Service integrates with the Register Service for:
 import * as signalR from "@microsoft/signalr";
 
 const connection = new signalR.HubConnectionBuilder()
-    .withUrl("https://localhost:7081/hubs/blueprint")
+    .withUrl("https://localhost:7000/hubs/blueprint")
     .build();
 
 connection.on("TransactionConfirmed", (transactionId, status) => {
@@ -567,7 +561,7 @@ docker build -t sorcha-blueprint-service:latest -f src/Services/Sorcha.Blueprint
 
 # Run container
 docker run -d \
-  -p 7081:8080 \
+  -p 5000:8080 \
   -e ConnectionStrings__Redis="redis:6379" \
   -e ServiceUrls__WalletService="http://wallet-service:8080" \
   -e ServiceUrls__RegisterService="http://register-service:8080" \
@@ -702,11 +696,11 @@ Enable detailed logging:
 ## Resources
 
 - **Specification**: [.specify/specs/](https://github.com/Sorcha-Platform/Sorcha/tree/master/.specify/specs)
-- **API Reference**: [Scalar UI](https://localhost:7081/scalar)
+- **API Reference**: [Scalar UI](https://localhost:7000/scalar)
 - **Architecture**: [docs/architecture.md](../../../docs/architecture.md)
 - **Development Status**: [docs/development-status.md](../../../docs/reference/development-status.md)
 - **Portable Engine**: [src/Core/Sorcha.Blueprint.Engine](../../Core/Sorcha.Blueprint.Engine/)
-- **OpenAPI Spec**: `https://localhost:7081/openapi/v1.json`
+- **OpenAPI Spec**: `https://localhost:7000/openapi/v1.json`
 
 ---
 
@@ -716,6 +710,6 @@ Apache License 2.0 - See [LICENSE](https://github.com/Sorcha-Platform/Sorcha/blo
 
 ---
 
-**Last Updated**: 2025-11-23
+**Last Updated**: 2026-07-21
 **Maintained By**: Sorcha Contributors
 **Status**: ✅ Production Ready (100% Complete)
