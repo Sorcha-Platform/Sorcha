@@ -144,6 +144,29 @@ public class EmailVerificationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task VerifyTokenAsync_RepeatHitOnSameLink_ReturnsIdempotentSuccess()
+    {
+        // Models an email security scanner pre-fetching the link (first hit) followed by the
+        // human's real click (second hit): both must succeed, and welcome fires exactly once.
+        var (platformUser, user) = await SeedUserAsync();
+        var service = CreateService();
+        var token = await service.GenerateAndSendVerificationAsync(user, CancellationToken.None);
+
+        var first = await service.VerifyTokenAsync(token, CancellationToken.None);
+        var second = await service.VerifyTokenAsync(token, CancellationToken.None);
+
+        first.Success.Should().BeTrue();
+        second.Success.Should().BeTrue("a repeat click on an already-verified link must not read as failure");
+        second.Error.Should().BeNull();
+
+        var reloaded = await _dbContext.PlatformUsers.AsNoTracking().FirstAsync(u => u.Id == platformUser.Id);
+        reloaded.EmailVerified.Should().BeTrue();
+
+        _transactional.Verify(t => t.SendWelcomeAsync(
+            It.IsAny<WelcomeDispatchContext>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task VerifyTokenAsync_InvalidToken_ReturnsErrorAndDoesNotDispatch()
     {
         var service = CreateService();
