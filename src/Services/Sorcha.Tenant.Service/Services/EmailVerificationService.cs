@@ -86,17 +86,30 @@ public class EmailVerificationService : IEmailVerificationService
             return (false, "Invalid verification token.");
         }
 
+        // Idempotent success. Verification links are single-click by nature, but email
+        // security scanners (Outlook SafeLinks, Apple Mail, corporate gateways) routinely
+        // PRE-FETCH the URL before the human clicks it. If we consumed (nulled) the token on
+        // that first touch, the human's real click would then fail with "invalid token" even
+        // though their email IS verified. Instead we retain the token until it expires and
+        // treat a repeat hit on an already-verified account as success — the page shows
+        // "you're all set", not a scary failure.
+        if (platformUser.EmailVerified)
+        {
+            return (true, null);
+        }
+
         if (platformUser.VerificationTokenExpiresAt.HasValue
             && platformUser.VerificationTokenExpiresAt.Value < DateTimeOffset.UtcNow)
         {
             return (false, "Verification token has expired.");
         }
 
-        // Mark email as verified on PlatformUser
+        // Mark email as verified. The token is intentionally NOT cleared here so a subsequent
+        // pre-fetch / refresh of the same link still resolves to this user and returns the
+        // idempotent success above. It grants nothing beyond marking the email verified and
+        // expires naturally via VerificationTokenExpiresAt (a re-issue overwrites it).
         platformUser.EmailVerified = true;
         platformUser.EmailVerifiedAt = DateTimeOffset.UtcNow;
-        platformUser.VerificationToken = null;
-        platformUser.VerificationTokenExpiresAt = null;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 

@@ -190,6 +190,76 @@ sorcha.webauthn = (function () {
     }
 
     // -------------------------------------------------------------------------
+    // Progress overlay
+    // -------------------------------------------------------------------------
+    // A self-contained, full-screen status shown during the passkey ceremony so
+    // the user never faces a blank / frozen screen — in particular the pause after
+    // the OS passkey sheet closes, while the account is created and tokens minted.
+    // Injected lazily into <body>; requires no page markup or external CSS.
+
+    var _overlayEl = null;
+    var _overlayTextEl = null;
+
+    function ensureOverlay() {
+        if (_overlayEl) { return; }
+
+        if (!document.getElementById('sorcha-webauthn-overlay-style')) {
+            var style = document.createElement('style');
+            style.id = 'sorcha-webauthn-overlay-style';
+            style.textContent =
+                '@keyframes sorcha-wa-spin{to{transform:rotate(360deg)}}' +
+                '#sorcha-webauthn-overlay{position:fixed;inset:0;z-index:2147483647;display:flex;' +
+                'flex-direction:column;align-items:center;justify-content:center;gap:18px;' +
+                'background:rgba(17,17,27,.72);backdrop-filter:blur(2px);' +
+                '-webkit-backdrop-filter:blur(2px);color:#fff;font-size:1.05rem;line-height:1.4;' +
+                'font-family:inherit;text-align:center;padding:24px;opacity:0;' +
+                'transition:opacity .15s ease}' +
+                '#sorcha-webauthn-overlay.is-visible{opacity:1}' +
+                '#sorcha-webauthn-overlay .sorcha-wa-spinner{width:46px;height:46px;border-radius:50%;' +
+                'border:4px solid rgba(255,255,255,.25);border-top-color:#fff;' +
+                'animation:sorcha-wa-spin .8s linear infinite}';
+            document.head.appendChild(style);
+        }
+
+        _overlayEl = document.createElement('div');
+        _overlayEl.id = 'sorcha-webauthn-overlay';
+        _overlayEl.setAttribute('role', 'status');
+        _overlayEl.setAttribute('aria-live', 'polite');
+
+        var spinner = document.createElement('div');
+        spinner.className = 'sorcha-wa-spinner';
+        spinner.setAttribute('aria-hidden', 'true');
+
+        _overlayTextEl = document.createElement('div');
+        _overlayTextEl.className = 'sorcha-wa-text';
+
+        _overlayEl.appendChild(spinner);
+        _overlayEl.appendChild(_overlayTextEl);
+        document.body.appendChild(_overlayEl);
+    }
+
+    /**
+     * Shows (or updates the text of) the full-screen progress overlay.
+     * @param {string} text - Status message to display.
+     */
+    function showProgress(text) {
+        ensureOverlay();
+        _overlayTextEl.textContent = text;
+        // Force a reflow so the opacity transition runs even on the first show.
+        void _overlayEl.offsetWidth;
+        _overlayEl.classList.add('is-visible');
+    }
+
+    /**
+     * Hides the progress overlay. Safe to call when it was never shown.
+     */
+    function hideProgress() {
+        if (_overlayEl) {
+            _overlayEl.classList.remove('is-visible');
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Public API
     // -------------------------------------------------------------------------
 
@@ -210,6 +280,8 @@ sorcha.webauthn = (function () {
      */
     async function signIn(optionsUrl, verifyUrl, returnUrl) {
         try {
+            showProgress('Signing you in…');
+
             // Step 1: Get assertion options from server
             var optionsResponse = await fetch(optionsUrl, {
                 method: 'POST',
@@ -218,6 +290,7 @@ sorcha.webauthn = (function () {
             });
 
             if (!optionsResponse.ok) {
+                hideProgress();
                 var errorData = await optionsResponse.json().catch(function () { return null; });
                 var errorMsg = (errorData && (errorData.detail || errorData.title || errorData.error))
                     || 'Failed to get passkey options. Please try again.';
@@ -230,14 +303,17 @@ sorcha.webauthn = (function () {
             var publicKeyOptions = prepareAssertionOptions(optionsData.options);
 
             // Step 2: Invoke browser WebAuthn API
+            showProgress('Waiting for your passkey…');
             var credential = await navigator.credentials.get({ publicKey: publicKeyOptions });
 
             if (!credential) {
+                hideProgress();
                 alert('Passkey sign-in was cancelled or no credential was selected.');
                 return;
             }
 
             // Step 3: Serialize and POST assertion response to server
+            showProgress('Finishing sign-in…');
             var assertionPayload = {
                 transaction_id: transactionId,
                 assertion_response: serializeAssertionResponse(credential)
@@ -250,6 +326,7 @@ sorcha.webauthn = (function () {
             });
 
             if (!verifyResponse.ok) {
+                hideProgress();
                 var verifyError = await verifyResponse.json().catch(function () { return null; });
                 var verifyMsg = (verifyError && (verifyError.detail || verifyError.title || verifyError.error))
                     || 'Passkey verification failed. Please try again.';
@@ -257,7 +334,8 @@ sorcha.webauthn = (function () {
                 return;
             }
 
-            // Step 4: Redirect to app with tokens in hash
+            // Step 4: Redirect to app with tokens in hash. Leave the overlay visible
+            // through navigation so the screen never flashes empty.
             var tokenData = await verifyResponse.json();
             window.location.href = buildAppRedirectUrl(
                 tokenData.access_token,
@@ -266,6 +344,7 @@ sorcha.webauthn = (function () {
             );
 
         } catch (err) {
+            hideProgress();
             if (err && err.name === 'NotAllowedError') {
                 alert('Passkey sign-in was cancelled or timed out. Please try again.');
             } else if (err && err.name === 'SecurityError') {
@@ -295,6 +374,8 @@ sorcha.webauthn = (function () {
      */
     async function register(optionsUrl, verifyUrl, displayName, email, returnUrl) {
         try {
+            showProgress('Starting secure sign-up…');
+
             // Step 1: Get registration options from server
             var optionsResponse = await fetch(optionsUrl, {
                 method: 'POST',
@@ -306,6 +387,7 @@ sorcha.webauthn = (function () {
             });
 
             if (!optionsResponse.ok) {
+                hideProgress();
                 var statusCode = optionsResponse.status;
                 var errorData = await optionsResponse.json().catch(function () { return null; });
 
@@ -325,14 +407,18 @@ sorcha.webauthn = (function () {
             var publicKeyOptions = prepareCreationOptions(optionsData.options);
 
             // Step 2: Invoke browser WebAuthn API
+            showProgress('Waiting for your passkey…');
             var credential = await navigator.credentials.create({ publicKey: publicKeyOptions });
 
             if (!credential) {
+                hideProgress();
                 alert('Passkey registration was cancelled. Please try again.');
                 return;
             }
 
-            // Step 3: Serialize and POST attestation response to server
+            // Step 3: Serialize and POST attestation response to server. This is where the
+            // account is created + tokens minted — the pause the overlay covers.
+            showProgress('Creating your account…');
             var attestationPayload = {
                 transaction_id: transactionId,
                 attestation_response: serializeAttestationResponse(credential)
@@ -345,6 +431,7 @@ sorcha.webauthn = (function () {
             });
 
             if (!verifyResponse.ok) {
+                hideProgress();
                 var verifyError = await verifyResponse.json().catch(function () { return null; });
                 var verifyMsg = (verifyError && (verifyError.detail || verifyError.title || verifyError.error))
                     || 'Passkey registration failed. Please try again.';
@@ -352,7 +439,8 @@ sorcha.webauthn = (function () {
                 return;
             }
 
-            // Step 4: Redirect to app with tokens in hash
+            // Step 4: Redirect to app with tokens in hash. Leave the overlay visible
+            // through navigation so the screen never flashes empty.
             var tokenData = await verifyResponse.json();
             window.location.href = buildAppRedirectUrl(
                 tokenData.access_token,
@@ -361,6 +449,7 @@ sorcha.webauthn = (function () {
             );
 
         } catch (err) {
+            hideProgress();
             if (err && err.name === 'NotAllowedError') {
                 alert('Passkey registration was cancelled or timed out. Please try again.');
             } else if (err && err.name === 'InvalidStateError') {
