@@ -39,13 +39,13 @@ public class KeyManager : IKeyManager
     {
         try
         {
-            // Generate a 12-word mnemonic (only for ED25519 and NIST P-256)
+            // Generate a 24-word mnemonic (only for ED25519 and NIST P-256)
             string? mnemonic = null;
             byte[]? seed = null;
 
             if (network == WalletNetworks.ED25519 || network == WalletNetworks.NISTP256)
             {
-                var mnemonicResult = GenerateMnemonic(12);
+                var mnemonicResult = GenerateMnemonic(24);
                 if (!mnemonicResult.IsSuccess || mnemonicResult.Value == null)
                     return CryptoResult<KeyRing>.Failure(mnemonicResult.Status, mnemonicResult.ErrorMessage);
 
@@ -132,7 +132,7 @@ public class KeyManager : IKeyManager
     /// <summary>
     /// Generates a random mnemonic phrase.
     /// </summary>
-    public CryptoResult<string> GenerateMnemonic(int wordCount = 12)
+    public CryptoResult<string> GenerateMnemonic(int wordCount = 24)
     {
         try
         {

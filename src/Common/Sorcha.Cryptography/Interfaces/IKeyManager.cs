@@ -27,7 +27,7 @@ public interface IKeyManager
     /// <summary>
     /// Recovers a key ring from a mnemonic recovery phrase.
     /// </summary>
-    /// <param name="mnemonic">The 12-word mnemonic phrase.</param>
+    /// <param name="mnemonic">The mnemonic recovery phrase (12, 15, 18, 21, or 24 words).</param>
     /// <param name="password">Optional password if one was used during creation.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A result containing the recovered key ring or error status.</returns>
@@ -39,9 +39,9 @@ public interface IKeyManager
     /// <summary>
     /// Generates a random mnemonic phrase.
     /// </summary>
-    /// <param name="wordCount">The number of words (12, 15, 18, 21, or 24).</param>
+    /// <param name="wordCount">The number of words (12, 15, 18, 21, or 24). Defaults to 24.</param>
     /// <returns>A result containing the mnemonic phrase or error status.</returns>
-    CryptoResult<string> GenerateMnemonic(int wordCount = 12);
+    CryptoResult<string> GenerateMnemonic(int wordCount = 24);
 
     /// <summary>
     /// Validates a mnemonic phrase.

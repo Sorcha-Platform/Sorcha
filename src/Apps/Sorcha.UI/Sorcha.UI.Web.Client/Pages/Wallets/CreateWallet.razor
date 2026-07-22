@@ -61,11 +61,11 @@
 
                         <MudItem xs="12" sm="6">
                             <MudSelect T="int" Label="Word Count" @bind-Value="request.WordCount" Required="true" Variant="Variant.Outlined" HelperText="Mnemonic phrase length">
-                                <MudSelectItem Value="12">12 words (Standard)</MudSelectItem>
-                                <MudSelectItem Value="15">15 words</MudSelectItem>
-                                <MudSelectItem Value="18">18 words</MudSelectItem>
+                                <MudSelectItem Value="24">24 words (Recommended)</MudSelectItem>
                                 <MudSelectItem Value="21">21 words</MudSelectItem>
-                                <MudSelectItem Value="24">24 words (Maximum security)</MudSelectItem>
+                                <MudSelectItem Value="18">18 words</MudSelectItem>
+                                <MudSelectItem Value="15">15 words</MudSelectItem>
+                                <MudSelectItem Value="12">12 words</MudSelectItem>
                             </MudSelect>
                         </MudItem>
 
@@ -206,7 +206,7 @@
     {
         Name = "",
         Algorithm = "ED25519",
-        WordCount = 12
+        WordCount = 24
     };
 
     private CreateWalletResponse? response;

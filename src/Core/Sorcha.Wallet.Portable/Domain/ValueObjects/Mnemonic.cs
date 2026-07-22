@@ -42,9 +42,9 @@ public record Mnemonic
     /// <summary>
     /// Generates a new random mnemonic
     /// </summary>
-    /// <param name="wordCount">Number of words (12 or 24)</param>
+    /// <param name="wordCount">Number of words (12 or 24). Defaults to 24.</param>
     /// <returns>A new mnemonic</returns>
-    public static Mnemonic Generate(int wordCount = 12)
+    public static Mnemonic Generate(int wordCount = 24)
     {
         var entropy = wordCount == 24 ? NBitcoin.WordCount.TwentyFour : NBitcoin.WordCount.Twelve;
         return new Mnemonic(new NBitcoin.Mnemonic(Wordlist.English, entropy));
@@ -116,6 +116,6 @@ public record Mnemonic
     /// Returns a string representation of the mnemonic showing the word count for security.
     /// The actual mnemonic phrase is never exposed in ToString() to prevent accidental logging.
     /// </summary>
-    /// <returns>A string indicating the number of words (e.g., "Mnemonic(12 words)").</returns>
+    /// <returns>A string indicating the number of words (e.g., "Mnemonic(24 words)").</returns>
     public override string ToString() => $"Mnemonic({WordCount} words)";
 }

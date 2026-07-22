@@ -29,9 +29,9 @@ public sealed record CreateWalletRequest
     [Required]
     public string Algorithm { get; set; } = string.Empty;
 
-    /// <summary>Number of words in mnemonic (12, 15, 18, 21, or 24).</summary>
+    /// <summary>Number of words in mnemonic (12, 15, 18, 21, or 24). Defaults to 24.</summary>
     [Bip39WordCount]
-    public int WordCount { get; set; } = 12;
+    public int WordCount { get; set; } = 24;
 
     /// <summary>Optional passphrase for additional security.</summary>
     public string? Passphrase { get; set; }

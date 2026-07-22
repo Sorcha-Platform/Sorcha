@@ -106,7 +106,7 @@ public class WalletManagerTests
         wallet.Name.Should().Be("My Wallet");
         wallet.Status.Should().Be(WalletStatus.Active);
         mnemonic.Should().NotBeNull();
-        mnemonic.WordCount.Should().Be(12);
+        mnemonic.WordCount.Should().Be(24);
     }
 
     [Fact]

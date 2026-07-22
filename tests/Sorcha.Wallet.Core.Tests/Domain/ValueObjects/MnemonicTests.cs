@@ -9,12 +9,12 @@ namespace Sorcha.Wallet.Core.Tests.Domain.ValueObjects;
 public class MnemonicTests
 {
     [Fact]
-    public void Generate_Default_Produces12WordMnemonic()
+    public void Generate_Default_Produces24WordMnemonic()
     {
         var mnemonic = Mnemonic.Generate();
 
-        mnemonic.WordCount.Should().Be(12);
-        mnemonic.Phrase.Split(' ').Should().HaveCount(12);
+        mnemonic.WordCount.Should().Be(24);
+        mnemonic.Phrase.Split(' ').Should().HaveCount(24);
     }
 
     [Fact]
@@ -118,7 +118,7 @@ public class MnemonicTests
 
         var result = mnemonic.ToString();
 
-        result.Should().Be("Mnemonic(12 words)");
+        result.Should().Be("Mnemonic(24 words)");
         result.Should().NotContain(mnemonic.Phrase.Split(' ')[0]);
     }
 
