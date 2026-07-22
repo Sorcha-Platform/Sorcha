@@ -29,7 +29,7 @@ public interface IWalletService
         string algorithm,
         string owner,
         string tenant,
-        int wordCount = 12,
+        int wordCount = 24,
         string? passphrase = null,
         SigningMode? signingModeOverride = null,
         CancellationToken cancellationToken = default);

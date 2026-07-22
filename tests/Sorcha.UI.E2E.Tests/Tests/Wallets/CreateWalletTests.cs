@@ -87,12 +87,12 @@ public class CreateWalletTests : AuthenticatedDockerTestBase
     }
 
     /// <summary>
-    /// Standalone path: navigating directly to wallets/create (no query string) uses 12-word default
-    /// and empty name — confirming standalone behavior is unchanged (FR-009, SC-005).
+    /// Standalone path: navigating directly to wallets/create (no query string) uses the 24-word
+    /// default and empty name — confirming standalone behavior (FR-009, SC-005).
     /// </summary>
     [Test]
     [Ignore("Pending manual verification; standalone flow should be unchanged from pre-157")]
-    public async Task StandaloneWalletCreation_NoQueryString_DefaultsTo12WordsAndEmptyName()
+    public async Task StandaloneWalletCreation_NoQueryString_DefaultsTo24WordsAndEmptyName()
     {
         await NavigateAuthenticatedAsync("/wallets/create");
         await Page.WaitForLoadStateAsync();
@@ -100,7 +100,7 @@ public class CreateWalletTests : AuthenticatedDockerTestBase
         var wordCountInput = Page.Locator("[data-testid='word-count-selector'], [name='wordCount']");
         var value = await wordCountInput.InputValueAsync();
 
-        Assert.That(value, Is.EqualTo("12"), "Standalone wallet creation should default to 12 words");
+        Assert.That(value, Is.EqualTo("24"), "Standalone wallet creation should default to 24 words");
 
         var nameInput = Page.Locator("[data-testid='wallet-name-input'], [name='walletName']");
         var nameValue = await nameInput.InputValueAsync();

@@ -588,7 +588,7 @@ public class WalletCreateCommand : Command
         _wordCountOption = new Option<int>("--word-count", "-w")
         {
             Description = "Number of words in mnemonic (12, 15, 18, 21, or 24)",
-            DefaultValueFactory = _ => 12
+            DefaultValueFactory = _ => 24
         };
 
         _passphraseOption = new Option<string?>("--passphrase", "-p")
@@ -1332,7 +1332,7 @@ public class WalletCreateBatchCommand : Command
                         {
                             Name = walletName,
                             Algorithm = algorithm,
-                            WordCount = 12
+                            WordCount = 24
                         };
 
                         var response = await client.CreateWalletAsync(request, $"Bearer {token}");

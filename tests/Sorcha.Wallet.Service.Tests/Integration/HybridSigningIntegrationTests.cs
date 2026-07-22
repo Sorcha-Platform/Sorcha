@@ -75,7 +75,7 @@ public class HybridSigningIntegrationTests
         wallet.Should().NotBeNull();
         wallet.Algorithm.Should().Be("ML-DSA-65");
         wallet.PublicKey.Should().NotBeNullOrEmpty();
-        mnemonic.WordCount.Should().Be(12);
+        mnemonic.WordCount.Should().Be(24);
     }
 
     [Fact]

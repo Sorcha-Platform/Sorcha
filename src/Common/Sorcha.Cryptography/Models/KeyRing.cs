@@ -18,7 +18,7 @@ public class KeyRing : IDisposable
     public required WalletNetworks Network { get; init; }
 
     /// <summary>
-    /// Gets or sets the mnemonic recovery phrase (12 words).
+    /// Gets or sets the mnemonic recovery phrase (12, 15, 18, 21, or 24 words; new wallets default to 24).
     /// </summary>
     public string? Mnemonic { get; init; }
 
