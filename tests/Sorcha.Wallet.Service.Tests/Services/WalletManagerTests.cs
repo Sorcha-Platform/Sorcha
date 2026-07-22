@@ -130,7 +130,7 @@ public class WalletManagerTests : IDisposable
         wallet.EncryptedPrivateKey.Should().NotBeNullOrEmpty();
 
         mnemonic.Should().NotBeNull();
-        mnemonic.WordCount.Should().Be(12);
+        mnemonic.WordCount.Should().Be(24);
 
         // Verify wallet was saved
         var savedWallet = await _repository.GetByAddressAsync(wallet.Address);
