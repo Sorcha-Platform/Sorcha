@@ -24,7 +24,9 @@ param(
     [ValidateSet('docker', 'n1')][string]$Target = 'docker',
     [string]$StateFile = (Join-Path $PSScriptRoot "state.json"),
     [int]$DecisionTimeoutSeconds = 60,
-    [int]$DeliveryTimeoutSeconds = 60
+    # The first credential delivery on a freshly-genesis'd node (cold register seal + wallet sync)
+    # can take longer than a warm node — 120s keeps the happy path reliable right after a re-genesis.
+    [int]$DeliveryTimeoutSeconds = 120
 )
 
 Set-StrictMode -Version Latest
@@ -186,7 +188,15 @@ function Test-CredentialDelivered {
         try {
             $snap = Invoke-SorchaApi -Method GET -Uri "$api/v1/wallet/credentials" -Headers $Applicant.Session.Headers
             if ($snap.credentials -and $snap.credentials.Count -gt 0) {
-                $hit = $snap.credentials | Where-Object { $_.vct -match "AssuredIdentity" -or $_.displayLabel -match "Assured" } | Select-Object -First 1
+                # Match the AssuredIdentity credential across both the pre- and post-VCT-decoupling
+                # (#1187) shapes: the vct is now the URI ".../assured-identity/v1" (hyphenated), not
+                # the bare "AssuredIdentityCredential" the old matcher looked for, and displayLabel is
+                # empty in the summary projection. Match the vct URI slug OR the credentialType OR a
+                # label, so the harness recognises the credential the engine actually mints.
+                $hit = $snap.credentials | Where-Object {
+                    $_.vct -match "assured-identity" -or $_.vct -match "AssuredIdentity" -or
+                    $_.credentialType -match "AssuredIdentity" -or $_.displayLabel -match "Assured"
+                } | Select-Object -First 1
                 if ($hit) { return $hit }
             }
         } catch { }
