@@ -9,14 +9,18 @@ using Sorcha.ServiceClients.Trust;
 namespace Sorcha.Blueprint.Service.Credentials;
 
 /// <summary>
-/// Feature 181 US3 (T035) — service-layer adapter that supplies the <c>trustlist</c> trust source's
-/// X.509 anchors from an imported ETSI TS 119 612 snapshot (via the caching
-/// <see cref="ITrustListProvider"/>). Sets <see cref="TrustAnchorSet.AnchorSetId"/> to
-/// <c>{trustListId}#{sequenceNumber}</c> so the snapshot identity is carried into
-/// <c>TrustEvidence.TrustListId</c> (FR-015). Returns null when the snapshot is absent or empty so the
-/// source fails closed (FR-014). Each service owns its own thin adapter (the engine stays free of the
-/// network-bound provider).
+/// Feature 181 US3 (T035) — Blueprint Service's service-layer adapter supplying the <c>trustlist</c> trust
+/// source's X.509 anchors from an imported ETSI TS 119 612 snapshot, via the caching
+/// <see cref="ITrustListProvider"/>.
 /// </summary>
+/// <remarks>
+/// Deliberately nothing but wiring: fetch the snapshot with this service's configured client, then
+/// hand its facts to <see cref="TrustListAnchorDecision"/>, which owns the fail-closed and freshness
+/// rules (FR-014 / FR-015 / FR-016). Each service needs its own adapter because each resolves
+/// snapshots through its own client, but the decision itself exists once — this file and HAIP's
+/// counterpart were previously byte-identical apart from their comments, which is one copy of a
+/// fail-closed rule too many (DRIFT-005).
+/// </remarks>
 public sealed class TrustListAnchorProvider : ITenantTrustAnchorProvider
 {
     private readonly ITrustListProvider _provider;
@@ -45,35 +49,18 @@ public sealed class TrustListAnchorProvider : ITenantTrustAnchorProvider
         }
 
         var snapshot = await _provider.GetSnapshotAsync(anchorId, cancellationToken).ConfigureAwait(false);
-        if (snapshot is null || snapshot.Roots.Count == 0)
+        if (snapshot is null)
         {
             return null;
         }
 
-        // Feature 181 US3 (T036 / FR-016) — freshness gate. Warn mode (default): evaluate + flag via
-        // metric/log, still vouch. Strict mode: a stale snapshot fails closed (returns no anchors).
-        if (TrustListAnchorFreshness.IsStale(snapshot, _clock.GetUtcNow()))
-        {
-            TrustMetrics.RecordStaleEvaluation(snapshot.Id, snapshot.SequenceNumber, _strictFreshness);
-            if (_strictFreshness)
-            {
-                _logger?.LogWarning(
-                    "Trusted-list snapshot {TrustListId}#{Sequence} is stale and strict freshness is enabled — failing closed (TRUSTLIST_STALE).",
-                    snapshot.Id, snapshot.SequenceNumber);
-                return null;
-            }
-
-            _logger?.LogWarning(
-                "Trusted-list snapshot {TrustListId}#{Sequence} is stale (warn mode) — vouching with a stale-flagged evidence trail.",
-                snapshot.Id, snapshot.SequenceNumber);
-        }
-
-        return new TrustAnchorSet
-        {
-            Roots = snapshot.Roots,
-            AnchorSetId = $"{snapshot.Id}#{snapshot.SequenceNumber}",
-            Freshness = snapshot.Freshness,
-            CheckRevocation = false,
-        };
+        return TrustListAnchorDecision.Evaluate(
+            snapshot.Roots,
+            snapshot.Id,
+            snapshot.SequenceNumber,
+            snapshot.Freshness,
+            TrustListAnchorFreshness.IsStale(snapshot, _clock.GetUtcNow()),
+            _strictFreshness,
+            _logger);
     }
 }
