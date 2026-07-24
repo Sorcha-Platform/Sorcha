@@ -74,10 +74,6 @@ public sealed class CliWireContractTests
     /// </remarks>
     private static readonly Dictionary<string, string> KnownMismatch = new(StringComparer.Ordinal)
     {
-        ["AuditLogEntry"] =
-            "Tenant.Service (vs AuditEventResponse) — CLI-only: action, resourceId, resourceType, userId, userName; server-only: eventType, identityId, ipAddress, success",
-        ["AuditLogResponse"] =
-            "Tenant.Service — server sends `events`, CLI reads `entries` -> `audit query` always reports nothing",
         ["AvailableRegisterInfo"] =
             "Peer.Service — server-only: description, name",
         ["BootstrapResponse"] =
@@ -106,16 +102,12 @@ public sealed class CliWireContractTests
             "Register.Service — server-only: policy",
         ["PublishBlueprintRequest"] =
             "ServiceClients.Http — CLI-only: blueprintId; server-only: override",
-        ["PublishParticipantRequest"] =
-            "Tenant.Service — CLI sends `name`/`walletAddresses`; server requires `participantName`/`addresses`/`signerWalletAddress` -> 400",
         ["RegisterPolicyResponse"] =
             "Register.Service — CLI-only: maxValidators, minValidators, registrationMode, signatureThreshold, transitionMode, updatedAt, updatedBy, version; server-only: isDefault...",
         ["RegisterStatsResponse"] =
             "ServiceClients.Http — CLI-only: count; server-only: registerCount, transactionCount",
         ["RegisterSyncStatus"] =
             "Peer.Service — CLI-only: currentDocket, docketsProcessed, isStale, lastError, progressPercent, status, targetDocket; server-only: canServeFullReplica, lastSyncAt,...",
-        ["RotateSecretResponse"] =
-            "Tenant.Service — server sends `newClientSecret`, CLI reads `clientSecret` -> `service-principal rotate-secret` prints an EMPTY secret and looks successful",
         ["SchemaSector"] =
             "Blueprint.Service — CLI-only: name, schemaCount, status; server-only: displayName, icon",
         ["ServicePrincipal"] =

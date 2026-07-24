@@ -93,15 +93,22 @@ public class CreateServicePrincipalResponse
 /// <summary>
 /// Response when rotating a service principal secret.
 /// </summary>
+/// <remarks>
+/// Mirrors <c>Sorcha.Tenant.Service.Models.Dtos.RotateSecretResponse</c> exactly; the pairing is
+/// asserted by <c>CliWireContractTests</c>. This previously declared <c>ClientSecret</c> and
+/// <c>RotatedAt</c>, neither of which the server sends — so the command printed an empty secret
+/// and a default timestamp while reporting success. The rotation itself had happened, leaving the
+/// operator with a rotated principal and no way to recover the new secret.
+/// </remarks>
 public class RotateSecretResponse
 {
     /// <summary>
-    /// New client secret.
+    /// The new client secret. Returned once and never again.
     /// </summary>
-    public string ClientSecret { get; set; } = string.Empty;
+    public string NewClientSecret { get; set; } = string.Empty;
 
     /// <summary>
-    /// When the secret was rotated.
+    /// Server-supplied warning shown alongside the secret.
     /// </summary>
-    public DateTimeOffset RotatedAt { get; set; }
+    public string Warning { get; set; } = string.Empty;
 }
