@@ -43,7 +43,7 @@ public interface IRegisterServiceClient
     /// Gets register statistics.
     /// </summary>
     [Get("/api/registers/stats/count")]
-    Task<RegisterStatsResponse> GetRegisterStatsAsync([Header("Authorization")] string authorization);
+    Task<RegisterCountResponse> GetRegisterStatsAsync([Header("Authorization")] string authorization);
 
     // --- Two-Phase Register Creation ---
 
@@ -270,8 +270,19 @@ public class UpdateRegisterRequest
 /// <summary>
 /// Response from register statistics.
 /// </summary>
-public class RegisterStatsResponse
+/// <summary>
+/// Response of <c>GET /api/registers/stats/count</c> — the register count only.
+/// </summary>
+/// <remarks>
+/// Named <c>RegisterCountResponse</c> to stop it colliding with the unrelated
+/// <c>Sorcha.ServiceClients.Http</c> <c>RegisterCountResponse</c>, which is a DIFFERENT endpoint's
+/// type (the org-scoped dashboard stats, carrying registerCount + transactionCount). The two share
+/// nothing but a name; the CLI's single-count shape is correct for the endpoint it actually calls,
+/// so the fix is to disambiguate, not to "align" it to a contract it never uses.
+/// </remarks>
+public class RegisterCountResponse
 {
+    /// <summary>Total number of registers.</summary>
     public int Count { get; set; }
 }
 

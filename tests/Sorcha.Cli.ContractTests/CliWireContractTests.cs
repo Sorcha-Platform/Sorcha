@@ -47,6 +47,12 @@ public sealed class CliWireContractTests
         ["AuthenticationService"] = "A service class, not a DTO.",
         ["ConfigurationService"] = "A service class, not a DTO.",
         ["HttpClientFactory"] = "A factory class, not a DTO.",
+        ["VerificationResult"] =
+            "The CLI's verify command posts to the REGISTER Service's /receipts/verify and "
+            + "/verification-bundles/verify, which return an anonymous { isValid, checks, errors } "
+            + "object — not the Wallet Service's VerificationResult the name collides with. The CLI "
+            + "type now matches that anonymous shape (isValid/checks/errors); there is no server type "
+            + "to pair against, so this is not a wire-contract collision.",
         ["LoginRequest"] =
             "Different concept, same name. The CLI's is the input to an OAuth2 password-grant, sent "
             + "form-encoded to the token endpoint (username/password/client_id/scope). The Tenant "
@@ -88,8 +94,6 @@ public sealed class CliWireContractTests
             "Peer.Service — CLI-only: bootstrapNodes; server-only: seedNodes",
         ["PublishBlueprintRequest"] =
             "ServiceClients.Http — CLI-only: blueprintId; server-only: override",
-        ["RegisterStatsResponse"] =
-            "ServiceClients.Http — CLI-only: count; server-only: registerCount, transactionCount",
         ["RegisterSyncStatus"] =
             "Peer.Service — CLI-only: currentDocket, docketsProcessed, isStale, lastError, progressPercent, status, targetDocket; server-only: canServeFullReplica, lastSyncAt,...",
         ["SchemaSector"] =
@@ -102,8 +106,6 @@ public sealed class CliWireContractTests
             "Validator.Service — server-only: id, registerId",
         ["ValidatorStatus"] =
             "Validator.Service — CLI-only: consensusProtocol, failedValidations, isRunning, lastValidationAt, registersMonitored, status, totalValidations, uptime; server-only: doc...",
-        ["VerificationResult"] =
-            "Wallet.Service — CLI-only: status, verifiedAt; server-only: credentialType, issuerDid, statusListCheck, verifiedClaims",
         ["WalletLinkChallengeResponse"] =
             "Tenant.Service — CLI-only: nonce; server-only: algorithm, challenge, status, walletAddress",
     };
@@ -134,9 +136,6 @@ public sealed class CliWireContractTests
     /// </summary>
     private static readonly Dictionary<string, string> PreferredCounterpartAssembly = new(StringComparer.Ordinal)
     {
-        // The CLI's verify command talks to the Wallet Service, not HAIP's external-wallet surface.
-        ["VerificationResult"] = "Sorcha.Wallet.Service",
-
         // Declared in BOTH Register.Service and ServiceClients.Http. The server is the authority
         // for what the CLI must match. (That the shared client ALSO disagrees with the server is a
         // separate finding, recorded on DRIFT-002.)

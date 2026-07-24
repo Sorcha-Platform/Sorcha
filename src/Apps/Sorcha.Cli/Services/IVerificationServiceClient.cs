@@ -82,8 +82,31 @@ public class VerificationBundleResponse
 /// </summary>
 public class VerificationResult
 {
+    /// <summary>Whether the receipt/bundle verified.</summary>
     public bool IsValid { get; set; }
-    public string Status { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The individual checks the server ran. The endpoint returns these under <c>checks</c>; the
+    /// CLI previously ignored them and invented a <c>status</c>/<c>verifiedAt</c> the server never
+    /// sends, so the operator saw an empty status and a default timestamp.
+    /// </summary>
+    public ReceiptVerificationChecks? Checks { get; set; }
+
+    /// <summary>Verification errors, if any.</summary>
     public List<string> Errors { get; set; } = new();
-    public DateTimeOffset VerifiedAt { get; set; }
+}
+
+/// <summary>
+/// The per-check breakdown the receipt/bundle verify endpoint returns under <c>checks</c>.
+/// </summary>
+public class ReceiptVerificationChecks
+{
+    /// <summary>Whether the validator signature verified.</summary>
+    public bool SignatureValid { get; set; }
+
+    /// <summary>Whether the Merkle inclusion proof verified.</summary>
+    public bool InclusionProofValid { get; set; }
+
+    /// <summary>Whether the Merkle root was consistent with the docket.</summary>
+    public bool MerkleRootConsistent { get; set; }
 }
