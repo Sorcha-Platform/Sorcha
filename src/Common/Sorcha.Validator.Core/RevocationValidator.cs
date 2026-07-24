@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Blueprint.Models;
 using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Core;
@@ -46,20 +47,20 @@ public class RevocationValidator
             {
                 IsValid = false,
                 Errors = ["Revocation payload is null"],
-                ErrorCode = "VAL_REV_001"
+                ErrorCode = ValidationErrorCodes.RevocationInvalid
             };
 
         // Validate required fields
         if (string.IsNullOrWhiteSpace(payload.OriginalTxId))
         {
             errors.Add("OriginalTxId is required");
-            errorCode = "VAL_REV_001";
+            errorCode = ValidationErrorCodes.RevocationInvalid;
         }
 
         if (payload.OriginalDocketNumber < 0)
         {
             errors.Add("OriginalDocketNumber must be non-negative");
-            errorCode = "VAL_REV_001";
+            errorCode = ValidationErrorCodes.RevocationInvalid;
         }
 
         // Validate reason is a known enum value
@@ -88,7 +89,7 @@ public class RevocationValidator
             if (payload.Metadata.Count > 10)
             {
                 errors.Add("Metadata cannot have more than 10 entries");
-                errorCode = "VAL_REV_001";
+                errorCode = ValidationErrorCodes.RevocationInvalid;
             }
 
             foreach (var kvp in payload.Metadata)
@@ -96,12 +97,12 @@ public class RevocationValidator
                 if (kvp.Key.Length > 50)
                 {
                     errors.Add($"Metadata key '{kvp.Key[..20]}...' exceeds 50 characters");
-                    errorCode = "VAL_REV_001";
+                    errorCode = ValidationErrorCodes.RevocationInvalid;
                 }
                 if (kvp.Value.Length > 500)
                 {
                     errors.Add($"Metadata value for key '{kvp.Key}' exceeds 500 characters");
-                    errorCode = "VAL_REV_001";
+                    errorCode = ValidationErrorCodes.RevocationInvalid;
                 }
             }
         }

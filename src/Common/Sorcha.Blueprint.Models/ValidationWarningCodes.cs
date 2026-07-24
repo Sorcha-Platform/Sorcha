@@ -11,13 +11,27 @@ namespace Sorcha.Blueprint.Models;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Service-internal validator codes (e.g. <c>VAL_BP_010</c>,
-/// <c>VAL_BP_CRED_*</c>) live alongside the rules that emit them and are
-/// not in scope here.
+/// Cross-boundary <b>error</b> codes have a sibling home in
+/// <see cref="ValidationErrorCodes"/>. Genuinely service-internal codes
+/// (the Validator's <c>VAL_SCHEMA_*</c>, <c>VAL_STRUCT_*</c>, <c>VAL_PERM_*</c>
+/// families) still live alongside the rules that emit them and are not in
+/// scope for either class.
 /// </para>
 /// </remarks>
 public static class ValidationWarningCodes
 {
+    /// <summary>
+    /// Blueprint publish <b>warning</b> (non-blocking): an action with
+    /// <c>targetAudience == SorchaLocalWallet</c> does not declare an explicit
+    /// recipient disclosure group for the credential payload, so the engine will
+    /// synthesise a default one at mint time. Authors may ignore this warning or
+    /// add an explicit disclosure to silence it.
+    /// </summary>
+    /// <remarks>
+    /// Contract: <c>specs/106-register-native-credentials/contracts/credential-issuance-config.md</c>.
+    /// </remarks>
+    public const string SorchaLocalWalletImplicitDisclosure = "WARN_BP_CRED_002";
+
     /// <summary>
     /// Blueprint publish <b>warning</b> (non-blocking): an <c>x-review</c> page
     /// declares a <c>layout</c> value the renderer does not recognise. The blueprint

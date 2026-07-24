@@ -6,6 +6,7 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Sorcha.Blueprint.Models;
 using Sorcha.Blueprint.Service.Configuration;
 using Sorcha.Blueprint.Service.Services.Infrastructure;
 using Sorcha.Blueprint.Service.Services.Interfaces;
@@ -365,7 +366,9 @@ public sealed class RedisPresentationSealCoordinator : IPresentationSealCoordina
         }
 
         // VAL_CHAIN_FORK is treated as "already sealed via another path" — dedupe silently.
-        if (string.Equals(result.ErrorCode, "VAL_CHAIN_FORK", StringComparison.Ordinal))
+        // Named through the shared constant: this comparison is a cross-service behavioural
+        // contract with the Validator, and a renamed literal would break it silently (DRIFT-003).
+        if (string.Equals(result.ErrorCode, ValidationErrorCodes.ChainFork, StringComparison.Ordinal))
         {
             _logger.LogInformation(
                 "Queued {Site} submission for requestId {RequestId} dedup-rejected by VAL_CHAIN_FORK — already sealed via another path",

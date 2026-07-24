@@ -1,0 +1,13 @@
+# Files still writing a cross-boundary validation code (a constant declared in
+# Sorcha.Blueprint.Models.ValidationErrorCodes / ValidationWarningCodes) as a raw string literal.
+#
+# This list is a RATCHET: it may only shrink, never grow. A stale entry (a file that no longer
+# carries such a literal) fails the gate, so entries must be removed in the same PR that removes
+# the literal.
+#
+# It is currently EMPTY — every shared validation code in src/ resolves to a constant.
+#
+# NOTE: service-internal codes (the Validator's VAL_SCHEMA_*, VAL_STRUCT_*, VAL_PERM_* families)
+# are out of scope by design and never appear here. They are declared and consumed in the same
+# file, so they carry no cross-boundary drift risk. Promote a code to the shared class only when a
+# second project needs to name it.

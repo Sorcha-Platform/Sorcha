@@ -57,7 +57,7 @@ public class Participant : IEquatable<Participant>
     /// <see cref="Action.Sender"/> of any action with <see cref="Action.IsStartingAction"/>
     /// set to <c>true</c> MUST leave this property null in the published blueprint.
     /// The publish-time guardrail <c>VAL_BP_010</c> (defined as
-    /// <c>Sorcha.Validator.Service.Models.ValidationErrorCodes.OpenParticipantPrebound</c>)
+    /// <c>Sorcha.Blueprint.Models.ValidationErrorCodes.OpenParticipantPrebound</c>)
     /// rejects publication otherwise.
     /// </para>
     /// <para>

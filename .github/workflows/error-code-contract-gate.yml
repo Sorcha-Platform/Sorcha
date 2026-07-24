@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Cross-boundary validation-code CI gate. Fails when a code declared in
+# Sorcha.Blueprint.Models.ValidationErrorCodes / ValidationWarningCodes is also written as a raw
+# string literal in src/.
+#
+# Some of these codes are matched on, not just logged — Blueprint Service compares the Validator's
+# error code against VAL_CHAIN_FORK to dedupe an already-sealed submission (Feature 119). Two
+# independently-typed literals give the compiler nothing to check, so a rename breaks that
+# comparison silently.
+#
+# Service-internal validator codes are deliberately out of scope. See
+# scripts/check-error-code-contract.ps1 and .error-code-contract-allowlist.
+
+name: error-code-contract-gate
+
+on:
+  pull_request:
+    paths:
+      - "src/**/*.cs"
+      - "src/**/*.razor"
+      - "scripts/check-error-code-contract.ps1"
+      - ".error-code-contract-allowlist"
+      - ".github/workflows/error-code-contract-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  error-code-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run error-code contract gate
+        shell: pwsh
+        run: ./scripts/check-error-code-contract.ps1
