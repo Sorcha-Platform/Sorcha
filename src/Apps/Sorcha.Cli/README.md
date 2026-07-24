@@ -28,7 +28,7 @@ The Sorcha CLI is a cross-platform command-line interface for managing the Sorch
 | **System register commands** | Complete | Genesis, import-validator-key, status |
 | **Platform / admin commands** | Complete | Platform settings, bootstrap |
 | **Participant commands** | Complete | List, get |
-| **Invitation commands** | Complete | Create, list, redeem |
+| **Invitation commands** | Complete | Create, list, accept, revoke — on the shared `IRegisterInvitationServiceClient` |
 | **Verify commands** | Complete | Verify a credential or presentation |
 | **Health command** | Complete | Check service health |
 | **Event-watch command** | Complete | Stream SignalR events to console |
@@ -510,6 +510,30 @@ All commands support these global options:
 - **Microsoft.Extensions.Logging** - Logging infrastructure
 - **Polly** - Resilience and transient fault handling
 - **Refit** - Type-safe HTTP client (planned)
+
+### HTTP clients and wire contracts
+
+**Prefer a shared client from `Sorcha.ServiceClients.Http` over a new CLI-local Refit interface.**
+The CLI already references that project (and `Sorcha.Wallet.Contracts`), so a hand-written local
+copy of a request/response DTO buys nothing and can drift out of agreement with the server without
+anything failing to compile.
+
+That is not hypothetical. The CLI used to carry its own `IInvitationServiceClient` plus four
+invitation DTOs. They said `registerId`/`targetOrgDid` where the Tenant Service binds
+`register_id`/`target_org_did`, `expiresInHours` where the server reads `expires_in_days`, and
+modelled the list response as a bare array where the server returns a `{invitations, total_count}`
+envelope. Every `sorcha invitation` subcommand failed against a live server, while both sides
+remained internally consistent and unit-tested. Those commands now use the shared
+`IRegisterInvitationServiceClient` — the same client the Blazor admin UI uses — and a wire-contract
+test (`RegisterInvitationWireContractTests` in `Sorcha.Tenant.Service.Tests`) pins the shared client
+DTOs to the server DTOs so the two cannot drift apart again.
+
+When a shared client needs auth, build it through `HttpClientFactory` (see
+`CreateRegisterInvitationClientAsync`), which attaches the cached bearer token to the `HttpClient`
+rather than passing it per call.
+
+Migrating the remaining CLI-local client/DTO copies is tracked as **DRIFT-002** in
+`.specify/MASTER-TASKS.md`.
 
 ### Project Structure
 

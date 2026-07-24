@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using Polly;
 using Polly.Extensions.Http;
 using Polly.Timeout;
 using Refit;
 using Sorcha.Cli.Models;
+using Sorcha.ServiceClients.Invitation;
 
 namespace Sorcha.Cli.Services;
 
@@ -31,6 +35,13 @@ public class HttpClientFactory
                 Converters = { new JsonStringEnumConverter() }
             })
     };
+
+    /// <summary>
+    /// An empty configuration for shared service clients that accept <see cref="IConfiguration"/>
+    /// solely to discover a base address. The CLI resolves base addresses from its own profile and
+    /// sets <see cref="HttpClient.BaseAddress"/> before construction, so the lookup never fires.
+    /// </summary>
+    private static readonly IConfiguration EmptyConfiguration = new ConfigurationBuilder().Build();
 
     public HttpClientFactory(IConfigurationService configService)
     {
@@ -176,10 +187,23 @@ public class HttpClientFactory
     }
 
     /// <summary>
-    /// Creates an Invitation Service client for the specified profile.
-    /// Uses the Tenant Service URL since invitation endpoints are on the Tenant Service.
+    /// Creates a register-invitation client for the specified profile, pre-authorised with
+    /// <paramref name="accessToken"/>. Uses the Tenant Service URL since invitation endpoints
+    /// live on the Tenant Service.
     /// </summary>
-    public async Task<IInvitationServiceClient> CreateInvitationServiceClientAsync(string profileName)
+    /// <remarks>
+    /// This returns the <b>shared</b> <see cref="IRegisterInvitationServiceClient"/> from
+    /// Sorcha.ServiceClients.Http rather than a CLI-local Refit interface. The CLI previously kept
+    /// its own copy of the interface and its four DTOs; those copies drifted from the Tenant
+    /// Service wire contract (camelCase vs the server's snake_case, <c>expiresInHours</c> vs
+    /// <c>expires_in_days</c>, a bare array vs the <c>{invitations, total_count}</c> envelope) and
+    /// every <c>sorcha invitation</c> subcommand failed against a live server as a result.
+    /// The shared client is the same one the Blazor admin UI uses, so there is exactly one
+    /// definition of this wire contract to keep correct.
+    /// </remarks>
+    public async Task<IRegisterInvitationServiceClient> CreateRegisterInvitationClientAsync(
+        string profileName,
+        string accessToken)
     {
         var profile = await _configService.GetProfileAsync(profileName);
         if (profile == null)
@@ -188,7 +212,18 @@ public class HttpClientFactory
         }
 
         var httpClient = CreateHttpClient(profile, profile.GetTenantServiceUrl());
-        return RestService.For<IInvitationServiceClient>(httpClient);
+
+        // The shared client expects auth already attached to the HttpClient pipeline (the Blazor UI
+        // supplies a bearer-attaching DelegatingHandler); the CLI holds the token itself, so it sets
+        // the header directly.
+        httpClient.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", accessToken);
+
+        // BaseAddress is already set above, so the client never consults IConfiguration for it.
+        return new RegisterInvitationServiceClient(
+            httpClient,
+            EmptyConfiguration,
+            NullLogger<RegisterInvitationServiceClient>.Instance);
     }
 
     /// <summary>
