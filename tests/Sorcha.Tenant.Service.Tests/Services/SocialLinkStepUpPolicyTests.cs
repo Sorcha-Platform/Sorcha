@@ -1,7 +1,8 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
+using Sorcha.Tenant.Models.Auth;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
 

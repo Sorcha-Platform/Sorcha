@@ -1,4 +1,4 @@
-@* Passkeys section for the Accounts tab (Feature 116).
+﻿@* Passkeys section for the Accounts tab (Feature 116).
    US4 shipped the read-only render; US2 wires Add (WebAuthn registration
    ceremony via PasskeyInteropService), Rename (inline edit, no challenge),
    and Remove (AuthChallengeDialog gates Active credentials; Disabled
@@ -8,6 +8,7 @@
 @using Sorcha.UI.Core.Models
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Services.Feedback
+@using Sorcha.Tenant.Models.Auth
 @inject ILocalizationService Loc
 @inject IAuthMethodsClientService AuthMethodsClient
 @inject IDialogService DialogService

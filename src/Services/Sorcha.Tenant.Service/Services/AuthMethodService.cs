@@ -1,7 +1,9 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Sorcha.Tenant.Models.Auth;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Requests;
@@ -186,7 +188,7 @@ public sealed class AuthMethodService : IAuthMethodService
                 Id: p.Id,
                 DisplayName: string.IsNullOrWhiteSpace(p.DisplayName) ? "Unnamed passkey" : p.DisplayName,
                 DeviceType: p.DeviceType,
-                Status: p.Status,
+                Status: PasskeyStatusWireValue(p.Status),
                 DisabledReason: p.DisabledReason,
                 CreatedAt: p.CreatedAt,
                 LastUsedAt: p.LastUsedAt,
@@ -198,4 +200,26 @@ public sealed class AuthMethodService : IAuthMethodService
             EmailOtpEnabled: emailOtpEnabled,
             SmsOtpEnabled: smsOtpEnabled);
     }
+
+    /// <summary>
+    /// The wire value for a passkey's status, byte-identical to what the serializer produced when
+    /// <see cref="AuthMethodsPasskey.Status"/> was typed as <see cref="CredentialStatus"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The shared contract in <c>Sorcha.Tenant.Models.Auth</c> models this as a string: hoisting
+    /// <see cref="CredentialStatus"/> into that zero-dependency leaf to satisfy one response
+    /// property would drag an EF-mapped enum with ~40 service-internal usages along with it.
+    /// </para>
+    /// <para>
+    /// <b>Do not replace this with <c>ToString()</c>.</b> That silently changes the wire value from
+    /// <c>"active"</c> to <c>"Active"</c>. The type-level
+    /// <c>[JsonConverter(typeof(JsonStringEnumConverter))]</c> on <see cref="CredentialStatus"/>
+    /// never applied here: System.Text.Json ranks the <c>Converters</c> collection ABOVE a
+    /// type-level attribute, so <c>SorchaJson</c>'s kebab-case converter has always won. Pinned by
+    /// <c>AuthMethodsWireContractTests</c>.
+    /// </para>
+    /// </remarks>
+    private static string PasskeyStatusWireValue(CredentialStatus status) =>
+        JsonNamingPolicy.KebabCaseLower.ConvertName(status.ToString());
 }

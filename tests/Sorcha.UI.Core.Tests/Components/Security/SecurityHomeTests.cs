@@ -1,6 +1,7 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Tenant.Models.Auth;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -42,7 +43,7 @@ public sealed class SecurityHomeTests : BunitContext
         _loc.Setup(l => l.T(It.IsAny<string>())).Returns<string>(k => k);
         _loc.Setup(l => l.T(It.IsAny<string>(), It.IsAny<object[]>())).Returns<string, object[]>((k, _) => k);
 
-        _totp.Setup(t => t.GetStatusAsync()).ReturnsAsync(new TotpStatusResponse { IsEnabled = false });
+        _totp.Setup(t => t.GetStatusAsync()).ReturnsAsync(new TotpStatusResponse(IsEnabled: false, VerifiedAt: null));
 
         Services.AddSingleton(_client.Object);
         Services.AddSingleton(_totp.Object);
@@ -61,21 +62,29 @@ public sealed class SecurityHomeTests : BunitContext
         builder.CloseComponent();
     };
 
-    private static AuthMethodsResponse PopulatedMethods() => new()
-    {
-        Email = "ada@test.com",
-        EmailVerified = true,
-        Password = new AuthMethodsPassword { IsSet = true, CanRemove = true },
-        Socials = new List<AuthMethodsSocial>
-        {
-            new() { LinkId = Guid.NewGuid(), Provider = "google", Email = "ada@test.com", CanRemove = true },
-        },
-        Passkeys = new List<AuthMethodsPasskey>
-        {
+    private static AuthMethodsResponse PopulatedMethods() => new(
+        Email: "ada@test.com",
+        EmailVerified: true,
+        Password: new AuthMethodsPassword(
+            IsSet: true, LastChangedAt: null, CanRemove: true,
+            AssuranceTier: AuthAssuranceTier.Strong, RequiredProofTier: AuthAssuranceTier.Basic),
+        Socials:
+        [
+            new AuthMethodsSocial(
+                LinkId: Guid.NewGuid(), Provider: "google", Email: "ada@test.com", DisplayName: null,
+                LinkedAt: DateTimeOffset.UtcNow, LastUsedAt: null, CanRemove: true,
+                AssuranceTier: AuthAssuranceTier.Basic, RequiredProofTier: AuthAssuranceTier.Basic),
+        ],
+        Passkeys:
+        [
             // CanRemove=false → the Remove control must be disabled (last-method / floor reflection).
-            new() { Id = Guid.NewGuid(), DisplayName = "iPhone", Status = "Active", CanRemove = false, CanRename = true },
-        },
-    };
+            new AuthMethodsPasskey(
+                Id: Guid.NewGuid(), DisplayName: "iPhone", DeviceType: null, Status: "Active",
+                DisabledReason: null, CreatedAt: DateTimeOffset.UtcNow, LastUsedAt: null,
+                CanRemove: false, CanRename: true,
+                AssuranceTier: AuthAssuranceTier.Strongest, RequiredProofTier: AuthAssuranceTier.Strongest),
+        ],
+        SmsAvailable: false);
 
     [Fact]
     public void RendersThreeJobGroups_WithAssuranceBadges()

@@ -1,6 +1,7 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Tenant.Models.Auth;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.UI.Core.Extensions;
@@ -89,7 +90,7 @@ public class TotpClientService : ITotpClientService
         try
         {
             var response = await _httpClient.PostAsJsonAsync("/api/totp/verify-setup",
-                new TotpVerifyRequest { Code = code });
+                new TotpCodeRequest(code));
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
@@ -104,7 +105,7 @@ public class TotpClientService : ITotpClientService
         try
         {
             var response = await _httpClient.PostAsJsonAsync("/api/totp/validate",
-                new TotpVerifyRequest { Code = code });
+                new TotpCodeRequest(code));
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
@@ -138,12 +139,12 @@ public class TotpClientService : ITotpClientService
         try
         {
             var response = await _httpClient.GetFromJsonAsync<TotpStatusResponse>("/api/totp/status", JsonDefaults.Api);
-            return response ?? new TotpStatusResponse();
+            return response ?? new TotpStatusResponse(IsEnabled: false, VerifiedAt: null);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get TOTP status");
-            return new TotpStatusResponse();
+            return new TotpStatusResponse(IsEnabled: false, VerifiedAt: null);
         }
     }
 }

@@ -1,4 +1,4 @@
-@* SPDX-License-Identifier: MIT *@
+﻿@* SPDX-License-Identifier: MIT *@
 @* Copyright (c) 2026 Sorcha Contributors *@
 @*
     Two-factor authentication section (Feature 150). US1 ships the Authenticator (TOTP) row —
@@ -9,6 +9,7 @@
 @using Sorcha.UI.Core.Models
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Services.Feedback
+@using Sorcha.Tenant.Models.Auth
 @inject ITotpClientService TotpService
 @inject IAuthMethodsClientService AuthMethodsClient
 @inject IDialogService DialogService
@@ -71,7 +72,7 @@
             <MudButton Variant="Variant.Text" Disabled="_busy" OnClick="CancelSetup">Cancel</MudButton>
         </div>
 
-        @if (_setup.BackupCodes.Length > 0)
+        @if (_setup.BackupCodes.Count > 0)
         {
             <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">
                 Save these one-time backup codes somewhere safe — they let you sign in if you lose

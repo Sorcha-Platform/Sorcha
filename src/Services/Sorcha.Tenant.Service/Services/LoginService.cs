@@ -1,9 +1,10 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.EntityFrameworkCore;
 
 using Sorcha.ServiceDefaults.Auth;
+using Sorcha.Tenant.Models.Auth;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;

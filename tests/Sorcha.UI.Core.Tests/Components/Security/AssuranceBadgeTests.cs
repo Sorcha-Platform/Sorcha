@@ -1,10 +1,11 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
 using Bunit;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor.Services;
+using Sorcha.Tenant.Models.Auth;
 using Sorcha.UI.Core.Components.Security;
 using Sorcha.UI.Core.Models;
 using Xunit;

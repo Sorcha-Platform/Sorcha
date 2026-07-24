@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Security.Claims;
@@ -113,12 +113,10 @@ public static class TotpEndpoints
 
         var result = await totpService.SetupAsync(userId, cancellationToken);
 
-        return TypedResults.Ok(new TotpSetupResponse
-        {
-            Secret = result.Secret,
-            QrUri = result.QrUri,
-            BackupCodes = result.BackupCodes
-        });
+        return TypedResults.Ok(new TotpSetupResponse(
+            Secret: result.Secret,
+            QrUri: result.QrUri,
+            BackupCodes: result.BackupCodes));
     }
 
     private static async Task<Results<Ok<TotpVerifyResponse>, UnauthorizedHttpResult, ValidationProblem>> Verify(
@@ -281,11 +279,10 @@ public static class TotpEndpoints
 
         await totpService.DisableAsync(userId, cancellationToken);
 
-        return TypedResults.Ok(new TotpStatusResponse
-        {
-            IsEnabled = false,
-            Message = "TOTP two-factor authentication has been disabled"
-        });
+        return TypedResults.Ok(new TotpStatusResponse(
+            IsEnabled: false,
+            VerifiedAt: null,
+            Message: "TOTP two-factor authentication has been disabled"));
     }
 
     private static async Task<Results<Ok<TotpStatusResponse>, UnauthorizedHttpResult>> GetStatus(
@@ -298,11 +295,9 @@ public static class TotpEndpoints
 
         var status = await totpService.GetStatusAsync(userId, cancellationToken);
 
-        return TypedResults.Ok(new TotpStatusResponse
-        {
-            IsEnabled = status.IsEnabled,
-            VerifiedAt = status.VerifiedAt
-        });
+        return TypedResults.Ok(new TotpStatusResponse(
+            IsEnabled: status.IsEnabled,
+            VerifiedAt: status.VerifiedAt));
     }
 
     // --- Helpers ---
@@ -338,27 +333,6 @@ public static class TotpEndpoints
 }
 
 // --- Request/Response DTOs ---
-
-/// <summary>
-/// Response from TOTP setup containing the shared secret and backup codes.
-/// </summary>
-public record TotpSetupResponse
-{
-    /// <summary>
-    /// Base32-encoded shared secret for manual entry.
-    /// </summary>
-    public required string Secret { get; init; }
-
-    /// <summary>
-    /// otpauth:// URI for QR code scanning.
-    /// </summary>
-    public required string QrUri { get; init; }
-
-    /// <summary>
-    /// One-time backup codes. Store these securely — they are shown only once.
-    /// </summary>
-    public required string[] BackupCodes { get; init; }
-}
 
 /// <summary>
 /// Response from TOTP verify (initial setup verification).
@@ -406,38 +380,6 @@ public record TotpValidateResponse
     /// Access token expiration time in seconds (present only on success).
     /// </summary>
     public int? ExpiresIn { get; init; }
-}
-
-/// <summary>
-/// TOTP status response.
-/// </summary>
-public record TotpStatusResponse
-{
-    /// <summary>
-    /// Whether TOTP 2FA is enabled.
-    /// </summary>
-    public bool IsEnabled { get; init; }
-
-    /// <summary>
-    /// When TOTP was verified and activated. Null if not enabled.
-    /// </summary>
-    public DateTime? VerifiedAt { get; init; }
-
-    /// <summary>
-    /// Optional status message.
-    /// </summary>
-    public string? Message { get; init; }
-}
-
-/// <summary>
-/// Request to verify a TOTP code (setup completion or authenticated validation).
-/// </summary>
-public record TotpCodeRequest
-{
-    /// <summary>
-    /// Six-digit TOTP code from authenticator app.
-    /// </summary>
-    public required string Code { get; init; }
 }
 
 /// <summary>
