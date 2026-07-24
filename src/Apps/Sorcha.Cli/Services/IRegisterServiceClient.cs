@@ -43,7 +43,7 @@ public interface IRegisterServiceClient
     /// Gets register statistics.
     /// </summary>
     [Get("/api/registers/stats/count")]
-    Task<RegisterStatsResponse> GetRegisterStatsAsync([Header("Authorization")] string authorization);
+    Task<RegisterCountResponse> GetRegisterStatsAsync([Header("Authorization")] string authorization);
 
     // --- Two-Phase Register Creation ---
 
@@ -78,15 +78,6 @@ public interface IRegisterServiceClient
     Task<TransactionModel> GetTransactionAsync(
         string registerId,
         string transactionId,
-        [Header("Authorization")] string authorization);
-
-    /// <summary>
-    /// Submits a new transaction to a register.
-    /// </summary>
-    [Post("/api/registers/{registerId}/transactions")]
-    Task<SubmitTransactionResponse> SubmitTransactionAsync(
-        string registerId,
-        [Body] SubmitTransactionRequest request,
         [Header("Authorization")] string authorization);
 
     /// <summary>
@@ -270,33 +261,25 @@ public class UpdateRegisterRequest
 /// <summary>
 /// Response from register statistics.
 /// </summary>
-public class RegisterStatsResponse
+/// <summary>
+/// Response of <c>GET /api/registers/stats/count</c> — the register count only.
+/// </summary>
+/// <remarks>
+/// Named <c>RegisterCountResponse</c> to stop it colliding with the unrelated
+/// <c>Sorcha.ServiceClients.Http</c> <c>RegisterCountResponse</c>, which is a DIFFERENT endpoint's
+/// type (the org-scoped dashboard stats, carrying registerCount + transactionCount). The two share
+/// nothing but a name; the CLI's single-count shape is correct for the endpoint it actually calls,
+/// so the fix is to disambiguate, not to "align" it to a contract it never uses.
+/// </remarks>
+public class RegisterCountResponse
 {
+    /// <summary>Total number of registers.</summary>
     public int Count { get; set; }
 }
 
-/// <summary>
-/// Request to submit a new transaction.
-/// </summary>
-public class SubmitTransactionRequest
-{
-    public string RegisterId { get; set; } = string.Empty;
-    public string TxType { get; set; } = string.Empty;
-    public string SenderWallet { get; set; } = string.Empty;
-    public string Payload { get; set; } = string.Empty;
-    public string Signature { get; set; } = string.Empty;
-    public string? PreviousTxId { get; set; }
-}
-
-/// <summary>
-/// Response after submitting a transaction.
-/// </summary>
-public class SubmitTransactionResponse
-{
-    public string TransactionId { get; set; } = string.Empty;
-    public string Status { get; set; } = string.Empty;
-    public string? Error { get; set; }
-}
+// SubmitTransactionRequest / SubmitTransactionResponse were invented DTOs for a `transaction
+// submit` command that could never work: the endpoint consumes a full signed TransactionModel,
+// not a flat {payload, signature}. The command now explains that and refuses; the DTOs are gone.
 
 /// <summary>
 /// Paged query response.

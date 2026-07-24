@@ -8,31 +8,47 @@ namespace Sorcha.Cli.Models;
 /// <summary>
 /// Validator service status.
 /// </summary>
+/// <remarks>
+/// Mirrors <c>Sorcha.Validator.Service.ValidatorStatus</c> (returned by
+/// <c>GET /api/admin/validators/{registerId}/status</c>); the pairing is asserted by
+/// <c>CliWireContractTests</c>. This was previously an invented shape — <c>status</c>,
+/// <c>isRunning</c>, <c>uptime</c>, <c>consensusProtocol</c>, <c>registersMonitored</c> — none of
+/// which the server sends. So <c>sorcha validator status</c> printed an empty status, "Running: No"
+/// and a blank uptime regardless of what the validator was actually doing.
+/// </remarks>
 public class ValidatorStatus
 {
-    [JsonPropertyName("status")]
-    public string Status { get; set; } = string.Empty;
+    /// <summary>The register this validator status is for.</summary>
+    [JsonPropertyName("registerId")]
+    public string RegisterId { get; set; } = string.Empty;
 
-    [JsonPropertyName("isRunning")]
-    public bool IsRunning { get; set; }
+    /// <summary>Whether the validator is actively sealing for this register.</summary>
+    [JsonPropertyName("isActive")]
+    public bool IsActive { get; set; }
 
-    [JsonPropertyName("registersMonitored")]
-    public int RegistersMonitored { get; set; }
+    /// <summary>Transactions currently waiting in this register's mempool.</summary>
+    [JsonPropertyName("transactionsInMemPool")]
+    public int TransactionsInMemPool { get; set; }
 
-    [JsonPropertyName("totalValidations")]
-    public long TotalValidations { get; set; }
+    /// <summary>Dockets this validator has proposed.</summary>
+    [JsonPropertyName("docketsProposed")]
+    public long DocketsProposed { get; set; }
 
-    [JsonPropertyName("failedValidations")]
-    public long FailedValidations { get; set; }
+    /// <summary>Dockets confirmed (sealed) for this register.</summary>
+    [JsonPropertyName("docketsConfirmed")]
+    public long DocketsConfirmed { get; set; }
 
-    [JsonPropertyName("lastValidationAt")]
-    public DateTimeOffset? LastValidationAt { get; set; }
+    /// <summary>Dockets this validator proposed that were rejected.</summary>
+    [JsonPropertyName("docketsRejected")]
+    public long DocketsRejected { get; set; }
 
-    [JsonPropertyName("uptime")]
-    public string Uptime { get; set; } = string.Empty;
+    /// <summary>When this validator started sealing for the register, if it has.</summary>
+    [JsonPropertyName("startedAt")]
+    public DateTimeOffset? StartedAt { get; set; }
 
-    [JsonPropertyName("consensusProtocol")]
-    public string ConsensusProtocol { get; set; } = string.Empty;
+    /// <summary>When this validator last built a docket, if ever.</summary>
+    [JsonPropertyName("lastDocketBuildAt")]
+    public DateTimeOffset? LastDocketBuildAt { get; set; }
 }
 
 /// <summary>
@@ -180,6 +196,14 @@ public class ValidatorAuditResponse
 /// </summary>
 public class ValidatorAuditEntry
 {
+    /// <summary>The audit entry's own id. Present on the wire; the CLI previously dropped it.</summary>
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>The register this roster change applies to. Present on the wire; previously dropped.</summary>
+    [JsonPropertyName("registerId")]
+    public string RegisterId { get; set; } = string.Empty;
+
     [JsonPropertyName("validatorId")]
     public string ValidatorId { get; set; } = string.Empty;
 

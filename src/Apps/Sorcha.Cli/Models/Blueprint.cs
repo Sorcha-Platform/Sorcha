@@ -122,13 +122,34 @@ public class CreateBlueprintRequest
 /// <summary>
 /// Request to publish a blueprint to a register.
 /// </summary>
+/// <remarks>
+/// Mirrors the server's <c>PublishRequest</c> for <c>POST /api/blueprints/{id}/publish</c>. The
+/// blueprint id is a route parameter, so this body carries only <c>registerId</c> and an optional
+/// <c>override</c>. The CLI previously sent a <c>blueprintId</c> the server never reads and had no
+/// way to pass the rehearsal-gate override, so an operator could not force-publish from the CLI.
+/// </remarks>
 public class PublishBlueprintRequest
 {
-    [JsonPropertyName("blueprintId")]
-    public string BlueprintId { get; set; } = string.Empty;
-
     [JsonPropertyName("registerId")]
     public string RegisterId { get; set; } = string.Empty;
+
+    /// <summary>Optional rehearsal-gate override. Null means a normal, gated publish.</summary>
+    [JsonPropertyName("override")]
+    public PublishBlueprintOverride? Override { get; set; }
+}
+
+/// <summary>
+/// The override that lets an authorised caller publish past the rehearsal soft-gate.
+/// </summary>
+public class PublishBlueprintOverride
+{
+    /// <summary>Must be true to actually override.</summary>
+    [JsonPropertyName("confirm")]
+    public bool Confirm { get; set; }
+
+    /// <summary>Optional reason, recorded in the publish-override audit.</summary>
+    [JsonPropertyName("reason")]
+    public string? Reason { get; set; }
 }
 
 /// <summary>

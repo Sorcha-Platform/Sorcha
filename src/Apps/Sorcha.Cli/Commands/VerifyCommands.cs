@@ -90,18 +90,23 @@ public class VerifyReceiptCommand : Command
                 // Display verification result
                 if (verification.IsValid)
                 {
-                    ConsoleHelper.WriteSuccess($"Verification: VALID ({verification.Status})");
+                    ConsoleHelper.WriteSuccess("Verification: VALID");
                 }
                 else
                 {
-                    ConsoleHelper.WriteError($"Verification: INVALID ({verification.Status})");
+                    ConsoleHelper.WriteError("Verification: INVALID");
                     foreach (var error in verification.Errors)
                     {
                         ConsoleHelper.WriteError($"  - {error}");
                     }
                 }
 
-                Console.WriteLine($"  Verified at: {verification.VerifiedAt:yyyy-MM-dd HH:mm:ss}");
+                if (verification.Checks is { } checks)
+                {
+                    Console.WriteLine($"  Signature valid:        {checks.SignatureValid}");
+                    Console.WriteLine($"  Inclusion proof valid:  {checks.InclusionProofValid}");
+                    Console.WriteLine($"  Merkle root consistent: {checks.MerkleRootConsistent}");
+                }
 
                 return verification.IsValid ? ExitCodes.Success : ExitCodes.ValidationError;
             }
@@ -207,18 +212,23 @@ public class VerifyBundleCommand : Command
                 // Display verification result
                 if (verification.IsValid)
                 {
-                    ConsoleHelper.WriteSuccess($"Verification: VALID ({verification.Status})");
+                    ConsoleHelper.WriteSuccess("Verification: VALID");
                 }
                 else
                 {
-                    ConsoleHelper.WriteError($"Verification: INVALID ({verification.Status})");
+                    ConsoleHelper.WriteError("Verification: INVALID");
                     foreach (var error in verification.Errors)
                     {
                         ConsoleHelper.WriteError($"  - {error}");
                     }
                 }
 
-                Console.WriteLine($"  Verified at: {verification.VerifiedAt:yyyy-MM-dd HH:mm:ss}");
+                if (verification.Checks is { } checks)
+                {
+                    Console.WriteLine($"  Signature valid:        {checks.SignatureValid}");
+                    Console.WriteLine($"  Inclusion proof valid:  {checks.InclusionProofValid}");
+                    Console.WriteLine($"  Merkle root consistent: {checks.MerkleRootConsistent}");
+                }
 
                 return verification.IsValid ? ExitCodes.Success : ExitCodes.ValidationError;
             }

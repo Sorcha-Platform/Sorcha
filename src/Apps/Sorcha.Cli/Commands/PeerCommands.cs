@@ -247,7 +247,7 @@ public class PeerStatsCommand : Command
                 Console.WriteLine($"    Total Peers:     {stats.PeerStats.TotalPeers}");
                 Console.WriteLine($"    Healthy Peers:   {stats.PeerStats.HealthyPeers}");
                 Console.WriteLine($"    Unhealthy Peers: {stats.PeerStats.UnhealthyPeers}");
-                Console.WriteLine($"    Bootstrap Nodes: {stats.PeerStats.BootstrapNodes}");
+                Console.WriteLine($"    Seed Nodes:      {stats.PeerStats.SeedNodes}");
                 Console.WriteLine($"    Avg Latency:     {stats.PeerStats.AverageLatencyMs:F2}ms");
                 Console.WriteLine($"    Total Failures:  {stats.PeerStats.TotalFailures}");
 

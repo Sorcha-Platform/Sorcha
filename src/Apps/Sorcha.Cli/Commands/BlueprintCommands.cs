@@ -323,6 +323,8 @@ public class BlueprintPublishCommand : Command
 {
     private readonly Option<string> _idOption;
     private readonly Option<string> _registerIdOption;
+    private readonly Option<bool> _overrideOption;
+    private readonly Option<string?> _reasonOption;
 
     public BlueprintPublishCommand(
         HttpClientFactory clientFactory,
@@ -342,13 +344,27 @@ public class BlueprintPublishCommand : Command
             Required = true
         };
 
+        _overrideOption = new Option<bool>("--override")
+        {
+            Description = "Force publish past the rehearsal soft-gate (requires publish authority)"
+        };
+
+        _reasonOption = new Option<string?>("--reason")
+        {
+            Description = "Reason recorded in the publish-override audit (used with --override)"
+        };
+
         Options.Add(_idOption);
         Options.Add(_registerIdOption);
+        Options.Add(_overrideOption);
+        Options.Add(_reasonOption);
 
         this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
             var id = parseResult.GetValue(_idOption)!;
             var registerId = parseResult.GetValue(_registerIdOption)!;
+            var forceOverride = parseResult.GetValue(_overrideOption);
+            var reason = parseResult.GetValue(_reasonOption);
 
             try
             {
@@ -366,8 +382,10 @@ public class BlueprintPublishCommand : Command
 
                 var request = new PublishBlueprintRequest
                 {
-                    BlueprintId = id,
-                    RegisterId = registerId
+                    RegisterId = registerId,
+                    Override = forceOverride
+                        ? new PublishBlueprintOverride { Confirm = true, Reason = reason }
+                        : null
                 };
 
                 ConsoleHelper.WriteInfo($"Publishing blueprint '{id}' to register '{registerId}'...");

@@ -9,6 +9,14 @@ namespace Sorcha.Cli.Models;
 /// <summary>
 /// Participant identity record.
 /// </summary>
+/// <remarks>
+/// Mirrors <c>Sorcha.Tenant.Service.Models.Dtos.ParticipantResponse</c> (returned by the
+/// participant get / create / update endpoints); the pairing is asserted by
+/// <c>CliWireContractTests</c>. This previously carried <c>updatedAt</c> and a nested
+/// <c>walletLinks</c> list — neither of which the response sends — and omitted <c>email</c> and the
+/// <c>hasLinkedWallet</c> flag. The linked addresses come from the separate wallet-links list
+/// endpoint, not this record.
+/// </remarks>
 public class ParticipantIdentity
 {
     [JsonPropertyName("id")]
@@ -23,22 +31,30 @@ public class ParticipantIdentity
     [JsonPropertyName("displayName")]
     public string DisplayName { get; set; } = string.Empty;
 
+    /// <summary>The participant's email.</summary>
+    [JsonPropertyName("email")]
+    public string Email { get; set; } = string.Empty;
+
     [JsonPropertyName("status")]
     public string Status { get; set; } = string.Empty;
 
+    /// <summary>Whether the participant has at least one verified linked wallet.</summary>
+    [JsonPropertyName("hasLinkedWallet")]
+    public bool HasLinkedWallet { get; set; }
+
     [JsonPropertyName("createdAt")]
     public DateTimeOffset CreatedAt { get; set; }
-
-    [JsonPropertyName("updatedAt")]
-    public DateTimeOffset UpdatedAt { get; set; }
-
-    [JsonPropertyName("walletLinks")]
-    public List<LinkedWalletAddress> WalletLinks { get; set; } = new();
 }
 
 /// <summary>
 /// Linked wallet address for a participant.
 /// </summary>
+/// <remarks>
+/// Mirrors <c>Sorcha.Tenant.Service.Models.Dtos.LinkedWalletAddressResponse</c> (returned by
+/// verify-wallet-link and the wallet-links list); the pairing is asserted by
+/// <c>CliWireContractTests</c>. This previously carried <c>verifiedAt</c> (never sent) and omitted
+/// algorithm / linkedAt / revokedAt.
+/// </remarks>
 public class LinkedWalletAddress
 {
     [JsonPropertyName("id")]
@@ -47,11 +63,20 @@ public class LinkedWalletAddress
     [JsonPropertyName("walletAddress")]
     public string WalletAddress { get; set; } = string.Empty;
 
+    /// <summary>The wallet's signing algorithm.</summary>
+    [JsonPropertyName("algorithm")]
+    public string Algorithm { get; set; } = string.Empty;
+
     [JsonPropertyName("status")]
     public string Status { get; set; } = string.Empty;
 
-    [JsonPropertyName("verifiedAt")]
-    public DateTimeOffset? VerifiedAt { get; set; }
+    /// <summary>When the link was established.</summary>
+    [JsonPropertyName("linkedAt")]
+    public DateTimeOffset LinkedAt { get; set; }
+
+    /// <summary>When the link was revoked, if it has been.</summary>
+    [JsonPropertyName("revokedAt")]
+    public DateTimeOffset? RevokedAt { get; set; }
 }
 
 /// <summary>
@@ -93,16 +118,35 @@ public class SearchParticipantsRequest
 /// <summary>
 /// Response containing a wallet link challenge.
 /// </summary>
+/// <remarks>
+/// Mirrors <c>Sorcha.Tenant.Service.Models.Dtos.WalletLinkChallengeResponse</c>; the pairing is
+/// asserted by <c>CliWireContractTests</c>. This previously read <c>nonce</c> (the server sends
+/// <c>challenge</c>) and omitted walletAddress / algorithm / status — so the challenge to sign came
+/// back blank and the operator had nothing to sign.
+/// </remarks>
 public class WalletLinkChallengeResponse
 {
     [JsonPropertyName("challengeId")]
     public string ChallengeId { get; set; } = string.Empty;
 
-    [JsonPropertyName("nonce")]
-    public string Nonce { get; set; } = string.Empty;
+    /// <summary>The challenge string the wallet must sign.</summary>
+    [JsonPropertyName("challenge")]
+    public string Challenge { get; set; } = string.Empty;
+
+    /// <summary>The wallet address being linked.</summary>
+    [JsonPropertyName("walletAddress")]
+    public string WalletAddress { get; set; } = string.Empty;
+
+    /// <summary>The signing algorithm the wallet must use.</summary>
+    [JsonPropertyName("algorithm")]
+    public string Algorithm { get; set; } = string.Empty;
 
     [JsonPropertyName("expiresAt")]
     public DateTimeOffset ExpiresAt { get; set; }
+
+    /// <summary>The challenge's current status.</summary>
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -180,10 +224,19 @@ public class PublishParticipantResult
 /// <summary>
 /// Request to initiate a wallet link.
 /// </summary>
+/// <remarks>
+/// Mirrors <c>Sorcha.Tenant.Service.Models.Dtos.InitiateWalletLinkRequest</c>. The server requires
+/// <c>algorithm</c> (the wallet's signing algorithm); the CLI omitted it, so the request relied on
+/// the server's default and could bind the wrong scheme for a non-default wallet.
+/// </remarks>
 public class InitiateWalletLinkRequest
 {
     [JsonPropertyName("walletAddress")]
     public string WalletAddress { get; set; } = string.Empty;
+
+    /// <summary>The wallet's signing algorithm, e.g. ED25519 or NISTP256.</summary>
+    [JsonPropertyName("algorithm")]
+    public string Algorithm { get; set; } = string.Empty;
 }
 
 /// <summary>

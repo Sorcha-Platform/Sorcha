@@ -218,10 +218,11 @@ public class CredentialGetCommand : Command
 public class CredentialIssueCommand : Command
 {
     private readonly Option<string> _typeOption;
-    private readonly Option<string> _subjectOption;
-    private readonly Option<string> _walletOption;
+    private readonly Option<string> _recipientWalletOption;
     private readonly Option<string> _claimsOption;
-    private readonly Option<int?> _expiresInDaysOption;
+    private readonly Option<string?> _displayNameOption;
+    private readonly Option<string?> _expiryDurationOption;
+    private readonly Option<string?> _disclosableOption;
 
     public CredentialIssueCommand(
         HttpClientFactory clientFactory,
@@ -235,50 +236,56 @@ public class CredentialIssueCommand : Command
             Required = true
         };
 
-        _subjectOption = new Option<string>("--subject", "-s")
+        _recipientWalletOption = new Option<string>("--recipient-wallet", "-w")
         {
-            Description = "Subject identifier (participant or wallet address)",
-            Required = true
-        };
-
-        _walletOption = new Option<string>("--wallet", "-w")
-        {
-            Description = "Issuer wallet address for signing",
+            Description = "The recipient's wallet address (the credential is issued to this wallet)",
             Required = true
         };
 
         _claimsOption = new Option<string>("--claims", "-c")
         {
-            Description = "Claims as JSON object (e.g., '{\"name\":\"John\",\"role\":\"admin\"}')",
+            Description = "Claims as a JSON object (e.g., '{\"name\":\"John\",\"ageOver18\":true}')",
             Required = true
         };
 
-        _expiresInDaysOption = new Option<int?>("--expires-in-days", "-e")
+        _displayNameOption = new Option<string?>("--display-name")
         {
-            Description = "Number of days until credential expires"
+            Description = "Optional display name for the credential"
+        };
+
+        _expiryDurationOption = new Option<string?>("--expiry-duration", "-e")
+        {
+            Description = "Optional ISO-8601 duration until expiry, e.g. P5Y. Omit for non-expiring."
+        };
+
+        _disclosableOption = new Option<string?>("--disclosable")
+        {
+            Description = "Comma-separated claim names the holder may selectively disclose"
         };
 
         Options.Add(_typeOption);
-        Options.Add(_subjectOption);
-        Options.Add(_walletOption);
+        Options.Add(_recipientWalletOption);
         Options.Add(_claimsOption);
-        Options.Add(_expiresInDaysOption);
+        Options.Add(_displayNameOption);
+        Options.Add(_expiryDurationOption);
+        Options.Add(_disclosableOption);
 
         this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
             var type = parseResult.GetValue(_typeOption)!;
-            var subject = parseResult.GetValue(_subjectOption)!;
-            var wallet = parseResult.GetValue(_walletOption)!;
+            var recipientWallet = parseResult.GetValue(_recipientWalletOption)!;
             var claimsJson = parseResult.GetValue(_claimsOption)!;
-            var expiresInDays = parseResult.GetValue(_expiresInDaysOption);
+            var displayName = parseResult.GetValue(_displayNameOption);
+            var expiryDuration = parseResult.GetValue(_expiryDurationOption);
+            var disclosable = parseResult.GetValue(_disclosableOption);
 
             try
             {
                 // Parse claims JSON
-                Dictionary<string, string> claims;
+                Dictionary<string, object> claims;
                 try
                 {
-                    claims = JsonSerializer.Deserialize<Dictionary<string, string>>(claimsJson) ?? new();
+                    claims = JsonSerializer.Deserialize<Dictionary<string, object>>(claimsJson) ?? new();
                 }
                 catch (JsonException ex)
                 {
@@ -300,11 +307,14 @@ public class CredentialIssueCommand : Command
 
                 var request = new IssueCredentialRequest
                 {
-                    Type = type,
-                    Subject = subject,
-                    WalletAddress = wallet,
+                    CredentialType = type,
+                    RecipientWallet = recipientWallet,
                     Claims = claims,
-                    ExpiresInDays = expiresInDays
+                    DisplayName = displayName,
+                    ExpiryDuration = expiryDuration,
+                    DisclosableClaims = string.IsNullOrWhiteSpace(disclosable)
+                        ? null
+                        : disclosable.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
                 };
 
                 var credential = await client.IssueCredentialAsync(request, $"Bearer {token}");
@@ -318,17 +328,17 @@ public class CredentialIssueCommand : Command
 
                 ConsoleHelper.WriteSuccess("Credential issued successfully!");
                 Console.WriteLine();
-                Console.WriteLine($"  ID:      {credential.Id}");
-                Console.WriteLine($"  Type:    {credential.Type}");
-                Console.WriteLine($"  Subject: {credential.Subject}");
-                Console.WriteLine($"  Issuer:  {credential.Issuer}");
-                Console.WriteLine($"  Status:  {credential.Status}");
-                Console.WriteLine($"  Issued:  {credential.IssuedAt:yyyy-MM-dd HH:mm:ss}");
+                Console.WriteLine($"  Credential ID: {credential.CredentialId}");
+                Console.WriteLine($"  Type:          {credential.Type}");
+                Console.WriteLine($"  Issuer DID:    {credential.IssuerDid}");
+                Console.WriteLine($"  Subject DID:   {credential.SubjectDid}");
+                Console.WriteLine($"  Issued:        {credential.IssuedAt:yyyy-MM-dd HH:mm:ss}");
 
                 if (credential.ExpiresAt.HasValue)
                 {
-                    Console.WriteLine($"  Expires: {credential.ExpiresAt:yyyy-MM-dd HH:mm:ss}");
+                    Console.WriteLine($"  Expires:       {credential.ExpiresAt:yyyy-MM-dd HH:mm:ss}");
                 }
+
 
                 return ExitCodes.Success;
             }

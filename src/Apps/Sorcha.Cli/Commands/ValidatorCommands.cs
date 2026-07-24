@@ -577,19 +577,23 @@ public class ValidatorStatusCommand : Command
                     return ExitCodes.Success;
                 }
 
-                ConsoleHelper.WriteSuccess("Validator service status:");
+                ConsoleHelper.WriteSuccess("Validator status:");
                 Console.WriteLine();
-                Console.WriteLine($"  Status:              {status.Status}");
-                Console.WriteLine($"  Running:             {(status.IsRunning ? "Yes" : "No")}");
-                Console.WriteLine($"  Registers Monitored: {status.RegistersMonitored}");
-                Console.WriteLine($"  Total Validations:   {status.TotalValidations}");
-                Console.WriteLine($"  Failed Validations:  {status.FailedValidations}");
-                Console.WriteLine($"  Consensus Protocol:  {status.ConsensusProtocol}");
-                Console.WriteLine($"  Uptime:              {status.Uptime}");
+                Console.WriteLine($"  Register:               {status.RegisterId}");
+                Console.WriteLine($"  Active:                 {(status.IsActive ? "Yes" : "No")}");
+                Console.WriteLine($"  Mempool transactions:   {status.TransactionsInMemPool}");
+                Console.WriteLine($"  Dockets proposed:       {status.DocketsProposed}");
+                Console.WriteLine($"  Dockets confirmed:      {status.DocketsConfirmed}");
+                Console.WriteLine($"  Dockets rejected:       {status.DocketsRejected}");
 
-                if (status.LastValidationAt.HasValue)
+                if (status.StartedAt.HasValue)
                 {
-                    Console.WriteLine($"  Last Validation:     {status.LastValidationAt:yyyy-MM-dd HH:mm:ss}");
+                    Console.WriteLine($"  Started:                {status.StartedAt:yyyy-MM-dd HH:mm:ss}");
+                }
+
+                if (status.LastDocketBuildAt.HasValue)
+                {
+                    Console.WriteLine($"  Last docket build:      {status.LastDocketBuildAt:yyyy-MM-dd HH:mm:ss}");
                 }
 
                 return ExitCodes.Success;

@@ -55,7 +55,7 @@ public class PeerStatistics
     public int TotalPeers { get; set; }
     public int HealthyPeers { get; set; }
     public int UnhealthyPeers { get; set; }
-    public int BootstrapNodes { get; set; }
+    public int SeedNodes { get; set; }
     public double AverageLatencyMs { get; set; }
     public int TotalFailures { get; set; }
 }
@@ -148,6 +148,13 @@ public class SubscriptionInfo
 public class AvailableRegisterInfo
 {
     public string RegisterId { get; set; } = string.Empty;
+
+    /// <summary>The register's name, when advertised. Present on the wire; previously dropped.</summary>
+    public string? Name { get; set; }
+
+    /// <summary>The register's description, when advertised. Present on the wire; previously dropped.</summary>
+    public string? Description { get; set; }
+
     public int PeerCount { get; set; }
     public long LatestVersion { get; set; }
     public long LatestDocketVersion { get; set; }

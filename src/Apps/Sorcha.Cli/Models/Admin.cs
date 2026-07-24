@@ -41,26 +41,9 @@ public class HealthCheckResponse
     public DateTimeOffset CheckedAt { get; set; }
 }
 
-/// <summary>
-/// Schema sector information.
-/// </summary>
-public class SchemaSector
-{
-    [JsonPropertyName("id")]
-    public string Id { get; set; } = string.Empty;
-
-    [JsonPropertyName("name")]
-    public string Name { get; set; } = string.Empty;
-
-    [JsonPropertyName("description")]
-    public string Description { get; set; } = string.Empty;
-
-    [JsonPropertyName("schemaCount")]
-    public int SchemaCount { get; set; }
-
-    [JsonPropertyName("status")]
-    public string Status { get; set; } = string.Empty;
-}
+// SchemaSector (id/name/description/schemaCount/status) was a dead model — no command referenced
+// it, and it never matched the server's SchemaSectorDto (id/displayName/description/icon). Removed
+// rather than realigned: there is nothing to align it to a use for.
 
 /// <summary>
 /// Schema provider information.

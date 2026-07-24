@@ -386,117 +386,34 @@ public class TxSubmitCommand : Command
         Options.Add(_signatureOption);
         Options.Add(_previousTxOption);
 
-        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        this.SetAction((ParseResult parseResult, CancellationToken ct) =>
         {
-            var registerId = parseResult.GetValue(_registerIdOption)!;
-            var txType = parseResult.GetValue(_txTypeOption)!;
-            var wallet = parseResult.GetValue(_walletOption)!;
-            var payload = parseResult.GetValue(_payloadOption)!;
-            var signature = parseResult.GetValue(_signatureOption)!;
-            var previousTx = parseResult.GetValue(_previousTxOption);
+            // Raw transaction submission is intentionally NOT supported from the CLI.
+            //
+            // The register's POST /transactions endpoint consumes a complete, signed
+            // TransactionModel — Payloads[], MetaData, PayloadCount, chained previousTxId, and a
+            // signature computed over the canonical transaction bytes. That object is produced by
+            // executing a blueprint action (which builds and signs it correctly), not by pasting a
+            // payload string and a signature on a command line. The flags this command used to take
+            // (--payload / --signature) could never assemble a valid transaction, so the previous
+            // implementation reported success while the server rejected — or silently mis-stored —
+            // whatever it was sent.
+            //
+            // Removing the fake path rather than leaving it to mislead. The read side of the ledger
+            // (list / get / status / query) remains fully supported.
+            ConsoleHelper.WriteError("Raw transaction submission is not supported from the CLI.");
+            Console.WriteLine();
+            ConsoleHelper.WriteInfo(
+                "A register transaction is a complete signed object (payloads, metadata, chain "
+                + "linkage, signature) built by executing a blueprint action — not something that "
+                + "can be assembled from a payload string on the command line.");
+            Console.WriteLine();
+            ConsoleHelper.WriteInfo(
+                "To create transactions, execute the relevant blueprint action against a workflow "
+                + "instance. To inspect existing transactions, use 'sorcha tx list', 'sorcha tx get', "
+                + "'sorcha tx status', or 'sorcha query'.");
 
-            try
-            {
-                // Get active profile
-                var profile = await configService.GetActiveProfileAsync();
-                var profileName = profile?.Name ?? "dev";
-
-                // Get access token
-                var token = await authService.GetAccessTokenAsync(profileName);
-                if (string.IsNullOrEmpty(token))
-                {
-                    ConsoleHelper.WriteError("You must be authenticated to submit a transaction.");
-                    ConsoleHelper.WriteInfo("Run 'sorcha auth login' to authenticate.");
-                    return ExitCodes.AuthenticationError;
-                }
-
-                // Create Register Service client
-                var client = await clientFactory.CreateRegisterServiceClientAsync(profileName);
-
-                // Build request
-                var request = new SubmitTransactionRequest
-                {
-                    RegisterId = registerId,
-                    TxType = txType,
-                    SenderWallet = wallet,
-                    Payload = payload,
-                    Signature = signature,
-                    PreviousTxId = previousTx
-                };
-
-                // Call API
-                var response = await client.SubmitTransactionAsync(registerId, request, $"Bearer {token}");
-
-                // Check output format
-                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
-                if (OutputHelper.IsStructuredFormat(outputFormat))
-                {
-                    OutputHelper.WriteSingle(parseResult, response);
-                    return ExitCodes.Success;
-                }
-
-                // Display results
-                if (response.Status == "Pending" || response.Status == "Confirmed")
-                {
-                    ConsoleHelper.WriteSuccess($"Transaction submitted successfully!");
-                    Console.WriteLine();
-                    Console.WriteLine($"  Transaction ID:  {response.TransactionId}");
-                    Console.WriteLine($"  Status:          {response.Status}");
-                    Console.WriteLine();
-                    ConsoleHelper.WriteInfo($"Use 'sorcha tx status --register-id {registerId} --tx-id {response.TransactionId}' to check status.");
-                    return ExitCodes.Success;
-                }
-                else
-                {
-                    ConsoleHelper.WriteError($"Transaction submission failed.");
-                    Console.WriteLine($"  Transaction ID:  {response.TransactionId}");
-                    Console.WriteLine($"  Status:          {response.Status}");
-                    if (!string.IsNullOrEmpty(response.Error))
-                    {
-                        Console.WriteLine($"  Error:           {response.Error}");
-                    }
-                    return ExitCodes.GeneralError;
-                }
-            }
-            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
-            {
-                ConsoleHelper.WriteError("Invalid transaction. Please check your input.");
-                if (ex.Content != null)
-                {
-                    ConsoleHelper.WriteError($"Details: {ex.Content}");
-                }
-                return ExitCodes.ValidationError;
-            }
-            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-            {
-                ConsoleHelper.WriteError($"Register '{registerId}' not found.");
-                return ExitCodes.NotFound;
-            }
-            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
-            {
-                ConsoleHelper.WriteError("Authentication failed. Your access token may have expired.");
-                ConsoleHelper.WriteInfo("Run 'sorcha auth login' to re-authenticate.");
-                return ExitCodes.AuthenticationError;
-            }
-            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
-            {
-                ConsoleHelper.WriteError("You do not have permission to submit transactions to this register.");
-                return ExitCodes.AuthorizationError;
-            }
-            catch (ApiException ex)
-            {
-                ConsoleHelper.WriteError($"API Error: {ex.Message}");
-                if (ex.Content != null)
-                {
-                    ConsoleHelper.WriteError($"Details: {ex.Content}");
-                }
-                return ExitCodes.GeneralError;
-            }
-            catch (Exception ex)
-            {
-                ConsoleHelper.WriteError($"Failed to submit transaction: {ex.Message}");
-                return ExitCodes.GeneralError;
-            }
+            return Task.FromResult(ExitCodes.GeneralError);
         });
     }
 }

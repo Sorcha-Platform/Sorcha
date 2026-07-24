@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Reflection;
+using System.Text.Json.Serialization;
 
 using FluentAssertions;
 
@@ -47,6 +48,29 @@ public sealed class CliWireContractTests
         ["AuthenticationService"] = "A service class, not a DTO.",
         ["ConfigurationService"] = "A service class, not a DTO.",
         ["HttpClientFactory"] = "A factory class, not a DTO.",
+        ["VerificationResult"] =
+            "The CLI's verify command posts to the REGISTER Service's /receipts/verify and "
+            + "/verification-bundles/verify, which return an anonymous { isValid, checks, errors } "
+            + "object — not the Wallet Service's VerificationResult the name collides with. The CLI "
+            + "type now matches that anonymous shape (isValid/checks/errors); there is no server type "
+            + "to pair against, so this is not a wire-contract collision.",
+        ["IssueCredentialRequest"] =
+            "Deliberate curated SUBSET, not drift. The Wallet Service's issue request has 11 further "
+            + "OPTIONAL fields the CLI intentionally does not expose: holderJwk, tenantId, "
+            + "trustAnchor, issuerOrgName, skipRecipientStore, vct, issuanceBlueprintId, and the four "
+            + "statusList* wiring fields. Those are issuer-infrastructure and status-list plumbing "
+            + "supplied by blueprint-action-driven issuance, not sensible CLI flags. Every field the "
+            + "CLI DOES send (credentialType, claims, recipientWallet, displayName, expiryDuration, "
+            + "disclosableClaims) matches the server exactly, and the three the server REQUIRES "
+            + "(credentialType, claims, recipientWallet) are all present — verified by "
+            + "IssueCredentialRequest_SendsEveryRequiredServerField below. A future field the server "
+            + "makes required would be caught by that test, not silently dropped.",
+        ["RegisterSyncStatus"] =
+            "The CLI's /health/sync response models the Register Service's RegisterSyncStatus, which "
+            + "is a PRIVATE record inside RecoveryHealthEndpoints and therefore invisible to this "
+            + "assembly. The CLI type matches it field-for-field. The public type the harness would "
+            + "otherwise pair against lives in Peer.Service and is a different surface entirely — a "
+            + "name collision, not a shared contract.",
         ["LoginRequest"] =
             "Different concept, same name. The CLI's is the input to an OAuth2 password-grant, sent "
             + "form-encoded to the token endpoint (username/password/client_id/scope). The Tenant "
@@ -74,38 +98,6 @@ public sealed class CliWireContractTests
     /// </remarks>
     private static readonly Dictionary<string, string> KnownMismatch = new(StringComparer.Ordinal)
     {
-        ["AvailableRegisterInfo"] =
-            "Peer.Service — server-only: description, name",
-        ["InitiateWalletLinkRequest"] =
-            "Tenant.Service — server-only: algorithm",
-        ["IssueCredentialRequest"] =
-            "Wallet.Service — CLI-only: expiresInDays, subject, type, walletAddress; server-only: credentialType, disclosableClaims, displayName, expiryDuration, holderJwk, issu...",
-        ["LinkedWalletAddress"] =
-            "Tenant.Service (vs LinkedWalletAddressResponse) — CLI-only: verifiedAt; server-only: algorithm, linkedAt, revokedAt",
-        ["ParticipantIdentity"] =
-            "Tenant.Service (vs ParticipantResponse) — CLI-only: updatedAt, walletLinks; server-only: email, hasLinkedWallet",
-        ["PeerStatistics"] =
-            "Peer.Service — CLI-only: bootstrapNodes; server-only: seedNodes",
-        ["PublishBlueprintRequest"] =
-            "ServiceClients.Http — CLI-only: blueprintId; server-only: override",
-        ["RegisterStatsResponse"] =
-            "ServiceClients.Http — CLI-only: count; server-only: registerCount, transactionCount",
-        ["RegisterSyncStatus"] =
-            "Peer.Service — CLI-only: currentDocket, docketsProcessed, isStale, lastError, progressPercent, status, targetDocket; server-only: canServeFullReplica, lastSyncAt,...",
-        ["SchemaSector"] =
-            "Blueprint.Service — CLI-only: name, schemaCount, status; server-only: displayName, icon",
-        ["SubmitTransactionRequest"] =
-            "Peer.Service — CLI-only: payload, previousTxId, senderWallet, signature, txType; server-only: originPeerId, submissionJson, submittedAtUnixMs",
-        ["SubmitTransactionResponse"] =
-            "Peer.Service — CLI-only: error, status, transactionId; server-only: accepted, receiverIsValidator, rejectReason",
-        ["ValidatorAuditEntry"] =
-            "Validator.Service — server-only: id, registerId",
-        ["ValidatorStatus"] =
-            "Validator.Service — CLI-only: consensusProtocol, failedValidations, isRunning, lastValidationAt, registersMonitored, status, totalValidations, uptime; server-only: doc...",
-        ["VerificationResult"] =
-            "Wallet.Service — CLI-only: status, verifiedAt; server-only: credentialType, issuerDid, statusListCheck, verifiedClaims",
-        ["WalletLinkChallengeResponse"] =
-            "Tenant.Service — CLI-only: nonce; server-only: algorithm, challenge, status, walletAddress",
     };
 
     /// <summary>
@@ -134,8 +126,9 @@ public sealed class CliWireContractTests
     /// </summary>
     private static readonly Dictionary<string, string> PreferredCounterpartAssembly = new(StringComparer.Ordinal)
     {
-        // The CLI's verify command talks to the Wallet Service, not HAIP's external-wallet surface.
-        ["VerificationResult"] = "Sorcha.Wallet.Service",
+        // Declared in BOTH Blueprint.Service (an action-submission nested type) and Wallet.Service.
+        // The CLI's credential issue command talks to the Wallet Service.
+        ["IssuedCredentialResponse"] = "Sorcha.Wallet.Service",
 
         // Declared in BOTH Register.Service and ServiceClients.Http. The server is the authority
         // for what the CLI must match. (That the shared client ALSO disagrees with the server is a
@@ -228,6 +221,33 @@ public sealed class CliWireContractTests
 
         NotAWireContract.Keys.Where(k => !cliNames.Contains(k)).Should().BeEmpty(
             "NotAWireContract names a CLI type that no longer exists");
+    }
+
+    [Fact]
+    public void IssueCredentialRequest_SendsEveryRequiredServerField()
+    {
+        // IssueCredentialRequest is a deliberate curated subset (see its NotAWireContract entry):
+        // the CLI omits optional issuer-infrastructure fields on purpose. That is only safe as long
+        // as it still sends everything the server REQUIRES — a field the server later makes required
+        // must not slip through the subset. This is the guard that makes the subclaim honest.
+        var serverType = Type.GetType(
+            "Sorcha.Wallet.Service.Endpoints.IssueCredentialRequest, Sorcha.Wallet.Service");
+        serverType.Should().NotBeNull("the server request type must be resolvable");
+
+        var requiredServerNames = serverType!
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.GetCustomAttribute<System.ComponentModel.DataAnnotations.RequiredAttribute>() is not null)
+            .Select(p => p.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name
+                         ?? System.Text.Json.JsonNamingPolicy.CamelCase.ConvertName(p.Name))
+            .ToHashSet(StringComparer.Ordinal);
+
+        requiredServerNames.Should().NotBeEmpty("the server marks some fields [Required]");
+
+        var cliType = CliTypes().Single(t => t.Name == "IssueCredentialRequest");
+        var cliNames = WireShape.Of(cliType);
+
+        requiredServerNames.Except(cliNames).Should().BeEmpty(
+            "the CLI issue request may omit optional server fields, but never a required one");
     }
 
     // ---------------------------------------------------------------------------------------
