@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Configuration;
 
 namespace Sorcha.McpServer.Tools.Admin;
 
@@ -42,7 +43,7 @@ public sealed class PeerStatusTool
         _httpClientFactory = httpClientFactory;
         _logger = logger;
 
-        _peerServiceEndpoint = configuration["ServiceClients:PeerService:Address"] ?? "http://localhost:5002";
+        _peerServiceEndpoint = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Peer) ?? "http://localhost:5002";
     }
 
     /// <summary>

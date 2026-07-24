@@ -3,6 +3,7 @@
 
 using MudBlazor.Services;
 using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceClients.Configuration;
 using Sorcha.UI.Components.User.Extensions;
 using Sorcha.UI.Components.User.Services.Verification;
 using Sorcha.Verifier.Components;
@@ -34,7 +35,7 @@ builder.Services.AddTransient<ServiceAuthMessageHandler>();
 // IVerificationTransport, IRegisterAnchorClient). IRegisterAnchorClient is already wired
 // by AddCitizenVerifier above so AddSorchaUserComponents' guard skips re-registration.
 var haipBaseUrl = builder.Configuration["Verifier:HaipBaseUrl"]
-    ?? builder.Configuration["ServiceClients:HaipService:Address"]
+    ?? SorchaServiceAddresses.TryResolve(builder.Configuration, SorchaService.Haip)
     ?? "http://haip-service:8080";
 builder.Services.AddSorchaUserComponents(
     builder.Configuration,

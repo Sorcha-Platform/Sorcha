@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.Serialization;
 using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceClients.Configuration;
 using Sorcha.ServiceClients.Helpers;
 
 namespace Sorcha.ServiceClients.Wallet;
@@ -38,7 +39,7 @@ public class WalletServiceClient : IWalletServiceClient
         _serviceAuth = serviceAuth ?? throw new ArgumentNullException(nameof(serviceAuth));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        _serviceAddress = configuration["ServiceClients:WalletService:Address"]
+        _serviceAddress = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Wallet)
             ?? configuration["GrpcClients:WalletService:Address"]
             ?? "http://wallet-service";
 

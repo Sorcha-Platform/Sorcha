@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Configuration;
 
 namespace Sorcha.McpServer.Tools.Participant;
 
@@ -42,7 +43,7 @@ public sealed class RegisterQueryTool
         _httpClientFactory = httpClientFactory;
         _logger = logger;
 
-        _registerServiceEndpoint = configuration["ServiceClients:RegisterService:Address"] ?? "http://localhost:5290";
+        _registerServiceEndpoint = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Register) ?? "http://localhost:5290";
     }
 
     /// <summary>

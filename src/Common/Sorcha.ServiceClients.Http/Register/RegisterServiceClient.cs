@@ -9,6 +9,7 @@ using Sorcha.Register.Models;
 using Sorcha.Register.Models.LocalRelationship;
 using Sorcha.Register.Models.Observations;
 using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceClients.Configuration;
 using Sorcha.ServiceClients.Helpers;
 using Sorcha.Serialization;
 
@@ -40,7 +41,7 @@ public class RegisterServiceClient : IRegisterServiceClient
         _serviceAuth = serviceAuth ?? throw new ArgumentNullException(nameof(serviceAuth));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        _serviceAddress = configuration["ServiceClients:RegisterService:Address"]
+        _serviceAddress = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Register)
             ?? configuration["GrpcClients:RegisterService:Address"]
             ?? throw new InvalidOperationException("Register Service address not configured");
 

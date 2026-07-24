@@ -3,6 +3,7 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Sorcha.ServiceClients.Configuration;
 using Sorcha.ServiceClients.Grpc;
 using Sorcha.ServiceClients.Http.Extensions;
 using Sorcha.ServiceClients.Haip;
@@ -52,7 +53,7 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<IHaipServiceClient, HaipServiceClient>((sp, client) =>
         {
             var config = sp.GetRequiredService<IConfiguration>();
-            var address = config["ServiceClients:HaipService:Address"] ?? "";
+            var address = SorchaServiceAddresses.TryResolve(config, SorchaService.Haip) ?? "";
             if (!string.IsNullOrEmpty(address))
                 client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
         });
@@ -61,8 +62,12 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<IPeerServiceClient, PeerServiceClient>((sp, client) =>
         {
             var config = sp.GetRequiredService<IConfiguration>();
+            // PeerService:HttpAddress is a DIFFERENT endpoint, not a spelling variant: the Peer
+            // service exposes gRPC on its resolved address and HTTP separately. It therefore stays
+            // ahead of the resolver, and is deliberately absent from SorchaServiceAddresses —
+            // folding it into KeysFor(Peer) would let a gRPC address answer an HTTP lookup.
             var httpAddress = config["ServiceClients:PeerService:HttpAddress"]
-                ?? config["ServiceClients:PeerService:Address"]
+                ?? SorchaServiceAddresses.TryResolve(config, SorchaService.Peer)
                 ?? "";
             if (!string.IsNullOrEmpty(httpAddress))
             {
@@ -117,8 +122,12 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<IPeerServiceClient, PeerServiceClient>((sp, client) =>
         {
             var config = sp.GetRequiredService<IConfiguration>();
+            // PeerService:HttpAddress is a DIFFERENT endpoint, not a spelling variant: the Peer
+            // service exposes gRPC on its resolved address and HTTP separately. It therefore stays
+            // ahead of the resolver, and is deliberately absent from SorchaServiceAddresses —
+            // folding it into KeysFor(Peer) would let a gRPC address answer an HTTP lookup.
             var httpAddress = config["ServiceClients:PeerService:HttpAddress"]
-                ?? config["ServiceClients:PeerService:Address"]
+                ?? SorchaServiceAddresses.TryResolve(config, SorchaService.Peer)
                 ?? "";
             if (!string.IsNullOrEmpty(httpAddress))
             {

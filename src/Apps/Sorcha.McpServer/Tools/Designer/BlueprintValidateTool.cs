@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Configuration;
 
 namespace Sorcha.McpServer.Tools.Designer;
 
@@ -43,7 +44,7 @@ public sealed class BlueprintValidateTool
         _httpClientFactory = httpClientFactory;
         _logger = logger;
 
-        _blueprintServiceEndpoint = configuration["ServiceClients:BlueprintService:Address"] ?? "http://localhost:5000";
+        _blueprintServiceEndpoint = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Blueprint) ?? "http://localhost:5000";
     }
 
     /// <summary>

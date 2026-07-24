@@ -4,34 +4,20 @@
 # RATCHET: may only shrink. A stale entry (file no longer carrying such a literal) fails the gate,
 # so an entry must be removed in the same PR that removes the literal.
 #
-# What is on this list, and why it is lower priority than what was fixed:
-#   Every entry below reads the CANONICAL spelling (ServiceClients:{X}Service:Address) with its own
-#   local default. They are consistent with each other — they had not drifted. What DID drift, and
-#   what DRIFT-006 fixed, was the Tenant Service address: six call sites each hand-rolling a
-#   different fallback chain over four different spellings, so which key a deployment had to set
-#   depended on which client resolved it. Those are all migrated and none appear here.
-#   These remaining sites still gain from the resolver (a deployment using a legacy spelling would
-#   not reach them), so the list shrinks over time — but none of them is a live inconsistency.
+# THIS LIST IS EMPTY. Every service-address read in src/ now resolves through the resolver, so a
+# new literal fails CI outright. Do not add an entry here to make a build pass — call
+# SorchaServiceAddresses.TryResolve(configuration, SorchaService.X) and keep your own `?? default`
+# (the resolver supplies none, deliberately — see the remarks on TryResolve: the existing defaults
+# are not interchangeable, and unifying them is a separate decision).
+#
+# One key is intentionally NOT resolver-routed and is not a violation:
+#   ServiceClients:PeerService:HttpAddress — a different endpoint, not a spelling variant. The Peer
+#   service exposes gRPC on its resolved address and HTTP separately, so that key stays ahead of
+#   the resolver at its two call sites in
+#   src/Common/Sorcha.ServiceClients/Extensions/ServiceCollectionExtensions.cs, and is absent from
+#   SorchaServiceAddresses.KeysFor(Peer) by design — folding it in would let a gRPC address answer
+#   an HTTP lookup.
 #
 # The API Gateway is deliberately NOT gated at all: its `Services:{X}:Url` section is its own
 # namespace for the aggregation views, is what compose sets for that container, and is already
 # accepted by the resolver as a fallback spelling.
-src/Apps/Sorcha.McpServer/Tools/Admin/PeerStatusTool.cs
-src/Apps/Sorcha.McpServer/Tools/Admin/ValidatorStatusTool.cs
-src/Apps/Sorcha.McpServer/Tools/Designer/BlueprintValidateTool.cs
-src/Apps/Sorcha.McpServer/Tools/Designer/DisclosureAnalysisTool.cs
-src/Apps/Sorcha.McpServer/Tools/Participant/ActionValidateTool.cs
-src/Apps/Sorcha.McpServer/Tools/Participant/RegisterQueryTool.cs
-src/Apps/Sorcha.McpServer/Tools/Participant/WalletSignTool.cs
-src/Apps/Sorcha.Verifier/Program.cs
-src/Common/Sorcha.ServiceClients/Extensions/ServiceCollectionExtensions.cs
-src/Common/Sorcha.ServiceClients/Peer/PeerServiceClient.cs
-src/Common/Sorcha.ServiceClients.Http/Blueprint/BlueprintServiceClient.cs
-src/Common/Sorcha.ServiceClients.Http/CitizenStatusList/CitizenStatusListClient.cs
-src/Common/Sorcha.ServiceClients.Http/CitizenWallet/CitizenWalletClient.cs
-src/Common/Sorcha.ServiceClients.Http/Register/RegisterServiceClient.cs
-src/Common/Sorcha.ServiceClients.Http/Validator/ValidatorServiceClient.cs
-src/Common/Sorcha.ServiceClients.Http/Wallet/WalletServiceClient.cs
-src/Services/Sorcha.Blueprint.Service/Program.cs
-src/Services/Sorcha.Haip.Service/Program.cs
-src/Services/Sorcha.Tenant.Service/Program.cs
