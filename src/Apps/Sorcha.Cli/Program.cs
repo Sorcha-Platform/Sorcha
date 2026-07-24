@@ -182,6 +182,7 @@ internal class Program
 
         // Sprint 5: Blueprint, Participant, Credential, Validator, Admin commands
         rootCommand.Subcommands.Add(new BlueprintCommand(clientFactory, authService, configService));
+        rootCommand.Subcommands.Add(new InstanceCommand(clientFactory, authService, configService));
         rootCommand.Subcommands.Add(new ParticipantCommand(clientFactory, authService, configService));
         rootCommand.Subcommands.Add(new CredentialCommand(clientFactory, authService, configService));
         rootCommand.Subcommands.Add(new ValidatorCommand(clientFactory, authService, configService));

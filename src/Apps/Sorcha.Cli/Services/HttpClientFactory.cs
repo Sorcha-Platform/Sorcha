@@ -124,6 +124,22 @@ public class HttpClientFactory
     }
 
     /// <summary>
+    /// Creates the instance-repair client (Feature 145 US4). Hits the Blueprint Service directly;
+    /// the endpoints are service-tier, so the caller must hold a service-principal token.
+    /// </summary>
+    public async Task<IInstanceServiceClient> CreateInstanceServiceClientAsync(string profileName)
+    {
+        var profile = await _configService.GetProfileAsync(profileName);
+        if (profile == null)
+        {
+            throw new InvalidOperationException($"Profile '{profileName}' does not exist.");
+        }
+
+        var httpClient = CreateHttpClient(profile, profile.GetBlueprintServiceUrl());
+        return RestService.For<IInstanceServiceClient>(httpClient);
+    }
+
+    /// <summary>
     /// Creates a Participant Service client for the specified profile.
     /// Uses the Tenant Service URL since participant endpoints are on the Tenant Service.
     /// </summary>

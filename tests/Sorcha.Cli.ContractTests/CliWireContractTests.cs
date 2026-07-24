@@ -65,6 +65,13 @@ public sealed class CliWireContractTests
             + "(credentialType, claims, recipientWallet) are all present — verified by "
             + "IssueCredentialRequest_SendsEveryRequiredServerField below. A future field the server "
             + "makes required would be caught by that test, not silently dropped.",
+        ["InstanceParityResult"] =
+            "The parity endpoint PROJECTS the service's internal InstanceParityResult record into a "
+            + "different anonymous wire shape — { instanceId, registerId, inSync, detail, "
+            + "rebuiltState, materializedState } — flattening the two Instance objects to their state "
+            + "strings. The CLI type matches that projected wire shape exactly; the internal record "
+            + "(inSync/detail/rebuilt/materialized, carrying full Instance objects) is not what "
+            + "crosses the wire. A name collision with an internal type, not a shared contract.",
         ["RegisterSyncStatus"] =
             "The CLI's /health/sync response models the Register Service's RegisterSyncStatus, which "
             + "is a PRIVATE record inside RecoveryHealthEndpoints and therefore invisible to this "
