@@ -98,14 +98,6 @@ public sealed class CliWireContractTests
             "Peer.Service — CLI-only: currentDocket, docketsProcessed, isStale, lastError, progressPercent, status, targetDocket; server-only: canServeFullReplica, lastSyncAt,...",
         ["SchemaSector"] =
             "Blueprint.Service — CLI-only: name, schemaCount, status; server-only: displayName, icon",
-        ["SubmitTransactionRequest"] =
-            "Peer.Service — CLI-only: payload, previousTxId, senderWallet, signature, txType; server-only: originPeerId, submissionJson, submittedAtUnixMs",
-        ["SubmitTransactionResponse"] =
-            "Peer.Service — CLI-only: error, status, transactionId; server-only: accepted, receiverIsValidator, rejectReason",
-        ["ValidatorAuditEntry"] =
-            "Validator.Service — server-only: id, registerId",
-        ["ValidatorStatus"] =
-            "Validator.Service — CLI-only: consensusProtocol, failedValidations, isRunning, lastValidationAt, registersMonitored, status, totalValidations, uptime; server-only: doc...",
         ["WalletLinkChallengeResponse"] =
             "Tenant.Service — CLI-only: nonce; server-only: algorithm, challenge, status, walletAddress",
     };
