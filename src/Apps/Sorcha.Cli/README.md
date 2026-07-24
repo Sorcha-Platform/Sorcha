@@ -2,7 +2,7 @@
 
 **Version:** see root `Directory.Build.props` (build-time derived, `2.<run>.<attempt>`)
 **Status:** Developer preview — substantially complete for platform administration and walkthroughs
-**Last Updated:** 2026-06-10
+**Last Updated:** 2026-07-24
 
 > **Note:** The CLI is a developer and operator tool, not the primary user-facing interface for v1. For end-user onboarding and day-to-day wallet operations the supported path is the Sorcha web UI and the Citizen Wallet PWA. See the [documentation site](https://docs.sorcha.io) and the [quick-start guide](../../../docs/getting-started/) for the recommended setup path.
 
@@ -18,9 +18,9 @@ The Sorcha CLI is a cross-platform command-line interface for managing the Sorch
 | **Org / User / Service-principal** | Complete | Full CRUD |
 | **Wallet commands** | Complete | Create, get, list, sign, verify, delete |
 | **Register commands** | Complete | Create, get, list, delete |
-| **Transaction commands** | Complete | List, get, submit, query |
+| **Transaction commands** | Complete | List, get, query. Raw `submit` is intentionally not a CLI operation (see HTTP clients & wire contracts) |
 | **Blueprint commands** | Complete | CRUD, publish, list instances |
-| **Credential commands** | Complete | Issue, list, revoke |
+| **Credential commands** | Complete | Issue (to a recipient wallet), list, get, present, verify, revoke, suspend, reinstate, refresh, status-list |
 | **Schema commands** | Complete | List, get |
 | **Docket commands** | Complete | List, get, verify |
 | **Validator commands** | Complete | List, register, deregister, status |
@@ -558,8 +558,37 @@ When a shared client needs auth, build it through `HttpClientFactory` (see
 `CreateRegisterInvitationClientAsync`), which attaches the cached bearer token to the `HttpClient`
 rather than passing it per call.
 
-Migrating the remaining CLI-local client/DTO copies is tracked as **DRIFT-002** in
-`.specify/MASTER-TASKS.md`.
+#### The wire-contract harness (`Sorcha.Cli.ContractTests`)
+
+Most CLI service clients are still hand-rolled Refit interfaces with CLI-local DTOs — and that is
+fine, **as long as those DTOs actually agree with the server on the wire**. They did not: a
+one-off audit found **30 CLI commands** whose request/response types had silently drifted from the
+endpoints they call. The failures were invisible — no crash, no compile error — just wrong output
+(`validator status` printing invented fields), dropped data (`audit query` always empty),
+mis-sent requests (`rotate-secret` returning a blank secret), or commands aimed at the wrong
+endpoint entirely (`credential issue` posted to the store endpoint, not `/issue`).
+
+`tests/Sorcha.Cli.ContractTests` is the guard. It references **both** the CLI and the services (a
+layering combination no production assembly may have, but exactly what a test project is for),
+discovers every CLI type whose name matches a server type, and asserts they serialise to the same
+JSON property names. All 30 mismatches are fixed and the baseline is empty, so a **new** drift now
+fails CI outright. A CLI type that shares a name with a server type but is deliberately not the
+same contract must be justified in the harness's `NotAWireContract` list — that list is the
+audited record of every intentional exception.
+
+#### Deliberately CLI-local clients
+
+Some service clients have **no** shared-library equivalent and are correctly CLI-only:
+`IAdminServiceClient`, `IAuditServiceClient`, `ICredentialServiceClient`, `IPlatformServiceClient`,
+`IVerificationServiceClient`, and `IValidatorServiceClient`. Creating a shared client for a
+CLI-only surface would add indirection with no second consumer — the opposite of the consolidation
+rule. Their DTOs are still covered by the wire-contract harness above, so being CLI-local does not
+exempt them from agreeing with the server.
+
+Two commands are intentionally **not** wired to a working request because the operation is not a
+sensible CLI action: `transaction submit` (a register transaction is a complete signed
+`TransactionModel` produced by executing a blueprint action, not something assembled from flags)
+returns a clear "not supported" error rather than a fake success.
 
 ### Project Structure
 
