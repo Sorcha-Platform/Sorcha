@@ -97,30 +97,28 @@ public class CreateUserRequest
 /// <summary>
 /// Request to update a user.
 /// </summary>
+/// <remarks>
+/// Mirrors <c>Sorcha.Tenant.Service.Models.Dtos.UpdateUserRequest</c> exactly; the pairing is
+/// asserted by <c>CliWireContractTests</c>. This previously sent <c>email</c>, <c>firstName</c>,
+/// <c>lastName</c> and <c>isActive</c>, none of which the server binds — so <c>sorcha user update</c>
+/// posted a body the server ignored entirely, then reported success having changed nothing.
+/// </remarks>
 public class UpdateUserRequest
 {
     /// <summary>
-    /// Email address.
+    /// The user's display name. Replaces the separate first/last name fields the CLI used to send;
+    /// the server has only ever had a single display name.
     /// </summary>
-    public string? Email { get; set; }
+    public string? DisplayName { get; set; }
 
     /// <summary>
-    /// First name.
+    /// Replacement role set. Serialised as strings; the server binds them to its UserRole enum.
     /// </summary>
-    public string? FirstName { get; set; }
+    public string[]? Roles { get; set; }
 
     /// <summary>
-    /// Last name.
+    /// Account status, e.g. <c>Active</c> or <c>Suspended</c>. Replaces the CLI's boolean
+    /// <c>isActive</c>, which the server never accepted.
     /// </summary>
-    public string? LastName { get; set; }
-
-    /// <summary>
-    /// Whether the user is active.
-    /// </summary>
-    public bool? IsActive { get; set; }
-
-    /// <summary>
-    /// User roles.
-    /// </summary>
-    public List<string>? Roles { get; set; }
+    public string? Status { get; set; }
 }

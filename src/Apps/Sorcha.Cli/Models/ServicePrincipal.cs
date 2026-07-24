@@ -5,52 +5,33 @@ namespace Sorcha.Cli.Models;
 /// <summary>
 /// Represents a service principal (application identity) in the Sorcha platform.
 /// </summary>
+/// <remarks>
+/// Mirrors <c>Sorcha.Tenant.Service.Models.Dtos.ServicePrincipalResponse</c> exactly; the pairing
+/// is asserted by <c>CliWireContractTests</c>. This previously declared <c>name</c>,
+/// <c>description</c>, <c>isActive</c>, <c>organizationId</c>, <c>updatedAt</c> and
+/// <c>secretRotatedAt</c> — none of which the server sends — so `service-principal list` and `get`
+/// showed a blank name and an always-true active flag, while the server's real <c>id</c>,
+/// <c>serviceName</c> and <c>status</c> were discarded.
+/// </remarks>
 public class ServicePrincipal
 {
-    /// <summary>
-    /// Unique identifier (client ID) for the service principal.
-    /// </summary>
+    /// <summary>The service principal's unique id.</summary>
+    public Guid Id { get; set; }
+
+    /// <summary>Display name for the service principal.</summary>
+    public string ServiceName { get; set; } = string.Empty;
+
+    /// <summary>OAuth2 client id used when authenticating as this principal.</summary>
     public string ClientId { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Organization ID the service principal belongs to.
-    /// </summary>
-    public string OrganizationId { get; set; } = string.Empty;
+    /// <summary>Scopes granted to this service principal.</summary>
+    public string[] Scopes { get; set; } = [];
 
-    /// <summary>
-    /// Display name for the service principal.
-    /// </summary>
-    public string Name { get; set; } = string.Empty;
+    /// <summary>Current status, e.g. <c>Active</c>.</summary>
+    public string Status { get; set; } = "Active";
 
-    /// <summary>
-    /// Description of the service principal's purpose.
-    /// </summary>
-    public string? Description { get; set; }
-
-    /// <summary>
-    /// Whether the service principal is active.
-    /// </summary>
-    public bool IsActive { get; set; } = true;
-
-    /// <summary>
-    /// Scopes/permissions granted to this service principal.
-    /// </summary>
-    public List<string> Scopes { get; set; } = new();
-
-    /// <summary>
-    /// Creation timestamp.
-    /// </summary>
+    /// <summary>Creation timestamp.</summary>
     public DateTimeOffset CreatedAt { get; set; }
-
-    /// <summary>
-    /// Last update timestamp.
-    /// </summary>
-    public DateTimeOffset? UpdatedAt { get; set; }
-
-    /// <summary>
-    /// When the client secret was last rotated.
-    /// </summary>
-    public DateTimeOffset? SecretRotatedAt { get; set; }
 }
 
 /// <summary>

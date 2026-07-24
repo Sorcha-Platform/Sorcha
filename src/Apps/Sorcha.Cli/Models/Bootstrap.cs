@@ -104,6 +104,21 @@ public class BootstrapResponse
     public string? ServicePrincipalClientSecret { get; set; }
 
     /// <summary>
+    /// The system administration organisation created by bootstrap.
+    /// </summary>
+    public Guid SystemAdminOrgId { get; set; }
+
+    /// <summary>
+    /// The well-known public organisation created by bootstrap.
+    /// </summary>
+    public Guid PublicOrgId { get; set; }
+
+    /// <summary>
+    /// The cross-org platform user created for the administrator.
+    /// </summary>
+    public Guid PlatformUserId { get; set; }
+
+    /// <summary>
     /// Timestamp of bootstrap operation.
     /// </summary>
     public DateTime CreatedAt { get; set; }
