@@ -1309,8 +1309,10 @@ public class RegisterPolicyUpdateCommand : Command
     private readonly Option<string> _registerIdOption;
     private readonly Option<int?> _minValidatorsOption;
     private readonly Option<int?> _maxValidatorsOption;
-    private readonly Option<int?> _signatureThresholdOption;
+    private readonly Option<int?> _signatureThresholdMinOption;
+    private readonly Option<int?> _signatureThresholdMaxOption;
     private readonly Option<string?> _registrationModeOption;
+    private readonly Option<string?> _updatedByOption;
     private readonly Option<bool> _confirmOption;
 
     public RegisterPolicyUpdateCommand(
@@ -1335,14 +1337,26 @@ public class RegisterPolicyUpdateCommand : Command
             Description = "Maximum number of validators"
         };
 
-        _signatureThresholdOption = new Option<int?>("--signature-threshold")
+        // PolicyConsensusConfig bounds the threshold with a min and a max rather than carrying a
+        // single value, so the old --signature-threshold had no unambiguous target.
+        _signatureThresholdMinOption = new Option<int?>("--signature-threshold-min")
         {
-            Description = "Signature threshold for consensus"
+            Description = "Minimum signature threshold for consensus"
+        };
+
+        _signatureThresholdMaxOption = new Option<int?>("--signature-threshold-max")
+        {
+            Description = "Maximum signature threshold for consensus"
         };
 
         _registrationModeOption = new Option<string?>("--registration-mode")
         {
-            Description = "Registration mode (open or consent)"
+            Description = "Registration mode (Public or Consent)"
+        };
+
+        _updatedByOption = new Option<string?>("--updated-by")
+        {
+            Description = "DID of the proposer (sent to the server as updatedBy)"
         };
 
         _confirmOption = new Option<bool>("--yes", "-y")
@@ -1353,8 +1367,10 @@ public class RegisterPolicyUpdateCommand : Command
         Options.Add(_registerIdOption);
         Options.Add(_minValidatorsOption);
         Options.Add(_maxValidatorsOption);
-        Options.Add(_signatureThresholdOption);
+        Options.Add(_signatureThresholdMinOption);
+        Options.Add(_signatureThresholdMaxOption);
         Options.Add(_registrationModeOption);
+        Options.Add(_updatedByOption);
         Options.Add(_confirmOption);
 
         this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
@@ -1362,13 +1378,16 @@ public class RegisterPolicyUpdateCommand : Command
             var registerId = parseResult.GetValue(_registerIdOption)!;
             var minValidators = parseResult.GetValue(_minValidatorsOption);
             var maxValidators = parseResult.GetValue(_maxValidatorsOption);
-            var signatureThreshold = parseResult.GetValue(_signatureThresholdOption);
+            var signatureThresholdMin = parseResult.GetValue(_signatureThresholdMinOption);
+            var signatureThresholdMax = parseResult.GetValue(_signatureThresholdMaxOption);
             var registrationMode = parseResult.GetValue(_registrationModeOption);
+            var updatedBy = parseResult.GetValue(_updatedByOption);
             var confirm = parseResult.GetValue(_confirmOption);
 
-            if (minValidators == null && maxValidators == null && signatureThreshold == null && registrationMode == null)
+            if (minValidators == null && maxValidators == null && signatureThresholdMin == null
+                && signatureThresholdMax == null && registrationMode == null)
             {
-                ConsoleHelper.WriteError("At least one policy field must be specified (--min-validators, --max-validators, --signature-threshold, --registration-mode).");
+                ConsoleHelper.WriteError("At least one policy field must be specified (--min-validators, --max-validators, --signature-threshold-min, --signature-threshold-max, --registration-mode).");
                 return ExitCodes.ValidationError;
             }
 
@@ -1379,7 +1398,8 @@ public class RegisterPolicyUpdateCommand : Command
                     ConsoleHelper.WriteWarning("You are about to propose a policy update:");
                     if (minValidators.HasValue) Console.WriteLine($"  Min Validators:     {minValidators}");
                     if (maxValidators.HasValue) Console.WriteLine($"  Max Validators:     {maxValidators}");
-                    if (signatureThreshold.HasValue) Console.WriteLine($"  Signature Threshold:{signatureThreshold}");
+                    if (signatureThresholdMin.HasValue) Console.WriteLine($"  Sig Threshold Min:  {signatureThresholdMin}");
+                    if (signatureThresholdMax.HasValue) Console.WriteLine($"  Sig Threshold Max:  {signatureThresholdMax}");
                     if (registrationMode != null) Console.WriteLine($"  Registration Mode:  {registrationMode}");
 
                     if (!ConsoleHelper.Confirm("Propose policy update?", defaultYes: false))
@@ -1401,12 +1421,51 @@ public class RegisterPolicyUpdateCommand : Command
 
                 var client = await clientFactory.CreateRegisterServiceClientAsync(profileName);
 
+                // The server replaces the policy wholesale - it binds a complete RegisterPolicy, not
+                // a set of deltas. So read the current policy, apply the requested changes to it,
+                // and propose the result. Sending only the changed fields (as this command used to)
+                // would leave every other setting at its type default.
+                var currentResponse = await client.GetPolicyAsync(registerId, $"Bearer {token}");
+                if (!currentResponse.IsSuccessStatusCode)
+                {
+                    var currentError = await currentResponse.Content.ReadAsStringAsync(ct);
+                    ConsoleHelper.WriteError(
+                        $"Could not read the current policy to base this proposal on ({currentResponse.StatusCode}): {currentError}");
+                    return ExitCodes.GeneralError;
+                }
+
+                var current = JsonSerializer.Deserialize<RegisterPolicyResponse>(
+                    await currentResponse.Content.ReadAsStringAsync(ct), SorchaJsonOptions.Default);
+
+                if (current?.Policy is null)
+                {
+                    ConsoleHelper.WriteError("The current policy could not be parsed; refusing to propose a replacement.");
+                    return ExitCodes.GeneralError;
+                }
+
+                var proposed = current.Policy;
+                if (minValidators.HasValue) proposed.Validators.MinValidators = minValidators.Value;
+                if (maxValidators.HasValue) proposed.Validators.MaxValidators = maxValidators.Value;
+                if (signatureThresholdMin.HasValue) proposed.Consensus.SignatureThresholdMin = signatureThresholdMin.Value;
+                if (signatureThresholdMax.HasValue) proposed.Consensus.SignatureThresholdMax = signatureThresholdMax.Value;
+                if (!string.IsNullOrWhiteSpace(registrationMode))
+                {
+                    if (!Enum.TryParse<RegistrationMode>(registrationMode, ignoreCase: true, out var mode))
+                    {
+                        ConsoleHelper.WriteError($"Unknown registration mode '{registrationMode}'. Expected Public or Consent.");
+                        return ExitCodes.ValidationError;
+                    }
+
+                    proposed.Validators.RegistrationMode = mode;
+                }
+
+                // The server expects the proposal to carry an incremented version.
+                proposed.Version = current.Policy.Version + 1;
+
                 var request = new PolicyUpdateRequest
                 {
-                    MinValidators = minValidators,
-                    MaxValidators = maxValidators,
-                    SignatureThreshold = signatureThreshold,
-                    RegistrationMode = registrationMode
+                    Policy = proposed,
+                    UpdatedBy = updatedBy ?? string.Empty
                 };
 
                 var response = await client.ProposePolicyUpdateAsync(registerId, request, $"Bearer {token}");

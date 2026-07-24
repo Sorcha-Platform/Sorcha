@@ -180,12 +180,23 @@ public class RegisterPolicyCommandTests
     }
 
     [Fact]
-    public void RegisterPolicyUpdateCommand_ShouldHaveOptionalThresholdOption()
+    public void RegisterPolicyUpdateCommand_ShouldHaveOptionalThresholdBoundOptions()
     {
+        // The server's PolicyConsensusConfig bounds the threshold with a min and a max rather than
+        // carrying one value, so the old single --signature-threshold had no unambiguous target.
         var command = new RegisterPolicyUpdateCommand(_clientFactory, AuthService, ConfigService);
-        var option = command.Options.FirstOrDefault(o => o.Name == "--signature-threshold");
-        option.Should().NotBeNull();
-        option!.Required.Should().BeFalse();
+
+        var min = command.Options.FirstOrDefault(o => o.Name == "--signature-threshold-min");
+        min.Should().NotBeNull();
+        min!.Required.Should().BeFalse();
+
+        var max = command.Options.FirstOrDefault(o => o.Name == "--signature-threshold-max");
+        max.Should().NotBeNull();
+        max!.Required.Should().BeFalse();
+
+        command.Options.Select(o => o.Name).Should().NotContain(
+            "--signature-threshold",
+            "the ambiguous single-value flag was replaced by the two bounds the policy actually has");
     }
 
     [Fact]
