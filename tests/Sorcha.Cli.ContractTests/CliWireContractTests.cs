@@ -88,10 +88,6 @@ public sealed class CliWireContractTests
     {
         ["IssueCredentialRequest"] =
             "Wallet.Service — CLI-only: expiresInDays, subject, type, walletAddress; server-only: credentialType, disclosableClaims, displayName, expiryDuration, holderJwk, issu...",
-        ["PublishBlueprintRequest"] =
-            "ServiceClients.Http — CLI-only: blueprintId; server-only: override",
-        ["SchemaSector"] =
-            "Blueprint.Service — CLI-only: name, schemaCount, status; server-only: displayName, icon",
     };
 
     /// <summary>
