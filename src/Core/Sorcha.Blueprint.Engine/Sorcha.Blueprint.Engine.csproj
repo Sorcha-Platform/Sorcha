@@ -6,7 +6,6 @@
     <PackageId>Sorcha.Blueprint.Engine</PackageId>
     <Description>Portable blueprint execution engine with validate, calculate, route, and disclose pipeline</Description>
     <RootNamespace>Sorcha.Blueprint.Engine</RootNamespace>
-    <DocumentationFile>Sorcha.Blueprint.Engine.xml</DocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
