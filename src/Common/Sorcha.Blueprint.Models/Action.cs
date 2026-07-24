@@ -200,7 +200,7 @@ public class Action
     /// starting action MUST have <see cref="Participant.WalletAddress"/> set to
     /// <c>null</c> in the published blueprint. The publish-time guardrail
     /// <c>VAL_BP_010</c> (defined as
-    /// <c>Sorcha.Validator.Service.Models.ValidationErrorCodes.OpenParticipantPrebound</c>)
+    /// <c>Sorcha.Blueprint.Models.ValidationErrorCodes.OpenParticipantPrebound</c>)
     /// rejects publication otherwise.
     /// </para>
     /// <para>

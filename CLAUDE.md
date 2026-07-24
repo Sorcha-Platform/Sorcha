@@ -384,6 +384,25 @@ derivationPath: "sorcha:docket-signing",
 - Adding a context means adding **both** `Foo` and `FooPath`, plus a `ResolvePath` arm. Reflection tests in `Sorcha.Wallet.Contracts.Tests` enforce all three, and that no two contexts share a BIP44 slot.
 - Enforced by `scripts/check-derivation-contexts.ps1` (CI: `derivation-contexts-gate`). The gate reads the context list *from* the canonical file, so it cannot itself drift. Comments are ignored — illustrative prose in XML docs is fine. **Tests are out of scope**: an assertion like `DocketSigning.Should().Be("sorcha:docket-signing")` is what pins the wire value. `.derivation-contexts-allowlist` is currently **empty** and may only shrink.
 
+### 16. Cross-boundary validation codes have exactly one home
+
+A validation code that **one project emits and another names** lives in the shared leaf `Sorcha.Blueprint.Models` — `ValidationErrorCodes` for `VAL_*`, `ValidationWarningCodes` for `WARN_*`.
+
+```csharp
+using Sorcha.Blueprint.Models;
+
+// DO
+if (string.Equals(result.ErrorCode, ValidationErrorCodes.ChainFork, StringComparison.Ordinal))
+
+// DON'T — two independently-typed literals; the compiler cannot relate them
+if (string.Equals(result.ErrorCode, "VAL_CHAIN_FORK", StringComparison.Ordinal))
+```
+
+- **Some of these codes are matched on, not just logged.** Blueprint Service's `RedisPresentationSealCoordinator` compares the Validator's error code against `ChainFork` to recognise "already sealed via another path" and dedupe silently (Feature 119). Rename the producer's literal and that comparison stops matching — no compile error, no exception, no log, just a duplicate-submission path that quietly stops being deduped.
+- **Service-internal codes stay put.** The Validator's ~70 internal codes (`VAL_SCHEMA_*`, `VAL_STRUCT_*`, `VAL_PERM_*`, …) are declared and consumed in the same file and carry no cross-boundary drift risk. **Promote a code only when a second project needs to name it** — that is the trigger, not family membership. `VAL_BP_CRED_004` deliberately stays local while its siblings moved.
+- Keep the taxonomy honest: `ValidationErrorCodes` holds blocking `VAL_*` only, `ValidationWarningCodes` non-blocking `WARN_*` only. An operator filtering logs on the prefix must not miss a blocking error. Enforced by `ValidationCodeContractTests`, which also pins each code's wire value (they are an operator-facing contract) and rejects duplicate values.
+- Enforced by `scripts/check-error-code-contract.ps1` (CI: `error-code-contract-gate`). The gate derives its guarded set *from* the two canonical files, so it cannot drift. Comments ignored; tests exempt (asserting the literal is what pins it). `.error-code-contract-allowlist` is **empty** and may only shrink.
+
 ---
 
 ## Key Documentation

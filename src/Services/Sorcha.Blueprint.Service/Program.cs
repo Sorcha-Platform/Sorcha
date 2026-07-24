@@ -3454,12 +3454,10 @@ public class PublishService(
         // publish-time error.
         //
         // Contract: specs/103-verified-citizen-v2/contracts/validator-publish-errors.md
-        // Canonical constant lives in Validator Service as
-        // Sorcha.Validator.Service.Models.ValidationErrorCodes.OpenParticipantPrebound.
-        // Blueprint Service does NOT reference Validator Service today, so we mirror
-        // the literal here. If the services ever share a contracts project, collapse
-        // these to one constant.
-        const string OpenParticipantPreboundCode = "VAL_BP_010";
+        // The canonical constant now lives in the shared Sorcha.Blueprint.Models contracts
+        // project, which both this service and Validator Service reference — so the literal
+        // is named once (DRIFT-003).
+        const string OpenParticipantPreboundCode = Sorcha.Blueprint.Models.ValidationErrorCodes.OpenParticipantPrebound;
 
         foreach (var startingAction in startingActions)
         {
@@ -3611,9 +3609,12 @@ public class PublishService(
         //                      holder's decline path seals a clean terminal rejection.
         //
         // Contract: specs/106-register-native-credentials/contracts/credential-issuance-config.md
-        const string SorchaLocalWalletRecipientCode = "VAL_BP_CRED_001";
-        const string SorchaLocalWalletImplicitDisclosureWarning = "WARN_BP_CRED_002";
-        const string SorchaLocalWalletRejectNotTerminalCode = "VAL_BP_CRED_003";
+        const string SorchaLocalWalletRecipientCode = Sorcha.Blueprint.Models.ValidationErrorCodes.SorchaLocalWalletRecipientUnknown;
+        const string SorchaLocalWalletImplicitDisclosureWarning = Sorcha.Blueprint.Models.ValidationWarningCodes.SorchaLocalWalletImplicitDisclosure;
+        const string SorchaLocalWalletRejectNotTerminalCode = Sorcha.Blueprint.Models.ValidationErrorCodes.SorchaLocalWalletRejectNotTerminal;
+        // VAL_BP_CRED_004 stays local: it is emitted and named only here, so it carries no
+        // cross-boundary drift risk. Promote it to the shared class if a second project ever
+        // needs to name it (see the scope note on ValidationErrorCodes).
         const string CredentialVctNotAbsoluteUriCode = "VAL_BP_CRED_004";
 
         foreach (var action in blueprint.Actions)

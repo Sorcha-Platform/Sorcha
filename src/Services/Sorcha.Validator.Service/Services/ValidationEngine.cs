@@ -20,6 +20,7 @@ using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services.Interfaces;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 using ActionModel = Sorcha.Blueprint.Models.Action;
+using Sorcha.Blueprint.Models;
 
 namespace Sorcha.Validator.Service.Services;
 
@@ -1132,7 +1133,7 @@ public class ValidationEngine : IValidationEngine
                         || previousTx.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.BlueprintPublish;
                     if (!isControlTx)
                     {
-                        using var _forkScope = RuleTelemetry.TimeRule("VAL_CHAIN_FORK");
+                        using var _forkScope = RuleTelemetry.TimeRule(ValidationErrorCodes.ChainFork);
                         // Fetch up to 50 existing successors so we can distinguish an
                         // idempotent resubmission (same TxId already present) from a
                         // genuine fork (different TxId with the same parent). Without
@@ -1149,7 +1150,7 @@ public class ValidationEngine : IValidationEngine
 
                             if (!isIdempotentResubmission)
                             {
-                                errors.Add(CreateError("VAL_CHAIN_FORK",
+                                errors.Add(CreateError(ValidationErrorCodes.ChainFork,
                                     $"Fork detected: {existingSuccessors.Total} existing transaction(s) already reference previous transaction '{previousTxId}' in register '{transaction.RegisterId}'",
                                     ValidationErrorCategory.Chain, "PreviousTransactionId"));
                             }
@@ -1620,7 +1621,7 @@ public class ValidationEngine : IValidationEngine
             }
             catch (JsonException ex)
             {
-                errors.Add(CreateError("VAL_REV_001",
+                errors.Add(CreateError(ValidationErrorCodes.RevocationInvalid,
                     $"Invalid revocation payload: {ex.Message}",
                     ValidationErrorCategory.Structure, "Payload"));
                 return CreateFailureResult(transaction, sw.Elapsed, errors);
@@ -1628,7 +1629,7 @@ public class ValidationEngine : IValidationEngine
 
             if (revocationPayload == null)
             {
-                errors.Add(CreateError("VAL_REV_001",
+                errors.Add(CreateError(ValidationErrorCodes.RevocationInvalid,
                     "Revocation payload is null",
                     ValidationErrorCategory.Structure, "Payload"));
                 return CreateFailureResult(transaction, sw.Elapsed, errors);
@@ -1641,7 +1642,7 @@ public class ValidationEngine : IValidationEngine
             {
                 foreach (var err in payloadResult.Errors)
                 {
-                    errors.Add(CreateError(payloadResult.ErrorCode ?? "VAL_REV_001",
+                    errors.Add(CreateError(payloadResult.ErrorCode ?? ValidationErrorCodes.RevocationInvalid,
                         err, ValidationErrorCategory.Structure, "Payload"));
                 }
                 return CreateFailureResult(transaction, sw.Elapsed, errors);
