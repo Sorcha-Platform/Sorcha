@@ -424,6 +424,16 @@ var address = configuration["ServiceClients:TenantService:Address"] ?? "...";
 - **The API Gateway's `Services:{X}:Url` section is out of scope by design** — its own namespace for the aggregation views, what compose sets for that container, and already accepted by the resolver as a fallback spelling.
 - Enforced by `scripts/check-service-address-keys.ps1` (CI: `service-address-keys-gate`). `.service-address-keys-allowlist` is a **ratchet seeded with 19 files** that read the *canonical* key with their own default — consistent, not drifted, so lower priority. It may only shrink.
 
+### 18. CLI DTOs must agree with the server on the wire
+
+The `Sorcha.Cli` keeps its own request/response DTOs for most commands (only some clients are shared — pattern-style guidance is in `src/Apps/Sorcha.Cli/README.md`). That is allowed, but a CLI DTO **must serialise to the same JSON property names as the server type its endpoint binds**, or the command silently misbehaves — no crash, no compile error, just wrong output, dropped data, or a request the server ignores.
+
+- **`tests/Sorcha.Cli.ContractTests` is the guard.** It references *both* the CLI and the services (a layering combination no production assembly may have — legitimate only in a test project) and asserts every CLI↔server name pair agrees. A DRIFT-002 audit found **30** broken commands this way; all are fixed and the **baseline is empty**, so a new mismatch fails CI outright.
+- **When you add or change a CLI command's DTO**, check it against the type the endpoint actually `.Produces<T>()` / `[FromBody]`-binds — *not* a same-named entity or a same-named type in a service the CLI doesn't call. Several "mismatches" in the audit were name collisions where the CLI was already correct; the harness's `NotAWireContract` list documents each with a reason.
+- **Reflection can't see everything.** A server type that is a `private record` or an anonymous `Results.Ok(new { ... })` is invisible to the harness, so name-discovery may pair the CLI type against an unrelated public collision. When the CLI genuinely matches an unreachable server shape, record it in `NotAWireContract`.
+- **Deliberate request subsets** (a CLI request that omits *optional* server fields on purpose) are fine but must be justified in `NotAWireContract` **and** guarded by a test asserting every *required* server field is still present (see `IssueCredentialRequest_SendsEveryRequiredServerField`).
+- **A command that cannot be driven from flags** (raw `transaction submit` needs a full signed `TransactionModel`) should return a clear "not supported via CLI" error, not a fake success path.
+
 ---
 
 ## Key Documentation
