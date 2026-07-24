@@ -169,22 +169,24 @@ public class UserCommandsTests
         // Arrange & Act
         var command = new UserUpdateCommand(_clientFactory, AuthService, ConfigService);
 
-        // Assert
-        var emailOption = command.Options.FirstOrDefault(o => o.Name == "--email");
-        emailOption.Should().NotBeNull();
-        emailOption!.Required.Should().BeFalse();
+        // Assert — these mirror what the Tenant Service's UpdateUserRequest actually binds.
+        // The command previously offered --email/--first-name/--last-name/--active, none of which
+        // the server reads, so the update silently changed nothing (see CliWireContractTests).
+        var displayNameOption = command.Options.FirstOrDefault(o => o.Name == "--display-name");
+        displayNameOption.Should().NotBeNull();
+        displayNameOption!.Required.Should().BeFalse();
 
-        var firstNameOption = command.Options.FirstOrDefault(o => o.Name == "--first-name");
-        firstNameOption.Should().NotBeNull();
-        firstNameOption!.Required.Should().BeFalse();
+        var statusOption = command.Options.FirstOrDefault(o => o.Name == "--status");
+        statusOption.Should().NotBeNull();
+        statusOption!.Required.Should().BeFalse();
 
-        var lastNameOption = command.Options.FirstOrDefault(o => o.Name == "--last-name");
-        lastNameOption.Should().NotBeNull();
-        lastNameOption!.Required.Should().BeFalse();
+        var rolesOption = command.Options.FirstOrDefault(o => o.Name == "--roles");
+        rolesOption.Should().NotBeNull();
+        rolesOption!.Required.Should().BeFalse();
 
-        var activeOption = command.Options.FirstOrDefault(o => o.Name == "--active");
-        activeOption.Should().NotBeNull();
-        activeOption!.Required.Should().BeFalse();
+        command.Options.Select(o => o.Name).Should().NotContain(
+            ["--email", "--first-name", "--last-name", "--active"],
+            "options the server never bound were removed rather than left to mislead");
     }
 
     [Fact]

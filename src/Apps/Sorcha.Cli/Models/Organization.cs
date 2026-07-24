@@ -56,6 +56,12 @@ public class Organization
     /// <summary>
     /// Branding configuration.
     /// </summary>
+    /// <summary>
+    /// The organisation's wallet address, when it has been provisioned. Present on the wire since
+    /// the org-wallet work; the CLI previously dropped it silently.
+    /// </summary>
+    public string? WalletAddress { get; set; }
+
     public BrandingConfiguration? Branding { get; set; }
 }
 

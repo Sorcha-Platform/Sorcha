@@ -411,10 +411,8 @@ public class UserUpdateCommand : Command
 {
     private readonly Option<string> _orgIdOption;
     private readonly Option<string> _userIdOption;
-    private readonly Option<string?> _emailOption;
-    private readonly Option<string?> _firstNameOption;
-    private readonly Option<string?> _lastNameOption;
-    private readonly Option<bool?> _isActiveOption;
+    private readonly Option<string?> _displayNameOption;
+    private readonly Option<string?> _statusOption;
     private readonly Option<string?> _rolesOption;
 
     public UserUpdateCommand(
@@ -435,24 +433,14 @@ public class UserUpdateCommand : Command
             Required = true
         };
 
-        _emailOption = new Option<string?>("--email", "-e")
+        _displayNameOption = new Option<string?>("--display-name", "-n")
         {
-            Description = "New email address"
+            Description = "New display name"
         };
 
-        _firstNameOption = new Option<string?>("--first-name", "-f")
+        _statusOption = new Option<string?>("--status", "-s")
         {
-            Description = "New first name"
-        };
-
-        _lastNameOption = new Option<string?>("--last-name", "-l")
-        {
-            Description = "New last name"
-        };
-
-        _isActiveOption = new Option<bool?>("--active", "-a")
-        {
-            Description = "Set active status (true/false)"
+            Description = "New account status (e.g. Active, Suspended)"
         };
 
         _rolesOption = new Option<string?>("--roles", "-r")
@@ -462,29 +450,25 @@ public class UserUpdateCommand : Command
 
         Options.Add(_orgIdOption);
         Options.Add(_userIdOption);
-        Options.Add(_emailOption);
-        Options.Add(_firstNameOption);
-        Options.Add(_lastNameOption);
-        Options.Add(_isActiveOption);
+        Options.Add(_displayNameOption);
+        Options.Add(_statusOption);
         Options.Add(_rolesOption);
 
         this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
             var orgId = parseResult.GetValue(_orgIdOption)!;
             var userId = parseResult.GetValue(_userIdOption)!;
-            var email = parseResult.GetValue(_emailOption);
-            var firstName = parseResult.GetValue(_firstNameOption);
-            var lastName = parseResult.GetValue(_lastNameOption);
-            var isActive = parseResult.GetValue(_isActiveOption);
+            var displayName = parseResult.GetValue(_displayNameOption);
+            var status = parseResult.GetValue(_statusOption);
             var roles = parseResult.GetValue(_rolesOption);
 
             try
             {
                 // Validate that at least one field is provided
-                if (string.IsNullOrEmpty(email) && string.IsNullOrEmpty(firstName) &&
-                    string.IsNullOrEmpty(lastName) && !isActive.HasValue && string.IsNullOrEmpty(roles))
+                if (string.IsNullOrEmpty(displayName) && string.IsNullOrEmpty(status) &&
+                    string.IsNullOrEmpty(roles))
                 {
-                    ConsoleHelper.WriteError("At least one field (--email, --first-name, --last-name, --active, or --roles) must be provided.");
+                    ConsoleHelper.WriteError("At least one field (--display-name, --status, or --roles) must be provided.");
                     return ExitCodes.ValidationError;
                 }
 
@@ -506,12 +490,10 @@ public class UserUpdateCommand : Command
                 // Build request
                 var request = new UpdateUserRequest
                 {
-                    Email = email,
-                    FirstName = firstName,
-                    LastName = lastName,
-                    IsActive = isActive,
+                    DisplayName = displayName,
+                    Status = status,
                     Roles = !string.IsNullOrEmpty(roles)
-                        ? roles.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
+                        ? roles.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                         : null
                 };
 

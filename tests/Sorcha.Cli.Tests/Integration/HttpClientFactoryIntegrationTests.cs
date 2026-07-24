@@ -285,8 +285,8 @@ public class HttpClientFactoryIntegrationTests : IDisposable
         // Arrange
         var principals = new List<ServicePrincipal>
         {
-            new() { ClientId = "sp-1", Name = "API Service 1", OrganizationId = "org-123", IsActive = true, CreatedAt = DateTimeOffset.UtcNow },
-            new() { ClientId = "sp-2", Name = "API Service 2", OrganizationId = "org-123", IsActive = true, CreatedAt = DateTimeOffset.UtcNow }
+            new() { Id = Guid.NewGuid(), ClientId = "sp-1", ServiceName = "API Service 1", Status = "Active", CreatedAt = DateTimeOffset.UtcNow },
+            new() { Id = Guid.NewGuid(), ClientId = "sp-2", ServiceName = "API Service 2", Status = "Active", CreatedAt = DateTimeOffset.UtcNow }
         };
 
         _mockHandler.SetupResponse(HttpMethod.Get, "/api/organizations/org-123/principals", HttpStatusCode.OK, principals);
@@ -304,8 +304,8 @@ public class HttpClientFactoryIntegrationTests : IDisposable
         // Assert
         result.Should().NotBeNull();
         result.Should().HaveCount(2);
-        result[0].Name.Should().Be("API Service 1");
-        result[1].Name.Should().Be("API Service 2");
+        result[0].ServiceName.Should().Be("API Service 1");
+        result[1].ServiceName.Should().Be("API Service 2");
 
         _mockHandler.Requests.Should().HaveCount(1);
         _mockHandler.Requests[0].Method.Should().Be(HttpMethod.Get);

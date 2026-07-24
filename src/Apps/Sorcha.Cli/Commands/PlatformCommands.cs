@@ -164,9 +164,10 @@ public class PlatformSettingsCommand : Command
 
                 ConsoleHelper.WriteInfo("Platform Settings:");
                 Console.WriteLine($"  Public Org Enabled:     {settings.PublicOrgEnabled}");
+                Console.WriteLine($"  Public Org ID:          {settings.PublicOrgId}");
+                Console.WriteLine($"  Public Org Status:      {settings.PublicOrgStatus}");
                 Console.WriteLine($"  Max Orgs Per User:      {settings.MaxOrgsPerUser}");
-                Console.WriteLine($"  Registration Open:      {settings.RegistrationOpen}");
-                Console.WriteLine($"  Social Login Enabled:   {settings.SocialLoginEnabled}");
+                Console.WriteLine($"  Updated At:             {settings.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
 
                 return ExitCodes.Success;
             }

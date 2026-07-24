@@ -90,13 +90,12 @@ public class PrincipalListCommand : Command
 
                 ConsoleHelper.WriteSuccess($"Found {principals.Count} service principal(s) in organization '{orgId}':");
                 Console.WriteLine();
-                Console.WriteLine($"{"Client ID",-40} {"Name",-30} {"Active",-8} {"Scopes",-20}");
-                Console.WriteLine(new string('-', 100));
+                Console.WriteLine($"{"Client ID",-40} {"Service Name",-30} {"Status",-10} {"Scopes",-20}");
+                Console.WriteLine(new string('-', 102));
                 foreach (var sp in principals)
                 {
-                    var scopes = sp.Scopes != null && sp.Scopes.Count > 0 ? string.Join(", ", sp.Scopes) : "(none)";
-                    var active = sp.IsActive ? "Yes" : "No";
-                    Console.WriteLine($"{sp.ClientId,-40} {sp.Name,-30} {active,-8} {scopes,-20}");
+                    var scopes = sp.Scopes is { Length: > 0 } ? string.Join(", ", sp.Scopes) : "(none)";
+                    Console.WriteLine($"{sp.ClientId,-40} {sp.ServiceName,-30} {sp.Status,-10} {scopes,-20}");
                 }
 
                 return ExitCodes.Success;
@@ -189,27 +188,16 @@ public class PrincipalGetCommand : Command
 
                 ConsoleHelper.WriteSuccess("Service principal details:");
                 Console.WriteLine();
+                Console.WriteLine($"  ID:              {sp.Id}");
                 Console.WriteLine($"  Client ID:       {sp.ClientId}");
-                Console.WriteLine($"  Organization ID: {sp.OrganizationId}");
-                Console.WriteLine($"  Name:            {sp.Name}");
-                if (!string.IsNullOrEmpty(sp.Description))
-                {
-                    Console.WriteLine($"  Description:     {sp.Description}");
-                }
-                Console.WriteLine($"  Active:          {(sp.IsActive ? "Yes" : "No")}");
-                if (sp.Scopes != null && sp.Scopes.Count > 0)
+                Console.WriteLine($"  Service Name:    {sp.ServiceName}");
+                Console.WriteLine($"  Status:          {sp.Status}");
+                if (sp.Scopes is { Length: > 0 })
                 {
                     Console.WriteLine($"  Scopes:          {string.Join(", ", sp.Scopes)}");
                 }
+
                 Console.WriteLine($"  Created:         {sp.CreatedAt:yyyy-MM-dd HH:mm:ss}");
-                if (sp.UpdatedAt.HasValue)
-                {
-                    Console.WriteLine($"  Updated:         {sp.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
-                }
-                if (sp.SecretRotatedAt.HasValue)
-                {
-                    Console.WriteLine($"  Secret Rotated:  {sp.SecretRotatedAt:yyyy-MM-dd HH:mm:ss}");
-                }
 
                 return ExitCodes.Success;
             }
@@ -327,14 +315,11 @@ public class PrincipalCreateCommand : Command
 
                 ConsoleHelper.WriteSuccess($"Service principal created successfully!");
                 Console.WriteLine();
+                Console.WriteLine($"  ID:              {response.ServicePrincipal.Id}");
                 Console.WriteLine($"  Client ID:       {response.ServicePrincipal.ClientId}");
-                Console.WriteLine($"  Organization ID: {response.ServicePrincipal.OrganizationId}");
-                Console.WriteLine($"  Name:            {response.ServicePrincipal.Name}");
-                if (!string.IsNullOrEmpty(response.ServicePrincipal.Description))
-                {
-                    Console.WriteLine($"  Description:     {response.ServicePrincipal.Description}");
-                }
-                if (response.ServicePrincipal.Scopes != null && response.ServicePrincipal.Scopes.Count > 0)
+                Console.WriteLine($"  Service Name:    {response.ServicePrincipal.ServiceName}");
+                Console.WriteLine($"  Status:          {response.ServicePrincipal.Status}");
+                if (response.ServicePrincipal.Scopes is { Length: > 0 })
                 {
                     Console.WriteLine($"  Scopes:          {string.Join(", ", response.ServicePrincipal.Scopes)}");
                 }

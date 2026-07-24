@@ -76,22 +76,16 @@ public sealed class CliWireContractTests
     {
         ["AvailableRegisterInfo"] =
             "Peer.Service — server-only: description, name",
-        ["BootstrapResponse"] =
-            "Tenant.Service — server-only: platformUserId, publicOrgId, systemAdminOrgId",
         ["InitiateWalletLinkRequest"] =
             "Tenant.Service — server-only: algorithm",
         ["IssueCredentialRequest"] =
             "Wallet.Service — CLI-only: expiresInDays, subject, type, walletAddress; server-only: credentialType, disclosableClaims, displayName, expiryDuration, holderJwk, issu...",
         ["LinkedWalletAddress"] =
             "Tenant.Service (vs LinkedWalletAddressResponse) — CLI-only: verifiedAt; server-only: algorithm, linkedAt, revokedAt",
-        ["Organization"] =
-            "Tenant.Service (vs OrganizationResponse) — server-only: walletAddress",
         ["ParticipantIdentity"] =
             "Tenant.Service (vs ParticipantResponse) — CLI-only: updatedAt, walletLinks; server-only: email, hasLinkedWallet",
         ["PeerStatistics"] =
             "Peer.Service — CLI-only: bootstrapNodes; server-only: seedNodes",
-        ["PlatformSettingsResponse"] =
-            "Tenant.Service — CLI-only: registrationOpen, socialLoginEnabled; server-only: publicOrgId, publicOrgStatus, updatedAt",
         ["PolicyHistoryResponse"] =
             "Register.Service — server-only: totalPages",
         ["PolicyUpdateRequest"] =
@@ -110,14 +104,10 @@ public sealed class CliWireContractTests
             "Peer.Service — CLI-only: currentDocket, docketsProcessed, isStale, lastError, progressPercent, status, targetDocket; server-only: canServeFullReplica, lastSyncAt,...",
         ["SchemaSector"] =
             "Blueprint.Service — CLI-only: name, schemaCount, status; server-only: displayName, icon",
-        ["ServicePrincipal"] =
-            "Tenant.Service (vs ServicePrincipalResponse) — CLI-only: description, isActive, name, organizationId, secretRotatedAt, updatedAt; server-only: id, serviceName, status",
         ["SubmitTransactionRequest"] =
             "Peer.Service — CLI-only: payload, previousTxId, senderWallet, signature, txType; server-only: originPeerId, submissionJson, submittedAtUnixMs",
         ["SubmitTransactionResponse"] =
             "Peer.Service — CLI-only: error, status, transactionId; server-only: accepted, receiverIsValidator, rejectReason",
-        ["UpdateUserRequest"] =
-            "Tenant.Service — CLI-only: email, firstName, isActive, lastName; server-only: displayName, status",
         ["ValidatorAuditEntry"] =
             "Validator.Service — server-only: id, registerId",
         ["ValidatorStatus"] =
