@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Reflection;
+using System.Text.Json.Serialization;
 
 using FluentAssertions;
 
@@ -53,6 +54,17 @@ public sealed class CliWireContractTests
             + "object — not the Wallet Service's VerificationResult the name collides with. The CLI "
             + "type now matches that anonymous shape (isValid/checks/errors); there is no server type "
             + "to pair against, so this is not a wire-contract collision.",
+        ["IssueCredentialRequest"] =
+            "Deliberate curated SUBSET, not drift. The Wallet Service's issue request has 11 further "
+            + "OPTIONAL fields the CLI intentionally does not expose: holderJwk, tenantId, "
+            + "trustAnchor, issuerOrgName, skipRecipientStore, vct, issuanceBlueprintId, and the four "
+            + "statusList* wiring fields. Those are issuer-infrastructure and status-list plumbing "
+            + "supplied by blueprint-action-driven issuance, not sensible CLI flags. Every field the "
+            + "CLI DOES send (credentialType, claims, recipientWallet, displayName, expiryDuration, "
+            + "disclosableClaims) matches the server exactly, and the three the server REQUIRES "
+            + "(credentialType, claims, recipientWallet) are all present — verified by "
+            + "IssueCredentialRequest_SendsEveryRequiredServerField below. A future field the server "
+            + "makes required would be caught by that test, not silently dropped.",
         ["RegisterSyncStatus"] =
             "The CLI's /health/sync response models the Register Service's RegisterSyncStatus, which "
             + "is a PRIVATE record inside RecoveryHealthEndpoints and therefore invisible to this "
@@ -86,8 +98,6 @@ public sealed class CliWireContractTests
     /// </remarks>
     private static readonly Dictionary<string, string> KnownMismatch = new(StringComparer.Ordinal)
     {
-        ["IssueCredentialRequest"] =
-            "Wallet.Service — CLI-only: expiresInDays, subject, type, walletAddress; server-only: credentialType, disclosableClaims, displayName, expiryDuration, holderJwk, issu...",
     };
 
     /// <summary>
@@ -116,6 +126,10 @@ public sealed class CliWireContractTests
     /// </summary>
     private static readonly Dictionary<string, string> PreferredCounterpartAssembly = new(StringComparer.Ordinal)
     {
+        // Declared in BOTH Blueprint.Service (an action-submission nested type) and Wallet.Service.
+        // The CLI's credential issue command talks to the Wallet Service.
+        ["IssuedCredentialResponse"] = "Sorcha.Wallet.Service",
+
         // Declared in BOTH Register.Service and ServiceClients.Http. The server is the authority
         // for what the CLI must match. (That the shared client ALSO disagrees with the server is a
         // separate finding, recorded on DRIFT-002.)
@@ -207,6 +221,33 @@ public sealed class CliWireContractTests
 
         NotAWireContract.Keys.Where(k => !cliNames.Contains(k)).Should().BeEmpty(
             "NotAWireContract names a CLI type that no longer exists");
+    }
+
+    [Fact]
+    public void IssueCredentialRequest_SendsEveryRequiredServerField()
+    {
+        // IssueCredentialRequest is a deliberate curated subset (see its NotAWireContract entry):
+        // the CLI omits optional issuer-infrastructure fields on purpose. That is only safe as long
+        // as it still sends everything the server REQUIRES — a field the server later makes required
+        // must not slip through the subset. This is the guard that makes the subclaim honest.
+        var serverType = Type.GetType(
+            "Sorcha.Wallet.Service.Endpoints.IssueCredentialRequest, Sorcha.Wallet.Service");
+        serverType.Should().NotBeNull("the server request type must be resolvable");
+
+        var requiredServerNames = serverType!
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.GetCustomAttribute<System.ComponentModel.DataAnnotations.RequiredAttribute>() is not null)
+            .Select(p => p.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name
+                         ?? System.Text.Json.JsonNamingPolicy.CamelCase.ConvertName(p.Name))
+            .ToHashSet(StringComparer.Ordinal);
+
+        requiredServerNames.Should().NotBeEmpty("the server marks some fields [Required]");
+
+        var cliType = CliTypes().Single(t => t.Name == "IssueCredentialRequest");
+        var cliNames = WireShape.Of(cliType);
+
+        requiredServerNames.Except(cliNames).Should().BeEmpty(
+            "the CLI issue request may omit optional server fields, but never a required one");
     }
 
     // ---------------------------------------------------------------------------------------

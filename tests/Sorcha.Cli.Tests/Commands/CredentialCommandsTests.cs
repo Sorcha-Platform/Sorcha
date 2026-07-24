@@ -108,21 +108,19 @@ public class CredentialCommandsTests
     }
 
     [Fact]
-    public void CredentialIssueCommand_ShouldHaveRequiredSubjectOption()
+    public void CredentialIssueCommand_ShouldHaveRequiredRecipientWalletOption()
     {
+        // Renamed from --subject/--wallet: the credential is issued TO a recipient wallet. The old
+        // options were mislabelled (--wallet claimed to be the "issuer wallet for signing") and
+        // mapped to server fields that did not exist (see CliWireContractTests).
         var command = new CredentialIssueCommand(_clientFactory, AuthService, ConfigService);
-        var option = command.Options.FirstOrDefault(o => o.Name == "--subject");
+        var option = command.Options.FirstOrDefault(o => o.Name == "--recipient-wallet");
         option.Should().NotBeNull();
         option!.Required.Should().BeTrue();
-    }
 
-    [Fact]
-    public void CredentialIssueCommand_ShouldHaveRequiredWalletOption()
-    {
-        var command = new CredentialIssueCommand(_clientFactory, AuthService, ConfigService);
-        var option = command.Options.FirstOrDefault(o => o.Name == "--wallet");
-        option.Should().NotBeNull();
-        option!.Required.Should().BeTrue();
+        command.Options.Select(o => o.Name).Should().NotContain(
+            ["--subject", "--wallet"],
+            "the mislabelled options that mapped to no server field were removed");
     }
 
     [Fact]
@@ -135,10 +133,12 @@ public class CredentialCommandsTests
     }
 
     [Fact]
-    public void CredentialIssueCommand_ShouldHaveOptionalExpiresInDaysOption()
+    public void CredentialIssueCommand_ShouldHaveOptionalExpiryDurationOption()
     {
+        // Replaced --expires-in-days: the server takes an ISO-8601 duration (expiryDuration, e.g.
+        // P5Y), not a day count that mapped to nothing.
         var command = new CredentialIssueCommand(_clientFactory, AuthService, ConfigService);
-        var option = command.Options.FirstOrDefault(o => o.Name == "--expires-in-days");
+        var option = command.Options.FirstOrDefault(o => o.Name == "--expiry-duration");
         option.Should().NotBeNull();
         option!.Required.Should().BeFalse();
     }

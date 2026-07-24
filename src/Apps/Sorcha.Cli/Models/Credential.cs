@@ -68,22 +68,80 @@ public class CredentialDetail
 /// <summary>
 /// Request to issue a verifiable credential.
 /// </summary>
+/// <remarks>
+/// Mirrors the required surface of <c>Sorcha.Wallet.Service</c>'s <c>IssueCredentialRequest</c> for
+/// <c>POST /api/v1/credentials/issue</c>. The previous shape (<c>type</c>/<c>subject</c>/
+/// <c>walletAddress</c>/<c>expiresInDays</c>) matched no server field, AND the command posted to
+/// <c>POST /api/v1/credentials</c> — which is <c>StoreCredential</c>, not issuance — so the command
+/// could never issue anything. Claims are objects, not strings, on the wire; the recipient is a
+/// wallet address, not a "subject". The many issuer-infrastructure fields (holderJwk, tenantId,
+/// trustAnchor, status-list wiring) are optional server-side and left to the server's defaults —
+/// blueprint-action-driven issuance remains the richer path; this covers the direct case.
+/// </remarks>
 public class IssueCredentialRequest
 {
+    /// <summary>The credential type, e.g. <c>IdentityCredential</c>.</summary>
+    [JsonPropertyName("credentialType")]
+    public string CredentialType { get; set; } = string.Empty;
+
+    /// <summary>The claims to embed. Values are arbitrary JSON, not just strings.</summary>
+    [JsonPropertyName("claims")]
+    public Dictionary<string, object> Claims { get; set; } = new();
+
+    /// <summary>The recipient's wallet address.</summary>
+    [JsonPropertyName("recipientWallet")]
+    public string RecipientWallet { get; set; } = string.Empty;
+
+    /// <summary>Optional display name for the credential.</summary>
+    [JsonPropertyName("displayName")]
+    public string? DisplayName { get; set; }
+
+    /// <summary>
+    /// Optional ISO-8601 duration until expiry, e.g. <c>P5Y</c>. Null issues a non-expiring
+    /// credential (subject to server policy).
+    /// </summary>
+    [JsonPropertyName("expiryDuration")]
+    public string? ExpiryDuration { get; set; }
+
+    /// <summary>Optional list of claim names the holder may selectively disclose.</summary>
+    [JsonPropertyName("disclosableClaims")]
+    public List<string>? DisclosableClaims { get; set; }
+}
+
+/// <summary>
+/// Response from issuing a verifiable credential — mirrors <c>Sorcha.Wallet.Service</c>'s
+/// <c>IssuedCredentialResponse</c> (what <c>POST /api/v1/credentials/issue</c> produces).
+/// </summary>
+public class IssuedCredentialResponse
+{
+    [JsonPropertyName("credentialId")]
+    public string CredentialId { get; set; } = string.Empty;
+
     [JsonPropertyName("type")]
     public string Type { get; set; } = string.Empty;
 
-    [JsonPropertyName("subject")]
-    public string Subject { get; set; } = string.Empty;
+    [JsonPropertyName("issuerDid")]
+    public string IssuerDid { get; set; } = string.Empty;
 
+    [JsonPropertyName("subjectDid")]
+    public string SubjectDid { get; set; } = string.Empty;
+
+    /// <summary>The issued claims. Values are arbitrary JSON.</summary>
     [JsonPropertyName("claims")]
-    public Dictionary<string, string> Claims { get; set; } = new();
+    public Dictionary<string, object> Claims { get; set; } = new();
 
-    [JsonPropertyName("walletAddress")]
-    public string WalletAddress { get; set; } = string.Empty;
+    [JsonPropertyName("issuedAt")]
+    public DateTimeOffset IssuedAt { get; set; }
 
-    [JsonPropertyName("expiresInDays")]
-    public int? ExpiresInDays { get; set; }
+    [JsonPropertyName("expiresAt")]
+    public DateTimeOffset? ExpiresAt { get; set; }
+
+    [JsonPropertyName("rawToken")]
+    public string RawToken { get; set; } = string.Empty;
+
+    /// <summary>Optional display configuration JSON for the credential.</summary>
+    [JsonPropertyName("displayConfigJson")]
+    public string? DisplayConfigJson { get; set; }
 }
 
 /// <summary>

@@ -27,8 +27,8 @@ public interface ICredentialServiceClient
     /// <summary>
     /// Issues a new verifiable credential.
     /// </summary>
-    [Post("/api/v1/credentials")]
-    Task<CredentialDetail> IssueCredentialAsync([Body] IssueCredentialRequest request, [Header("Authorization")] string authorization);
+    [Post("/api/v1/credentials/issue")]
+    Task<IssuedCredentialResponse> IssueCredentialAsync([Body] IssueCredentialRequest request, [Header("Authorization")] string authorization);
 
     /// <summary>
     /// Presents a credential to a verifier.
