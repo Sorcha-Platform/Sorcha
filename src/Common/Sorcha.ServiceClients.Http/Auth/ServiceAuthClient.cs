@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.Serialization;
+using Sorcha.Tenant.Models.Auth;
 
 namespace Sorcha.ServiceClients.Auth;
 
@@ -159,22 +160,4 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private sealed class TokenResponse
-    {
-        /// <summary>OAuth access token.</summary>
-        [JsonPropertyName("access_token")]
-        public string? AccessToken { get; set; }
-
-        /// <summary>The token type.</summary>
-        [JsonPropertyName("token_type")]
-        public string? TokenType { get; set; }
-
-        /// <summary>Numeric value for expires in.</summary>
-        [JsonPropertyName("expires_in")]
-        public int ExpiresIn { get; set; }
-
-        /// <summary>The scope.</summary>
-        [JsonPropertyName("scope")]
-        public string? Scope { get; set; }
-    }
 }

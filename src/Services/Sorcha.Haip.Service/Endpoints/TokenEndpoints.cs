@@ -25,7 +25,7 @@ public static class TokenEndpoints
             .WithDescription(
                 "OAuth 2.0 token endpoint supporting the pre-authorized code grant type. " +
                 "Returns an access token and c_nonce for use in the credential request.")
-            .Produces<TokenResponse>(StatusCodes.Status200OK)
+            .Produces<CredentialTokenResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
             .AllowAnonymous();
     }
@@ -83,7 +83,7 @@ public static class TokenEndpoints
         // Store the access token → offer mapping for later correlation
         await tokenStore.StoreAsync(accessToken, offerId.Value, ct);
 
-        return Results.Ok(new TokenResponse
+        return Results.Ok(new CredentialTokenResponse
         {
             AccessToken = accessToken,
             ExpiresIn = tokenLifetime,

@@ -78,6 +78,7 @@
     <!-- Feature 118 Phase 10 — SorchaHubConnectionBuilder for shared jittered reconnect on the events watcher. -->
     <ProjectReference Include="..\..\Common\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Wallet.Contracts\Sorcha.Wallet.Contracts.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.Tenant.Models\Sorcha.Tenant.Models.csproj" />
   </ItemGroup>
 
 </Project>

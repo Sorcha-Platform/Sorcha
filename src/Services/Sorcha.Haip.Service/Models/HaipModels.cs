@@ -68,9 +68,17 @@ public class TokenRequest
 }
 
 /// <summary>
-/// OAuth 2.0 token response with c_nonce for credential request proof binding.
+/// The OpenID4VCI token-endpoint response: an OAuth 2.0 token response carrying <c>c_nonce</c> for
+/// credential-request proof binding.
 /// </summary>
-public class TokenResponse
+/// <remarks>
+/// Deliberately distinct from <c>Sorcha.Tenant.Models.Auth.TokenResponse</c>, the platform auth
+/// token response. Both are RFC 6749 token responses, but this one is a different protocol surface:
+/// it carries <c>c_nonce</c> / <c>c_nonce_expires_in</c> and never a refresh token. It was named
+/// <c>TokenResponse</c> until DRIFT-004, which is exactly the collision that makes a grep for
+/// "TokenResponse" land on the wrong type.
+/// </remarks>
+public class CredentialTokenResponse
 {
     /// <summary>OAuth access token.</summary>
     [JsonPropertyName("access_token")]

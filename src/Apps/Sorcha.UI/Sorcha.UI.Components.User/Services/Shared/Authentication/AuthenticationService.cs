@@ -6,6 +6,7 @@ using System.Security.Claims;
 using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Authentication;
 using Sorcha.UI.Core.Services.Configuration;
+using Sorcha.Tenant.Models.Auth;
 
 namespace Sorcha.UI.Core.Services.Authentication;
 

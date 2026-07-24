@@ -114,7 +114,7 @@ public class MetadataEndpointTests
     [Fact]
     public void TokenResponse_Serializes_WithCNonce()
     {
-        var response = new TokenResponse
+        var response = new CredentialTokenResponse
         {
             AccessToken = "test-token",
             ExpiresIn = 300,

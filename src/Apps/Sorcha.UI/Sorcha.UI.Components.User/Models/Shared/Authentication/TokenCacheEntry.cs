@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
+using Sorcha.Tenant.Models.Auth;
+
 namespace Sorcha.UI.Core.Models.Authentication;
 
 /// <summary>

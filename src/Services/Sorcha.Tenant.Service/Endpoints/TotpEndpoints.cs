@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Sorcha.Tenant.Service.Filters;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
+using Sorcha.Tenant.Models.Auth;
 
 namespace Sorcha.Tenant.Service.Endpoints;
 
@@ -313,7 +314,7 @@ public static class TotpEndpoints
         return Guid.TryParse(sub, out var id) ? id : Guid.Empty;
     }
 
-    private static async Task<Models.Dtos.TokenResponse?> GenerateTokensForUser(
+    private static async Task<TokenResponse?> GenerateTokensForUser(
         Guid userId,
         Data.Repositories.IIdentityRepository identityRepository,
         Data.Repositories.IOrganizationRepository organizationRepository,

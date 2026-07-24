@@ -6,6 +6,7 @@ using System.Net.Http.Json;
 using FluentAssertions;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Tests.Infrastructure;
+using Sorcha.Tenant.Models.Auth;
 
 namespace Sorcha.Tenant.Service.Tests.Integration;
 
