@@ -123,7 +123,7 @@ public class InvitationCreateCommand : Command
                 var client = await clientFactory.CreateRegisterInvitationClientAsync(
                     context.ProfileName, context.AccessToken);
 
-                var request = new CreateInvitationRequest
+                var request = new CreateRegisterInvitationRequest
                 {
                     RegisterId = parseResult.GetValue(registerIdOption)!,
                     TargetOrgDid = parseResult.GetValue(targetOrgDidOption)!,

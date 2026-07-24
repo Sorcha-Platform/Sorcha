@@ -30,7 +30,7 @@ public class InvitationEndpointTests : IClassFixture<TenantServiceWebApplication
     [Fact]
     public async Task CreateInvitation_AsAdmin_Returns201()
     {
-        var request = new CreateInvitationRequest
+        var request = new CreateOrgInvitationRequest
         {
             Email = "invite@example.com",
             Role = Sorcha.Tenant.Service.Models.UserRole.Designer,
@@ -41,7 +41,7 @@ public class InvitationEndpointTests : IClassFixture<TenantServiceWebApplication
             $"/api/organizations/{TestDataSeeder.TestOrganizationId}/invitations", request);
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
-        var result = await response.Content.ReadFromJsonAsync<InvitationResponse>();
+        var result = await response.Content.ReadFromJsonAsync<OrgInvitationResponse>();
         result.Should().NotBeNull();
         result!.Email.Should().Be("invite@example.com");
         result.AssignedRole.Should().Be("Designer");
@@ -51,7 +51,7 @@ public class InvitationEndpointTests : IClassFixture<TenantServiceWebApplication
     [Fact]
     public async Task CreateInvitation_AsMember_Returns403()
     {
-        var request = new CreateInvitationRequest { Email = "forbidden@example.com" };
+        var request = new CreateOrgInvitationRequest { Email = "forbidden@example.com" };
 
         var response = await _memberClient.PostAsJsonAsync(
             $"/api/organizations/{TestDataSeeder.TestOrganizationId}/invitations", request);
@@ -63,7 +63,7 @@ public class InvitationEndpointTests : IClassFixture<TenantServiceWebApplication
     public async Task ListInvitations_AsAdmin_ReturnsInvitations()
     {
         // Seed an invitation first
-        var request = new CreateInvitationRequest { Email = "list@example.com" };
+        var request = new CreateOrgInvitationRequest { Email = "list@example.com" };
         await _adminClient.PostAsJsonAsync(
             $"/api/organizations/{TestDataSeeder.TestOrganizationId}/invitations", request);
 
@@ -71,7 +71,7 @@ public class InvitationEndpointTests : IClassFixture<TenantServiceWebApplication
             $"/api/organizations/{TestDataSeeder.TestOrganizationId}/invitations");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var invitations = await response.Content.ReadFromJsonAsync<List<InvitationResponse>>();
+        var invitations = await response.Content.ReadFromJsonAsync<List<OrgInvitationResponse>>();
         invitations.Should().NotBeNull();
         invitations.Should().Contain(i => i.Email == "list@example.com");
     }
@@ -88,10 +88,10 @@ public class InvitationEndpointTests : IClassFixture<TenantServiceWebApplication
     [Fact]
     public async Task RevokeInvitation_PendingInvitation_Returns200()
     {
-        var createRequest = new CreateInvitationRequest { Email = "revoke@example.com" };
+        var createRequest = new CreateOrgInvitationRequest { Email = "revoke@example.com" };
         var createResponse = await _adminClient.PostAsJsonAsync(
             $"/api/organizations/{TestDataSeeder.TestOrganizationId}/invitations", createRequest);
-        var created = await createResponse.Content.ReadFromJsonAsync<InvitationResponse>();
+        var created = await createResponse.Content.ReadFromJsonAsync<OrgInvitationResponse>();
 
         var revokeResponse = await _adminClient.PostAsync(
             $"/api/organizations/{TestDataSeeder.TestOrganizationId}/invitations/{created!.Id}/revoke",
@@ -114,7 +114,7 @@ public class InvitationEndpointTests : IClassFixture<TenantServiceWebApplication
     public async Task CreateInvitation_Unauthenticated_Returns401()
     {
         var unauthClient = _factory.CreateUnauthenticatedClient();
-        var request = new CreateInvitationRequest { Email = "unauth@example.com" };
+        var request = new CreateOrgInvitationRequest { Email = "unauth@example.com" };
 
         var response = await unauthClient.PostAsJsonAsync(
             $"/api/organizations/{TestDataSeeder.TestOrganizationId}/invitations", request);

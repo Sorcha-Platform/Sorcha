@@ -197,7 +197,7 @@
         _isSubmitting = true;
         try
         {
-            _result = await InvitationClient.CreateAsync(orgId, new CreateInvitationRequest
+            _result = await InvitationClient.CreateAsync(orgId, new CreateRegisterInvitationRequest
             {
                 RegisterId = Register.Id,
                 TargetOrgDid = _targetDid.Trim(),

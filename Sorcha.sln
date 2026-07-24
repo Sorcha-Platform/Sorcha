@@ -299,6 +299,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.Reader", "src\Common
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.Cli.ContractTests", "tests\Sorcha.Cli.ContractTests\Sorcha.Cli.ContractTests.csproj", "{B4395A5E-3F05-48F7-98D1-22A8DB98C64A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.UI.ContractTests", "tests\Sorcha.UI.ContractTests\Sorcha.UI.ContractTests.csproj", "{B4E56832-825B-4585-A719-41259F32D7EE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -1701,6 +1703,18 @@ Global
 		{B4395A5E-3F05-48F7-98D1-22A8DB98C64A}.Release|x64.Build.0 = Release|Any CPU
 		{B4395A5E-3F05-48F7-98D1-22A8DB98C64A}.Release|x86.ActiveCfg = Release|Any CPU
 		{B4395A5E-3F05-48F7-98D1-22A8DB98C64A}.Release|x86.Build.0 = Release|Any CPU
+		{B4E56832-825B-4585-A719-41259F32D7EE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B4E56832-825B-4585-A719-41259F32D7EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B4E56832-825B-4585-A719-41259F32D7EE}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B4E56832-825B-4585-A719-41259F32D7EE}.Debug|x64.Build.0 = Debug|Any CPU
+		{B4E56832-825B-4585-A719-41259F32D7EE}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B4E56832-825B-4585-A719-41259F32D7EE}.Debug|x86.Build.0 = Debug|Any CPU
+		{B4E56832-825B-4585-A719-41259F32D7EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B4E56832-825B-4585-A719-41259F32D7EE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B4E56832-825B-4585-A719-41259F32D7EE}.Release|x64.ActiveCfg = Release|Any CPU
+		{B4E56832-825B-4585-A719-41259F32D7EE}.Release|x64.Build.0 = Release|Any CPU
+		{B4E56832-825B-4585-A719-41259F32D7EE}.Release|x86.ActiveCfg = Release|Any CPU
+		{B4E56832-825B-4585-A719-41259F32D7EE}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -1829,5 +1843,6 @@ Global
 		{5F3B3AEA-E67D-4595-BD10-B808B4470D1E} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{1EA70E7E-65CC-43F0-BEE1-93D5BA96AF17} = {BFF2DF6E-AA54-47C7-211F-79ACCBB4577C}
 		{B4395A5E-3F05-48F7-98D1-22A8DB98C64A} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{B4E56832-825B-4585-A719-41259F32D7EE} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

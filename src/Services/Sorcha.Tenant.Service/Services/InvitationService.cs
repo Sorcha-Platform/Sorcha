@@ -46,9 +46,9 @@ public class InvitationService : IInvitationService
     }
 
     /// <inheritdoc />
-    public async Task<InvitationResponse> CreateInvitationAsync(
+    public async Task<OrgInvitationResponse> CreateInvitationAsync(
         Guid organizationId,
-        CreateInvitationRequest request,
+        CreateOrgInvitationRequest request,
         Guid invitedByUserId,
         CancellationToken cancellationToken = default)
     {
@@ -127,7 +127,7 @@ public class InvitationService : IInvitationService
     }
 
     /// <inheritdoc />
-    public async Task<List<InvitationResponse>> ListInvitationsAsync(
+    public async Task<List<OrgInvitationResponse>> ListInvitationsAsync(
         Guid organizationId,
         InvitationStatus? status = null,
         CancellationToken cancellationToken = default)
@@ -135,7 +135,7 @@ public class InvitationService : IInvitationService
         var invitations = await _invitationRepository.GetByOrganizationAsync(
             organizationId, status, cancellationToken);
 
-        var responses = new List<InvitationResponse>();
+        var responses = new List<OrgInvitationResponse>();
         foreach (var inv in invitations)
         {
             // Check if expired but still marked Pending
@@ -197,9 +197,9 @@ public class InvitationService : IInvitationService
         return true;
     }
 
-    private static InvitationResponse MapToResponse(OrgInvitation invitation, string inviterName)
+    private static OrgInvitationResponse MapToResponse(OrgInvitation invitation, string inviterName)
     {
-        return new InvitationResponse
+        return new OrgInvitationResponse
         {
             Id = invitation.Id,
             Email = invitation.Email,

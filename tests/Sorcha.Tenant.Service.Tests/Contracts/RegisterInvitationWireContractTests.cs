@@ -40,7 +40,7 @@ public sealed class RegisterInvitationWireContractTests
     /// </summary>
     private static readonly (string Label, Type Client, Type Server)[] Pairs =
     [
-        ("create request", typeof(ClientDtos.CreateInvitationRequest), typeof(ServerDtos.CreateRegisterInvitationRequest)),
+        ("create request", typeof(ClientDtos.CreateRegisterInvitationRequest), typeof(ServerDtos.CreateRegisterInvitationRequest)),
         ("create response", typeof(ClientDtos.InvitationCreatedResponse), typeof(ServerDtos.InvitationCreatedResponse)),
         ("accept request", typeof(ClientDtos.AcceptInvitationRequest), typeof(ServerDtos.AcceptInvitationRequest)),
         ("accept response", typeof(ClientDtos.InvitationAcceptedResponse), typeof(ServerDtos.InvitationAcceptedResponse)),
@@ -78,7 +78,7 @@ public sealed class RegisterInvitationWireContractTests
         // The specific drift that broke `sorcha invitation create`: the CLI sent an expiry in hours
         // to a server that only ever reads days, so the field was ignored and every invitation
         // quietly took the 7-day default.
-        var names = JsonPropertyNames(typeof(ClientDtos.CreateInvitationRequest));
+        var names = JsonPropertyNames(typeof(ClientDtos.CreateRegisterInvitationRequest));
 
         names.Should().Contain("expires_in_days");
         names.Should().NotContain(n => n.Contains("hour", StringComparison.OrdinalIgnoreCase));

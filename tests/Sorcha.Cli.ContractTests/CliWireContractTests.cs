@@ -6,6 +6,8 @@ using System.Text.Json.Serialization;
 
 using FluentAssertions;
 
+using Sorcha.ContractTests.Shared;
+
 namespace Sorcha.Cli.ContractTests;
 
 /// <summary>

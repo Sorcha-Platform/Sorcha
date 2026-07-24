@@ -79,7 +79,7 @@ public class InvitationServiceTests : IDisposable
     [Fact]
     public async Task CreateInvitationAsync_ValidRequest_CreatesInvitationAndSendsEmail()
     {
-        var request = new CreateInvitationRequest
+        var request = new CreateOrgInvitationRequest
         {
             Email = "user@example.com",
             Role = UserRole.Designer,
@@ -108,7 +108,7 @@ public class InvitationServiceTests : IDisposable
     [Fact]
     public async Task CreateInvitationAsync_GeneratesUrlSafe32ByteToken()
     {
-        var request = new CreateInvitationRequest { Email = "token@test.com" };
+        var request = new CreateOrgInvitationRequest { Email = "token@test.com" };
 
         var result = await _service.CreateInvitationAsync(_orgId, request, _adminUserId);
 
@@ -123,7 +123,7 @@ public class InvitationServiceTests : IDisposable
     [Fact]
     public async Task CreateInvitationAsync_7DayExpiry_SetsCorrectExpiresAt()
     {
-        var request = new CreateInvitationRequest
+        var request = new CreateOrgInvitationRequest
         {
             Email = "expiry@test.com",
             ExpiryDays = 14
@@ -138,7 +138,7 @@ public class InvitationServiceTests : IDisposable
     [Fact]
     public async Task CreateInvitationAsync_SystemAdminRole_ThrowsArgumentException()
     {
-        var request = new CreateInvitationRequest
+        var request = new CreateOrgInvitationRequest
         {
             Email = "sysadmin@test.com",
             Role = UserRole.SystemAdmin
@@ -153,7 +153,7 @@ public class InvitationServiceTests : IDisposable
     [Fact]
     public async Task CreateInvitationAsync_DuplicateActiveInvitation_ThrowsInvalidOperationException()
     {
-        var request = new CreateInvitationRequest { Email = "dupe@test.com" };
+        var request = new CreateOrgInvitationRequest { Email = "dupe@test.com" };
         await _service.CreateInvitationAsync(_orgId, request, _adminUserId);
 
         var act = () => _service.CreateInvitationAsync(_orgId, request, _adminUserId);
@@ -165,7 +165,7 @@ public class InvitationServiceTests : IDisposable
     [Fact]
     public async Task CreateInvitationAsync_WritesAuditEvent()
     {
-        var request = new CreateInvitationRequest { Email = "audit@test.com", Role = UserRole.Auditor };
+        var request = new CreateOrgInvitationRequest { Email = "audit@test.com", Role = UserRole.Auditor };
 
         await _service.CreateInvitationAsync(_orgId, request, _adminUserId);
 
@@ -179,8 +179,8 @@ public class InvitationServiceTests : IDisposable
     [Fact]
     public async Task ListInvitationsAsync_ReturnsAllInvitations()
     {
-        await _service.CreateInvitationAsync(_orgId, new CreateInvitationRequest { Email = "a@test.com" }, _adminUserId);
-        await _service.CreateInvitationAsync(_orgId, new CreateInvitationRequest { Email = "b@test.com" }, _adminUserId);
+        await _service.CreateInvitationAsync(_orgId, new CreateOrgInvitationRequest { Email = "a@test.com" }, _adminUserId);
+        await _service.CreateInvitationAsync(_orgId, new CreateOrgInvitationRequest { Email = "b@test.com" }, _adminUserId);
 
         var result = await _service.ListInvitationsAsync(_orgId);
 
@@ -213,7 +213,7 @@ public class InvitationServiceTests : IDisposable
     public async Task RevokeInvitationAsync_PendingInvitation_SetsRevokedStatus()
     {
         var created = await _service.CreateInvitationAsync(
-            _orgId, new CreateInvitationRequest { Email = "revoke@test.com" }, _adminUserId);
+            _orgId, new CreateOrgInvitationRequest { Email = "revoke@test.com" }, _adminUserId);
 
         var success = await _service.RevokeInvitationAsync(_orgId, created.Id, _adminUserId);
 
@@ -234,7 +234,7 @@ public class InvitationServiceTests : IDisposable
     public async Task RevokeInvitationAsync_AlreadyRevoked_ThrowsInvalidOperationException()
     {
         var created = await _service.CreateInvitationAsync(
-            _orgId, new CreateInvitationRequest { Email = "double-revoke@test.com" }, _adminUserId);
+            _orgId, new CreateOrgInvitationRequest { Email = "double-revoke@test.com" }, _adminUserId);
         await _service.RevokeInvitationAsync(_orgId, created.Id, _adminUserId);
 
         var act = () => _service.RevokeInvitationAsync(_orgId, created.Id, _adminUserId);
@@ -247,7 +247,7 @@ public class InvitationServiceTests : IDisposable
     public async Task RevokeInvitationAsync_WritesAuditEvent()
     {
         var created = await _service.CreateInvitationAsync(
-            _orgId, new CreateInvitationRequest { Email = "audit-revoke@test.com" }, _adminUserId);
+            _orgId, new CreateOrgInvitationRequest { Email = "audit-revoke@test.com" }, _adminUserId);
 
         await _service.RevokeInvitationAsync(_orgId, created.Id, _adminUserId);
 
