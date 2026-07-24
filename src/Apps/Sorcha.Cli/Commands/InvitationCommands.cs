@@ -3,17 +3,24 @@
 
 using System.CommandLine;
 using System.CommandLine.Parsing;
-using System.IdentityModel.Tokens.Jwt;
 using System.Net;
-using Refit;
+
 using Sorcha.Cli.Infrastructure;
 using Sorcha.Cli.Services;
+using Sorcha.ServiceClients.Invitation;
 
 namespace Sorcha.Cli.Commands;
 
 /// <summary>
 /// Register invitation management commands.
 /// </summary>
+/// <remarks>
+/// These commands talk to the Tenant Service through the <b>shared</b>
+/// <see cref="IRegisterInvitationServiceClient"/> from Sorcha.ServiceClients.Http — the same client
+/// the Blazor admin UI uses. The CLI previously carried its own Refit interface and its own copies
+/// of the four invitation DTOs, which had drifted from the server contract badly enough that every
+/// subcommand failed against a live server. There is now one definition of this wire contract.
+/// </remarks>
 public class InvitationCommand : Command
 {
     public InvitationCommand(
@@ -30,6 +37,61 @@ public class InvitationCommand : Command
 }
 
 /// <summary>
+/// Shared plumbing for the invitation subcommands: resolve the active profile, fetch the cached
+/// access token, and derive the caller's organisation id from it.
+/// </summary>
+/// <remarks>
+/// Each subcommand previously repeated this preamble and carried its own private copy of the
+/// <c>org_id</c> extraction — four identical methods in one file, each with the claim name
+/// hard-coded. The extraction now lives in <see cref="AccessTokenClaims"/> and reads the claim name
+/// from the shared <c>TokenClaimConstants</c>.
+/// </remarks>
+internal static class InvitationCommandContext
+{
+    /// <summary>Resolved caller context, or the exit code explaining why it could not be resolved.</summary>
+    internal readonly record struct Result(
+        string ProfileName,
+        string AccessToken,
+        Guid OrgId,
+        int? FailureExitCode)
+    {
+        internal bool Ok => FailureExitCode is null;
+    }
+
+    internal static async Task<Result> ResolveAsync(
+        IAuthenticationService authService,
+        IConfigurationService configService)
+    {
+        var profile = await configService.GetActiveProfileAsync();
+        var profileName = profile?.Name ?? "dev";
+
+        var token = await authService.GetAccessTokenAsync(profileName);
+        if (string.IsNullOrEmpty(token))
+        {
+            ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+            return new Result(profileName, string.Empty, Guid.Empty, ExitCodes.AuthenticationError);
+        }
+
+        var orgIdClaim = AccessTokenClaims.TryGetOrgId(token);
+        if (string.IsNullOrEmpty(orgIdClaim))
+        {
+            ConsoleHelper.WriteError("Could not determine organization ID from token.");
+            return new Result(profileName, token, Guid.Empty, ExitCodes.AuthenticationError);
+        }
+
+        // The shared client is typed on Guid — a consumer-tier token carrying a non-Guid org id is
+        // an authentication problem, not a malformed request, so it is reported as one.
+        if (!Guid.TryParse(orgIdClaim, out var orgId))
+        {
+            ConsoleHelper.WriteError($"Organization ID in token is not a valid GUID: '{orgIdClaim}'.");
+            return new Result(profileName, token, Guid.Empty, ExitCodes.AuthenticationError);
+        }
+
+        return new Result(profileName, token, orgId, null);
+    }
+}
+
+/// <summary>
 /// Creates a new register invitation.
 /// </summary>
 public class InvitationCreateCommand : Command
@@ -42,7 +104,7 @@ public class InvitationCreateCommand : Command
     {
         var registerIdOption = new Option<string>("--register-id") { Description = "Register ID to invite to", Required = true };
         var targetOrgDidOption = new Option<string>("--target-org-did") { Description = "Target organization DID", Required = true };
-        var expiresInOption = new Option<int?>("--expires-in") { Description = "Expiration time in hours (default: server-side default)" };
+        var expiresInOption = new Option<int?>("--expires-in-days") { Description = "Days until the invitation expires (1-90, default: 7)" };
 
         Options.Add(registerIdOption);
         Options.Add(targetOrgDidOption);
@@ -52,38 +114,26 @@ public class InvitationCreateCommand : Command
         {
             try
             {
-                var profile = await configService.GetActiveProfileAsync();
-                var profileName = profile?.Name ?? "dev";
-
-                var token = await authService.GetAccessTokenAsync(profileName);
-                if (string.IsNullOrEmpty(token))
+                var context = await InvitationCommandContext.ResolveAsync(authService, configService);
+                if (!context.Ok)
                 {
-                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
-                    return ExitCodes.AuthenticationError;
+                    return context.FailureExitCode!.Value;
                 }
 
-                var registerId = parseResult.GetValue(registerIdOption)!;
-                var targetOrgDid = parseResult.GetValue(targetOrgDidOption)!;
-                var expiresIn = parseResult.GetValue(expiresInOption);
-
-                // Extract org ID from JWT token
-                var orgId = ExtractOrgId(token);
-                if (string.IsNullOrEmpty(orgId))
-                {
-                    ConsoleHelper.WriteError("Could not determine organization ID from token.");
-                    return ExitCodes.AuthenticationError;
-                }
-
-                var client = await clientFactory.CreateInvitationServiceClientAsync(profileName);
+                var client = await clientFactory.CreateRegisterInvitationClientAsync(
+                    context.ProfileName, context.AccessToken);
 
                 var request = new CreateInvitationRequest
                 {
-                    RegisterId = registerId,
-                    TargetOrgDid = targetOrgDid,
-                    ExpiresInHours = expiresIn
+                    RegisterId = parseResult.GetValue(registerIdOption)!,
+                    TargetOrgDid = parseResult.GetValue(targetOrgDidOption)!,
+                    // The server contract is DAYS. The previous CLI-local DTO said hours, which the
+                    // server never bound, so the value was silently ignored and every invitation
+                    // took the 7-day default.
+                    ExpiresInDays = parseResult.GetValue(expiresInOption) ?? 7,
                 };
 
-                var result = await client.CreateInvitationAsync(orgId, request, $"Bearer {token}");
+                var result = await client.CreateAsync(context.OrgId, request, ct);
 
                 var outputFormat = OutputHelper.GetOutputFormat(parseResult);
                 if (OutputHelper.IsStructuredFormat(outputFormat))
@@ -93,34 +143,31 @@ public class InvitationCreateCommand : Command
                 }
 
                 ConsoleHelper.WriteSuccess("Invitation created successfully.");
-                Console.WriteLine($"  ID:         {result.Id}");
+                Console.WriteLine($"  ID:         {result.InvitationId}");
                 Console.WriteLine($"  Register:   {result.RegisterId}");
                 Console.WriteLine($"  Target DID: {result.TargetOrgDid}");
-                Console.WriteLine($"  Status:     {result.Status}");
-                Console.WriteLine($"  Expires:    {result.ExpiresAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "N/A"}");
+                Console.WriteLine($"  Created:    {result.CreatedAt:yyyy-MM-dd HH:mm:ss}");
+                Console.WriteLine($"  Expires:    {result.ExpiresAt:yyyy-MM-dd HH:mm:ss}");
 
-                if (!string.IsNullOrEmpty(result.Token))
-                {
-                    Console.WriteLine();
-                    ConsoleHelper.WriteInfo("Share this token with the target organization:");
-                    Console.WriteLine(result.Token);
-                }
+                Console.WriteLine();
+                ConsoleHelper.WriteInfo("Share this token with the target organization:");
+                Console.WriteLine(result.InvitationToken);
 
                 return ExitCodes.Success;
             }
-            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            catch (InvitationApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
             {
                 ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
                 return ExitCodes.AuthenticationError;
             }
-            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            catch (InvitationApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
             {
                 ConsoleHelper.WriteError("You do not have permission to create invitations.");
                 return ExitCodes.AuthorizationError;
             }
-            catch (ApiException ex)
+            catch (InvitationApiException ex)
             {
-                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Message}");
                 return ExitCodes.GeneralError;
             }
             catch (HttpRequestException ex)
@@ -134,20 +181,6 @@ public class InvitationCreateCommand : Command
                 return ExitCodes.GeneralError;
             }
         });
-    }
-
-    private static string? ExtractOrgId(string token)
-    {
-        try
-        {
-            var handler = new JwtSecurityTokenHandler();
-            var jwt = handler.ReadJwtToken(token);
-            return jwt.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
-        }
-        catch
-        {
-            return null;
-        }
     }
 }
 
@@ -172,29 +205,23 @@ public class InvitationListCommand : Command
         {
             try
             {
-                var profile = await configService.GetActiveProfileAsync();
-                var profileName = profile?.Name ?? "dev";
-
-                var token = await authService.GetAccessTokenAsync(profileName);
-                if (string.IsNullOrEmpty(token))
+                var context = await InvitationCommandContext.ResolveAsync(authService, configService);
+                if (!context.Ok)
                 {
-                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
-                    return ExitCodes.AuthenticationError;
+                    return context.FailureExitCode!.Value;
                 }
 
-                var direction = parseResult.GetValue(directionOption);
+                var client = await clientFactory.CreateRegisterInvitationClientAsync(
+                    context.ProfileName, context.AccessToken);
 
-                var orgId = ExtractOrgId(token);
-                if (string.IsNullOrEmpty(orgId))
-                {
-                    ConsoleHelper.WriteError("Could not determine organization ID from token.");
-                    return ExitCodes.AuthenticationError;
-                }
+                var direction = parseResult.GetValue(directionOption) ?? "all";
 
-                var client = await clientFactory.CreateInvitationServiceClientAsync(profileName);
-                var invitations = await client.ListInvitationsAsync(orgId, direction, $"Bearer {token}");
+                // The server returns a { invitations, total_count } envelope, not a bare array.
+                var response = await client.ListAsync(context.OrgId, direction, ct);
 
-                // Filter by register ID client-side if specified
+                IReadOnlyList<InvitationSummary> invitations = response.Invitations;
+
+                // Filter by register ID client-side if specified.
                 var registerId = parseResult.GetValue(registerIdOption);
                 if (!string.IsNullOrEmpty(registerId))
                 {
@@ -217,24 +244,24 @@ public class InvitationListCommand : Command
                 ConsoleHelper.WriteSuccess($"Found {invitations.Count} invitation(s):");
                 Console.WriteLine();
 
-                Console.WriteLine($"{"ID",-34} {"Register",-34} {"Target DID",-35} {"Status",-10} {"Expires"}");
-                Console.WriteLine(new string('-', 130));
+                Console.WriteLine($"{"ID",-34} {"Register",-34} {"Target DID",-35} {"Direction",-10} {"Status",-10} {"Expires"}");
+                Console.WriteLine(new string('-', 140));
 
                 foreach (var inv in invitations)
                 {
-                    Console.WriteLine($"{inv.Id,-34} {inv.RegisterId,-34} {inv.TargetOrgDid,-35} {inv.Status,-10} {inv.ExpiresAt?.ToString("yyyy-MM-dd HH:mm") ?? "N/A"}");
+                    Console.WriteLine($"{inv.InvitationId,-34} {inv.RegisterId,-34} {inv.TargetOrgDid,-35} {inv.Direction,-10} {inv.Status,-10} {inv.ExpiresAt:yyyy-MM-dd HH:mm}");
                 }
 
                 return ExitCodes.Success;
             }
-            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            catch (InvitationApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
             {
                 ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
                 return ExitCodes.AuthenticationError;
             }
-            catch (ApiException ex)
+            catch (InvitationApiException ex)
             {
-                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Message}");
                 return ExitCodes.GeneralError;
             }
             catch (HttpRequestException ex)
@@ -248,20 +275,6 @@ public class InvitationListCommand : Command
                 return ExitCodes.GeneralError;
             }
         });
-    }
-
-    private static string? ExtractOrgId(string token)
-    {
-        try
-        {
-            var handler = new JwtSecurityTokenHandler();
-            var jwt = handler.ReadJwtToken(token);
-            return jwt.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
-        }
-        catch
-        {
-            return null;
-        }
     }
 }
 
@@ -283,29 +296,21 @@ public class InvitationAcceptCommand : Command
         {
             try
             {
-                var profile = await configService.GetActiveProfileAsync();
-                var profileName = profile?.Name ?? "dev";
-
-                var accessToken = await authService.GetAccessTokenAsync(profileName);
-                if (string.IsNullOrEmpty(accessToken))
+                var context = await InvitationCommandContext.ResolveAsync(authService, configService);
+                if (!context.Ok)
                 {
-                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
-                    return ExitCodes.AuthenticationError;
+                    return context.FailureExitCode!.Value;
                 }
 
-                var invitationToken = parseResult.GetValue(tokenOption)!;
+                var client = await clientFactory.CreateRegisterInvitationClientAsync(
+                    context.ProfileName, context.AccessToken);
 
-                var orgId = ExtractOrgId(accessToken);
-                if (string.IsNullOrEmpty(orgId))
+                var request = new AcceptInvitationRequest
                 {
-                    ConsoleHelper.WriteError("Could not determine organization ID from token.");
-                    return ExitCodes.AuthenticationError;
-                }
+                    InvitationToken = parseResult.GetValue(tokenOption)!,
+                };
 
-                var client = await clientFactory.CreateInvitationServiceClientAsync(profileName);
-
-                var request = new AcceptInvitationRequest { Token = invitationToken };
-                var result = await client.AcceptInvitationAsync(orgId, request, $"Bearer {accessToken}");
+                var result = await client.AcceptAsync(context.OrgId, request, ct);
 
                 var outputFormat = OutputHelper.GetOutputFormat(parseResult);
                 if (OutputHelper.IsStructuredFormat(outputFormat))
@@ -316,24 +321,31 @@ public class InvitationAcceptCommand : Command
 
                 ConsoleHelper.WriteSuccess("Invitation accepted successfully.");
                 Console.WriteLine($"  Register ID:     {result.RegisterId}");
+                if (!string.IsNullOrEmpty(result.RegisterName))
+                {
+                    Console.WriteLine($"  Register:        {result.RegisterName}");
+                }
+
                 Console.WriteLine($"  Subscription ID: {result.SubscriptionId}");
-                Console.WriteLine($"  Status:          {result.Status}");
+                Console.WriteLine($"  Status:          {result.SubscriptionStatus}");
+                Console.WriteLine($"  From:            {result.SourceOrgName ?? result.SourceOrgDid}");
+                Console.WriteLine($"  Accepted:        {result.AcceptedAt:yyyy-MM-dd HH:mm:ss}");
 
                 return ExitCodes.Success;
             }
-            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            catch (InvitationApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
             {
                 ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
                 return ExitCodes.AuthenticationError;
             }
-            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
+            catch (InvitationApiException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
             {
-                ConsoleHelper.WriteError($"Invalid invitation token: {ex.Content}");
+                ConsoleHelper.WriteError($"Invalid invitation token: {ex.Message}");
                 return ExitCodes.ValidationError;
             }
-            catch (ApiException ex)
+            catch (InvitationApiException ex)
             {
-                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Message}");
                 return ExitCodes.GeneralError;
             }
             catch (HttpRequestException ex)
@@ -347,20 +359,6 @@ public class InvitationAcceptCommand : Command
                 return ExitCodes.GeneralError;
             }
         });
-    }
-
-    private static string? ExtractOrgId(string token)
-    {
-        try
-        {
-            var handler = new JwtSecurityTokenHandler();
-            var jwt = handler.ReadJwtToken(token);
-            return jwt.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
-        }
-        catch
-        {
-            return null;
-        }
     }
 }
 
@@ -382,44 +380,35 @@ public class InvitationRevokeCommand : Command
         {
             try
             {
-                var profile = await configService.GetActiveProfileAsync();
-                var profileName = profile?.Name ?? "dev";
-
-                var token = await authService.GetAccessTokenAsync(profileName);
-                if (string.IsNullOrEmpty(token))
+                var context = await InvitationCommandContext.ResolveAsync(authService, configService);
+                if (!context.Ok)
                 {
-                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
-                    return ExitCodes.AuthenticationError;
+                    return context.FailureExitCode!.Value;
                 }
 
                 var invitationId = parseResult.GetValue(idOption)!;
 
-                var orgId = ExtractOrgId(token);
-                if (string.IsNullOrEmpty(orgId))
-                {
-                    ConsoleHelper.WriteError("Could not determine organization ID from token.");
-                    return ExitCodes.AuthenticationError;
-                }
+                var client = await clientFactory.CreateRegisterInvitationClientAsync(
+                    context.ProfileName, context.AccessToken);
 
-                var client = await clientFactory.CreateInvitationServiceClientAsync(profileName);
-                await client.RevokeInvitationAsync(orgId, invitationId, $"Bearer {token}");
+                await client.RevokeAsync(context.OrgId, invitationId, ct);
 
                 ConsoleHelper.WriteSuccess($"Invitation '{invitationId}' has been revoked.");
                 return ExitCodes.Success;
             }
-            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            catch (InvitationApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
             {
                 ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
                 return ExitCodes.AuthenticationError;
             }
-            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            catch (InvitationApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
             {
                 ConsoleHelper.WriteError("Invitation not found.");
                 return ExitCodes.NotFound;
             }
-            catch (ApiException ex)
+            catch (InvitationApiException ex)
             {
-                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Message}");
                 return ExitCodes.GeneralError;
             }
             catch (HttpRequestException ex)
@@ -433,19 +422,5 @@ public class InvitationRevokeCommand : Command
                 return ExitCodes.GeneralError;
             }
         });
-    }
-
-    private static string? ExtractOrgId(string token)
-    {
-        try
-        {
-            var handler = new JwtSecurityTokenHandler();
-            var jwt = handler.ReadJwtToken(token);
-            return jwt.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
-        }
-        catch
-        {
-            return null;
-        }
     }
 }
