@@ -8,17 +8,10 @@ namespace Sorcha.CitizenWallet.Abstractions.Tests;
 
 public sealed class ConstantsTests
 {
-    [Fact]
-    public void DerivationContexts_CitizenHolder_IsExpectedString()
-    {
-        DerivationContexts.CitizenHolder.Should().Be("sorcha:citizen-holder");
-    }
-
-    [Fact]
-    public void DerivationContexts_CitizenStatusSigning_IsExpectedString()
-    {
-        DerivationContexts.CitizenStatusSigning.Should().Be("sorcha:citizen-status-signing");
-    }
+    // The citizen-holder / citizen-status-signing context strings were previously mirrored here by
+    // a local DerivationContexts class. That mirror had zero production consumers and has been
+    // deleted; the canonical constants (and the assertions pinning their wire values) now live in
+    // Sorcha.Wallet.Contracts.Constants.SorchaDerivationPaths / SorchaDerivationPathsTests.
 
     [Fact]
     public void DelegatedCapabilities_PresentationHolderKeyBinding_IsExpectedString()

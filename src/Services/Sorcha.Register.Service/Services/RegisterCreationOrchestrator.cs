@@ -15,6 +15,7 @@ using Sorcha.ServiceClients.Wallet;
 using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.SystemWallet;
 using Sorcha.ServiceClients.Validator;
+using Sorcha.Wallet.Contracts.Constants;
 
 namespace Sorcha.Register.Service.Services;
 
@@ -340,7 +341,7 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
                 registerId: pending.RegisterId,
                 txId: "validator-roster-key-derivation",
                 payloadHash: "0000000000000000000000000000000000000000000000000000000000000000",
-                derivationPath: "sorcha:docket-signing",
+                derivationPath: SorchaDerivationPaths.DocketSigning,
                 transactionType: "ValidatorKeyDerivation",
                 cancellationToken);
 
@@ -354,7 +355,7 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
                         PublicKey = Convert.ToBase64String(docketSignResult.PublicKey),
                         Algorithm = Enum.TryParse<SignatureAlgorithm>(docketSignResult.Algorithm, true, out var alg)
                             ? alg : SignatureAlgorithm.ED25519,
-                        DerivationContext = "sorcha:docket-signing",
+                        DerivationContext = SorchaDerivationPaths.DocketSigning,
                         Status = ValidatorKeyStatus.Active,
                         AuthorizedAt = controlRecord.CreatedAt
                     }
@@ -422,7 +423,7 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
             registerId: pending.RegisterId,
             txId: genesisTransaction.TxId,
             payloadHash: payloadHash,
-            derivationPath: "sorcha:register-control",
+            derivationPath: SorchaDerivationPaths.RegisterControl,
             transactionType: "Genesis",
             cancellationToken);
 

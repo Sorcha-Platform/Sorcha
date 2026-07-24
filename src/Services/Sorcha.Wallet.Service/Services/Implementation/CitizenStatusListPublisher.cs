@@ -9,7 +9,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Sorcha.Wallet.Core.Constants;
+using Sorcha.Wallet.Contracts.Constants;
 using Sorcha.Wallet.Core.Data;
 using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Domain.ValueObjects;

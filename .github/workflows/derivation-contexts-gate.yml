@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Derivation-context CI gate. Fails when a raw "sorcha:*" key-derivation context literal
+# ("sorcha:docket-signing", "sorcha:register-control", …) appears in src/ outside the canonical
+# Sorcha.Wallet.Contracts.Constants.SorchaDerivationPaths.
+#
+# A mistyped context does not throw — it derives a different but perfectly valid key, so the
+# failure surfaces far away and silently (a wrong docket-signing context means the validator's
+# key stops matching its own roster entry and dockets simply never seal).
+#
+# See scripts/check-derivation-contexts.ps1 and .derivation-contexts-allowlist.
+
+name: derivation-contexts-gate
+
+on:
+  pull_request:
+    paths:
+      - "src/**/*.cs"
+      - "src/**/*.razor"
+      - "scripts/check-derivation-contexts.ps1"
+      - ".derivation-contexts-allowlist"
+      - ".github/workflows/derivation-contexts-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  derivation-contexts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run derivation-context gate
+        shell: pwsh
+        run: ./scripts/check-derivation-contexts.ps1

@@ -8,6 +8,7 @@ using Sorcha.Validator.Service.Services.Interfaces;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.ServiceClients.Register;
 using Sorcha.Cryptography.Utilities;
+using Sorcha.Wallet.Contracts.Constants;
 
 namespace Sorcha.Validator.Service.Services;
 
@@ -188,7 +189,7 @@ public class DocketBuilder : IDocketBuilder
             var docketHashBytes = Convert.FromHexString(docketHash);
             var signResult = await _walletClient.SignTransactionAsync(
                 systemWalletAddress, docketHashBytes,
-                derivationPath: "sorcha:docket-signing",
+                derivationPath: SorchaDerivationPaths.DocketSigning,
                 isPreHashed: true,
                 cancellationToken);
 

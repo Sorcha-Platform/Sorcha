@@ -12,6 +12,7 @@ using Sorcha.Wallet.Core.Encryption.Interfaces;
 using Sorcha.Wallet.Core.Events.Interfaces;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Core.Services.Interfaces;
+using Sorcha.Wallet.Contracts.Constants;
 
 namespace Sorcha.Wallet.Core.Services.Implementation;
 
@@ -775,8 +776,8 @@ public class WalletManager : IWalletService
                 if (!string.IsNullOrWhiteSpace(derivationPath))
                 {
                     // Resolve Sorcha system paths (e.g., "sorcha:register-attestation") to BIP44 paths
-                    var resolvedPath = Constants.SorchaDerivationPaths.IsSystemPath(derivationPath)
-                        ? Constants.SorchaDerivationPaths.ResolvePath(derivationPath)
+                    var resolvedPath = SorchaDerivationPaths.IsSystemPath(derivationPath)
+                        ? SorchaDerivationPaths.ResolvePath(derivationPath)
                         : derivationPath;
 
                     var parsedPath = new DerivationPath(resolvedPath);

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Wallet.Contracts.Constants;
+
 namespace Sorcha.ServiceClients.SystemWallet;
 
 /// <summary>
@@ -31,7 +33,7 @@ public class SystemWalletSigningOptions
     /// Requests with paths not in this list are rejected.
     /// </summary>
     public string[] AllowedDerivationPaths { get; set; } =
-        ["sorcha:register-control", "sorcha:docket-signing", "sorcha:blueprint-publish"];
+        [SorchaDerivationPaths.RegisterControl, SorchaDerivationPaths.DocketSigning, SorchaDerivationPaths.BlueprintPublish];
 
     /// <summary>
     /// Maximum number of signing operations per register per minute (sliding window)

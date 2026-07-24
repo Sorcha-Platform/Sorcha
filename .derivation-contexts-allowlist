@@ -1,0 +1,9 @@
+# Files still carrying a raw "sorcha:*" derivation-context literal outside
+# Sorcha.Wallet.Contracts.Constants.SorchaDerivationPaths.
+#
+# This list is a RATCHET: it may only shrink, never grow. A stale entry (a file that no
+# longer carries a literal) fails the gate, so entries must be removed in the same PR that
+# removes the literal.
+#
+# It is currently EMPTY — every derivation context in src/ resolves to the canonical constant.
+# Keep it that way.

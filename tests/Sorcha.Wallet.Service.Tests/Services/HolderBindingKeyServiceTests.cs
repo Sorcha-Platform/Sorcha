@@ -6,7 +6,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Sorcha.Wallet.Core.Constants;
+using Sorcha.Wallet.Contracts.Constants;
 using Sorcha.Wallet.Core.Domain.ValueObjects;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Core.Services.Interfaces;

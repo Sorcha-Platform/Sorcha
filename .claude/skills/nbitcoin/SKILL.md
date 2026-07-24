@@ -74,7 +74,7 @@ var (encryptedKey, keyId) = await _keyManagement.EncryptPrivateKeyAsync(privateK
 **When:** Using Sorcha-specific derivation purposes.
 
 ```csharp
-// src/Core/Sorcha.Wallet.Core/Constants/SorchaDerivationPaths.cs
+// src/Common/Sorcha.Wallet.Contracts/Constants/SorchaDerivationPaths.cs
 var resolvedPath = SorchaDerivationPaths.IsSystemPath(derivationPath)
     ? SorchaDerivationPaths.ResolvePath(derivationPath)  // "sorcha:register-attestation" → "m/44'/0'/0'/0/100"
     : derivationPath;

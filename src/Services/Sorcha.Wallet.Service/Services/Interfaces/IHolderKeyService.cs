@@ -8,7 +8,7 @@ namespace Sorcha.Wallet.Service.Services.Interfaces;
 /// <summary>
 /// Derives and signs with the citizen wallet holder key (Feature 114).
 /// One holder key per citizen wallet, derived under
-/// <see cref="Sorcha.Wallet.Core.Constants.SorchaDerivationPaths.CitizenHolder"/>
+/// <see cref="Sorcha.Wallet.Contracts.Constants.SorchaDerivationPaths.CitizenHolder"/>
 /// (slot 108, <c>m/44'/0'/0'/0/108</c>).
 /// </summary>
 /// <remarks>

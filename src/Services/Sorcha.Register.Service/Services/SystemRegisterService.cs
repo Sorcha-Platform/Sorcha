@@ -12,6 +12,7 @@ using Sorcha.Register.Models.Enums;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.SystemWallet;
 using Sorcha.ServiceClients.Validator;
+using Sorcha.Wallet.Contracts.Constants;
 
 namespace Sorcha.Register.Service.Services;
 
@@ -45,7 +46,6 @@ public class SystemRegisterService
     private const string DefaultBlueprintId = "register-creation-v1";
     private const string GovernanceBlueprintId = "register-governance-v1";
     private const string BlueprintPublishTransactionType = "BlueprintPublish";
-    private const string BlueprintPublishDerivationPath = "sorcha:blueprint-publish";
 
     private static readonly JsonSerializerOptions CanonicalJsonOptions = new()
     {
@@ -252,7 +252,7 @@ public class SystemRegisterService
             registerId: SystemRegisterConstants.SystemRegisterId,
             txId: txId,
             payloadHash: payloadHashHex,
-            derivationPath: BlueprintPublishDerivationPath,
+            derivationPath: SorchaDerivationPaths.BlueprintPublish,
             transactionType: "Control",
             cancellationToken);
 

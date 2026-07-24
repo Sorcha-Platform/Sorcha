@@ -588,7 +588,7 @@
                 var signRequest = new SignTransactionRequest
                 {
                     TransactionData = Convert.ToBase64String(hashBytes),
-                    DerivationPath = "sorcha:register-attestation",
+                    DerivationPath = SorchaDerivationPaths.RegisterAttestation,
                     IsPreHashed = true
                 };
 

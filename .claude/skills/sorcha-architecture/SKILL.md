@@ -708,6 +708,13 @@ Unknown social identity → `SocialCallbackModel` calls `ResolveOrCreateSocialUs
 | 108 | `sorcha:citizen-holder` | `m/44'/0'/0'/0/108` | Per-citizen holder identity. Issuers bind credentials to this key via `cnf`; signs device delegation credentials. |
 | 109 | `sorcha:citizen-status-signing` | `m/44'/0'/0'/0/109` | Per-org status-list signing key. One pinnable kid per org. |
 
+Canonical home: `Sorcha.Wallet.Contracts.Constants.SorchaDerivationPaths`
+(`src/Common/Sorcha.Wallet.Contracts/Constants/SorchaDerivationPaths.cs`) — a zero-dependency leaf
+so services, CLI, Blazor UI and the WASM PWA can all reference it. **Never hard-code a `"sorcha:*"`
+literal**; a typo derives a different valid key and dockets silently stop sealing. Enforced by
+`scripts/check-derivation-contexts.ps1` (CI: `derivation-contexts-gate`), allowlist empty. The
+former `Sorcha.CitizenWallet.Abstractions.Constants.DerivationContexts` mirror is deleted.
+
 ### `WalletHub` (SignalR)
 
 Hub URL `/hubs/wallet`. `[Authorize(AuthenticationSchemes = "Bearer")]`. On connect, the bearer JWT's `platform_user_id` claim places the connection in group `wallet:platform-user:{guid:N}` so server-side broadcasters target a single citizen across all their enrolled devices. Public helpers `WalletHub.PlatformUserIdClaim` and `WalletHub.GroupNameFor(Guid)`. Server-to-client events: `DeviceRevoked(Guid)` (US3) and `CredentialAvailable(string)` (US4 — emitted from `CitizenInboxProjector`).

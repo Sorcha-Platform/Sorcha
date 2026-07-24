@@ -16,6 +16,7 @@ using Sorcha.Cryptography.Utilities;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Constants;
 using Sorcha.Register.Models.Genesis;
+using Sorcha.Wallet.Contracts.Constants;
 
 namespace Sorcha.Cli.Commands;
 
@@ -230,7 +231,7 @@ public class SystemRegisterCreateCommand : Command
                         ValidatorId = walletAddress,
                         PublicKey = Convert.ToBase64String(publicKeyBytes),
                         Algorithm = ParseAlgorithm(algorithm),
-                        DerivationContext = "sorcha:docket-signing",
+                        DerivationContext = SorchaDerivationPaths.DocketSigning,
                         Status = ValidatorKeyStatus.Active,
                         AuthorizedAt = now
                     }
@@ -325,7 +326,7 @@ public class SystemRegisterCreateCommand : Command
                         ValidatorId = DeriveWalletAddress(publicKey, Enum.Parse<WalletNetworks>(algorithm, ignoreCase: true)),
                         PublicKey = Convert.ToBase64String(publicKey),
                         Algorithm = ParseAlgorithm(algorithm),
-                        DerivationContext = "sorcha:docket-signing",
+                        DerivationContext = SorchaDerivationPaths.DocketSigning,
                         Status = ValidatorKeyStatus.Active,
                         AuthorizedAt = now
                     }

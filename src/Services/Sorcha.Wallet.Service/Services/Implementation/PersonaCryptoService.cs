@@ -11,7 +11,7 @@ using Sorcha.Cryptography.Models;
 using Sorcha.Wallet.Core.Data;
 using Sorcha.Wallet.Core.Services.Interfaces;
 using Sorcha.Wallet.Service.Services.Interfaces;
-using Sorcha.Wallet.Core.Constants;
+using Sorcha.Wallet.Contracts.Constants;
 
 namespace Sorcha.Wallet.Service.Services.Implementation;
 

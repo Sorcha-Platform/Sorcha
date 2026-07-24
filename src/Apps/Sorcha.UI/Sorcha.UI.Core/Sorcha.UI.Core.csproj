@@ -11,6 +11,7 @@
   <ItemGroup>
     <!-- Canonical Wallet contracts, globally available to .cs and Razor components. -->
     <Using Include="Sorcha.Wallet.Contracts.Models" />
+    <Using Include="Sorcha.Wallet.Contracts.Constants" />
   </ItemGroup>
 
   <ItemGroup>
