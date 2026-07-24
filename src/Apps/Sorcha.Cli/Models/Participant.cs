@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Sorcha.Cli.Models;
@@ -107,22 +108,55 @@ public class WalletLinkChallengeResponse
 /// <summary>
 /// Request to publish a participant to a register.
 /// </summary>
+/// <remarks>
+/// Mirrors <c>Sorcha.Tenant.Service.Services.PublishParticipantRequest</c> exactly; the pairing is
+/// asserted by <c>CliWireContractTests</c>. This previously sent <c>name</c> and a bare
+/// <c>walletAddresses</c> string list, while the server requires <c>participantName</c> and a
+/// structured <c>addresses</c> list — every field <c>required</c>, so the request 400'd.
+/// </remarks>
 public class PublishParticipantRequest
 {
     [JsonPropertyName("registerId")]
     public string RegisterId { get; set; } = string.Empty;
 
-    [JsonPropertyName("name")]
-    public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("participantName")]
+    public string ParticipantName { get; set; } = string.Empty;
 
     [JsonPropertyName("organizationName")]
     public string OrganizationName { get; set; } = string.Empty;
 
-    [JsonPropertyName("walletAddresses")]
-    public List<string> WalletAddresses { get; set; } = new();
+    /// <summary>
+    /// The participant's on-register addresses. Each carries the public key and algorithm the
+    /// register needs in order to encrypt to this participant, so an address cannot be published
+    /// as a bare string.
+    /// </summary>
+    [JsonPropertyName("addresses")]
+    public List<ParticipantAddressRequest> Addresses { get; set; } = new();
 
     [JsonPropertyName("signerWalletAddress")]
     public string SignerWalletAddress { get; set; } = string.Empty;
+
+    /// <summary>Optional free-form metadata published alongside the participant.</summary>
+    [JsonPropertyName("metadata")]
+    public JsonElement? Metadata { get; set; }
+}
+
+/// <summary>
+/// One address entry in a participant publish request.
+/// </summary>
+public class ParticipantAddressRequest
+{
+    [JsonPropertyName("walletAddress")]
+    public string WalletAddress { get; set; } = string.Empty;
+
+    [JsonPropertyName("publicKey")]
+    public string PublicKey { get; set; } = string.Empty;
+
+    [JsonPropertyName("algorithm")]
+    public string Algorithm { get; set; } = string.Empty;
+
+    [JsonPropertyName("primary")]
+    public bool Primary { get; set; }
 }
 
 /// <summary>

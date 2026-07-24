@@ -936,12 +936,38 @@ public class ParticipantPublishCommand : Command
 
                 var client = await clientFactory.CreateParticipantServiceClientAsync(profileName);
 
+                // The register needs the participant's public key and algorithm, not just an
+                // address — that is what lets other participants encrypt to them. Resolve it from
+                // the Wallet Service rather than asking the operator to paste key material.
+                var walletClient = await clientFactory.CreateWalletServiceClientAsync(profileName);
+                WalletDto walletDetails;
+                try
+                {
+                    walletDetails = await walletClient.GetWalletAsync(wallet, $"Bearer {token}");
+                }
+                catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+                {
+                    ConsoleHelper.WriteError(
+                        $"Wallet '{wallet}' not found, so its public key cannot be published. "
+                        + "Check the address, or create the wallet first with 'sorcha wallet create'.");
+                    return ExitCodes.NotFound;
+                }
+
                 var request = new PublishParticipantRequest
                 {
                     RegisterId = registerId,
-                    Name = name,
+                    ParticipantName = name,
                     OrganizationName = orgName,
-                    WalletAddresses = [wallet],
+                    Addresses =
+                    [
+                        new ParticipantAddressRequest
+                        {
+                            WalletAddress = walletDetails.Address,
+                            PublicKey = walletDetails.PublicKey,
+                            Algorithm = walletDetails.Algorithm,
+                            Primary = true,
+                        }
+                    ],
                     SignerWalletAddress = signer
                 };
 

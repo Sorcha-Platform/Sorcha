@@ -109,7 +109,7 @@ public class AuditListCommand : Command
                     orgId, since, until, action, user, page, pageSize,
                     $"Bearer {token}");
 
-                if (response.Entries.Count == 0)
+                if (response.Events.Count == 0)
                 {
                     ConsoleHelper.WriteInfo("No audit entries found matching the criteria.");
                     return ExitCodes.Success;
@@ -122,22 +122,28 @@ public class AuditListCommand : Command
                     return ExitCodes.Success;
                 }
 
-                ConsoleHelper.WriteSuccess($"Found {response.Entries.Count} audit entries (Total: {response.TotalCount}, Page: {response.Page}/{((response.TotalCount + response.PageSize - 1) / Math.Max(response.PageSize, 1))}):");
+                ConsoleHelper.WriteSuccess($"Found {response.Events.Count} audit entries (Total: {response.TotalCount}, Page: {response.Page}/{((response.TotalCount + response.PageSize - 1) / Math.Max(response.PageSize, 1))}):");
                 Console.WriteLine();
-                Console.WriteLine($"{"Timestamp",-22} {"Action",-25} {"User",-30} {"Resource",-15} {"Details"}");
-                Console.WriteLine(new string('-', 110));
+                Console.WriteLine($"{"Timestamp",-22} {"Event",-30} {"Identity",-38} {"OK",-4} {"Details"}");
+                Console.WriteLine(new string('-', 120));
 
-                foreach (var entry in response.Entries)
+                foreach (var entry in response.Events)
                 {
                     var timestamp = entry.Timestamp.ToString("yyyy-MM-dd HH:mm:ss");
-                    var resourceInfo = !string.IsNullOrEmpty(entry.ResourceType)
-                        ? $"{entry.ResourceType}"
-                        : "-";
-                    var details = !string.IsNullOrEmpty(entry.Details)
-                        ? (entry.Details.Length > 30 ? entry.Details[..30] + "..." : entry.Details)
-                        : "-";
+                    var identity = entry.IdentityId?.ToString() ?? "-";
+                    var ok = entry.Success ? "yes" : "NO";
 
-                    Console.WriteLine($"{timestamp,-22} {entry.Action,-25} {entry.UserName,-30} {resourceInfo,-15} {details}");
+                    // Details is a JSON object server-side, not a string. Render it compactly rather
+                    // than relying on ToString(), which would print the dictionary's type name.
+                    var details = entry.Details is { Count: > 0 }
+                        ? string.Join(", ", entry.Details.Select(kv => $"{kv.Key}={kv.Value}"))
+                        : "-";
+                    if (details.Length > 40)
+                    {
+                        details = details[..40] + "...";
+                    }
+
+                    Console.WriteLine($"{timestamp,-22} {entry.EventType,-30} {identity,-38} {ok,-4} {details}");
                 }
 
                 return ExitCodes.Success;
@@ -262,7 +268,7 @@ public class AuditExportCommand : Command
                         orgId, since, until, action, user, currentPage, batchSize,
                         $"Bearer {token}");
 
-                    allEntries.AddRange(response.Entries);
+                    allEntries.AddRange(response.Events);
                     totalCount = response.TotalCount;
                     currentPage++;
                 } while (allEntries.Count < totalCount);
@@ -285,14 +291,22 @@ public class AuditExportCommand : Command
                 {
                     var lines = new List<string>
                     {
-                        "Id,Timestamp,Action,UserId,UserName,ResourceType,ResourceId,Details"
+                        "Id,Timestamp,EventType,IdentityId,Success,IpAddress,Details"
                     };
 
                     foreach (var entry in allEntries)
                     {
-                        var details = EscapeCsvField(entry.Details ?? string.Empty);
-                        var userName = EscapeCsvField(entry.UserName);
-                        lines.Add($"{entry.Id},{entry.Timestamp:O},{EscapeCsvField(entry.Action)},{entry.UserId},{userName},{entry.ResourceType ?? string.Empty},{entry.ResourceId ?? string.Empty},{details}");
+                        // Details is a JSON object server-side; flatten it to k=v pairs so the CSV
+                        // column carries the content rather than a type name.
+                        var details = EscapeCsvField(entry.Details is { Count: > 0 }
+                            ? string.Join("; ", entry.Details.Select(kv => $"{kv.Key}={kv.Value}"))
+                            : string.Empty);
+
+                        lines.Add(
+                            $"{entry.Id},{entry.Timestamp:O},{EscapeCsvField(entry.EventType)},"
+                            + $"{entry.IdentityId?.ToString() ?? string.Empty},"
+                            + $"{entry.Success},"
+                            + $"{EscapeCsvField(entry.IpAddress ?? string.Empty)},{details}");
                     }
 
                     content = string.Join(Environment.NewLine, lines);

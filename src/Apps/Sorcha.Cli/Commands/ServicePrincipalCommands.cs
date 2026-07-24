@@ -553,12 +553,25 @@ public class PrincipalRotateSecretCommand : Command
 
                 ConsoleHelper.WriteSuccess($"Client secret rotated successfully!");
                 Console.WriteLine();
-                Console.WriteLine($"  Rotated At:      {response.RotatedAt:yyyy-MM-dd HH:mm:ss}");
-                Console.WriteLine();
                 ConsoleHelper.WriteWarning("IMPORTANT: Save the new client secret securely!");
-                Console.WriteLine($"  New Client Secret: {response.ClientSecret}");
+                Console.WriteLine($"  New Client Secret: {response.NewClientSecret}");
                 Console.WriteLine();
-                ConsoleHelper.WriteWarning("The new client secret will NEVER be displayed again.");
+
+                // Defensive: the rotation has already happened server-side by the time we get here,
+                // so an empty secret means the operator has just lost access to this principal.
+                // Say so loudly rather than printing a blank line and claiming success.
+                if (string.IsNullOrWhiteSpace(response.NewClientSecret))
+                {
+                    ConsoleHelper.WriteError(
+                        "The server did not return a new client secret. The old secret is no longer "
+                        + "valid, so this principal now has no usable credential — re-register it.");
+                    return ExitCodes.GeneralError;
+                }
+
+                ConsoleHelper.WriteWarning(
+                    string.IsNullOrWhiteSpace(response.Warning)
+                        ? "The new client secret will NEVER be displayed again."
+                        : response.Warning);
                 ConsoleHelper.WriteWarning("Update all applications using this service principal immediately.");
 
                 return ExitCodes.Success;
