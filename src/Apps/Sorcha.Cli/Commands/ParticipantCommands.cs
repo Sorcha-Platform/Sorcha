@@ -202,12 +202,13 @@ public class ParticipantListCommand : Command
 
                 ConsoleHelper.WriteSuccess($"Found {participants.Count} participant(s):");
                 Console.WriteLine();
-                Console.WriteLine($"{"ID",-38} {"Display Name",-30} {"Status",-12} {"Wallets",7} {"Created"}");
-                Console.WriteLine(new string('-', 105));
+                Console.WriteLine($"{"ID",-38} {"Display Name",-24} {"Email",-28} {"Status",-12} {"Wallet",7} {"Created"}");
+                Console.WriteLine(new string('-', 125));
 
                 foreach (var p in participants)
                 {
-                    Console.WriteLine($"{p.Id,-38} {p.DisplayName,-30} {p.Status,-12} {p.WalletLinks.Count,7} {p.CreatedAt:yyyy-MM-dd}");
+                    var hasWallet = p.HasLinkedWallet ? "yes" : "no";
+                    Console.WriteLine($"{p.Id,-38} {p.DisplayName,-24} {p.Email,-28} {p.Status,-12} {hasWallet,7} {p.CreatedAt:yyyy-MM-dd}");
                 }
 
                 return ExitCodes.Success;
@@ -298,20 +299,14 @@ public class ParticipantGetCommand : Command
                 Console.WriteLine($"  User ID:         {participant.UserId}");
                 Console.WriteLine($"  Organization:    {participant.OrganizationId}");
                 Console.WriteLine($"  Display Name:    {participant.DisplayName}");
+                Console.WriteLine($"  Email:           {participant.Email}");
                 Console.WriteLine($"  Status:          {participant.Status}");
+                Console.WriteLine($"  Has linked wallet: {(participant.HasLinkedWallet ? "Yes" : "No")}");
                 Console.WriteLine($"  Created:         {participant.CreatedAt:yyyy-MM-dd HH:mm:ss}");
-                Console.WriteLine($"  Updated:         {participant.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
-
-                if (participant.WalletLinks.Count > 0)
-                {
-                    Console.WriteLine();
-                    Console.WriteLine($"  Linked Wallets ({participant.WalletLinks.Count}):");
-                    foreach (var link in participant.WalletLinks)
-                    {
-                        var verified = link.VerifiedAt.HasValue ? $"verified {link.VerifiedAt:yyyy-MM-dd}" : "unverified";
-                        Console.WriteLine($"    - {link.WalletAddress} ({link.Status}, {verified})");
-                    }
-                }
+                Console.WriteLine();
+                ConsoleHelper.WriteInfo(
+                    "Use 'sorcha participant wallet-links --participant-id " + participant.Id
+                    + "' to list this participant's linked wallets.");
 
                 return ExitCodes.Success;
             }
@@ -429,7 +424,6 @@ public class ParticipantUpdateCommand : Command
                 Console.WriteLine($"  ID:              {participant.Id}");
                 Console.WriteLine($"  Display Name:    {participant.DisplayName}");
                 Console.WriteLine($"  Status:          {participant.Status}");
-                Console.WriteLine($"  Updated:         {participant.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
 
                 return ExitCodes.Success;
             }
@@ -563,6 +557,7 @@ public class ParticipantWalletLinkCommand : Command
 {
     private readonly Option<string> _participantIdOption;
     private readonly Option<string> _walletAddressOption;
+    private readonly Option<string> _algorithmOption;
 
     public ParticipantWalletLinkCommand(
         HttpClientFactory clientFactory,
@@ -582,13 +577,21 @@ public class ParticipantWalletLinkCommand : Command
             Required = true
         };
 
+        _algorithmOption = new Option<string>("--algorithm", "-a")
+        {
+            Description = "The wallet's signing algorithm (e.g. ED25519, NISTP256)",
+            Required = true
+        };
+
         Options.Add(_participantIdOption);
         Options.Add(_walletAddressOption);
+        Options.Add(_algorithmOption);
 
         this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
             var participantId = parseResult.GetValue(_participantIdOption)!;
             var walletAddress = parseResult.GetValue(_walletAddressOption)!;
+            var algorithm = parseResult.GetValue(_algorithmOption)!;
 
             try
             {
@@ -606,7 +609,8 @@ public class ParticipantWalletLinkCommand : Command
 
                 var request = new InitiateWalletLinkRequest
                 {
-                    WalletAddress = walletAddress
+                    WalletAddress = walletAddress,
+                    Algorithm = algorithm
                 };
 
                 var challenge = await client.InitiateWalletLinkAsync(participantId, request, $"Bearer {token}");
@@ -621,7 +625,10 @@ public class ParticipantWalletLinkCommand : Command
                 ConsoleHelper.WriteSuccess("Wallet link challenge initiated!");
                 Console.WriteLine();
                 Console.WriteLine($"  Challenge ID:  {challenge.ChallengeId}");
-                Console.WriteLine($"  Nonce:         {challenge.Nonce}");
+                Console.WriteLine($"  Challenge:     {challenge.Challenge}");
+                Console.WriteLine($"  Wallet:        {challenge.WalletAddress}");
+                Console.WriteLine($"  Algorithm:     {challenge.Algorithm}");
+                Console.WriteLine($"  Status:        {challenge.Status}");
                 Console.WriteLine($"  Expires At:    {challenge.ExpiresAt:yyyy-MM-dd HH:mm:ss}");
                 Console.WriteLine();
                 ConsoleHelper.WriteInfo("Sign the nonce with your wallet and verify using:");

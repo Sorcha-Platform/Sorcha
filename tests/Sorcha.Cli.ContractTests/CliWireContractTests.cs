@@ -86,20 +86,12 @@ public sealed class CliWireContractTests
     /// </remarks>
     private static readonly Dictionary<string, string> KnownMismatch = new(StringComparer.Ordinal)
     {
-        ["InitiateWalletLinkRequest"] =
-            "Tenant.Service — server-only: algorithm",
         ["IssueCredentialRequest"] =
             "Wallet.Service — CLI-only: expiresInDays, subject, type, walletAddress; server-only: credentialType, disclosableClaims, displayName, expiryDuration, holderJwk, issu...",
-        ["LinkedWalletAddress"] =
-            "Tenant.Service (vs LinkedWalletAddressResponse) — CLI-only: verifiedAt; server-only: algorithm, linkedAt, revokedAt",
-        ["ParticipantIdentity"] =
-            "Tenant.Service (vs ParticipantResponse) — CLI-only: updatedAt, walletLinks; server-only: email, hasLinkedWallet",
         ["PublishBlueprintRequest"] =
             "ServiceClients.Http — CLI-only: blueprintId; server-only: override",
         ["SchemaSector"] =
             "Blueprint.Service — CLI-only: name, schemaCount, status; server-only: displayName, icon",
-        ["WalletLinkChallengeResponse"] =
-            "Tenant.Service — CLI-only: nonce; server-only: algorithm, challenge, status, walletAddress",
     };
 
     /// <summary>
