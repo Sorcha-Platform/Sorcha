@@ -453,7 +453,7 @@ public class OrgProvisioningService : IOrgProvisioningService
                 {
                     var invitationResponse = await _invitationService.CreateInvitationAsync(
                         org.Id,
-                        new Models.Dtos.CreateInvitationRequest
+                        new Models.Dtos.CreateOrgInvitationRequest
                         {
                             Email = adminEmail,
                             Role = role,

@@ -48,7 +48,7 @@ public sealed class RegisterInvitationServiceClient : IRegisterInvitationService
     /// <inheritdoc />
     public async Task<InvitationCreatedResponse> CreateAsync(
         Guid sourceOrgId,
-        CreateInvitationRequest request,
+        CreateRegisterInvitationRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);

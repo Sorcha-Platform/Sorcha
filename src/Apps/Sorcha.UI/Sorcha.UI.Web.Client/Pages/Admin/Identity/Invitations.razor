@@ -92,8 +92,9 @@
                     <MudTd>
                         @if (context.Status == "Pending")
                         {
-                            <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" Title="Resend"
-                                           OnClick="@(async () => await ResendAsync(context.Id))" />
+                            @* No Resend action: the Tenant Service has no resend endpoint. The button that
+                               used to sit here POSTed to a route that does not exist and reported success
+                               regardless. Tracked as a feature request rather than faked here. *@
                             <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Error" Title="Revoke"
                                            OnClick="@(async () => await RevokeAsync(context.Id))" />
                         }
@@ -120,7 +121,7 @@
 
     private bool _loading = true;
     private Guid _organizationId;
-    private List<InvitationDto> _invitations = [];
+    private List<OrgInvitationDto> _invitations = [];
     private string? _statusFilter;
 
     // New invitation form
@@ -153,7 +154,7 @@
         try
         {
             var result = await InvitationService.GetInvitationsAsync(_organizationId, _statusFilter);
-            _invitations = result.Invitations.ToList();
+            _invitations = result.ToList();
         }
         catch (Exception ex)
         {
@@ -169,7 +170,7 @@
     {
         try
         {
-            await InvitationService.CreateInvitationAsync(_organizationId, new CreateInvitationRequest
+            await InvitationService.CreateInvitationAsync(_organizationId, new CreateOrgInvitationRequest
             {
                 Email = _newEmail,
                 Role = _newRole,
@@ -187,15 +188,18 @@
 
     private async Task RevokeAsync(Guid invitationId)
     {
-        await InvitationService.RevokeInvitationAsync(_organizationId, invitationId);
-        Feedback.ShowWarning("Invitation revoked");
-        await LoadInvitationsAsync();
-    }
+        // Report what actually happened — the previous version discarded the result and always
+        // claimed success.
+        var revoked = await InvitationService.RevokeInvitationAsync(_organizationId, invitationId);
+        if (revoked)
+        {
+            Feedback.ShowWarning("Invitation revoked");
+        }
+        else
+        {
+            Feedback.ShowError("Failed to revoke invitation", autoDismissMs: 0);
+        }
 
-    private async Task ResendAsync(Guid invitationId)
-    {
-        await InvitationService.ResendInvitationAsync(_organizationId, invitationId);
-        Feedback.ShowSuccess("Invitation resent");
         await LoadInvitationsAsync();
     }
 

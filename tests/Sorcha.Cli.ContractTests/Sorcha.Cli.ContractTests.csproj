@@ -30,6 +30,15 @@
 
   <ItemGroup>
     <!--
+      One home for the reflection helper, shared by every contract-test project. These projects
+      cannot reference one another (each exists to hold a different illegal layering), so a linked
+      source file is how the helper stays single-copy.
+    -->
+    <Compile Include="..\Shared\WireShape.cs" Link="WireShape.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
       This project deliberately references BOTH the CLI and the services it talks to. That is a
       layering combination no production assembly may have — the CLI must never reference a
       service — but a test project is exactly where it is legitimate and useful: it is the only

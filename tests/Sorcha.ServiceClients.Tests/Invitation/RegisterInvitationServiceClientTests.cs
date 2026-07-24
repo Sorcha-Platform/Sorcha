@@ -43,7 +43,7 @@ public class RegisterInvitationServiceClientTests
             """;
         var client = Build(HttpStatusCode.Created, responseBody, req => captured = req);
 
-        var result = await client.CreateAsync(OrgId, new CreateInvitationRequest
+        var result = await client.CreateAsync(OrgId, new CreateRegisterInvitationRequest
         {
             RegisterId = "aebf26362e079087571ac0932d4db973",
             TargetOrgDid = "did:sorcha:org:ws1qtarget",
@@ -135,7 +135,7 @@ public class RegisterInvitationServiceClientTests
         const string body = """{ "error": "Rate limit exceeded. Maximum 10 invitations per hour." }""";
         var client = Build(HttpStatusCode.TooManyRequests, body);
 
-        var act = async () => await client.CreateAsync(OrgId, new CreateInvitationRequest
+        var act = async () => await client.CreateAsync(OrgId, new CreateRegisterInvitationRequest
         {
             RegisterId = "r".PadRight(32, 'e'),
             TargetOrgDid = "did:sorcha:org:ws1qtarget",

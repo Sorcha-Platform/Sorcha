@@ -183,7 +183,7 @@
             _activeIdpCount = idps.Count(i => i.IsEnabled);
 
             var invitations = await invitationsTask;
-            _pendingInvitationCount = invitations.TotalCount;
+            _pendingInvitationCount = invitations.Count;
 
             var logins = await loginsTask;
             _recentLogins = logins.Events.ToList();

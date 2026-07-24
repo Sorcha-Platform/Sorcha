@@ -22,7 +22,7 @@ public interface IRegisterInvitationServiceClient
     /// <summary>Create a private register invitation for a target organisation.</summary>
     Task<InvitationCreatedResponse> CreateAsync(
         Guid sourceOrgId,
-        CreateInvitationRequest request,
+        CreateRegisterInvitationRequest request,
         CancellationToken cancellationToken = default);
 
     /// <summary>Accept an invitation token as the target organisation.</summary>
@@ -46,8 +46,19 @@ public interface IRegisterInvitationServiceClient
 
 // ---- Request / response DTOs (wire-compatible with Sorcha.Tenant.Service.Models.Dtos) ----
 
-/// <summary>Request to create a register invitation.</summary>
-public record CreateInvitationRequest
+/// <summary>
+/// Request to create a register invitation — the cryptographic envelope that brings another
+/// organisation onto a private register.
+/// </summary>
+/// <remarks>
+/// Named for the concept, not the endpoint verb. An <c>invitation</c> in Sorcha means two unrelated
+/// things: this org-to-org register envelope, and the org-user invite that emails a person a role
+/// (<c>Sorcha.Tenant.Service.Models.Dtos.CreateOrgInvitationRequest</c> / the UI's
+/// <c>CreateOrgInvitationRequest</c>). Both were once called <c>CreateInvitationRequest</c> in
+/// different projects, which is a merge trap: the shapes are disjoint, so consolidating on the name
+/// would have produced a type that satisfies neither wire contract. Keep the concept in the name.
+/// </remarks>
+public record CreateRegisterInvitationRequest
 {
     /// <summary>Identifier of the register.</summary>
     [JsonPropertyName("register_id")]

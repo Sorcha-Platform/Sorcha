@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.UI.Core.Extensions;
@@ -9,7 +8,7 @@ using Sorcha.UI.Core.Extensions;
 namespace Sorcha.UI.Core.Services.Identity;
 
 /// <summary>
-/// HTTP client service for managing organization invitations via the Tenant Service API.
+/// HTTP client service for managing organisation user invitations via the Tenant Service API.
 /// </summary>
 public class InvitationClientService : IInvitationClientService
 {
@@ -23,7 +22,7 @@ public class InvitationClientService : IInvitationClientService
     }
 
     /// <inheritdoc />
-    public async Task<InvitationListResult> GetInvitationsAsync(
+    public async Task<IReadOnlyList<OrgInvitationDto>> GetInvitationsAsync(
         Guid organizationId,
         string? status,
         CancellationToken ct)
@@ -37,8 +36,9 @@ public class InvitationClientService : IInvitationClientService
 
         try
         {
-            var result = await _httpClient.GetFromJsonAsync<InvitationListResult>(url, JsonDefaults.Api, ct);
-            return result ?? new InvitationListResult();
+            // The endpoint returns a bare JSON array (Produces<List<OrgInvitationResponse>>).
+            var result = await _httpClient.GetFromJsonAsync<List<OrgInvitationDto>>(url, JsonDefaults.Api, ct);
+            return result ?? [];
         }
         catch (HttpRequestException ex)
         {
@@ -48,43 +48,19 @@ public class InvitationClientService : IInvitationClientService
     }
 
     /// <inheritdoc />
-    public async Task<InvitationDto?> GetInvitationAsync(
+    public async Task<OrgInvitationDto> CreateInvitationAsync(
         Guid organizationId,
-        Guid invitationId,
-        CancellationToken ct)
-    {
-        var url = $"/api/organizations/{Uri.EscapeDataString(organizationId.ToString())}/invitations/{Uri.EscapeDataString(invitationId.ToString())}";
-
-        try
-        {
-            return await _httpClient.GetFromJsonAsync<InvitationDto>(url, JsonDefaults.Api, ct);
-        }
-        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-        {
-            return null;
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "Failed to get invitation {InvitationId} for organization {OrganizationId}",
-                invitationId, organizationId);
-            throw;
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task<InvitationDto> CreateInvitationAsync(
-        Guid organizationId,
-        CreateInvitationRequest request,
+        CreateOrgInvitationRequest request,
         CancellationToken ct)
     {
         var url = $"/api/organizations/{Uri.EscapeDataString(organizationId.ToString())}/invitations";
 
         try
         {
-            var response = await _httpClient.PostAsJsonAsync(url, request, ct);
+            var response = await _httpClient.PostAsJsonAsync(url, request, JsonDefaults.Api, ct);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<InvitationDto>(JsonDefaults.Api, ct);
+            var result = await response.Content.ReadFromJsonAsync<OrgInvitationDto>(JsonDefaults.Api, ct);
             return result ?? throw new InvalidOperationException("Failed to deserialize invitation response.");
         }
         catch (HttpRequestException ex)
@@ -110,27 +86,6 @@ public class InvitationClientService : IInvitationClientService
         catch (HttpRequestException ex)
         {
             _logger.LogError(ex, "Failed to revoke invitation {InvitationId} for organization {OrganizationId}",
-                invitationId, organizationId);
-            return false;
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task<bool> ResendInvitationAsync(
-        Guid organizationId,
-        Guid invitationId,
-        CancellationToken ct)
-    {
-        var url = $"/api/organizations/{Uri.EscapeDataString(organizationId.ToString())}/invitations/{Uri.EscapeDataString(invitationId.ToString())}/resend";
-
-        try
-        {
-            var response = await _httpClient.PostAsync(url, null, ct);
-            return response.IsSuccessStatusCode;
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "Failed to resend invitation {InvitationId} for organization {OrganizationId}",
                 invitationId, organizationId);
             return false;
         }

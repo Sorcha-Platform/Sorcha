@@ -30,7 +30,7 @@ public static class InvitationEndpoints
             .WithName("CreateInvitation")
             .WithSummary("Send an organization invitation")
             .WithDescription("Creates and sends an invitation email to join the organization with a specified role. Generates a 32-byte cryptographic token with configurable expiry (1-30 days, default 7).")
-            .Produces<InvitationResponse>(StatusCodes.Status201Created)
+            .Produces<OrgInvitationResponse>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
             .Produces<ProblemDetails>(StatusCodes.Status409Conflict)
             .Produces(StatusCodes.Status401Unauthorized)
@@ -40,7 +40,7 @@ public static class InvitationEndpoints
             .WithName("ListInvitations")
             .WithSummary("List organization invitations")
             .WithDescription("Lists all invitations for the organization, optionally filtered by status (Pending, Accepted, Expired, Revoked).")
-            .Produces<List<InvitationResponse>>()
+            .Produces<List<OrgInvitationResponse>>()
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status403Forbidden);
 
@@ -57,9 +57,9 @@ public static class InvitationEndpoints
         return app;
     }
 
-    private static async Task<Results<Created<InvitationResponse>, Conflict<ProblemDetails>, ValidationProblem>> CreateInvitation(
+    private static async Task<Results<Created<OrgInvitationResponse>, Conflict<ProblemDetails>, ValidationProblem>> CreateInvitation(
         Guid organizationId,
-        CreateInvitationRequest request,
+        CreateOrgInvitationRequest request,
         IInvitationService invitationService,
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
@@ -100,7 +100,7 @@ public static class InvitationEndpoints
         }
     }
 
-    private static async Task<Ok<List<InvitationResponse>>> ListInvitations(
+    private static async Task<Ok<List<OrgInvitationResponse>>> ListInvitations(
         Guid organizationId,
         IInvitationService invitationService,
         [FromQuery] InvitationStatus? status = null,

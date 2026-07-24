@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\WireShape.cs" Link="WireShape.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      This project deliberately references BOTH the shared user-facing UI component library and the
+      Tenant Service whose endpoints it calls. That is a layering combination no production assembly
+      may have — the UI must never reference a service — but a test project is exactly where it is
+      legitimate: it is the only place that can see both ends of an HTTP contract at once and assert
+      they agree.
+
+      Sibling of Sorcha.Cli.ContractTests, which does the same for the CLI. Kept separate because
+      neither may reference the other's production assembly.
+    -->
+    <ProjectReference Include="..\..\src\Apps\Sorcha.UI\Sorcha.UI.Components.User\Sorcha.UI.Components.User.csproj" />
+    <ProjectReference Include="..\..\src\Services\Sorcha.Tenant.Service\Sorcha.Tenant.Service.csproj" />
+  </ItemGroup>
+
+</Project>

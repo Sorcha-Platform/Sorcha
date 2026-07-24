@@ -14,16 +14,16 @@ public interface IInvitationService
     /// <summary>
     /// Creates and sends an invitation to join an organization.
     /// </summary>
-    Task<InvitationResponse> CreateInvitationAsync(
+    Task<OrgInvitationResponse> CreateInvitationAsync(
         Guid organizationId,
-        CreateInvitationRequest request,
+        CreateOrgInvitationRequest request,
         Guid invitedByUserId,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Lists invitations for an organization, optionally filtered by status.
     /// </summary>
-    Task<List<InvitationResponse>> ListInvitationsAsync(
+    Task<List<OrgInvitationResponse>> ListInvitationsAsync(
         Guid organizationId,
         InvitationStatus? status = null,
         CancellationToken cancellationToken = default);

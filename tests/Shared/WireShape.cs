@@ -5,17 +5,26 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Sorcha.Cli.ContractTests;
+namespace Sorcha.ContractTests.Shared;
 
 /// <summary>
 /// Computes the JSON property names a type actually serialises to, so a client DTO and the server
 /// DTO it exchanges bodies with can be compared without constructing either.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Comparing <i>names</i> rather than round-tripping instances matters: most of these records use
 /// <c>required</c> members, so building a valid instance would mean inventing values for every
 /// field of both sides. Names are also what actually breaks — a renamed property binds to nothing
 /// and the receiver silently sees a default.
+/// </para>
+/// <para>
+/// This file has one home and is <c>&lt;Compile Include&gt;</c>-linked by every contract-test
+/// project (<c>Sorcha.Cli.ContractTests</c>, <c>Sorcha.UI.ContractTests</c>). Those projects
+/// deliberately cannot reference one another — each exists to hold a layering combination no
+/// production assembly may have — so a linked source file is how they share the helper without
+/// a second copy drifting.
+/// </para>
 /// </remarks>
 public static class WireShape
 {
@@ -46,25 +55,29 @@ public static class WireShape
         Of(a).Except(Of(b), StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal).ToList();
 
     /// <summary>A human-readable diff for assertion messages.</summary>
-    public static string Describe(Type cli, Type server)
+    public static string Describe(Type client, Type server)
     {
-        var cliOnly = OnlyOn(cli, server);
-        var serverOnly = OnlyOn(server, cli);
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(server);
+
+        var clientOnly = OnlyOn(client, server);
+        var serverOnly = OnlyOn(server, client);
 
         var lines = new List<string>();
-        if (cliOnly.Count > 0)
+        if (clientOnly.Count > 0)
         {
-            lines.Add($"    CLI sends/expects, server does not have : {string.Join(", ", cliOnly)}");
+            lines.Add($"    client sends/expects, server does not have : {string.Join(", ", clientOnly)}");
         }
 
         if (serverOnly.Count > 0)
         {
-            lines.Add($"    server has, CLI does not              : {string.Join(", ", serverOnly)}");
+            lines.Add($"    server has, client does not                : {string.Join(", ", serverOnly)}");
         }
 
         return lines.Count == 0
             ? "    (shapes agree)"
-            : $"{cli.Name}  [CLI]  vs  {server.Name}  [{server.Assembly.GetName().Name}]\n" +
-              string.Join("\n", lines);
+            : $"{client.Name}  [{client.Assembly.GetName().Name}]  vs  "
+              + $"{server.Name}  [{server.Assembly.GetName().Name}]\n"
+              + string.Join("\n", lines);
     }
 }

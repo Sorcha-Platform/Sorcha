@@ -8,7 +8,7 @@ namespace Sorcha.Tenant.Service.Models.Dtos;
 /// <summary>
 /// Request to create an organization invitation.
 /// </summary>
-public record CreateInvitationRequest
+public record CreateOrgInvitationRequest
 {
     /// <summary>
     /// Email address to send the invitation to.
@@ -32,7 +32,7 @@ public record CreateInvitationRequest
 /// <summary>
 /// Invitation response returned to clients.
 /// </summary>
-public record InvitationResponse
+public record OrgInvitationResponse
 {
     /// <summary>
     /// Unique invitation identifier.
