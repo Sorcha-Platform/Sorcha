@@ -13,6 +13,7 @@ using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Extensions;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
+using Sorcha.Tenant.Models.Auth;
 
 namespace Sorcha.Tenant.Service.Services;
 

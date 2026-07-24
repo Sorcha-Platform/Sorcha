@@ -3,6 +3,7 @@
 
 using Sorcha.ServiceDefaults.Auth;
 using Sorcha.Tenant.Service.Models.Dtos;
+using Sorcha.Tenant.Models.Auth;
 
 namespace Sorcha.Tenant.Service.Services;
 

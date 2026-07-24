@@ -4,6 +4,7 @@ using Sorcha.Cli.Infrastructure;
 using Sorcha.Cli.Models;
 using Sorcha.Cli.Services;
 using Sorcha.Cli.Tests.Utilities;
+using Sorcha.Tenant.Models.Auth;
 
 namespace Sorcha.Cli.Tests.Services;
 

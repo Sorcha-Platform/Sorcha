@@ -7,6 +7,7 @@ using Sorcha.Cli.Models;
 using Sorcha.Cli.Services;
 using Sorcha.Cli.Tests.Utilities;
 using Xunit;
+using Sorcha.Tenant.Models.Auth;
 
 namespace Sorcha.Cli.Tests.Commands;
 

@@ -4,6 +4,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
+using Sorcha.Tenant.Models.Auth;
 
 namespace Sorcha.Tenant.Service.Endpoints;
 

@@ -104,7 +104,7 @@ public class TokenEndpointTests
 
         var result = await InvokeExchangeAsync(httpContext);
 
-        result.Should().BeOfType<Ok<TokenResponse>>();
+        result.Should().BeOfType<Ok<CredentialTokenResponse>>();
         httpContext.Response.Headers.CacheControl.ToString().Should().Be("no-store");
         httpContext.Response.Headers.Pragma.ToString().Should().Be("no-cache");
     }
@@ -164,7 +164,7 @@ public class TokenEndpointTests
     [Fact]
     public async Task TokenResponse_SerializesCorrectly()
     {
-        var response = new TokenResponse
+        var response = new CredentialTokenResponse
         {
             AccessToken = "test-token-123",
             ExpiresIn = 300,

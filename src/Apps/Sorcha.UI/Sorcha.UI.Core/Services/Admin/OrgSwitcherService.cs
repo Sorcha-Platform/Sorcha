@@ -4,6 +4,7 @@
 using System.Net.Http.Json;
 using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Authentication;
+using Sorcha.Tenant.Models.Auth;
 
 namespace Sorcha.UI.Core.Services.Admin;
 
