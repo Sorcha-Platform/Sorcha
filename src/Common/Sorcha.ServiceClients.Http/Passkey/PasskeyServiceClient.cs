@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.Serialization;
+using Sorcha.ServiceClients.Configuration;
 
 namespace Sorcha.ServiceClients.Passkey;
 
@@ -25,7 +26,7 @@ public class PasskeyServiceClient : IPasskeyServiceClient
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        var serviceAddress = configuration["ServiceClients:TenantService:Address"]
+        var serviceAddress = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Tenant)
             ?? "https+http://tenant-service";
 
         if (_httpClient.BaseAddress == null)

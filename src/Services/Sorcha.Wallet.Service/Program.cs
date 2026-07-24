@@ -11,6 +11,7 @@ using Sorcha.Wallet.Service.Services;
 using Sorcha.ServiceClients.Extensions;
 using Sorcha.ServiceDefaults.Hubs;
 using Sorcha.ServiceDefaults.Storage;
+using Sorcha.ServiceClients.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -82,7 +83,7 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Implementation.ICitize
 builder.Services.AddHttpClient("trust-service", (sp, http) =>
 {
     var config = sp.GetRequiredService<IConfiguration>();
-    var address = config["ServiceClients:TenantService:Address"]
+    var address = SorchaServiceAddresses.TryResolve(config, SorchaService.Tenant)
         ?? "https+http://tenant-service";
     http.BaseAddress = new Uri(address.TrimEnd('/') + "/");
 })

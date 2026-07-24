@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Service-address config-key CI gate. Fails when a Sorcha service's base address is read from a
+# config key literal instead of resolving through SorchaServiceAddresses.
+#
+# Reading one spelling means a deployment that sets another silently yields null, and the client
+# falls back to a hardcoded address — talking to the wrong place rather than failing loudly.
+#
+# See scripts/check-service-address-keys.ps1 and .service-address-keys-allowlist (a ratchet).
+
+name: service-address-keys-gate
+
+on:
+  pull_request:
+    paths:
+      - "src/**/*.cs"
+      - "src/**/*.razor"
+      - "scripts/check-service-address-keys.ps1"
+      - ".service-address-keys-allowlist"
+      - ".github/workflows/service-address-keys-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  service-address-keys:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run service-address key gate
+        shell: pwsh
+        run: ./scripts/check-service-address-keys.ps1

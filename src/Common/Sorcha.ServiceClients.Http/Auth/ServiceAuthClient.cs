@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.Serialization;
+using Sorcha.ServiceClients.Configuration;
 using Sorcha.Tenant.Models.Auth;
 
 namespace Sorcha.ServiceClients.Auth;
@@ -50,8 +51,7 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
         // Set base address for Tenant Service (JWT issuer)
         if (_httpClient.BaseAddress is null)
         {
-            var tenantAddress = configuration["ServiceClients:TenantService:Address"]
-                ?? configuration["TenantService:Endpoint"]
+            var tenantAddress = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Tenant)
                 ?? "http://tenant-service";
             _httpClient.BaseAddress = new Uri(tenantAddress);
             _logger.LogInformation("ServiceAuthClient targeting Tenant Service at {Address}", tenantAddress);

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Configuration;
 
 namespace Sorcha.McpServer.Tools.Admin;
 
@@ -41,17 +42,22 @@ public sealed class HealthCheckTool
         _httpClientFactory = httpClientFactory;
         _logger = logger;
 
-        // Load service endpoints from configuration
+        // Load service endpoints from configuration. Addresses resolve through
+        // SorchaServiceAddresses so this tool honours the same key spellings as the service
+        // clients it is reporting on; the local-dev port defaults stay per-service.
         _serviceEndpoints = new Dictionary<string, string>
         {
-            ["Blueprint"] = configuration["ServiceClients:BlueprintService:Address"] ?? "http://localhost:5000",
-            ["Register"] = configuration["ServiceClients:RegisterService:Address"] ?? "http://localhost:5290",
-            ["Wallet"] = configuration["ServiceClients:WalletService:Address"] ?? "http://localhost:5001",
-            ["Tenant"] = configuration["ServiceClients:TenantService:Address"] ?? "http://localhost:5110",
-            ["Validator"] = configuration["ServiceClients:ValidatorService:Address"] ?? "http://localhost:5004",
-            ["Peer"] = configuration["ServiceClients:PeerService:Address"] ?? "http://localhost:5002",
-            ["ApiGateway"] = configuration["ServiceClients:ApiGateway:Address"] ?? "http://localhost:80"
+            ["Blueprint"] = Resolve(configuration, SorchaService.Blueprint, "http://localhost:5000"),
+            ["Register"] = Resolve(configuration, SorchaService.Register, "http://localhost:5290"),
+            ["Wallet"] = Resolve(configuration, SorchaService.Wallet, "http://localhost:5001"),
+            ["Tenant"] = Resolve(configuration, SorchaService.Tenant, "http://localhost:5110"),
+            ["Validator"] = Resolve(configuration, SorchaService.Validator, "http://localhost:5004"),
+            ["Peer"] = Resolve(configuration, SorchaService.Peer, "http://localhost:5002"),
+            ["ApiGateway"] = Resolve(configuration, SorchaService.ApiGateway, "http://localhost:80")
         };
+
+        static string Resolve(IConfiguration configuration, SorchaService service, string localDevDefault) =>
+            SorchaServiceAddresses.TryResolve(configuration, service) ?? localDevDefault;
     }
 
     /// <summary>

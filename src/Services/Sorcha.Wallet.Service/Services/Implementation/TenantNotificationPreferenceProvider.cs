@@ -8,6 +8,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.Wallet.Service.Services.Interfaces;
+using Sorcha.ServiceClients.Configuration;
 
 namespace Sorcha.Wallet.Service.Services.Implementation;
 
@@ -39,7 +40,7 @@ public sealed class TenantNotificationPreferenceProvider : INotificationPreferen
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        var serviceAddress = configuration["ServiceClients:TenantService:Address"]
+        var serviceAddress = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Tenant)
             ?? "https+http://tenant-service";
 
         if (_httpClient.BaseAddress == null)
