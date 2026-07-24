@@ -13,9 +13,29 @@ namespace Sorcha.Blueprint.Service.Tests.Services;
 /// Feature 142 T058 — asserts the <c>Sorcha.Blueprint.Designer</c> meter instruments record. Uses a
 /// raw <see cref="MeterListener"/> over a real <see cref="IMeterFactory"/> obtained from a service
 /// collection (the same way the host resolves <see cref="BlueprintDesignerMetrics"/>).
-/// Single-collection so concurrent listeners don't cross over.
 /// </summary>
-[Collection("Sorcha.Blueprint.Designer metrics")]
+/// <remarks>
+/// <para>
+/// <b>The listener is scoped to this test's own meter instance, not to the meter name.</b> That
+/// distinction is what makes these tests deterministic.
+/// </para>
+/// <para>
+/// The listener previously enabled any instrument whose <c>Meter.Name</c> matched
+/// <see cref="BlueprintDesignerMetrics.MeterName"/>. But <c>RehearsalOrchestrationServiceTests</c>
+/// and <c>SandboxRegisterProviderTests</c> also construct <see cref="BlueprintDesignerMetrics"/>,
+/// and xUnit runs them in parallel with this class — the <c>[Collection]</c> attribute serialised
+/// nothing, because this was the only class in that collection. Their measurements landed in this
+/// listener, so <c>ContainSingle</c> intermittently saw two and failed. It bit
+/// <c>RecordRehearsalTerminal</c> hardest, since the orchestration tests emit exactly
+/// <c>rehearsal_run_total{outcome=Passed}</c> and <c>rehearsal_duration_seconds</c>.
+/// </para>
+/// <para>
+/// <c>IMeterFactory.Create</c> stamps the factory onto <see cref="Meter.Scope"/>, so comparing
+/// scope by reference admits only the meter this instance created. No sleeps, no retries, no
+/// dependence on the runner's parallelism settings — a delay would have widened the contamination
+/// window rather than closed it.
+/// </para>
+/// </remarks>
 public sealed class BlueprintDesignerMetricsTests : IDisposable
 {
     private readonly ServiceProvider _provider;
@@ -27,13 +47,16 @@ public sealed class BlueprintDesignerMetricsTests : IDisposable
     public BlueprintDesignerMetricsTests()
     {
         _provider = new ServiceCollection().AddMetrics().BuildServiceProvider();
-        _metrics = new BlueprintDesignerMetrics(_provider.GetRequiredService<IMeterFactory>());
+        var meterFactory = _provider.GetRequiredService<IMeterFactory>();
+        _metrics = new BlueprintDesignerMetrics(meterFactory);
 
         _listener = new MeterListener
         {
             InstrumentPublished = (instrument, listener) =>
             {
-                if (instrument.Meter.Name == BlueprintDesignerMetrics.MeterName)
+                // Identity, not name: another test class's BlueprintDesignerMetrics publishes a
+                // meter with the SAME name, and runs concurrently with this one.
+                if (ReferenceEquals(instrument.Meter.Scope, meterFactory))
                 {
                     listener.EnableMeasurementEvents(instrument);
                 }
