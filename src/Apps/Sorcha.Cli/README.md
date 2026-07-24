@@ -416,6 +416,18 @@ This is useful for:
 | `sorcha blueprint delete` | Delete a blueprint |
 | `sorcha blueprint instances` | List workflow instances for a blueprint |
 
+### Instance Commands
+
+Operator repair for workflow-instance projections (Feature 145 US4). A workflow instance is a
+deterministic projection of the sealed register; these commands verify and, if needed, rebuild that
+projection from the ledger. There is no UI equivalent. Both call service-tier `/api/internal/*`
+endpoints, so they require a service-principal token.
+
+| Command | Description |
+|---------|-------------|
+| `sorcha instance parity` | Check whether an instance's stored state matches a ledger rebuild (read-only) |
+| `sorcha instance rebuild` | Rebuild an instance projection from the ledger, overwriting the stored view |
+
 ### Credential Commands
 
 | Command | Description |
@@ -447,6 +459,20 @@ This is useful for:
 | `sorcha validator register` | Register a validator |
 | `sorcha validator deregister` | Deregister a validator |
 | `sorcha validator status` | Get validator status |
+
+### Trust Commands
+
+Trusted-list administration (Feature 181 US3). Operators import signed ETSI TS 119 612 trusted
+lists; verifying services then resolve CA anchors from the imported snapshots for the external EUDI
+trust rail. These are Tenant Service admin endpoints — sign in as an administrator; a non-admin
+token gets a 403.
+
+| Command | Description |
+|---------|-------------|
+| `sorcha trust list` | List imported trusted-list snapshots |
+| `sorcha trust get` | Show a trusted-list snapshot and its anchors |
+| `sorcha trust import` | Import a trusted-list document (by `--file` upload or `--url` fetch) |
+| `sorcha trust delete` | Delete all versions of a trusted-list snapshot |
 
 ### System Register Commands
 

@@ -140,6 +140,22 @@ public class HttpClientFactory
     }
 
     /// <summary>
+    /// Creates the trusted-list admin client (Feature 181 US3). Trust endpoints are on the Tenant
+    /// Service and require an administrator on a platform-tier token.
+    /// </summary>
+    public async Task<ITrustServiceClient> CreateTrustServiceClientAsync(string profileName)
+    {
+        var profile = await _configService.GetProfileAsync(profileName);
+        if (profile == null)
+        {
+            throw new InvalidOperationException($"Profile '{profileName}' does not exist.");
+        }
+
+        var httpClient = CreateHttpClient(profile, profile.GetTenantServiceUrl());
+        return RestService.For<ITrustServiceClient>(httpClient);
+    }
+
+    /// <summary>
     /// Creates a Participant Service client for the specified profile.
     /// Uses the Tenant Service URL since participant endpoints are on the Tenant Service.
     /// </summary>

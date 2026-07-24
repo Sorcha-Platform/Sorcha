@@ -125,6 +125,12 @@ public sealed class CliWireContractTests
         ["LinkedWalletAddress"] = "LinkedWalletAddressResponse",
         ["ParticipantIdentity"] = "ParticipantResponse",
         ["AuditLogEntry"] = "AuditEventResponse",
+
+        // Feature 181 US3 trusted-list admin. The Tenant Service suffixes its wire types "Response";
+        // the CLI drops the suffix. Pair them so the trust command's DTOs are actually checked.
+        ["TrustListSnapshotSummary"] = "TrustListSnapshotSummaryResponse",
+        ["TrustListSnapshotDetail"] = "TrustListSnapshotDetailResponse",
+        ["TrustListAnchor"] = "TrustListAnchorResponse",
     };
 
     /// <summary>
