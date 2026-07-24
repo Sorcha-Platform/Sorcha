@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Refit;
+using Sorcha.Cli.Models;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.LocalRelationship;
 
@@ -319,17 +320,10 @@ public class QueryStatsResponse
     public int TotalDockets { get; set; }
 }
 
-/// <summary>
-/// Request to propose a policy update.
-/// </summary>
-public class PolicyUpdateRequest
-{
-    public int? MinValidators { get; set; }
-    public int? MaxValidators { get; set; }
-    public int? SignatureThreshold { get; set; }
-    public string? RegistrationMode { get; set; }
-    public string? TransitionMode { get; set; }
-}
+// PolicyUpdateRequest previously had a SECOND definition here, flat and different again from the
+// one in Sorcha.Cli.Models. Two shapes for one request body inside a single assembly, neither
+// matching the server. The canonical one lives in Sorcha.Cli.Models.RegisterPolicy.cs and carries
+// the real Sorcha.Register.Models.RegisterPolicy.
 
 /// <summary>
 /// Request to verify a standalone Merkle inclusion proof.

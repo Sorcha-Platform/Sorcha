@@ -86,18 +86,8 @@ public sealed class CliWireContractTests
             "Tenant.Service (vs ParticipantResponse) — CLI-only: updatedAt, walletLinks; server-only: email, hasLinkedWallet",
         ["PeerStatistics"] =
             "Peer.Service — CLI-only: bootstrapNodes; server-only: seedNodes",
-        ["PolicyHistoryResponse"] =
-            "Register.Service — server-only: totalPages",
-        ["PolicyUpdateRequest"] =
-            "Register.Service — CLI-only: maxValidators, minValidators, registrationMode, signatureThreshold; server-only: policy, updatedBy",
-        ["PolicyUpdateResponse"] =
-            "Register.Service — CLI-only: currentVotes, proposalId, requiredVotes, status; server-only: currentVersion, message, registerId, requiresGovernanceVote",
-        ["PolicyVersionEntry"] =
-            "Register.Service — server-only: policy",
         ["PublishBlueprintRequest"] =
             "ServiceClients.Http — CLI-only: blueprintId; server-only: override",
-        ["RegisterPolicyResponse"] =
-            "Register.Service — CLI-only: maxValidators, minValidators, registrationMode, signatureThreshold, transitionMode, updatedAt, updatedBy, version; server-only: isDefault...",
         ["RegisterStatsResponse"] =
             "ServiceClients.Http — CLI-only: count; server-only: registerCount, transactionCount",
         ["RegisterSyncStatus"] =
