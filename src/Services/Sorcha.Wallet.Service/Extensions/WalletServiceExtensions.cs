@@ -25,6 +25,7 @@ using Sorcha.Wallet.Core.Repositories.Implementation;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Core.Services.Implementation;
 using Sorcha.Wallet.Core.Services.Interfaces;
+using Sorcha.ServiceClients.Configuration;
 
 namespace Sorcha.Wallet.Service.Extensions;
 
@@ -103,8 +104,7 @@ public static class WalletServiceExtensions
                 // (see ASPNETCORE_URLS in docker-compose.yml). The :80 default earlier
                 // resulted in 'Connection refused (tenant-service:80)' on real wires.
                 client.BaseAddress = new Uri(
-                    configuration["ServiceClients:TenantService:Address"]
-                    ?? configuration["ServiceClients:Tenant:BaseAddress"]
+                    SorchaServiceAddresses.TryResolve(configuration, SorchaService.Tenant)
                     ?? "http://tenant-service:8080");
             });
 

@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Helpers;
 using Sorcha.Serialization;
+using Sorcha.ServiceClients.Configuration;
 
 namespace Sorcha.ServiceClients.Inbox;
 
@@ -39,7 +40,7 @@ public sealed class PlatformInboxClient : IPlatformInboxClient
         _serviceAuth = serviceAuth ?? throw new ArgumentNullException(nameof(serviceAuth));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        var serviceAddress = configuration["ServiceClients:TenantService:Address"]
+        var serviceAddress = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Tenant)
             ?? "https+http://tenant-service";
 
         if (_httpClient.BaseAddress is null)

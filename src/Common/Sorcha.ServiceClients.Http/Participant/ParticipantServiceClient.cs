@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Sorcha.Serialization;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Helpers;
+using Sorcha.ServiceClients.Configuration;
 
 namespace Sorcha.ServiceClients.Participant;
 
@@ -30,8 +31,7 @@ public class ParticipantServiceClient : IParticipantServiceClient
         _serviceAuth = serviceAuth ?? throw new ArgumentNullException(nameof(serviceAuth));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        _baseAddress = configuration["ServiceClients:TenantService:Address"]
-            ?? configuration["Services:TenantService:BaseAddress"]
+        _baseAddress = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Tenant)
             ?? "http://tenant-service";
 
         _httpClient.BaseAddress = new Uri(_baseAddress);

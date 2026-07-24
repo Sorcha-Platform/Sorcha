@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Helpers;
+using Sorcha.ServiceClients.Configuration;
 
 namespace Sorcha.ServiceClients.Tenant;
 
@@ -29,7 +30,7 @@ public class TenantServiceClient : ITenantServiceClient
         _serviceAuth = serviceAuth ?? throw new ArgumentNullException(nameof(serviceAuth));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        _serviceAddress = configuration["ServiceClients:TenantService:Address"]
+        _serviceAddress = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Tenant)
             ?? configuration["GrpcClients:TenantService:Address"]
             ?? throw new InvalidOperationException("Tenant Service address not configured");
 

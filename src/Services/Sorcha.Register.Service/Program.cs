@@ -31,6 +31,7 @@ using Sorcha.ServiceClients.SystemWallet;
 using Sorcha.Validator.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Sorcha.Wallet.Contracts.Constants;
+using Sorcha.ServiceClients.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -194,8 +195,7 @@ builder.Services.AddHttpClient<
     Sorcha.Register.Service.Services.ITenantSubscriptionClient,
     Sorcha.Register.Service.Services.TenantSubscriptionClient>(client =>
 {
-    var tenantBase = builder.Configuration["ServiceClients:TenantService:Address"]
-        ?? builder.Configuration["TenantService:Endpoint"]
+    var tenantBase = SorchaServiceAddresses.TryResolve(builder.Configuration, SorchaService.Tenant)
         ?? "http://tenant-service";
     client.BaseAddress = new Uri(tenantBase);
 });

@@ -403,6 +403,27 @@ if (string.Equals(result.ErrorCode, "VAL_CHAIN_FORK", StringComparison.Ordinal))
 - Keep the taxonomy honest: `ValidationErrorCodes` holds blocking `VAL_*` only, `ValidationWarningCodes` non-blocking `WARN_*` only. An operator filtering logs on the prefix must not miss a blocking error. Enforced by `ValidationCodeContractTests`, which also pins each code's wire value (they are an operator-facing contract) and rejects duplicate values.
 - Enforced by `scripts/check-error-code-contract.ps1` (CI: `error-code-contract-gate`). The gate derives its guarded set *from* the two canonical files, so it cannot drift. Comments ignored; tests exempt (asserting the literal is what pins it). `.error-code-contract-allowlist` is **empty** and may only shrink.
 
+### 17. Service addresses resolve through one cascade
+
+A Sorcha service's base address is resolved via **`SorchaServiceAddresses`** (`Sorcha.ServiceClients.Configuration`), never by reading a config key literal at the call site.
+
+```csharp
+using Sorcha.ServiceClients.Configuration;
+
+// DO — one cascade, every accepted spelling, your own default
+var address = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Tenant)
+              ?? "https+http://tenant-service";
+
+// DON'T — a deployment setting a different spelling silently yields null
+var address = configuration["ServiceClients:TenantService:Address"] ?? "...";
+```
+
+- **Why**: an audit found **19 distinct key spellings addressing 8 services**. The Tenant Service alone had four (`ServiceClients:TenantService:Address`, `ServiceClients:Tenant:BaseAddress`, `Services:TenantService:BaseAddress`, `Services:Tenant:Url`) and **six call sites each hand-rolled a different fallback chain over them** — so which key a deployment had to set depended on which client resolved it. Nothing fails loudly: the client gets null and falls back to a hardcoded address, quietly talking to the wrong place.
+- **Every historical spelling still resolves.** Deployments in the wild set `ServiceClients__{X}Service__Address`; dropping a spelling would silently unbind a running node. The resolver ends the drift, it does not break deployments. New config should use `SorchaServiceAddresses.CanonicalKey(...)`.
+- **The resolver supplies no default, deliberately.** Existing call-site defaults are not interchangeable — `http://tenant-service`, the Aspire `https+http://` discovery scheme, an explicit `:8080`, or throwing. Unifying them changes runtime behaviour differently under Aspire and compose; that is a separate decision, not one to settle silently. Keep your own `?? default`.
+- **The API Gateway's `Services:{X}:Url` section is out of scope by design** — its own namespace for the aggregation views, what compose sets for that container, and already accepted by the resolver as a fallback spelling.
+- Enforced by `scripts/check-service-address-keys.ps1` (CI: `service-address-keys-gate`). `.service-address-keys-allowlist` is a **ratchet seeded with 19 files** that read the *canonical* key with their own default — consistent, not drifted, so lower priority. It may only shrink.
+
 ---
 
 ## Key Documentation

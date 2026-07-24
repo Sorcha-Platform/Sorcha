@@ -5,6 +5,7 @@ using Sorcha.AtomicCache.Extensions;
 using Sorcha.Haip.Service.Endpoints;
 using Sorcha.Haip.Service.Services;
 using Sorcha.ServiceClients.Extensions;
+using Sorcha.ServiceClients.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -90,8 +91,7 @@ builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResol
 builder.Services.AddHttpClient(Sorcha.ServiceClients.Trust.HttpTrustListProvider.HttpClientName, client =>
 {
     client.BaseAddress = new Uri(
-        builder.Configuration["ServiceClients:TenantService:Address"]
-        ?? builder.Configuration["ServiceClients:Tenant:BaseAddress"]
+        SorchaServiceAddresses.TryResolve(builder.Configuration, SorchaService.Tenant)
         ?? "http://tenant-service:8080");
 });
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustResolverRegistry>(sp =>
@@ -111,7 +111,7 @@ builder.Services.AddScoped<HaipPresentationVerifier>(sp => new HaipPresentationV
 // Wallet Service wiring). HAIP resolves the issuing org's leaf+root from the Tenant Service.
 builder.Services.AddHttpClient("trust-service", (sp, http) =>
 {
-    var address = builder.Configuration["ServiceClients:TenantService:Address"] ?? "https+http://tenant-service";
+    var address = SorchaServiceAddresses.TryResolve(builder.Configuration, SorchaService.Tenant) ?? "https+http://tenant-service";
     http.BaseAddress = new Uri(address.TrimEnd('/') + "/");
 });
 builder.Services.AddSingleton<Sorcha.ServiceClients.Trust.IOrgCertChainProvider>(sp =>
@@ -179,7 +179,7 @@ builder.Services.AddHttpClient<
 // client points at the Tenant Service (was the Wallet by-address endpoint pre-149).
 builder.Services.AddHttpClient("PublicWalletDid", client =>
 {
-    var tenantAddress = builder.Configuration["ServiceClients:TenantService:Address"]
+    var tenantAddress = SorchaServiceAddresses.TryResolve(builder.Configuration, SorchaService.Tenant)
         ?? "https+http://tenant-service";
     client.BaseAddress = new Uri(tenantAddress.TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromSeconds(5);

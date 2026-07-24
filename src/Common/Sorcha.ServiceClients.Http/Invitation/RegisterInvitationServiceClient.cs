@@ -8,6 +8,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.Serialization;
+using Sorcha.ServiceClients.Configuration;
 
 namespace Sorcha.ServiceClients.Invitation;
 
@@ -37,8 +38,7 @@ public sealed class RegisterInvitationServiceClient : IRegisterInvitationService
 
         if (_httpClient.BaseAddress is null)
         {
-            var baseAddress = configuration["ServiceClients:TenantService:Address"]
-                ?? configuration["Services:TenantService:BaseAddress"]
+            var baseAddress = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Tenant)
                 ?? throw new InvalidOperationException(
                     "No ServiceClients:TenantService:Address configured for RegisterInvitationServiceClient.");
             _httpClient.BaseAddress = new Uri(baseAddress.TrimEnd('/') + "/");

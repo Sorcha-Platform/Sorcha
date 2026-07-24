@@ -24,6 +24,7 @@ using Sorcha.Cryptography.Core;
 using Sorcha.ServiceClients.Extensions;
 using Sorcha.Register.Storage.Redis;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
+using Sorcha.ServiceClients.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -369,8 +370,7 @@ Sorcha.ServiceClients.Http.Extensions.HttpServiceCollectionExtensions
 builder.Services.AddHttpClient("PublishedOrgDid", client =>
 {
     client.BaseAddress = new Uri(
-        builder.Configuration["ServiceClients:TenantService:Address"]
-        ?? builder.Configuration["ServiceClients:Tenant:BaseAddress"]
+        SorchaServiceAddresses.TryResolve(builder.Configuration, SorchaService.Tenant)
         ?? "http://tenant-service:8080");
 });
 builder.Services.AddScoped<Sorcha.ServiceClients.Did.SorchaDidResolver>(sp =>
@@ -421,8 +421,7 @@ builder.Services.AddHttpClient<Sorcha.ServiceClients.OrgDidDocument.IOrgDidDocum
     Sorcha.ServiceClients.OrgDidDocument.OrgDidDocumentClient>(client =>
     {
         client.BaseAddress = new Uri(
-            builder.Configuration["ServiceClients:TenantService:Address"]
-            ?? builder.Configuration["ServiceClients:Tenant:BaseAddress"]
+            SorchaServiceAddresses.TryResolve(builder.Configuration, SorchaService.Tenant)
             ?? "http://tenant-service:8080");
     });
 
@@ -431,8 +430,7 @@ builder.Services.AddHttpClient<Sorcha.ServiceClients.OrgDidDocument.IOrgDidDocum
 builder.Services.AddHttpClient(Sorcha.ServiceClients.Trust.HttpTrustListProvider.HttpClientName, client =>
 {
     client.BaseAddress = new Uri(
-        builder.Configuration["ServiceClients:TenantService:Address"]
-        ?? builder.Configuration["ServiceClients:Tenant:BaseAddress"]
+        SorchaServiceAddresses.TryResolve(builder.Configuration, SorchaService.Tenant)
         ?? "http://tenant-service:8080");
 });
 
