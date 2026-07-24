@@ -7,6 +7,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceClients.Configuration;
 using Sorcha.ServiceClients.Helpers;
 
 namespace Sorcha.ServiceClients.Validator;
@@ -31,7 +32,7 @@ public class ValidatorServiceClient : IValidatorServiceClient
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
 
-        _serviceAddress = configuration["ServiceClients:ValidatorService:Address"]
+        _serviceAddress = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Validator)
             ?? throw new InvalidOperationException("Validator Service address not configured");
 
         _httpClient.BaseAddress = new Uri(_serviceAddress);

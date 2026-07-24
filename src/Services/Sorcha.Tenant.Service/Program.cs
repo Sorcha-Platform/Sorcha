@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Sorcha.AddressLookup;
 using Sorcha.AtomicCache.Extensions;
+using Sorcha.ServiceClients.Configuration;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Endpoints;
 using Sorcha.Tenant.Service.Hubs;
@@ -178,7 +179,7 @@ builder.Services.AddHttpClient<Sorcha.Tenant.Service.Services.IPersonaCryptoClie
     // Wallet Service base URL — resolved from configuration via Aspire service
     // discovery. In Docker Compose this is "http://wallet"; in Aspire/dev it
     // resolves via the service discovery address.
-    var walletBase = builder.Configuration["ServiceClients:WalletService:Address"]
+    var walletBase = SorchaServiceAddresses.TryResolve(builder.Configuration, SorchaService.Wallet)
         ?? builder.Configuration["Services:wallet:http:0"]
         ?? "http://wallet";
     client.BaseAddress = new Uri(walletBase);

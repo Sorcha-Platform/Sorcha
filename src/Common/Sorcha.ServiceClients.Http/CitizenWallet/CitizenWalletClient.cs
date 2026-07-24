@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.CitizenWallet.Abstractions.Models;
 using Sorcha.Serialization;
+using Sorcha.ServiceClients.Configuration;
 
 namespace Sorcha.ServiceClients.CitizenWallet;
 
@@ -43,7 +44,7 @@ public sealed class CitizenWalletClient : ICitizenWalletClient
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        var serviceAddress = configuration["ServiceClients:WalletService:Address"]
+        var serviceAddress = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Wallet)
             ?? "https+http://wallet-service";
 
         if (_httpClient.BaseAddress is null)

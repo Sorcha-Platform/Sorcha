@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Configuration;
 
 namespace Sorcha.McpServer.Tools.Admin;
 
@@ -42,7 +43,7 @@ public sealed class ValidatorStatusTool
         _httpClientFactory = httpClientFactory;
         _logger = logger;
 
-        _validatorServiceEndpoint = configuration["ServiceClients:ValidatorService:Address"] ?? "http://localhost:5004";
+        _validatorServiceEndpoint = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Validator) ?? "http://localhost:5004";
     }
 
     /// <summary>

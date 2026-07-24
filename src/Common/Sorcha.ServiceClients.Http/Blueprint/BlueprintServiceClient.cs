@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Sorcha.Serialization;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Blueprint.Models;
+using Sorcha.ServiceClients.Configuration;
 using Sorcha.ServiceClients.Helpers;
 
 namespace Sorcha.ServiceClients.Blueprint;
@@ -38,7 +39,7 @@ public class BlueprintServiceClient : IBlueprintServiceClient
         _serviceAuth = serviceAuth ?? throw new ArgumentNullException(nameof(serviceAuth));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        _serviceAddress = configuration["ServiceClients:BlueprintService:Address"]
+        _serviceAddress = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Blueprint)
             ?? configuration["GrpcClients:BlueprintService:Address"]
             ?? throw new InvalidOperationException("Blueprint Service address not configured");
 

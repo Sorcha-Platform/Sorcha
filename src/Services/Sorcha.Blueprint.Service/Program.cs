@@ -106,7 +106,7 @@ builder.Services.Configure<Sorcha.Blueprint.Service.Models.RecoveryOptions>(
     builder.Configuration.GetSection(Sorcha.Blueprint.Service.Models.RecoveryOptions.SectionName));
 builder.Services.AddHttpClient("RegisterService", client =>
 {
-    var address = builder.Configuration["ServiceClients:RegisterService:Address"] ?? "http://register-service:5290";
+    var address = SorchaServiceAddresses.TryResolve(builder.Configuration, SorchaService.Register) ?? "http://register-service:5290";
     client.BaseAddress = new Uri(address);
 });
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.BlueprintRecoveryService>();

@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Configuration;
 
 namespace Sorcha.McpServer.Tools.Participant;
 
@@ -50,7 +51,7 @@ public sealed class WalletSignTool
         _httpClientFactory = httpClientFactory;
         _logger = logger;
 
-        _walletServiceEndpoint = configuration["ServiceClients:WalletService:Address"] ?? "http://localhost:5001";
+        _walletServiceEndpoint = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Wallet) ?? "http://localhost:5001";
     }
 
     /// <summary>

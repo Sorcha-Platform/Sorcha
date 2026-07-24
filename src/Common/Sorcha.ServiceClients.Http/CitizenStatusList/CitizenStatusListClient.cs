@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceClients.Configuration;
 using Sorcha.ServiceClients.Helpers;
 
 namespace Sorcha.ServiceClients.CitizenStatusList;
@@ -38,7 +39,7 @@ public sealed class CitizenStatusListClient : ICitizenStatusListClient
         _serviceAuth = serviceAuth ?? throw new ArgumentNullException(nameof(serviceAuth));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        var serviceAddress = configuration["ServiceClients:WalletService:Address"]
+        var serviceAddress = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Wallet)
             ?? "https+http://wallet-service";
 
         if (_httpClient.BaseAddress is null)

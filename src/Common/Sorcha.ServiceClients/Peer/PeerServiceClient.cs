@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.Peer.Service.Protos;
 using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceClients.Configuration;
 using Sorcha.ServiceClients.Helpers;
 
 namespace Sorcha.ServiceClients.Peer;
@@ -37,7 +38,7 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _serviceAuth = serviceAuth;
 
-        _serviceAddress = configuration["ServiceClients:PeerService:Address"]
+        _serviceAddress = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Peer)
             ?? configuration["GrpcClients:PeerService:Address"]
             ?? "";
 

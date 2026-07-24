@@ -154,7 +154,7 @@ builder.Services.AddServiceClients(builder.Configuration);
 
 builder.Services.AddHttpClient<Sorcha.Haip.Service.Services.PresentationCallbackRelay>(client =>
 {
-    var blueprintAddress = builder.Configuration["ServiceClients:BlueprintService:Address"]
+    var blueprintAddress = SorchaServiceAddresses.TryResolve(builder.Configuration, SorchaService.Blueprint)
         ?? "http://blueprint-service:8080";
     client.BaseAddress = new Uri(blueprintAddress);
     client.Timeout = TimeSpan.FromSeconds(15);
@@ -167,7 +167,7 @@ builder.Services.AddHttpClient<
     Sorcha.ServiceClients.IssuanceKey.IIssuanceKeyClient,
     Sorcha.ServiceClients.IssuanceKey.IssuanceKeyClient>(client =>
 {
-    var walletAddress = builder.Configuration["ServiceClients:WalletService:Address"]
+    var walletAddress = SorchaServiceAddresses.TryResolve(builder.Configuration, SorchaService.Wallet)
         ?? "http://wallet-service:8080";
     client.BaseAddress = new Uri(walletAddress);
     client.Timeout = TimeSpan.FromSeconds(10);
