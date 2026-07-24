@@ -299,3 +299,14 @@ _screenshots/
 
 # Storyboard WIP (screenshots + notes) — local only, never commit
 walkthroughs/_storyboards/
+
+# Generated XML documentation.
+# GenerateDocumentationFile is on for src/Common, src/Core and src/Services, so the compiler emits
+# <Project>.xml — normally under bin/, which is ignored above. Sorcha.Blueprint.Engine overrode
+# <DocumentationFile> with a RELATIVE path, which put its doc beside the csproj instead; it was
+# committed three separate times and dirtied the tree on every build. That override is gone, and
+# this is the backstop against another project repeating it. A genuinely source-controlled XML in
+# these trees should be added with `git add -f`.
+src/Common/**/*.xml
+src/Core/**/*.xml
+src/Services/**/*.xml
