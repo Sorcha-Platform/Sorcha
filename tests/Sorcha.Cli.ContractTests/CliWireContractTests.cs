@@ -53,6 +53,12 @@ public sealed class CliWireContractTests
             + "object — not the Wallet Service's VerificationResult the name collides with. The CLI "
             + "type now matches that anonymous shape (isValid/checks/errors); there is no server type "
             + "to pair against, so this is not a wire-contract collision.",
+        ["RegisterSyncStatus"] =
+            "The CLI's /health/sync response models the Register Service's RegisterSyncStatus, which "
+            + "is a PRIVATE record inside RecoveryHealthEndpoints and therefore invisible to this "
+            + "assembly. The CLI type matches it field-for-field. The public type the harness would "
+            + "otherwise pair against lives in Peer.Service and is a different surface entirely — a "
+            + "name collision, not a shared contract.",
         ["LoginRequest"] =
             "Different concept, same name. The CLI's is the input to an OAuth2 password-grant, sent "
             + "form-encoded to the token endpoint (username/password/client_id/scope). The Tenant "
@@ -80,8 +86,6 @@ public sealed class CliWireContractTests
     /// </remarks>
     private static readonly Dictionary<string, string> KnownMismatch = new(StringComparer.Ordinal)
     {
-        ["AvailableRegisterInfo"] =
-            "Peer.Service — server-only: description, name",
         ["InitiateWalletLinkRequest"] =
             "Tenant.Service — server-only: algorithm",
         ["IssueCredentialRequest"] =
@@ -90,12 +94,8 @@ public sealed class CliWireContractTests
             "Tenant.Service (vs LinkedWalletAddressResponse) — CLI-only: verifiedAt; server-only: algorithm, linkedAt, revokedAt",
         ["ParticipantIdentity"] =
             "Tenant.Service (vs ParticipantResponse) — CLI-only: updatedAt, walletLinks; server-only: email, hasLinkedWallet",
-        ["PeerStatistics"] =
-            "Peer.Service — CLI-only: bootstrapNodes; server-only: seedNodes",
         ["PublishBlueprintRequest"] =
             "ServiceClients.Http — CLI-only: blueprintId; server-only: override",
-        ["RegisterSyncStatus"] =
-            "Peer.Service — CLI-only: currentDocket, docketsProcessed, isStale, lastError, progressPercent, status, targetDocket; server-only: canServeFullReplica, lastSyncAt,...",
         ["SchemaSector"] =
             "Blueprint.Service — CLI-only: name, schemaCount, status; server-only: displayName, icon",
         ["WalletLinkChallengeResponse"] =
