@@ -1,22 +1,39 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-namespace Sorcha.Wallet.Core.Constants;
+namespace Sorcha.Wallet.Contracts.Constants;
 
 /// <summary>
 /// Predefined Sorcha system derivation paths for specific operations
 /// </summary>
 /// <remarks>
+/// <para>
 /// These constants define standard BIP44 paths for common Sorcha operations.
 /// Using predefined paths ensures consistency across the system and allows
 /// for controlled key derivation for specific purposes.
-///
+/// </para>
+/// <para>
 /// Path format: m/44'/0'/0'/0/{index}
 /// - 44' = BIP44 purpose (hardened)
 /// - 0' = Coin type (0 for Bitcoin/generic, hardened)
 /// - 0' = Account 0 (hardened)
 /// - 0 = External chain (receive addresses)
 /// - {index} = Address index for specific Sorcha operations
+/// </para>
+/// <para>
+/// <b>This is the single canonical home for every Sorcha derivation context string.</b>
+/// It lives in <c>Sorcha.Wallet.Contracts</c> — a zero-dependency leaf assembly — precisely so
+/// that every consumer can reference it: the services, the CLI, the Blazor UI, and the WASM
+/// wallet PWA alike. It deliberately does <i>not</i> live in <c>Sorcha.Wallet.Portable</c>, whose
+/// <c>Sorcha.Cryptography</c> dependency P/Invokes libsodium and cannot load under browser-wasm.
+/// </para>
+/// <para>
+/// <b>Never hard-code a <c>"sorcha:*"</c> context literal at a call site.</b> A typo does not throw —
+/// it derives a <i>different but perfectly valid</i> key, so the failure surfaces far away and
+/// silently: a mistyped <see cref="DocketSigning"/> yields a validator whose signing key no longer
+/// matches its own roster entry, and dockets simply stop sealing. The
+/// <c>scripts/check-derivation-contexts.ps1</c> CI gate enforces this.
+/// </para>
 /// </remarks>
 public static class SorchaDerivationPaths
 {

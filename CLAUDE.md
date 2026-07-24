@@ -365,6 +365,25 @@ Full reference: the **`jwt` skill** ("Tiered audiences + issuer hardening"). Met
 - Publish workflows **derive** the version (`dotnet pack`/`build` reads the env in CI) — do **not** reintroduce "bump `<Version>` + commit" steps. Docker images are tagged `:2.<run>.<attempt>`.
 - A **Major** bump is a deliberate edit to `<SorchaMajor>` in the root `Directory.Build.props`.
 
+### 15. Derivation contexts have exactly one home
+
+Every `"sorcha:*"` key-derivation context lives in **`Sorcha.Wallet.Contracts.Constants.SorchaDerivationPaths`** (`src/Common/Sorcha.Wallet.Contracts/Constants/SorchaDerivationPaths.cs`). That project is a **zero-dependency leaf**, so every consumer can reference it — services, CLI, Blazor UI, and the WASM wallet PWA alike.
+
+```csharp
+using Sorcha.Wallet.Contracts.Constants;
+
+// DO
+derivationPath: SorchaDerivationPaths.DocketSigning,
+
+// DON'T — no compiler or runtime check will ever catch a typo here
+derivationPath: "sorcha:docket-signing",
+```
+
+- **Never hard-code a context literal, and never re-declare one as a local `private const`.** A mistyped context **does not throw** — it derives a *different but perfectly valid* key. The damage surfaces far away and silently: a wrong `sorcha:docket-signing` gives the validator a signing key that no longer matches its own roster entry, `RegisterMonitoringBootstrap` never enrols the register, and dockets simply stop sealing.
+- The constants deliberately do **not** live in `Sorcha.Wallet.Portable` — its `Sorcha.Cryptography` dependency P/Invokes libsodium and cannot load under browser-wasm. That was the original reason services hand-copied the literals and the PWA got a hand-mirrored second constants class; both are gone.
+- Adding a context means adding **both** `Foo` and `FooPath`, plus a `ResolvePath` arm. Reflection tests in `Sorcha.Wallet.Contracts.Tests` enforce all three, and that no two contexts share a BIP44 slot.
+- Enforced by `scripts/check-derivation-contexts.ps1` (CI: `derivation-contexts-gate`). The gate reads the context list *from* the canonical file, so it cannot itself drift. Comments are ignored — illustrative prose in XML docs is fine. **Tests are out of scope**: an assertion like `DocketSigning.Should().Be("sorcha:docket-signing")` is what pins the wire value. `.derivation-contexts-allowlist` is currently **empty** and may only shrink.
+
 ---
 
 ## Key Documentation

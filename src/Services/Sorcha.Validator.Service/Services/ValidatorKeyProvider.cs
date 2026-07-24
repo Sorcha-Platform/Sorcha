@@ -4,6 +4,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Wallet;
+using Sorcha.Wallet.Contracts.Constants;
 
 namespace Sorcha.Validator.Service.Services;
 
@@ -82,7 +83,7 @@ public sealed class ValidatorKeyProvider : IValidatorKeyProvider
                 var result = await walletClient.SignTransactionAsync(
                     walletAddress,
                     SentinelHash,
-                    derivationPath: "sorcha:docket-signing",
+                    derivationPath: SorchaDerivationPaths.DocketSigning,
                     isPreHashed: true,
                     cancellationToken);
 

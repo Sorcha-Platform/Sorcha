@@ -72,7 +72,7 @@ The implementation is in `src/Common/Sorcha.Cryptography/SdJwt/` and conforms to
 
 ## Wallets and Key Derivation
 
-Sorcha wallets are HD wallets in the BIP32/39/44 sense. A user's seed is held client-side. Service-internal keys derive deterministically from a service-internal seed under a Sorcha-specific BIP44 purpose namespace. Derivation slots are listed in `src/Core/Sorcha.Wallet.Portable/Constants/SorchaDerivationPaths.cs` — for example, slot 108 (`sorcha:citizen-holder`) anchors the citizen wallet PWA's holder key, and slot 109 (`sorcha:citizen-status-signing`) signs status list entries.
+Sorcha wallets are HD wallets in the BIP32/39/44 sense. A user's seed is held client-side. Service-internal keys derive deterministically from a service-internal seed under a Sorcha-specific BIP44 purpose namespace. Derivation slots are listed in `src/Common/Sorcha.Wallet.Contracts/Constants/SorchaDerivationPaths.cs` — for example, slot 108 (`sorcha:citizen-holder`) anchors the citizen wallet PWA's holder key, and slot 109 (`sorcha:citizen-status-signing`) signs status list entries.
 
 The cryptographic implementation lives in `src/Common/Sorcha.Cryptography/`. The platform supports ED25519, P-256, RSA-4096, ML-DSA (FIPS 204), and ML-KEM (FIPS 203). Algorithm selection is per-context — see the per-feature notes in `.claude/skills/sorcha-architecture/SKILL.md`.
 

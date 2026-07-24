@@ -14,6 +14,12 @@
   <ItemGroup>
     <!-- Internal Dependencies -->
     <ProjectReference Include="..\..\Common\Sorcha.Cryptography\Sorcha.Cryptography.csproj" />
+    <!--
+      Sorcha.Wallet.Contracts is the canonical home for SorchaDerivationPaths. It is a
+      zero-dependency leaf, so referencing it here costs nothing and lets every downstream
+      consumer of Wallet.Portable resolve the derivation contexts transitively.
+    -->
+    <ProjectReference Include="..\..\Common\Sorcha.Wallet.Contracts\Sorcha.Wallet.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

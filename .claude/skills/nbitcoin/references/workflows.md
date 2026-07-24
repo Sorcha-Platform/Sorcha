@@ -209,7 +209,7 @@ if (unusedCount >= 20)
 ### Sorcha System Paths
 
 ```csharp
-// src/Core/Sorcha.Wallet.Core/Constants/SorchaDerivationPaths.cs
+// src/Common/Sorcha.Wallet.Contracts/Constants/SorchaDerivationPaths.cs
 
 // Defined system paths
 public const string RegisterAttestation = "sorcha:register-attestation";   // → m/44'/0'/0'/0/100

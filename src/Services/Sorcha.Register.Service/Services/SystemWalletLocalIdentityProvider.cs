@@ -4,6 +4,7 @@
 using Microsoft.Extensions.Options;
 using Sorcha.Register.Core.LocalRelationship;
 using Sorcha.ServiceClients.SystemWallet;
+using Sorcha.Wallet.Contracts.Constants;
 
 namespace Sorcha.Register.Service.Services;
 
@@ -37,9 +38,6 @@ namespace Sorcha.Register.Service.Services;
 /// </remarks>
 public sealed class SystemWalletLocalIdentityProvider : ILocalIdentityProvider
 {
-    /// <summary>The derivation context whose public key appears on a register's validator roster.</summary>
-    private const string DocketSigningPath = "sorcha:docket-signing";
-
     /// <summary>
     /// A zeroed hash. We sign it only to learn the derived public key — the signature is discarded.
     /// (Same trick as <c>RegisterCreationOrchestrator</c>; both want a "derive public key" call the
@@ -105,7 +103,7 @@ public sealed class SystemWalletLocalIdentityProvider : ILocalIdentityProvider
                     registerId: "local-identity",
                     txId: "local-identity-key-derivation",
                     payloadHash: ZeroHash,
-                    derivationPath: DocketSigningPath,
+                    derivationPath: SorchaDerivationPaths.DocketSigning,
                     transactionType: "ValidatorKeyDerivation",
                     ct).ConfigureAwait(false);
 

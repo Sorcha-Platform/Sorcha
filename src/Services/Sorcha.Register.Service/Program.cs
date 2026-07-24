@@ -30,6 +30,7 @@ using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.SystemWallet;
 using Sorcha.Validator.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Sorcha.Wallet.Contracts.Constants;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -645,7 +646,7 @@ registersGroup.MapPost("/{registerId}/disable-dev-mode", async (
         registerId: registerId,
         txId: txId,
         payloadHash: payloadHash,
-        derivationPath: "sorcha:register-control",
+        derivationPath: SorchaDerivationPaths.RegisterControl,
         transactionType: "CryptoPolicyUpdate",
         cancellationToken: ct);
     tx.Signature = Convert.ToBase64String(signResult.Signature);
@@ -2001,7 +2002,7 @@ app.MapPost("/api/registers/{registerId}/blueprints/publish", async (
         registerId: registerId,
         txId: txId,
         payloadHash: payloadHashHex,
-        derivationPath: "sorcha:register-control",
+        derivationPath: SorchaDerivationPaths.RegisterControl,
         transactionType: "BlueprintPublish");
 
     var systemSignature = new Sorcha.ServiceClients.Validator.SignatureInfo
@@ -2408,7 +2409,7 @@ governanceGroup.MapPost("/propose", async (
         registerId: registerId,
         txId: txId,
         payloadHash: payloadHashHex,
-        derivationPath: "sorcha:register-control",
+        derivationPath: SorchaDerivationPaths.RegisterControl,
         transactionType: "Control");
 
     var systemSignature = new Sorcha.ServiceClients.Validator.SignatureInfo
@@ -2649,7 +2650,7 @@ governanceGroup.MapPost("/crypto-policy", async (
         registerId: registerId,
         txId: txId,
         payloadHash: payloadHash,
-        derivationPath: "sorcha:register-control",
+        derivationPath: SorchaDerivationPaths.RegisterControl,
         transactionType: "CryptoPolicyUpdate",
         cancellationToken: ct);
     tx.Signature = Convert.ToBase64String(signResult.Signature);
