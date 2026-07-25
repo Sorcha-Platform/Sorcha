@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 using System.CommandLine;
 using System.CommandLine.Parsing;
@@ -18,7 +18,7 @@ namespace Sorcha.Cli.Commands;
 public class ConfigCommand : BaseCommand
 {
     public ConfigCommand(IConfigurationService configService, IAuthenticationService authService)
-        : base("config", "Manage CLI configuration and profiles\n\nExamples:\n  sorcha config list\n  sorcha config init --profile prod --url https://sorcha.example.com\n  sorcha config view\n  sorcha config validate\n  sorcha config export --output config.json")
+        : base("config", "Manage CLI configuration and profiles\n\nExamples:\n  sorcha config list\n  sorcha config init --profile prod --service-url https://sorcha.example.com\n  sorcha config view\n  sorcha config validate\n  sorcha config export --output config.json")
     {
         Subcommands.Add(new ConfigInitCommand());
         Subcommands.Add(new ProfileListCommand(configService));

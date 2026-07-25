@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.CommandLine;
@@ -20,7 +20,7 @@ public class QueryCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("query", "Query transactions across registers\n\nExamples:\n  sorcha query wallet --address <wallet-addr>\n  sorcha query sender --address <wallet-addr>\n  sorcha query odata --query \"$filter=Status eq 'Confirmed'\"")
+        : base("query", "Query transactions across registers\n\nExamples:\n  sorcha query wallet --address <wallet-addr>\n  sorcha query sender --address <wallet-addr>\n  sorcha query odata --resource Transactions --filter \"Status eq 'Confirmed'\"")
     {
         Subcommands.Add(new QueryWalletCommand(clientFactory, authService, configService));
         Subcommands.Add(new QuerySenderCommand(clientFactory, authService, configService));

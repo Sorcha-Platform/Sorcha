@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.CommandLine;
@@ -21,7 +21,7 @@ public class CredentialCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("credential", "Manage verifiable credentials\n\nExamples:\n  sorcha credential list\n  sorcha credential issue --type <type> --subject <did>\n  sorcha credential verify --id <credential-id>")
+        : base("credential", "Manage verifiable credentials\n\nExamples:\n  sorcha credential list\n  sorcha credential issue --type <type> --recipient-wallet <wallet-addr>\n  sorcha credential verify --id <credential-id>")
     {
         Subcommands.Add(new CredentialListCommand(clientFactory, authService, configService));
         Subcommands.Add(new CredentialGetCommand(clientFactory, authService, configService));

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.CommandLine;
@@ -20,7 +20,7 @@ public class SchemaCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("schema", "Schema management operations\n\nExamples:\n  sorcha schema providers list\n  sorcha schema providers refresh --id <provider-id>")
+        : base("schema", "Schema management operations\n\nExamples:\n  sorcha schema providers list\n  sorcha schema providers refresh --name <provider-name>")
     {
         Subcommands.Add(new SchemaProvidersCommand(clientFactory, authService, configService));
     }

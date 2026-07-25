@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.CommandLine;
@@ -24,7 +24,7 @@ public class RegisterCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("register", "Manage registers (distributed ledgers)\n\nExamples:\n  sorcha register list\n  sorcha register get --id <register-id>\n  sorcha register create --name \"My Register\" --blueprint-id <id>\n  sorcha register stats --id <register-id>")
+        : base("register", "Manage registers (distributed ledgers)\n\nExamples:\n  sorcha register list\n  sorcha register get --id <register-id>\n  sorcha register create --name \"My Register\" --owner-wallet <wallet-addr>\n  sorcha register stats")
     {
         Subcommands.Add(new RegisterListCommand(clientFactory, authService, configService));
         Subcommands.Add(new RegisterGetCommand(clientFactory, authService, configService));
