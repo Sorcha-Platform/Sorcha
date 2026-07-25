@@ -46,27 +46,30 @@
             @foreach (var entry in _entries)
             {
                 var isUnread = entry.ReadAt is null;
-                var isActionable = ActivityClassification.IsActionable(entry.Category, entry.Severity);
                 <MudListItem T="InboxEntryDto"
                              Style="@(isUnread ? "background-color: rgba(79,70,229,0.06);" : "")"
                              data-testid="@($"activity-entry-{entry.Id}")">
                     <div class="d-flex flex-column gap-1" @onclick="() => HandleEntryClickAsync(entry)"
                          style="@(!string.IsNullOrWhiteSpace(entry.DetailHref) ? "cursor:pointer;" : "")">
                         <div class="d-flex align-center gap-2">
-                            <MudIcon Icon="@IconForCategory(entry.Category)"
+                            @* Issue #1273: the glyph now honours the entry's own iconKey (e.g.
+                               "workflow.rejected") and only falls back to a category glyph. *@
+                            <MudIcon Icon="@IconFor(entry.IconKey, entry.Category)"
                                      Color="@SeverityColor(entry.Severity)"
-                                     Size="Size.Small" />
+                                     Size="Size.Small"
+                                     data-testid="@($"activity-icon-{entry.Id}")" />
                             <MudText Typo="Typo.body2">
                                 <strong>@entry.Title</strong>
                             </MudText>
-                            @if (isActionable)
-                            {
-                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled">Actionable</MudChip>
-                            }
-                            else
-                            {
-                                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Filled">Informational</MudChip>
-                            }
+                            @* Issue #1273: the chip used to be a bare Actionable/Informational
+                               binary, so a warning-severity rejection read exactly like
+                               "Profile updated". It now names the severity when that is elevated. *@
+                            <MudChip T="string" Size="Size.Small"
+                                     Color="@ChipColor(entry.Category, entry.Severity)"
+                                     Variant="Variant.Filled"
+                                     data-testid="@($"activity-chip-{entry.Id}")">
+                                @ChipLabel(entry.Category, entry.Severity)
+                            </MudChip>
                             @if (isUnread)
                             {
                                 <MudIcon Icon="@Icons.Material.Filled.Circle"
@@ -203,24 +206,78 @@
         }
     }
 
-    private static string IconForCategory(string category) => category switch
+    /// <summary>
+    /// Resolves the row glyph: the entry's own <c>iconKey</c> first, then its category.
+    /// </summary>
+    /// <remarks>
+    /// Issue #1273: <c>iconKey</c> was ignored entirely, and the category switch was case-sensitive
+    /// PascalCase against a lower-case wire value — so EVERY row fell through to the generic bell,
+    /// which is exactly what the citizen reported seeing on all five entries.
+    /// </remarks>
+    internal static string IconFor(string? iconKey, string? category)
     {
-        "Action" => Icons.Material.Filled.AssignmentTurnedIn,
-        "Credential" => Icons.Material.Filled.VerifiedUser,
-        "Membership" => Icons.Material.Filled.GroupAdd,
-        "Security" => Icons.Material.Filled.Security,
-        "System" => Icons.Material.Filled.Campaign,
-        "Workflow" => Icons.Material.Filled.AccountTree,
+        var key = ActivityClassification.Normalise(iconKey);
+        var byKey = key switch
+        {
+            "workflowrejected" => Icons.Material.Filled.Cancel,
+            "workflowapproved" => Icons.Material.Filled.CheckCircle,
+            "workflowcompleted" => Icons.Material.Filled.TaskAlt,
+            "credentialissued" or "credentialreceived" => Icons.Material.Filled.VerifiedUser,
+            "credentialrevoked" => Icons.Material.Filled.GppBad,
+            "securityalert" => Icons.Material.Filled.Shield,
+            "devicepaired" or "deviceenrolled" => Icons.Material.Filled.PhonelinkRing,
+            "devicerevoked" => Icons.Material.Filled.PhonelinkErase,
+            _ => null,
+        };
+
+        return byKey ?? IconForCategory(category);
+    }
+
+    private static string IconForCategory(string? category) => ActivityClassification.Normalise(category) switch
+    {
+        "action" => Icons.Material.Filled.AssignmentTurnedIn,
+        "credential" => Icons.Material.Filled.VerifiedUser,
+        "membership" => Icons.Material.Filled.GroupAdd,
+        "security" => Icons.Material.Filled.Security,
+        "system" => Icons.Material.Filled.Campaign,
+        "workflow" => Icons.Material.Filled.AccountTree,
         _ => Icons.Material.Filled.Notifications,
     };
 
-    private static Color SeverityColor(string severity) => severity switch
+    /// <summary>Severity accent colour. Normalised — the wire sends kebab/lower-case (#1273).</summary>
+    internal static Color SeverityColor(string? severity) => ActivityClassification.Normalise(severity) switch
     {
-        "Critical" => Color.Error,
-        "ActionRequired" => Color.Warning,
-        "Warning" => Color.Warning,
+        "critical" => Color.Error,
+        "actionrequired" => Color.Warning,
+        "warning" => Color.Warning,
         _ => Color.Default,
     };
+
+    /// <summary>
+    /// The row's classification chip. Names the severity when it is elevated, so a rejected identity
+    /// application cannot read as routine information (#1273).
+    /// </summary>
+    internal static string ChipLabel(string? category, string? severity)
+        => ActivityClassification.Normalise(severity) switch
+        {
+            "critical" => "Critical",
+            "actionrequired" => "Action needed",
+            "warning" => "Warning",
+            _ => ActivityClassification.IsActionable(category ?? "", severity ?? "")
+                ? "Actionable"
+                : "Informational",
+        };
+
+    /// <summary>Chip colour, matched to <see cref="ChipLabel"/>.</summary>
+    internal static Color ChipColor(string? category, string? severity)
+        => ActivityClassification.Normalise(severity) switch
+        {
+            "critical" => Color.Error,
+            "actionrequired" or "warning" => Color.Warning,
+            _ => ActivityClassification.IsActionable(category ?? "", severity ?? "")
+                ? Color.Warning
+                : Color.Default,
+        };
 
     private static string FormatTimestamp(DateTimeOffset occurredAt)
     {
