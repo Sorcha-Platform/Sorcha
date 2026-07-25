@@ -1,4 +1,4 @@
-# Claude Code
+﻿# Claude Code
 .claude/settings.local.json
 .claude/scratch/
 .claude/worktrees/
@@ -310,3 +310,7 @@ walkthroughs/_storyboards/
 src/Common/**/*.xml
 src/Core/**/*.xml
 src/Services/**/*.xml
+
+# Per-launch agent logs written by demos/AIAS Start-AiasAgent. (state.json and the rendered
+# agent config are already covered by demos/AIAS/.gitignore.)
+demos/**/logs/

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+﻿# SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
 # AIAS Assured Identity demo toolkit (Feature 174 / M1). Idempotent, reboot-proof
@@ -398,14 +398,99 @@ function Start-AiasAgent {
         return [pscustomobject]@{ Process = $null; ConfigPath = $configPath }
     }
 
+    # Detached, with durable logs.
+    #
+    # Context: the tracked agent was found dead on 2026-07-25 having been started 07-23. The machine
+    # had not rebooted, no .NET fault was logged, and Reset-AiasDemo (the only code path that stops
+    # it) had not run — its state.json and rendered config were both still present. The cause could
+    # not be established, because this function previously launched with -NoNewWindow and NO stream
+    # redirection: everything the agent said went to the caller's console and was gone with it.
+    #
+    # That absence of evidence is the defect being fixed here. A component that sits watching for
+    # citizen applications and decides approve/reject must leave a trail.
+    #
+    # -NoNewWindow also attaches the child to the caller's console, so a real console window being
+    # closed would deliver CTRL_CLOSE_EVENT to the agent and take it down. That is the leading
+    # explanation for the disappearance but it is NOT proven: an A/B of the old and new patterns
+    # across separate non-interactive shell sessions saw BOTH survive, so the console-close path was
+    # never reproduced. Redirecting both streams removes the console entirely, which closes that
+    # route regardless — and next time the log will say what actually happened.
+    #
+    # Logs are per-launch so an earlier run's trail is never overwritten.
+    $logDir = Join-Path $script:DemoRoot 'logs'
+    New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+    $stamp = [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss')
+    $outLog = Join-Path $logDir "agent-$stamp.log"
+    $errLog = Join-Path $logDir "agent-$stamp.err.log"
+
     $proc = Start-Process -FilePath $agentCmd.Source `
         -ArgumentList @('run', '--config', $configPath, '--state', $StateFile) `
-        -PassThru -NoNewWindow
-    Write-WtSuccess "sorcha-agent started (pid $($proc.Id))"
+        -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+    Write-WtSuccess "sorcha-agent started (pid $($proc.Id)) — detached"
+    Write-WtInfo    "  log: $outLog"
+    Write-WtInfo    "  err: $errLog"
 
-    $merged = Merge-DemoState -Existing $state -Updates @{ agentPid = $proc.Id; agentConfigPath = $configPath }
+    # Record process IDENTITY, not just the number. A PID alone cannot answer "is the agent still
+    # running?" — PIDs recycle, so an unrelated process inheriting the number reads as a live agent.
+    $startedAt = $null
+    try { $startedAt = $proc.StartTime.ToUniversalTime().ToString('o') } catch { }
+
+    $merged = Merge-DemoState -Existing $state -Updates @{
+        agentPid          = $proc.Id
+        agentConfigPath   = $configPath
+        agentProcessName  = $proc.ProcessName
+        agentStartedAt    = $startedAt
+        agentLogPath      = $outLog
+        agentErrorLogPath = $errLog
+    }
     Write-DemoState -State $merged -Path $StateFile | Out-Null
-    return [pscustomobject]@{ Process = $proc; ConfigPath = $configPath }
+    return [pscustomobject]@{ Process = $proc; ConfigPath = $configPath; LogPath = $outLog }
+}
+
+<#
+.SYNOPSIS
+    Is the agent recorded in state actually running?
+.DESCRIPTION
+    Confirms process identity rather than trusting the recorded PID. PIDs recycle: after the
+    tracked agent dies, any later process can be handed the same number, and a bare
+    `Get-Process -Id` then reports a dead agent as healthy. So the name must match, and the start
+    time must match the one captured at launch (within a small tolerance for clock/format rounding).
+
+    Returns $false — never throws — when state is missing, incomplete, or the process is gone, so
+    callers can use it directly in a boolean context.
+#>
+function Test-AiasAgentAlive {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param([Parameter(Mandatory)][AllowNull()]$State)
+
+    if (-not $State) { return $false }
+
+    $props = $State.PSObject.Properties.Name
+    if ($props -notcontains 'agentPid' -or -not $State.agentPid) { return $false }
+
+    $proc = Get-Process -Id $State.agentPid -ErrorAction SilentlyContinue
+    if (-not $proc) { return $false }
+
+    if ($props -contains 'agentProcessName' -and $State.agentProcessName `
+        -and $proc.ProcessName -ne $State.agentProcessName) {
+        return $false
+    }
+
+    if ($props -contains 'agentStartedAt' -and $State.agentStartedAt) {
+        try {
+            $recorded = ([DateTime]::Parse($State.agentStartedAt)).ToUniversalTime()
+            if ([Math]::Abs((($proc.StartTime.ToUniversalTime()) - $recorded).TotalSeconds) -gt 5) {
+                return $false
+            }
+        }
+        catch {
+            # Unreadable timestamp: fall back to the name match already made above.
+        }
+    }
+
+    return $true
 }
 
 <#
@@ -546,11 +631,13 @@ function Get-AiasDemoStatus {
     }
     if (-not $blueprintPublished) { $reasons += 'blueprint-not-published' }
 
-    $agentRunning = $false
-    if ($state.PSObject.Properties.Name -contains 'agentPid' -and $state.agentPid) {
-        $agentRunning = [bool](Get-Process -Id $state.agentPid -ErrorAction SilentlyContinue)
+    $agentRunning = Test-AiasAgentAlive -State $state
+    if (-not $agentRunning) {
+        $reasons += 'agent-not-running'
+        if ($state.PSObject.Properties.Name -contains 'agentLogPath' -and $state.agentLogPath) {
+            Write-WtInfo "last agent log: $($state.agentLogPath)"
+        }
     }
-    if (-not $agentRunning) { $reasons += 'agent-not-running' }
 
     $verdict = if ($reasons.Count -eq 0) { 'Ready' } else { 'NotReady' }
     Write-WtBanner "AIAS status: $verdict ($($node.id))"
@@ -592,7 +679,11 @@ function Reset-AiasDemo {
 
     $state = Read-DemoState -Path $StateFile
     if ($state -and ($state.PSObject.Properties.Name -contains 'agentPid') -and $state.agentPid) {
-        $p = Get-Process -Id $state.agentPid -ErrorAction SilentlyContinue
+        # Identity-checked: without this a recycled PID means Stop-Process -Force kills an
+        # unrelated process that merely inherited the number.
+        $p = if (Test-AiasAgentAlive -State $state) {
+            Get-Process -Id $state.agentPid -ErrorAction SilentlyContinue
+        } else { $null }
         if ($p -and $PSCmdlet.ShouldProcess("sorcha-agent pid $($state.agentPid)", "Stop")) {
             Stop-Process -Id $state.agentPid -Force -ErrorAction SilentlyContinue
             $removed += "agent(pid $($state.agentPid))"
@@ -613,4 +704,5 @@ function Reset-AiasDemo {
 
 Export-ModuleMember -Function `
     New-AiasOrg, Set-AiasOrgMasterKey, Publish-AiasBlueprint, Start-AiasAgent, `
-    Build-AiasAgentConfig, Initialize-AiasDemo, Get-AiasDemoStatus, Reset-AiasDemo
+    Build-AiasAgentConfig, Initialize-AiasDemo, Get-AiasDemoStatus, Reset-AiasDemo, `
+    Test-AiasAgentAlive
