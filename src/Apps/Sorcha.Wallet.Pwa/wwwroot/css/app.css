@@ -47,13 +47,21 @@ html, body {
     padding-top: calc(var(--mud-appbar-height, 64px) + env(safe-area-inset-top, 0px));
 }
 
-/* Build-version badge — fixed bottom-right corner on every screen so the running
-   build is verifiable after a deploy. Tiny, muted, non-interactive; sits in the
-   corner clear of the centred floating tab bar. */
+/* Build-version badge — fixed bottom-right on every screen so the running build is
+   verifiable after a deploy. Tiny, muted, non-interactive.
+ *
+ * Issue #1274: this used to sit at bottom 3px, describing the tab bar as "centred".
+ * The bar is not centred — it is `left:16px; right:16px; bottom:14px; height:56px`,
+ * so it occupies 14px..70px from the bottom and spans nearly the full width. A badge
+ * at 3px..15px therefore collided with the bar's bottom edge and sat under its shadow
+ * and backdrop blur, which is the reported "clipping the version string".
+ * Sitting it ABOVE the bar clears it outright at any width. Kept in one expression so
+ * the bar's own geometry stays the single source of the number. */
 .sorcha-build-badge {
     position: fixed;
-    right: 6px;
-    bottom: calc(3px + env(safe-area-inset-bottom, 0px));
+    right: 10px;
+    /* bar bottom (14) + bar height (56) + gap (6) + the same home-indicator inset the bar uses */
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
     z-index: 1300;
     font-size: 10px;
     line-height: 1;

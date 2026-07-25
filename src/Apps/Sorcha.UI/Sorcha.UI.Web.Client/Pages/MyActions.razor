@@ -33,8 +33,12 @@
 <PageTitle>My Pending Actions - Sorcha Platform</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
-    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
-        <MudStack Spacing="0">
+    @* Issue #1275: this row did not wrap, so on a phone the heading was squeezed over three
+       lines and "Actions requiring your attention" over four, beside the Connected badge and
+       Refresh. Wrapping lets the controls drop to their own row instead of compressing the text. *@
+    <MudStack Row="true" Wrap="Wrap.Wrap" Justify="Justify.SpaceBetween"
+              AlignItems="AlignItems.Center" Class="mb-2">
+        <MudStack Spacing="0" Style="flex: 1 1 260px; min-width: 0;">
             <MudText Typo="Typo.h4">
                 <MudIcon Icon="@Icons.Material.Filled.Task" Class="mr-2" />
                 My Pending Actions
@@ -570,10 +574,18 @@
         return InvokeAsync(StateHasChanged);
     }
 
+    /// <summary>
+    /// Priority accent. <c>normal</c> is the DEFAULT state and must read as neutral.
+    /// </summary>
+    /// <remarks>
+    /// Issue #1275: <c>normal</c> was mapped to <see cref="Color.Warning"/>, so the ordinary
+    /// default state rendered amber/brown and read as if something were wrong — on every action in
+    /// the list, which also devalues the amber that <c>high</c> genuinely needs.
+    /// </remarks>
     private Color GetPriorityColor(string priority) => priority.ToLower() switch
     {
         "high" => Color.Error,
-        "normal" => Color.Warning,
+        "normal" => Color.Default,
         "low" => Color.Info,
         _ => Color.Default
     };

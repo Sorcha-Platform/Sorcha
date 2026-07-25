@@ -79,8 +79,16 @@
                     of <strong>@FormatBytes(_storage.Quota)</strong>
                     (@(_storage.PercentUsed.ToString("F1"))%).
                 </MudText>
+                @* Issue #1274: the bar looked SOLID FULL at 0.0%. The value binding was never
+                   wrong — rendering MudProgressLinear at 0.05 emits translateX(-100%), i.e. an
+                   empty fill. What read as a fill was the TRACK: MudBlazor tints it with the
+                   bar's own colour, so an 8px primary-tinted track on a nearly-empty bar is
+                   indistinguishable from a full one. Forcing a neutral track makes empty read as
+                   empty, which is the actual defect. *@
                 <MudProgressLinear Value="_storage.PercentUsed" Color="Color.Primary"
-                                   Class="mt-2" Style="height:8px;" />
+                                   Class="mt-2"
+                                   Style="height:8px; background-color: var(--mud-palette-lines-default, rgba(0,0,0,.12));"
+                                   data-testid="settings-storage-bar" />
             }
         </MudCardContent>
     </MudCard>

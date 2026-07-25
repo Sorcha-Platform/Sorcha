@@ -29,8 +29,12 @@
               CloseIconClicked="HandleDismiss"
               Class="mb-3"
               data-testid="pairing-nag-banner">
-        <div class="d-flex align-center" style="gap: 12px;">
-            <span style="flex: 1;">
+        @* Issue #1275: this row never reflowed. The button kept its intrinsic width while the text
+           column shrank to a sliver, wrapping this sentence over NINE lines on an iPhone. The fix
+           is breakpoint-free: the text asks for a 240px basis, so when the container cannot seat
+           both it and the button on one line, the button wraps beneath instead of squeezing. *@
+        <div class="banner-row">
+            <span class="banner-text">
                 You haven't paired a phone yet — your Sorcha credentials
                 live on your phone, so set one up to start receiving them.
             </span>

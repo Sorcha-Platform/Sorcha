@@ -27,10 +27,15 @@
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
     <MudStack Spacing="0" Class="mb-4">
-        <MudText Typo="Typo.h4">
-            <MudIcon Icon="@Icons.Material.Filled.PostAdd" Class="mr-2" />
-            New Submissions
-        </MudText>
+        @* Issue #1275 (heading clipped): the icon was INSIDE the Typo.h4 line box, where its taller
+           box crops the text's ascenders. Laying icon and text out as flex siblings lets each keep
+           its own box. NOTE: this sub-item had no console/DOM repro attached, so this is a
+           defensive structural fix rather than a confirmed diagnosis — if the clipping survives it
+           is the sticky header's clearance, not this. *@
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.PostAdd" Size="Size.Large" />
+            <MudText Typo="Typo.h4" Style="line-height: 1.3;">New Submissions</MudText>
+        </MudStack>
         <MudText Typo="Typo.body1" Color="Color.Secondary">
             Browse available workflows and start a new submission
         </MudText>

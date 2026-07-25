@@ -1,0 +1,37 @@
+/* SPDX-License-Identifier: MIT */
+/* Copyright (c) 2026 Sorcha Contributors */
+
+/*
+ * Issue #1275 — banner-with-trailing-action must reflow, not compress.
+ *
+ * The row was `d-flex align-center` with the text on `flex: 1`. A flex item's
+ * default `min-width: auto` lets it shrink below its content, so on a narrow
+ * viewport the button held its full width and the text was squeezed into a
+ * column two or three words wide — this sentence wrapped over NINE lines.
+ *
+ * Deliberately breakpoint-free: the text declares a 240px flex-basis, so the
+ * browser wraps the action beneath as soon as both cannot sit on one line. That
+ * adapts to any width, and to any future change in the button's label length,
+ * where a hard-coded media query would not.
+ */
+
+.banner-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
+
+.banner-text {
+    /* grow, shrink, but ask for 240px before the action is pushed to its own row */
+    flex: 1 1 240px;
+    min-width: 0;
+}
+
+/* Once wrapped, the action spans the row so it reads as the banner's action
+   rather than a stray fragment floating under the text. */
+@media (max-width: 480px) {
+    .banner-row > .mud-button-root {
+        flex: 1 1 100%;
+    }
+}

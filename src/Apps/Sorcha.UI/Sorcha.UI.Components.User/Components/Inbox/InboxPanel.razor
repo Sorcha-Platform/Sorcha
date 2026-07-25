@@ -23,8 +23,19 @@
     from MainLayout. Future Phase-10 work consolidates them.
 *@
 
-<MudDrawer @bind-Open="IsOpen" Anchor="Anchor.End" Elevation="4" Width="420px" Variant="@DrawerVariant.Temporary" data-testid="inbox-drawer">
-    <MudDrawerHeader>
+@* Issue #1281 — on an iPhone this drawer TRAPPED the user.
+   Two causes: a fixed 420px width on a ~390px viewport, and MudDrawerHeader carrying no iOS
+   safe-area inset, so the header rendered up inside the status-bar strip. The heading collided
+   with the clock (it literally read "Inbo14:13x") and the ✕ was drawn over the signal/wifi/battery
+   icons where it could not be tapped — with no other dismiss anywhere on the page. Restarting the
+   app was the only way out.
+   Width is now viewport-bounded and the header is inset below the status bar. A second, always
+   reachable Close sits at the foot of the content (see below) so the top strip is never the only
+   way out. Styles are inline rather than isolated CSS because MudDrawer is a child component — its
+   rendered element carries no scope id, so a ::deep selector has nothing to anchor to. *@
+<MudDrawer @bind-Open="IsOpen" Anchor="Anchor.End" Elevation="4"
+           Width="min(420px, 100vw)" Variant="@DrawerVariant.Temporary" data-testid="inbox-drawer">
+    <MudDrawerHeader Style="padding-top: calc(env(safe-area-inset-top, 0px) + 12px);">
         <MudText Typo="Typo.h6">Inbox</MudText>
         <MudSpacer />
         <MudIconButton Icon="@Icons.Material.Filled.MarkEmailRead"
@@ -114,6 +125,20 @@
             }
         </MudList>
     }
+
+    @* Issue #1281 — a dismiss affordance INSIDE the content area, reachable even when the top strip
+       is obscured (a notch, a rotated device, a future inset change). The header ✕ remains; this is
+       the guarantee that the user can always leave. Bottom inset keeps it clear of the iOS home
+       indicator. *@
+    <div class="d-flex justify-center pa-4"
+         style="padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);">
+        <MudButton Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.Close"
+                   OnClick="@(() => IsOpen = false)"
+                   data-testid="inbox-close-footer">
+            Close inbox
+        </MudButton>
+    </div>
 </MudDrawer>
 
 @code {

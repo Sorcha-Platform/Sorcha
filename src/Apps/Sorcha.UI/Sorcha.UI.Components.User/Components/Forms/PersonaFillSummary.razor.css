@@ -3,8 +3,13 @@
 
 /* Feature 092 / US3 — persona fill summary banner + review popover. */
 
+/* Issue #1275: this row never reflowed — the actions held their width (flex-shrink: 0)
+   while the text was squeezed, wrapping "4 fields filled from your profile" over three
+   lines on a phone. Wrapping plus a flex-basis on the text lets the actions drop to their
+   own row instead, with no breakpoint to keep in sync. */
 .persona-fill-summary {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
@@ -22,7 +27,10 @@
 }
 
 .persona-fill-summary-text {
-    flex: 1 1 auto;
+    /* Ask for 200px before the actions are pushed to their own row (#1275). `auto` let this
+       collapse to a two-word column. */
+    flex: 1 1 200px;
+    min-width: 0;
     font-weight: 500;
 }
 
@@ -30,6 +38,14 @@
     display: flex;
     gap: 4px;
     flex-shrink: 0;
+    /* Once wrapped, sit the actions with the text's left edge rather than stranded right. */
+    margin-left: auto;
+}
+
+@media (max-width: 480px) {
+    .persona-fill-summary-actions {
+        margin-left: 0;
+    }
 }
 
 /* --- Review popover --- */
