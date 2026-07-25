@@ -291,6 +291,48 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 ---
 
+## Theme 9: Citizen Journey Trial Findings (2026-07-25) — P1
+
+> **Priority:** P1 (Pre-release — first real end-to-end citizen journey)
+> **Estimated Effort:** 60-90h
+> **Goal:** Close the defects found around the AIAS M1 happy path during the first real human
+> citizen run on n1 (`2.869.1`): passkey signup → wallet → profile → AIAS application → agent
+> decision → claim → credential held, plus the PWA.
+> **Related:** Issues #1264-#1282 (19 filed) + #1256 (from DRIFT-004). The happy path itself
+> **worked end to end**; everything here is *around* it.
+
+| # | Task | Priority | Effort | Status | Notes |
+|---|------|----------|--------|--------|-------|
+| UT-001 | Wrongful AIAS rejection — `x-claim-source` stamps a stale `email_verified` | P0 | 8h | 📋 | #1264. Token minted at signup (12:30:29Z) carried `false`; user verified at 12:39:06Z; submitted 12:44Z. `ClaimSourceSeeder` runs **client-side**, so the value is only ever as fresh as the client's token. Fix: resolve server-side at submission via a single batch live-claims read, overwriting the client value (mirrors the existing step-8a-bis `presentedCredential` precedence rule). Lookup failure **fails the submission** — signing `false` writes an irreversible wrongful rejection. |
+| UT-002 | PWA enrol-device says "You need to sign in first" while signed in | P0 | 4h | ✅ | #1265. **Two** defects, one visible: (a) `Enrol.razor` derived auth state from `AccessTokenRecord.Email`, which is display-only and **null on the passkey/social paths** — the same defect already fixed in `Settings.razor`; (b) the file lacked `@using Microsoft.AspNetCore.Components.Authorization`, so `AuthorizeView` emitted as a **literal HTML element with no compile error** and rendered both branches. Using moved to `_Imports.razor` so no other PWA page can hit it. The issue's ambient-`HttpClient` hypothesis was wrong — no HTTP request is involved. Guard: `EnrolPageAuthStateTests`. |
+| UT-003 | Inbox notice `detailHref` navigates the browser to a raw API route | P1 | 4h | 📋 | #1266. Stored `detailHref` is `/api/instances/{id}`; the client hands it to the browser → `about:blank` + 0 KB download. F118's thin-signal contract is right (it names the authenticated REST detail endpoint); the **client** must translate it to an in-app view and never navigate to it. |
+| UT-004 | Rejections invisible to the citizen on every web surface | P1 | 8h | 📋 | #1267. F184 delivery **works** — the notice was written with correct catalogue wording; only web surfacing failed. Scope this session: badge the web bell for unread entries + surface decision notices on the web home. Durable "My Applications" history remains follow-up #1163. |
+| UT-005 | Pending Actions — completed action still actionable; no removal push | P1 | 8h | 📋 | #1268. Own just-submitted starting action still offers **Take Action** pre-seal (F145 returns 202; projection still has action 1 current). Separately, F118 emits *action-available* / *workflow-completed* only — there is no "your action went away" event, so the list only ever grows. Either emit a removal/refresh signal or reconcile on hub events; if removals genuinely can't be pushed, soften the "Real-time updates enabled" copy. |
+| UT-006 | AIAS device-registration blueprint never published; status check blind | P2 | 4h | 📋 | #1269. Repo carries two templates; provisioning publishes one. `state.json` tracks a **scalar** `blueprintId`, so `Get-AiasDemoStatus` is structurally unable to notice. Track a **set** and verify all of them. |
+| UT-007 | F128 pairing surface shows the desktop QR variant on mobile | P1 | 8h | 📋 | #1270. FR-008 exists to give same-device mobile prominence; "Open on this device" sits below a two-screenful QR. Plus: affordances render as plain body text with no hit-target styling, `Email me a link Skip for now` runs together, stray focus ring on a non-interactive heading, and the nag banner shows above the pairing page itself. Nag also isn't wallet-aware the way F149 made `PairingTakeover`. |
+| UT-008 | Persona: no address/nationality, no provenance, no default shown | P1 | 12h | 📋 | #1271. `PersonaAttributesV1` carries addresses + nationalities but the form stops at phone, so AIAS has nothing to prefill for address. `PersonaAttribute<T>.Source`/`VerifiedBy` are never rendered. Two different "verified" notions (persona self-asserted vs account `email_verified`) are indistinguishable — which fed UT-001. Default radio unselected with a single value. No per-field cream tint / `self` tick. |
+| UT-009 | `x-review` renders section title and field label twice | P2 | 2h | 📋 | #1272. Three of five sections are exact repeats (ADDRESS/ADDRESS, EMAIL/EMAIL). Suppress the field label when a single-field section's label matches the section title. |
+| UT-010 | PWA Activity ignores inbox `severity` and `iconKey` | P2 | 3h | 📋 | #1273. A rejection chips as "Informational" though the row carries `severity: warning` + `iconKey: workflow.rejected`; all entries draw the same generic bell glyph. |
+| UT-011 | PWA storage bar renders full at 0%; bottom nav overlaps Profile form | P2 | 3h | 📋 | #1274. Bar not bound to the computed percentage ("5.1 KB of 9.60 GB (0.0%)" drawn solid). Bottom nav padding is applied per-page rather than by the layout, so Profile's phone field and version string are obscured. |
+| UT-012 | Narrow viewport: banners with trailing actions never reflow | P1 | 8h | 📋 | #1275. Systemic, not several bugs: pair-a-phone nag wrapped over **nine** lines beside its button; autofill summary and My Pending Actions likewise. Plus clipped "New Submissions" heading under the sticky header, and the `normal` priority chip rendered amber (reads as a warning for the neutral default). |
+| UT-013 | My Transactions: no drill-down; Sender column shows other parties | P2 | 6h | 📋 | #1276. `GET /api/registers/{registerId}/transactions/{txId}` already exists and returns the caller's own decrypted disclosure group — pure UI addition. Page is really "transactions involving my wallet", so show direction (sent/received) or counterparty rather than Sender. |
+| UT-014 | Portrait oversize silently drops the claim; no framing guidance | P1 | 10h | 📋 | #1277. ≤27KB base64 gate in `BuildClaimsFromMappings` omits the `portrait` claim with only `WARN_CRED_PORTRAIT_OVERSIZE_001` — nothing user-visible — and a 240×320 JPEG already lands 15-25KB, so any quality increase starts silently issuing portrait-less credentials that degrade the F174 verifier. **Theoretical in this trial** (the real capture passed). Fix: downscale-and-retry + surface the drop, plus a post-capture review overlay (oval + head-height bounds, Retake) with the rules authored in `x-file`. |
+| UT-015 | Credential display: vct URI as title, `text-transform` corrupts values | P1 | 8h | 📋 | #1278. Five surfaces render `https://sorcha.dev/vc/assured-identity/v1` as the title though `displayMeta.credentialName` carries "Assured Identity"; post-#1187 the vct is a URI **by design** so it must never be a label. A title-case transform corrupts claim **values** (`EH91JA`→`Eh91ja`, `GB`→`Gb`) — reference data, not cosmetics. Id-card names the issuer with an uppercased wallet address. Claim labels use raw camelCase on one surface and humanised on the adjacent one. |
+| UT-016 | Credential View dialog overflows the viewport on mobile | P1 | 6h | 📋 | #1279. Title clipped mid-word, portrait clipped at the dialog boundary, five non-wrapping action buttons overflow both edges ("evoke"), status chip pushed off-screen. Constrain to viewport, scale the card, wrap/collapse the action row below a breakpoint. |
+| UT-017 | Web "Present" claims presentation is a future release | P2 | 2h | 📋 | #1280. It ships on the PWA (`Present.razor`). Companion-first means web isn't the presenting surface, so this is copy + redirect ("presenting happens on your phone" with a pair/open link), **not** building presentation on web. |
+| UT-018 | iOS inbox overlay ignores safe-area inset and traps the user | P1 | 4h | 📋 | #1281. Header drawn into the status-bar strip (`Inbo14:13x`); the ✕ is unreachable and there is no other dismiss affordance — app restart was the only way out. Apply `env(safe-area-inset-top)` and audit every other full-screen overlay for the same missing inset. |
+| UT-019 | PWA verify surface throws, and renders the raw `openid4vp://` URI | P1 | 6h | 📋 | #1282. Request generation is correct and current (F181 US6: `client_id=x509_san_dns:n1.sorcha.dev` + served `request_uri`), so this is a UI failure: an unhandled exception suppresses the F174 verdict/consent treatment, and the protocol URI is shown as body text. **Needs a console-attached repro** before fixing. |
+| UT-020 | Org invitations have no resend endpoint | P2 | 4h | 📋 | #1256, split from DRIFT-004. The button + phantom `ResendInvitationAsync` were removed rather than faking success; `OrgInvitationWireContractTests` now fails the build if a client operation has no endpoint behind it, so the endpoint must land first. Decide whether resend rotates the token (safer, invalidates links in flight) or reuses it. Rate-limit — it is an outbound-email trigger reachable by any org admin. |
+
+**Verified during the trial — do NOT re-litigate:** postcode `EH91JA` was fine (`postcodeExists: true`);
+the portrait passed the 27KB gate and is in the credential; F184 notice delivery works (only web
+surfacing failed); persona DOB autofill was never broken (there is no DOB in the persona); F145's
+instance projection is payload-free **by design** (`accumulatedData: {}`); F176's disclosure endpoint
+is prior-action-scoped **by design**; the F124 welcome takeover's empty body sections are deliberate
+pending Spec 2.
+
+---
+
 ## Summary
 
 | Theme | Priority | Tasks | Effort | Focus |
@@ -303,7 +345,8 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | 6. P2P Network & Consensus | P3 | 9 (1 ✅, 8 remaining) | 120-200h | Decentralization — relay comms done (060) |
 | 7. Public User Experience | P1 | 6 (1 ✅, 5 remaining) | 40-60h | Role model, register scoping, public UX |
 | 8. Mobile App Prerequisites | P1 | 8 (3 ✅, 1 ❌, 4 remaining) | 60-80h | Package portability, device inputs, white-label branding — Feature 084 done (MOB-002/003/004), MOB-001 eliminated |
-| **Total** | | **75** (17 ✅, 1 ❌, 57 remaining) | **565-825h** | |
+| 9. Citizen Journey Trial Findings | P0-P2 | 20 (1 ✅, 19 remaining) | 60-90h | First real human citizen run on n1 2026-07-25 (#1264-#1282 + #1256) — happy path worked; these are the defects around it. UT-002 (PWA enrol auth state) closed |
+| **Total** | | **95** (18 ✅, 1 ❌, 76 remaining) | **625-915h** | |
 
 ### Completed Features (not in themes above)
 

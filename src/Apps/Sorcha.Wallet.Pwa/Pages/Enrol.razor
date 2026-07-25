@@ -4,8 +4,9 @@
 
     Enrolment wizard (Feature 114, T109 part 2). Multi-step ceremony for
     a freshly-installed wallet:
-      (1) Welcome — explains what enrolment does, defers sign-in to Settings
-          if the user isn't signed in yet.
+      (1) Welcome — explains what enrolment does, and routes to sign-in if the
+          user isn't signed in yet. Auth state comes from AuthorizeView, never
+          from the display-only email (issue #1265).
       (2) Device label — citizen-editable, sensible default suggested.
       (3) Confirmation — runs IEnrolmentService (generates device key,
           calls /devices/enrol, persists delegation, pulls /credentials).
@@ -21,6 +22,7 @@
 @inject IEnrolmentService Enrolment
 @inject IAccessTokenStore AccessTokenStore
 @inject IEnrolSessionRedeemer Redeemer
+@inject WalletAuthenticationStateProvider AuthState
 @inject IJSRuntime Js
 @inject NavigationManager Nav
 @inject ILogger<Enrol> Logger
@@ -53,33 +55,46 @@
     <MudStepper @ref="_stepper" NonLinear="false">
         <MudStep Title="Welcome">
             <MudText Typo="Typo.body2" Class="mb-3">
-                Enrolling registers this browser as a wallet device under your
-                Sorcha account. We generate a non-extractable device key in the
-                browser, ask the server to bind a delegation credential to it,
-                and pull your existing credentials onto the device.
+                Enrolling registers this device as a wallet device under your
+                Sorcha account. We generate a non-extractable device key here on
+                the device, ask the server to bind a delegation credential to it,
+                and pull your existing credentials onto it.
             </MudText>
-            @if (_signedIn is null)
-            {
-                <MudProgressCircular Indeterminate="true" Size="Size.Small" />
-            }
-            else if (_signedIn == false)
-            {
-                <MudAlert Severity="Severity.Warning" Class="mb-3">
-                    You need to sign in first.
-                    <MudLink Href="settings" data-testid="enrol-open-settings-link">Open Settings</MudLink> to sign in,
-                    then come back here.
-                </MudAlert>
-            }
-            else
-            {
-                <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3">
-                    Signed in as <strong>@_signedInEmail</strong>.
-                </MudAlert>
-                <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                           OnClick="@(() => _stepper!.NextStepAsync())">
-                    Continue
-                </MudButton>
-            }
+            @* Issue #1265 — gate on the SAME AuthenticationStateProvider the rest of the shell
+               uses (token presence + expiry via WalletAuthenticationStateProvider), NOT on
+               _signedInEmail. AccessTokenRecord.Email is captured "for display only" (see
+               IAccessTokenStore.cs) and is null for passkey/social sign-in, so a citizen signed
+               in with a passkey held a valid token but no email — and this step told them to sign
+               in while Settings, one tap away, correctly said they were signed in. That blocked
+               enrolment, and with it every downstream credential delivery to the wallet. This is
+               the same defect already fixed in Settings.razor; the email is now used only to
+               personalise the confirmation, never to decide auth state. *@
+            <AuthorizeView>
+                <Authorized>
+                    <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3">
+                        @if (!string.IsNullOrEmpty(_signedInEmail))
+                        {
+                            <text>Signed in as <strong>@_signedInEmail</strong>.</text>
+                        }
+                        else
+                        {
+                            <text>You're signed in.</text>
+                        }
+                    </MudAlert>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               OnClick="@(() => _stepper!.NextStepAsync())"
+                               data-testid="enrol-continue-button">
+                        Continue
+                    </MudButton>
+                </Authorized>
+                <NotAuthorized>
+                    <MudAlert Severity="Severity.Warning" Class="mb-3">
+                        You need to sign in first.
+                        <MudLink Href="signin" data-testid="enrol-open-settings-link">Sign in</MudLink>,
+                        then come back here.
+                    </MudAlert>
+                </NotAuthorized>
+            </AuthorizeView>
         </MudStep>
 
         <MudStep Title="Name this device">
@@ -162,7 +177,9 @@
 
 @code {
     private MudStepper? _stepper;
-    private bool? _signedIn;
+
+    // Display only — personalises the "Signed in as x" confirmation. NEVER the auth
+    // signal: it is null on the passkey and social paths (see #1265).
     private string? _signedInEmail;
     private string _label = "My Sorcha wallet";
     private bool _running;
@@ -206,7 +223,6 @@
         }
 
         _signedInEmail = await Auth.GetSignedInEmailAsync();
-        _signedIn = _signedInEmail is not null;
     }
 
     private string? TryReadSessionToken()
@@ -240,9 +256,14 @@
 
         // Drop the dialog and re-resolve signed-in state. The existing
         // stepper renders the welcome step with the citizen now signed in.
+        //
+        // The welcome step gates on AuthorizeView (issue #1265), so the freshly
+        // persisted token only counts once the provider re-reads the store —
+        // without this notify the citizen would redeem successfully and still be
+        // told to sign in. Same contract as SignIn.razor / Settings.razor.
         _awaitingConfirm = false;
         _signedInEmail = _redeemed.Email;
-        _signedIn = true;
+        AuthState.NotifyChanged();
         StateHasChanged();
     }
 
