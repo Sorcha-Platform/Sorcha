@@ -94,6 +94,28 @@ Sorcha blueprints define multi-participant workflows as JSON documents. Each blu
 | Conditions | JSON Logic expressions for conditional routing |
 | Calculations | JSON Logic for computed values (e.g., `requiresApproval`) |
 | Cycles | Allowed with warning. Set `metadata.hasCycles = "true"` |
+| InstanceReference | Optional human-readable instance id (e.g. `CP-RIV-14-A7K3`) generated from the starting action's payload. See below. |
+
+## Instance Reference
+
+Define `instanceReference` to give each workflow instance a human-readable id instead of a bare GUID:
+
+```jsonc
+"instanceReference": {
+  "prefix": "CP",
+  "components": [
+    { "field": "/projectName", "transform": "FirstWord", "chars": 3 },
+    { "field": "/siteAddress", "transform": "FirstWord", "chars": 3 }
+  ]
+}
+```
+
+- `prefix` — 1–5 uppercase alpha chars identifying the workflow type.
+- `components` — 1–5 field extractions from the **starting action's** schema.
+- `transform` — `FirstWord` (split on space, take first) or `Truncate` (first N chars). Output is uppercased.
+- A 4-char uniqueness hash is appended automatically.
+
+> ⚠ **The reference is public metadata.** Any field value you reference here is visible **in plaintext** on the instance, outside the encrypted disclosure groups. Never build one from a name, date of birth, or any other identifying value — pick a project/site/case field.
 
 ## Open Participants & Late Binding
 
@@ -285,11 +307,21 @@ Publish-time validation runs in **`Sorcha.Blueprint.Service`** (`PublishService.
 | `VAL_BP_010` | error | Starting action's `sender` participant has a non-null `walletAddress` — defeats open submission |
 | `VAL_BP_011` | error | An `outputMapping` target pointer's top-level field is not declared on any next action's schema |
 | `VAL_BP_012` | error | `x-credential-offer: true` on a non-object field |
+| `VAL_BP_CRED_003` | error | An action reachable from a `SorchaLocalWallet` issuing action via its routes is not terminal. The claim/decline card must end the workflow. |
+| `VAL_BP_CRED_004` | error | A declared `vct` is not an absolute URI (SD-JWT VC requires a URI). Emitted only by the publish path. |
 | `INVALID_CREDENTIAL_RECIPIENT` | warning | `credentialIssuanceConfig.recipientParticipantId` references an unknown participant |
 | `OPEN_CREDENTIAL_ISSUER` | warning | `credentialRequirements[].trustPolicy` is null or has no `sources` (any issuer accepted) — usually too permissive. (Pre-F135 this keyed off an empty `acceptedIssuers`, now removed.) |
 | `WARN_BP_006` | warning | An `x-credential-offer` object should declare `credential_offer_uri` in its `required` list |
 | `NO_STARTING_ACTION` | warning | No action marked `isStartingAction: true` |
 | Cycle warning | warning | Cyclic route detected — publish proceeds; set `metadata.hasCycles = "true"` for clarity |
+
+**Runtime issuance codes** (these fail a *submission*, not a publish — they surface as an `InvalidOperationException` from `ActionExecutionService` and are deliberately re-thrown rather than swallowed):
+
+| Code | Trigger |
+|------|---------|
+| `VAL_RUNTIME_CRED_002` | The `SorchaLocalWallet` mint failed or returned null — check Wallet Service logs. |
+| `VAL_RUNTIME_CRED_004` | No delivery key for the recipient: no published participant record **and** no carried encryption key. Fails closed (FR-012 / SC-004). |
+| `VAL_RUNTIME_CRED_005` | `holderKeySourceField` is configured but no holder JWK resolved from the submission, so the credential can't be bound (FR-014). |
 
 ## Route Types
 
@@ -439,6 +471,46 @@ The engine fetches and decrypts those transactions at execution time and merges 
 { "type": "number", "minimum": 0, "title": "Amount" }
 ```
 
+## Render Formats — which schema shape produces which control
+
+You almost never name a control directly. `FormSchemaService.AutoGenerateForm` **infers** one from the property's schema, and `ControlDispatcher` renders it. This is the whole mapping — first match wins, top to bottom:
+
+| Schema shape | Control | Notes |
+|---|---|---|
+| `type: object` + `format: "sorcha-holder-key"` | `HolderKey` | Read-only. Writes `/holderJwk`, `/encryptionPublicKey`, `/algorithm` under the field. See Holder & device keys below. |
+| `type: object` + `format: "sorcha-device-key"` | `DeviceKey` | Read-only. Writes **this device's** signing JWK as the SD-JWT `cnf` (#1195 Phase 1). |
+| `enum` present | `Selection` | Any type. **An enum always becomes `Selection`** — see the `Choice` note below. |
+| `type: string` + `x-address-lookup: true` | `PostcodeLookup` | Falls back to plain text when no lookup provider is configured. |
+| `format: "date"` or `"date-time"` | `DateTime` | |
+| `format: "file-reference"` or `"binary"` | `File` | `file-reference` is Sorcha's attachment format (F085) and carries `x-file`; `binary` is the OpenAPI byte convention. Both route here — without one of them a file field silently renders as a text box. |
+| `type: number` / `integer` | `Numeric` | |
+| `type: boolean` | `Checkbox` | |
+| `type: string` + `maxLength > 500` | `TextArea` | **`maxLength` is the only thing that produces a textarea.** |
+| anything else | `TextLine` | Default. |
+| `type: object` (no special format) | `Layout` | Recurses into child properties — this is how the core primitives render nested inputs. |
+
+Two controls exist but are **not reachable from schema inference**: `Label` and `Choice`. They only appear if an action supplies an explicit `form` control tree instead of relying on auto-generation. If you want a multi-select, an `enum` gives you `Selection`, not `Choice`.
+
+Every control honours `x-rule` for conditional display, and `TextLine` / `PostcodeLookup` derive keyboard hints (`autocapitalize` / `autocorrect` / `spellcheck` / `inputmode`) from the schema: a field with a `pattern`, a machine `format`, an `enum`, or `x-address-lookup` suppresses autocapitalisation, because a phone keyboard's guess corrupts a machine-checked value (issue #1278).
+
+### Holder & device keys — required for credential delivery
+
+If an action issues a `SorchaLocalWallet` credential to an **open participant** (a citizen with no published participant record), the recipient's delivery keys must ride the submission. Declare the field:
+
+```jsonc
+"holderKeys": {
+  "type": "object",
+  "title": "Your holder key",
+  "format": "sorcha-holder-key"       // ← the functional trigger
+}
+```
+
+…and point the issuance config at it with `holderKeySourceField` (see Credential Issuance). The renderer fills it read-only from the citizen's wallet; the citizen types nothing.
+
+> **Omitting either side fails closed — no credential is issued.** With `holderKeySourceField` set and no resolvable holder JWK, issuance throws `VAL_RUNTIME_CRED_005`; with no delivery key resolvable from either a published participant record or the carried keys, `VAL_RUNTIME_CRED_004`. Both propagate and **fail the whole submission** rather than minting an unbound credential. That is deliberate (F137 FR-012/FR-014, SC-004).
+
+> ⚠ `x-holder-key: { "required": true }` appears in the shipped AIAS and AssuredIdentity blueprints, copied from the F137 contract example where it is described as "optional config". **Nothing reads it** — no renderer, no validator (`SchemaValidator` strips it with the generic `x-` strip), no test. It does **not** make the field required; that comes from the schema's `required` array, and in both blueprints `holderKeys` is *not* in it. Treat it as decoration; prefer adding `holderKeys` to `required` if you want the form to block early rather than failing at issuance.
+
 ## Form UX Layout
 
 Beyond JSON Schema's basic shape, Sorcha extends action data schemas with `x-` keywords that drive form rendering. Use these inline on dataSchemas, or rely on transclusion when `$ref`-ing a core component (see Reusable Schema Components).
@@ -530,20 +602,41 @@ Mark a property as a file reference with `format: "file-reference"` and an `x-fi
 
 `capture: "user"` requests the front-facing camera on mobile; `embedAs` triggers the client-side resizer to produce a base64 token at `{fieldPointer}/tokenImageBase64` alongside the chunked original. Full chunking/encryption pipeline lives in the **sorcha-architecture** skill — *Stored Data Transactions API*.
 
-### Account-derived field (`x-claim-source`) — Feature 183
+**`framing` (issue #1277)** — optional post-capture review overlay for portrait fields. Renders the photo the citizen just captured inside an oval + head-height guides so they can check it before submitting, with a Retake:
 
-Seed a form field from a named JWT claim on the authenticated principal, at form init, so the value rides the wallet-signed payload **even when the field is on no page**. Headless (no control, no `x-page` placement needed) and reusable. Boolean fields **fail closed** (absent / unparseable claim → `false`).
+```jsonc
+"x-file": {
+  "capture": "user",
+  "embedAs": "image-token-jpeg-240x320",
+  "framing": { "ovalWidthPct": 62, "headTopPct": 8, "headBottomPct": 82 }
+}
+```
+
+Percentages of the frame. Omit the block for the ICAO default (head ≈70–80% of frame height). Every malformed value degrades to that default — a missing block, a non-object, a string where a number belongs, an inverted band, out-of-range percentages. It is **guidance, never a gate**: nothing rejects a photo, because face geometry can't be judged reliably in a browser and a wrong rejection stops the citizen submitting at all.
+
+> **Sizing is not your problem, but silent loss was.** The `embedAs` resizer steps JPEG quality down and then, if still oversize, steps *dimensions* down (to a 120×160 floor) before giving up. The server independently drops an oversized `portrait` claim at a ≤27,000-char base64 bound. Both surface to the citizen now; before #1277 the claim was dropped silently and the credential issued portrait-less.
+
+### Account-derived field (`x-claim-source`) — Feature 183, **rewritten server-side by issue #1264**
+
+Bind a form field to a named platform claim on the authenticated principal, so the value rides the wallet-signed payload **even when the field is on no page**. Headless (no control, no `x-page` placement needed) and reusable.
 
 ```jsonc
 "emailVerified": {
   "type": "boolean",
   "readOnly": true,
-  "default": true,
-  "x-claim-source": "email_verified"   // ← seeds from the email_verified claim
+  "x-claim-source": "email_verified"   // ← resolved SERVER-SIDE at submission
 }
 ```
 
-Runtime: `ClaimSourceSeeder` (in `Sorcha.UI.Components.User`), invoked by `SorchaFormRenderer` on action load; never overwrites a user-entered value. Use it for agent-facing metadata the applicant shouldn't type (e.g. the AIAS email-verified gate signal). Non-boolean bindings seed the raw claim string only when present.
+**Runtime (current): the server resolves it, not the client.** `ActionExecutionService` step 6a-bis discovers every binding via `ClaimSourceBindings.Discover(actionDef.DataSchemas)`, reads the caller's **live** values through `IPlatformUserClaimsClient`, and **overwrites whatever the client sent**.
+
+> ⚠ **Do not reintroduce client-side seeding.** Feature 183 originally seeded these bindings in the browser from the JWT, so the value was only ever as fresh as the token the client happened to hold. A citizen's token was minted at signup with `email_verified: false`; they verified nine minutes later; the application they submitted five minutes after that was auto-rejected on the stale `false` (issue #1264, UT-001 — a **wrongful rejection**). The client-side `ClaimSourceSeeder` was deleted as a clean break. Verifying updates server state but cannot rewrite an issued token, which is why resolution has to happen at submission.
+
+Three consequences worth authoring around:
+
+- **The server wins.** A client-supplied value for a bound field is always discarded. Don't build UI that lets the applicant edit one.
+- **It fails the submission, not the field.** If the caller carries no usable `platform_user_id`, or the claims client is unregistered, or the live read fails, the submission is **refused** — it does not fall back to the token, and it does not default a boolean to `false`. Signing `false` writes an irreversible wrongful rejection; a refused submission is retryable. (Same precedence rule as the step-8a-bis `presentedCredential` binding.)
+- **It asserts platform vouching.** Declaring a binding means "the platform stands behind this value". Only use it for that — not as a convenience prefill (that's `x-persona`).
 
 ### Decision notice (`x-decision-notice`) — Feature 183, codified in Feature 184
 
@@ -655,6 +748,14 @@ Watermark states (Draft/Pending/Issued/None), stacked-cards behaviour for `crede
 - `targetAudience: "SorchaInternal"` is **deprecated** — bypasses the register and breaks on multi-node deployments. Always prefer `SorchaLocalWallet`.
 - `usagePolicy: "LimitedUse"` requires `maxPresentations: <int>`.
 - `expiryDuration` is ISO 8601 (`P5Y`, `P365D`, `PT24H`); omit for non-expiring credentials.
+
+Five further properties, all optional and all used by the shipped AIAS blueprint or its siblings:
+
+- **`holderKeySourceField`** (Feature 137) — JSON Pointer to the parent of the recipient's carried delivery keys, written by a `sorcha-holder-key` field on a starting action (conventionally `/holderKeys/holderJwk`; the `encryptionPublicKey` + `algorithm` siblings are derived from the same parent). Set it and the issuer binds the credential to the carried holder JWK (SD-JWT `cnf`) and, for an open-participant recipient with no published participant record, wraps the on-register AEAD envelope to the carried encryption key. Resolution precedence is **published participant record → carried keys → fail closed**. Leaving it null keeps pre-137 behaviour: no `cnf` binding, no carried-key fallback. **Required in practice for cross-node / open-participant issuance.**
+- **`issuanceCondition`** (Feature 176) — JSON Logic over the submitted action data, e.g. `{"==": [{"var": "decision"}, "approved"]}`. When it evaluates falsy, **no credential is minted** and the workflow routes onward normally. This is what lets a *single* decision action carry a `credentialIssuanceConfig` and still have a clean reject route — you do not need separate approve/reject actions. Fails closed: a condition that cannot be evaluated skips issuance. (Distinct from `rejectionConfig`, which is about a participant rejecting *inbound* data — see Rejection Configuration.)
+- **`displayConfig`** — card presentation (colours, logo, layout) for the issued credential.
+- **`format`** — credential wire format. Only `SdJwtVc` exists today; there is **no mdoc/mDL issuance**, which is the blocker for ISO 18013-5 proximity presentation.
+- **`trustAnchor`** — defaults to `Register`.
 
 #### SorchaLocalWallet citizen-PWA worked example (Feature 114 US4)
 
