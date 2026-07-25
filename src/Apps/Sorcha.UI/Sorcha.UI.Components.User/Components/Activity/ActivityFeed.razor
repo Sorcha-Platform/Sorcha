@@ -93,7 +93,7 @@
                 <MudDivider />
             }
         </MudList>
-        @if (_entries.Count < _totalCount)
+        @if (ShowLoadMore && _entries.Count < _totalCount)
         {
             <div class="d-flex justify-center pa-3" data-testid="activity-feed-load-more">
                 <MudButton Variant="Variant.Text"
@@ -114,6 +114,14 @@
 @code {
     /// <summary>Entries per incremental load (clamped 1..100 server-side).</summary>
     [Parameter] public int PageSize { get; set; } = 20;
+
+    /// <summary>
+    /// Whether to offer "Load more" when more entries exist than are shown. The full-history page
+    /// wants it; a fixed-size summary slice (the web home panel, issue #1267) does not — there the
+    /// route onward is "See all", and a Load more that grew the panel indefinitely would turn a
+    /// dashboard section into a second history page.
+    /// </summary>
+    [Parameter] public bool ShowLoadMore { get; set; } = true;
 
     private readonly List<InboxEntryDto> _entries = new();
     private bool _loading;
