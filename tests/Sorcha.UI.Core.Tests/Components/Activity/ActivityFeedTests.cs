@@ -141,6 +141,29 @@ public sealed class ActivityFeedTests : ComponentTestFixture
             "the Load more affordance must appear when loaded entries < TotalCount");
     }
 
+    /// <summary>
+    /// Issue #1267: the web home panel (a fixed five-entry dashboard slice) hosts this same feed.
+    /// There the route onward is "See all" — a Load more that grew the panel indefinitely would turn
+    /// a dashboard section into a second history page. The suppression must survive the condition
+    /// that would otherwise show the button, so it is asserted with entries deliberately short of
+    /// TotalCount.
+    /// </summary>
+    [Fact]
+    public void WhenLoadMoreIsSuppressed_TheButtonIsAbsentEvenThoughMoreEntriesExist()
+    {
+        var entries = new List<InboxEntryDto> { Entry("System", "Info", "Entry 1") };
+        _api.Setup(a => a.ListAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(),
+                It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new InboxPageDto(entries, 1, 20, 50));
+
+        var cut = Render<ActivityFeed>(ps => ps.Add(p => p.ShowLoadMore, false));
+
+        cut.FindAll("[data-testid='activity-feed-load-more']").Should().BeEmpty();
+        cut.Markup.Should().Contain("Entry 1",
+            "suppressing Load more must not suppress the entries themselves");
+    }
+
     [Fact]
     public void WhenLoadedCountEqualsOrExceedsTotalCount_HidesLoadMoreButton()
     {

@@ -9,6 +9,7 @@
 @implements IDisposable
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
+@using Sorcha.UI.Components.User.Components.Activity
 @using Sorcha.UI.Components.User.Components.Onboarding
 @using Sorcha.UI.Core.Models.Admin
 @using Sorcha.UI.Core.Models.Dashboard
@@ -253,10 +254,29 @@ else
         </MudAlert>
     }
 
-    @* Recent Activity *@
-    <MudText Typo="Typo.h6" Class="mb-2">@Loc.T("dashboard.recentActivity")</MudText>
-    <MudPaper Elevation="1" Class="pa-4">
-        <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.noRecentActivity")</MudText>
+    @* Recent Activity — issue #1267 (UT-004).
+
+       This panel used to render a hard-coded "no recent activity" line that was never wired to
+       anything. It was not merely empty, it was WRONG: a citizen whose identity application had
+       just been rejected got a dashboard telling them nothing had happened, while the very same
+       inbox entry was already listed by the PWA feed and by this host's own /activity route. Only
+       home lied — which is what made rejections invisible on the web.
+
+       Reusing the shared ActivityFeed rather than re-rendering entries here is deliberate: it
+       already carries the #1273 severity/glyph normalisation and the #1266 detail-href routing, and
+       a second hand-rolled renderer would be a second place for those to drift back out. Capped at
+       five with Load more suppressed, because this is a dashboard slice — "See all" is the route
+       onward to the full history. *@
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudText Typo="Typo.h6">@Loc.T("dashboard.recentActivity")</MudText>
+        <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                   Href="activity"
+                   data-testid="home-activity-see-all">
+            @Loc.T("dashboard.seeAllActivity")
+        </MudButton>
+    </MudStack>
+    <MudPaper Elevation="1" Class="pa-2">
+        <ActivityFeed PageSize="5" ShowLoadMore="false" />
     </MudPaper>
 }
 

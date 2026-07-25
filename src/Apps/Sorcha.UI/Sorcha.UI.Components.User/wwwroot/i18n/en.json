@@ -69,6 +69,7 @@
   "dashboard.viewWallets": "View Wallets",
   "dashboard.recentActivity": "Recent Activity",
   "dashboard.noRecentActivity": "No recent activity",
+  "dashboard.seeAllActivity": "See all",
 
   "wallet.title": "Wallets",
   "wallet.create": "Create Wallet",
