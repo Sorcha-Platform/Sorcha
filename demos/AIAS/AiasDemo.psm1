@@ -479,14 +479,35 @@ function Test-AiasAgentAlive {
     }
 
     if ($props -contains 'agentStartedAt' -and $State.agentStartedAt) {
+        # ConvertFrom-Json coerces an ISO-8601 value into a [DateTime] (Kind=Utc), so the recorded
+        # value arrives here as EITHER a DateTime or a string depending on how the caller loaded
+        # state. Handle both explicitly.
+        #
+        # Do not collapse this to [DateTime]::Parse($State.agentStartedAt): when the value is
+        # already a DateTime, PowerShell stringifies it as MM/dd/yyyy before parsing, which THROWS
+        # under a non-US culture (en-GB reads month 25). The catch below then swallowed it and this
+        # whole check silently degraded to the name match — present in the source, inert at runtime.
+        $recorded = $null
         try {
-            $recorded = ([DateTime]::Parse($State.agentStartedAt)).ToUniversalTime()
-            if ([Math]::Abs((($proc.StartTime.ToUniversalTime()) - $recorded).TotalSeconds) -gt 5) {
-                return $false
+            $recorded = if ($State.agentStartedAt -is [DateTime]) {
+                ([DateTime]$State.agentStartedAt).ToUniversalTime()
+            }
+            else {
+                [DateTime]::Parse(
+                    [string]$State.agentStartedAt,
+                    [System.Globalization.CultureInfo]::InvariantCulture,
+                    [System.Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
             }
         }
         catch {
-            # Unreadable timestamp: fall back to the name match already made above.
+            # Unreadable timestamp: fall open to the name match already made above rather than
+            # declaring a live agent dead.
+            $recorded = $null
+        }
+
+        if ($null -ne $recorded `
+            -and [Math]::Abs((($proc.StartTime.ToUniversalTime()) - $recorded).TotalSeconds) -gt 5) {
+            return $false
         }
     }
 
