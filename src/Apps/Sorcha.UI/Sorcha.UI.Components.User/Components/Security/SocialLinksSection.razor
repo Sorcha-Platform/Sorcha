@@ -1,4 +1,4 @@
-@* Linked-providers section for the Accounts tab (Feature 116).
+﻿@* Linked-providers section for the Accounts tab (Feature 116).
    US4 shipped the read-only render; US1 wires Add pills (kick OAuth via
    /social/initiate?intent=link) and Unlink (step up via
    AuthChallengeDialog, then DELETE /api/auth/social/{linkId}). *@
@@ -7,6 +7,7 @@
 @using Sorcha.UI.Core.Models
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Services.Feedback
+@using Sorcha.Tenant.Models.Auth
 @inject ILocalizationService Loc
 @inject IAuthMethodsClientService AuthMethodsClient
 @inject IDialogService DialogService

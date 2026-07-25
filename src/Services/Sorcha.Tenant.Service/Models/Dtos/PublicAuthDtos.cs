@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json.Serialization;
@@ -183,108 +183,6 @@ public record SocialInitiateResponse
     /// </summary>
     [JsonPropertyName("state")]
     public required string State { get; init; }
-}
-
-/// <summary>
-/// Response listing all authentication methods for the current public user.
-/// </summary>
-public record AuthMethodsResponse
-{
-    /// <summary>
-    /// Registered passkey credentials for the user.
-    /// </summary>
-    [JsonPropertyName("passkeys")]
-    public required IReadOnlyList<AuthMethodPasskeyItem> Passkeys { get; init; }
-
-    /// <summary>
-    /// Linked social login providers for the user.
-    /// </summary>
-    [JsonPropertyName("social_links")]
-    public required IReadOnlyList<AuthMethodSocialLinkItem> SocialLinks { get; init; }
-}
-
-/// <summary>
-/// Summary of a passkey credential in the auth methods listing.
-/// </summary>
-public record AuthMethodPasskeyItem
-{
-    /// <summary>
-    /// Unique credential record ID.
-    /// </summary>
-    [JsonPropertyName("id")]
-    public required Guid Id { get; init; }
-
-    /// <summary>
-    /// Human-readable name for this credential.
-    /// </summary>
-    [JsonPropertyName("display_name")]
-    public required string DisplayName { get; init; }
-
-    /// <summary>
-    /// Authenticator device type (e.g., "YubiKey 5 NFC", "Windows Hello").
-    /// </summary>
-    [JsonPropertyName("device_type")]
-    public string? DeviceType { get; init; }
-
-    /// <summary>
-    /// Current credential status (Active, Disabled, Revoked).
-    /// </summary>
-    [JsonPropertyName("status")]
-    public required string Status { get; init; }
-
-    /// <summary>
-    /// Timestamp when the credential was registered.
-    /// </summary>
-    [JsonPropertyName("created_at")]
-    public required DateTimeOffset CreatedAt { get; init; }
-
-    /// <summary>
-    /// Timestamp of the last successful authentication using this credential.
-    /// </summary>
-    [JsonPropertyName("last_used_at")]
-    public DateTimeOffset? LastUsedAt { get; init; }
-}
-
-/// <summary>
-/// Summary of a social login link in the auth methods listing.
-/// </summary>
-public record AuthMethodSocialLinkItem
-{
-    /// <summary>
-    /// Unique identifier for this social login link.
-    /// </summary>
-    [JsonPropertyName("id")]
-    public required Guid Id { get; init; }
-
-    /// <summary>
-    /// Social login provider name (e.g., "Google", "GitHub").
-    /// </summary>
-    [JsonPropertyName("provider")]
-    public required string Provider { get; init; }
-
-    /// <summary>
-    /// Email address associated with the social account.
-    /// </summary>
-    [JsonPropertyName("email")]
-    public string? Email { get; init; }
-
-    /// <summary>
-    /// Display name from the social provider profile.
-    /// </summary>
-    [JsonPropertyName("display_name")]
-    public string? DisplayName { get; init; }
-
-    /// <summary>
-    /// Timestamp when the social login link was created.
-    /// </summary>
-    [JsonPropertyName("created_at")]
-    public required DateTimeOffset CreatedAt { get; init; }
-
-    /// <summary>
-    /// Timestamp of the last sign-in using this social login link.
-    /// </summary>
-    [JsonPropertyName("last_used_at")]
-    public DateTimeOffset? LastUsedAt { get; init; }
 }
 
 /// <summary>

@@ -1,10 +1,11 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.UI.Core.Extensions;
+using Sorcha.Tenant.Models.Auth;
 using Sorcha.UI.Core.Models;
 
 namespace Sorcha.UI.Core.Services;
@@ -53,7 +54,7 @@ public interface IAuthMethodsClientService
     /// <see cref="ScopedOperation.RemoveAuthMethod"/> (passkey-revoke vs social-unlink). Lets the
     /// server compute the correct floor tier (Feature 150). Omit for unambiguous operations.
     /// </param>
-    Task<ChallengeInitiateResult?> InitiateChallengeAsync(
+    Task<ChallengeInitiateResponse?> InitiateChallengeAsync(
         ScopedOperation scopedOperation,
         ChallengeMethod? preferredMethod = null,
         AuthMethodKind? targetMethodKind = null,
@@ -328,7 +329,7 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
     }
 
     /// <inheritdoc />
-    public async Task<ChallengeInitiateResult?> InitiateChallengeAsync(
+    public async Task<ChallengeInitiateResponse?> InitiateChallengeAsync(
         ScopedOperation scopedOperation,
         ChallengeMethod? preferredMethod = null,
         AuthMethodKind? targetMethodKind = null,
@@ -338,7 +339,7 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
         {
             var response = await _httpClient.PostAsJsonAsync(
                 "/api/auth/challenge/initiate",
-                new ChallengeInitiateBody(scopedOperation, preferredMethod, targetMethodKind),
+                new ChallengeInitiateRequest(scopedOperation, preferredMethod, targetMethodKind),
                 cancellationToken);
 
             if (!response.IsSuccessStatusCode)
@@ -349,7 +350,7 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<ChallengeInitiateResult>(
+            return await response.Content.ReadFromJsonAsync<ChallengeInitiateResponse>(
                 JsonDefaults.Api, cancellationToken);
         }
         catch (Exception ex)
@@ -371,12 +372,12 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
         {
             var response = await _httpClient.PostAsJsonAsync(
                 "/api/auth/challenge/verify",
-                new ChallengeVerifyBody(method, scopedOperation, proof, targetMethodKind),
+                new ChallengeVerifyRequest(method, scopedOperation, proof, targetMethodKind),
                 cancellationToken);
 
             if (response.IsSuccessStatusCode)
             {
-                var body = await response.Content.ReadFromJsonAsync<ChallengeVerifyBodyResponse>(
+                var body = await response.Content.ReadFromJsonAsync<ChallengeVerifyResponse>(
                     JsonDefaults.Api, cancellationToken);
                 return body is null || string.IsNullOrEmpty(body.Token)
                     ? new ChallengeVerifyResult(false, null, ChallengeVerifyError.Failed)
@@ -520,13 +521,8 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
         public string State { get; init; } = string.Empty;
     }
 
-    private sealed record ChallengeInitiateBody(
-        ScopedOperation ScopedOperation, ChallengeMethod? PreferredMethod, AuthMethodKind? TargetMethodKind);
-
-    private sealed record ChallengeVerifyBody(
-        ChallengeMethod Method, ScopedOperation ScopedOperation, JsonElement Proof, AuthMethodKind? TargetMethodKind);
-
-    private sealed record ChallengeVerifyBodyResponse(string Token, int ExpiresIn);
+    // The challenge request/response bodies used to be hand-copied here as private records.
+    // They are now the shared Sorcha.Tenant.Models.Auth wire types the Tenant Service binds.
 
     private sealed record PasskeyRegisterOptionsBody(
         [property: System.Text.Json.Serialization.JsonPropertyName("display_name")] string DisplayName);

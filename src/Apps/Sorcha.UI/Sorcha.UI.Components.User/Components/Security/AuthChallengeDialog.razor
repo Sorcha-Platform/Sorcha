@@ -1,4 +1,4 @@
-@* SPDX-License-Identifier: MIT *@
+﻿@* SPDX-License-Identifier: MIT *@
 @* Copyright (c) 2026 Sorcha Contributors *@
 @*
     Re-authentication step-up dialog (Feature 116 T023).
@@ -22,6 +22,7 @@
 @using MudBlazor
 @using Sorcha.UI.Core.Models
 @using Sorcha.UI.Core.Services
+@using Sorcha.Tenant.Models.Auth
 @inject IAuthMethodsClientService AuthMethodsClient
 @inject PasskeyInteropService PasskeyInterop
 
@@ -127,7 +128,7 @@
     /// </summary>
     [Parameter] public AuthMethodKind? Target { get; set; }
 
-    private ChallengeInitiateResult? _initiated;
+    private ChallengeInitiateResponse? _initiated;
     private bool _loadingInitiate = true;
     private bool _initiateFailed;
     private bool _submitting;

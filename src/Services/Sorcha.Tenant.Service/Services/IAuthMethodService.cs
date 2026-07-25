@@ -1,24 +1,9 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Tenant.Models.Auth;
+
 namespace Sorcha.Tenant.Service.Services;
-
-/// <summary>
-/// Identifies a sign-in method kind for the last-method floor check
-/// in <see cref="IAuthMethodService.WouldRemovingLeaveZeroAsync"/>.
-/// TOTP enrolment is intentionally absent — it is a second factor, not a method.
-/// </summary>
-public enum AuthMethodKind
-{
-    /// <summary>The account password (presence flag, not a row).</summary>
-    Password = 0,
-
-    /// <summary>A linked social provider (<c>PlatformSocialLogin</c> row).</summary>
-    Social = 1,
-
-    /// <summary>An active passkey (<c>PasskeyCredential</c> with Status=Active).</summary>
-    Passkey = 2
-}
 
 /// <summary>
 /// Single source of truth for "would removing this method leave the user
@@ -53,7 +38,7 @@ public interface IAuthMethodService
     /// Build the aggregate Accounts-tab read for a single user. Returns null
     /// when the user is not found.
     /// </summary>
-    Task<Models.Requests.AuthMethodsResponse?> GetAggregateAsync(Guid platformUserId, CancellationToken cancellationToken = default);
+    Task<AuthMethodsResponse?> GetAggregateAsync(Guid platformUserId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

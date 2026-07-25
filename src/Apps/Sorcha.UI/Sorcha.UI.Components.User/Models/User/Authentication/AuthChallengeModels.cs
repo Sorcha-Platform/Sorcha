@@ -1,88 +1,27 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Text.Json;
-using System.Text.Json.Serialization;
-
 namespace Sorcha.UI.Core.Models;
 
 /// <summary>
-/// Proof method selected by the server's re-authentication ladder
-/// (Feature 116). Wire-compatible with the Tenant Service enum of the same name.
-/// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter))]
-public enum ChallengeMethod
-{
-    /// <summary>Time-based one-time code from the user's authenticator app.</summary>
-    Totp = 0,
-
-    /// <summary>Current account password.</summary>
-    Password = 1,
-
-    /// <summary>WebAuthn assertion against an existing active passkey.</summary>
-    Passkey = 2,
-
-    /// <summary>OAuth round-trip on a still-linked social provider.</summary>
-    ReOAuth = 3,
-}
-
-/// <summary>
-/// The sign-in method a step-up operation targets (Feature 150). Wire-compatible with the Tenant
-/// Service <c>AuthMethodKind</c>. Sent on challenge initiate/verify so the server can compute the
-/// floor's required proof tier for the ambiguous <see cref="ScopedOperation.RemoveAuthMethod"/>
-/// (passkey-revoke vs social-unlink). A null target fails safe to the strongest tier server-side.
-/// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter))]
-public enum AuthMethodKind
-{
-    /// <summary>The account password.</summary>
-    Password = 0,
-
-    /// <summary>A linked social provider.</summary>
-    Social = 1,
-
-    /// <summary>An active passkey.</summary>
-    Passkey = 2,
-}
-
-/// <summary>
-/// Operation that a re-authentication challenge token authorises (Feature 116).
-/// Tokens are scoped — a token issued for one operation cannot be replayed
-/// against another.
-/// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter))]
-public enum ScopedOperation
-{
-    /// <summary>Unlink a social provider or revoke an active passkey.</summary>
-    RemoveAuthMethod = 0,
-
-    /// <summary>Rotate the existing account password.</summary>
-    ChangePassword = 1,
-
-    /// <summary>Set an initial password (when one or more other methods exist).</summary>
-    SetPassword = 2,
-
-    /// <summary>Clear the account password.</summary>
-    RemovePassword = 3,
-
-    /// <summary>Disable the user's enrolled time-based two-factor authentication.</summary>
-    Disable2Fa = 4,
-}
-
-/// <summary>
-/// Successful response from <c>POST /api/auth/challenge/initiate</c>. The
-/// dialog renders the proof input matching <see cref="Method"/>.
-/// </summary>
-public sealed record ChallengeInitiateResult(ChallengeMethod Method, JsonElement? Payload);
-
-/// <summary>
-/// Outcome of <c>POST /api/auth/challenge/verify</c>. On <see cref="Succeeded"/>
-/// the caller receives the opaque <see cref="Token"/> for the subsequent
+/// Outcome of <c>POST /api/auth/challenge/verify</c> as the dialog sees it. On
+/// <see cref="Succeeded"/> the caller receives the opaque <see cref="Token"/> for the subsequent
 /// mutation call (presented via the <c>X-Auth-Challenge</c> header).
 /// </summary>
+/// <remarks>
+/// <b>This is a client-side outcome wrapper, not a wire contract.</b> It folds the server's
+/// <c>ChallengeVerifyResponse</c> body together with the HTTP status into one value the dialog can
+/// switch on, so it deliberately does not mirror any server type. The wire DTOs themselves —
+/// <c>ChallengeInitiateRequest</c>/<c>Response</c>, <c>ChallengeVerifyRequest</c>/<c>Response</c>
+/// and the <c>ChallengeMethod</c>/<c>ScopedOperation</c>/<c>AuthMethodKind</c> enums — live in
+/// <c>Sorcha.Tenant.Models.Auth</c> and are shared with the Tenant Service.
+/// </remarks>
 public sealed record ChallengeVerifyResult(bool Succeeded, string? Token, ChallengeVerifyError Error);
 
-/// <summary>Failure reasons surfaced to the dialog.</summary>
+/// <summary>
+/// Failure reasons surfaced to the dialog. Derived from the HTTP status by the client — not a
+/// server-sent value.
+/// </summary>
 public enum ChallengeVerifyError
 {
     /// <summary>No failure — the call succeeded.</summary>

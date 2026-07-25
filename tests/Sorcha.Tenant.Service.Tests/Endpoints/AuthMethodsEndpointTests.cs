@@ -1,6 +1,7 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Tenant.Models.Auth;
 using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
@@ -65,7 +66,7 @@ public class AuthMethodsEndpointTests : IClassFixture<TenantServiceWebApplicatio
         payload.Socials[0].Provider.Should().Be("google");
         payload.Socials[0].CanRemove.Should().BeTrue();
         payload.Passkeys.Should().HaveCount(1);
-        payload.Passkeys[0].Status.Should().Be(CredentialStatus.Active);
+        payload.Passkeys[0].Status.Should().Be("active");
         payload.Passkeys[0].CanRemove.Should().BeTrue();
         payload.Passkeys[0].CanRename.Should().BeTrue();
     }
@@ -83,11 +84,11 @@ public class AuthMethodsEndpointTests : IClassFixture<TenantServiceWebApplicatio
 
         payload.Should().NotBeNull();
         payload!.Passkeys.Should().HaveCount(2, "Active + Disabled present; Revoked excluded");
-        payload.Passkeys.Should().Contain(p => p.Status == CredentialStatus.Active);
-        payload.Passkeys.Should().Contain(p => p.Status == CredentialStatus.Disabled);
-        payload.Passkeys.Should().NotContain(p => p.Status == CredentialStatus.Revoked);
+        payload.Passkeys.Should().Contain(p => p.Status == "active");
+        payload.Passkeys.Should().Contain(p => p.Status == "disabled");
+        payload.Passkeys.Should().NotContain(p => p.Status == "revoked");
 
-        var disabledRow = payload.Passkeys.Single(p => p.Status == CredentialStatus.Disabled);
+        var disabledRow = payload.Passkeys.Single(p => p.Status == "disabled");
         disabledRow.CanRename.Should().BeFalse("Disabled passkeys cannot be renamed");
     }
 

@@ -1656,6 +1656,16 @@ The successor to Feature 116. Consolidates account-security management into one 
 - `TierOfProof(ChallengeMethod)` — Passkey=Strongest, Totp/ReOAuth=Strong, **Password=Basic** (T061 resolved 2026-06-11 — a password is a phishable knowledge factor). Its own ops (`ChangePassword`/`RemovePassword`) are Basic-gated by the floor's own "required = tier-being-weakened" rule (no dead-end for password-only users); the load-bearing guarantee holds — a Basic proof can never disable TOTP (Strong) or remove a passkey (Strongest).
 - `RequiredProofTier(ScopedOperation, AuthMethodKind? target)` — the floor. `RemoveAuthMethod` is ambiguous (passkey-revoke vs social-unlink) so the **target is required**; a **null target fails safe to Strongest**.
 
+### Shared wire contracts (DRIFT-004)
+
+`AuthAssuranceTier`, `ChallengeMethod`, `ScopedOperation`, `AuthMethodKind`, the four `AuthMethods*` records, the four `Challenge*Request`/`Response` records, and the three `Totp*` records live **once**, in the zero-dependency leaf **`Sorcha.Tenant.Models.Auth`** — referenced by the Tenant Service, the web UI and the PWA alike. They were previously hand-mirrored UI↔Tenant and had already drifted: the UI's `ChallengeMethod` omitted `EmailOtp`/`SmsOtp` (so the ladder selecting either would have thrown on an unknown enum name and killed the step-up dialog outright) and its `ScopedOperation` omitted `LinkSocial`. **Do not re-declare any of these client-side** — guarded by `AuthMethodsWireContractTests` in `tests/Sorcha.UI.ContractTests`.
+
+Two deliberate carve-outs:
+- **`AuthMethodsPasskey.Status` is a `string`**, not `CredentialStatus` — that enum is EF-mapped with ~40 service-internal usages, so hoisting it into the leaf would drag persistence in. `AuthMethodService.PasskeyStatusWireValue` kebab-cases it so the wire value is byte-identical to before; the test pins the member names.
+- **`ChallengeVerifyResult`/`ChallengeVerifyError` stay UI-local** — they fold the response body together with the HTTP status into one value the dialog switches on, so they mirror no server type.
+
+**Converter precedence (counter-intuitive, load-bearing):** System.Text.Json ranks the `options.Converters` collection **above** a type-level `[JsonConverter]` attribute. These enums carry `[JsonConverter(typeof(JsonStringEnumConverter))]` (default PascalCase names) but `SorchaJson` registers a kebab-case `JsonStringEnumConverter` in `Converters` — so **kebab wins**: `AuthAssuranceTier.Strong` goes on the wire as `"strong"`, `ScopedOperation.RemoveAuthMethod` as `"remove-auth-method"`. Reading is case-insensitive, so PascalCase input still binds. Pinned by `ClientAndServer_RoundTripTheAggregateThroughTheServersOwnOptions`.
+
 ### The ladder-floor rule (the security spine)
 
 > A step-up proof authorises a destructive/downgrade op on a method **iff `proofTier >= RequiredProofTier(op, target)`** AND the last-sign-in-method floor (`Total >= 1`) holds. Strict — no lower-tier fallback. A Basic (email/SMS) proof can therefore **never** strip a passkey, disable TOTP, or change the password.
