@@ -276,6 +276,43 @@ function Set-AiasOrgMasterKey {
 .PARAMETER Force
     Re-publish even when an already-published blueprint id is recorded.
 #>
+<#
+.SYNOPSIS
+    The set of published blueprint ids a provisioned AIAS demo must have.
+.DESCRIPTION
+    Issue #1269: state used to record a SINGLE scalar blueprintId, so Get-AiasDemoStatus could only
+    ever validate one blueprint and was structurally unable to notice a second one missing — it
+    reported blueprint=True while the device-registration workflow was absent from the register
+    entirely. This reads the recorded SET, falling back to the legacy scalar so a state.json written
+    before this change still validates rather than erroring.
+#>
+function Get-AiasExpectedBlueprintIds {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$State)
+
+    $ids = [System.Collections.ArrayList]@()
+    if (-not $State) { return @() }
+
+    # Indexed property access, NOT `.PSObject.Properties.Name -contains`: on a sparse or empty
+    # pscustomobject the latter throws "The property 'Name' cannot be found on this object", which
+    # would turn a partially-written state.json into a crash instead of a NotReady verdict.
+    $idsProp = $State.PSObject.Properties['blueprintIds']
+    if ($idsProp -and $idsProp.Value) {
+        foreach ($prop in $idsProp.Value.PSObject.Properties) {
+            if ($prop.Value) { $ids.Add([string]$prop.Value) | Out-Null }
+        }
+    }
+
+    # Legacy state (pre-#1269) recorded only the scalar. Include it so an older state.json is still
+    # checked, and so the application workflow is covered even if blueprintIds is somehow partial.
+    $scalarProp = $State.PSObject.Properties['blueprintId']
+    if ($scalarProp -and $scalarProp.Value) {
+        if (-not $ids.Contains([string]$scalarProp.Value)) { $ids.Add([string]$scalarProp.Value) | Out-Null }
+    }
+
+    return @($ids)
+}
+
 function Publish-AiasBlueprint {
     [CmdletBinding()]
     param(
@@ -307,37 +344,74 @@ function Publish-AiasBlueprint {
         }
     }
 
-    Write-WtStep "render template -> {{issuerName}} = '$script:AiasName'"
-    $templateRaw = Get-Content -LiteralPath (Join-Path $script:DemoRoot "blueprints/aias-assured-identity.template.json") -Raw
-    $rendered = Set-BlueprintIssuerName -BlueprintJson $templateRaw -AgencyName $script:AiasName
-    $tempBp = Join-Path ([System.IO.Path]::GetTempPath()) ("aias-assured-identity-{0}.json" -f $script:AiasSubdomain)
-    $rendered | Set-Content -LiteralPath $tempBp -Encoding UTF8
+    # Issue #1269: the demo carries TWO templates and only ever published one. The
+    # device-registration workflow (F174 / #1195 Phase 2 "Bind to device") existed as a complete,
+    # publishable template that nothing in the provisioning path published — so the register reported
+    # "1 workflow(s)" and the PWA's Bind-to-device button had no workflow behind it. Both are
+    # published here, and state records the SET (see $publishedIds below) so the readiness check can
+    # no longer be structurally blind to one of them going missing.
+    $blueprintSpecs = @(
+        @{ Key = 'assuredIdentity'
+           File = 'aias-assured-identity.template.json'
+           IdPrefix = 'aias-assured-identity'
+           # The analyst is the agent; the citizen is an OPEN participant, late-bound on first
+           # submission, so it must NOT appear here (VAL_BP_010).
+           WalletMap = @{ "verification-analyst" = $state.agentWallet } }
+        @{ Key = 'deviceRegistration'
+           File = 'aias-device-registration.template.json'
+           IdPrefix = 'aias-device-registration'
+           WalletMap = @{ "aias-issuer" = $state.issuerWalletAddress } }
+    )
 
-    $walletMap = @{ "verification-analyst" = $state.agentWallet }
-    $blueprint = Publish-SorchaBlueprint -BlueprintUrl $api -TemplatePath $tempBp -WalletMap $walletMap -Headers $vAdmin.Headers -IdPrefix "aias-assured-identity" -RegisterId $state.registerId
-    Remove-Item -LiteralPath $tempBp -ErrorAction SilentlyContinue
-    Write-WtSuccess "blueprint: $($blueprint.BlueprintId)"
+    $publishedIds = @{}
+    $blueprint = $null
+    foreach ($spec in $blueprintSpecs) {
+        Write-WtStep "render $($spec.File) -> {{issuerName}} = '$script:AiasName'"
+        $templateRaw = Get-Content -LiteralPath (Join-Path $script:DemoRoot "blueprints/$($spec.File)") -Raw
+        $rendered = Set-BlueprintIssuerName -BlueprintJson $templateRaw -AgencyName $script:AiasName
+        $tempBp = Join-Path ([System.IO.Path]::GetTempPath()) ("{0}-{1}.json" -f $spec.IdPrefix, $script:AiasSubdomain)
+        $rendered | Set-Content -LiteralPath $tempBp -Encoding UTF8
+
+        $pubResult = Publish-SorchaBlueprint -BlueprintUrl $api -TemplatePath $tempBp -WalletMap $spec.WalletMap -Headers $vAdmin.Headers -IdPrefix $spec.IdPrefix -RegisterId $state.registerId
+        Remove-Item -LiteralPath $tempBp -ErrorAction SilentlyContinue
+        Write-WtSuccess "blueprint ($($spec.Key)): $($pubResult.BlueprintId)"
+        $publishedIds[$spec.Key] = $pubResult.BlueprintId
+
+        # The assured-identity blueprint stays the one recorded as state.blueprintId — rehearse.ps1
+        # and run-demo.ps1 read that scalar as "the application workflow".
+        if ($spec.Key -eq 'assuredIdentity') { $blueprint = $pubResult; $rendered_ai = $rendered }
+    }
+    $rendered = $rendered_ai
 
     # Publishing is async: the blueprint's publish transaction must SEAL into a docket (a few seconds)
     # before it appears in the register's /blueprints/published list. Wait for it here — otherwise the
     # immediately-following Get-AiasDemoStatus reads before the seal and reports a false-negative
     # 'blueprint-not-published' (NotReady) even though the publish succeeded. Mirrors the participant
     # seal-wait; bounded so a genuinely-stuck seal still surfaces rather than hanging.
-    $bpId = $blueprint.BlueprintId
+    # Issue #1269: wait for EVERY published id, not just the application workflow — otherwise a
+    # second blueprint that never seals passes unnoticed, which is the blindness being removed.
     $sealDeadline = (Get-Date).AddSeconds(90)
-    $bpSealed = $false
-    while ((Get-Date) -lt $sealDeadline) {
-        if (@(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $state.registerId -Headers $vAdmin.Headers) -contains $bpId) { $bpSealed = $true; break }
-        Start-Sleep -Seconds 3
+    $awaiting = [System.Collections.ArrayList]@($publishedIds.Values)
+    while ((Get-Date) -lt $sealDeadline -and $awaiting.Count -gt 0) {
+        $pubNow = @(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $state.registerId -Headers $vAdmin.Headers)
+        foreach ($id in @($awaiting)) {
+            if ($pubNow -contains $id) { $awaiting.Remove($id) | Out-Null }
+        }
+        if ($awaiting.Count -gt 0) { Start-Sleep -Seconds 3 }
     }
-    if ($bpSealed) { Write-WtSuccess "blueprint sealed + visible in register's published list" }
-    else { Write-WtWarn "blueprint '$bpId' published but not visible in /blueprints/published after 90s — it may still be sealing" }
+    if ($awaiting.Count -eq 0) { Write-WtSuccess "all $($publishedIds.Count) blueprint(s) sealed + visible in register's published list" }
+    else { Write-WtWarn "blueprint(s) not visible in /blueprints/published after 90s (may still be sealing): $($awaiting -join ', ')" }
 
     # coherence assertion (single-source name across org/register/participant/blueprint)
     $coherence = Test-AgencyNameCoherence -AgencyName $script:AiasName -OrgName $script:AiasName -RegisterName $script:AiasName -ParticipantOrg $script:AiasName -BlueprintJson $rendered
     if (-not $coherence.Coherent) { Write-WtWarn "agency-name coherence issues: $($coherence.Mismatches -join '; ')" }
 
-    $merged = Merge-DemoState -Existing $state -Updates @{ blueprintId = $blueprint.BlueprintId }
+    # blueprintId stays for back-compat (rehearse.ps1 / run-demo.ps1 read it as the application
+    # workflow); blueprintIds is the authoritative SET the readiness check verifies (#1269).
+    $merged = Merge-DemoState -Existing $state -Updates @{
+        blueprintId  = $blueprint.BlueprintId
+        blueprintIds = $publishedIds
+    }
     Write-DemoState -State $merged -Path $StateFile | Out-Null
     return (Read-DemoState -Path $StateFile)
 }
@@ -647,10 +721,21 @@ function Get-AiasDemoStatus {
         $registerReadable = Test-AiasRegisterReadable -Api $api -RegisterId $state.registerId -Headers $admin.Headers
     } catch { }
     if (-not $registerReadable) { $reasons += 'register-not-readable' }
-    if ($registerReadable -and $state.blueprintId) {
-        $blueprintPublished = (@(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $state.registerId -Headers $admin.Headers) -contains $state.blueprintId)
+    # Issue #1269: verify EVERY expected blueprint, not just the application workflow. The previous
+    # single-id check reported blueprint=True while the device-registration workflow was missing from
+    # the register altogether.
+    $expectedBlueprintIds = @(Get-AiasExpectedBlueprintIds -State $state)
+    $missingBlueprintIds = @()
+    if ($registerReadable -and $expectedBlueprintIds.Count -gt 0) {
+        $publishedNow = @(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $state.registerId -Headers $admin.Headers)
+        $missingBlueprintIds = @($expectedBlueprintIds | Where-Object { $publishedNow -notcontains $_ })
+        $blueprintPublished = ($missingBlueprintIds.Count -eq 0)
     }
-    if (-not $blueprintPublished) { $reasons += 'blueprint-not-published' }
+    if (-not $blueprintPublished) {
+        $reasons += 'blueprint-not-published'
+        if ($missingBlueprintIds.Count -gt 0) { Write-WtInfo "missing blueprint(s): $($missingBlueprintIds -join ', ')" }
+        if ($expectedBlueprintIds.Count -eq 0) { Write-WtInfo "state records no blueprint ids — run Publish-AiasBlueprint" }
+    }
 
     $agentRunning = Test-AiasAgentAlive -State $state
     if (-not $agentRunning) {
@@ -662,7 +747,7 @@ function Get-AiasDemoStatus {
 
     $verdict = if ($reasons.Count -eq 0) { 'Ready' } else { 'NotReady' }
     Write-WtBanner "AIAS status: $verdict ($($node.id))"
-    Write-WtInfo "gateway=$gatewayHealthy register=$registerReadable blueprint=$blueprintPublished agent=$agentRunning"
+    Write-WtInfo "gateway=$gatewayHealthy register=$registerReadable blueprint=$blueprintPublished ($($expectedBlueprintIds.Count) expected) agent=$agentRunning"
     if ($reasons.Count -gt 0) { Write-WtInfo "reasons: $($reasons -join ', ')" }
 
     return [pscustomobject]@{
@@ -726,4 +811,4 @@ function Reset-AiasDemo {
 Export-ModuleMember -Function `
     New-AiasOrg, Set-AiasOrgMasterKey, Publish-AiasBlueprint, Start-AiasAgent, `
     Build-AiasAgentConfig, Initialize-AiasDemo, Get-AiasDemoStatus, Reset-AiasDemo, `
-    Test-AiasAgentAlive
+    Test-AiasAgentAlive, Get-AiasExpectedBlueprintIds
