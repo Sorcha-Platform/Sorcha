@@ -3,8 +3,22 @@ name: Agent Publish — Pack & Push .NET Global Tool
 on:
   push:
     branches: [ master ]
+    # The tool's own sources AND every project it links — see the note in cli-publish.yml for why
+    # the tool directory alone is not enough. It matters more here: the agent's decision path runs
+    # through Sorcha.Blueprint.Engine and Sorcha.ServiceClients.Http, so a change there can alter
+    # what the agent approves without touching a single file under src/Apps/Sorcha.Agent. F176
+    # (#1136) fixed a fail-open that approved a fake postcode; a stale-dependency publish is a
+    # route back to that class of defect.
+    #
+    # Keep this list in step with the ProjectReferences in
+    # src/Apps/Sorcha.Agent/Sorcha.Agent.csproj — that csproj is the source of truth.
     paths:
       - 'src/Apps/Sorcha.Agent/**'
+      - 'src/Common/Sorcha.Cryptography/**'
+      - 'src/Common/Sorcha.ServiceClients.Http/**'
+      - 'src/Common/Sorcha.Blueprint.Models/**'
+      - 'src/Core/Sorcha.Blueprint.Engine/**'
+      - 'Directory.Build.props'
 
   workflow_dispatch:
 

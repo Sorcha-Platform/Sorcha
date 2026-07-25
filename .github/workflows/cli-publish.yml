@@ -3,8 +3,25 @@ name: CLI Publish — Pack & Push .NET Global Tool
 on:
   push:
     branches: [ master ]
+    # The tool's own sources AND every project it links. A path filter covering only
+    # src/Apps/Sorcha.Cli/** publishes a CLI whose compiled-in dependencies can be older than
+    # its own code: DRIFT-006 (#1258) changed Sorcha.ServiceClients.Http, the CLI links it, and
+    # no republish fired — so the published 2.37.1 embedded the pre-#1258 resolver. Harmless
+    # that time, but the same gap can ship a CLI whose shared clients disagree with the server
+    # it targets, which is exactly the drift DRIFT-002 existed to eliminate.
+    #
+    # Keep this list in step with the ProjectReferences in src/Apps/Sorcha.Cli/Sorcha.Cli.csproj
+    # — that csproj is the source of truth. Adding a reference without adding its path here
+    # silently reopens the gap.
     paths:
       - 'src/Apps/Sorcha.Cli/**'
+      - 'src/Common/Sorcha.Register.Models/**'
+      - 'src/Common/Sorcha.Blueprint.Models/**'
+      - 'src/Common/Sorcha.Cryptography/**'
+      - 'src/Common/Sorcha.ServiceClients.Http/**'
+      - 'src/Common/Sorcha.Wallet.Contracts/**'
+      - 'src/Common/Sorcha.Tenant.Models/**'
+      - 'Directory.Build.props'
 
   workflow_dispatch:
 

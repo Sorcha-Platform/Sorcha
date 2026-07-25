@@ -22,7 +22,12 @@ public class TransactionCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("tx", "Manage transactions in registers\n\nExamples:\n  sorcha tx list --register-id <id>\n  sorcha tx get --register-id <id> --id <tx-id>\n  sorcha tx submit --register-id <id> --wallet <addr> --data '{\"key\":\"value\"}'\n  sorcha tx proof --register-id <id> --tx-id <tx-id> --out proof.json\n  sorcha tx revoke --register-id <id> --tx-id <tx-id> --reason Erroneous")
+        // The submit example must name the options `submit` actually declares. It previously
+        // advertised `--data '{"key":"value"}'`, an option this command has never had, so an
+        // operator's first attempt failed with "Unrecognized command or argument '--data'".
+        // Submitting a transaction needs the signed envelope — type, payload AND signature —
+        // because the CLI does not sign for you.
+        : base("tx", "Manage transactions in registers\n\nExamples:\n  sorcha tx list --register-id <id>\n  sorcha tx get --register-id <id> --id <tx-id>\n  sorcha tx submit --register-id <id> --wallet <addr> --type <type> --payload '{\"key\":\"value\"}' --signature <sig>\n  sorcha tx proof --register-id <id> --tx-id <tx-id> --out proof.json\n  sorcha tx revoke --register-id <id> --tx-id <tx-id> --reason Erroneous")
 
     {
         Subcommands.Add(new TxListCommand(clientFactory, authService, configService));
