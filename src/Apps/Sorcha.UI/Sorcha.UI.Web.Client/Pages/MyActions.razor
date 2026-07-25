@@ -225,9 +225,16 @@
         <MudPaper Class="pa-4" Elevation="0" Outlined="true">
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                 <MudIcon Icon="@Icons.Material.Filled.Info" Color="Color.Info" />
+                @* Issue #1268: the previous wording announced live updates in general, beside a green
+                   Connected badge, which sets the expectation that the whole
+                   LIST is live. It is not: F118 delivers action-available and workflow-completed to a
+                   wallet, and there is no "your action went away" event — when an instance advances to
+                   someone else's action, nothing is emitted to this citizen at all. So additions are
+                   live and removals are not, and the copy now says exactly that rather than
+                   overclaiming. Narrowly true but misleading is still misleading. *@
                 <MudText Typo="Typo.body2">
-                    <strong>Real-time updates enabled.</strong>
-                    New actions will appear automatically when they become available for your wallet.
+                    <strong>New actions appear automatically.</strong>
+                    Completed ones clear when you refresh — use Refresh if you have just submitted something.
                     @if (_connectionState.Status != ConnectionStatus.Connected)
                     {
                         <span class="ml-2" style="color: var(--mud-palette-warning);">

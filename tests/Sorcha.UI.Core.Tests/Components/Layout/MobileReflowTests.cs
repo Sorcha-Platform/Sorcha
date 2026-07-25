@@ -134,6 +134,23 @@ public sealed class MobileReflowTests
     }
 
     /// <summary>
+    /// #1268: the panel claimed "Real-time updates enabled" beside a green Connected badge, which
+    /// reads as "this list is live". Only ADDITIONS are pushed — F118 has no removal event, so when an
+    /// instance advances to someone else's action nothing reaches this citizen and a completed card
+    /// sits there until a manual refresh. Narrowly true but misleading is still misleading.
+    /// </summary>
+    [Fact]
+    public void MyActions_DoesNotClaimTheWholeListIsLive()
+    {
+        var page = Read("src", "Apps", "Sorcha.UI", "Sorcha.UI.Web.Client", "Pages", "MyActions.razor");
+
+        page.Should().NotContain("Real-time updates enabled",
+            "the list is not live in both directions — removals are never pushed (#1268)");
+        page.Should().Contain("New actions appear automatically",
+            "additions ARE live, so the copy should say that much and no more");
+    }
+
+    /// <summary>
     /// #1274: the storage bar read as solid-full at 0.0%. The value binding was correct all along —
     /// MudProgressLinear at 0.05 emits translateX(-100%). What looked like a fill was the TRACK,
     /// which MudBlazor tints with the bar's own colour.
