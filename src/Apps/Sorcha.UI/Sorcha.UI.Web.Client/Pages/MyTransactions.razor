@@ -9,6 +9,10 @@
 @using Sorcha.UI.Core.Models.Registers
 @using Sorcha.UI.Core.Models.Wallet
 @using Sorcha.UI.Core.Components.Shared
+@* TransactionDetail / PayloadViewer live in the register-explorer library. Reused rather than
+   re-implemented for the citizen page: a second renderer of the same ledger facts is a second place
+   for them to drift, and both components are purely presentational over the same view model. *@
+@using Sorcha.UI.Core.Components.Registers
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Services.Wallet
 @inject ITransactionService TransactionService
@@ -73,13 +77,23 @@
         else
         {
             <MudPaper Class="pa-4" Elevation="2">
-                <MudTable Items="@FilteredTransactions" Hover="true" Striped="true" Dense="true">
+                @* Issue #1276: the "Sender" column named the wrong thing. This page lists the
+                   transactions that INVOLVE the selected wallet, so on a received transaction the
+                   sender legitimately is somebody else — which made the citizen's own history read
+                   as a list of strangers. Direction + Counterparty describe the same two facts from
+                   the citizen's point of view, and both were already computed by the query mapper
+                   (TransactionViewModel.Direction / .CounterpartyAddress); they were simply never
+                   rendered. *@
+                <MudTable Items="@FilteredTransactions" Hover="true" Striped="true" Dense="true"
+                          T="TransactionQueryResultItem">
                     <HeaderContent>
                         <MudTh>Transaction ID</MudTh>
                         <MudTh>Register</MudTh>
-                        <MudTh>Sender</MudTh>
+                        <MudTh>Direction</MudTh>
+                        <MudTh>Counterparty</MudTh>
                         <MudTh>Timestamp</MudTh>
                         <MudTh>Docket</MudTh>
+                        <MudTh></MudTh>
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd DataLabel="Transaction ID">
@@ -88,8 +102,27 @@
                         <MudTd DataLabel="Register">
                             <TruncatedId Value="@context.RegisterId" />
                         </MudTd>
-                        <MudTd DataLabel="Sender">
-                            <TruncatedId Value="@context.Transaction.SenderWallet" />
+                        <MudTd DataLabel="Direction">
+                            <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Text"
+                                     Color="@(IsSent(context.Transaction) ? Color.Primary : Color.Success)"
+                                     Icon="@(IsSent(context.Transaction) ? Icons.Material.Filled.NorthEast : Icons.Material.Filled.SouthWest)"
+                                     data-testid="@($"tx-direction-{context.Transaction.TxId}")">
+                                @(IsSent(context.Transaction) ? "Sent" : "Received")
+                            </MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Counterparty">
+                            <span data-testid="@($"tx-counterparty-{context.Transaction.TxId}")">
+                                @if (Counterparty(context.Transaction) is { Length: > 0 } address)
+                                {
+                                    <TruncatedId Value="@address" />
+                                }
+                                else
+                                {
+                                    @* A control/genesis transaction has no other party. An em dash
+                                       says "none" — a blank cell reads as a rendering fault. *@
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">—</MudText>
+                                }
+                            </span>
                         </MudTd>
                         <MudTd DataLabel="Timestamp">
                             @context.Transaction.TimeStamp.ToString("MMM dd, yyyy HH:mm")
@@ -97,7 +130,50 @@
                         <MudTd DataLabel="Docket">
                             @context.Transaction.DocketNumber
                         </MudTd>
+                        <MudTd>
+                            @* Issue #1276: the list had no way through to a transaction at all. The
+                               detail is disclosed INLINE rather than in a dialog on purpose — #1279
+                               showed how badly a dialog of this density fares on a phone, and an
+                               expanding row keeps the citizen's place in the list. *@
+                            <MudIconButton Size="MudBlazor.Size.Small"
+                                           Icon="@(_openTxId == context.Transaction.TxId ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                                           aria-label="@(_openTxId == context.Transaction.TxId ? "Hide transaction detail" : "Show transaction detail")"
+                                           OnClick="@(() => ToggleDetailAsync(context))"
+                                           data-testid="@($"tx-open-{context.Transaction.TxId}")" />
+                        </MudTd>
                     </RowTemplate>
+                    <ChildRowContent>
+                        @if (_openTxId == context.Transaction.TxId)
+                        {
+                            <MudTr>
+                                <td colspan="7">
+                                    <div data-testid="@($"tx-detail-{context.Transaction.TxId}")" class="pa-4">
+                                        @if (_detailLoading)
+                                        {
+                                            <MudProgressLinear Indeterminate="true" />
+                                        }
+                                        else if (_detailError)
+                                        {
+                                            <MudAlert Severity="Severity.Error" Dense="true">
+                                                Couldn't load this transaction. Try again.
+                                            </MudAlert>
+                                        }
+                                        else if (_openTransaction is not null)
+                                        {
+                                            <TransactionDetail Transaction="_openTransaction" />
+                                            @if (_openTransaction.Payloads.Count > 0)
+                                            {
+                                                <MudDivider Class="my-3" />
+                                                <PayloadViewer Payloads="_openTransaction.Payloads"
+                                                               BlueprintId="@_openTransaction.BlueprintId"
+                                                               ActionId="@_openTransaction.ActionId" />
+                                            }
+                                        }
+                                    </div>
+                                </td>
+                            </MudTr>
+                        }
+                    </ChildRowContent>
                     <PagerContent>
                         <MudTablePager PageSizeOptions="new int[] { 10, 25, 50 }" />
                     </PagerContent>
@@ -114,6 +190,62 @@
     private string _searchText = "";
     private bool _loading = true;
     private bool _serviceError;
+
+    // Issue #1276 — inline drill-down. One row open at a time: the detail is dense, and two open at
+    // once turns the table into a wall.
+    private string? _openTxId;
+    private TransactionViewModel? _openTransaction;
+    private bool _detailLoading;
+    private bool _detailError;
+
+    /// <summary>
+    /// Whether the transaction went OUT from the selected wallet. Prefers the direction the query
+    /// mapper already computed, and falls back to comparing the sender — so a projection that
+    /// predates <c>Direction</c> (or any future caller that doesn't set it) still labels the row
+    /// correctly instead of silently calling everything "Received".
+    /// </summary>
+    private bool IsSent(TransactionViewModel tx) =>
+        string.Equals(tx.Direction, "Outbound", StringComparison.OrdinalIgnoreCase)
+        || (tx.Direction is null
+            && string.Equals(tx.SenderWallet, _selectedWalletAddress, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The other party, from the selected wallet's point of view. Null when there isn't one.</summary>
+    private string? Counterparty(TransactionViewModel tx) =>
+        tx.CounterpartyAddress
+        ?? (IsSent(tx) ? tx.RecipientsWallets.FirstOrDefault() : tx.SenderWallet);
+
+    private async Task ToggleDetailAsync(TransactionQueryResultItem item)
+    {
+        if (_openTxId == item.Transaction.TxId)
+        {
+            _openTxId = null;
+            _openTransaction = null;
+            return;
+        }
+
+        _openTxId = item.Transaction.TxId;
+        _openTransaction = null;
+        _detailError = false;
+        _detailLoading = true;
+
+        try
+        {
+            // Deliberately re-fetched rather than reusing the list projection: the by-wallet query
+            // returns transaction headers, and the point of opening a row is to see the caller's own
+            // decrypted disclosure group, which only the per-transaction endpoint carries.
+            _openTransaction = await TransactionService.GetTransactionAsync(
+                item.RegisterId, item.Transaction.TxId);
+            _detailError = _openTransaction is null;
+        }
+        catch
+        {
+            _detailError = true;
+        }
+        finally
+        {
+            _detailLoading = false;
+        }
+    }
 
     private IEnumerable<TransactionQueryResultItem> FilteredTransactions =>
         string.IsNullOrWhiteSpace(_searchText)
