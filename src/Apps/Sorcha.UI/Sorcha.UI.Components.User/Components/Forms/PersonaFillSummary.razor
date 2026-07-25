@@ -5,6 +5,7 @@
 @using MudBlazor
 @using Sorcha.Tenant.Models.Persona
 @using Sorcha.UI.Core.Models.Forms
+@using Sorcha.UI.Core.Models.Persona
 
 @* Feature 092 / US3 + US5 — one-line disclosure summary above the form.
    Two modes:
@@ -72,6 +73,16 @@ else if (Count > 0)
                                 </MudText>
                                 <MudText Typo="Typo.caption" Color="Color.Secondary">
                                     @fill.AttributeName — @FormatValue(fill.Value)
+                                </MudText>
+                                @* Issue #1271: PersonaFillResult has carried Source since Feature 092
+                                   and nothing ever rendered it, so a citizen reviewing what was
+                                   filled could not tell a value they typed themselves from one backed
+                                   by a credential. That is the same confusion that produced the
+                                   wrongful rejection in UT-001, so the review states it outright. *@
+                                <MudText Typo="Typo.caption" Color="Color.Secondary"
+                                         Class="persona-fill-review-provenance"
+                                         data-testid="@($"persona-fill-provenance-{pointer}")">
+                                    @PersonaProvenance.Describe(fill.Source, verifiedBy: null)
                                 </MudText>
                             </div>
                             <MudIconButton Icon="@Icons.Material.Filled.Clear"
