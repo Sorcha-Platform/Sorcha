@@ -21,7 +21,8 @@
                   Variant="Variant.Outlined"
                   Margin="Margin.Dense"
                   DebounceInterval="300"
-                  OnBlur="OnBlur" />
+                  OnBlur="OnBlur"
+                  @attributes="_inputHints" />
 </div>
 
 @code {
@@ -58,10 +59,20 @@
     private string _errorText = string.Empty;
     private bool _isRequired;
 
+    // Issue #1278: a mobile keyboard auto-capitalised what the citizen typed, and the value ARRIVED
+    // corrupted ("Eh91ja"). The hints are derived from the field's own schema rather than its name,
+    // so a machine-checked value (pattern / machine format / enum / address lookup) suppresses
+    // capitalisation and autocorrect while prose keeps the browser defaults — and a prose field
+    // emits no attributes at all, so its markup is unchanged.
+    private Dictionary<string, object> _inputHints = new();
+
     protected override void OnParametersSet()
     {
         _value = FormContext?.GetValue<string>(Control.Scope) ?? string.Empty;
         _isRequired = SchemaService.IsRequired(FormContext?.DataSchema, Control.Scope);
+        _inputHints = TextInputHints
+            .ForField(SchemaService.GetSchemaForScope(FormContext?.DataSchema, Control.Scope))
+            .ToAttributes();
         UpdateErrors();
     }
 

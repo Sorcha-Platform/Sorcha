@@ -49,7 +49,12 @@
                   Variant="Variant.Outlined"
                   Margin="Margin.Dense"
                   DebounceInterval="300"
-                  OnBlur="OnBlurAsync" />
+                  OnBlur="OnBlurAsync"
+                  @* Issue #1278: a postcode is the canonical machine-checked value — this field is
+                     literally checked against a gazetteer, and "Eh91ja" is not a postcode. Hints are
+                     unconditional here rather than schema-derived: a field dispatched to THIS
+                     renderer is a postcode by definition. *@
+                  @attributes="ExactValueHints" />
 
     @if (_mode == LookupMode.FullAddress)
     {
@@ -184,9 +189,23 @@
         _candidates = null;
     }
 
+    private static readonly Dictionary<string, object> ExactValueHints =
+        TextInputHints.ExactValue.ToAttributes();
+
     private async Task OnBlurAsync()
     {
         if (FormContext is null) return;
+
+        // Issue #1278 — normalise BEFORE validating. A keyboard hint is advisory and cannot fix a
+        // value that was pasted, dictated, or typed on a keyboard that ignored it; normalising here
+        // is what guarantees what gets signed. Doing it before validation also means the citizen
+        // never sees an error for a postcode that was only ever wrong in its casing.
+        var normalised = PostalValueNormaliser.Postcode(_value);
+        if (!string.Equals(normalised, _value, StringComparison.Ordinal))
+        {
+            _value = normalised;
+            FormContext.SetValue(Control.Scope, normalised);
+        }
 
         // Schema-level validation (required, pattern etc.) runs on every blur
         // regardless of provider mode.
@@ -287,10 +306,13 @@
         {
             SetSiblingValue($"{parentScope}region", candidate.Region);
         }
-        SetSiblingValue($"{parentScope}postcode", candidate.Postcode);
-        SetSiblingValue($"{parentScope}country", candidate.Country);
+        // Issue #1278: the provider is normalised too. Its postcode and country come off a third-party
+        // gazetteer, so neither the casing nor the spacing is Sorcha's to assume — and an autofilled
+        // value goes on to be signed exactly like a typed one.
+        SetSiblingValue($"{parentScope}postcode", PostalValueNormaliser.Postcode(candidate.Postcode));
+        SetSiblingValue($"{parentScope}country", PostalValueNormaliser.Country(candidate.Country));
 
-        _value = candidate.Postcode;
+        _value = PostalValueNormaliser.Postcode(candidate.Postcode);
         _candidates = null;
         _metadataHint = $"Selected: {candidate.DisplayLabel}";
         _adornmentIcon = Icons.Material.Filled.CheckCircle;
@@ -327,7 +349,9 @@
         }
         if (!string.IsNullOrEmpty(metadata.Country))
         {
-            SetSiblingValue($"{parentScope}country", metadata.Country);
+            // Issue #1278: same rule as the candidate path — a provider-supplied value is signed
+            // exactly like a typed one, so it gets the same whitespace normalisation.
+            SetSiblingValue($"{parentScope}country", PostalValueNormaliser.Country(metadata.Country));
         }
     }
 
