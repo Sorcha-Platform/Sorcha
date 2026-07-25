@@ -11,6 +11,8 @@
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Services.Admin
 @implements IDisposable
+@using Sorcha.UI.Core.Services.Feedback
+@inject IInlineFeedback Feedback
 @inject IOperationStatusService OperationService
 
 <MudPaper Elevation="2" Class="pa-4">
@@ -177,6 +179,8 @@
         try
         {
             var result = await WorkflowService.SubmitActionExecuteAsync(OriginalRequest);
+            // Issue #1277: same async-encryption retry path as CryptoProgressPopover.
+            result.SurfaceWarnings(Feedback);
             if (result?.HasAsyncOperation == true)
             {
                 // Reset state for new operation

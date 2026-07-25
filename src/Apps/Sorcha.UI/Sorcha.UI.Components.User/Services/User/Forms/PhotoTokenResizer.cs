@@ -16,6 +16,26 @@ public sealed record ImageTokenSpec
     public required IReadOnlyList<double> QualitySteps { get; init; }
 
     /// <summary>
+    /// Progressively smaller dimensions to retry at once every quality step at the full token size
+    /// has failed. Issue #1277: the quality ladder alone left dimensions — the obvious remaining
+    /// lever — unpulled, so a detailed photo simply failed and the citizen's credential was issued
+    /// with no portrait at all. A slightly smaller token still shows their face; a dropped claim
+    /// shows nothing.
+    /// </summary>
+    /// <remarks>
+    /// Each step keeps the ISO 19794-5 3:4 token aspect, and the ladder stops at 120×160 — below
+    /// roughly that a face stops being usable for the human check the F174 verifier exists to
+    /// support, and "technically fits" would have become "useless to look at".
+    /// </remarks>
+    public IReadOnlyList<TokenDimensions> DimensionSteps { get; init; } =
+    [
+        new(204, 272),
+        new(168, 224),
+        new(144, 192),
+        new(120, 160),
+    ];
+
+    /// <summary>
     /// The canonical v1 preset — 240×320 JPEG, ≤20KB raw.
     /// </summary>
     public static ImageTokenSpec ImageTokenJpeg240x320 => new()
@@ -26,6 +46,9 @@ public sealed record ImageTokenSpec
         QualitySteps = [0.85, 0.75, 0.65, 0.55, 0.5]
     };
 }
+
+/// <summary>A candidate token-image size. Deconstructs so callers can write <c>var (w, h)</c>.</summary>
+public readonly record struct TokenDimensions(int Width, int Height);
 
 /// <summary>
 /// Outcome of a resize-to-token operation.
@@ -40,6 +63,16 @@ public sealed record PhotoTokenResult
 
     /// <summary>The final JPEG quality factor that met the size target.</summary>
     public required double QualityUsed { get; init; }
+
+    /// <summary>Width of the token that met the target — below <see cref="ImageTokenSpec.Width"/>
+    /// when issue #1277's downscale ladder had to be used.</summary>
+    public required int Width { get; init; }
+
+    /// <summary>Height of the token that met the target.</summary>
+    public required int Height { get; init; }
+
+    /// <summary>True when the token had to be shrunk below the spec's dimensions to fit.</summary>
+    public bool WasDownscaled { get; init; }
 }
 
 /// <summary>
@@ -89,37 +122,54 @@ public sealed class PhotoTokenResizer
 
         byte[]? bestBytes = null;
         double bestQuality = 0;
+        var bestDimensions = new TokenDimensions(spec.Width, spec.Height);
 
-        foreach (var quality in spec.QualitySteps)
+        // Full size first, then issue #1277's downscale ladder. Ordered so the full-size token is
+        // always preferred and shrinking is genuinely a last resort — never speculative.
+        var ladder = new List<TokenDimensions> { new(spec.Width, spec.Height) };
+        ladder.AddRange(spec.DimensionSteps);
+
+        foreach (var dimensions in ladder)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            var isFullSize = dimensions.Width == spec.Width && dimensions.Height == spec.Height;
 
-            var encoded = await _interop.ResizeAndEncodeJpegAsync(
-                sourceBytes, spec.Width, spec.Height, quality, cancellationToken)
-                .ConfigureAwait(false);
-
-            if (encoded.Length <= spec.MaxRawBytes)
+            foreach (var quality in spec.QualitySteps)
             {
-                return new PhotoTokenResult
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var encoded = await _interop.ResizeAndEncodeJpegAsync(
+                    sourceBytes, dimensions.Width, dimensions.Height, quality, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (encoded.Length <= spec.MaxRawBytes)
                 {
-                    Base64 = Convert.ToBase64String(encoded),
-                    RawBytes = encoded.Length,
-                    QualityUsed = quality
-                };
-            }
+                    return new PhotoTokenResult
+                    {
+                        Base64 = Convert.ToBase64String(encoded),
+                        RawBytes = encoded.Length,
+                        QualityUsed = quality,
+                        Width = dimensions.Width,
+                        Height = dimensions.Height,
+                        WasDownscaled = !isFullSize,
+                    };
+                }
 
-            // Track the smallest output in case we never meet the target — the
-            // exception message cites the closest attempt for a better error.
-            if (bestBytes is null || encoded.Length < bestBytes.Length)
-            {
-                bestBytes = encoded;
-                bestQuality = quality;
+                // Track the smallest output in case we never meet the target — the exception
+                // message cites the closest attempt, which after the ladder has run is a SMALL
+                // one. Citing the first 240x320 try would understate how hard this worked.
+                if (bestBytes is null || encoded.Length < bestBytes.Length)
+                {
+                    bestBytes = encoded;
+                    bestQuality = quality;
+                    bestDimensions = dimensions;
+                }
             }
         }
 
         throw new PhotoTokenTooDetailedException(
-            $"Portrait too detailed for {spec.Width}x{spec.Height} token: best attempt at quality " +
-            $"{bestQuality:F2} produced {bestBytes?.Length ?? 0} bytes (target {spec.MaxRawBytes}). " +
+            $"Portrait too detailed for a token image: best attempt was " +
+            $"{bestDimensions.Width}x{bestDimensions.Height} at quality {bestQuality:F2}, which " +
+            $"produced {bestBytes?.Length ?? 0} bytes (target {spec.MaxRawBytes}). " +
             "Ask the citizen to retake with a plainer background or skip the photo.");
     }
 }

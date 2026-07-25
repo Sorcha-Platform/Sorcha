@@ -488,6 +488,8 @@
                 };
 
                 var submitResult = await WorkflowService.SubmitActionExecuteAsync(executeRequest);
+                // Issue #1277: the server's dropped-claim warnings were discarded here entirely.
+                submitResult.SurfaceWarnings(Feedback);
                 if (submitResult is { HasAsyncOperation: true })
                 {
                     // Async encryption — show progress indicator

@@ -60,6 +60,19 @@
                 </MudOverlay>
             }
         }
+
+        @* Issue #1277 — server-side dropped-claim warnings (e.g. an oversized portrait omitted from
+           the credential). Rendered here, outside the load/error/form chain, so they show whatever
+           state the dialog is in when the submission comes back. Inline rather than IInlineFeedback
+           because this is a dialog surface (CLAUDE.md #12). *@
+        @if (_submissionWarnings is { Count: > 0 })
+        {
+            @foreach (var warning in _submissionWarnings)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2"
+                          data-testid="new-submission-warning">@warning</MudAlert>
+            }
+        }
     </DialogContent>
 </MudDialog>
 
@@ -82,6 +95,11 @@
     private bool _loadingBlueprint = true;
     private bool _submitting;
     private string? _loadError;
+
+    // Issue #1277 — server-side dropped-claim warnings (e.g. an oversized portrait omitted from the
+    // credential). Rendered inline in the dialog body; see the note at the assignment site for why
+    // this is not IInlineFeedback.
+    private List<string>? _submissionWarnings;
 
     protected override async Task OnInitializedAsync()
     {
@@ -164,6 +182,13 @@
             };
 
             var result = await WorkflowService.SubmitActionExecuteAsync(request);
+            // Issue #1277: a dropped-claim warning was discarded here entirely. This is a DIALOG,
+            // so it must NOT use IInlineFeedback (CLAUDE.md #12 — InlineFeedbackHost mounts in the
+            // layout, not inside dialog surfaces). Held in state and rendered as an inline alert in
+            // the dialog body instead, which is the documented pattern for dialog-scoped messages.
+            var collected = new List<string>();
+            result.SurfaceWarnings(collected.Add);
+            _submissionWarnings = collected.Count > 0 ? collected : null;
             if (result is null || result.IsFailure)
             {
                 _submitting = false;

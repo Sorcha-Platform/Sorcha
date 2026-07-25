@@ -34,6 +34,9 @@ public class EncryptionProgressIndicatorTests : BunitContext
         _workflowServiceMock = new Mock<IWorkflowService>();
 
         Services.AddSingleton(_operationServiceMock.Object);
+        // Issue #1277: the component now surfaces the server's dropped-claim warnings on its retry
+        // path, which is one of the two async-encryption routes that used to discard them silently.
+        Services.AddSingleton(Moq.Mock.Of<Sorcha.UI.Core.Services.Feedback.IInlineFeedback>());
     }
 
     // ---------------------------------------------------------------
