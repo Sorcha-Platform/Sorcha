@@ -39,11 +39,39 @@
     }
     else if (!string.IsNullOrEmpty(_qrPng))
     {
-        <div data-testid="qr-active">
-            <img src="data:image/png;base64,@_qrPng" alt="Scan to verify" style="width:200px;height:200px;" />
-            <div class="mt-2">
-                <a href="@_qrDeepLink" data-testid="deep-link">@_qrDeepLink</a>
+        @* Issue #1282: this used to render the raw openid4vp:// request URI as the link's own text —
+           a protocol string shown to a citizen as if it were content, overflowing the viewport with
+           no explanation of what to do with the QR, and no way out of the screen. The URI belongs in
+           the href only; the QR is the affordance. *@
+        <div data-testid="qr-active" class="qr-active">
+            <MudText Typo="Typo.subtitle1" Class="mb-1" data-testid="qr-heading">@EffectiveHeading</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3" data-testid="qr-instruction">
+                Ask them to scan this with their wallet app. You'll see the result here as soon as they share.
+            </MudText>
+
+            <img src="data:image/png;base64,@_qrPng" alt="Scan to verify" class="qr-image" />
+
+            <div class="qr-waiting mt-3" data-testid="qr-waiting">
+                <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Waiting for them to share…</MudText>
             </div>
+
+            <MudStack Row="true" Spacing="2" Class="mt-3" Justify="Justify.Center">
+                @* Same-device escape hatch. The URI rides the href where it belongs — never as
+                   visible text. Only useful when a wallet app is installed on THIS device, so it is
+                   secondary to the QR. *@
+                <MudLink Href="@_qrDeepLink" Underline="Underline.Always"
+                         Typo="Typo.body2" data-testid="deep-link">
+                    Open in a wallet on this device
+                </MudLink>
+                @if (OnCancel.HasDelegate)
+                {
+                    <MudLink Href="javascript:void(0)" Underline="Underline.Always" Typo="Typo.body2"
+                             data-testid="qr-cancel" @onclick="@(() => OnCancel.InvokeAsync())">
+                        Cancel
+                    </MudLink>
+                }
+            </MudStack>
         </div>
     }
 </div>
@@ -60,6 +88,26 @@
 
     /// <summary>Raised once with the computed verdict when polling reports completion (may be null).</summary>
     [Parameter] public EventCallback<VerificationOutcome?> OnOutcome { get; set; }
+
+    /// <summary>
+    /// Raised when the operator abandons the session. When no handler is supplied the Cancel
+    /// affordance is not rendered — a dead control is worse than none (issue #1282: the QR screen
+    /// offered no way out at all).
+    /// </summary>
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    /// <summary>
+    /// Optional override for the heading above the QR. Left unset, the component names the check
+    /// itself from <see cref="Question"/> — it already has the preset, so a host should not have to
+    /// remember to pass this for the screen to say what it is doing (issue #1282: the QR screen
+    /// carried no heading at all).
+    /// </summary>
+    [Parameter] public string? ScanHeading { get; set; }
+
+    private string EffectiveHeading =>
+        !string.IsNullOrWhiteSpace(ScanHeading) ? ScanHeading!
+        : !string.IsNullOrWhiteSpace(Question?.Label) ? $"Checking: {Question!.Label}"
+        : "Show this to the person you're checking";
 
     private CancellationTokenSource? _cts;
     private Task? _pollTask;
@@ -127,7 +175,7 @@
                 }
                 if (poll.IsTerminal)
                 {
-                    if (!_disposed) { _error = true; StateHasChanged(); }
+                    await FailAsync();
                     return;
                 }
             }
@@ -135,12 +183,40 @@
         catch (OperationCanceledException) { }
         catch
         {
-            if (!_disposed)
+            await FailAsync();
+        }
+    }
+
+    /// <summary>
+    /// Surfaces the error state from the poll loop.
+    /// </summary>
+    /// <remarks>
+    /// Issue #1282: the two previous call sites invoked <c>StateHasChanged()</c> DIRECTLY from this
+    /// background poll task. Rendering must be marshalled onto the renderer's dispatcher; calling it
+    /// off-dispatcher is the classic source of Blazor's "An unhandled error has occurred" bar — which
+    /// is exactly what the citizen saw on this screen, and it suppressed the verdict panel that would
+    /// otherwise have rendered. <c>InvokeAsync</c> marshals it correctly.
+    /// <para>
+    /// Swallows <see cref="ObjectDisposedException"/> because the component can be unmounted between
+    /// the disposed check and the dispatch — losing a state update on a dying component is correct,
+    /// crashing the page is not.
+    /// </para>
+    /// </remarks>
+    private async Task FailAsync()
+    {
+        if (_disposed) return;
+
+        try
+        {
+            await InvokeAsync(() =>
             {
+                if (_disposed) return;
                 _error = true;
                 StateHasChanged();
-            }
+            });
         }
+        catch (ObjectDisposedException) { }
+        catch (OperationCanceledException) { }
     }
 
     private async Task RetryAsync()
