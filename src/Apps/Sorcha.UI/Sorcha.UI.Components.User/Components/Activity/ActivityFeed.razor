@@ -16,6 +16,7 @@
 @implements IDisposable
 
 @inject IInboxApiService InboxApi
+@inject IInboxDetailRouter DetailRouter
 @inject TenantHubConnection TenantHub
 @inject ILogger<ActivityFeed> Logger
 @inject NavigationManager Navigation
@@ -49,8 +50,12 @@
                 <MudListItem T="InboxEntryDto"
                              Style="@(isUnread ? "background-color: rgba(79,70,229,0.06);" : "")"
                              data-testid="@($"activity-entry-{entry.Id}")">
+                    @* Issue #1266: clickability now follows whether the href resolves to an IN-APP
+                       route. Keying it off "DetailHref is non-empty" invited a tap that navigated the
+                       browser to a raw API URL — about:blank plus a zero-byte download. *@
+                    @{ var appRoute = DetailRouter.Resolve(entry.DetailHref); }
                     <div class="d-flex flex-column gap-1" @onclick="() => HandleEntryClickAsync(entry)"
-                         style="@(!string.IsNullOrWhiteSpace(entry.DetailHref) ? "cursor:pointer;" : "")">
+                         style="@(appRoute is not null ? "cursor:pointer;" : "")">
                         <div class="d-flex align-center gap-2">
                             @* Issue #1273: the glyph now honours the entry's own iconKey (e.g.
                                "workflow.rejected") and only falls back to a category glyph. *@
@@ -200,9 +205,14 @@
                 }
             }
         }
-        if (!string.IsNullOrWhiteSpace(entry.DetailHref))
         {
-            Navigation.NavigateTo(entry.DetailHref);
+            // Issue #1266: navigate ONLY to a resolved in-app route. A raw /api/... href resolves
+            // to null and is deliberately inert rather than handed to the browser.
+            var appRoute = DetailRouter.Resolve(entry.DetailHref);
+            if (appRoute is not null)
+            {
+                Navigation.NavigateTo(appRoute);
+            }
         }
     }
 

@@ -46,6 +46,11 @@ builder.Services.AddCitizenWalletServices(hostRoot);
 // These registrations appear AFTER AddSorchaUserComponents (which uses TryAdd) and
 // AddCitizenWalletServices (which registers IEphemeralVerifierIdentityService) so the
 // DI overrides win and the ephemeral identity service is available (R4).
+// Issue #1266: this host CAN render an instance (/applications/{id}), so override the shared
+// refuse-by-default router. Registered after AddSorchaUserComponents' TryAdd so this one wins.
+builder.Services.AddScoped<Sorcha.UI.Components.User.Services.Shared.IInboxDetailRouter,
+                           WalletInboxDetailRouter>();
+
 builder.Services.AddScoped<IVerifierIdentityProvider, EphemeralVerifierIdentityAdapter>();
 builder.Services.AddScoped<IVerificationTransport, HaipVerificationTransport>();
 

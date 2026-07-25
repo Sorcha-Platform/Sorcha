@@ -119,7 +119,13 @@ public sealed class EfCoreInboxStore : IInboxStore
 
         if (actionableOnly)
         {
-            query = query.Where(InboxClassification.ActionablePredicate);
+            // Issue #1267: the BADGE counts "needs attention" (Action or Warning+), not the narrower
+            // "actionable" (Action or ActionRequired+). A rejected identity application is
+            // Workflow/Warning, so under the old predicate it could never badge the bell — the
+            // citizen saw an empty bell and concluded their application had vanished. The list
+            // filter above keeps the narrower ActionablePredicate: that is a user-chosen filter with
+            // different intent from an attention indicator.
+            query = query.Where(InboxClassification.NeedsAttentionPredicate);
         }
 
         return query.CountAsync(ct);

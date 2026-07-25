@@ -5,6 +5,8 @@
 @inject IInboxApiService InboxApi
 @inject TenantHubConnection TenantHub
 @inject NavigationManager Navigation
+@using Sorcha.UI.Components.User.Services.Shared
+@inject IInboxDetailRouter DetailRouter
 @inject ILogger<InboxPanel> Logger
 @using Microsoft.Extensions.Logging
 @using Sorcha.UI.Core.Services
@@ -17,7 +19,8 @@
     Renders a drawer of inbox entries fetched from /api/me/inbox.
     Refreshes on TenantHub.OnInboxEntryAdded — server-driven realtime.
     Per-entry "Mark read" and "Dismiss" actions hit the public REST endpoints.
-    Click navigates to the entry's DetailHref so users can act on the item.
+    Click navigates to the entry's detail view via IInboxDetailRouter, which translates the
+    stored API href into an in-app route and refuses anything this host cannot render (#1266).
 
     Coexists alongside the legacy PendingActionInbox drawer; both are mountable
     from MainLayout. Future Phase-10 work consolidates them.
@@ -240,7 +243,12 @@
         }
         if (!string.IsNullOrWhiteSpace(entry.DetailHref))
         {
-            Navigation.NavigateTo(entry.DetailHref);
+            // Issue #1266: only ever navigate to a resolved in-app route, never a raw API href.
+            var appRoute = DetailRouter.Resolve(entry.DetailHref);
+            if (appRoute is not null)
+            {
+                Navigation.NavigateTo(appRoute);
+            }
         }
     }
 
