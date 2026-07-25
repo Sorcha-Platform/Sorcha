@@ -804,12 +804,15 @@
         InvokeAsync(StateHasChanged);
     }
 
+    // Issue #1271: this compared a LAYOUT field name ("email", "address") for exact equality against
+    // the resolver's filled set, which holds full JSON Pointers to leaves ("/email/email",
+    // "/address/postcode"). So the cream tint and the "self" tick only ever lit up for a fill that
+    // landed on a top-level scalar — and every real form, the AIAS application included, groups its
+    // fields into objects, so in practice they never lit up at all. PersonaFillScope matches on
+    // pointer segments (never a bare string prefix, or "/addressLine1" would light up "address" and
+    // tell the citizen something untrue about where their address came from).
     private bool IsPersonaFilled(string fieldName)
-    {
-        if (_personaFilledPaths.Count == 0) return false;
-        var key = fieldName.StartsWith('/') ? fieldName : "/" + fieldName;
-        return _personaFilledPaths.Contains(key);
-    }
+        => PersonaFillScope.CoversField(_personaFilledPaths, fieldName);
 
     private static string PersonaFilledAriaId(string fieldName)
     {

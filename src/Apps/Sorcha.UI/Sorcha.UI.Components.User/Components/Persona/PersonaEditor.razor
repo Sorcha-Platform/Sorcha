@@ -5,6 +5,7 @@
 
 @using Microsoft.Extensions.Logging
 @using Sorcha.Tenant.Models.Persona
+@using Sorcha.UI.Core.Models.Persona
 @using Sorcha.UI.Core.Services.Feedback
 @using Sorcha.UI.Core.Services.Persona
 
@@ -13,10 +14,25 @@
         <MudIcon Icon="@Icons.Material.Filled.Person" Class="mr-2" />
         My Profile
     </MudText>
-    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-2">
         Saved once, filled everywhere. Your profile is encrypted at rest and only ever
         used to autofill forms you open — nothing is shared with anyone else.
     </MudText>
+
+    @* Issue #1271: PersonaAttribute carries Source/VerifiedBy and nothing rendered them, so a
+       citizen could not tell a value they typed from one backed by a credential. That is not
+       cosmetic — UT-001 was a wrongful rejection caused by exactly this confusion between a
+       self-asserted profile value and a verified ACCOUNT claim. The statement is derived from the
+       provenance actually loaded rather than hardcoded, so it starts telling the truth about
+       credential-backed values the moment any exist rather than needing to be remembered. *@
+    @if (_provenanceSummary is not null)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4"
+                 data-testid="persona-provenance-summary">
+            <MudIcon Icon="@Icons.Material.Filled.EditNote" Size="Size.Small" Class="mr-1" />
+            @_provenanceSummary
+        </MudText>
+    }
 
     @if (_loadError is not null)
     {
@@ -321,8 +337,52 @@
         }
     }
 
+    /// <summary>
+    /// Issue #1271 — one sentence naming where the values on this page came from, derived from the
+    /// attributes actually loaded. Null when the profile is empty, so a blank page makes no claim.
+    /// </summary>
+    private string? _provenanceSummary;
+
+    private void BuildProvenanceSummary(PersonaReadModelV1 read)
+    {
+        var verified = new List<string>();
+        var anySelfAsserted = false;
+
+        void Note(PersonaAttributeSource source, string? verifiedBy)
+        {
+            if (source == PersonaAttributeSource.VerifiedCredential)
+            {
+                verified.Add(PersonaProvenance.Describe(source, verifiedBy));
+            }
+            else
+            {
+                anySelfAsserted = true;
+            }
+        }
+
+        if (read.GivenName is { } gn) Note(gn.Source, gn.VerifiedBy);
+        if (read.FamilyName is { } fn) Note(fn.Source, fn.VerifiedBy);
+        if (read.FullName is { } full) Note(full.Source, full.VerifiedBy);
+        if (read.DateOfBirth is { } dob) Note(dob.Source, dob.VerifiedBy);
+        if (read.DefaultEmail is { } de) Note(de.Source, de.VerifiedBy);
+        if (read.DefaultPhone is { } dp) Note(dp.Source, dp.VerifiedBy);
+        if (read.DefaultAddress is { } da) Note(da.Source, da.VerifiedBy);
+
+        if (!anySelfAsserted && verified.Count == 0)
+        {
+            _provenanceSummary = null;
+            return;
+        }
+
+        _provenanceSummary = verified.Count == 0
+            ? "You entered everything here yourself. Sorcha hasn't checked any of it — "
+              + "that's separate from your verified account details."
+            : $"Mostly entered by you. {string.Join("; ", verified.Distinct())}.";
+    }
+
     private void HydrateFromRead(PersonaReadModelV1 read)
     {
+        BuildProvenanceSummary(read);
         _givenName = read.GivenName?.Value;
         _familyName = read.FamilyName?.Value;
         _fullName = read.FullName?.Value;
@@ -334,6 +394,15 @@
         _phones.AddRange(read.AllPhones);
         _addresses.Clear();
         _addresses.AddRange(read.AllAddresses);
+
+        // Issue #1271: the read model does not promise that any row is flagged default, so a citizen
+        // with exactly ONE email saw a Default radio with nothing selected — which reads as a broken
+        // control, not as a meaningful state. Normalised at hydrate rather than at render so the
+        // value shown selected is the value that gets saved.
+        PersonaDefaultSelection.EnsureOne(_emails, r => r.IsDefault, (r, d) => r with { IsDefault = d });
+        PersonaDefaultSelection.EnsureOne(_phones, r => r.IsDefault, (r, d) => r with { IsDefault = d });
+        PersonaDefaultSelection.EnsureOne(_addresses, r => r.IsDefault, (r, d) => r with { IsDefault = d });
+
         _nationalities.Clear();
         _nationalities.AddRange(read.AllNationalities);
         _defaultNationality = read.DefaultNationality?.Value ?? _nationalities.FirstOrDefault();
