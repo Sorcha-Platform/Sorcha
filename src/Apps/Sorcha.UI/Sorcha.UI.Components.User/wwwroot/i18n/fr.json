@@ -69,6 +69,7 @@
   "dashboard.viewWallets": "Voir les portefeuilles",
   "dashboard.recentActivity": "Activité récente",
   "dashboard.noRecentActivity": "Aucune activité récente",
+  "dashboard.seeAllActivity": "Tout afficher",
 
   "wallet.title": "Portefeuilles",
   "wallet.create": "Créer un portefeuille",

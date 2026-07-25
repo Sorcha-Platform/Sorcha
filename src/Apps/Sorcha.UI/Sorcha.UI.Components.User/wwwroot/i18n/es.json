@@ -69,6 +69,7 @@
   "dashboard.viewWallets": "Ver billeteras",
   "dashboard.recentActivity": "Actividad reciente",
   "dashboard.noRecentActivity": "Sin actividad reciente",
+  "dashboard.seeAllActivity": "Ver todo",
 
   "wallet.title": "Billeteras",
   "wallet.create": "Crear billetera",
