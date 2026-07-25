@@ -55,6 +55,16 @@
         <MudAlert Severity="Severity.Warning" Dense="true">@_resizeWarning</MudAlert>
     }
 
+    @* Issue #1277 — post-capture review. Framing rules come from the field's own x-file block, so an
+       issuer with looser or stricter portrait rules than ICAO can say so without a UI change. *@
+    @if (_portraitTokenForReview is { Length: > 0 } reviewToken)
+    {
+        <PortraitFramingOverlay Base64Jpeg="@reviewToken"
+                                Rules="@_framingRules"
+                                OnAccept="@(() => _portraitTokenForReview = null)"
+                                OnRetake="RemoveFile" />
+    }
+
     @if (_showPortraitTips)
     {
         <MudPaper Class="pa-3 mt-2" Elevation="0" Outlined="true">
@@ -77,6 +87,10 @@
 
     private FileAttachmentInfo? _selectedFile;
     private string _fileDisplayText = string.Empty;
+    // Issue #1277 — the resized token awaiting the citizen's review, or null once accepted/removed.
+    private string? _portraitTokenForReview;
+    private PortraitFramingRules _framingRules = PortraitFramingRules.Default;
+
     private bool _resizeInProgress;
     private string? _resizeWarning;
 
@@ -134,6 +148,7 @@
         _acceptAttribute = null;
         _showPortraitTips = false;
         _useCameraCapture = false;
+        _framingRules = PortraitFramingRules.Default;
 
         if (FormContext?.DataSchema is null) return;
 
@@ -146,6 +161,14 @@
             _captureAttribute = FileFieldCaptureHelper.GetCaptureAttribute(ext);
             _acceptAttribute = ext.Accept.Length > 0 ? string.Join(",", ext.Accept) : null;
             _showPortraitTips = FileFieldCaptureHelper.ShouldResizeForEmbed(ext);
+            // Issue #1277 — framing guidance for the post-capture overlay, read from the SAME
+            // x-file block. Read off the raw element rather than FileSchemaExtension so an
+            // unauthored or malformed framing object degrades to the ICAO default here (see
+            // PortraitFramingRules.FromXFile) instead of failing the whole x-file parse.
+            if (propertySchema.Value.TryGetProperty("x-file", out var xFileElement))
+            {
+                _framingRules = PortraitFramingRules.FromXFile(xFileElement);
+            }
             // Camera-first only for embed-token image fields, and never in read-only mode.
             _useCameraCapture = _showPortraitTips
                 && !IsDisabled
@@ -241,6 +264,20 @@
             //   <fieldScope>/tokenImageBase64
             var tokenScope = $"{fieldScope}/tokenImageBase64";
             FormContext?.SetValue(tokenScope, result.Base64);
+
+            // Issue #1277 — hold the token for the post-capture review overlay. The citizen used to
+            // get written tips BEFORE choosing a photo and no way to check the photo afterwards.
+            _portraitTokenForReview = result.Base64;
+
+            // Issue #1277 — the resizer now falls back to smaller dimensions rather than failing
+            // outright, which is far better than a portrait-less credential. Say so, because the
+            // citizen's credential will carry a slightly softer photo than they might expect.
+            if (result.WasDownscaled)
+            {
+                _resizeWarning = $"Your photo was reduced to {result.Width}x{result.Height} so it "
+                    + "fits the credential's portrait slot. It will look slightly softer. "
+                    + "Retake with a plainer background for a sharper result.";
+            }
         }
         catch (PhotoTokenTooDetailedException ex)
         {
@@ -271,6 +308,7 @@
             _selectedFile = null;
             _fileDisplayText = string.Empty;
             _resizeWarning = null;
+            _portraitTokenForReview = null;
         }
     }
 

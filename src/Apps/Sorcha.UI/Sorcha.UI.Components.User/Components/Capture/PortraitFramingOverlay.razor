@@ -1,0 +1,92 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Issue #1277 (UT-014) — post-capture portrait review.
+
+    The only framing help before this was a list of written tips beside the file
+    picker: advice the citizen read BEFORE taking a photo and had no way to check
+    their photo against afterwards. This shows the picture they actually captured
+    inside the bounds it needs to meet, so "is my head the right size in the
+    frame?" becomes something they can see rather than estimate.
+
+    Deliberately NOT getUserMedia. The citizen's own camera app takes a better
+    photo than anything we would put on a canvas, and asking for a camera
+    permission at this point in an identity application is a poor trade for it.
+    This reviews the file they already chose.
+
+    Deliberately NOT a gate either. Nothing here rejects a photo — "Use this
+    photo" is always available. Face geometry cannot be judged reliably in the
+    browser, and a wrong rejection would stop the citizen submitting at all,
+    which is worse than the silent claim-drop this issue is about.
+*@
+@namespace Sorcha.UI.Components.User.Components.Capture
+@using Sorcha.Blueprint.Models
+
+<div class="portrait-review" data-testid="portrait-framing-overlay">
+    <p class="portrait-review__prompt">
+        Check your photo. Your head should sit between the two lines and fill the oval.
+    </p>
+
+    <div class="portrait-review__frame">
+        <img class="portrait-review__image"
+             src="@ImageSrc"
+             alt="The portrait you just captured, shown with framing guides"
+             data-testid="portrait-framing-image" />
+
+        @* Guides are absolutely positioned from the authored percentages, so they scale with
+           whatever size the frame renders at rather than assuming a fixed token size. *@
+        <div class="portrait-review__guides" aria-hidden="true">
+            <div class="portrait-review__oval" style="@OvalStyle"></div>
+            <div class="portrait-review__bound portrait-review__bound--top" style="@TopBoundStyle"></div>
+            <div class="portrait-review__bound portrait-review__bound--bottom" style="@BottomBoundStyle"></div>
+        </div>
+    </div>
+
+    <div class="portrait-review__actions">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   OnClick="HandleAccept"
+                   data-testid="portrait-framing-accept">
+            Use this photo
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                   OnClick="HandleRetake"
+                   data-testid="portrait-framing-retake">
+            Retake
+        </MudButton>
+    </div>
+</div>
+
+@code {
+    /// <summary>Base64 JPEG of the resized token image the citizen just produced.</summary>
+    [Parameter, EditorRequired] public string Base64Jpeg { get; set; } = string.Empty;
+
+    /// <summary>Framing guidance from the field's <c>x-file</c> block. Defaults to the ICAO shape.</summary>
+    [Parameter] public PortraitFramingRules Rules { get; set; } = PortraitFramingRules.Default;
+
+    /// <summary>Raised when the citizen keeps the photo.</summary>
+    [Parameter] public EventCallback OnAccept { get; set; }
+
+    /// <summary>Raised when the citizen wants to choose another. The host clears and re-prompts.</summary>
+    [Parameter] public EventCallback OnRetake { get; set; }
+
+    private string ImageSrc => $"data:image/jpeg;base64,{Base64Jpeg}";
+
+    private PortraitFramingRules Safe => Rules.Clamped();
+
+    private string OvalStyle =>
+        $"width:{Fmt(Safe.OvalWidthPct)}%;" +
+        $"top:{Fmt(Safe.HeadTopPct)}%;" +
+        $"height:{Fmt(Safe.HeadBottomPct - Safe.HeadTopPct)}%;";
+
+    private string TopBoundStyle => $"top:{Fmt(Safe.HeadTopPct)}%;";
+    private string BottomBoundStyle => $"top:{Fmt(Safe.HeadBottomPct)}%;";
+
+    // Invariant culture: a comma decimal separator would produce invalid CSS on a de/fr locale.
+    private static string Fmt(double value) =>
+        value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    private Task HandleAccept() => OnAccept.HasDelegate ? OnAccept.InvokeAsync() : Task.CompletedTask;
+
+    private Task HandleRetake() => OnRetake.HasDelegate ? OnRetake.InvokeAsync() : Task.CompletedTask;
+}
