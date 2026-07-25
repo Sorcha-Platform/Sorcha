@@ -1,4 +1,4 @@
-name: CLI Publish — Pack & Push .NET Global Tool
+﻿name: CLI Publish — Pack & Push .NET Global Tool
 
 on:
   push:
@@ -47,4 +47,9 @@ jobs:
         run: dotnet pack src/Apps/Sorcha.Cli/ --configuration Release -o ./nupkg
 
       - name: Publish to NuGet.org
-        run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        # Push ONLY the tool package. `dotnet pack` on the tool also packs every project it
+        # references — they set GeneratePackageOnBuild — so a `*.nupkg` glob published eight
+        # packages, versioning the shared libraries with THIS workflow's run number instead of
+        # nuget-publish.yml's. That is how Sorcha.Tenant.Models acquired 2.30.1-2.37.1 alongside
+        # its real 2.291.1: non-monotonic duplicates of libraries this workflow does not own.
+        run: dotnet nuget push ./nupkg/Sorcha.Cli.*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
