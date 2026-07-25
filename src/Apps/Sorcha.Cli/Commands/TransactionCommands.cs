@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.CommandLine;
@@ -27,7 +27,7 @@ public class TransactionCommand : Command
         // operator's first attempt failed with "Unrecognized command or argument '--data'".
         // Submitting a transaction needs the signed envelope — type, payload AND signature —
         // because the CLI does not sign for you.
-        : base("tx", "Manage transactions in registers\n\nExamples:\n  sorcha tx list --register-id <id>\n  sorcha tx get --register-id <id> --id <tx-id>\n  sorcha tx submit --register-id <id> --wallet <addr> --type <type> --payload '{\"key\":\"value\"}' --signature <sig>\n  sorcha tx proof --register-id <id> --tx-id <tx-id> --out proof.json\n  sorcha tx revoke --register-id <id> --tx-id <tx-id> --reason Erroneous")
+        : base("tx", "Manage transactions in registers\n\nExamples:\n  sorcha tx list --register-id <id>\n  sorcha tx get --register-id <id> --tx-id <tx-id>\n  sorcha tx submit --register-id <id> --wallet <addr> --type <type> --payload '{\"key\":\"value\"}' --signature <sig>\n  sorcha tx proof --register-id <id> --tx-id <tx-id> --out proof.json\n  sorcha tx revoke --register-id <id> --tx-id <tx-id> --reason Erroneous")
 
     {
         Subcommands.Add(new TxListCommand(clientFactory, authService, configService));

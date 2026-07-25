@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.CommandLine;
@@ -25,7 +25,7 @@ public class ActionCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("action", "Blueprint action execution\n\nExamples:\n  sorcha action execute --blueprint-id <id> --action-id <action> --data '{\"key\":\"value\"}'")
+        : base("action", "Blueprint action execution\n\nExamples:\n  sorcha action execute --blueprint <id> --action <action> --payload '{\"key\":\"value\"}'")
 
     {
         Subcommands.Add(new ActionExecuteCommand(clientFactory, authService, configService));

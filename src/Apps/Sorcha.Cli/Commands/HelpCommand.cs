@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 using Spectre.Console;
 using Sorcha.Cli.Branding;
@@ -47,11 +47,11 @@ public class HelpCommand : BaseCommand
 
         AnsiConsole.MarkupLine("[bold yellow]5. Create a register[/]");
         AnsiConsole.MarkupLine("   [dim]Create a new register with a blueprint:[/]");
-        AnsiConsole.MarkupLine("   sorcha register create --name \"My Register\" --blueprint-id <id>");
+        AnsiConsole.MarkupLine("   sorcha register create --name \"My Register\" --owner-wallet <wallet-addr>");
         AnsiConsole.WriteLine();
 
         AnsiConsole.MarkupLine("[bold yellow]6. Submit a transaction[/]");
-        AnsiConsole.MarkupLine("   sorcha transaction submit --register-id <id> --wallet <address> --data '{\"key\":\"value\"}'");
+        AnsiConsole.MarkupLine("   sorcha tx submit --register-id <id> --wallet <addr> --type <type> --payload '{\"key\":\"value\"}' --signature <sig>");
         AnsiConsole.WriteLine();
 
         AnsiConsole.MarkupLine("[dim]Use --help on any command for detailed usage. Use --output json|csv|yaml to change format.[/]");

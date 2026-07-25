@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.CommandLine;
@@ -20,7 +20,7 @@ public class OperationCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("operation", "Encryption operation management\n\nExamples:\n  sorcha operation status --id <operation-id>")
+        : base("operation", "Encryption operation management\n\nExamples:\n  sorcha operation status <operation-id>")
     {
         Subcommands.Add(new OperationStatusCommand(clientFactory, authService, configService));
     }

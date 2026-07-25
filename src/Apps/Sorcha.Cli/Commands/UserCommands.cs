@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 using System.CommandLine;
 using System.CommandLine.Parsing;
@@ -19,7 +19,7 @@ public class UserCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("user", "Manage users within organizations\n\nExamples:\n  sorcha user list\n  sorcha user create --email user@example.com --first-name John --last-name Doe\n  sorcha user get --id <user-id>")
+        : base("user", "Manage users within organizations\n\nExamples:\n  sorcha user list\n  sorcha user create --email user@example.com --first-name John --last-name Doe\n  sorcha user get --org-id <org-id> --user-id <user-id>")
     {
         Subcommands.Add(new UserListCommand(clientFactory, authService, configService));
         Subcommands.Add(new UserGetCommand(clientFactory, authService, configService));
