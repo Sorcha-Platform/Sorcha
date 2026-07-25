@@ -1,0 +1,121 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Issue #1280 (UT-017) — the companion-first answer to "Present" on the web.
+
+    Presentation is NOT an unbuilt feature: it ships on the wallet PWA
+    (Present.razor / PresentProximity.razor). Sorcha is companion-first — the web
+    owns account, wallet and application surfaces; the phone owns holding and
+    presenting. So the web "Present" affordance is a signpost, not a dead end,
+    and it must never claim presentation is "planned for a future release".
+
+    Self-gating on IHasPairedDeviceProbe, the same aggregate signal that drives
+    the F128 nag banner and the F149 PairingTakeover, so the route offered
+    matches the citizen's actual situation. HasAnyDevice is tri-state and the
+    null arm is load-bearing: telling a citizen who already carries a paired
+    phone to go and pair one is exactly as wrong as sending a citizen who never
+    installed the wallet to go and open it. Unknown therefore offers both routes
+    instead of guessing.
+*@
+
+@using Sorcha.UI.Core.Services.User.Devices
+@inject IHasPairedDeviceProbe Probe
+@inject NavigationManager Nav
+@implements IDisposable
+
+<MudAlert Severity="Severity.Info"
+          Class="mb-4"
+          data-testid="present-on-phone-notice">
+    <div class="notice-row">
+        <div class="notice-text">
+            <MudText Typo="Typo.subtitle2">Presenting happens on your phone</MudText>
+            <MudText Typo="Typo.body2">@BodyText</MudText>
+        </div>
+
+        @if (ShowOpenWallet)
+        {
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.PhoneIphone"
+                       OnClick="HandleOpenWallet"
+                       data-testid="present-on-phone-open-wallet">
+                Open Sorcha Wallet
+            </MudButton>
+        }
+
+        @if (ShowPair)
+        {
+            <MudButton Variant="@(ShowOpenWallet ? Variant.Outlined : Variant.Filled)"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.QrCode2"
+                       OnClick="HandlePairPhone"
+                       data-testid="present-on-phone-pair">
+                Pair my phone
+            </MudButton>
+        }
+
+        <MudButton Variant="Variant.Text"
+                   Color="Color.Default"
+                   OnClick="HandleDismiss"
+                   data-testid="present-on-phone-dismiss">
+            Not now
+        </MudButton>
+    </div>
+</MudAlert>
+
+@code {
+    /// <summary>
+    /// Human name of the credential the citizen asked to present, so the notice
+    /// answers the question they actually asked. Optional — the copy degrades to
+    /// the generic phrasing when the caller has no name to hand.
+    /// </summary>
+    [Parameter] public string? CredentialName { get; set; }
+
+    /// <summary>Raised when the citizen dismisses the notice, so the host can retract it.</summary>
+    [Parameter] public EventCallback OnDismiss { get; set; }
+
+    private bool? _hasDevice;
+
+    // Unknown offers both routes; see the header comment for why that is not
+    // hedging but the only honest answer while the probe is unresolved.
+    private bool ShowOpenWallet => _hasDevice is true or null;
+    private bool ShowPair => _hasDevice is false or null;
+
+    private string CredentialLabel =>
+        string.IsNullOrWhiteSpace(CredentialName) ? "this credential" : CredentialName!;
+
+    private string BodyText => _hasDevice switch
+    {
+        true => $"{CredentialLabel} is held in the Sorcha Wallet on your phone — open it there to show it to a verifier.",
+        false => $"You haven't paired a phone yet. Sorcha credentials are shown from the wallet on your phone, so pair one to present {CredentialLabel}.",
+        _ => $"Sorcha credentials are shown from the wallet on your phone. Open it there to present {CredentialLabel} — or pair a phone if you haven't set one up yet.",
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        Probe.Changed += HandleProbeChanged;
+        _hasDevice = Probe.HasAnyDevice;
+        await Probe.EnsureLoadedAsync();
+        _hasDevice = Probe.HasAnyDevice;
+    }
+
+    private void HandleProbeChanged()
+    {
+        _hasDevice = Probe.HasAnyDevice;
+        InvokeAsync(StateHasChanged);
+    }
+
+    // Rooted + forceLoad on purpose: the wallet PWA is a separate app mounted
+    // outside this client's "/app/" base, so a base-relative navigation would
+    // resolve inside the web client and 404.
+    private void HandleOpenWallet() => Nav.NavigateTo("/wallet/", forceLoad: true);
+
+    // Base-relative on purpose: /setup/add-device is a page of THIS client.
+    private void HandlePairPhone() => Nav.NavigateTo("setup/add-device");
+
+    private Task HandleDismiss() =>
+        OnDismiss.HasDelegate ? OnDismiss.InvokeAsync() : Task.CompletedTask;
+
+    public void Dispose() => Probe.Changed -= HandleProbeChanged;
+}

@@ -1,0 +1,36 @@
+/* SPDX-License-Identifier: MIT */
+/* Copyright (c) 2026 Sorcha Contributors */
+
+/*
+ * Same reflow rule as PairingNagBanner (issue #1275): a banner with trailing
+ * actions must WRAP, not compress. A flex item's default `min-width: auto`
+ * lets the text column shrink below its content while the buttons keep their
+ * intrinsic width — which is what wrapped the pair-a-phone nag over nine lines
+ * on an iPhone. This notice can carry up to three actions, so it is even more
+ * exposed to that failure.
+ *
+ * Deliberately breakpoint-free above 480px: the text asks for a 260px basis and
+ * the browser wraps the actions beneath as soon as they cannot all be seated on
+ * one line. That adapts to any width and to any future label change, where a
+ * hard-coded media query would not.
+ */
+
+.notice-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
+
+.notice-text {
+    flex: 1 1 260px;
+    min-width: 0;
+}
+
+/* Once wrapped, actions span the row so they read as the notice's actions
+   rather than stray fragments floating beneath the text. */
+@media (max-width: 480px) {
+    .notice-row > .mud-button-root {
+        flex: 1 1 100%;
+    }
+}

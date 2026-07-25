@@ -125,7 +125,13 @@ public sealed class MyCredentialsTests : ComponentTestFixture
         var cut = Render(Page);
 
         // Sanity: the pending band rendered before we decline anything.
-        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Needs you"));
+        //
+        // Explicit budget, not bUnit's 1s default: OnInitializedAsync awaits
+        // WalletHubConnection.StartAsync against an unreachable host before it loads
+        // anything, and on Windows that handshake alone outlasts the default — which
+        // is why this test was a standing local red while passing in CI on Linux. The
+        // wait then reported the loading skeleton instead of the behaviour under test.
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Needs you"), TimeSpan.FromSeconds(30));
 
         var declineButton = cut.FindAll("button")
             .First(b => b.TextContent.Trim().Equals("Decline", StringComparison.Ordinal));
