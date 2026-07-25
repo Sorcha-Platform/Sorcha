@@ -6,6 +6,8 @@
 @using Sorcha.UI.Core.Models.Workflows
 @using Sorcha.UI.Core.Services
 @implements IDisposable
+@using Sorcha.UI.Core.Services.Feedback
+@inject IInlineFeedback Feedback
 @inject IEncryptionOperationTracker Tracker
 @inject NavigationManager Navigation
 
@@ -276,6 +278,9 @@
         try
         {
             var result = await WorkflowService.SubmitActionExecuteAsync(OriginalRequest);
+            // Issue #1277: this is an async-encryption retry — precisely the path a large
+            // portrait-bearing submission takes, and it discarded the server's warnings entirely.
+            result.SurfaceWarnings(Feedback);
             if (result?.HasAsyncOperation == true && !string.IsNullOrEmpty(result.OperationId))
             {
                 Tracker.TrackOperation(result.OperationId);

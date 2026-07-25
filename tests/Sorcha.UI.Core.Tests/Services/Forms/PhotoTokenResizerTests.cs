@@ -73,8 +73,12 @@ public class PhotoTokenResizerTests
     {
         var spec = ImageTokenSpec.ImageTokenJpeg240x320;
         var interop = new Mock<IPhotoTokenResizerInterop>();
-        // All quality steps produce oversize output.
-        interop.Setup(x => x.ResizeAndEncodeJpegAsync(It.IsAny<byte[]>(), 240, 320, It.IsAny<double>(), It.IsAny<CancellationToken>()))
+        // Every quality step at EVERY size produces oversize output. Issue #1277 added a
+        // downscale ladder below 240×320, so pinning the setup to 240×320 no longer expresses
+        // "nothing fits" — the loose mock answers other sizes with an empty array, which fits
+        // trivially and makes this test pass for the wrong reason.
+        interop.Setup(x => x.ResizeAndEncodeJpegAsync(
+                It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<double>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(BytesOfSize(40_000));
 
         var resizer = new PhotoTokenResizer(interop.Object);
