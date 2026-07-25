@@ -17,7 +17,9 @@
 
 @using Microsoft.Extensions.Logging
 @using Sorcha.UI.Core.Services.User.Devices
+@using Sorcha.UI.Core.Services.Wallet
 @inject IHasPairedDeviceProbe Probe
+@inject IWalletApiService WalletApi
 @inject NavigationManager Nav
 @inject ILogger<PairingNagBanner> Logger
 @implements IDisposable
@@ -52,9 +54,37 @@
     private bool _dismissed;
     private bool _visible;
 
+    // Issue #1270. Two reasons this banner must stay quiet that it did not know about:
+    //
+    //  * It rendered ABOVE the pairing page itself — nagging the citizen to go and do the thing
+    //    they are already doing, and pushing the actual instructions down the screen.
+    //  * It was not wallet-aware the way F149 made PairingTakeover. Pairing a phone before a wallet
+    //    exists dead-ends at the device-enrol 404; F149's answer on the PWA is "create your wallet
+    //    first". On the web the wallet CTA already owns that moment on Home, so the right move here
+    //    is silence, not a second competing call to action.
+    private bool _hasWallet = true;
+
+    // Path of the page this banner's own CTA leads to. Nagging on it is self-defeating.
+    private const string PairingPath = "setup/add-device";
+
     protected override async Task OnInitializedAsync()
     {
         Probe.Changed += HandleProbeChanged;
+
+        try
+        {
+            var wallets = await WalletApi.GetWalletsAsync();
+            _hasWallet = wallets.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            // Fail-safe in the same direction as F149's IHasWalletProbe: assume a wallet exists, so
+            // a transient failure degrades to the pre-existing nag rather than silently suppressing
+            // a prompt the citizen genuinely needs.
+            Logger.LogDebug(ex, "PairingNagBanner wallet check failed — assuming a wallet exists");
+            _hasWallet = true;
+        }
+
         await Probe.EnsureLoadedAsync();
         UpdateVisibility();
     }
@@ -68,8 +98,19 @@
     private void UpdateVisibility()
     {
         // Show only when the probe has resolved AND reports no paired device
-        // AND the citizen hasn't dismissed this session.
-        _visible = !_dismissed && Probe.HasAnyDevice == false;
+        // AND the citizen hasn't dismissed this session AND they have a wallet
+        // for a paired phone to hold AND they aren't already on the pairing page.
+        _visible = !_dismissed
+                   && Probe.HasAnyDevice == false
+                   && _hasWallet
+                   && !IsOnPairingPage();
+    }
+
+    private bool IsOnPairingPage()
+    {
+        var relative = Nav.ToBaseRelativePath(Nav.Uri);
+        var path = relative.Split('?', '#')[0].TrimEnd('/');
+        return string.Equals(path, PairingPath, StringComparison.OrdinalIgnoreCase);
     }
 
     private void HandleDismiss()

@@ -60,4 +60,14 @@ public interface IPwaInstallabilityProbe
     /// dismissal or any failure.
     /// </summary>
     Task<bool> TriggerInstallAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Whether the citizen is on a phone-shaped device, independent of whether the browser can
+    /// install anything. Issue #1270: without this second axis the handoff surface could only ask
+    /// "installable?" and treated "no" as "desktop", so a mobile browser with no install affordance
+    /// was shown a QR code to scan with the phone it was running on. Coarse by design — it decides
+    /// which affordance leads, never anything security-relevant. Fails safe to <c>false</c>
+    /// (desktop), which is the pre-existing behaviour.
+    /// </summary>
+    Task<bool> IsMobileAsync(CancellationToken ct = default);
 }
