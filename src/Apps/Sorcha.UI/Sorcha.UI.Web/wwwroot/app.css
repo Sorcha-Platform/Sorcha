@@ -58,3 +58,41 @@ h1:focus {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+/* ---------------------------------------------------------------------------
+ * Issue #1279 — dialog action rows must never widen the dialog past the viewport.
+ *
+ * MudBlazor's DialogActions is a non-wrapping flex row. The credential detail
+ * dialog carries up to six buttons, whose combined intrinsic width forced the
+ * dialog wider than a phone screen — which is what clipped the card title, cut
+ * the portrait off at the dialog edge, pushed the status chip off-screen, and
+ * left Revoke rendering as "evoke" with Present/Export/Delete unreachable.
+ * Wrapping keeps every action reachable at any width, which is the requirement.
+ *
+ * Applied via MudDialog ClassActions (not isolated CSS): dialogs render through
+ * MudDialogProvider at the layout root, outside the component's own DOM, so
+ * ::deep cannot reach them.
+ * --------------------------------------------------------------------------- */
+.sorcha-dialog-actions-wrap {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+/* Below this width a six-across row cannot fit however it wraps, so let each
+   action take a full row — a tappable target beats a cramped one on a phone. */
+@media (max-width: 480px) {
+    .sorcha-dialog-actions-wrap {
+        justify-content: stretch;
+    }
+
+    .sorcha-dialog-actions-wrap > .mud-button-root {
+        flex: 1 1 100%;
+    }
+}
+
+/* A long credential name must wrap rather than force the dialog wide. Belt and
+   braces alongside #1278, which stopped a vct URI being used as the title. */
+.sorcha-credential-dialog-title {
+    overflow-wrap: anywhere;
+    min-width: 0;
+}
