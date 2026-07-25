@@ -62,11 +62,38 @@ public static class CredentialClaimDisplayFormatter
         _ => string.Empty
     };
 
-    /// <summary>"dateOfBirth" → "Date of birth". Sentence case, not Title Case.</summary>
+    /// <summary>
+    /// "dateOfBirth" → "Date of birth", "age_over_18" → "Age over 18". Sentence case, not Title Case.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Issue #1278: claim names arrive in BOTH shapes — the live AIAS credential issues
+    /// <c>dateOfBirth</c> (camelCase) alongside <c>age_over_18</c> (the SD-JWT/OIDC snake_case
+    /// convention for age assertions). Two humanisers each handled one shape and neither knew about
+    /// the other: this one split camelCase but treated <c>_</c> as an ordinary character, so
+    /// <c>age_over_18</c> came out "Age_over_18"; the wallet PWA's private copy replaced separators
+    /// but never split camelCase, so <c>dateOfBirth</c> came out "DateOfBirth". Handling both here
+    /// is what lets the PWA copy be deleted, leaving one implementation.
+    /// </para>
+    /// <para>
+    /// Deliberately does NOT split a letter/digit boundary. It would turn <c>addressLine1</c> into
+    /// the marginally nicer "Address line 1", but it would also turn any identifier-shaped claim
+    /// (<c>ipv4</c>, <c>sha256</c>) into nonsense. The separator and camelCase rules are
+    /// unambiguous; a letter/digit boundary is not.
+    /// </para>
+    /// </remarks>
     public static string HumaniseClaimName(string key)
     {
+        if (string.IsNullOrEmpty(key)) return key;
+
+        // camelCase humps first, then wire separators, then collapse — order matters so that a key
+        // mixing both conventions ("issuedAt_utc") does not end up double-spaced.
         var spaced = System.Text.RegularExpressions.Regex.Replace(
-            key, "(?<=[a-z0-9])(?=[A-Z])", " ").ToLowerInvariant();
+            key, "(?<=[a-z0-9])(?=[A-Z])", " ");
+        spaced = spaced.Replace('_', ' ').Replace('-', ' ');
+        spaced = System.Text.RegularExpressions.Regex.Replace(spaced, @"\s+", " ").Trim();
+        spaced = spaced.ToLowerInvariant();
+
         return spaced.Length == 0 ? key : char.ToUpperInvariant(spaced[0]) + spaced[1..];
     }
 }
