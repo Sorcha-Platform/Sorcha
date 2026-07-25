@@ -55,6 +55,35 @@
             Preparing your pairing code…
         </p>
     }
+    else if (_route == PairingHandoffRoute.OpenOnThisDevice)
+    {
+        @* Issue #1270 / FR-008 — the same-device path, which previously did not exist at all. A
+           mobile browser that cannot install (in-app browser, non-Safari iOS, or an Android device
+           that ALREADY installed the wallet so beforeinstallprompt never fires again) used to be
+           handed the desktop QR: a code to scan with the phone already in the citizen's hand.
+           The minted QrUrl is precisely the URL a scanning phone would open, so on this device we
+           simply follow it. *@
+        <p class="sorcha-pair-handoff__subhead">
+            Your Sorcha credentials live on this phone. Open the wallet here to finish setting up.
+        </p>
+        <a class="sorcha-pair-handoff__primary"
+           href="@_minted.QrUrl"
+           data-testid="pairing-handoff-open-here">
+            Open on this device
+        </a>
+        <p class="sorcha-pair-handoff__aside">
+            Setting up a different phone? <button type="button" class="sorcha-pair-handoff__link"
+                                                  @onclick="ShowQrAnyway"
+                                                  data-testid="pairing-handoff-show-qr">Show a QR code
+            to scan</button> instead.
+        </p>
+        @if (_qrRevealed)
+        {
+            <div class="sorcha-pair-handoff__qr-frame">
+                <HybridQrAffordance QrUrl="@_minted.QrUrl" ExpiresAt="@_minted.ExpiresAt" />
+            </div>
+        }
+    }
     else if (_installVerdict == PwaInstallabilityVerdict.CanInstallProgrammatically)
     {
         @* US3 install variant — Android Chrome / Edge with deferred prompt. *@
@@ -145,11 +174,18 @@
     private bool _emailLinkBusy;
     private bool _emailLinkSent;
     private bool _installBusy;
+    private bool _qrRevealed;
     private PwaInstallabilityVerdict _installVerdict = PwaInstallabilityVerdict.CannotInstall;
+    private PairingHandoffRoute _route = PairingHandoffRoute.ScanWithYourPhone;
+
+    private void ShowQrAnyway() => _qrRevealed = true;
 
     protected override async Task OnInitializedAsync()
     {
         _installVerdict = await InstallProbe.ProbeAsync();
+        // Issue #1270: installability alone cannot distinguish a desktop from a phone that simply
+        // offers no install affordance, and the surface used to conflate them.
+        _route = PairingHandoffRouting.Choose(_installVerdict, await InstallProbe.IsMobileAsync());
         await MintAsync();
 
         // Mint the short code only when the surface will render the
