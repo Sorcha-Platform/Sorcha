@@ -124,19 +124,17 @@ public static class CredentialIdCard
     private static string? Text(IReadOnlyDictionary<string, string?> claims, string key)
         => claims.TryGetValue(key, out var v) ? v : null;
 
-    // "AssuredIdentityCredential" -> "Assured Identity". Strips a trailing "Credential", splits camelCase.
+    /// <summary>
+    /// "AssuredIdentityCredential" -> "Assured Identity"; a vct URI -> the same, via its last segment.
+    /// </summary>
+    /// <remarks>
+    /// Issue #1278: this used to split camelCase only, with no URI-tail extraction, so a vct URI
+    /// passed through verbatim and the id-card face was titled
+    /// "https://sorcha.dev/vc/assured-identity/v1". It now delegates to
+    /// <see cref="Components.Wallet.CredentialDisplay.Humanize"/> — the one implementation that already handled
+    /// URIs, and which the PWA has always used. Three near-copies existed and only that one was
+    /// right; delegating removes the drift instead of adding a fourth.
+    /// </remarks>
     private static string PrettyCredentialName(string? type)
-    {
-        if (string.IsNullOrWhiteSpace(type)) return "Credential";
-        var trimmed = type.EndsWith("Credential", System.StringComparison.OrdinalIgnoreCase) && type.Length > 10
-            ? type[..^10]
-            : type;
-        var sb = new StringBuilder();
-        for (var i = 0; i < trimmed.Length; i++)
-        {
-            if (i > 0 && char.IsUpper(trimmed[i]) && !char.IsUpper(trimmed[i - 1])) sb.Append(' ');
-            sb.Append(trimmed[i]);
-        }
-        return sb.ToString().Trim();
-    }
+        => Components.Wallet.CredentialDisplay.Humanize(type);
 }

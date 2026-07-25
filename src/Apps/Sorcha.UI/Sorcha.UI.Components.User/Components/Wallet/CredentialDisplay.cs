@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using Sorcha.UI.Core.Models.Presentation;
@@ -60,12 +61,9 @@ public static class CredentialDisplay
     {
         if (string.IsNullOrWhiteSpace(vct)) return "Credential";
 
-        // Read the last URI segment so a VCT URI reads as its type name.
-        var tail = vct;
-        var sep = tail.LastIndexOfAny(['/', ':', '#']);
-        if (sep >= 0 && sep < tail.Length - 1) tail = tail[(sep + 1)..];
-
+        var tail = ExtractMeaningfulSegment(vct);
         var spaced = SplitPascalCase(tail);
+        spaced = CapitaliseWords(spaced);
         if (spaced.Equals("Credential", StringComparison.OrdinalIgnoreCase))
             return "Credential";
         if (spaced.EndsWith(" Credential", StringComparison.OrdinalIgnoreCase))
@@ -136,6 +134,60 @@ public static class CredentialDisplay
         if (colon >= 0 && colon < id.Length - 1) id = id[(colon + 1)..];
 
         return id.Length <= 15 ? id : $"{id[..8]}…{id[^5..]}";
+    }
+
+    /// <summary>
+    /// Picks the segment of a VCT that actually names the credential type.
+    /// </summary>
+    /// <remarks>
+    /// Issue #1278: this used to take the LAST segment unconditionally, which for the real Sorcha
+    /// VCT shape <c>https://sorcha.dev/vc/assured-identity/v1</c> yields <c>"v1"</c> — so the
+    /// "humanised" name was the version number. A trailing version segment is therefore skipped in
+    /// favour of the one before it. Recognises <c>v1</c>, <c>v1.2</c> and a bare <c>1</c>.
+    /// </remarks>
+    private static string ExtractMeaningfulSegment(string vct)
+    {
+        var segments = vct.Split(['/', ':', '#'], StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0) return vct;
+
+        for (var i = segments.Length - 1; i >= 0; i--)
+        {
+            if (!LooksLikeVersion(segments[i]))
+            {
+                // Don't let a scheme/host stand in for a type name when every path segment was a
+                // version — better to return the original than to title-case "https".
+                return i == 0 && segments.Length > 1 ? segments[^1] : segments[i];
+            }
+        }
+
+        return segments[^1];
+    }
+
+    private static bool LooksLikeVersion(string segment)
+    {
+        if (segment.Length == 0) return false;
+        var body = segment[0] is 'v' or 'V' ? segment[1..] : segment;
+        return body.Length > 0 && body.All(c => char.IsDigit(c) || c == '.');
+    }
+
+    /// <summary>
+    /// Upper-cases the first letter of each word, so a lowercase URI slug
+    /// ("assured-identity" → "assured identity") reads as a name rather than as a slug.
+    /// Words already carrying capitals (a split PascalCase type) are left alone.
+    /// </summary>
+    private static string CapitaliseWords(string s)
+    {
+        if (s.Length == 0) return s;
+
+        var words = s.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < words.Length; i++)
+        {
+            if (!char.IsUpper(words[i][0]))
+            {
+                words[i] = char.ToUpperInvariant(words[i][0]) + words[i][1..];
+            }
+        }
+        return string.Join(' ', words);
     }
 
     private static string SplitPascalCase(string s)

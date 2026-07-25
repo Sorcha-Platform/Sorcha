@@ -115,6 +115,20 @@ public class CredentialDisplayViewModel
     public string CardLayout { get; set; } = "Standard";
 
     /// <summary>
+    /// The issuer-authored human-readable credential name (e.g. "Assured Identity"),
+    /// mirroring <c>CredentialDisplayConfig.CredentialName</c> on the blueprint side.
+    /// </summary>
+    /// <remarks>
+    /// Issue #1278: this property was MISSING, so the authored name sitting inside
+    /// <c>displayConfigJson</c> was deserialised away and silently discarded — leaving every web
+    /// credential surface with nothing but the <c>vct</c> to show. Post-#1187 the vct is a URI
+    /// <i>by design</i>, so those surfaces rendered
+    /// <c>https://sorcha.dev/vc/assured-identity/v1</c> as the title. That single omission is the
+    /// root cause on all three surfaces (offer card, wallet list card, view dialog).
+    /// </remarks>
+    public string? CredentialName { get; set; }
+
+    /// <summary>
     /// Issuer-specified claim spotlight: key = JSON pointer into the claim
     /// payload (e.g. "/sustainabilityScore"), value = display label
     /// ("Sustainability"). Mirrors <c>CredentialDisplayConfig.HighlightClaims</c>
@@ -131,6 +145,18 @@ public class CredentialDetailViewModel
 {
     public string CredentialId { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Human-readable credential name for the dialog title and id-card face — the issuer-authored
+    /// name where available, else a humanised form of the type. Never the raw <c>vct</c>.
+    /// </summary>
+    /// <remarks>
+    /// Issue #1278: the view dialog rendered <c>Type</c> directly, so post-#1187 (where the vct is a
+    /// URI by design) it showed <c>https://sorcha.dev/vc/assured-identity/v1</c> — twice, clipped
+    /// mid-word, with a horizontal scrollbar.
+    /// </remarks>
+    public string DisplayName { get; set; } = string.Empty;
+
     public string IssuerDid { get; set; } = string.Empty;
 
     /// <summary>Friendly issuer name (org name where known, else derived from the DID) for the card header.</summary>
