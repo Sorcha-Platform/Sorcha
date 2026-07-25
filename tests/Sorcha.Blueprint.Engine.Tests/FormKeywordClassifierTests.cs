@@ -28,6 +28,11 @@ public class FormKeywordClassifierTests
     [Theory]
     [InlineData("x-file")]
     [InlineData("x-credential-offer")]
+    // Issue #1302 — x-holder-key now has a consumer: it gates whether the carried delivery keys
+    // must be captured before submission, so it is part of the executable definition rather than
+    // an unknown keyword riding the fail-safe. The classification is unchanged (behavioural either
+    // way), so this is a declaration, not a gate-behaviour change.
+    [InlineData("x-holder-key")]
     public void IsBehavioural_KnownBehaviouralKeyword_ReturnsTrue(string keyword)
     {
         FormKeywordClassifier.IsBehavioural(keyword).Should().BeTrue();
@@ -37,7 +42,6 @@ public class FormKeywordClassifierTests
     [Theory]
     [InlineData("x-foo")]
     [InlineData("x-unknown-future-keyword")]
-    [InlineData("x-holder-key")]
     public void IsBehavioural_UnknownExtensionKeyword_FailsSafeToBehavioural(string keyword)
     {
         FormKeywordClassifier.IsBehavioural(keyword).Should().BeTrue();
@@ -76,7 +80,10 @@ public class FormKeywordClassifierTests
     {
         FormKeywordClassifier.BehaviouralKeywords.Should().BeEquivalentTo(new[]
         {
-            "x-file", "x-credential-offer",
+            // x-holder-key joined the set in #1302 when it gained a consumer. Its effective
+            // classification is unchanged — it previously reached "behavioural" via the fail-safe —
+            // so no executable-definition hash or rehearsal-gate behaviour changes here.
+            "x-file", "x-credential-offer", "x-holder-key",
         });
     }
 

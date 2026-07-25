@@ -174,6 +174,7 @@ public class FormSchemaService : IFormSchemaService
 
                 if (childType == "object")
                 {
+                    ValidateCarriedHolderKeys(prop.Value, data, scope, errors);
                     ValidateDataRecursive(prop.Value, data, scope, errors);
                     continue;
                 }
@@ -620,6 +621,62 @@ public class FormSchemaService : IFormSchemaService
         }
 
         return errors;
+    }
+
+    /// <summary>
+    /// Enforces <c>x-holder-key: { "required": true }</c> on a <c>sorcha-holder-key</c> field
+    /// (issue #1302). Opt-in: a field that doesn't declare it is untouched.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This cannot be expressed with the schema's own <c>required</c> array. The required-presence
+    /// check above deliberately <c>continue</c>s past object-typed entries, delegating to the
+    /// child's <c>properties</c>/<c>required</c> so errors land on precise leaves — and a
+    /// <c>sorcha-holder-key</c> field declares neither, because its value is written by the
+    /// renderer rather than authored. Listing it in <c>required</c> is silently a no-op.
+    /// </para>
+    /// <para>
+    /// Without this, a citizen whose wallet-key fetch failed saw a warning and a Retry but could
+    /// still submit — <c>HolderKeyRenderer</c> sets no <c>FormContext</c> error, and
+    /// <c>HandleSubmit</c> clears errors and rebuilds them from schema validation alone, so a
+    /// renderer-set error would be wiped regardless. The application sealed, and the ANALYST's
+    /// approval then threw <c>VAL_RUNTIME_CRED_005</c>: a cross-participant failure, on an approval
+    /// already granted, caused by a gap in someone else's earlier submission.
+    /// </para>
+    /// <para>
+    /// This is the early, actionable gate; it is not the guarantee. Issuance still fails closed
+    /// server-side (<c>VAL_RUNTIME_CRED_004</c>/<c>_005</c>) for submitters that never render a
+    /// form at all.
+    /// </para>
+    /// </remarks>
+    private static void ValidateCarriedHolderKeys(
+        JsonElement childSchema,
+        Dictionary<string, object?> data,
+        string scope,
+        Dictionary<string, List<string>> errors)
+    {
+        if (!HolderKeySchemaExtension.TryParseFromSchema(childSchema, out var extension)
+            || extension?.Required != true)
+        {
+            return;
+        }
+
+        foreach (var leaf in HolderKeySchemaExtension.CarriedLeafNames)
+        {
+            if (data.TryGetValue($"{scope}/{leaf}", out var value) && !IsEmptyValue(value))
+            {
+                continue;
+            }
+
+            // Deliberately names no internal leaf. The citizen never types these — the renderer
+            // fetches them — so the only actionable instruction is the control's own Retry.
+            errors[scope] =
+            [
+                "Your identity keys haven't been captured yet, so your credential could not be "
+                + "delivered. Use Retry on the identity-keys panel above, then submit."
+            ];
+            return;
+        }
     }
 
     private static bool IsEmptyValue(object? value)
