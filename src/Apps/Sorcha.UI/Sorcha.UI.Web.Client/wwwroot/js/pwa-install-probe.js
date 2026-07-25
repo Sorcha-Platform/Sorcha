@@ -37,6 +37,22 @@ function isAlreadyInstalled() {
         || window.navigator.standalone === true;
 }
 
+// Issue #1270: the surface previously had only one axis — installable or not —
+// and treated "not installable" as "this is a desktop". Mobile-but-not-installable
+// is neither: an in-app browser, a non-Safari iOS browser, or an Android device
+// that ALREADY installed the wallet (so `beforeinstallprompt` never fires again)
+// all land there, and were shown a QR code to scan with the phone in their hand.
+// Coarse on purpose — this only decides which affordance leads, never anything
+// security-relevant, so a pointer/UA heuristic is proportionate.
+export function isMobile() {
+    if (window.matchMedia('(pointer: coarse)').matches
+        && window.matchMedia('(max-width: 820px)').matches) {
+        return true;
+    }
+    const ua = navigator.userAgent || '';
+    return /Android|iPad|iPhone|iPod|Mobile|Silk|Kindle/i.test(ua);
+}
+
 export async function probe() {
     if (isAlreadyInstalled()) {
         return 'installed';

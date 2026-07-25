@@ -20,6 +20,7 @@ public sealed class PwaInstallabilityProbe : IPwaInstallabilityProbe
     private readonly ILogger<PwaInstallabilityProbe> _logger;
     private IJSObjectReference? _module;
     private PwaInstallabilityVerdict? _cachedVerdict;
+    private bool? _cachedIsMobile;
 
     public PwaInstallabilityProbe(IJSRuntime js, ILogger<PwaInstallabilityProbe> logger)
     {
@@ -58,6 +59,32 @@ public sealed class PwaInstallabilityProbe : IPwaInstallabilityProbe
                 "PwaInstallabilityProbe failed — defaulting to CannotInstall");
             _cachedVerdict = PwaInstallabilityVerdict.CannotInstall;
             return _cachedVerdict.Value;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> IsMobileAsync(CancellationToken ct = default)
+    {
+        if (_cachedIsMobile.HasValue)
+        {
+            return _cachedIsMobile.Value;
+        }
+
+        try
+        {
+            _module ??= await _js.InvokeAsync<IJSObjectReference>("import", ct, ModulePath)
+                .ConfigureAwait(false);
+
+            _cachedIsMobile = await _module.InvokeAsync<bool>("isMobile", ct).ConfigureAwait(false);
+            return _cachedIsMobile.Value;
+        }
+        catch (Exception ex)
+        {
+            // Fail-safe to desktop, which is what the surface did before this axis existed — so a
+            // JS-interop failure degrades to the previous behaviour rather than to a new one.
+            _logger.LogWarning(ex, "PwaInstallabilityProbe mobile check failed — assuming desktop");
+            _cachedIsMobile = false;
+            return false;
         }
     }
 
