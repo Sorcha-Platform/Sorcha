@@ -134,10 +134,11 @@ public sealed class OrgInvitationWireContractTests
             .ToHashSet(StringComparer.Ordinal);
 
         clientOperations.Should().BeEquivalentTo(
-            ["GetInvitationsAsync", "CreateInvitationAsync", "RevokeInvitationAsync"],
-            "the Tenant Service implements exactly create, list and revoke for org invitations "
+            ["GetInvitationsAsync", "CreateInvitationAsync", "RevokeInvitationAsync", "ResendInvitationAsync"],
+            "the Tenant Service implements exactly create, list, revoke and resend for org invitations "
             + "(see InvitationEndpoints.MapInvitationEndpoints). A client method with no endpoint "
-            + "behind it fails silently — if you add one here, add the endpoint first.");
+            + "behind it fails silently — if you add one here, add the endpoint first. "
+            + "ResendInvitationAsync was added back in #1256 only once POST .../{id}/resend existed.");
     }
 
     [Theory]

@@ -42,6 +42,21 @@ public interface IInvitationClientService
     /// Revokes a pending invitation. Returns false if the server rejected the request.
     /// </summary>
     Task<bool> RevokeInvitationAsync(Guid organizationId, Guid invitationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Re-sends a pending invitation's email. Returns false if the server rejected the request.
+    /// </summary>
+    /// <remarks>
+    /// Issue #1256: this method previously existed pointing at a route the Tenant Service had never
+    /// implemented — the call 404'd, the page discarded the <c>false</c>, and the operator was told
+    /// "Invitation resent" every time. DRIFT-004 removed it rather than faking success. It is back
+    /// now that <c>POST .../invitations/{id}/resend</c> exists.
+    /// <para>
+    /// Resend ROTATES the invitation token, so any link already in flight stops working. Callers
+    /// should say so, not imply the original still works.
+    /// </para>
+    /// </remarks>
+    Task<bool> ResendInvitationAsync(Guid organizationId, Guid invitationId, CancellationToken ct = default);
 }
 
 /// <summary>

@@ -92,10 +92,18 @@
                     <MudTd>
                         @if (context.Status == "Pending")
                         {
-                            @* No Resend action: the Tenant Service has no resend endpoint. The button that
-                               used to sit here POSTed to a route that does not exist and reported success
-                               regardless. Tracked as a feature request rather than faked here. *@
+                            @* Issue #1256: Resend is back, now that POST .../invitations/{id}/resend
+                               exists. The button that used to sit here POSTed to a route the Tenant
+                               Service had never implemented and reported success regardless; DRIFT-004
+                               removed it rather than faking success. The title says the link is
+                               replaced because resend ROTATES the token — any link already in flight
+                               stops working, and an operator should know that before clicking. *@
+                            <MudIconButton Icon="@Icons.Material.Filled.Send" Size="Size.Small" Color="Color.Primary"
+                                           Title="Resend invitation (replaces the previous link)"
+                                           data-testid="invitation-resend"
+                                           OnClick="@(async () => await ResendAsync(context.Id))" />
                             <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Error" Title="Revoke"
+                                           data-testid="invitation-revoke"
                                            OnClick="@(async () => await RevokeAsync(context.Id))" />
                         }
                     </MudTd>
@@ -184,6 +192,24 @@
         {
             Feedback.ShowError($"Failed to send invitation: {ex.Message}", autoDismissMs: 0);
         }
+    }
+
+    private async Task ResendAsync(Guid invitationId)
+    {
+        // Report what actually happened. The pre-DRIFT-004 version of this button discarded the
+        // result and always claimed success against a route that did not exist (#1256).
+        var resent = await InvitationService.ResendInvitationAsync(_organizationId, invitationId);
+        if (resent)
+        {
+            Feedback.ShowSuccess("Invitation resent — the previous link no longer works");
+        }
+        else
+        {
+            Feedback.ShowError("Failed to resend invitation", autoDismissMs: 0);
+        }
+
+        // Reload: resend resets the expiry, so the listed date is now stale.
+        await LoadInvitationsAsync();
     }
 
     private async Task RevokeAsync(Guid invitationId)
