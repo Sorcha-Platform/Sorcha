@@ -238,6 +238,10 @@ public static class ServiceCollectionExtensions
         // Feature 114: Citizen wallet device registry
         services.AddScoped<IPlatformUserDeviceService, PlatformUserDeviceService>();
 
+        // Issue #1264: live (non-token) resolution of identity claims, so a decision made after a
+        // token was minted reads current server state rather than a mint-time snapshot.
+        services.AddScoped<ILivePlatformUserClaimsService, LivePlatformUserClaimsService>();
+
         // IDP configuration services
         services.AddHttpClient<IOidcDiscoveryService, OidcDiscoveryService>();
         services.AddScoped<IIdpConfigurationService, IdpConfigurationService>();

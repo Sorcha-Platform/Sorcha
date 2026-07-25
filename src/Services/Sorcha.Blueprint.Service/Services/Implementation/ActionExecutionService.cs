@@ -8,14 +8,17 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
+using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.Peer;
+using Sorcha.ServiceClients.PlatformUserClaims;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Register.Models;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceClients.Haip;
 using Sorcha.Blueprint.Engine.Credentials;
+using Sorcha.Blueprint.Engine.Schemas;
 using Sorcha.Blueprint.Models;
 using Sorcha.Blueprint.Engine.Interfaces;
 using Sorcha.Blueprint.Models.Credentials;
@@ -56,6 +59,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
     private readonly IExecutionEngine _executionEngine;
     private readonly IActionDisclosureResolver _actionDisclosureResolver;
     private readonly IJsonLogicEvaluator? _jsonLogicEvaluator;
+    private readonly IPlatformUserClaimsClient? _platformUserClaims;
     private readonly ICredentialVerifier? _credentialVerifier;
     private readonly IStatusListManager? _statusListManager;
     private readonly IEncryptionPipelineService? _encryptionPipeline;
@@ -127,7 +131,8 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         PresentationLifecycleMetrics? presentationMetrics = null,
         IOptions<Configuration.WalletOwnershipSettings>? walletOwnershipSettings = null,
         IActionDisclosureResolver? actionDisclosureResolver = null,
-        IJsonLogicEvaluator? jsonLogicEvaluator = null)
+        IJsonLogicEvaluator? jsonLogicEvaluator = null,
+        IPlatformUserClaimsClient? platformUserClaims = null)
     {
         _actionResolver = actionResolver ?? throw new ArgumentNullException(nameof(actionResolver));
         _stateReconstruction = stateReconstruction ?? throw new ArgumentNullException(nameof(stateReconstruction));
@@ -179,6 +184,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         // application is never issued a credential. Optional — a null evaluator with no configured
         // issuanceCondition preserves the pre-existing always-issue behaviour.
         _jsonLogicEvaluator = jsonLogicEvaluator;
+        _platformUserClaims = platformUserClaims;
     }
 
     /// <inheritdoc/>
@@ -557,6 +563,107 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             }
 
             request = request with { PayloadData = mergedPayloadData };
+        }
+
+        // 6a-bis. Issue #1264 — resolve every x-claim-source binding SERVER-SIDE, from live state,
+        //     and overwrite whatever the client sent.
+        //
+        //     Feature 183 US1 originally seeded these bindings client-side from the browser's JWT, so
+        //     the value was only ever as fresh as the token the client happened to hold. A citizen's
+        //     token was minted at signup carrying email_verified:false; they verified nine minutes
+        //     later; the application they submitted five minutes after that was auto-rejected on the
+        //     stale false. Verifying updates server state but cannot rewrite an issued token, and
+        //     nothing re-mints it — so this affects any user who verifies mid-session, which is the
+        //     normal signup order.
+        //
+        //     Resolving here does two things at once. It kills the staleness class rather than one
+        //     instance of it (the value is read at the moment it is used), and because the server
+        //     overwrites the submitted value, a client can no longer assert a field the platform is
+        //     supposed to vouch for. Both matter: these fields gate identity decisions.
+        //
+        //     Placed BEFORE validation (6b) deliberately, so the value the server vouches for is the
+        //     one that gets validated, signed, sealed and disclosed — request.PayloadData is what the
+        //     signed transaction is built from (see payloadWithCalculations below).
+        var claimSourceBindings = ClaimSourceBindings.Discover(actionDef.DataSchemas);
+        if (claimSourceBindings.Count > 0)
+        {
+            var bindings = claimSourceBindings;
+
+            // The submission is signed by a server-custodied wallet on the caller's behalf, so the
+            // caller principal is who the claims are about.
+            var platformUserIdClaim = caller?.FindFirst(TokenClaimConstants.PlatformUserId)?.Value;
+            if (!Guid.TryParse(platformUserIdClaim, out var platformUserId))
+            {
+                // Fail loudly rather than fall back to the token's own copy of the claim: that
+                // fallback IS the #1264 defect. An action whose schema declares a claim-source
+                // binding is asserting that the platform vouches for the value, which is only
+                // meaningful for a caller the platform can identify.
+                throw new InvalidOperationException(
+                    $"Action {actionId} declares {bindings.Count} x-claim-source binding(s) but the caller "
+                    + $"carries no usable '{TokenClaimConstants.PlatformUserId}' claim, so their live "
+                    + "values cannot be resolved. Refusing to submit rather than stamp an unverified value.");
+            }
+
+            if (_platformUserClaims is null)
+            {
+                throw new InvalidOperationException(
+                    $"Action {actionId} declares x-claim-source binding(s) but no "
+                    + $"{nameof(IPlatformUserClaimsClient)} is registered, so live values cannot be "
+                    + "resolved. Refusing to submit rather than stamp an unverified value.");
+            }
+
+            IReadOnlyDictionary<string, string> live;
+            try
+            {
+                live = await _platformUserClaims.ResolveAsync(
+                    platformUserId, ClaimSourceBindings.ClaimNames(bindings), cancellationToken);
+            }
+            catch (PlatformUserClaimsUnavailableException ex)
+            {
+                // Fail the submission. Signing a defaulted false would write an irreversible wrongful
+                // rejection onto the ledger for a transient reason; a failed submission is recoverable
+                // because the citizen simply retries.
+                _logger.LogError(ex,
+                    "Could not resolve live claim values for platform user {PlatformUserId} on action "
+                    + "{ActionId} of instance {InstanceId}; refusing the submission",
+                    platformUserId, actionId, instanceId);
+                throw new InvalidOperationException(
+                    "Could not confirm your account details with the platform, so this submission was not "
+                    + "sent. Nothing has been recorded — please try again.", ex);
+            }
+
+            var payload = new Dictionary<string, object>(request.PayloadData);
+            foreach (var binding in bindings)
+            {
+                live.TryGetValue(binding.ClaimName, out var claimValue);
+                var coerced = ClaimSourceBindings.Coerce(binding, claimValue);
+
+                if (coerced is null)
+                {
+                    // Unresolved non-boolean binding: remove, so a client-asserted or stale value can
+                    // never stand in for one the server declined to vouch for.
+                    payload.Remove(binding.PropertyName);
+                }
+                else
+                {
+                    payload[binding.PropertyName] = coerced;
+                }
+
+                if (!live.ContainsKey(binding.ClaimName))
+                {
+                    _logger.LogWarning(
+                        "Action {ActionId} binds property '{Property}' to claim '{Claim}', which the "
+                        + "platform does not resolve; the binding failed closed",
+                        actionId, binding.PropertyName, binding.ClaimName);
+                }
+            }
+
+            request = request with { PayloadData = payload };
+
+            _logger.LogInformation(
+                "Resolved {Count} x-claim-source binding(s) server-side for action {ActionId} of "
+                + "instance {InstanceId} (platform user {PlatformUserId})",
+                bindings.Count, actionId, instanceId, platformUserId);
         }
 
         // 6b. Validate input data against schema

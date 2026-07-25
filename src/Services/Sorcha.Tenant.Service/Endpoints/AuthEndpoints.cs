@@ -178,7 +178,9 @@ public static class AuthEndpoints
             .WithName("GetCurrentUser")
             .WithSummary("Get current user information")
             .WithDescription("Returns information about the currently authenticated user from their token claims. "
-                + "Includes emailVerified (bool) sourced from the email_verified JWT claim — false when absent or unverified.")
+                + "Includes emailVerified (bool) resolved from LIVE server state, not from the email_verified JWT "
+                + "claim — a citizen who verified after signing in reports verified without re-authenticating "
+                + "(issue #1264). Falls back to the token claim only if the live read is unavailable.")
             .RequireAuthorization()
             .Produces<CurrentUserResponse>()
             .Produces(StatusCodes.Status401Unauthorized)
@@ -664,10 +666,43 @@ public static class AuthEndpoints
         });
     }
 
-    private static Ok<CurrentUserResponse> GetCurrentUser(
-        ClaimsPrincipal user)
+    private static async Task<Ok<CurrentUserResponse>> GetCurrentUser(
+        ClaimsPrincipal user,
+        ILivePlatformUserClaimsService liveClaims,
+        CancellationToken cancellationToken)
     {
-        bool.TryParse(user.FindFirst("email_verified")?.Value, out var emailVerified);
+        // Issue #1264 — read email verification from LIVE state, not from the token claim.
+        //
+        // This endpoint is what the whole app asks "is my email verified?", and a token is a snapshot
+        // from mint time: a citizen who verified after signing in kept reporting unverified until they
+        // signed out and back in. That same staleness, stamped into a submission, auto-rejected a
+        // compliant citizen's identity application. Falling back to the token claim when the live read
+        // is unavailable is deliberate here and NOT the #1264 defect: this is a read-only display
+        // surface, so a momentarily stale badge is strictly better than failing /me outright — unlike a
+        // submission, nothing irreversible is written from it.
+        var emailVerified = false;
+        var platformUserIdClaim = user.FindFirst("platform_user_id")?.Value;
+        if (Guid.TryParse(platformUserIdClaim, out var platformUserId))
+        {
+            var resolved = await liveClaims.ResolveAsync(
+                platformUserId,
+                new[] { LivePlatformUserClaimsService.EmailVerified },
+                cancellationToken);
+
+            if (resolved is not null
+                && resolved.TryGetValue(LivePlatformUserClaimsService.EmailVerified, out var liveValue))
+            {
+                emailVerified = string.Equals(liveValue, "true", StringComparison.OrdinalIgnoreCase);
+            }
+            else
+            {
+                bool.TryParse(user.FindFirst("email_verified")?.Value, out emailVerified);
+            }
+        }
+        else
+        {
+            bool.TryParse(user.FindFirst("email_verified")?.Value, out emailVerified);
+        }
 
         var response = new CurrentUserResponse
         {

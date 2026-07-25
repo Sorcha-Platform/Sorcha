@@ -102,7 +102,56 @@ public static class InternalEndpoints
                 + "see the org-scoped identity id in ParticipantInfo. 404 if the UserIdentity does not exist.")
             .RequireAuthorization("RequireService");
 
+        // Issue #1264: the live-claims read. A JWT claim is a snapshot from mint time, so any
+        // decision that must reflect reality at the moment it is made has to read server state
+        // instead. Deliberately ONE batch route keyed by claim name — not an endpoint per checkable
+        // attribute — so a caller resolving several bindings makes one round trip and a newly
+        // resolvable attribute is a mapping entry in the service, never a new route.
+        group.MapGet("/platform-users/{platformUserId:guid}/claims", ResolveLivePlatformUserClaims)
+            .WithName("ResolveLivePlatformUserClaims")
+            .WithSummary("Resolve the current value of named identity claims for a platform user")
+            .WithDescription("Reads the requested claim names from live server state rather than from a "
+                + "previously-minted token. Names are the JWT claim vocabulary (e.g. email_verified). "
+                + "Unsupported names are omitted from the response so the caller fails closed on them "
+                + "visibly. 404 when the platform user does not exist — distinguishable from a user whose "
+                + "email is simply unverified, because the two demand different handling.")
+            .RequireAuthorization("RequireService");
+
         return app;
+    }
+
+    /// <summary>
+    /// Resolves live identity claim values for a platform user. See
+    /// <see cref="ILivePlatformUserClaimsService"/> for why this exists and why it is a batch read.
+    /// </summary>
+    private static async Task<Results<Ok<IReadOnlyDictionary<string, string>>, NotFound, BadRequest<string>>>
+        ResolveLivePlatformUserClaims(
+            Guid platformUserId,
+            [FromQuery] string? names,
+            ILivePlatformUserClaimsService claims,
+            CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(names))
+        {
+            return TypedResults.BadRequest(
+                "At least one claim name is required (comma-separated 'names' query parameter). "
+                + "This endpoint never returns a bulk dump — the request must state its intent.");
+        }
+
+        var requested = names
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        if (requested.Length == 0)
+        {
+            return TypedResults.BadRequest("At least one claim name is required.");
+        }
+
+        var resolved = await claims.ResolveAsync(platformUserId, requested, ct);
+        return resolved is null
+            ? TypedResults.NotFound()
+            : TypedResults.Ok(resolved);
     }
 
     private static async Task<Results<Ok<PlatformUserDeviceRegistrationResponse>, BadRequest<string>>> RegisterPlatformUserDevice(

@@ -80,6 +80,12 @@ public static class HttpServiceCollectionExtensions
         services.AddHttpClient<PlatformUserDeviceClient>();
         services.AddScoped<IPlatformUserDeviceClient, PlatformUserDeviceClient>();
 
+        // Issue #1264: live (non-token) identity claim resolution on Tenant Service, so a decision
+        // made after a token was minted reads current server state rather than a mint-time snapshot.
+        services.AddHttpClient<PlatformUserClaims.PlatformUserClaimsClient>();
+        services.AddScoped<PlatformUserClaims.IPlatformUserClaimsClient,
+                           PlatformUserClaims.PlatformUserClaimsClient>();
+
         // Feature 118 / US3: durable user inbox writer — POSTs entries to Tenant Service.
         services.AddHttpClient<Inbox.PlatformInboxClient>();
         services.AddScoped<Inbox.IPlatformInboxClient, Inbox.PlatformInboxClient>();
