@@ -4,6 +4,8 @@
 @implements IDisposable
 @inject IInlineFeedback Feedback
 @inject NavigationManager Navigation
+@using Sorcha.UI.Components.User.Services.Shared
+@inject IInboxDetailRouter DetailRouter
 @using Microsoft.Extensions.Logging
 @using MudBlazor
 @using Sorcha.UI.Core.Services.Feedback
@@ -81,7 +83,12 @@
         Feedback.Dismiss(entry.Id);
         if (!string.IsNullOrWhiteSpace(entry.DetailHref))
         {
-            Navigation.NavigateTo(entry.DetailHref);
+            // Issue #1266: resolved in-app route only.
+            var appRoute = DetailRouter.Resolve(entry.DetailHref);
+            if (appRoute is not null)
+            {
+                Navigation.NavigateTo(appRoute);
+            }
         }
     }
 

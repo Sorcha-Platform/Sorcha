@@ -25,6 +25,12 @@ public sealed class InlineFeedbackHostTests : BunitContext
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
         Services.AddSingleton<IInlineFeedback>(new InlineFeedback());
+        // Issue #1266: the host translates an inbox entry's API detailHref into an in-app route
+        // before navigating. This class builds on BunitContext directly rather than
+        // ComponentTestFixture, so it registers the router itself.
+        Services.AddScoped<
+            Sorcha.UI.Components.User.Services.Shared.IInboxDetailRouter,
+            Sorcha.UI.Components.User.Services.Shared.DefaultInboxDetailRouter>();
     }
 
     [Fact]

@@ -49,7 +49,11 @@ public interface IInboxService
     /// <summary>Returns a single entry, scoped to the calling user. <c>null</c> if not found or not owned.</summary>
     Task<InboxEntry?> GetByIdAsync(Guid platformUserId, Guid entryId, CancellationToken ct = default);
 
-    /// <summary>Returns the user's unread Actionable-only count.</summary>
+    /// <summary>
+    /// Returns the user's unread needs-attention count — <c>Category == Action</c> or severity at
+    /// <c>Warning</c> or above (issue #1267). Deliberately NOT a plain unread count: <c>Info</c>
+    /// entries do not badge, so the bell keeps meaning something.
+    /// </summary>
     Task<int> GetUnreadCountAsync(Guid platformUserId, CancellationToken ct = default);
 
     /// <summary>Marks an entry read. Idempotent. Fires <c>InboxUnreadCountUpdated</c> if state changed.</summary>

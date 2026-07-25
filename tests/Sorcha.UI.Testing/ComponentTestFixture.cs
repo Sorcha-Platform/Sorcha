@@ -26,6 +26,14 @@ public abstract class ComponentTestFixture : BunitContext
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
         Services.AddMudServices();
+
+        // Issue #1266: components that render inbox entries inject IInboxDetailRouter to translate a
+        // stored API detailHref into an in-app route. Production registers it in
+        // AddSorchaUserComponents, so the fixture mirrors that — same rationale as MudServices above.
+        // A test asserting host-specific routing registers its own router after this (last wins).
+        Services.AddScoped<
+            Sorcha.UI.Components.User.Services.Shared.IInboxDetailRouter,
+            Sorcha.UI.Components.User.Services.Shared.DefaultInboxDetailRouter>();
     }
 
     /// <summary>

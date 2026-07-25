@@ -62,6 +62,12 @@ public static class ServiceCollectionExtensions
         // can override it.
         services.TryAddScoped<IWebCameraService, WebCameraService>();
 
+        // Issue #1266: translates an inbox entry's stored API detailHref into an in-app route, and
+        // refuses what this host cannot render. TryAdd so a host with its own pages (the Wallet PWA
+        // maps instances onto /applications/{id}) registers a richer router first and wins.
+        services.TryAddScoped<Sorcha.UI.Components.User.Services.Shared.IInboxDetailRouter,
+                              Sorcha.UI.Components.User.Services.Shared.DefaultInboxDetailRouter>();
+
         // Verify seams — Feature 163 (PR B2-components).
         // TryAdd* ensures a host override registered before this call wins.
         services.TryAddSingleton<IVerificationPresetCatalogue, DefaultPresetCatalogue>();

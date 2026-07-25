@@ -36,7 +36,10 @@ public static class MeInboxEndpoints
         group.MapGet("unread-count", GetUnreadCountAsync)
             .WithName("GetMyInboxUnreadCount")
             .WithSummary("Return the user's unread inbox count.")
-            .WithDescription("Returns the user's unread Actionable-only count. Realtime updates are pushed via TenantHub InboxUnreadCountUpdated.");
+            .WithDescription("Returns the user's unread needs-attention count: Category == Action, or Severity at "
+                + "Warning or above (issue #1267 — a Workflow/Warning decision notice previously could not "
+                + "badge the bell). Info entries are excluded so the badge is not a generic unread count. "
+                + "Realtime updates are pushed via TenantHub InboxUnreadCountUpdated.");
 
         group.MapGet("{id:guid}", GetByIdAsync)
             .WithName("GetMyInboxEntry")
