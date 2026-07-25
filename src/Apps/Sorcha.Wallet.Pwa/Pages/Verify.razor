@@ -54,10 +54,14 @@
     }
     else if (!_complete)
     {
+        @* Issue #1282: supply OnCancel so the QR screen has a way out. Before this the citizen
+           reached a screen with a QR, a raw protocol URI and no exit — the bottom nav was the only
+           escape. The heading is derived by the component from the question itself. *@
         <VerificationSessionQr Question="@_selectedQuestion"
                                CancellationToken="@_pageCts.Token"
                                OnOutcome="@HandleOutcomeAsync"
-                               OnCompleted="@HandleCompletedAsync" />
+                               OnCompleted="@HandleCompletedAsync"
+                               OnCancel="@Reset" />
     }
     else
     {

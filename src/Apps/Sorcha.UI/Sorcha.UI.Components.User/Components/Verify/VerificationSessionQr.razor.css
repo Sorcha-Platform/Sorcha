@@ -1,0 +1,38 @@
+/* SPDX-License-Identifier: MIT */
+/* Copyright (c) 2026 Sorcha Contributors */
+
+/*
+ * Issue #1282: the QR screen overflowed the viewport on a phone because the raw openid4vp://
+ * request URI was rendered as body text — one long unbroken token that nothing could wrap. The URI
+ * is gone from the visible layer entirely; these rules make sure nothing else here can overflow
+ * either, since this surface is used at a doorstep on whatever screen the operator is holding.
+ */
+
+.qr-active {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    /* Never let a child widen the page. A horizontally-scrolling verification screen is unusable
+       one-handed, which is the only way this screen is ever held. */
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.qr-image {
+    /* Square, and never wider than the viewport. Fixed px would clip on a small phone; the min
+       keeps it scannable on one. */
+    width: min(220px, 70vw);
+    height: min(220px, 70vw);
+    /* A QR must stay high-contrast to scan — keep it on white regardless of theme. */
+    background: #fff;
+    padding: 8px;
+    border-radius: 8px;
+}
+
+.qr-waiting {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
