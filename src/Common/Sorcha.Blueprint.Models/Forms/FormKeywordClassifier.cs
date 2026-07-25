@@ -28,8 +28,9 @@ namespace Sorcha.Blueprint.Models.Forms;
 /// </para>
 /// <para>
 /// <b>Behavioural</b> keywords (re-lock): <c>x-file</c> (file-reference → chunked/encrypted
-/// transactions) and <c>x-credential-offer</c> (credential claim flow). These alter the
-/// executed pipeline.
+/// transactions), <c>x-credential-offer</c> (credential claim flow), and <c>x-holder-key</c>
+/// (whether the carried delivery keys must be captured before submission — see
+/// <see cref="HolderKeySchemaExtension"/>). These alter the executed pipeline.
 /// </para>
 /// <para>
 /// <b>Fail-safe default.</b> Any unrecognised <c>x-*</c> keyword is treated as
@@ -66,6 +67,12 @@ public static class FormKeywordClassifier
         {
             "x-file",
             "x-credential-offer",
+            // Issue #1302 — x-holder-key gates whether the citizen's carried delivery keys must be
+            // captured before submission, which decides whether a credential can be bound and
+            // delivered at all. Declared explicitly rather than left to the fail-safe: the
+            // classification is the same either way, but a "single source of truth" that omits a
+            // keyword the code consumes cannot be read as deliberate.
+            "x-holder-key",
         };
 
     /// <summary>
