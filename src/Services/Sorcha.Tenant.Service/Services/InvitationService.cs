@@ -153,6 +153,91 @@ public class InvitationService : IInvitationService
     }
 
     /// <inheritdoc />
+    /// <inheritdoc />
+    public async Task<bool> ResendInvitationAsync(
+        Guid organizationId,
+        Guid invitationId,
+        Guid resentByUserId,
+        CancellationToken cancellationToken = default)
+    {
+        var invitation = await _invitationRepository.GetByIdAsync(invitationId, cancellationToken);
+        if (invitation == null || invitation.OrganizationId != organizationId)
+        {
+            return false;
+        }
+
+        if (invitation.Status != InvitationStatus.Pending)
+        {
+            throw new InvalidOperationException(
+                $"Cannot resend invitation with status {invitation.Status}. Only Pending invitations can be resent.");
+        }
+
+        // Fail-fast lookups BEFORE mutating the row, mirroring CreateInvitationAsync (reviewer M-1
+        // there): a missing org must not leave a rotated token whose email was never sent.
+        var invitingOrg = await _organizationRepository.GetByIdAsync(organizationId, cancellationToken)
+            ?? throw new InvalidOperationException(
+                $"Inviting organisation {organizationId} not found when preparing invitation email.");
+
+        var resender = await _identityRepository.GetUserByIdAsync(resentByUserId, cancellationToken);
+        var resenderName = resender?.DisplayName ?? "An administrator";
+
+        // ROTATE the token and reset the expiry window. See IInvitationService for the reasoning:
+        // an operator resending is usually recovering from a mail that never arrived or has gone
+        // stale, and rotating bounds how long a leaked token stays live. The cost — a link already in
+        // flight stops working — is accepted, because the fresh email supersedes it.
+        var tokenBytes = RandomNumberGenerator.GetBytes(32);
+        var token = Convert.ToBase64String(tokenBytes)
+            .Replace('+', '-').Replace('/', '_').TrimEnd('=');
+
+        // Preserve the original validity WINDOW rather than hard-coding a default, so a deliberately
+        // short-lived invitation does not silently become a long-lived one on resend.
+        var originalWindow = invitation.ExpiresAt - invitation.CreatedAt;
+        var expiryDays = (int)Math.Ceiling(originalWindow.TotalDays);
+        if (expiryDays < 1) expiryDays = 1;
+
+        invitation.Token = token;
+        invitation.ExpiresAt = DateTimeOffset.UtcNow.AddDays(expiryDays);
+        await _invitationRepository.UpdateAsync(invitation, cancellationToken);
+
+        var acceptUrl = $"{_emailSettings.BaseUrl.TrimEnd('/')}/invitations/accept?token={Uri.EscapeDataString(token)}";
+
+        // CLAUDE.md pattern #9 — never IEmailSender directly, never an inline body.
+        await _transactional.SendInvitationAsync(
+            new InviteEmailDispatch(
+                ToEmail: invitation.Email,
+                InviterName: resenderName,
+                InvitingOrganization: invitingOrg,
+                RoleDisplayName: invitation.AssignedRole.ToString(),
+                AcceptUrl: acceptUrl,
+                ExpiresInDays: expiryDays),
+            cancellationToken);
+
+        _dbContext.AuditLogEntries.Add(new AuditLogEntry
+        {
+            OrganizationId = organizationId,
+            IdentityId = resentByUserId,
+            EventType = AuditEventType.InvitationSent,
+            Timestamp = DateTimeOffset.UtcNow,
+            Success = true,
+            Details = new Dictionary<string, object>
+            {
+                ["email"] = invitation.Email,
+                ["role"] = invitation.AssignedRole.ToString(),
+                ["expiresAt"] = invitation.ExpiresAt.ToString("O"),
+                ["resend"] = true,
+                ["tokenRotated"] = true
+            }
+        });
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Invitation resent to {Email} for org {OrgId} (token rotated, expires {ExpiresAt:O})",
+            invitation.Email, organizationId, invitation.ExpiresAt);
+
+        return true;
+    }
+
+    /// <inheritdoc />
     public async Task<bool> RevokeInvitationAsync(
         Guid organizationId,
         Guid invitationId,

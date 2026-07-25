@@ -90,4 +90,25 @@ public class InvitationClientService : IInvitationClientService
             return false;
         }
     }
+
+    /// <inheritdoc />
+    public async Task<bool> ResendInvitationAsync(
+        Guid organizationId,
+        Guid invitationId,
+        CancellationToken ct)
+    {
+        var url = $"/api/organizations/{Uri.EscapeDataString(organizationId.ToString())}/invitations/{Uri.EscapeDataString(invitationId.ToString())}/resend";
+
+        try
+        {
+            var response = await _httpClient.PostAsync(url, null, ct);
+            return response.IsSuccessStatusCode;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Failed to resend invitation {InvitationId} for organization {OrganizationId}",
+                invitationId, organizationId);
+            return false;
+        }
+    }
 }
