@@ -253,7 +253,12 @@ public class CredentialApiService : ICredentialApiService
             DisplayConfig = displayConfig,
             HighlightClaims = BuildHighlightClaims(claims, displayConfig),
             DisclosableClaims = item.DisclosableClaims ?? [],
-            DisplayName = Humanise(item.Type),
+            // Issue #1278: prefer the issuer-authored display name over anything derived from the
+            // type. Post-#1187 the vct is a URI by design, so deriving a title from it is a last
+            // resort, not the plan.
+            DisplayName = !string.IsNullOrWhiteSpace(displayConfig.CredentialName)
+                ? displayConfig.CredentialName!
+                : Humanise(item.Type),
             ClaimSummary = BuildClaimSummary(claims),
             // Feature 106 — rows with the new PendingAcceptance status flow into
             // the MyCredentials PENDING tab via CredentialCardViewModel.IsPending.
@@ -265,22 +270,21 @@ public class CredentialApiService : ICredentialApiService
     }
 
     /// <summary>
-    /// "AssuredIdentityCredential" → "Assured Identity". Splits PascalCase and drops
-    /// the redundant "Credential" suffix — every card on the page is a credential.
+    /// "AssuredIdentityCredential" → "Assured Identity"; a vct URI →
+    /// "Assured Identity" via its last segment.
     /// </summary>
+    /// <remarks>
+    /// Issue #1278: this used to split PascalCase only, with no URI-tail extraction, so a vct URI
+    /// passed straight through and the card title read
+    /// <c>https://sorcha.dev/vc/assured-identity/v1</c>. It now delegates to
+    /// <see cref="Components.Wallet.CredentialDisplay.Humanize"/> — the one implementation that already handled URIs
+    /// correctly, and which the PWA has always used. Three near-copies of this logic existed and
+    /// only that one was right; delegating removes the drift rather than adding a fourth.
+    /// </remarks>
     private static string Humanise(string? type)
-    {
-        if (string.IsNullOrWhiteSpace(type)) return string.Empty;
-
-        var trimmed = type.EndsWith("Credential", StringComparison.Ordinal) && type.Length > "Credential".Length
-            ? type[..^"Credential".Length]
-            : type;
-
-        var spaced = System.Text.RegularExpressions.Regex.Replace(
-            trimmed, "(?<=[a-z0-9])(?=[A-Z])", " ");
-
-        return spaced.Length == 0 ? type : char.ToUpperInvariant(spaced[0]) + spaced[1..];
-    }
+        => string.IsNullOrWhiteSpace(type)
+            ? string.Empty
+            : Components.Wallet.CredentialDisplay.Humanize(type);
 
     /// <summary>
     /// A single line naming what the credential holds — names only, never values.
@@ -452,6 +456,11 @@ public class CredentialApiService : ICredentialApiService
                 JsonValueKind.Object => SummariseObject(p.Value),
                 _ => string.Empty
             })
+            // Issue #1278: trim each leaf before joining. The reported
+            // "6/2 Warrender Park Terrace , Edinburgh , Eh91ja, Gb" was NOT a " , " separator —
+            // this join has always used ", ". The stray pre-comma spaces are trailing whitespace
+            // the citizen typed into individual address fields, previously carried through verbatim.
+            .Select(v => v.Trim())
             .Where(v => !string.IsNullOrWhiteSpace(v))
             .ToList();
 
@@ -494,8 +503,16 @@ public class CredentialApiService : ICredentialApiService
         {
             CredentialId = entity.Id ?? string.Empty,
             Type = entity.Type ?? string.Empty,
+            // Issue #1278: prefer the authored name, then the org name, before falling back to
+            // anything derived from an identifier. On an identity card, naming the issuer is the
+            // primary job — a truncated wallet address does not do it.
+            DisplayName = !string.IsNullOrWhiteSpace(displayConfig.CredentialName)
+                ? displayConfig.CredentialName!
+                : Humanise(entity.Type),
             IssuerDid = entity.IssuerDid ?? string.Empty,
-            IssuerName = ExtractIssuerName(entity.IssuerDid),
+            IssuerName = !string.IsNullOrWhiteSpace(entity.IssuerOrgName)
+                ? entity.IssuerOrgName!
+                : ExtractIssuerName(entity.IssuerDid),
             SubjectDid = entity.SubjectDid ?? string.Empty,
             Status = entity.Status ?? CredentialStatus.Active,
             IssuedAt = entity.IssuedAt,
@@ -587,6 +604,16 @@ public class CredentialApiService : ICredentialApiService
         public string? Id { get; set; }
         public string? Type { get; set; }
         public string? IssuerDid { get; set; }
+
+        /// <summary>The issuing organisation's human-readable name.</summary>
+        /// <remarks>
+        /// Issue #1278: this property was MISSING from the DTO even though the server has always
+        /// sent it (the detail endpoint returns the whole CredentialEntity), so it was silently
+        /// discarded on deserialisation. That is why the view dialog's id-card named the issuer
+        /// with a truncated wallet address while the list card, one screen away, managed the real
+        /// org name.
+        /// </remarks>
+        public string? IssuerOrgName { get; set; }
         public string? SubjectDid { get; set; }
         public DateTimeOffset IssuedAt { get; set; }
         public DateTimeOffset? ExpiresAt { get; set; }

@@ -65,7 +65,16 @@
                         @foreach (var pointer in cardSection.FieldPointers)
                         {
                             <div class="id-card-field">
-                                <dt>@FormatLabel(pointer)</dt>
+                                @* Issue #1272: a single-field section whose field label restates the
+                                   section title printed both, so three of five sections on the AIAS
+                                   card read as exact repeats (ADDRESS/ADDRESS, EMAIL/EMAIL,
+                                   SECURE DELIVERY/SECURE DELIVERY). The section heading already
+                                   names the field, so the redundant label is dropped rather than
+                                   hidden — hiding it would still duplicate for screen readers. *@
+                                @if (!SuppressesFieldLabel(cardSection, pointer))
+                                {
+                                    <dt>@FormatLabel(pointer)</dt>
+                                }
                                 @{ var fieldValue = Config.FieldValues.GetValueOrDefault(pointer); }
                                 @if (fieldValue is string marker && marker == IdCardLayoutConfig.SecuredDeliveryMarker)
                                 {
@@ -164,6 +173,59 @@
         ["portrait"] = "Photo", ["holderKeys"] = "Secure Delivery",
         ["assuranceLevel"] = "Assurance Level",
     };
+
+    /// <summary>
+    /// True when a section's own heading already names this field, so printing the field label too
+    /// would just repeat it (issue #1272).
+    /// </summary>
+    /// <remarks>
+    /// Only applies to a section holding exactly ONE field — with two or more, each label is doing
+    /// real work distinguishing them, however similar one of them looks to the heading.
+    /// </remarks>
+    internal static bool SuppressesFieldLabel(IdCardSection section, string pointer)
+        => section.FieldPointers.Count == 1
+           && LabelRestatesTitle(section.Title, FormatLabel(pointer));
+
+    /// <summary>
+    /// Compares a section title with a field label ignoring case, punctuation and spacing, and
+    /// treating a leading possessive on the title as noise ("Your date of birth" restates
+    /// "Date of Birth").
+    /// </summary>
+    internal static bool LabelRestatesTitle(string? title, string? label)
+    {
+        var normalisedTitle = NormaliseForComparison(title);
+        var normalisedLabel = NormaliseForComparison(label);
+
+        if (normalisedTitle.Length == 0 || normalisedLabel.Length == 0) return false;
+        if (string.Equals(normalisedTitle, normalisedLabel, StringComparison.Ordinal)) return true;
+
+        // Section titles are commonly phrased possessively ("Your name") while the field label is
+        // bare ("Name"). Strip the possessive from the title only — never from the label, so a
+        // genuinely different field is not matched away.
+        foreach (var prefix in TitlePossessivePrefixes)
+        {
+            if (normalisedTitle.StartsWith(prefix, StringComparison.Ordinal)
+                && string.Equals(normalisedTitle[prefix.Length..], normalisedLabel, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static readonly string[] TitlePossessivePrefixes = ["your", "my", "the"];
+
+    private static string NormaliseForComparison(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        var sb = new StringBuilder(value.Length);
+        foreach (var c in value)
+        {
+            if (char.IsLetterOrDigit(c)) sb.Append(char.ToLowerInvariant(c));
+        }
+        return sb.ToString();
+    }
 
     /// <summary>Render a JSON-pointer leaf as a human label ("/dateOfBirth" → "Date of Birth").</summary>
     private static string FormatLabel(string pointer)
