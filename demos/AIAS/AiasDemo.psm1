@@ -34,6 +34,9 @@ $script:AssuredLib = Join-Path $PSScriptRoot "../AssuredIdentity/lib"
 . (Join-Path $script:AssuredLib "Auth.ps1")          # Import-DemoSecrets, Get-DemoAdminPassword, Connect-DemoNodeAdmin
 . (Join-Path $script:AssuredLib "AgentLaunch.ps1")    # New-AgentActorConfig (token render helper)
 
+# AIAS-local lib units
+. (Join-Path $PSScriptRoot "lib/BlueprintPublish.ps1")  # Resolve-BlueprintPublishAction (#1269 follow-up)
+
 # --- well-known ids / constants ---------------------------------------------
 $script:PublicOrgId  = "00000000-0000-0000-0000-000000000002"
 $script:AiasName     = "Acme Identity Assurance Services"
@@ -335,14 +338,17 @@ function Publish-AiasBlueprint {
     # register-scoped published-blueprints read (it 401s anonymously). Needed for the publish call anyway.
     $vAdmin = Connect-SorchaUser -TenantUrl $api -Email $vAdminEmail -Password $pw -OrganizationId $state.organizationId
 
-    # idempotency: already published + recorded?
-    if (-not $Force -and $state.blueprintId) {
-        $pub = @(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $state.registerId -Headers $vAdmin.Headers)
-        if ($pub -contains $state.blueprintId) {
-            Write-WtSuccess "blueprint '$($state.blueprintId)' already published — reuse"
-            return $state
-        }
+    # Idempotency is decided PER SPEC below (Resolve-BlueprintPublishAction), not all-or-nothing
+    # here. The old guard early-returned as soon as the SCALAR state.blueprintId was published —
+    # so on any already-provisioned node it returned before the both-templates loop and the
+    # device-registration blueprint stayed unpublished, which is the very blindness #1269 removed
+    # from the body. Forcing past it was not a fix either: ids are timestamped, so -Force
+    # republishes the application workflow under a new id and leaves a duplicate behind.
+    $alreadyPublished = @()
+    if (-not $Force) {
+        $alreadyPublished = @(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $state.registerId -Headers $vAdmin.Headers)
     }
+    $recordedAppId = $state.PSObject.Properties['blueprintId'] ? [string]$state.blueprintId : $null
 
     # Issue #1269: the demo carries TWO templates and only ever published one. The
     # device-registration workflow (F174 / #1195 Phase 2 "Bind to device") existed as a complete,
@@ -364,22 +370,36 @@ function Publish-AiasBlueprint {
     )
 
     $publishedIds = @{}
-    $blueprint = $null
+    $appBlueprintId = $null
+    $rendered_ai = $null
     foreach ($spec in $blueprintSpecs) {
         Write-WtStep "render $($spec.File) -> {{issuerName}} = '$script:AiasName'"
         $templateRaw = Get-Content -LiteralPath (Join-Path $script:DemoRoot "blueprints/$($spec.File)") -Raw
+        # Rendered even when reusing — the agency-name coherence assertion below reads it.
         $rendered = Set-BlueprintIssuerName -BlueprintJson $templateRaw -AgencyName $script:AiasName
-        $tempBp = Join-Path ([System.IO.Path]::GetTempPath()) ("{0}-{1}.json" -f $spec.IdPrefix, $script:AiasSubdomain)
-        $rendered | Set-Content -LiteralPath $tempBp -Encoding UTF8
 
-        $pubResult = Publish-SorchaBlueprint -BlueprintUrl $api -TemplatePath $tempBp -WalletMap $spec.WalletMap -Headers $vAdmin.Headers -IdPrefix $spec.IdPrefix -RegisterId $state.registerId
-        Remove-Item -LiteralPath $tempBp -ErrorAction SilentlyContinue
-        Write-WtSuccess "blueprint ($($spec.Key)): $($pubResult.BlueprintId)"
-        $publishedIds[$spec.Key] = $pubResult.BlueprintId
+        $preferred = ($spec.Key -eq 'assuredIdentity') ? $recordedAppId : $null
+        $decision = Resolve-BlueprintPublishAction -IdPrefix $spec.IdPrefix `
+            -PublishedIds $alreadyPublished -PreferredId $preferred -Force ([bool]$Force)
+
+        if ($decision.Action -eq 'Reuse') {
+            Write-WtSuccess "blueprint ($($spec.Key)): '$($decision.ExistingId)' already published — reuse"
+            $publishedIds[$spec.Key] = $decision.ExistingId
+        }
+        else {
+            $tempBp = Join-Path ([System.IO.Path]::GetTempPath()) ("{0}-{1}.json" -f $spec.IdPrefix, $script:AiasSubdomain)
+            $rendered | Set-Content -LiteralPath $tempBp -Encoding UTF8
+
+            $pubResult = Publish-SorchaBlueprint -BlueprintUrl $api -TemplatePath $tempBp -WalletMap $spec.WalletMap -Headers $vAdmin.Headers -IdPrefix $spec.IdPrefix -RegisterId $state.registerId
+            Remove-Item -LiteralPath $tempBp -ErrorAction SilentlyContinue
+            Write-WtSuccess "blueprint ($($spec.Key)): $($pubResult.BlueprintId)"
+            $publishedIds[$spec.Key] = $pubResult.BlueprintId
+        }
 
         # The assured-identity blueprint stays the one recorded as state.blueprintId — rehearse.ps1
-        # and run-demo.ps1 read that scalar as "the application workflow".
-        if ($spec.Key -eq 'assuredIdentity') { $blueprint = $pubResult; $rendered_ai = $rendered }
+        # and run-demo.ps1 read that scalar as "the application workflow". Taken from the decision
+        # so a REUSED id is preserved verbatim rather than nulled out.
+        if ($spec.Key -eq 'assuredIdentity') { $appBlueprintId = $publishedIds[$spec.Key]; $rendered_ai = $rendered }
     }
     $rendered = $rendered_ai
 
@@ -409,7 +429,7 @@ function Publish-AiasBlueprint {
     # blueprintId stays for back-compat (rehearse.ps1 / run-demo.ps1 read it as the application
     # workflow); blueprintIds is the authoritative SET the readiness check verifies (#1269).
     $merged = Merge-DemoState -Existing $state -Updates @{
-        blueprintId  = $blueprint.BlueprintId
+        blueprintId  = $appBlueprintId
         blueprintIds = $publishedIds
     }
     Write-DemoState -State $merged -Path $StateFile | Out-Null

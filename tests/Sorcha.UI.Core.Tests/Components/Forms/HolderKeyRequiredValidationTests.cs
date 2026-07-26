@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.Json;
 using FluentAssertions;
 using Sorcha.UI.Core.Services.Forms;
@@ -118,6 +120,50 @@ public sealed class HolderKeyRequiredValidationTests
             """);
 
         _sut.ValidateData(schema, new Dictionary<string, object?>()).Should().NotContainKey(HolderKeyScope);
+    }
+
+    /// <summary>
+    /// Derived from the SHIPPED device-registration template rather than a synthetic schema, so the
+    /// guard tracks what is actually deployed. That blueprint declares <c>x-device-key</c> (not
+    /// <c>x-holder-key</c>) on a <c>sorcha-device-key</c> field, and its issuing action reads
+    /// <c>/deviceKey/holderJwk</c> — so an uncaptured device key would seal action 1 and then throw
+    /// on the automated issuer's action 2, where no human is watching.
+    /// </summary>
+    [Fact]
+    public void TheShippedDeviceRegistrationBlueprintIsEnforced()
+    {
+        var path = Path.Combine(
+            FindRepoRoot(AppContext.BaseDirectory),
+            "demos", "AIAS", "blueprints", "aias-device-registration.template.json");
+
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        var actionSchema = doc.RootElement
+            .GetProperty("template").GetProperty("actions")[0]
+            .GetProperty("dataSchemas")[0];
+
+        using var schema = JsonDocument.Parse(actionSchema.GetRawText());
+
+        _sut.ValidateData(schema, new Dictionary<string, object?>())
+            .Should().ContainKey("/deviceKey", "the shipped template opts in via x-device-key");
+
+        _sut.ValidateData(schema, new Dictionary<string, object?>
+        {
+            ["/deviceKey/holderJwk"] = "{\"kty\":\"EC\"}",
+            ["/deviceKey/encryptionPublicKey"] = "YmFzZTY0",
+            ["/deviceKey/algorithm"] = "ED25519",
+        }).Should().NotContainKey("/deviceKey");
+    }
+
+    private static string FindRepoRoot(string startDir)
+    {
+        var dir = startDir;
+        while (dir is not null)
+        {
+            if (File.Exists(Path.Combine(dir, "Sorcha.sln"))) return dir;
+            dir = Directory.GetParent(dir)?.FullName;
+        }
+
+        throw new DirectoryNotFoundException($"Could not locate repo root from '{startDir}'.");
     }
 
     [Fact]

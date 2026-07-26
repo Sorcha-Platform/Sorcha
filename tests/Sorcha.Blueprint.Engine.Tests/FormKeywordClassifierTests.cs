@@ -33,6 +33,7 @@ public class FormKeywordClassifierTests
     // an unknown keyword riding the fail-safe. The classification is unchanged (behavioural either
     // way), so this is a declaration, not a gate-behaviour change.
     [InlineData("x-holder-key")]
+    [InlineData("x-device-key")]
     public void IsBehavioural_KnownBehaviouralKeyword_ReturnsTrue(string keyword)
     {
         FormKeywordClassifier.IsBehavioural(keyword).Should().BeTrue();
@@ -83,7 +84,7 @@ public class FormKeywordClassifierTests
             // x-holder-key joined the set in #1302 when it gained a consumer. Its effective
             // classification is unchanged — it previously reached "behavioural" via the fail-safe —
             // so no executable-definition hash or rehearsal-gate behaviour changes here.
-            "x-file", "x-credential-offer", "x-holder-key",
+            "x-file", "x-credential-offer", "x-holder-key", "x-device-key",
         });
     }
 
