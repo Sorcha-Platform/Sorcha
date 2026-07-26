@@ -216,7 +216,10 @@
             "isDefault": true,
             "description": "No level awarded",
             "x-decision-notice": {
+              "recipientParticipantId": "citizen",
               "reasonCodeField": "/reasonCode",
+              "title": "AIAS could not award your Cyber Level",
+              "severity": "Warning",
               "reasons": {
                 "no-portrait": "AIAS cannot issue a Cyber Level without a face to put on it. Add a photo to your Assured Identity and come back.",
                 "cyber-fail": "AIAS admires the honesty, but cannot certify this. Fix the shared passwords and try again."
