@@ -64,6 +64,34 @@ public sealed class HolderKeySchemaExtensionTests
     }
 
     [Fact]
+    public void TheDeviceKeyVariantIsHonouredToo()
+    {
+        // aias-device-registration declares x-device-key on a `sorcha-device-key` field — the
+        // device-bound sibling of the same idea. DeviceKeyRenderer writes the SAME three leaves
+        // (holderJwk carries this device's JWK for the cnf), and action 2 reads them back via
+        // holderKeySourceField: /deviceKey/holderJwk. Honouring both keywords means neither shipped
+        // blueprint needs editing.
+        var ok = HolderKeySchemaExtension.TryParseFromSchema(
+            Schema("""{"type":"object","format":"sorcha-device-key","x-device-key":{"required":true}}"""),
+            out var ext);
+
+        ok.Should().BeTrue();
+        ext!.Required.Should().BeTrue();
+    }
+
+    [Fact]
+    public void AFieldDeclaringBothKeywords_IsRequiredIfEitherAsksForIt()
+    {
+        // Defensive: nothing declares both today, but a copy-paste between the two templates would.
+        // The safe reading of a contradiction is the stricter one.
+        HolderKeySchemaExtension.TryParseFromSchema(
+            Schema("""{"x-holder-key":{"required":false},"x-device-key":{"required":true}}"""),
+            out var ext).Should().BeTrue();
+
+        ext!.Required.Should().BeTrue();
+    }
+
+    [Fact]
     public void TheCarriedLeavesMatchWhatTheIssuerActuallyReads()
     {
         // ResolveCarriedHolderKeys needs the holder JWK (cnf binding, FR-014) plus the encryption

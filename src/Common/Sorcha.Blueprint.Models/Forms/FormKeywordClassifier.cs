@@ -73,6 +73,8 @@ public static class FormKeywordClassifier
             // classification is the same either way, but a "single source of truth" that omits a
             // keyword the code consumes cannot be read as deliberate.
             "x-holder-key",
+            // Same idea on a sorcha-device-key field (#1195 Phase 2) — see HolderKeySchemaExtension.
+            "x-device-key",
         };
 
     /// <summary>

@@ -64,22 +64,49 @@ public sealed class HolderKeySchemaExtension
     /// <see langword="false"/> when absent or malformed — a broken declaration must not block a
     /// citizen's submission, since the server-side fail-closed still protects correctness.
     /// </summary>
+    /// <summary>
+    /// The keywords this extension is declared under. <c>x-holder-key</c> sits on a
+    /// <c>sorcha-holder-key</c> field (the citizen's wallet keys); <c>x-device-key</c> on a
+    /// <c>sorcha-device-key</c> field (this device's key, #1195 Phase 2). They are the same idea and
+    /// both renderers write the same three leaves, so both are honoured here — which is why neither
+    /// shipped blueprint needs editing.
+    /// </summary>
+    public static IReadOnlyList<string> Keywords { get; } = ["x-holder-key", "x-device-key"];
+
     public static bool TryParseFromSchema(JsonElement schema, out HolderKeySchemaExtension? extension)
     {
         extension = null;
 
         if (schema.ValueKind != JsonValueKind.Object) return false;
-        if (!schema.TryGetProperty("x-holder-key", out var element)) return false;
-        if (element.ValueKind != JsonValueKind.Object) return false;
 
-        try
+        var found = false;
+        var required = false;
+
+        foreach (var keyword in Keywords)
         {
-            extension = JsonSerializer.Deserialize<HolderKeySchemaExtension>(element.GetRawText());
-            return extension is not null;
+            if (!schema.TryGetProperty(keyword, out var element)) continue;
+            if (element.ValueKind != JsonValueKind.Object) continue;
+
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<HolderKeySchemaExtension>(element.GetRawText());
+                if (parsed is null) continue;
+
+                found = true;
+                // A field declaring both is a copy-paste between the two templates. The safe
+                // reading of a contradiction is the stricter one.
+                required |= parsed.Required;
+            }
+            catch (JsonException)
+            {
+                // Malformed declaration — ignore this keyword rather than blocking a citizen's
+                // submission on it. The server-side fail-closed still protects correctness.
+            }
         }
-        catch (JsonException)
-        {
-            return false;
-        }
+
+        if (!found) return false;
+
+        extension = new HolderKeySchemaExtension { Required = required };
+        return true;
     }
 }
