@@ -6,9 +6,10 @@ A Model Context Protocol (MCP) server for the Sorcha decentralised register plat
 
 The MCP server provides role-based access to Sorcha platform operations through a set of tools organized by user role:
 
-- **Administrator (`sorcha:admin`)**: Platform health, logs, metrics, tenant/user management
-- **Designer (`sorcha:designer`)**: Blueprint creation, validation, simulation, versioning
-- **Participant (`sorcha:participant`)**: Inbox, actions, transactions, wallet operations
+- **Administrator (`sorcha:admin`)**: platform health, logs, metrics, org/user admin, register federation, credential lifecycle, presentations
+- **Designer (`sorcha:designer`)**: blueprint creation, validation, simulation, versioning
+- **Participant (`sorcha:participant`)**: inbox, actions, transactions, wallet operations
+- **Citizen (consumer tier)**: self-service wallet, devices, credentials, persona — gated on a consumer-tier token (F136), not a role claim
 
 ## Features
 
@@ -17,7 +18,8 @@ The MCP server provides role-based access to Sorcha platform operations through 
 - **Rate Limiting**: Protects backend services from excessive API calls
 - **Audit Logging**: Tracks all tool invocations for security and compliance
 - **Service Discovery**: Automatically connects to Sorcha backend services
-- **Stdio Transport**: Standard MCP stdio protocol for AI assistant integration
+- **Two Transports** (spec 139): stdio for local AI-assistant integration, and **stateless Streamable HTTP** served by `mcp-server-http` behind the gateway's `/mcp` route — probe `GET /.well-known/mcp.json` for the per-installation URL
+- **Discoverability**: the gateway serves `/.well-known/mcp.json` (manifest: version, transports, real JWT issuer/audience for the installation) and `/api/mcp/tools` (flat catalogue). Both are guarded against drift by `ManifestIntegrityTests`
 
 ## Running with Docker
 
@@ -150,28 +152,21 @@ To use the MCP server with Claude Desktop:
 
 ## Available Tools
 
-The MCP server auto-discovers tools from the assembly. Tools are organized by role:
+**64 registered tools**, auto-discovered from `[McpServerToolType]` classes. Do not hand-count from
+this README — the authoritative catalogue is `GET /api/mcp/tools` (or a live `tools/list`), and
+`ManifestIntegrityTests` fails the build if the gateway catalogue or `server.json` drifts from the
+served set.
 
-### Administrator Tools (13 tools)
-- Health checks and service status
-- Log viewing and analysis
-- Metrics and performance monitoring
-- Tenant and user management
-- System configuration
+| Slice | Tools | Surface |
+|---|---|---|
+| Admin | 34 | health, logs, metrics, org/user admin + audit, platform settings, register stats/subscribe/sync/federation, validator control, credential lifecycle (offer/suspend/reinstate/revoke/refresh), presentations |
+| Designer | 13 | blueprint create/validate/simulate/version, schema + template management |
+| Participant | 10 | inbox, pending actions, action submission, transactions, wallet ops |
+| Citizen | 8 | self-service wallet, devices (list/rename/revoke), credentials, persona |
 
-### Designer Tools (13+ tools)
-- Blueprint creation and editing
-- Schema validation
-- Blueprint versioning
-- Workflow simulation
-- Template management
-
-### Participant Tools (10+ tools)
-- Action inbox viewing
-- Transaction submission
-- Wallet operations
-- Register queries
-- Notification management
+`tools/list` on a live session is **tier-filtered** (F136): a platform-tier token sees ~56 of 64;
+consumer-only tools require a consumer-tier token. One further tool (`sorcha_wallet_sign`) exists in
+source but is deliberately unregistered (T029 — signing stays in the Wallet Service).
 
 ## Security
 
@@ -185,7 +180,7 @@ The MCP server auto-discovers tools from the assembly. Tools are organized by ro
 
 ### Project Dependencies
 
-- `ModelContextProtocol` (v0.7.0-preview.1) - MCP SDK
+- `ModelContextProtocol` + `ModelContextProtocol.AspNetCore` (v1.4.1, centrally pinned in `Directory.Packages.props`) - MCP C# SDK
 - `Sorcha.ServiceClients` - Backend service communication
 - `Sorcha.ServiceDefaults` - Shared configuration
 - `FluentValidation` - Input validation
@@ -193,10 +188,10 @@ The MCP server auto-discovers tools from the assembly. Tools are organized by ro
 
 ### Adding New Tools
 
-1. Create a tool class implementing `IMcpTool`
-2. Decorate with `[McpTool]` attribute
-3. Add role-based authorization attributes
-4. Tool will be auto-discovered on startup
+1. Create a class under `Tools/<Slice>/` marked `[McpServerToolType]`
+2. Mark the tool method `[McpServerTool(Name = "sorcha_...")]` with a `[Description]` of **at least two sentences** (FR-017 — the catalogue test checks the name, reviewers check the prose)
+3. Enforce the caller's tier/role inside the tool via `ICallerContext` (tools are dispatch-filtered per tier, and each tool re-checks — defence in depth)
+4. Add the tool name to BOTH the gateway `appsettings.json` `McpManifest` catalogue and the repo-root `server.json` — `ManifestIntegrityTests` fails the build until all three agree
 
 Example:
 

@@ -19,7 +19,7 @@ What you get from connecting:
 
 - **36 tools.** 13 admin, 13 designer, 10 participant. Each tool's `[Description]` attribute names what it does *and* when an agent should call it versus a sibling.
 - **JWT-bearer auth.** The same JWT used for direct API calls works for MCP. One token, two surfaces.
-- **Two transports.** Stdio for local agent hosts (Claude Desktop, your own CLI agent), HTTP+SSE for hosted agents (cloud orchestrators, server-side workflow engines).
+- **Two transports.** Stdio for local agent hosts (Claude Desktop, your own CLI agent), and **Streamable HTTP** for hosted agents (cloud orchestrators, server-side workflow engines) — served stateless behind the gateway's `/mcp` route, so it scales horizontally with no session affinity. (The manifest labels this transport `http+sse` — that's the FR-014 wire name, kept for compatibility; the endpoint speaks Streamable HTTP.)
 
 ## Connecting
 
@@ -76,7 +76,7 @@ curl -X POST https://<your-host>/api/service-auth/token \
   }'
 ```
 
-The response carries `{ "token": "...", "expiresAt": "..." }`. Pass the token as `SORCHA_JWT_TOKEN` for stdio or as a `Bearer` header for HTTP+SSE.
+The response carries `{ "token": "...", "expiresAt": "..." }`. Pass the token as `SORCHA_JWT_TOKEN` for stdio or as a `Bearer` header for Streamable HTTP.
 
 A helper script lives at `scripts/get-jwt-token.sh` for development environments.
 
