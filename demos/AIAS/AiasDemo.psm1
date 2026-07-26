@@ -1093,9 +1093,17 @@ function Get-AiasDemoStatus {
         }
     }
 
+    # M2: the cyber questionnaire is scored by its own agent process (Start-AiasAgent -Mode cyber) —
+    # check it independently, same as the cyber register above. Without this, a cyber agent that
+    # never started (e.g. Start-AiasAgent's early PATH-check return, which exits before the
+    # mode-prefixed state write) went unnoticed: run-demo.ps1 gates its exit code purely on Verdict,
+    # so a citizen's cyber-questionnaire submission could sit unscored forever behind a green banner.
+    $cyberAgentRunning = Test-AiasAgentAlive -State $state -Mode 'cyber'
+    if (-not $cyberAgentRunning) { $reasons += 'cyber-agent-not-running' }
+
     $verdict = if ($reasons.Count -eq 0) { 'Ready' } else { 'NotReady' }
     Write-WtBanner "AIAS status: $verdict ($($node.id))"
-    Write-WtInfo "gateway=$gatewayHealthy register=$registerReadable cyberRegister=$cyberRegisterReadable blueprint=$blueprintPublished ($($expectedBlueprintIds.Count) expected) agent=$agentRunning"
+    Write-WtInfo "gateway=$gatewayHealthy register=$registerReadable cyberRegister=$cyberRegisterReadable blueprint=$blueprintPublished ($($expectedBlueprintIds.Count) expected) agent=$agentRunning cyberAgent=$cyberAgentRunning"
     if ($reasons.Count -gt 0) { Write-WtInfo "reasons: $($reasons -join ', ')" }
 
     return [pscustomobject]@{
@@ -1107,6 +1115,7 @@ function Get-AiasDemoStatus {
             CyberRegisterReadable  = $cyberRegisterReadable
             BlueprintPublished     = $blueprintPublished
             AgentRunning           = $agentRunning
+            CyberAgentRunning      = $cyberAgentRunning
         }
     }
 }
