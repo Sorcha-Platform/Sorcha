@@ -41,6 +41,10 @@ $script:AssuredLib = Join-Path $PSScriptRoot "../AssuredIdentity/lib"
 $script:PublicOrgId  = "00000000-0000-0000-0000-000000000002"
 $script:AiasName     = "Acme Identity Assurance Services"
 $script:AiasSubdomain = "aias"
+# M2: the cyber questionnaire lives on its OWN register (see New-AiasOrg step 6a). 20 chars — the
+# hard cap enforced deep inside register finalize is 38; exceeding it fails in a way that has
+# historically surfaced as an unexplained 90-second seal timeout rather than a clean error.
+$script:AiasCyberName = "Acme Cyber Assurance"
 
 # --- target table (single-installation; Docker-first, or n1) ----------------
 # Mirrors the AssuredIdentity node shape (id/role/gateway/adminEmail) so the
@@ -216,11 +220,34 @@ function New-AiasOrg {
     $register = New-SorchaRegister -RegisterUrl $api -WalletUrl $api -Name $script:AiasName -Description "AIAS Assured Identity register — owned by $($node.id)" -TenantId $vOrgId -OwnerUserId $vAdmin.UserId -OwnerWalletAddress $vWallet.Address -Headers $vAdmin.Headers -TenantUrl $api -DevMode:$true
     Write-WtSuccess "register: $($register.RegisterId)"
 
+    # M2: the cyber questionnaire lives on its OWN register, not the Identity one. Keeps the two
+    # agents cleanly separated — each agent config is register-scoped, so neither can pick up the
+    # other's pending actions. Name is 20 chars; the hard cap is 38 and exceeding it fails deep in
+    # register finalize, which previously surfaced as an unexplained 90-second seal timeout.
+    Write-WtStep "6a: create advertised DevMode Cyber register (owned by $($node.id))"
+    $cyberRegister = New-SorchaRegister -RegisterUrl $api -WalletUrl $api `
+        -Name $script:AiasCyberName `
+        -Description "AIAS Cyber Level register — owned by $($node.id)" `
+        -TenantId $vOrgId -OwnerUserId $vAdmin.UserId -OwnerWalletAddress $vWallet.Address `
+        -Headers $vAdmin.Headers -TenantUrl $api -DevMode:$true
+    Write-WtSuccess "cyber register: $($cyberRegister.RegisterId)"
+
     Write-WtStep "6b: publish Assure-ID agent participant on register"
     try {
         $null = Publish-SorchaParticipant -TenantUrl $api -OrganizationId $vOrgId -RegisterId $register.RegisterId -ParticipantName "Assure-ID Agent" -OrganizationName $script:AiasName -WalletAddress $agentWallet.Address -PublicKey $agentWallet.PublicKey -Headers $vAdmin.Headers
         Write-WtSuccess "agent participant published"
     } catch { Write-WtWarn "participant publish: $($_.Exception.Message)" }
+
+    # Same wallet, published as a participant on the CYBER register too — publish governance for a
+    # register comes from owner-wallet + participant publishing on THAT register (F142); owning the
+    # identity register does not carry over. Reuses the Assure-ID agent's own wallet/identity rather
+    # than minting a second one — the two are separate agent PROCESSES driven by separate configs
+    # (Build-AiasAgentConfig -Mode cyber), not separate on-chain identities.
+    Write-WtStep "6c: publish Assure-ID agent participant on cyber register"
+    try {
+        $null = Publish-SorchaParticipant -TenantUrl $api -OrganizationId $vOrgId -RegisterId $cyberRegister.RegisterId -ParticipantName "Assure-ID Agent" -OrganizationName $script:AiasName -WalletAddress $agentWallet.Address -PublicKey $agentWallet.PublicKey -Headers $vAdmin.Headers
+        Write-WtSuccess "agent participant published (cyber)"
+    } catch { Write-WtWarn "cyber participant publish: $($_.Exception.Message)" }
 
     $state = @{
         target              = $Target
@@ -231,6 +258,7 @@ function New-AiasOrg {
         agentEmail          = $agentEmail
         agentWallet         = $agentWallet.Address
         registerId          = $register.RegisterId
+        cyberRegisterId     = $cyberRegister.RegisterId
         blueprintId         = $null
         agentMode           = 'rules'
     }
@@ -338,36 +366,64 @@ function Publish-AiasBlueprint {
     # register-scoped published-blueprints read (it 401s anonymously). Needed for the publish call anyway.
     $vAdmin = Connect-SorchaUser -TenantUrl $api -Email $vAdminEmail -Password $pw -OrganizationId $state.organizationId
 
-    # Idempotency is decided PER SPEC below (Resolve-BlueprintPublishAction), not all-or-nothing
-    # here. The old guard early-returned as soon as the SCALAR state.blueprintId was published —
-    # so on any already-provisioned node it returned before the both-templates loop and the
-    # device-registration blueprint stayed unpublished, which is the very blindness #1269 removed
-    # from the body. Forcing past it was not a fix either: ids are timestamped, so -Force
-    # republishes the application workflow under a new id and leaves a duplicate behind.
-    $alreadyPublished = @()
-    if (-not $Force) {
-        $alreadyPublished = @(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $state.registerId -Headers $vAdmin.Headers)
-    }
     $recordedAppId = $state.PSObject.Properties['blueprintId'] ? [string]$state.blueprintId : $null
 
-    # Issue #1269: the demo carries TWO templates and only ever published one. The
+    # Issue #1269: the demo carries multiple templates and only ever published one. The
     # device-registration workflow (F174 / #1195 Phase 2 "Bind to device") existed as a complete,
     # publishable template that nothing in the provisioning path published — so the register reported
-    # "1 workflow(s)" and the PWA's Bind-to-device button had no workflow behind it. Both are
+    # "1 workflow(s)" and the PWA's Bind-to-device button had no workflow behind it. All are
     # published here, and state records the SET (see $publishedIds below) so the readiness check can
     # no longer be structurally blind to one of them going missing.
+    #
+    # M2: each template now publishes to its OWN register — the identity + device-binding workflows
+    # share the Assured Identity register, but the cyber questionnaire has its own (New-AiasOrg step
+    # 6a). RegisterId is therefore per-spec, not a single shared $state.registerId.
+    $cyberRegisterIdProp = $state.PSObject.Properties['cyberRegisterId']
+    $cyberRegisterId = if ($cyberRegisterIdProp) { $cyberRegisterIdProp.Value } else { $null }
+
     $blueprintSpecs = @(
         @{ Key = 'assuredIdentity'
            File = 'aias-assured-identity.template.json'
            IdPrefix = 'aias-assured-identity'
+           RegisterId = $state.registerId
            # The analyst is the agent; the citizen is an OPEN participant, late-bound on first
            # submission, so it must NOT appear here (VAL_BP_010).
            WalletMap = @{ "verification-analyst" = $state.agentWallet } }
         @{ Key = 'deviceRegistration'
            File = 'aias-device-registration.template.json'
            IdPrefix = 'aias-device-registration'
+           RegisterId = $state.registerId
            WalletMap = @{ "aias-issuer" = $state.issuerWalletAddress } }
+        @{ Key = 'cyberLevel'
+           File = 'aias-cyber-level.template.json'
+           IdPrefix = 'aias-cyber-level'
+           RegisterId = $cyberRegisterId
+           WalletMap = @{ "aias-analyst" = $state.agentWallet } }
     )
+
+    foreach ($spec in $blueprintSpecs) {
+        if (-not $spec.RegisterId) {
+            throw "No register id for template '$($spec.File)' — re-run New-AiasOrg to provision the missing register."
+        }
+    }
+
+    # Idempotency is decided PER SPEC below (Resolve-BlueprintPublishAction), not all-or-nothing
+    # here. The old guard early-returned as soon as the SCALAR state.blueprintId was published —
+    # so on any already-provisioned node it returned before the both-templates loop and the
+    # device-registration blueprint stayed unpublished, which is the very blindness #1269 removed
+    # from the body. Forcing past it was not a fix either: ids are timestamped, so -Force
+    # republishes the application workflow under a new id and leaves a duplicate behind.
+    #
+    # M2: the "already published" list must be fetched PER REGISTER now — the cyber blueprint lives
+    # on a different register, so a lookup against $state.registerId alone would never see it and
+    # would republish it (with a new id) on every run.
+    $alreadyPublishedByRegister = @{}
+    if (-not $Force) {
+        $distinctRegisterIds = @($blueprintSpecs | ForEach-Object { $_.RegisterId } | Select-Object -Unique)
+        foreach ($rid in $distinctRegisterIds) {
+            $alreadyPublishedByRegister[$rid] = @(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $rid -Headers $vAdmin.Headers)
+        }
+    }
 
     $publishedIds = @{}
     $appBlueprintId = $null
@@ -379,6 +435,7 @@ function Publish-AiasBlueprint {
         $rendered = Set-BlueprintIssuerName -BlueprintJson $templateRaw -AgencyName $script:AiasName
 
         $preferred = ($spec.Key -eq 'assuredIdentity') ? $recordedAppId : $null
+        $alreadyPublished = if ($alreadyPublishedByRegister.ContainsKey($spec.RegisterId)) { $alreadyPublishedByRegister[$spec.RegisterId] } else { @() }
         $decision = Resolve-BlueprintPublishAction -IdPrefix $spec.IdPrefix `
             -PublishedIds $alreadyPublished -PreferredId $preferred -Force ([bool]$Force)
 
@@ -390,7 +447,7 @@ function Publish-AiasBlueprint {
             $tempBp = Join-Path ([System.IO.Path]::GetTempPath()) ("{0}-{1}.json" -f $spec.IdPrefix, $script:AiasSubdomain)
             $rendered | Set-Content -LiteralPath $tempBp -Encoding UTF8
 
-            $pubResult = Publish-SorchaBlueprint -BlueprintUrl $api -TemplatePath $tempBp -WalletMap $spec.WalletMap -Headers $vAdmin.Headers -IdPrefix $spec.IdPrefix -RegisterId $state.registerId
+            $pubResult = Publish-SorchaBlueprint -BlueprintUrl $api -TemplatePath $tempBp -WalletMap $spec.WalletMap -Headers $vAdmin.Headers -IdPrefix $spec.IdPrefix -RegisterId $spec.RegisterId
             Remove-Item -LiteralPath $tempBp -ErrorAction SilentlyContinue
             Write-WtSuccess "blueprint ($($spec.Key)): $($pubResult.BlueprintId)"
             $publishedIds[$spec.Key] = $pubResult.BlueprintId
@@ -410,17 +467,37 @@ function Publish-AiasBlueprint {
     # seal-wait; bounded so a genuinely-stuck seal still surfaces rather than hanging.
     # Issue #1269: wait for EVERY published id, not just the application workflow — otherwise a
     # second blueprint that never seals passes unnoticed, which is the blindness being removed.
+    # M2: sealing is tracked PER REGISTER — each id is only ever checked against the register it was
+    # actually published to, since the cyber blueprint seals on the cyber register, not the identity one.
     $sealDeadline = (Get-Date).AddSeconds(90)
-    $awaiting = [System.Collections.ArrayList]@($publishedIds.Values)
-    while ((Get-Date) -lt $sealDeadline -and $awaiting.Count -gt 0) {
-        $pubNow = @(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $state.registerId -Headers $vAdmin.Headers)
-        foreach ($id in @($awaiting)) {
-            if ($pubNow -contains $id) { $awaiting.Remove($id) | Out-Null }
+    $awaitingByRegister = @{}
+    foreach ($spec in $blueprintSpecs) {
+        $id = $publishedIds[$spec.Key]
+        if (-not $id) { continue }
+        if (-not $awaitingByRegister.ContainsKey($spec.RegisterId)) {
+            $awaitingByRegister[$spec.RegisterId] = [System.Collections.ArrayList]@()
         }
-        if ($awaiting.Count -gt 0) { Start-Sleep -Seconds 3 }
+        $awaitingByRegister[$spec.RegisterId].Add($id) | Out-Null
     }
-    if ($awaiting.Count -eq 0) { Write-WtSuccess "all $($publishedIds.Count) blueprint(s) sealed + visible in register's published list" }
-    else { Write-WtWarn "blueprint(s) not visible in /blueprints/published after 90s (may still be sealing): $($awaiting -join ', ')" }
+    $countAwaiting = { ($awaitingByRegister.Values | ForEach-Object { $_.Count } | Measure-Object -Sum).Sum }
+    while ((Get-Date) -lt $sealDeadline -and (& $countAwaiting) -gt 0) {
+        foreach ($rid in @($awaitingByRegister.Keys)) {
+            $pending = $awaitingByRegister[$rid]
+            if ($pending.Count -eq 0) { continue }
+            $pubNow = @(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $rid -Headers $vAdmin.Headers)
+            foreach ($id in @($pending)) {
+                if ($pubNow -contains $id) { $pending.Remove($id) | Out-Null }
+            }
+        }
+        if ((& $countAwaiting) -gt 0) { Start-Sleep -Seconds 3 }
+    }
+    if ((& $countAwaiting) -eq 0) {
+        Write-WtSuccess "all $($publishedIds.Count) blueprint(s) sealed + visible in their register's published list"
+    }
+    else {
+        $stillAwaiting = @($awaitingByRegister.Values | ForEach-Object { $_ })
+        Write-WtWarn "blueprint(s) not visible in /blueprints/published after 90s (may still be sealing): $($stillAwaiting -join ', ')"
+    }
 
     # coherence assertion (single-source name across org/register/participant/blueprint)
     $coherence = Test-AgencyNameCoherence -AgencyName $script:AiasName -OrgName $script:AiasName -RegisterName $script:AiasName -ParticipantOrg $script:AiasName -BlueprintJson $rendered
@@ -442,47 +519,66 @@ function Publish-AiasBlueprint {
 
 <#
 .SYNOPSIS
-    Generate demos/AIAS/agent/assure-id.config.json and launch the Assure-ID agent.
+    Generate demos/AIAS/agent/{assure-id|cyber}.config.json and launch that agent.
 .DESCRIPTION
     The sorcha-agent ActorDefinition loader requires the rules INLINE under a
     "rules" property (plus actor/connection/inbox/mode="rules"), and supports an
     optional "checksFile" (relative to the config) for the external-check hook.
     This function:
-      1. Reads the BARE rule array from agent/assure-id.rules.json,
+      1. Reads the BARE rule array from agent/{mode}.rules.json,
       2. Embeds it under "rules" in an ActorDefinition whose connection tokens are
          filled from the provisioned state (gateway/registerId/orgId/agentWallet)
          with credentials drawn from $env:AGENT_EMAIL / $env:AGENT_PASSWORD,
-      3. Sets "checksFile": "assure-id.checks.json" (relative — checks + ../fixtures
+      3. Sets "checksFile" to the mode's checks file (relative — checks + ../fixtures
          sit next to the generated config so relative resolution works),
-      4. Writes agent/assure-id.config.json,
+      4. Writes agent/{mode}.config.json,
       5. Launches: sorcha-agent run --config <config> --state <state.json>.
     Mirrors Start-DemoAgent + Start-ApprovalAgent (demos/AssuredIdentity). When
     sorcha-agent is not on PATH it writes the config and prints the manual command
     (non-fatal) so provisioning still succeeds.
 .PARAMETER StateFile
     The state record (also passed to sorcha-agent for placeholder resolution).
+.PARAMETER Mode
+    'assure-id' (default) or 'cyber' (M2). Selects which agent to launch; process
+    identity is recorded under mode-prefixed state keys (agentPid vs
+    cyberAgentPid, etc.) so the two tracked agents never clobber each other.
 #>
 function Start-AiasAgent {
     [CmdletBinding()]
     param(
-        [string]$StateFile = (Join-Path $script:DemoRoot "state.json")
+        [string]$StateFile = (Join-Path $script:DemoRoot "state.json"),
+        [ValidateSet('assure-id', 'cyber')]
+        [string]$Mode = 'assure-id'
     )
 
     $state = Read-DemoState -Path $StateFile
     if (-not $state) { throw "No state.json — run New-AiasOrg first." }
-    if (-not $state.blueprintId) { Write-WtWarn "state has no blueprintId — publish the blueprint first (Publish-AiasBlueprint)." }
+
+    # M2: each mode expects its own published blueprint. Indexed PSObject.Properties['x'] access
+    # throughout — 'blueprintIds' (and the cyberLevel key within it) may not exist on an older
+    # state.json, and direct property access would throw under Set-StrictMode rather than degrading
+    # to a clean warning.
+    $expectedBlueprintKey = if ($Mode -eq 'cyber') { 'cyberLevel' } else { 'assuredIdentity' }
+    $blueprintProp = $state.PSObject.Properties['blueprintIds']
+    $hasBlueprint = $blueprintProp -and $blueprintProp.Value -and
+                    $blueprintProp.Value.PSObject.Properties[$expectedBlueprintKey]
+    if (-not $hasBlueprint) {
+        Write-WtWarn "state has no '$expectedBlueprintKey' blueprint id — publish first (Publish-AiasBlueprint)."
+    }
 
     $node = Get-AiasTarget -Target ([string]$state.target)
     $secrets = Import-DemoSecrets
 
-    Write-WtBanner "AIAS demo — launch Assure-ID agent (rules)"
+    $agentLabel = if ($Mode -eq 'cyber') { 'Cyber' } else { 'Assure-ID' }
+    Write-WtBanner "AIAS demo — launch $agentLabel agent (rules)"
 
     # analyst (agent) credentials are threaded via env, exactly like AssuredIdentity
     $env:AGENT_EMAIL = $state.agentEmail
     $env:AGENT_PASSWORD = (Get-DemoAdminPassword -Node $node -Secrets $secrets)
 
-    $configPath = Build-AiasAgentConfig -State $state -Node $node
-    Write-WtSuccess "agent config: $configPath (checksFile=assure-id.checks.json)"
+    $configPath = Build-AiasAgentConfig -State $state -Node $node -Mode $Mode
+    $checksName = if ($Mode -eq 'cyber') { 'cyber.checks.json' } else { 'assure-id.checks.json' }
+    Write-WtSuccess "agent config: $configPath (checksFile=$checksName)"
 
     Write-WtStep "launching sorcha-agent (rules mode)"
     $agentCmd = Get-Command 'sorcha-agent' -ErrorAction SilentlyContinue
@@ -510,12 +606,14 @@ function Start-AiasAgent {
     # never reproduced. Redirecting both streams removes the console entirely, which closes that
     # route regardless — and next time the log will say what actually happened.
     #
-    # Logs are per-launch so an earlier run's trail is never overwritten.
+    # Logs are per-launch so an earlier run's trail is never overwritten. Per-mode prefix so the
+    # Assure-ID and Cyber agents' logs are never interleaved under the same filename stem.
     $logDir = Join-Path $script:DemoRoot 'logs'
     New-Item -ItemType Directory -Path $logDir -Force | Out-Null
     $stamp = [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss')
-    $outLog = Join-Path $logDir "agent-$stamp.log"
-    $errLog = Join-Path $logDir "agent-$stamp.err.log"
+    $logPrefix = if ($Mode -eq 'cyber') { 'cyber-agent' } else { 'agent' }
+    $outLog = Join-Path $logDir "$logPrefix-$stamp.log"
+    $errLog = Join-Path $logDir "$logPrefix-$stamp.err.log"
 
     $proc = Start-Process -FilePath $agentCmd.Source `
         -ArgumentList @('run', '--config', $configPath, '--state', $StateFile) `
@@ -530,14 +628,26 @@ function Start-AiasAgent {
     $startedAt = $null
     try { $startedAt = $proc.StartTime.ToUniversalTime().ToString('o') } catch { }
 
-    $merged = Merge-DemoState -Existing $state -Updates @{
-        agentPid          = $proc.Id
-        agentConfigPath   = $configPath
-        agentProcessName  = $proc.ProcessName
-        agentStartedAt    = $startedAt
-        agentLogPath      = $outLog
-        agentErrorLogPath = $errLog
-    }
+    # M2: key the tracked-process bookkeeping off the mode so the Assure-ID and Cyber agents are
+    # tracked independently in state — 'agentPid'/'agentConfigPath'/etc for assure-id (unchanged,
+    # back-compat with existing state.json / rehearse.ps1 reads), 'cyberAgentPid'/'cyberAgentConfigPath'/etc
+    # for cyber.
+    $pidKey          = if ($Mode -eq 'cyber') { 'cyberAgentPid' }          else { 'agentPid' }
+    $configPathKey   = if ($Mode -eq 'cyber') { 'cyberAgentConfigPath' }   else { 'agentConfigPath' }
+    $processNameKey  = if ($Mode -eq 'cyber') { 'cyberAgentProcessName' }  else { 'agentProcessName' }
+    $startedAtKey    = if ($Mode -eq 'cyber') { 'cyberAgentStartedAt' }    else { 'agentStartedAt' }
+    $logPathKey      = if ($Mode -eq 'cyber') { 'cyberAgentLogPath' }      else { 'agentLogPath' }
+    $errLogPathKey   = if ($Mode -eq 'cyber') { 'cyberAgentErrorLogPath' } else { 'agentErrorLogPath' }
+
+    $updates = @{}
+    $updates[$pidKey]         = $proc.Id
+    $updates[$configPathKey]  = $configPath
+    $updates[$processNameKey] = $proc.ProcessName
+    $updates[$startedAtKey]   = $startedAt
+    $updates[$logPathKey]     = $outLog
+    $updates[$errLogPathKey]  = $errLog
+
+    $merged = Merge-DemoState -Existing $state -Updates $updates
     Write-DemoState -State $merged -Path $StateFile | Out-Null
     return [pscustomobject]@{ Process = $proc; ConfigPath = $configPath; LogPath = $outLog }
 }
@@ -610,24 +720,64 @@ function Test-AiasAgentAlive {
 
 <#
 .SYNOPSIS
-    Build the runtime ActorDefinition config (rules inline + checksFile) for the
-    Assure-ID agent and write it to agent/assure-id.config.json. Returns the path.
+    Build the runtime ActorDefinition config (rules inline + checksFile) for an
+    AIAS agent and write it to agent/{assure-id|cyber}.config.json. Returns the path.
 .DESCRIPTION
-    Pure assembly + IO. Reads the bare rule array from assure-id.rules.json and
+    Pure assembly + IO. Reads the bare rule array from the mode's rules file and
     embeds it under "rules"; connection tokens are filled from the provisioned
     state; credentials reference $env:AGENT_EMAIL / $env:AGENT_PASSWORD (resolved
     by the agent at runtime, never written to disk — mirrors
     analyst.rules.template.json). The config is written into demos/AIAS/agent/ so
     the relative "checksFile" and "../fixtures/postcodes.offline.json" resolve.
+.PARAMETER Mode
+    'assure-id' (default) or 'cyber'. M2: the two modes are FULLY independent —
+    actor identity, description, rules file, checks file, register id, and output
+    config path are all selected off this. Sharing any one of those between modes
+    is a silent-misbehaviour risk, and sharing the config PATH is a live-demo
+    footgun: a running agent holds its config in memory, so overwriting the
+    other mode's file on disk only surfaces on that agent's next restart.
 #>
 function Build-AiasAgentConfig {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][object]$State,
-        [Parameter(Mandatory)][object]$Node
+        [Parameter(Mandatory)][object]$Node,
+        [ValidateSet('assure-id', 'cyber')]
+        [string]$Mode = 'assure-id'
     )
     $agentDir = Join-Path $script:DemoRoot "agent"
-    $rulesPath = Join-Path $agentDir "assure-id.rules.json"
+
+    # Indexed PSObject.Properties['x'] access for cyberRegisterId — it is a NEW state field (M2), so
+    # a state.json written before this change (or before New-AiasOrg's cyber-register step ran) won't
+    # have it. Direct `$State.cyberRegisterId` would throw under Set-StrictMode on such a state.
+    $cyberRegisterIdProp = $State.PSObject.Properties['cyberRegisterId']
+
+    $agentFiles = if ($Mode -eq 'cyber') {
+        @{
+            ActorName        = 'cyber-agent'
+            ActorDescription = "Autonomous AIAS Cyber agent — scores a cyber-hygiene questionnaire (password habits, 2FA, update discipline, phishing awareness, password sharing) into a Bronze/Silver/Gold/Platinum level band, and rejects outright when the presented credential carries no portrait (rules mode)."
+            Rules            = 'cyber.rules.json'
+            Checks           = 'cyber.checks.json'
+            Config           = 'cyber.config.json'
+            RegisterId       = if ($cyberRegisterIdProp) { $cyberRegisterIdProp.Value } else { $null }
+        }
+    }
+    else {
+        @{
+            ActorName        = 'assure-id-agent'
+            ActorDescription = "Autonomous AIAS Assure-ID agent — evaluates external checks (email verified, postcode exists, no profanity) and approves or rejects with an on-brand reason (rules mode)."
+            Rules            = 'assure-id.rules.json'
+            Checks           = 'assure-id.checks.json'
+            Config           = 'assure-id.config.json'
+            RegisterId       = $State.registerId
+        }
+    }
+
+    if (-not $agentFiles.RegisterId) {
+        throw "State has no register id for mode '$Mode' — run New-AiasOrg first (cyber mode needs state.cyberRegisterId)."
+    }
+
+    $rulesPath = Join-Path $agentDir $agentFiles.Rules
     if (-not (Test-Path -LiteralPath $rulesPath)) { throw "Bare rules not found: $rulesPath" }
 
     # Depth 30 so nested JSON-Logic conditions survive the round-trip.
@@ -635,12 +785,12 @@ function Build-AiasAgentConfig {
 
     $config = [ordered]@{
         actor = [ordered]@{
-            name        = "assure-id-agent"
-            description = "Autonomous AIAS Assure-ID agent — evaluates external checks (email verified, postcode exists, no profanity) and approves or rejects with an on-brand reason (rules mode)."
+            name        = $agentFiles.ActorName
+            description = $agentFiles.ActorDescription
         }
         connection = [ordered]@{
             gatewayUrl = $Node.gateway
-            registerId = $State.registerId
+            registerId = $agentFiles.RegisterId
             credentials = [ordered]@{
                 email          = '$env:AGENT_EMAIL'
                 password       = '$env:AGENT_PASSWORD'
@@ -653,11 +803,11 @@ function Build-AiasAgentConfig {
             polling = [ordered]@{ enabled = $true; intervalSeconds = 15 }
         }
         mode       = "rules"
-        checksFile = "assure-id.checks.json"
+        checksFile = $agentFiles.Checks
         rules      = @($rules)
     }
 
-    $outPath = Join-Path $agentDir "assure-id.config.json"
+    $outPath = Join-Path $agentDir $agentFiles.Config
     ($config | ConvertTo-Json -Depth 30) | Set-Content -LiteralPath $outPath -Encoding UTF8
     return $outPath
 }
@@ -736,18 +886,48 @@ function Get-AiasDemoStatus {
 
     $registerReadable = $false
     $blueprintPublished = $false
+    $adminOk = $false
     try {
         $admin = Connect-DemoNodeAdmin -Node $node -Secrets $secrets
+        $adminOk = $true
         $registerReadable = Test-AiasRegisterReadable -Api $api -RegisterId $state.registerId -Headers $admin.Headers
     } catch { }
     if (-not $registerReadable) { $reasons += 'register-not-readable' }
+
+    # M2: the cyber questionnaire lives on its own register (New-AiasOrg step 6a) — probe it
+    # independently so a missing or unsealed cyber register reports NotReady with a named cause
+    # rather than surfacing later as a publish failure. Indexed PSObject.Properties['x'] access, NOT
+    # `.Properties.Name -contains` — the latter throws on a sparse/empty pscustomobject, turning a
+    # partially-written state.json into a crash instead of a clean NotReady verdict (the trap #1269
+    # already fixed once).
+    $cyberRegisterReadable = $false
+    $cyberProp = $state.PSObject.Properties['cyberRegisterId']
+    if (-not $cyberProp -or -not $cyberProp.Value) {
+        $reasons += 'cyber-register-missing'
+    }
+    elseif ($adminOk) {
+        $cyberRegisterReadable = Test-AiasRegisterReadable -Api $api -RegisterId $cyberProp.Value -Headers $admin.Headers
+        if (-not $cyberRegisterReadable) { $reasons += 'cyber-register-not-readable' }
+    }
+    else {
+        # Admin login itself failed above (already surfaced via 'register-not-readable' / gateway
+        # reasons) — the cyber register can't be probed either without a session.
+        $reasons += 'cyber-register-not-readable'
+    }
+
     # Issue #1269: verify EVERY expected blueprint, not just the application workflow. The previous
     # single-id check reported blueprint=True while the device-registration workflow was missing from
     # the register altogether.
+    # M2: the cyber-level blueprint lives on the SEPARATE cyber register, so it must be looked up
+    # there too — otherwise it always reads as missing even once published (it never appears in the
+    # identity register's published list).
     $expectedBlueprintIds = @(Get-AiasExpectedBlueprintIds -State $state)
     $missingBlueprintIds = @()
     if ($registerReadable -and $expectedBlueprintIds.Count -gt 0) {
         $publishedNow = @(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $state.registerId -Headers $admin.Headers)
+        if ($cyberProp -and $cyberProp.Value) {
+            $publishedNow += @(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $cyberProp.Value -Headers $admin.Headers)
+        }
         $missingBlueprintIds = @($expectedBlueprintIds | Where-Object { $publishedNow -notcontains $_ })
         $blueprintPublished = ($missingBlueprintIds.Count -eq 0)
     }
@@ -767,17 +947,18 @@ function Get-AiasDemoStatus {
 
     $verdict = if ($reasons.Count -eq 0) { 'Ready' } else { 'NotReady' }
     Write-WtBanner "AIAS status: $verdict ($($node.id))"
-    Write-WtInfo "gateway=$gatewayHealthy register=$registerReadable blueprint=$blueprintPublished ($($expectedBlueprintIds.Count) expected) agent=$agentRunning"
+    Write-WtInfo "gateway=$gatewayHealthy register=$registerReadable cyberRegister=$cyberRegisterReadable blueprint=$blueprintPublished ($($expectedBlueprintIds.Count) expected) agent=$agentRunning"
     if ($reasons.Count -gt 0) { Write-WtInfo "reasons: $($reasons -join ', ')" }
 
     return [pscustomobject]@{
         Verdict = $verdict
         Reasons = $reasons
         Detail  = [pscustomobject]@{
-            GatewayHealthy     = $gatewayHealthy
-            RegisterReadable   = $registerReadable
-            BlueprintPublished = $blueprintPublished
-            AgentRunning       = $agentRunning
+            GatewayHealthy         = $gatewayHealthy
+            RegisterReadable       = $registerReadable
+            CyberRegisterReadable  = $cyberRegisterReadable
+            BlueprintPublished     = $blueprintPublished
+            AgentRunning           = $agentRunning
         }
     }
 }

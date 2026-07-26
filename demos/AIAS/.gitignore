@@ -5,3 +5,5 @@ state.json
 # Rendered (token-substituted) runtime agent actor config — produced at provision time
 # by Build-AiasAgentConfig (rules embedded inline + checksFile pointer).
 agent/assure-id.config.json
+# M2: the Cyber agent's rendered config (same generator, -Mode cyber) — same reasoning.
+agent/cyber.config.json
