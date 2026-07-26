@@ -63,4 +63,34 @@ public class ExternalCheckRunnerTests
         facts["postcodeExists"].Should().Be(true);
         facts["profane"].Should().Be(false, "an unexpectedly faulting check resolves to a safe default");
     }
+
+    private sealed class NumericStubCheck(string name, double value) : IExternalCheck
+    {
+        public string Name { get; } = name;
+
+        public Task<ExternalCheckResult> EvaluateAsync(
+            IReadOnlyDictionary<string, object?> payload, CancellationToken ct)
+            => Task.FromResult(new ExternalCheckResult(Name, true, null, value));
+    }
+
+    [Fact]
+    public async Task RunAsync_CheckReturnsNumeric_MergesFactAsNumber()
+    {
+        var runner = new ExternalCheckRunner([new NumericStubCheck("cyberScore", 18)]);
+
+        var facts = await runner.RunAsync(CheckTestSupport.Payload("{}"), default);
+
+        facts["cyberScore"].Should().Be(18d);
+    }
+
+    [Fact]
+    public async Task RunAsync_CheckReturnsBooleanOnly_StillMergesAsBoolean()
+    {
+        var runner = new ExternalCheckRunner([new FieldPresentCheck("photoPresent", "/portrait")]);
+
+        var facts = await runner.RunAsync(
+            CheckTestSupport.Payload("""{ "portrait": "abc" }"""), default);
+
+        facts["photoPresent"].Should().Be(true);
+    }
 }

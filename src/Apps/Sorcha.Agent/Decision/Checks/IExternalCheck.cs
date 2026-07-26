@@ -29,6 +29,13 @@ public interface IExternalCheck
 /// The output of one external check, merged into the rules context as a fact.
 /// </summary>
 /// <param name="Name">Fact key — merged at <c>/checks/{Name}</c>.</param>
-/// <param name="Value">Boolean result merged at <c>/checks/{Name}</c>.</param>
+/// <param name="Value">Boolean result merged at <c>/checks/{Name}</c> when <paramref name="Numeric"/> is null.</param>
 /// <param name="Detail">Optional human string merged at <c>/checks/{Name}Detail</c> (for rejection copy).</param>
-public sealed record ExternalCheckResult(string Name, bool Value, string? Detail = null);
+/// <param name="Numeric">
+/// Optional numeric result. When set, <see cref="ExternalCheckRunner"/> merges the fact at
+/// <c>/checks/{Name}</c> as a JSON number instead of a boolean, so JSON-Logic rules can compare
+/// it (<c>{"&lt;": [{"var": "checks.cyberScore"}, 12]}</c>). Optional and last so every existing
+/// check compiles unchanged.
+/// </param>
+public sealed record ExternalCheckResult(
+    string Name, bool Value, string? Detail = null, double? Numeric = null);

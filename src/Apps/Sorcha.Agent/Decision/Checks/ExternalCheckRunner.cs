@@ -37,7 +37,12 @@ public sealed class ExternalCheckRunner : IExternalCheckRunner
         var merged = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (var result in results)
         {
-            merged[result.Name] = result.Value;
+            // A numeric check merges its number; everything else merges its boolean. A check that
+            // faults is contained by SafeEvaluateAsync into a boolean false, which JSON Logic
+            // coerces to 0 — so a broken scorer lands in the lowest band rather than passing.
+            merged[result.Name] = result.Numeric.HasValue
+                ? result.Numeric.Value
+                : result.Value;
             if (result.Detail is not null)
                 merged[$"{result.Name}Detail"] = result.Detail;
         }
