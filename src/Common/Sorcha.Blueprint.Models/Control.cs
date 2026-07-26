@@ -218,5 +218,16 @@ public enum ControlTypes
     /// Public material only — the user cannot edit it.
     /// </summary>
     [DataAnnotations.Display(Name = "Device Key")]
-    DeviceKey
+    DeviceKey,
+
+    /// <summary>
+    /// Slider input for a bounded integer. Dispatched when a numeric field carries an
+    /// <c>x-slider</c> object. Opt-in by design — inferring from <c>type: integer</c> plus
+    /// <c>minimum</c>/<c>maximum</c> alone would silently convert every existing numeric field
+    /// in every blueprint into a slider. Range comes from the standard <c>minimum</c> /
+    /// <c>maximum</c> keywords so the validator enforces it server-side; <c>x-slider</c>
+    /// carries only <c>step</c> and the optional end labels. Feature AIAS M2.
+    /// </summary>
+    [DataAnnotations.Display(Name = "Slider")]
+    Slider
 }

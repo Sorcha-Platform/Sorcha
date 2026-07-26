@@ -408,6 +408,14 @@ public class FormSchemaService : IFormSchemaService
             schema.TryGetProperty("x-address-lookup", out var lookupEl) &&
             lookupEl.ValueKind == JsonValueKind.True;
 
+        // A numeric field carrying `x-slider` renders as a slider rather than a spin box.
+        // Opt-in by design (see ControlTypes.Slider): inferring from `type: integer` plus
+        // minimum/maximum alone would silently convert every existing numeric field in every
+        // blueprint into a slider.
+        var hasSlider =
+            schema.TryGetProperty("x-slider", out var sliderEl) &&
+            sliderEl.ValueKind == JsonValueKind.Object;
+
         ControlTypes controlType;
 
         if (hasEnum)
@@ -430,6 +438,10 @@ public class FormSchemaService : IFormSchemaService
             // ("binary", used by document-upload fields). Both route to FileRenderer; without this
             // they fall through to a plain text line and never reach the file/camera control.
             controlType = ControlTypes.File;
+        }
+        else if (hasSlider && type is "integer" or "number")
+        {
+            controlType = ControlTypes.Slider;
         }
         else
         {
