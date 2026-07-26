@@ -284,7 +284,9 @@ static void ConfigureServerOptions(McpServerOptions options)
     options.ServerInfo = new()
     {
         Name = "Sorcha MCP Server",
-        Version = "1.0.0"
+        // MCP audit 2026-07-26: was hardcoded "1.0.0", so a client's initialize disagreed with the
+        // manifest's derived version (§14). One source now — see McpServerVersion.
+        Version = Sorcha.McpServer.Infrastructure.McpServerVersion.Current
     };
     options.ServerInstructions = """
         Sorcha MCP Server - A Model Context Protocol server for the Sorcha decentralised register platform.
