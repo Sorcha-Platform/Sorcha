@@ -1,0 +1,174 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.Blueprint.Models
+@using Sorcha.UI.Core.Models.Forms
+@using Sorcha.UI.Core.Services.Forms
+
+@inject IFormSchemaService SchemaService
+@implements IDisposable
+
+@if (!_hasValidRange)
+{
+    <MudAlert Severity="Severity.Warning" Dense="true">
+        Slider control "@Control.Title" has no declared minimum/maximum and cannot be rendered.
+        The blueprint must declare both bounds alongside <code>x-slider</code>.
+    </MudAlert>
+}
+else
+{
+    <div class="sorcha-slider" @onfocusin="OnFocusIn" @onfocusout="OnFocusOut">
+        <MudText Typo="Typo.body1" Class="mb-1">
+            @Control.Title
+            @if (_isRequired)
+            {
+                <span aria-hidden="true"> *</span>
+            }
+        </MudText>
+
+        <MudSlider T="int"
+                   Value="@_value"
+                   ValueChanged="OnValueChanged"
+                   Min="@_min"
+                   Max="@_max"
+                   Step="@_step"
+                   Disabled="@(IsDisabled || FormContext?.IsReadOnly == true)"
+                   Variant="Variant.Filled"
+                   ValueLabel="true"
+                   aria-label="@Control.Title" />
+
+        <div class="d-flex justify-space-between">
+            <MudText Typo="Typo.caption">@_minLabel</MudText>
+            <MudText Typo="Typo.caption"><strong>@_value</strong></MudText>
+            <MudText Typo="Typo.caption">@_maxLabel</MudText>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_errorText))
+        {
+            <MudText Typo="Typo.caption" Color="Color.Error">@_errorText</MudText>
+        }
+    </div>
+}
+
+@code {
+    [CascadingParameter] public FormContext? FormContext { get; set; }
+    [Parameter, EditorRequired] public Control Control { get; set; } = new();
+    [Parameter] public bool IsDisabled { get; set; }
+
+    private int _value;
+    private int _min;
+    private int _max;
+    private int _step = 1;
+    private string _minLabel = string.Empty;
+    private string _maxLabel = string.Empty;
+    private string _errorText = string.Empty;
+    private bool _isRequired;
+
+    /// <summary>
+    /// True only when the field schema declares BOTH <c>minimum</c> and <c>maximum</c>. Task 1's
+    /// inference branch dispatches to <see cref="ControlTypes.Slider"/> on any integer/number
+    /// property carrying an <c>x-slider</c> object, without requiring a declared range — so a
+    /// blueprint author can produce a slider field with no bounds. Rather than silently inventing
+    /// a range (and seeding/submitting a fabricated answer the citizen never gave), the renderer
+    /// refuses to guess: it shows a warning and leaves the field unset.
+    /// </summary>
+    private bool _hasValidRange;
+
+    /// <summary>
+    /// Seeding rule: an absent value starts at <paramref name="min"/> rather than 0, because 0
+    /// may be outside the declared range. A present 0 is kept — it is a real answer.
+    /// </summary>
+    public static int ResolveInitialValue(int? current, int min) => current ?? min;
+
+    protected override void OnInitialized()
+    {
+        if (FormContext is not null)
+            FormContext.OnValidationChanged += HandleValidationChanged;
+    }
+
+    protected override void OnParametersSet()
+    {
+        _isRequired = SchemaService.IsRequired(FormContext?.DataSchema, Control.Scope);
+
+        var fieldSchema = SchemaService.GetSchemaForScope(FormContext?.DataSchema, Control.Scope);
+
+        int? min = null;
+        int? max = null;
+
+        if (fieldSchema.HasValue)
+        {
+            if (fieldSchema.Value.TryGetProperty("minimum", out var minEl) && minEl.TryGetInt32(out var minVal))
+                min = minVal;
+            if (fieldSchema.Value.TryGetProperty("maximum", out var maxEl) && maxEl.TryGetInt32(out var maxVal))
+                max = maxVal;
+
+            if (fieldSchema.Value.TryGetProperty("x-slider", out var slider)
+                && slider.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                if (slider.TryGetProperty("step", out var stepEl) && stepEl.TryGetInt32(out var step) && step > 0)
+                    _step = step;
+                if (slider.TryGetProperty("minLabel", out var minLabelEl))
+                    _minLabel = minLabelEl.GetString() ?? string.Empty;
+                if (slider.TryGetProperty("maxLabel", out var maxLabelEl))
+                    _maxLabel = maxLabelEl.GetString() ?? string.Empty;
+            }
+        }
+
+        _hasValidRange = min.HasValue && max.HasValue;
+
+        if (!_hasValidRange)
+            return;
+
+        _min = min!.Value;
+        _max = max!.Value;
+
+        _value = ResolveInitialValue(FormContext?.GetValue<int?>(Control.Scope), _min);
+
+        // Write the seeded value straight back so an untouched slider still submits a real
+        // integer. Without this, a citizen who accepts the default answer submits nothing and
+        // the scoring check sees a missing field.
+        FormContext?.SetValue(Control.Scope, _value);
+
+        UpdateErrors();
+    }
+
+    private void OnValueChanged(int newValue)
+    {
+        _value = newValue;
+        FormContext?.SetValue(Control.Scope, newValue);
+
+        if (FormContext is not null)
+        {
+            var errors = SchemaService.ValidateField(FormContext.DataSchema, Control.Scope, newValue);
+            FormContext.SetErrors(Control.Scope, errors);
+        }
+
+        UpdateErrors();
+    }
+
+    private void HandleValidationChanged()
+    {
+        UpdateErrors();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void UpdateErrors()
+    {
+        var errors = FormContext?.GetErrors(Control.Scope) ?? [];
+        _errorText = errors.Count > 0 ? string.Join("; ", errors) : string.Empty;
+    }
+
+    private void OnFocusIn() => FormContext?.SetFocusedField(Control.Scope);
+
+    private void OnFocusOut()
+    {
+        if (FormContext?.FocusedFieldScope == Control.Scope)
+            FormContext.SetFocusedField(null);
+    }
+
+    public void Dispose()
+    {
+        if (FormContext is not null)
+            FormContext.OnValidationChanged -= HandleValidationChanged;
+    }
+}

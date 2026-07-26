@@ -616,6 +616,34 @@ Percentages of the frame. Omit the block for the ICAO default (head ≈70–80% 
 
 > **Sizing is not your problem, but silent loss was.** The `embedAs` resizer steps JPEG quality down and then, if still oversize, steps *dimensions* down (to a 120×160 floor) before giving up. The server independently drops an oversized `portrait` claim at a ≤27,000-char base64 bound. Both surface to the citizen now; before #1277 the claim was dropped silently and the credential issued portrait-less.
 
+### `x-slider` — bounded integer slider
+
+A numeric property carrying an `x-slider` object renders as a slider instead of a spin box.
+
+```jsonc
+"sharedPasswordCount": {
+  "type": "integer",
+  "title": "How many of your accounts share a password?",
+  "minimum": 0,
+  "maximum": 10,
+  "x-slider": { "step": 1, "minLabel": "None", "maxLabel": "10 or more" }
+}
+```
+
+Range comes from the standard `minimum` / `maximum` keywords, NOT from inside `x-slider` — they
+are real JSON Schema keywords, so the validator enforces the range server-side and a hand-crafted
+submission cannot post an out-of-range value. `x-slider` carries only `step` and the optional
+`minLabel` / `maxLabel` end captions.
+
+Dispatch is opt-in: an integer field WITHOUT `x-slider` still renders as a numeric input.
+An untouched slider submits its seeded value (the `minimum`), so the field is never absent.
+
+**`minimum`/`maximum` are mandatory in practice, even though the inference branch does not
+enforce it.** A slider field with `x-slider` but no declared range dispatches to `ControlTypes.Slider`
+same as any other, but `SliderRenderer` refuses to invent a range — it renders a warning in place
+of the control and leaves the field unset, rather than silently seeding and submitting a
+fabricated 0–10 answer the citizen never gave. Always declare both bounds alongside `x-slider`.
+
 ### Account-derived field (`x-claim-source`) — Feature 183, **rewritten server-side by issue #1264**
 
 Bind a form field to a named platform claim on the authenticated principal, so the value rides the wallet-signed payload **even when the field is on no page**. Headless (no control, no `x-page` placement needed) and reusable.
