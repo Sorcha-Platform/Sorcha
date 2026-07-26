@@ -84,4 +84,79 @@ public class ScoredQuestionnaireCheckTests
         result.Detail.Should().Contain("/passwordStorage=2");
         result.Detail.Should().Contain("/sharedPasswordCount=1");
     }
+
+    // Catch-all here deliberately carries non-zero points (9), so a config that leaks a
+    // "could not score" answer into the catch-all would score 9 instead of 0 — the old
+    // implementation returned the catch-all's Points for exactly this shape and would fail here.
+    private static ScoredQuestionnaireCheck BuildWithNonZeroCatchAll() => new(
+        "cyberScore",
+        new Dictionary<string, IReadOnlyDictionary<string, int>>(),
+        new Dictionary<string, IReadOnlyList<ScoreRange>>
+        {
+            ["/sharedPasswordCount"] = [new ScoreRange(2, 1), new ScoreRange(null, 9)]
+        });
+
+    [Fact]
+    public async Task EvaluateAsync_RangeFieldMissing_ScoresZero_NotNonZeroCatchAll()
+    {
+        var result = await BuildWithNonZeroCatchAll().EvaluateAsync(CheckTestSupport.Payload("""
+            { }
+            """), default);
+
+        result.Numeric.Should().Be(0, "an absent range field must score 0, never the catch-all band");
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_RangeFieldNonNumeric_ScoresZero_NotNonZeroCatchAll()
+    {
+        var result = await BuildWithNonZeroCatchAll().EvaluateAsync(CheckTestSupport.Payload("""
+            { "sharedPasswordCount": "lots" }
+            """), default);
+
+        result.Numeric.Should().Be(0, "a non-numeric range value must score 0, never the catch-all band");
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_RangeFieldWithinBands_StillUsesCatchAllForOutOfRange()
+    {
+        // Contrast case: a genuinely numeric answer beyond every declared band IS a real answer,
+        // and must still land in the catch-all — only "no answer" is forced to 0.
+        var result = await BuildWithNonZeroCatchAll().EvaluateAsync(CheckTestSupport.Payload("""
+            { "sharedPasswordCount": 99 }
+            """), default);
+
+        result.Numeric.Should().Be(9);
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_FractionalValueRoundsDownWithinBand_ScoresThatBand()
+    {
+        // 2.4 rounds to 2, which stays within the <=2 band (points 2) rather than crossing into <=5.
+        var result = await Build().EvaluateAsync(CheckTestSupport.Payload("""
+            { "sharedPasswordCount": 2.4 }
+            """), default);
+
+        result.Numeric.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_FractionalValueRoundsUpAcrossBoundary_ScoresNextBand()
+    {
+        // 2.6 rounds to 3, crossing the <=2 boundary into the <=5 band (points 1).
+        var result = await Build().EvaluateAsync(CheckTestSupport.Payload("""
+            { "sharedPasswordCount": 2.6 }
+            """), default);
+
+        result.Numeric.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_NegativeValue_FoldsIntoLowestBand()
+    {
+        var result = await Build().EvaluateAsync(CheckTestSupport.Payload("""
+            { "sharedPasswordCount": -1 }
+            """), default);
+
+        result.Numeric.Should().Be(3, "negative counts fold into the first (lowest-Max) band");
+    }
 }

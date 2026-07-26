@@ -63,7 +63,12 @@ public static class ExternalCheckFactory
                 (def.Answers ?? [])
                     .ToDictionary(
                         kv => kv.Key,
-                        kv => (IReadOnlyDictionary<string, int>)kv.Value,
+                        // Explicit ordinal comparer on the inner (per-question) table too — the CLR
+                        // default for Dictionary<string,int> happens to be ordinal, but relying on
+                        // that default silently would let a future refactor change the comparer
+                        // (e.g. a StringComparer.OrdinalIgnoreCase swap upstream) with no compile
+                        // error and every answer quietly scoring 0.
+                        kv => (IReadOnlyDictionary<string, int>)new Dictionary<string, int>(kv.Value, StringComparer.Ordinal),
                         StringComparer.Ordinal),
                 (def.Ranges ?? [])
                     .ToDictionary(

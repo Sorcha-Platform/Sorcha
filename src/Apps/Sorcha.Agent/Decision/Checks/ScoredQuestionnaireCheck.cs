@@ -17,9 +17,12 @@ public sealed record ScoreRange(int? Max, int Points);
 ///
 /// There is deliberately no "could not score" outcome. Every question is schema-<c>required</c>,
 /// so the validator guarantees the answers are present before the agent sees the payload, and an
-/// unrecognised or missing answer simply scores 0. A hard fault is contained by
-/// <see cref="ExternalCheckRunner"/> into a boolean false, which JSON Logic coerces to 0 — so a
-/// broken scorer lands in the lowest band and issues nothing.
+/// unrecognised or missing answer simply scores 0. For <c>ranges</c> specifically: an absent field
+/// or a non-numeric submitted value always scores literal 0, never the catch-all band's points —
+/// the catch-all is reserved for a submitted number that IS a real answer but falls beyond every
+/// declared band. A hard fault is contained by <see cref="ExternalCheckRunner"/> into a boolean
+/// false, which JSON Logic coerces to 0 — so a broken scorer lands in the lowest band and issues
+/// nothing.
 /// </summary>
 public sealed class ScoredQuestionnaireCheck : IExternalCheck
 {
@@ -73,8 +76,11 @@ public sealed class ScoredQuestionnaireCheck : IExternalCheck
     {
         if (node is not JsonValue value || !TryReadInt(value, out var submitted))
         {
-            // Absent or non-numeric: score the catch-all, or 0 when none is declared.
-            return bands.FirstOrDefault(b => b.Max is null)?.Points ?? 0;
+            // Absent or non-numeric: there is no answer to score, so this question contributes
+            // literal 0 — regardless of what the catch-all band declares. Do NOT fall through to
+            // the catch-all here: that band is for a genuine numeric answer outside every declared
+            // range, not a stand-in for "could not score".
+            return 0;
         }
 
         foreach (var band in bands)
