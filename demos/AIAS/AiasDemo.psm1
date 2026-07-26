@@ -171,7 +171,40 @@ function New-AiasOrg {
 
     if ($action -eq 'Reuse') {
         Write-WtSuccess "AIAS already provisioned (reuse): org=$($existing.organizationId) register=$($existing.registerId)"
-        return $existing
+
+        # M2 self-heal: Resolve-AuthorityAction (demos/AssuredIdentity/lib/Idempotency.ps1) only
+        # reasons about the identity register + blueprint — it is SHARED with the AssuredIdentity
+        # demo, which has no concept of a cyber register, so widening its contract to know about
+        # one would risk changing that demo's behaviour for no benefit to it. A node that was
+        # provisioned before the cyber register existed (or whose recorded cyberRegisterId no
+        # longer reads back) therefore lands here with a 'Reuse' verdict and no usable
+        # cyberRegisterId. Check for it independently, every run, and self-heal if missing — this
+        # is the ONLY way such a node can ever acquire the cyber register without -Force
+        # (destructive full recreate).
+        $existingCyberIdProp = $existing.PSObject.Properties['cyberRegisterId']
+        $existingCyberId = if ($existingCyberIdProp) { $existingCyberIdProp.Value } else { $null }
+        $cyberReadable = if ($existingCyberId) {
+            Test-AiasRegisterReadable -Api $api -RegisterId $existingCyberId -Headers $sysAdmin.Headers
+        } else { $false }
+
+        if ($existingCyberId -and $cyberReadable) {
+            return $existing
+        }
+
+        if ($existingCyberId) {
+            Write-WtWarn "Recorded cyber register '$existingCyberId' is not readable on $($node.id) — re-provisioning."
+        } else {
+            Write-WtInfo "No cyber register recorded (pre-M2 state) — provisioning it now."
+        }
+
+        $newCyberRegisterId = Repair-AiasCyberRegister -Api $api -Node $node -Secrets $secrets -Slug $slug `
+            -OrganizationId $existing.organizationId -IssuerWalletAddress $existing.issuerWalletAddress `
+            -AgentEmail $existing.agentEmail
+
+        $merged = Merge-DemoState -Existing $existing -Updates @{ cyberRegisterId = $newCyberRegisterId }
+        Write-DemoState -State $merged -Path $StateFile | Out-Null
+        Write-WtSuccess "cyber register provisioned on reuse path — state updated"
+        return (Read-DemoState -Path $StateFile)
     }
     if ($action -eq 'ReconcileStale') {
         Write-WtWarn "Recorded register '$($existing.registerId)' is not readable on $($node.id) — reconciling (re-provisioning fresh)."
@@ -265,6 +298,73 @@ function New-AiasOrg {
     Write-DemoState -State $state -Path $StateFile | Out-Null
     Write-WtSuccess "AIAS org provisioned — state recorded"
     return (Read-DemoState -Path $StateFile)
+}
+
+<#
+.SYNOPSIS
+    M2 self-heal: create (or recreate) the AIAS Cyber register + its Assure-ID agent participant
+    for a node that was provisioned before the cyber register existed, or whose recorded
+    cyberRegisterId no longer reads back.
+.DESCRIPTION
+    Called only from New-AiasOrg's 'Reuse' path — the fresh-provisioning path (steps 6a/6c in the
+    body of New-AiasOrg) already does this inline for a brand-new org and is left untouched.
+    Neither the verification-admin nor the Assure-ID agent session survives across PowerShell
+    invocations, so this reconnects both from recorded state before creating anything.
+    New-SorchaRegister is itself idempotent by name (reuses via the caller's subscriptions), and
+    Publish-SorchaParticipant tolerates an already-published (409) participant — so this function
+    is safe to call repeatedly and will never produce a second cyber register.
+.PARAMETER Api
+    The node's API base.
+.PARAMETER Node
+    Node descriptor (id/gateway) — for register description + Get-DemoAdminPassword.
+.PARAMETER Secrets
+    Loaded demo secrets (Import-DemoSecrets) — for the shared demo-user password.
+.PARAMETER Slug
+    The AIAS subdomain slug — to reconstruct the verification-admin email.
+.PARAMETER OrganizationId
+    The already-provisioned AIAS org id.
+.PARAMETER IssuerWalletAddress
+    The org's issuer wallet address (recorded state.issuerWalletAddress) — register owner wallet.
+.PARAMETER AgentEmail
+    The Assure-ID agent's login email (recorded state.agentEmail).
+#>
+function Repair-AiasCyberRegister {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Api,
+        [Parameter(Mandatory)][object]$Node,
+        [Parameter(Mandatory)][object]$Secrets,
+        [Parameter(Mandatory)][string]$Slug,
+        [Parameter(Mandatory)][string]$OrganizationId,
+        [Parameter(Mandatory)][string]$IssuerWalletAddress,
+        [Parameter(Mandatory)][string]$AgentEmail
+    )
+
+    $pw = Get-DemoAdminPassword -Node $Node -Secrets $Secrets
+    $vAdminEmail = "verification-admin@$Slug.local"
+    $vAdmin = Connect-SorchaUser -TenantUrl $Api -Email $vAdminEmail -Password $pw -OrganizationId $OrganizationId
+
+    # Same wallet the Assure-ID agent already uses on the identity register — reused by name
+    # (New-SorchaWallet is idempotent), not minted fresh. Mirrors the "one wallet, two register
+    # participations" design of the fresh-provisioning path (New-AiasOrg step 6c comment).
+    $agent = Connect-SorchaUser -TenantUrl $Api -Email $AgentEmail -Password $pw -OrganizationId $OrganizationId
+    $agentWallet = New-SorchaWallet -WalletUrl $Api -Name "Assure-ID Agent Wallet" -Headers $agent.Headers -FetchPublicKey
+
+    Write-WtStep "6a (repair): create advertised DevMode Cyber register (owned by $($Node.id))"
+    $cyberRegister = New-SorchaRegister -RegisterUrl $Api -WalletUrl $Api `
+        -Name $script:AiasCyberName `
+        -Description "AIAS Cyber Level register — owned by $($Node.id)" `
+        -TenantId $OrganizationId -OwnerUserId $vAdmin.UserId -OwnerWalletAddress $IssuerWalletAddress `
+        -Headers $vAdmin.Headers -TenantUrl $Api -DevMode:$true
+    Write-WtSuccess "cyber register: $($cyberRegister.RegisterId)"
+
+    Write-WtStep "6c (repair): publish Assure-ID agent participant on cyber register"
+    try {
+        $null = Publish-SorchaParticipant -TenantUrl $Api -OrganizationId $OrganizationId -RegisterId $cyberRegister.RegisterId -ParticipantName "Assure-ID Agent" -OrganizationName $script:AiasName -WalletAddress $agentWallet.Address -PublicKey $agentWallet.PublicKey -Headers $vAdmin.Headers
+        Write-WtSuccess "agent participant published (cyber, repair)"
+    } catch { Write-WtWarn "cyber participant publish (repair): $($_.Exception.Message)" }
+
+    return $cyberRegister.RegisterId
 }
 
 <#
@@ -554,6 +654,28 @@ function Start-AiasAgent {
     $state = Read-DemoState -Path $StateFile
     if (-not $state) { throw "No state.json — run New-AiasOrg first." }
 
+    $agentLabel = if ($Mode -eq 'cyber') { 'Cyber' } else { 'Assure-ID' }
+
+    # Idempotent: Initialize-AiasDemo may call this for the same mode more than once (re-run after
+    # a partial provisioning retry, or simply re-running the one-shot orchestrator) and must never
+    # spawn a second copy of an agent that is already running. Test-AiasAgentAlive confirms process
+    # IDENTITY (name + start time), not just a recorded PID — PIDs recycle, so a bare "is there a
+    # number" check would treat an unrelated process that inherited the old PID as the live agent.
+    if (Test-AiasAgentAlive -State $state -Mode $Mode) {
+        $pidKey        = if ($Mode -eq 'cyber') { 'cyberAgentPid' }        else { 'agentPid' }
+        $configPathKey = if ($Mode -eq 'cyber') { 'cyberAgentConfigPath' } else { 'agentConfigPath' }
+        $logPathKey    = if ($Mode -eq 'cyber') { 'cyberAgentLogPath' }    else { 'agentLogPath' }
+        $existingPid = $state.PSObject.Properties[$pidKey].Value
+        Write-WtSuccess "$agentLabel agent already running (pid $existingPid) — not relaunching"
+        $configPathProp = $state.PSObject.Properties[$configPathKey]
+        $logPathProp    = $state.PSObject.Properties[$logPathKey]
+        return [pscustomobject]@{
+            Process    = (Get-Process -Id $existingPid -ErrorAction SilentlyContinue)
+            ConfigPath = if ($configPathProp) { $configPathProp.Value } else { $null }
+            LogPath    = if ($logPathProp) { $logPathProp.Value } else { $null }
+        }
+    }
+
     # M2: each mode expects its own published blueprint. Indexed PSObject.Properties['x'] access
     # throughout — 'blueprintIds' (and the cyberLevel key within it) may not exist on an older
     # state.json, and direct property access would throw under Set-StrictMode rather than degrading
@@ -569,7 +691,6 @@ function Start-AiasAgent {
     $node = Get-AiasTarget -Target ([string]$state.target)
     $secrets = Import-DemoSecrets
 
-    $agentLabel = if ($Mode -eq 'cyber') { 'Cyber' } else { 'Assure-ID' }
     Write-WtBanner "AIAS demo — launch $agentLabel agent (rules)"
 
     # analyst (agent) credentials are threaded via env, exactly like AssuredIdentity
@@ -663,42 +784,59 @@ function Start-AiasAgent {
 
     Returns $false — never throws — when state is missing, incomplete, or the process is gone, so
     callers can use it directly in a boolean context.
+.PARAMETER Mode
+    'assure-id' (default) or 'cyber' (M2). Selects which agent's mode-prefixed state keys to read
+    (agentPid/agentProcessName/agentStartedAt vs cyberAgentPid/cyberAgentProcessName/
+    cyberAgentStartedAt — see Start-AiasAgent) so the two tracked agents are never conflated.
 #>
 function Test-AiasAgentAlive {
     [CmdletBinding()]
     [OutputType([bool])]
-    param([Parameter(Mandatory)][AllowNull()]$State)
+    param(
+        [Parameter(Mandatory)][AllowNull()]$State,
+        [ValidateSet('assure-id', 'cyber')]
+        [string]$Mode = 'assure-id'
+    )
 
     if (-not $State) { return $false }
 
-    $props = $State.PSObject.Properties.Name
-    if ($props -notcontains 'agentPid' -or -not $State.agentPid) { return $false }
+    # Indexed PSObject.Properties['x'] access throughout — a state.json written before M2 (or
+    # before either agent has ever been started in this mode) simply lacks these keys, and direct
+    # property access would throw under Set-StrictMode rather than degrading to "not alive".
+    $pidKey         = if ($Mode -eq 'cyber') { 'cyberAgentPid' }          else { 'agentPid' }
+    $processNameKey = if ($Mode -eq 'cyber') { 'cyberAgentProcessName' }  else { 'agentProcessName' }
+    $startedAtKey   = if ($Mode -eq 'cyber') { 'cyberAgentStartedAt' }    else { 'agentStartedAt' }
 
-    $proc = Get-Process -Id $State.agentPid -ErrorAction SilentlyContinue
+    $pidProp = $State.PSObject.Properties[$pidKey]
+    if (-not $pidProp -or -not $pidProp.Value) { return $false }
+
+    $proc = Get-Process -Id $pidProp.Value -ErrorAction SilentlyContinue
     if (-not $proc) { return $false }
 
-    if ($props -contains 'agentProcessName' -and $State.agentProcessName `
-        -and $proc.ProcessName -ne $State.agentProcessName) {
+    $processNameProp = $State.PSObject.Properties[$processNameKey]
+    if ($processNameProp -and $processNameProp.Value `
+        -and $proc.ProcessName -ne $processNameProp.Value) {
         return $false
     }
 
-    if ($props -contains 'agentStartedAt' -and $State.agentStartedAt) {
+    $startedAtProp = $State.PSObject.Properties[$startedAtKey]
+    if ($startedAtProp -and $startedAtProp.Value) {
         # ConvertFrom-Json coerces an ISO-8601 value into a [DateTime] (Kind=Utc), so the recorded
         # value arrives here as EITHER a DateTime or a string depending on how the caller loaded
         # state. Handle both explicitly.
         #
-        # Do not collapse this to [DateTime]::Parse($State.agentStartedAt): when the value is
+        # Do not collapse this to [DateTime]::Parse($startedAtProp.Value): when the value is
         # already a DateTime, PowerShell stringifies it as MM/dd/yyyy before parsing, which THROWS
         # under a non-US culture (en-GB reads month 25). The catch below then swallowed it and this
         # whole check silently degraded to the name match — present in the source, inert at runtime.
         $recorded = $null
         try {
-            $recorded = if ($State.agentStartedAt -is [DateTime]) {
-                ([DateTime]$State.agentStartedAt).ToUniversalTime()
+            $recorded = if ($startedAtProp.Value -is [DateTime]) {
+                ([DateTime]$startedAtProp.Value).ToUniversalTime()
             }
             else {
                 [DateTime]::Parse(
-                    [string]$State.agentStartedAt,
+                    [string]$startedAtProp.Value,
                     [System.Globalization.CultureInfo]::InvariantCulture,
                     [System.Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
             }
@@ -843,17 +981,27 @@ function Initialize-AiasDemo {
 
     $null = New-AiasOrg -Target $Target -StateFile $StateFile -Force:$Force.IsPresent
     $null = Publish-AiasBlueprint -StateFile $StateFile -Force:$Force.IsPresent
-    $agent = Start-AiasAgent -StateFile $StateFile
+
+    # M2: launch BOTH agents. Shipped without this, the cyber register + blueprint are provisioned
+    # with nothing to service them — a citizen's questionnaire submission sits unscored forever.
+    # Start-AiasAgent is idempotent per mode (Test-AiasAgentAlive gate), so re-running
+    # Initialize-AiasDemo never spawns a duplicate of either agent.
+    $agent = Start-AiasAgent -StateFile $StateFile -Mode 'assure-id'
+    $cyberAgent = Start-AiasAgent -StateFile $StateFile -Mode 'cyber'
 
     $state = Read-DemoState -Path $StateFile
+    $cyberRegisterIdProp = $state.PSObject.Properties['cyberRegisterId']
     Write-WtBanner "AIAS READY — org=$($state.organizationId) register=$($state.registerId) blueprint=$($state.blueprintId)"
     return [pscustomobject]@{
-        target         = $Target
-        organizationId = $state.organizationId
-        registerId     = $state.registerId
-        blueprintId    = $state.blueprintId
-        agentRunning   = [bool]($agent -and $agent.Process)
-        agentConfig    = $agent.ConfigPath
+        target            = $Target
+        organizationId    = $state.organizationId
+        registerId        = $state.registerId
+        cyberRegisterId   = if ($cyberRegisterIdProp) { $cyberRegisterIdProp.Value } else { $null }
+        blueprintId       = $state.blueprintId
+        agentRunning      = [bool]($agent -and $agent.Process)
+        agentConfig       = $agent.ConfigPath
+        cyberAgentRunning = [bool]($cyberAgent -and $cyberAgent.Process)
+        cyberAgentConfig  = $cyberAgent.ConfigPath
     }
 }
 
@@ -985,22 +1133,34 @@ function Reset-AiasDemo {
     $removed = @()
 
     $state = Read-DemoState -Path $StateFile
-    if ($state -and ($state.PSObject.Properties.Name -contains 'agentPid') -and $state.agentPid) {
+
+    # M2: stop BOTH tracked agents. A surviving cyber agent left running after a re-provision keeps
+    # polling its (possibly now-stale) register — a confusing hazard on a demo that gets
+    # re-provisioned repeatedly, not just untidiness. Indexed PSObject.Properties['x'] access,
+    # consistent with the rest of this module's optional-field reads.
+    foreach ($mode in @('assure-id', 'cyber')) {
+        $pidKey = if ($mode -eq 'cyber') { 'cyberAgentPid' } else { 'agentPid' }
+        $agentLabel = if ($mode -eq 'cyber') { 'cyber-agent' } else { 'agent' }
+
+        $pidProp = if ($state) { $state.PSObject.Properties[$pidKey] } else { $null }
+        if (-not $pidProp -or -not $pidProp.Value) { continue }
+
         # Identity-checked: without this a recycled PID means Stop-Process -Force kills an
         # unrelated process that merely inherited the number.
-        $p = if (Test-AiasAgentAlive -State $state) {
-            Get-Process -Id $state.agentPid -ErrorAction SilentlyContinue
+        $p = if (Test-AiasAgentAlive -State $state -Mode $mode) {
+            Get-Process -Id $pidProp.Value -ErrorAction SilentlyContinue
         } else { $null }
-        if ($p -and $PSCmdlet.ShouldProcess("sorcha-agent pid $($state.agentPid)", "Stop")) {
-            Stop-Process -Id $state.agentPid -Force -ErrorAction SilentlyContinue
-            $removed += "agent(pid $($state.agentPid))"
+        if ($p -and $PSCmdlet.ShouldProcess("sorcha-agent pid $($pidProp.Value) ($mode)", "Stop")) {
+            Stop-Process -Id $pidProp.Value -Force -ErrorAction SilentlyContinue
+            $removed += "$agentLabel(pid $($pidProp.Value))"
         }
     }
 
     if ($PSCmdlet.ShouldProcess($StateFile, "Remove demo state + rendered agent config")) {
         Remove-Item -LiteralPath $StateFile -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath (Join-Path $script:DemoRoot "agent/assure-id.config.json") -ErrorAction SilentlyContinue
-        $removed += "state.json", "assure-id.config.json"
+        Remove-Item -LiteralPath (Join-Path $script:DemoRoot "agent/cyber.config.json") -ErrorAction SilentlyContinue
+        $removed += "state.json", "assure-id.config.json", "cyber.config.json"
     }
 
     Write-WtInfo "NOTE: a full server-side wipe (org, register Mongo DBs, demo wallets) is node-side."
