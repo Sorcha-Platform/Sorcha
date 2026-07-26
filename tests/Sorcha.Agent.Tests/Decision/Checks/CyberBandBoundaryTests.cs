@@ -85,7 +85,7 @@ public class CyberBandBoundaryTests
     }
 
     [Fact]
-    public void ChecksConfig_EveryAnswerKey_ExistsInTheBlueprintEnum()
+    public void ChecksConfig_AnswerKeysForEachField_ExactlyMatchTheBlueprintEnum()
     {
         var config = ChecksConfig.Load(ChecksPath);
         var scored = config.Checks.Single(c => c.Type == "scored-questionnaire");
@@ -98,11 +98,66 @@ public class CyberBandBoundaryTests
         {
             var field = pointer.TrimStart('/');
             var enumValues = properties[field]!["enum"]!.AsArray()
-                .Select(v => v!.GetValue<string>()).ToHashSet(StringComparer.Ordinal);
+                .Select(v => v!.GetValue<string>()).ToArray();
 
-            foreach (var answer in table.Keys)
-                enumValues.Should().Contain(answer,
-                    $"scoring key '{answer}' for {pointer} must match a blueprint enum value verbatim");
+            // Bidirectional by design: a config key missing from the blueprint enum is dead scoring,
+            // but a blueprint enum value missing from the config is worse — it silently scores 0 for
+            // any citizen who picks it, permanently capping their achievable total below 24.
+            table.Keys.Should().BeEquivalentTo(enumValues,
+                $"the '{pointer}' scoring table and the blueprint's '{field}' enum must be the exact same " +
+                "set of strings — any enum value absent from the scoring table scores 0 silently, with no " +
+                "error and no log, for every citizen who picks it");
+        }
+    }
+
+    [Fact]
+    public void Rules_EveryActionName_MatchesTheBlueprintAction2TitleVerbatim()
+    {
+        var rules = JsonNode.Parse(File.ReadAllText(RulesPath))!.AsArray();
+
+        var blueprint = JsonNode.Parse(File.ReadAllText(
+            Path.Combine(RepoRoot(), "demos", "AIAS", "blueprints", "aias-cyber-level.template.json")))!;
+        var action2 = blueprint["template"]!["actions"]!.AsArray()
+            .Single(a => a!["id"]!.GetValue<int>() == 2);
+        var expectedActionName = action2!["title"]!.GetValue<string>();
+
+        foreach (var entry in rules)
+        {
+            var actionName = entry!["actionName"]!.GetValue<string>();
+            var ruleIdentifier = entry["payload"]?["level"]?.GetValue<string>()
+                ?? entry["payload"]?["reasonCode"]?.GetValue<string>()
+                ?? "(unidentified rule)";
+
+            actionName.Should().Be(expectedActionName,
+                $"rule '{ruleIdentifier}' has actionName '{actionName}', which the agent matches against " +
+                "action 2's blueprint title — a mismatch means this rule silently never fires");
+        }
+    }
+
+    [Fact]
+    public void Rules_EveryReasonCode_ExistsAsAKeyInTheBlueprintDecisionNoticeReasons()
+    {
+        var rules = JsonNode.Parse(File.ReadAllText(RulesPath))!.AsArray();
+
+        var blueprint = JsonNode.Parse(File.ReadAllText(
+            Path.Combine(RepoRoot(), "demos", "AIAS", "blueprints", "aias-cyber-level.template.json")))!;
+        var action2 = blueprint["template"]!["actions"]!.AsArray()
+            .Single(a => a!["id"]!.GetValue<int>() == 2);
+        var noticeRoute = action2!["routes"]!.AsArray()
+            .Single(r => r!["x-decision-notice"] is not null);
+        var reasonKeys = noticeRoute!["x-decision-notice"]!["reasons"]!.AsObject()
+            .Select(kv => kv.Key).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var entry in rules)
+        {
+            var reasonCode = entry!["payload"]!["reasonCode"]?.GetValue<string>();
+            if (reasonCode is null)
+                continue; // approved rules carry no reasonCode — nothing to check
+
+            reasonKeys.Should().Contain(reasonCode,
+                $"rule reasonCode '{reasonCode}' must be a key in the blueprint's x-decision-notice.reasons " +
+                "map, or a rejected citizen silently gets the generic fallback message instead of the " +
+                "on-brand one");
         }
     }
 }
