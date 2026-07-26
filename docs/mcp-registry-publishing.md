@@ -37,9 +37,13 @@ runs `mcp-publisher publish`. Gate it on the `docker-publish` job so the OCI ima
 - **mcp.so** — https://mcp.so
 
 ## Notes / follow-ups
-- The served manifest at `/.well-known/mcp.json` currently advertises placeholder auth metadata
-  (`issuer: https://sorcha.example/auth`, `audience: sorcha-mcp`). Align it with the F136 tiered
-  audiences (`{installation}:service` / per-tier) before wide promotion so agents read accurate
-  token requirements. (`McpManifestOptions` / `Discoverability:` config.)
+- ~~Placeholder auth metadata in the manifest~~ **Done** (#826 / spec 136): the manifest now derives
+  the real per-installation issuer + platform-tier audience from `JwtSettings:InstallationName`
+  (verified live on n1: `urn:sorcha:n1.sorcha.dev` / `n1.sorcha.dev:platform`). An explicit
+  `Discoverability:AuthIssuer`/`AuthAudience` still overrides.
+- Since the 2026-07-26 audit the manifest also always advertises the Streamable HTTP transport,
+  deriving `{origin}/mcp` when `McpManifest:HttpSseUrl` is unset — previously the live endpoint was
+  omitted from the manifest entirely, and the advertised stdio command
+  (`dotnet run --project …`) assumes a repo checkout the registry audience won't have.
 - If a hosted streamable-HTTP MCP endpoint is exposed, add a `remotes` entry to `server.json`
   alongside the `packages` (OCI) entry so agents can connect without self-hosting.

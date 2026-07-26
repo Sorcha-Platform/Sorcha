@@ -64,7 +64,7 @@ internal static class McpManifestEndpoint
             Name: options.Name,
             Version: version,
             Description: options.Description,
-            Transports: BuildTransports(options),
+            Transports: BuildTransports(options, ResolveAbsoluteUrl(context, path: string.Empty)),
             Authentication: new McpAuthentication(
                 Type: "jwt-bearer",
                 Issuer: issuer,
@@ -84,27 +84,45 @@ internal static class McpManifestEndpoint
         await context.Response.WriteAsJsonAsync(manifest, cancellationToken: context.RequestAborted);
     }
 
-    private static IReadOnlyList<McpTransport> BuildTransports(McpManifestOptions options)
+    private static IReadOnlyList<McpTransport> BuildTransports(McpManifestOptions options, string origin)
     {
-        var list = new List<McpTransport>(2)
-        {
-            new(
+        return
+        [
+            new McpTransport(
                 Type: "stdio",
                 Command: options.StdioCommand,
                 Args: options.StdioArgs.ToArray(),
-                Url: null)
-        };
+                Url: null),
 
-        if (!string.IsNullOrWhiteSpace(options.HttpSseUrl))
-        {
-            list.Add(new McpTransport(
+            // MCP audit 2026-07-26: this entry used to render only when HttpSseUrl was configured —
+            // and it shipped empty when spec 139 US3 brought the /mcp endpoint up, so the manifest
+            // advertised a transport the reader cannot use (stdio needs the repo checkout) while
+            // omitting the one that is actually live behind this very gateway. Now derived from the
+            // request origin when unset, exactly as the auth block derives issuer/audience (#826 /
+            // spec 136); an explicitly configured URL still wins verbatim. The type string stays
+            // "http+sse" — it is the FR-014 wire contract this manifest's schema pins, even though
+            // the endpoint speaks Streamable HTTP; renaming it is a contract change, not a gap fix.
+            new McpTransport(
                 Type: "http+sse",
                 Command: null,
                 Args: null,
-                Url: options.HttpSseUrl));
+                Url: ResolveHttpTransportUrl(options.HttpSseUrl, origin)),
+        ];
+    }
+
+    /// <summary>
+    /// The manifest's HTTP-transport URL: the configured value verbatim when set, otherwise
+    /// <c>{origin}/mcp</c>. Internal for the ungated unit test — the FR-014 integration test is
+    /// environment-gated and never runs in CI, which is how the original gap shipped.
+    /// </summary>
+    internal static string ResolveHttpTransportUrl(string? configured, string origin)
+    {
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            return configured;
         }
 
-        return list;
+        return $"{origin.TrimEnd('/')}/mcp";
     }
 
     private static string ResolveAbsoluteUrl(HttpContext context, string path)
