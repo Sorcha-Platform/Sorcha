@@ -58,6 +58,19 @@ public static class ExternalCheckFactory
                 ParseOfflineMode(def.OfflineMode),
                 def.BaseUrl,
                 loggerFactory?.CreateLogger(typeof(PostcodeExistsCheck).FullName!)),
+            "scored-questionnaire" => new ScoredQuestionnaireCheck(
+                def.Name,
+                (def.Answers ?? [])
+                    .ToDictionary(
+                        kv => kv.Key,
+                        kv => (IReadOnlyDictionary<string, int>)kv.Value,
+                        StringComparer.Ordinal),
+                (def.Ranges ?? [])
+                    .ToDictionary(
+                        kv => kv.Key,
+                        kv => (IReadOnlyList<ScoreRange>)kv.Value
+                            .Select(r => new ScoreRange(r.Max, r.Points)).ToArray(),
+                        StringComparer.Ordinal)),
             _ => throw new NotSupportedException($"Unknown check type '{def.Type}' for check '{def.Name}'")
         };
     }
