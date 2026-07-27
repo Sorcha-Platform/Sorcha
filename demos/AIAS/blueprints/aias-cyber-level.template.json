@@ -60,7 +60,8 @@
             "x-sections": [
               { "title": "Passwords", "fields": ["passwordStorage", "passwordChangeHabit", "sharedPasswordCount", "streamingPasswordSharers"] },
               { "title": "Accounts and devices", "fields": ["emailSecondStep", "phoneUpdates", "laptopLoss"] },
-              { "title": "Spotting trouble", "fields": ["suspiciousEmail"] }
+              { "title": "Spotting trouble", "fields": ["suspiciousEmail"] },
+              { "title": "Secure delivery", "fields": ["holderKeys"] }
             ],
             "required": [
               "passwordStorage", "emailSecondStep", "passwordChangeHabit", "phoneUpdates",
@@ -140,6 +141,13 @@
                 "minimum": 0,
                 "maximum": 10,
                 "x-slider": { "step": 1, "minLabel": "Just me", "maxLabel": "10 or more" }
+              },
+              "holderKeys": {
+                "type": "object",
+                "title": "Your holder key",
+                "description": "Your wallet's holder public key (web-issued). Captured automatically and read-only — the credential is bound to your wallet's holder key (standard OID4VP holder binding, #1195) and encrypted to your wallet so only you can present it.",
+                "format": "sorcha-holder-key",
+                "x-holder-key": { "required": true }
               }
             }
           }
@@ -189,6 +197,7 @@
           "displayName": "AIAS Cyber Level",
           "targetAudience": "SorchaLocalWallet",
           "recipientParticipantId": "citizen",
+          "holderKeySourceField": "/holderKeys/holderJwk",
           "issuanceCondition": { "==": [{ "var": "decision" }, "approved"] },
           "claimMappings": [
             { "claimName": "level", "sourceField": "/level" },
@@ -222,7 +231,7 @@
               "severity": "Warning",
               "reasons": {
                 "no-portrait": "AIAS cannot issue a Cyber Level without a face to put on it. Add a photo to your Assured Identity and come back.",
-                "cyber-fail": "AIAS admires the honesty, but cannot certify this. Fix the shared passwords and try again."
+                "cyber-fail": "AIAS admires the honesty, but cannot certify this. Your overall cyber hygiene needs work across the board — tighten up your habits and try again."
               },
               "fallbackMessage": "AIAS could not award a Cyber Level on this occasion."
             }

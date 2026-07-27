@@ -111,6 +111,33 @@ public class CyberBandBoundaryTests
     }
 
     [Fact]
+    public void ChecksConfig_EveryScoringPointer_NamesARealPropertyInTheBlueprintActionOneSchema()
+    {
+        var config = ChecksConfig.Load(ChecksPath);
+        var scored = config.Checks.Single(c => c.Type == "scored-questionnaire");
+
+        var blueprint = JsonNode.Parse(File.ReadAllText(
+            Path.Combine(RepoRoot(), "demos", "AIAS", "blueprints", "aias-cyber-level.template.json")))!;
+        var propertyNames = blueprint["template"]!["actions"]![0]!["dataSchemas"]![0]!["properties"]!
+            .AsObject().Select(kv => kv.Key).ToHashSet(StringComparer.Ordinal);
+
+        // Both halves of the scoring table (answers AND ranges) are pointers into the blueprint's
+        // action-1 schema. A renamed or removed property on either side scores 0 forever for
+        // everyone, with no error and no log — for `ranges` this silently caps the maximum below
+        // 24, making Platinum unreachable and under-grading every citizen.
+        var allPointers = (scored.Answers ?? []).Keys.Concat((scored.Ranges ?? []).Keys);
+
+        foreach (var pointer in allPointers)
+        {
+            var field = pointer.TrimStart('/');
+            propertyNames.Should().Contain(field,
+                $"the scoring config pointer '{pointer}' must name a real property in the blueprint's " +
+                "action-1 schema — a pointer to a renamed or missing property silently scores 0 for " +
+                "every citizen, forever, with no error anywhere");
+        }
+    }
+
+    [Fact]
     public void Rules_EveryActionName_MatchesTheBlueprintAction2TitleVerbatim()
     {
         var rules = JsonNode.Parse(File.ReadAllText(RulesPath))!.AsArray();
