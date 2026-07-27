@@ -49,7 +49,16 @@ public sealed class RedisPendingPresentationStore : IPendingPresentationStore
             new("outcomeDetailLevel",             pending.OutcomeDetailLevel),
             new("validityWindowSeconds",          pending.ValidityWindowSeconds),
             new("createdAt",                      pending.CreatedAt.ToString("o")),
-            new("initiatedTxId",                  pending.InitiatedTransactionId ?? string.Empty)
+            new("initiatedTxId",                  pending.InitiatedTransactionId ?? string.Empty),
+            // #1195 Phase 2 (Task 6b, T032) — verifier-session fields. Nonce/VerifierClientId/
+            // CredentialType follow the same nullable-string convention as delegationToken above
+            // (empty string on the wire ⇒ null on read). RequiredClaimNames is a List<string>? —
+            // Redis hash values are flat strings, so it is JSON-encoded; JsonSerializer.Serialize(null)
+            // round-trips as the literal "null" (distinct from "[]"), so null vs empty-list survives.
+            new("nonce",                          pending.Nonce ?? string.Empty),
+            new("verifierClientId",               pending.VerifierClientId ?? string.Empty),
+            new("credentialType",                 pending.CredentialType ?? string.Empty),
+            new("requiredClaimNames",             JsonSerializer.Serialize(pending.RequiredClaimNames))
         };
 
         // Pipeline the HSET and EXPIRE so a crash between them cannot leave a
@@ -136,7 +145,22 @@ public sealed class RedisPendingPresentationStore : IPendingPresentationStore
             CreatedAt = createdAt,
             InitiatedTransactionId = string.IsNullOrEmpty(map.GetValueOrDefault("initiatedTxId"))
                 ? null
-                : map["initiatedTxId"]
+                : map["initiatedTxId"],
+            // #1195 Phase 2 (Task 6b, T032) — verifier-session fields. Missing field (entries
+            // written before this fix, or genuinely absent values) reads back as null, matching
+            // the "legacy pending entry" fallback the consumer already handles.
+            Nonce = string.IsNullOrEmpty(map.GetValueOrDefault("nonce"))
+                ? null
+                : map["nonce"],
+            VerifierClientId = string.IsNullOrEmpty(map.GetValueOrDefault("verifierClientId"))
+                ? null
+                : map["verifierClientId"],
+            CredentialType = string.IsNullOrEmpty(map.GetValueOrDefault("credentialType"))
+                ? null
+                : map["credentialType"],
+            RequiredClaimNames = string.IsNullOrEmpty(map.GetValueOrDefault("requiredClaimNames"))
+                ? null
+                : JsonSerializer.Deserialize<List<string>?>(map["requiredClaimNames"])
         };
     }
 
