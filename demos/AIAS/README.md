@@ -1,4 +1,4 @@
-# AIAS — Assured Identity (Feature 174 / M1)
+# AIAS — Assured Identity (Feature 174 / M1 + M2)
 
 A single, idempotent provisioning slice that stands up **Acme Identity Assurance
 Services (AIAS)** — a fictional assurance provider — and delivers the
@@ -8,6 +8,13 @@ AIAS-branded, photo-bearing **Assured Identity** credential in their wallet. The
 agent evaluates real signals (email verified, photo present, **postcode
 existence**, **profanity**) and either approves or **rejects with an on-brand,
 humorous reason**. This is M1 of the AIAS conference demo (M0–M5).
+
+**M2 adds a second, independent workflow: the AIAS Cyber Level.** The citizen
+presents their Assured Identity credential to prove entitlement, answers an
+eight-question cyber-hygiene questionnaire, and a second autonomous agent — the
+**Cyber agent** — scores the answers into a Bronze/Silver/Gold/Platinum band and
+issues a `CyberLevelCredential`, or hard-rejects before scoring if the presented
+identity carries no portrait. See "AIAS Cyber Level (M2)" below.
 
 - Program north-star: `docs/superpowers/specs/2026-06-29-aias-conference-demo-design.md`
 - Spec / plan / quickstart: `specs/174-aias-assured-identity/`
@@ -56,15 +63,26 @@ reuses its generic lib helpers and the shared `SorchaWalkthrough` module. It add
    emits an unresolvable `iss` (no `kid`/`jwk`), so verification later fails
    closed. The AssuredIdentity demo historically skipped this (HAIP-enrolment
    only); AIAS MUST do it. Idempotent (no-op on 409).
-3. Publish the AIAS Assured Identity blueprint — rendered from
-   `blueprints/aias-assured-identity.template.json` with `{{issuerName}}` set to
-   the AIAS name (single source). **Skips if already published.**
-4. Generate the runtime agent config `agent/assure-id.config.json` and launch the
+3. Publish the AIAS blueprints — rendered from `blueprints/aias-assured-identity.template.json`
+   and `blueprints/aias-cyber-level.template.json` (plus the device-registration
+   template) with `{{issuerName}}` set to the AIAS name (single source). The
+   Assured Identity + device-registration blueprints publish onto the Identity
+   register; the Cyber Level blueprint publishes onto its own, separate Cyber
+   register (see "AIAS Cyber Level (M2)" below). **Skips any blueprint already
+   published.**
+4. Generate the runtime agent configs `agent/assure-id.config.json` +
+   `agent/cyber.config.json` and launch **both** autonomous agents: the
    **Assure-ID agent** (`sorcha-agent run --config agent/assure-id.config.json
-   --state state.json`, rules mode).
+   --state state.json`, rules mode) services the Identity register; the **Cyber
+   agent** (`sorcha-agent run --config agent/cyber.config.json --state
+   state.json`) services the Cyber register. Same underlying agent wallet/identity,
+   two independent processes — each is register-scoped, so neither can pick up
+   the other's pending actions.
 
 Re-running against an already-provisioned environment completes without creating
-duplicate orgs / blueprints / agents (the gate for **SC-001**).
+duplicate orgs / registers / blueprints / agents (the gate for **SC-001**). A node
+provisioned before M2 self-heals: the Cyber register + its agent participant are
+created on the next `New-AiasOrg` run without needing `-Force`.
 
 ---
 
@@ -104,6 +122,45 @@ pass. `rehearse.ps1` exercises both directions.
 
 ---
 
+## AIAS Cyber Level (M2)
+
+A second, independent workflow: once a citizen holds an Assured Identity, they can
+apply to AIAS for a **Cyber Level** — present the Assured Identity to prove it's
+theirs, answer eight quick questions about password habits, 2FA, update
+discipline, phishing awareness and password sharing, and the autonomous **Cyber
+agent** scores the card and issues a `CyberLevelCredential` carrying the band
+(Bronze/Silver/Gold/Platinum) and the portrait carried forward from the
+presentation.
+
+- **Scoring**: six graded multiple-choice questions + two 0-3 sliders, 24 points
+  total. Bands: **24 Platinum**, **21-23 Gold**, **16-20 Silver**, **12-15
+  Bronze**, **below 12 → rejected** (no credential). The scoring table lives in
+  `agent/cyber.checks.json`; the band thresholds are ordinary JSON-Logic rules in
+  `agent/cyber.rules.json`.
+- **Two deliberate traps** cost 2 points each — a confident-but-wrong password
+  rotation habit ("Every 30 days, like clockwork" instead of "only when I think
+  one's been exposed") and inspecting a suspicious email's sender address instead
+  of verifying out-of-band. A perfect card minus both traps lands at exactly 20 →
+  Silver, proving the questionnaire produces a real spread rather than handing
+  everyone the top band.
+- **Portrait hard-gate**: if the presented Assured Identity carries no portrait,
+  the Cyber agent rejects before scoring at all — AIAS can't put a level on a
+  face it's never seen. A `portraitPresent` external check gates this, distinct
+  from the scoring check.
+- **Own register**: the Cyber questionnaire runs on its own advertised DevMode
+  register, separate from the Identity register the Assured Identity credential
+  was issued on. This is the one new cross-register assumption M2 introduces — a
+  credential minted on one register gates a workflow on another — and is why the
+  Cyber blueprint/agent/register are provisioned and tracked independently of the
+  Identity ones throughout `AiasDemo.psm1`.
+
+(The band messages + reject reasons live in `agent/cyber.rules.json` and the
+blueprint's `x-decision-notice` catalogue; the answer strings ARE the scoring
+keys — matched ordinally against `agent/cyber.checks.json`, so a drifted or
+mistyped enum value scores 0 silently, with no error.)
+
+---
+
 ## Offline behaviour
 
 The postcode-existence check uses the public UK **postcodes.io** lookup when
@@ -118,15 +175,34 @@ and rejections still flow with **no internet** (SC-007).
 ## Rehearsal / test hook
 
 ```powershell
-./demos/AIAS/rehearse.ps1            # Docker
+# Identity scenario (default) — M1
+./demos/AIAS/rehearse.ps1                       # Docker
 ./demos/AIAS/rehearse.ps1 -Target n1
+
+# Cyber scenario — M2
+./demos/AIAS/rehearse.ps1 -Scenario cyber        # Docker
+./demos/AIAS/rehearse.ps1 -Scenario cyber -Target n1
 ```
 
-Against the provisioned environment this runs **one approval** and **one
-rejection** end to end (FR-011, SC-004) and asserts: approval → credential issued
-(offer present) with portrait; rejection (bad postcode `ZZ99 9ZZ`) → decision
-`rejected` recorded with the on-brand reason and **no credential**. Exit 0 on
-success, non-zero on failure.
+`-Scenario identity` (default) runs against the provisioned environment: **one
+approval** and **two rejections** end to end (FR-011, SC-004) and asserts:
+approval → credential issued (offer present) with portrait; bad-postcode
+rejection → decision `rejected` recorded with the on-brand reason and **no
+credential**; unverified-email rejection → decision `rejected` via the email
+gate and **no credential**.
+
+`-Scenario cyber` mints a fresh Assured Identity for each path (submit → agent
+approves → credential delivered), presents it into the Cyber register's
+questionnaire action, and asserts four paths: a perfect card → `Platinum`; a
+perfect card minus both traps (-2 each, 24 → 20) → `Silver` — the path proving
+the questionnaire produces a real spread, not just a working mechanism; a
+dishonest-but-consistent low score (0/24) → **no credential**, with a durable
+inbox decision notice matching the `cyber-fail` catalogue entry; and a perfect
+card presented with a **portrait-less** Assured Identity → hard-rejected before
+scoring, **no credential**, inbox notice matching `no-portrait`.
+
+Exit 0 on success (all paths pass for the chosen scenario), non-zero on any
+assertion failure.
 
 ---
 
@@ -158,15 +234,29 @@ under `"rules"` and points `"checksFile"` at `assure-id.checks.json` (which sits
 next to the generated config so its relative `../fixtures/postcodes.offline.json`
 resolves).
 
+**M2's genuine code addition** is the `scored-questionnaire` check
+(`ScoredQuestionnaireCheck`, same `Decision/Checks` folder): it produces a
+**numeric** fact instead of a boolean (`ExternalCheckResult.Numeric`), summing a
+questionnaire's answers into a single score that `agent/cyber.rules.json`'s
+JSON-Logic band thresholds compare against. `ExternalCheckRunner` merges a
+check's numeric OR boolean value into `checks.*` (never both, per check name),
+so `{"var": "checks.cyberScore"}` resolves to the band-comparable total. See the
+`sorcha-architecture` skill's "AIAS Cyber Level (M2)" section for the full
+contract.
+
 ### Files
 
 | File | Purpose |
 |------|---------|
-| `AiasDemo.psm1` | Idempotent provisioning module (org, master key, blueprint, agent config + launch, status, reset). |
+| `AiasDemo.psm1` | Idempotent provisioning module (org, master key, both registers, both blueprints, both agent configs + launch, status, reset). |
 | `run-demo.ps1` | Thin entry point — `Initialize-AiasDemo` + final status. |
-| `rehearse.ps1` | Test hook — one approval + one rejection, asserted. |
-| `blueprints/aias-assured-identity.template.json` | Blueprint template (`{{issuerName}}` + AIAS branding + reject route + `emailVerified` signal). |
-| `agent/assure-id.rules.json` | Bare JSON-Logic rule array (3 reject rules + catch-all approve). |
-| `agent/assure-id.checks.json` | External-check config (email/photo/postcode/profanity). |
-| `agent/assure-id.config.json` | **Generated** runtime ActorDefinition (rules inline + `checksFile`). |
+| `rehearse.ps1` | Test hook — `-Scenario identity` (default, one approval + two rejections) or `-Scenario cyber` (four scored-questionnaire paths), asserted. |
+| `blueprints/aias-assured-identity.template.json` | Identity blueprint template (`{{issuerName}}` + AIAS branding + reject route + `emailVerified` signal). |
+| `blueprints/aias-cyber-level.template.json` | Cyber Level blueprint template (M2) — credential-presentation gate + 8-question scored questionnaire + banded issuance. |
+| `agent/assure-id.rules.json` | Bare JSON-Logic rule array for the Assure-ID agent (3 reject rules + catch-all approve). |
+| `agent/assure-id.checks.json` | External-check config for the Assure-ID agent (email/photo/postcode/profanity). |
+| `agent/assure-id.config.json` | **Generated** runtime ActorDefinition for the Assure-ID agent (rules inline + `checksFile`). |
+| `agent/cyber.rules.json` | Bare JSON-Logic rule array for the Cyber agent (M2) — no-portrait hard reject + band thresholds + catch-all Platinum. |
+| `agent/cyber.checks.json` | External-check config for the Cyber agent (M2) — `portraitPresent` + the `scored-questionnaire` scoring table. |
+| `agent/cyber.config.json` | **Generated** runtime ActorDefinition for the Cyber agent (M2, rules inline + `checksFile`). |
 | `fixtures/postcodes.offline.json` | Offline allow-list for the postcode check. |

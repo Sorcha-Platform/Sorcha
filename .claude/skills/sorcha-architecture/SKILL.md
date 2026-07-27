@@ -1859,6 +1859,58 @@ wallet's `Owner` IS the PlatformUserId** — which is what makes a **late-bound 
 
 ---
 
+## AIAS Cyber Level (M2)
+
+A second AIAS conference-demo workflow (`demos/AIAS/blueprints/aias-cyber-level.template.json`), independent
+of the M1 Assured Identity application. The citizen presents their Assured Identity credential to prove
+entitlement, answers an eight-question cyber-hygiene questionnaire (six graded `Selection` questions +
+two 0-3 sliders, 24 points total), and the autonomous **Cyber agent** (`Start-AiasAgent -Mode cyber`) scores
+the answers into a Bronze/Silver/Gold/Platinum band and issues a `CyberLevelCredential` carrying the level
+plus the portrait mapped forward from the presentation — or hard-rejects before scoring when the presented
+credential carries no portrait.
+
+- **The `scored-questionnaire` check** (`ScoredQuestionnaireCheck`, `src/Apps/Sorcha.Agent/Decision/Checks/`)
+  sums a questionnaire into a single numeric fact, two modes per question shape: `answers` maps an exact
+  submitted string to points (graded multiple choice), `ranges` maps a submitted number into a band
+  (slider), evaluated top-down with each range's `max` an INCLUSIVE upper bound and the entry with no `max`
+  the catch-all. **There is deliberately no "could not score" outcome** — every question is schema-`required`
+  so the validator guarantees presence, and an unrecognised or missing answer simply scores 0 (a `ranges`
+  field that is absent or non-numeric always scores literal 0, never falling through to the catch-all band —
+  the catch-all is for a genuine numeric answer outside every declared range, not a stand-in for "no
+  answer"). A faulting scorer is contained by `ExternalCheckRunner` into boolean `false` (JSON-Logic coerces
+  to 0), so a broken scorer lands in the lowest band and issues nothing rather than throwing.
+- **The numeric-fact contract on `ExternalCheckResult`.** `ExternalCheckResult(Name, Value, Detail, Numeric)` —
+  `Numeric` is an optional `double?`, null for ordinary boolean checks (`portraitPresent`), populated for
+  `scored-questionnaire` (`cyberScore`). `ExternalCheckRunner.RunAsync` merges **either** the numeric **or**
+  the boolean into the `checks.*` fact dictionary per check name — never both — so `{"var":
+  "checks.cyberScore"}` resolves to the band-comparable number in rules, and `checks.portraitPresent` stays a
+  plain boolean. A check needing both a meaningful bool and a number must expose two distinct fact keys.
+- **Answer strings ARE the scoring keys, matched ordinally against `agent/cyber.checks.json`'s `answers`
+  table.** The `Selection` control has no separate display-label/value split, so a mistyped or drifted answer
+  string scores 0 **silently** — no error, no log line beyond the routine `score N (...)` breakdown. Any
+  change to an enum value in the blueprint's `dataSchemas` MUST be mirrored verbatim in `cyber.checks.json`.
+- **Two-register topology.** The cyber questionnaire runs on its **own** register (`New-AiasOrg` step 6a
+  creates it; step 6c publishes the same Assure-ID agent wallet as a participant on it too — one agent
+  *wallet*, two register *participations*, not two identities), separate from the Identity register the
+  Assured Identity credential is issued on. This is the one new cross-register assumption M2 introduces:
+  a credential minted on one register gates a workflow submitted on another, exercised via the action's
+  `credentialRequirements` (`presentationSource: SorchaWallet`) and a directly-submitted
+  `credentialPresentations` array (bypasses the async F111 HAIP/SorchaWallet presentation lifecycle in
+  favour of the synchronous internal-verifier branch in `ActionExecutionService`). `Publish-AiasBlueprint`
+  publishes per-spec `RegisterId`s (not one shared register), and `Get-AiasDemoStatus` / `Test-AiasAgentAlive`
+  probe the cyber register and cyber agent process independently so either going missing reports a named
+  reason rather than a false-positive Ready.
+- **Rehearsal**: `demos/AIAS/rehearse.ps1 -Scenario cyber` (default scenario is still `identity`, M1's
+  unchanged three paths). Four paths: perfect card (24/24) → Platinum; perfect card minus two deliberate
+  "trap" answers (calendar password rotation, inspecting a sender address instead of verifying out-of-band —
+  2 points each) → Silver (20/24) — **the path that proves the spread is real and both traps bite**, not
+  just that scoring runs; a dishonest-but-consistent low score (0/24, below the 12-point Bronze floor) → no
+  credential, inbox decision notice matches the `cyber-fail` catalogue entry; a perfect card presented with a
+  portrait-less Assured Identity → hard reject before scoring, no credential, inbox notice matches
+  `no-portrait`. Spec: `specs/174-aias-assured-identity/`.
+
+---
+
 ## EUDI conformance — DCQL dialect, trust rail, verifier auth (Feature 181, US1–US6)
 
 Protocol-alignment feature moving every Sorcha presentation surface onto the OpenID4VP 1.0 **final**
