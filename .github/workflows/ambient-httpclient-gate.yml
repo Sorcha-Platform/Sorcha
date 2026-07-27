@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Ambient-HttpClient CI gate. Fails when any .razor file under src/Apps
+# injects the bare `HttpClient` type (`@inject HttpClient ...`) outside the
+# explicit allowlist (.ambient-httpclient-allowlist). That client carries no
+# Authorization header — a call to an authenticated endpoint through it
+# silently 401s. The allowlist is a ratchet — it may only shrink.
+#
+# See scripts/check-ambient-httpclient.ps1 and issue #1311.
+
+name: ambient-httpclient-gate
+
+on:
+  pull_request:
+    paths:
+      - "src/Apps/**/*.razor"
+      - ".ambient-httpclient-allowlist"
+      - "scripts/check-ambient-httpclient.ps1"
+      - ".github/workflows/ambient-httpclient-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  no-new-ambient-httpclient:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run ambient-HttpClient gate
+        shell: pwsh
+        run: ./scripts/check-ambient-httpclient.ps1

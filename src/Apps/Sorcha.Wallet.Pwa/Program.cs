@@ -20,6 +20,13 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services.AddAuthorizationCore();
 builder.Services.AddMudServices();
+// Ambient client (issue #1311) — carries NO Authorization header. It exists for the auth
+// infrastructure itself, so wiring BearerTokenHandler into it would be circular DI. Any
+// component or service that calls an authenticated Sorcha endpoint through this client gets a
+// SILENT 401 — no exception, often rendered as a misleading empty state (#1165/#1166, #1167).
+// Register a typed HttpClient instead, wired with BearerTokenHandler (+ ServerClockHandler) —
+// see DeviceBindingService's or PresentationDirectPostClient's AddHttpClient<...> registration
+// in Extensions/ServiceCollectionExtensions.cs as the pattern to follow.
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 
 // Gateway base address for typed Sorcha service clients. The wallet PWA is

@@ -31,6 +31,12 @@ namespace Sorcha.Wallet.Pwa.Services;
 /// scheme+host+port matches the gateway's own origin. This lives in the shared handler —
 /// not in any one typed client — so no future caller of any client already wired with this
 /// handler can accidentally reintroduce the leak by reusing it against a third-party URI.
+///
+/// This isn't merely a session cookie: Sorcha wallets are server-custodial, so
+/// <c>POST /api/v1/wallet/presentations/sign-kb</c> (consumer-tier) uses the bearer token to
+/// authorise the wallet service to sign on the citizen's behalf. A leaked token is a leaked
+/// signing capability, not just a leaked session — which is why the same-origin gate exists
+/// unconditionally here rather than as an opt-in per typed client (#1310).
 /// </remarks>
 public sealed class BearerTokenHandler : DelegatingHandler
 {

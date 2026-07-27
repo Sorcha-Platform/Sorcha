@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Ambient-HttpClient allowlist (issue #1311).
+#
+# `@inject HttpClient` in a Blazor component binds the AMBIENT client — the
+# one the auth service itself uses, so wiring the bearer-token handler into
+# it would be circular DI. It carries NO Authorization header. A component
+# that injects it and calls an authenticated endpoint gets a silent 401,
+# not a build error and not a thrown exception — the failure mode is often a
+# convincing empty state ("No trusted lists imported yet.") rather than a
+# visible error, which is why it has bitten three times without being
+# caught by review:
+#   #1165/#1166 — the whole F126/F128 device-pairing surface, dead for every citizen.
+#   #1167       — F181 admin clients; ListAsync swallowed the 401 into an empty list.
+#   #1310       — the PWA's OpenID4VP direct_post.
+#
+# Enforced by scripts/check-ambient-httpclient.ps1 (CI: ambient-httpclient-gate).
+#
+# THIS LIST IS A RATCHET — it may only shrink, never grow. Every entry below
+# is a site that has NOT yet been audited, or is deliberately anonymous (see
+# the two annotated exceptions). Adding an entry here to make a build pass is
+# not acceptable — audit the call site (does it hit an authenticated
+# endpoint? does a 401 there fail loudly or silently?) and either move it to
+# a typed client wired with BearerTokenHandler, or annotate it here as
+# deliberately anonymous with the reasoning, in the same PR.
+#
+# One relative path per line (forward slashes); trailing # comments allowed.
+
+src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/CredentialGate/CredentialGateComponent.razor   # UNAUDITED — not yet reviewed against #1311
+src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/EnrolGate/EnrolGateComponent.razor              # DELIBERATE — GET /api/auth/whoami; a 401 IS the cold-start answer (not signed in). Attaching auth would turn an expected 401 into a redirect-to-login and break the F126 cold-start gate.
+src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Wallet/ReceiptProofCard.razor                   # UNAUDITED — not yet reviewed against #1311
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/BlueprintServiceAdmin.razor                          # UNAUDITED — not yet reviewed against #1311
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/PeerServiceAdmin.razor                                # UNAUDITED — not yet reviewed against #1311
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Forms/FileReferenceField.razor                        # UNAUDITED — not yet reviewed against #1311
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/StatusFooter.razor                             # UNAUDITED — not yet reviewed against #1311
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyDevices.razor                                            # UNAUDITED — not yet reviewed against #1311
+src/Apps/Sorcha.Wallet.Pwa/Pages/Present.razor                                                           # DELIBERATE — remaining ambient use is the anonymous request-object GET; PresentationEndpoints.cs marks that route .AllowAnonymous(). The authenticated direct_post path was moved to PresentationDirectPostClient (BearerTokenHandler) under #1310.
