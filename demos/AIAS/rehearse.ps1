@@ -483,9 +483,20 @@ function Complete-SorchaWalletPresentation {
     $requestObjectUri = Get-QueryStringValue -Url $AuthorizationRequestUri -Name 'request_uri'
     if (-not $requestObjectUri) { throw "AuthorizationRequestUri carried no request_uri: $AuthorizationRequestUri" }
 
-    $requestObjectResp = Invoke-SorchaApi -Method GET -Uri $requestObjectUri -RawResponse
-    $jwtParts = $requestObjectResp.Content -split '\.'
-    if ($jwtParts.Count -lt 2) { throw "Request object at $requestObjectUri is not a JWT (unexpected shape)." }
+    # NOT -RawResponse: the endpoint serves 'application/oauth-authz-req+jwt'
+    # (PresentationEndpoints.cs), a content type Invoke-WebRequest does not classify as text, so
+    # -RawResponse's .Content comes back as a raw System.Byte[] rather than the JWT string — every
+    # byte then becomes its own "part" under -split, and the old '-lt 2' guard could never fire
+    # (byte-count is always >= 2). Invoke-RestMethod (the default, non-raw call) returns the body
+    # as a plain string for this content type, so fetch it that way instead.
+    $requestObjectJwt = Invoke-SorchaApi -Method GET -Uri $requestObjectUri
+    if ($requestObjectJwt -isnot [string]) {
+        throw "Request object at $requestObjectUri did not return a string body (got $($requestObjectJwt.GetType().FullName)) — cannot parse as a JWT."
+    }
+    $jwtParts = $requestObjectJwt -split '\.'
+    if ($jwtParts.Count -ne 3) {
+        throw "Request object at $requestObjectUri is not a 3-part JWT (got $($jwtParts.Count) segment(s) after splitting on '.'): '$requestObjectJwt'"
+    }
     $requestPayload = (ConvertFrom-Base64Url -Value $jwtParts[1]) | ConvertFrom-Json
     $nonce = $requestPayload.nonce
     $clientId = $requestPayload.client_id
@@ -707,6 +718,36 @@ function Get-CyberDecisionNotice {
     return $null
 }
 
+function Get-CyberDecisionReasonText {
+    # C-B fix (M2 delta review): read the reject route's x-decision-notice.reasons catalogue
+    # straight from the blueprint template rather than hardcoding a second copy of the wording here.
+    # The inbox Summary IS this text verbatim (BlueprintInboxWriter.cs sets Summary: reason), so a
+    # rehearsal assertion that hardcodes its own copy is the exact fixture/source-of-truth coupling
+    # that broke once already (commit 2cbf3347 reworded the 'cyber-fail' reason and this script's
+    # hardcoded snippet silently stopped matching). Walks every action's routes looking for the
+    # x-decision-notice block rather than assuming a fixed action/route index, so a routes reorder
+    # doesn't break this lookup.
+    param(
+        [Parameter(Mandatory)][string]$BlueprintPath,
+        [Parameter(Mandatory)][string]$ReasonCode
+    )
+    if (-not (Test-Path -LiteralPath $BlueprintPath)) {
+        throw "Get-CyberDecisionReasonText: blueprint template not found at '$BlueprintPath'."
+    }
+    $bp = Get-Content -LiteralPath $BlueprintPath -Raw | ConvertFrom-Json
+    foreach ($action in $bp.template.actions) {
+        if ($action.PSObject.Properties.Name -notcontains 'routes') { continue }
+        foreach ($route in $action.routes) {
+            if ($route.PSObject.Properties.Name -notcontains 'x-decision-notice') { continue }
+            $notice = $route.'x-decision-notice'
+            if ($notice.reasons -and ($notice.reasons.PSObject.Properties.Name -contains $ReasonCode)) {
+                return [string]$notice.reasons.$ReasonCode
+            }
+        }
+    }
+    throw "Get-CyberDecisionReasonText: reasonCode '$ReasonCode' not found in any route's x-decision-notice.reasons in '$BlueprintPath' — blueprint/rehearsal drift."
+}
+
 function Assert-CyberFixtureAnswersMatchBlueprint {
     # Guard against fixture/blueprint drift (M2 review finding). The fixture answer strings above
     # ARE the scoring keys: agent/cyber.checks.json's 'scored-questionnaire' check (ExternalCheckFactory)
@@ -866,10 +907,12 @@ try {
 }
 elseif ($Scenario -eq 'cyber') {
 
+$cyberBlueprintPath = Join-Path $PSScriptRoot "blueprints/aias-cyber-level.template.json"
+
 # Fail fast, before any live API call: the fixture answer strings above must match the blueprint's
 # enum values verbatim (see Assert-CyberFixtureAnswersMatchBlueprint for why this matters).
 Assert-CyberFixtureAnswersMatchBlueprint `
-    -BlueprintPath (Join-Path $PSScriptRoot "blueprints/aias-cyber-level.template.json") `
+    -BlueprintPath $cyberBlueprintPath `
     -Fixtures @($script:CyberAnswersPerfect, $script:CyberAnswersTrapped, $script:CyberAnswersDire)
 Write-WtSuccess "cyber fixture answers verified verbatim (case-sensitive) against the blueprint enums"
 
@@ -940,7 +983,7 @@ try {
     if ($delivered) { $failures += "CYBER FAIL: a CyberLevelCredential was delivered — none should be issued below the Bronze floor." }
     else { Write-WtSuccess "no CyberLevelCredential issued (correct)" }
 
-    $notice = Get-CyberDecisionNotice -Applicant $mint.Applicant -ExpectedSnippet "Fix the shared passwords"
+    $notice = Get-CyberDecisionNotice -Applicant $mint.Applicant -ExpectedSnippet (Get-CyberDecisionReasonText -BlueprintPath $cyberBlueprintPath -ReasonCode 'cyber-fail')
     if (-not $notice) { $failures += "CYBER FAIL: no inbox decision notice matched the 'cyber-fail' catalogue entry." }
     else { Write-WtSuccess "decision notice recorded: $($notice.summary)" }
 } catch {
@@ -963,7 +1006,7 @@ try {
     if ($delivered) { $failures += "CYBER NO PORTRAIT: a CyberLevelCredential was delivered — the no-portrait hard-reject must fire before scoring, even on a perfect card." }
     else { Write-WtSuccess "no CyberLevelCredential issued (correct — hard-rejected before scoring)" }
 
-    $notice = Get-CyberDecisionNotice -Applicant $mint.Applicant -ExpectedSnippet "without a face to put on it"
+    $notice = Get-CyberDecisionNotice -Applicant $mint.Applicant -ExpectedSnippet (Get-CyberDecisionReasonText -BlueprintPath $cyberBlueprintPath -ReasonCode 'no-portrait')
     if (-not $notice) { $failures += "CYBER NO PORTRAIT: no inbox decision notice matched the 'no-portrait' catalogue entry." }
     else { Write-WtSuccess "decision notice recorded: $($notice.summary)" }
 } catch {

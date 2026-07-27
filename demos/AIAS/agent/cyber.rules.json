@@ -16,7 +16,7 @@
     "payload": {
       "decision": "rejected",
       "reasonCode": "cyber-fail",
-      "verificationNotes": "AIAS admires the honesty, but cannot certify this. Shared passwords and ignored updates are doing you no favours."
+      "verificationNotes": "AIAS admires the honesty, but cannot certify this. Your overall cyber hygiene score falls short across the board — no single fix, just steadier habits all round."
     }
   },
   {
