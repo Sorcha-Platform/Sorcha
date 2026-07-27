@@ -474,6 +474,44 @@ Three-event on-register lifecycle for timebound evidence presentations. HAIP ext
 
 **Runtime source:** `src/Common/Sorcha.PresentationLifecycle.Abstractions/` (cross-consumer contract), `src/Services/Sorcha.Blueprint.Service/Services/Implementation/PresentationLifecycleService.cs`, `src/Services/Sorcha.Blueprint.Service/Storage/Presentations/` (pending store + rate limiter), `src/Services/Sorcha.Blueprint.Service/Endpoints/PresentationEndpoints.cs`, `src/Services/Sorcha.Haip.Service/Services/HaipPresentationConsumer.cs`, `src/Services/Sorcha.Haip.Service/Services/PresentationCallbackRelay.cs`. Spec: `specs/111-presentation-lifecycle/`.
 
+### Three traps this surface has already sprung (found by first live execution, 2026-07-27)
+
+All three were invisible to unit tests and to static review. Each sits at a seam where both sides are
+individually correct.
+
+**1. `/api/presentations/**` needs an API-Gateway route.** It did not have one until #1309. The whole
+surface — request object, `direct_post` callback, status poll, F127 disclosed-claims — was
+unreachable through the gateway; requests fell through to the `ui-static` catch-all. **The fastest
+diagnosis is one curl**: `GET /api/presentations/{any-guid}/status` must return Blueprint's **JSON**
+`{"error":"Presentation request not found or expired."}`. A **bodiless** 404 means the gateway is not
+routing it. The route carries **no `AuthorizationPolicy`** deliberately — these endpoints are
+mixed-auth (request-object GET and status are `.AllowAnonymous()`; the `sorcha-wallet` callback is
+`RequireConsumerAudience`), so an edge policy stricter than the endpoints breaks the anonymous ones.
+
+**2. Lifecycle transactions must be exempt from action-data schema validation** (#1312). A
+`PresentationInitiated` carries lifecycle metadata, never the gated action's payload — so applying
+that action's schema made **any `presentationSource: "SorchaWallet"` action whose schema declares a
+`required` array permanently unsealable** (`VAL_SCHEMA_004`). Now skipped via
+`TransactionTypeClassifier.IsLifecycleTransaction`. **Only** the action-data schema check is
+exempted; chain integrity, signatures, sender authorisation and the `VAL_BP_003` route-reachability
+check all still apply — and `PresentationInitiated` deliberately keeps its **full** reachability
+check, because it genuinely advances action N-1 → N (that is why `IsIntraActionLifecycleTerminal`
+excludes it; do not "tidy" the two predicates together).
+
+**3. `PendingPresentation`'s fields must round-trip through the store.**
+`RedisPendingPresentationStore` hand-maintains an explicit `HashEntry[]` write list and an explicit
+read reconstruction. When #1195/T032 added `Nonce`, `VerifierClientId`, `CredentialType` and
+`RequiredClaimNames`, neither hand-list was updated — the service wrote them, the consumer read them,
+Redis never carried them, and **every** SorchaWallet presentation declined with *"the pending state
+carries no nonce/credentialType (pre-T032 entry?)"*. The diagnostic's guess was wrong: no row had
+ever carried them. The in-memory store holds the object directly and round-trips fine, which is why
+tests stayed green. **Adding a field to `PendingPresentation` means editing both hand-lists and
+adding a round-trip test over the Redis implementation.**
+
+**Why none of this surfaced earlier:** the SorchaWallet consumer is the only path that rebuilds a
+`VerifierSession`, and it had never been exercised end to end. The only other SorchaWallet-gated
+blueprint (`aias-device-registration`) declares no `required` array, so trap 2 never fired for it.
+
 ### Seal-aware ordering (Feature 119)
 
 Two pre-existing chain-integrity races in the lifecycle outcome path are closed by **Feature 119**:
