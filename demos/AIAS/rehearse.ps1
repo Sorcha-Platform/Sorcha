@@ -467,11 +467,15 @@ function Complete-SorchaWalletPresentation {
     #    reads optionalClaims from the request today, so nothing discloses portrait unless this
     #    script does it deliberately.
     # 4. Build + sign a Key Binding JWT via the server-custody sign-kb endpoint.
-    # 5. POST the assembled vp_token to POST /api/presentations/callbacks/sorcha-wallet/{id}
-    #    (Sorcha.Blueprint.Service.Endpoints.PresentationEndpoints /
-    #    Services.Implementation.SorchaWalletPresentationConsumer), body shape
-    #    SorchaWalletVerificationPayload { vpToken } — the exact route + wire contract the
-    #    PWA's response_uri POST targets.
+    # 5. POST the assembled vp_token, wrapped in the OpenID4VP 1.0 object-keyed envelope, as
+    #    application/x-www-form-urlencoded vp_token + state to
+    #    POST /api/presentations/callbacks/sorcha-wallet/{id} (Sorcha.Blueprint.Service.Endpoints.
+    #    PresentationEndpoints / Services.Implementation.SorchaWalletPresentationConsumer) — the
+    #    EXACT wire shape Sorcha.Wallet.Pwa.Pages.Present.razor's ConfirmAsync/ConfirmMultiAsync
+    #    posts to this same response_uri (#1310: the callback now accepts this form-encoded
+    #    direct_post alongside the legacy JSON {vpToken} shape DeviceBindingService still uses for
+    #    bind-to-device; this rehearsal deliberately switched from that JSON shape to THIS one so
+    #    it certifies the wire path the phone actually uses, not a different mechanism).
     param(
         [Parameter(Mandatory)][object]$Applicant,
         [Parameter(Mandatory)][object]$Credential,
@@ -501,6 +505,14 @@ function Complete-SorchaWalletPresentation {
     $nonce = $requestPayload.nonce
     $clientId = $requestPayload.client_id
     if (-not $nonce -or -not $clientId) { throw "Request object payload for $PresentationRequestId is missing nonce/client_id." }
+
+    # The DCQL credential-query id the response envelope must be keyed by (Present.razor reads the
+    # SAME field off its parsed request — `_request.Query.Credentials[0].Id`). Single-ask requests
+    # (this flow) declare exactly one; fall back to the "credential" constant
+    # (SorchaWalletPresentationConsumer.ResolveDeclaredQuery's single-ask build) if the request
+    # object is somehow missing dcql_query — belt-and-braces, never expected in practice.
+    $queryId = $requestPayload.dcql_query.credentials[0].id
+    if (-not $queryId) { $queryId = 'credential' }
 
     # Export the applicant's own held credential — mirrors the proven
     # walkthroughs/TradeFinance/run.ps1 present-a-held-credential export pattern.
@@ -558,16 +570,22 @@ function Complete-SorchaWalletPresentation {
     $kbJwt = "$signingInput.$($signResp.signature)"
     $vpToken = $hashable + $kbJwt
 
-    # POST to the sorcha-wallet callback. Body shape matches
-    # Sorcha.Blueprint.Service.Services.Implementation.SorchaWalletVerificationPayload { vpToken }
-    # (case-insensitive property binding) — a bare compact SD-JWT+KB-JWT presentation string, NOT
-    # the OpenID4VP 1.0 object-keyed vp_token envelope Present.razor's form post builds; this
-    # callback route deserializes [FromBody] JsonElement straight into that record, which has no
-    # envelope concept. Consumer-tier auth: the applicant's own bearer token (RequireConsumerAudience).
+    # Wrap in the OpenID4VP 1.0 object-keyed vp_token envelope — byte-shape-identical to what
+    # Present.razor's DcqlVpToken wrapper builds ({ "<queryId>": ["<presentation>"] }) — then POST
+    # as application/x-www-form-urlencoded vp_token + state, exactly like the PWA's direct_post.
+    # Sorcha.Blueprint.Service.Endpoints.PresentationEndpoints unwraps this envelope server-side
+    # (#1310) and hands the sorcha-wallet consumer the bare compact string it expects. Consumer-tier
+    # auth: the applicant's own bearer token (RequireConsumerAudience).
+    $envelopeHash = @{}
+    $envelopeHash[$queryId] = @($vpToken)
+    $vpTokenEnvelope = $envelopeHash | ConvertTo-Json -Compress -Depth 5
+    $formBody = "vp_token=$([Uri]::EscapeDataString($vpTokenEnvelope))&state=$([Uri]::EscapeDataString($PresentationRequestId))"
+
     $callbackUri = "$api/presentations/callbacks/sorcha-wallet/$PresentationRequestId"
     $callbackResp = Invoke-SorchaApi -Method POST `
         -Uri $callbackUri `
-        -Body @{ vpToken = $vpToken } `
+        -Body $formBody `
+        -ContentType 'application/x-www-form-urlencoded' `
         -Headers $Applicant.Session.Headers
 
     if ($callbackResp.kind -ne 'Success') {

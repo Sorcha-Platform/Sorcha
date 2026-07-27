@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Linq;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage.Presentations;
 using Sorcha.ServiceDefaults;
+using Sorcha.Verifier.Engine.Dcql;
 
 namespace Sorcha.Blueprint.Service.Endpoints;
 
@@ -90,11 +93,15 @@ public static class PresentationEndpoints
                 "scanner; no instance, register, or consumer metadata is included. " +
                 "The register's transaction stream is the authoritative history.");
 
-        // Shared dispatch for both callback routes below.
+        // Shared dispatch for both callback routes below. verifierPayload is `object` rather than
+        // `JsonElement` because the sorcha-wallet route below constructs a typed
+        // SorchaWalletVerificationPayload directly for its form-encoded branch (IPresentationConsumer
+        // pattern-matches on the concrete type before falling back to JsonElement deserialization —
+        // see SorchaWalletPresentationConsumer.VerifyAsync).
         static async Task<IResult> DispatchCallbackAsync(
             string consumerName,
             Guid presentationRequestId,
-            JsonElement verifierPayload,
+            object verifierPayload,
             IPresentationLifecycleService lifecycle,
             CancellationToken ct)
         {
@@ -119,21 +126,121 @@ public static class PresentationEndpoints
         // is always the Citizen Wallet PWA holding a CONSUMER-tier token. The literal segment
         // outranks the {consumerName} template in route matching, so this route takes every
         // sorcha-wallet post; all other consumers stay on the service-tier route below.
-        app.MapPost("/callbacks/sorcha-wallet/{presentationRequestId:guid}", (
+        //
+        // #1310 — this route must accept BOTH wire shapes that legitimately land here:
+        //   - application/x-www-form-urlencoded vp_token + state — the spec-correct OpenID4VP 1.0
+        //     direct_post (RFC 6749 / OpenID4VP §8.2) that Sorcha.Wallet.Pwa's Present.razor posts
+        //     (ConfirmAsync:493-498, ConfirmMultiAsync:806-811). vp_token is the object-keyed DCQL
+        //     envelope ({ "<queryId>": ["<presentation>"] }) — unwrapped below to the bare compact
+        //     presentation string IVerifiablePresentationValidator.ValidateAsync expects.
+        //   - application/json { vpToken } — the Sorcha-internal shape DeviceBindingService.cs:418
+        //     posts for the bind-to-device flow, and demos/AIAS/rehearse.ps1 mirrors. Unchanged.
+        // Minimal APIs won't cleanly bind both [FromForm] and [FromBody] on one route, so this
+        // branches on Content-Type via HttpRequest rather than adding a second route — the
+        // response_uri already served to wallets in flight must keep resolving at this one path.
+        app.MapPost("/callbacks/sorcha-wallet/{presentationRequestId:guid}", async (
                 Guid presentationRequestId,
-                [FromBody] JsonElement verifierPayload,
+                HttpRequest httpRequest,
                 IPresentationLifecycleService lifecycle,
-                CancellationToken ct) => DispatchCallbackAsync(
+                CancellationToken ct) =>
+            {
+                object verifierPayload;
+
+                if (httpRequest.HasFormContentType)
+                {
+                    var form = await httpRequest.ReadFormAsync(ct);
+                    var state = form["state"].ToString();
+                    var vpToken = form["vp_token"].ToString();
+
+                    // Mirrors HAIP's HandleDirectPost (Sorcha.Haip.Service.Endpoints.VerifierEndpoints)
+                    // CSRF + presence checks (OID4VP §6.2) — named 400s, never a generic 500.
+                    if (string.IsNullOrEmpty(state))
+                    {
+                        return Results.BadRequest(new
+                        {
+                            error = "state_missing",
+                            error_description = "state parameter is required."
+                        });
+                    }
+                    if (state != presentationRequestId.ToString())
+                    {
+                        return Results.BadRequest(new
+                        {
+                            error = "state_mismatch",
+                            error_description = "state parameter does not match the request."
+                        });
+                    }
+                    if (string.IsNullOrWhiteSpace(vpToken))
+                    {
+                        return Results.BadRequest(new
+                        {
+                            error = "vp_token_missing",
+                            error_description = "vp_token is required."
+                        });
+                    }
+
+                    // Feature 181 — vp_token is the OpenID4VP 1.0 object-keyed envelope
+                    // ({ "<queryId>": ["<presentation>"] }), even for this single-ask flow
+                    // (Present.razor wraps via DcqlVpToken so the wire shape matches the
+                    // multi-credential path byte-for-byte). Unwrap to the bare compact
+                    // presentation string the sorcha-wallet consumer's VerifierSession-based
+                    // validator accepts — it verifies one SD-JWT+KB-JWT string, not an envelope.
+                    DcqlVpToken envelope;
+                    try
+                    {
+                        envelope = DcqlVpToken.Parse(vpToken);
+                    }
+                    catch (DcqlParseException ex)
+                    {
+                        return Results.BadRequest(new { error = ex.Code, error_description = ex.Message });
+                    }
+
+                    // Single-ask flow: exactly one query id declared, so take its first (only)
+                    // presentation. Multi-credential DCQL sets are out of scope for the sorcha-wallet
+                    // consumer today (VerifyAsync verifies one VerifierSession, not per-query) —
+                    // unchanged by this fix.
+                    var firstEntry = envelope.Presentations.First();
+                    verifierPayload = new Services.Implementation.SorchaWalletVerificationPayload
+                    {
+                        VpToken = firstEntry.Value[0]
+                    };
+                }
+                else
+                {
+                    // JSON branch — unchanged behaviour from the pre-#1310 [FromBody] JsonElement
+                    // binding: malformed JSON is a named 400, not an unhandled 500 (minimal APIs'
+                    // built-in [FromBody] failure response, reproduced manually now that this route
+                    // reads HttpRequest directly to support the form branch above).
+                    JsonDocument doc;
+                    try
+                    {
+                        doc = await JsonDocument.ParseAsync(httpRequest.Body, cancellationToken: ct);
+                    }
+                    catch (JsonException ex)
+                    {
+                        return Results.BadRequest(new { error = "invalid_json", error_description = ex.Message });
+                    }
+                    using (doc)
+                    {
+                        verifierPayload = doc.RootElement.Clone();
+                    }
+                }
+
+                return await DispatchCallbackAsync(
                     Services.Implementation.SorchaWalletPresentationConsumer.ConsumerNameValue,
-                    presentationRequestId, verifierPayload, lifecycle, ct))
+                    presentationRequestId, verifierPayload, lifecycle, ct);
+            })
             .WithName("SorchaWalletPresentationCallback")
             .WithSummary("Citizen-wallet direct_post target for a sorcha-wallet presentation outcome")
             .WithDescription(
-                "The Sorcha Wallet PWA posts its {vpToken} outcome payload here (this URI is the " +
-                "response_uri in the served request object). Consumer-tier: the citizen's own " +
-                "token authorises the post; verification happens server-side in the sorcha-wallet " +
-                "consumer against the session persisted at initiation. Idempotent by " +
-                "presentationRequestId; unknown/expired attempts return a named 400.")
+                "Accepts BOTH wire shapes (#1310): the spec-correct OpenID4VP 1.0 direct_post " +
+                "(application/x-www-form-urlencoded vp_token + state — what Sorcha.Wallet.Pwa's " +
+                "Present.razor actually posts, this URI being the response_uri in the served " +
+                "request object), and the Sorcha-internal application/json {vpToken} shape used by " +
+                "the bind-to-device flow. Consumer-tier: the citizen's own token authorises the " +
+                "post; verification happens server-side in the sorcha-wallet consumer against the " +
+                "session persisted at initiation. Idempotent by presentationRequestId; " +
+                "unknown/expired attempts, and a malformed/missing vp_token, return a named 400.")
             .RequireAuthorization(AuthorizationPolicies.RequireConsumerAudience);
 
         app.MapPost("/callbacks/{consumerName}/{presentationRequestId:guid}", (
