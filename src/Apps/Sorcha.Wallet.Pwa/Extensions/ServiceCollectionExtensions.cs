@@ -281,6 +281,16 @@ public static class ServiceCollectionExtensions
             .AddHttpMessageHandler<BearerTokenHandler>()
             .AddHttpMessageHandler<ServerClockHandler>();
 
+        // #1310/#1311 — Present.razor's own direct_post (single-ask ConfirmAsync +
+        // multi-credential ConfirmMultiAsync) must carry the SAME bearer chain as
+        // DeviceBindingService above; the ambient @inject HttpClient it used before carries no
+        // bearer (Program.cs:23) and 401s against the callback's RequireConsumerAudience gate.
+        services.AddHttpClient<Sorcha.Wallet.Pwa.Services.Presentation.IPresentationDirectPostClient,
+                               Sorcha.Wallet.Pwa.Services.Presentation.PresentationDirectPostClient>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+
         // Feature 128 — shared has-any-device probe. Drives the wallet PWA
         // pairing-takeover trigger (sub-PR A3) and the Sorcha Web nag-banner
         // trigger (sub-PR B). Registered Singleton so the cached value +

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Buffers.Text;
 using System.Linq;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
@@ -121,6 +122,40 @@ public static class PresentationEndpoints
             }
         }
 
+        // #1311 — recover the credential query id(s) the served request object declared, from the
+        // SAME IRequestObjectStore-backed JWT the wallet fetched via
+        // GET /{presentationRequestId}/request-object (above). The request object is unsigned
+        // (alg "none"; SorchaWalletPresentationConsumer.BuildUnsignedJwt), so its payload is the
+        // middle base64url segment — no signature verification needed to read it. Returns null
+        // (never throws) when the request object can't be resolved or parsed; callers treat that as
+        // "can't verify, don't block" rather than a hard failure.
+        static async Task<IReadOnlySet<string>?> TryResolveDeclaredQueryIdsAsync(
+            IRequestObjectStore requestObjects, Guid presentationRequestId, CancellationToken ct)
+        {
+            try
+            {
+                var jwt = await requestObjects.GetAsync(presentationRequestId, ct);
+                if (string.IsNullOrEmpty(jwt))
+                {
+                    return null;
+                }
+
+                var segments = jwt.Split('.');
+                if (segments.Length < 2)
+                {
+                    return null;
+                }
+
+                using var payloadDoc = JsonDocument.Parse(Base64Url.DecodeFromChars(segments[1]));
+                var declared = DcqlRequestParser.ParseFromRequestObjectPayload(payloadDoc.RootElement);
+                return new HashSet<string>(declared.Credentials.Select(c => c.Id), StringComparer.Ordinal);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         // #1195 Phase 2 (Task 6b, B) — the sorcha-wallet consumer's callback IS the wallet's
         // direct_post target (BuildInitiationAsync serves it as response_uri), and the poster
         // is always the Citizen Wallet PWA holding a CONSUMER-tier token. The literal segment
@@ -142,6 +177,7 @@ public static class PresentationEndpoints
                 Guid presentationRequestId,
                 HttpRequest httpRequest,
                 IPresentationLifecycleService lifecycle,
+                IRequestObjectStore requestObjects,
                 CancellationToken ct) =>
             {
                 object verifierPayload;
@@ -195,11 +231,46 @@ public static class PresentationEndpoints
                         return Results.BadRequest(new { error = ex.Code, error_description = ex.Message });
                     }
 
-                    // Single-ask flow: exactly one query id declared, so take its first (only)
-                    // presentation. Multi-credential DCQL sets are out of scope for the sorcha-wallet
-                    // consumer today (VerifyAsync verifies one VerifierSession, not per-query) —
-                    // unchanged by this fix.
+                    // #1311 — the sorcha-wallet consumer verifies exactly ONE VerifierSession, not
+                    // per-query (VerifyAsync takes a single vp_token). A multi-entry envelope
+                    // previously fell through to `.First()`, silently verifying one arbitrary entry
+                    // (Dictionary ordering is unspecified) and reporting Success for the whole ask —
+                    // a citizen presenting two credentials would be verified on one. F181 US2 makes
+                    // this reachable: an action with more than one credentialRequirements entry
+                    // sharing the SorchaWallet source gets a genuine multi-credential dcql_query
+                    // (PresentationLifecycleService.BuildDeclaredQueryJson). Reject loudly instead.
+                    if (envelope.Presentations.Count > 1)
+                    {
+                        return Results.BadRequest(new
+                        {
+                            error = "vp_token_multiple_entries",
+                            error_description =
+                                "This callback verifies a single credential query; vp_token carried " +
+                                $"{envelope.Presentations.Count} entries."
+                        });
+                    }
+
                     var firstEntry = envelope.Presentations.First();
+
+                    // Cross-check the envelope's key against the query id(s) the served request
+                    // object actually declared. Best-effort: the request object is stashed under the
+                    // same TTL as the pending-presentation row (PresentationLifecycleService), so a
+                    // legitimate in-flight attempt always resolves it; a miss here is treated as
+                    // "can't verify, don't block" rather than a hard failure — the pending-lookup
+                    // that follows is the authoritative existence check.
+                    var declaredQueryIds = await TryResolveDeclaredQueryIdsAsync(
+                        requestObjects, presentationRequestId, ct);
+                    if (declaredQueryIds is not null && !declaredQueryIds.Contains(firstEntry.Key))
+                    {
+                        return Results.BadRequest(new
+                        {
+                            error = DcqlErrorCodes.UnknownQueryId,
+                            error_description =
+                                $"vp_token entry '{firstEntry.Key}' does not match any credential " +
+                                "query id this request declared."
+                        });
+                    }
+
                     verifierPayload = new Services.Implementation.SorchaWalletVerificationPayload
                     {
                         VpToken = firstEntry.Value[0]
@@ -240,7 +311,12 @@ public static class PresentationEndpoints
                 "the bind-to-device flow. Consumer-tier: the citizen's own token authorises the " +
                 "post; verification happens server-side in the sorcha-wallet consumer against the " +
                 "session persisted at initiation. Idempotent by presentationRequestId; " +
-                "unknown/expired attempts, and a malformed/missing vp_token, return a named 400.")
+                "unknown/expired attempts, and a malformed/missing vp_token, return a named 400. " +
+                "(#1311) The form-encoded envelope must carry EXACTLY ONE query id — this consumer " +
+                "verifies a single VerifierSession, not per-query — and that id must match one the " +
+                "served request object actually declared; either violation returns a named 400 " +
+                "(vp_token_multiple_entries / DCQL_UNKNOWN_QUERY_ID) rather than silently verifying " +
+                "an arbitrary entry.")
             .RequireAuthorization(AuthorizationPolicies.RequireConsumerAudience);
 
         app.MapPost("/callbacks/{consumerName}/{presentationRequestId:guid}", (

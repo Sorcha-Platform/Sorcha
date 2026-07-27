@@ -6,10 +6,12 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage.Presentations;
 using Sorcha.PresentationLifecycle.Abstractions;
+using Sorcha.Verifier.Engine.Dcql;
 using Xunit;
 
 namespace Sorcha.Blueprint.Service.Tests.Integration;
@@ -189,6 +191,126 @@ public sealed class SorchaWalletCallbackContentTypeTests : IAsyncLifetime
         var body = await response.Content.ReadAsStringAsync();
         body.Should().Contain("state_mismatch");
         _consumer.CapturedPayloads.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// #1311 — the sorcha-wallet consumer verifies exactly ONE VerifierSession. A multi-entry
+    /// envelope previously fell through to <c>.First()</c> and silently verified one arbitrary entry
+    /// (Dictionary ordering is unspecified), reporting Success for the whole ask — a citizen
+    /// presenting two credentials would be verified on one. This must now be a loud, named refusal.
+    /// </summary>
+    [Fact]
+    public async Task Callback_FormEncoded_MultiEntryEnvelope_Returns400_NamedError_AndNeverReachesConsumer()
+    {
+        var requestId = await SeedPendingAsync();
+        var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["vp_token"] = """{"credential":["a~b"],"other":["c~d"]}""",
+            ["state"] = requestId.ToString()
+        });
+
+        var response = await _client.PostAsync(
+            $"/api/presentations/callbacks/sorcha-wallet/{requestId}", form);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("vp_token_multiple_entries");
+        _consumer.CapturedPayloads.Should().BeEmpty(
+            "a multi-entry envelope must never reach the consumer — verifying one arbitrary entry " +
+            "would silently pass a citizen who only satisfied one of two required credentials");
+    }
+
+    /// <summary>
+    /// #1311 — the envelope's key must match a query id the served request object actually
+    /// declared. Seeds <see cref="IRequestObjectStore"/> (the same store the anonymous
+    /// <c>GET /request-object</c> route reads) with a request object declaring query id
+    /// <c>"the-real-id"</c>, then posts an envelope keyed to a DIFFERENT id.
+    /// </summary>
+    [Fact]
+    public async Task Callback_FormEncoded_EnvelopeKeyNotDeclaredQueryId_ReturnsNamedDcqlError()
+    {
+        var requestId = await SeedPendingAsync();
+        var requestObjects = _factory.Services.GetRequiredService<IRequestObjectStore>();
+        await requestObjects.StoreAsync(
+            requestId, BuildUnsignedRequestObjectJwt("the-real-id"), TimeSpan.FromMinutes(10));
+
+        var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["vp_token"] = """{"some-other-id":["a~b"]}""",
+            ["state"] = requestId.ToString()
+        });
+
+        var response = await _client.PostAsync(
+            $"/api/presentations/callbacks/sorcha-wallet/{requestId}", form);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain(DcqlErrorCodes.UnknownQueryId);
+        _consumer.CapturedPayloads.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// Regression guard for the fix above: when the envelope's key DOES match the declared query
+    /// id, the callback must behave exactly as before (200, payload delivered unwrapped).
+    /// </summary>
+    [Fact]
+    public async Task Callback_FormEncoded_EnvelopeKeyMatchesDeclaredQueryId_StillSucceeds()
+    {
+        var requestId = await SeedPendingAsync();
+        var requestObjects = _factory.Services.GetRequiredService<IRequestObjectStore>();
+        await requestObjects.StoreAsync(
+            requestId, BuildUnsignedRequestObjectJwt("credential"), TimeSpan.FromMinutes(10));
+
+        const string compactPresentation = "issuer-jwt~disclosure~kb-jwt";
+        var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["vp_token"] = $$"""{"credential":["{{compactPresentation}}"]}""",
+            ["state"] = requestId.ToString()
+        });
+
+        var response = await _client.PostAsync(
+            $"/api/presentations/callbacks/sorcha-wallet/{requestId}", form);
+
+        var raw = await response.Content.ReadAsStringAsync();
+        response.StatusCode.Should().Be(HttpStatusCode.OK, $"body: {raw}");
+        _consumer.CapturedPayloads.Should().ContainSingle();
+        ((SorchaWalletVerificationPayload)_consumer.CapturedPayloads[0]).VpToken.Should().Be(compactPresentation);
+    }
+
+    /// <summary>
+    /// Builds the same UNSIGNED (<c>alg: none</c>) request-object JWT shape
+    /// <c>SorchaWalletPresentationConsumer.BuildUnsignedJwt</c> serves, carrying a minimal
+    /// single-credential <c>dcql_query</c> with the given query id.
+    /// </summary>
+    private static string BuildUnsignedRequestObjectJwt(string queryId)
+    {
+        static string B64Url(byte[] bytes) => Convert.ToBase64String(bytes)
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        var header = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object>
+        {
+            ["alg"] = "none",
+            ["typ"] = "oauth-authz-req+jwt"
+        });
+        var payload = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object>
+        {
+            ["dcql_query"] = new Dictionary<string, object>
+            {
+                ["credentials"] = new[]
+                {
+                    new Dictionary<string, object>
+                    {
+                        ["id"] = queryId,
+                        ["format"] = "dc+sd-jwt",
+                        ["meta"] = new Dictionary<string, object>
+                        {
+                            ["vct_values"] = new[] { "AssuredIdentityCredential" }
+                        }
+                    }
+                }
+            }
+        });
+        return $"{B64Url(header)}.{B64Url(payload)}.";
     }
 }
 

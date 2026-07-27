@@ -66,6 +66,10 @@ public sealed class PresentSelectionWiringTests : ComponentTestFixture
         Services.AddSingleton(_walletClient.Object);
         Services.AddSingleton(_holderKeys.Object);
         Services.AddScoped(_ => new HttpClient(_http));
+        // #1310/#1311 — ConfirmAsync/ConfirmMulti now post via the bearer-carrying typed client,
+        // not the ambient HttpClient. Backed by the SAME always-200 stub handler as above so the
+        // direct_post assertions in this file keep working unchanged.
+        Services.AddScoped<IPresentationDirectPostClient>(_ => new PresentationDirectPostClient(new HttpClient(_http)));
 
         // PasteOnly intake — the paste field renders immediately, no camera interop.
         var probe = new Mock<IDeviceProfileProbe>();

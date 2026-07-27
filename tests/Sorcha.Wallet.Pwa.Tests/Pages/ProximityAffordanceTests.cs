@@ -60,6 +60,10 @@ public sealed class ProximityAffordanceTests : ComponentTestFixture
         Services.AddSingleton<Microsoft.Extensions.Logging.ILogger<PresentPage>>(
             Microsoft.Extensions.Logging.Abstractions.NullLogger<PresentPage>.Instance);
         Services.AddScoped<System.Net.Http.HttpClient>(_ => new System.Net.Http.HttpClient());
+        // #1310/#1311 — satisfies Present.razor's IPresentationDirectPostClient injection; these
+        // tests never reach ConfirmAsync/ConfirmMulti's direct_post.
+        Services.AddScoped<IPresentationDirectPostClient>(_ =>
+            new PresentationDirectPostClient(new System.Net.Http.HttpClient()));
 
         var probe = new Mock<IDeviceProfileProbe>();
         probe.Setup(p => p.GetProfileAsync(It.IsAny<CancellationToken>()))
