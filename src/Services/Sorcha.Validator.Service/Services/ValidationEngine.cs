@@ -509,6 +509,26 @@ public class ValidationEngine : IValidationEngine
                     sw.Elapsed);
             }
 
+            // Skip schema validation for presentation lifecycle transactions (PresentationInitiated,
+            // PresentationOutcome, PresentationAbandoned). These carry lifecycle metadata — submitter
+            // wallet, requirements digest, presentation request id, consumer name — never the gated
+            // action's data payload, so the action's `required` schema properties can never be present.
+            // Applying the action's data schema to them is a validator bug, not a real violation:
+            // a SorchaWallet-gated action whose schema declares `required` fields would otherwise
+            // never seal (VAL_SCHEMA_004 on every PresentationInitiated). Chain integrity, signature
+            // verification, sender authorisation and route reachability all still apply — this skips
+            // ONLY the action-data-payload schema check.
+            if (TransactionTypeClassifier.IsLifecycleTransaction(transaction))
+            {
+                _logger.LogDebug(
+                    "Skipping schema validation for presentation lifecycle transaction {TransactionId}",
+                    transaction.TransactionId);
+                return ValidationEngineResult.Success(
+                    transaction.TransactionId,
+                    transaction.RegisterId,
+                    sw.Elapsed);
+            }
+
             // Get the blueprint
             var blueprint = await ResolveBlueprintAsync(transaction.BlueprintId!, ct);
             if (blueprint == null)

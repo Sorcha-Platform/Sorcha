@@ -823,6 +823,55 @@ public class ValidationEngineTests
     }
 
     [Fact]
+    public async Task ValidateSchemaAsync_PresentationInitiatedLifecycleTransaction_SkipsActionPayloadSchema()
+    {
+        // Arrange — a PresentationInitiated lifecycle transaction targets a gated action whose
+        // schema declares required properties (mirrors the live AIAS bug: a SorchaWallet-gated
+        // action's `required` array applied to lifecycle metadata that never carries those
+        // fields). The lifecycle payload here carries only submitter/requirements metadata —
+        // none of the action's required fields ("name", "amount") — and must NOT be evaluated
+        // against the action's data schema.
+        var tx = CreateValidTransaction(
+            payloadJson: """{"submitterWallet":"addr-1","requirementsDigest":"abc123","presentationRequestId":"req-1","consumer":"sorcha-wallet"}""");
+        tx.Metadata["Type"] = "PresentationInitiated";
+
+        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId!);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(blueprint);
+
+        // Act
+        var result = await _engine.ValidateSchemaAsync(tx);
+
+        // Assert
+        result.IsValid.Should().BeTrue();
+        _blueprintCacheMock.Verify(
+            c => c.GetBlueprintAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never,
+            "lifecycle transactions should short-circuit before any blueprint/schema lookup");
+    }
+
+    [Theory]
+    [InlineData("PresentationOutcome")]
+    [InlineData("PresentationAbandoned")]
+    public async Task ValidateSchemaAsync_OtherLifecycleTransactionTypes_SkipActionPayloadSchema(string lifecycleType)
+    {
+        // Arrange — the other two lifecycle transaction types (Feature 119) must also be
+        // exempted; the predicate (IsLifecycleTransaction) covers all three uniformly.
+        var tx = CreateValidTransaction(payloadJson: """{"outcome":"accepted"}""");
+        tx.Metadata["Type"] = lifecycleType;
+
+        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId!);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(blueprint);
+
+        // Act
+        var result = await _engine.ValidateSchemaAsync(tx);
+
+        // Assert
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task ValidateSchemaAsync_FieldLevelDisclosures_MergesAllViews_Passes()
     {
         // Arrange — a plaintext envelope carrying one disclosure-filtered view per
