@@ -398,6 +398,30 @@ function Get-QueryStringValue {
     return $null
 }
 
+function Resolve-DemoServerUri {
+    # PresentationLifecycleOptions.PublicBaseUrl is unset on every rehearsal target — its documented
+    # behaviour is "null => relative URIs" (Sorcha.Blueprint.Service.Configuration.
+    # PresentationLifecycleOptions), so SorchaWalletPresentationConsumer.BuildInitiationAsync emits
+    # BOTH request_uri and response_uri as relative paths, e.g.
+    # "/api/presentations/{id}/request-object". The real wallet (Sorcha.Wallet.Pwa) never notices:
+    # its HttpClient carries BaseAddress set to the gateway origin, so the relative URI resolves
+    # same-origin before the request leaves the client (see
+    # Sorcha.Wallet.Pwa.Services.Presentation.PresentationDirectPostClient's doc comment — it makes
+    # no assumption either way, relative or absolute, because HttpClient resolves both). PowerShell's
+    # Invoke-RestMethod/Invoke-WebRequest have no BaseAddress concept — a bare relative URI throws
+    # "Invalid URI: The hostname could not be parsed." This script is standing in for the wallet, so
+    # it must do the SAME resolution HttpClient.BaseAddress does. A deployment that DOES set
+    # PublicBaseUrl emits absolute URIs instead — those must pass through unchanged, so do not remove
+    # this helper because it looks like a no-op on such a deployment.
+    param(
+        [Parameter(Mandatory)][string]$Uri,
+        [Parameter(Mandatory)][string]$GatewayBase
+    )
+    $parsed = [System.Uri]$Uri
+    if ($parsed.IsAbsoluteUri) { return $Uri }
+    return ([System.Uri]::new([System.Uri]$GatewayBase, $Uri)).AbsoluteUri
+}
+
 function Select-SdJwtDisclosures {
     # Filter an SD-JWT's raw disclosure segments down to the ones whose claim name is approved,
     # returning the ORIGINAL base64url segment strings (never decoded/re-encoded — the presentation
@@ -486,6 +510,7 @@ function Complete-SorchaWalletPresentation {
 
     $requestObjectUri = Get-QueryStringValue -Url $AuthorizationRequestUri -Name 'request_uri'
     if (-not $requestObjectUri) { throw "AuthorizationRequestUri carried no request_uri: $AuthorizationRequestUri" }
+    $requestObjectUri = Resolve-DemoServerUri -Uri $requestObjectUri -GatewayBase $gateway
 
     # NOT -RawResponse: the endpoint serves 'application/oauth-authz-req+jwt'
     # (PresentationEndpoints.cs), a content type Invoke-WebRequest does not classify as text, so
@@ -505,6 +530,13 @@ function Complete-SorchaWalletPresentation {
     $nonce = $requestPayload.nonce
     $clientId = $requestPayload.client_id
     if (-not $nonce -or -not $clientId) { throw "Request object payload for $PresentationRequestId is missing nonce/client_id." }
+
+    # response_uri is the direct_post target the request object itself names (mirrors
+    # PresentationEngine.ParseAsync reading the same field) — read it from the server rather than
+    # rebuilding the callback path locally, and resolve it exactly like request_uri above.
+    $responseUri = $requestPayload.response_uri
+    if (-not $responseUri) { throw "Request object payload for $PresentationRequestId is missing response_uri." }
+    $responseUri = Resolve-DemoServerUri -Uri $responseUri -GatewayBase $gateway
 
     # The DCQL credential-query id the response envelope must be keyed by (Present.razor reads the
     # SAME field off its parsed request — `_request.Query.Credentials[0].Id`). Single-ask requests
@@ -581,9 +613,8 @@ function Complete-SorchaWalletPresentation {
     $vpTokenEnvelope = $envelopeHash | ConvertTo-Json -Compress -Depth 5
     $formBody = "vp_token=$([Uri]::EscapeDataString($vpTokenEnvelope))&state=$([Uri]::EscapeDataString($PresentationRequestId))"
 
-    $callbackUri = "$api/presentations/callbacks/sorcha-wallet/$PresentationRequestId"
     $callbackResp = Invoke-SorchaApi -Method POST `
-        -Uri $callbackUri `
+        -Uri $responseUri `
         -Body $formBody `
         -ContentType 'application/x-www-form-urlencoded' `
         -Headers $Applicant.Session.Headers
