@@ -373,6 +373,143 @@ public sealed class PresentSelectionWiringTests : ComponentTestFixture
             "the holder signer must round-trip the Task 6a sign-kb endpoint");
     }
 
+    // ─────────────── consent-default pre-tick (portrait-gate consent-sheet fix) ───────────────
+    //
+    // AIAS's cyber questionnaire requests `portrait` as an OPTIONAL claim deliberately — a required
+    // portrait would fail the OpenID4VP gate with a generic protocol error rather than reaching the
+    // agent, which rejects with a readable reason. Before this fix, EVERY optional toggle defaulted
+    // to false, so a citizen who didn't notice the checkbox disclosed no portrait and was hard-rejected
+    // by the agent — a failure that reads as "rejected me", not "missed a checkbox". The fix: pre-tick
+    // every optional claim the verifier actually requested (CredentialMatch.AvailableOptional is
+    // already that request's optional list intersected with what the credential can disclose), while
+    // preserving the citizen's ability to untick before confirming (the consent guarantee).
+
+    [Fact]
+    public async Task Consent_VerifierRequestedOptionalClaim_ArrivesPreSelected_AndIsDisclosedWithoutTouchingToggle()
+    {
+        var match = MakeMatchWithOptional("portrait");
+        _engine.Setup(e => e.Select(
+                It.IsAny<ParsedPresentationRequest>(), It.IsAny<IReadOnlyList<CachedCredential>>(),
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<PresentationSurface>()))
+            .Returns(Selected(match, PresentationSigningMode.Device));
+
+        IReadOnlyList<string>? approvedClaims = null;
+        SetupBuildVpTokenCapturingApproved(a => approvedClaims = a);
+        _deviceKey.Setup(d => d.SignAsync(It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+                  .ReturnsAsync(new byte[] { 7 });
+
+        var cut = await ContinueAsync();
+
+        // Pre-ticked BEFORE any interaction — visibly present, and already selected.
+        cut.WaitForAssertion(() =>
+            cut.Find("[data-testid=consent-optional-claim]").HasAttribute("checked").Should().BeTrue(
+                "a verifier-requested optional claim must arrive pre-selected, matching stated verifier intent"));
+
+        // Confirm WITHOUT touching the toggle — the pre-ticked default must actually be disclosed.
+        await cut.InvokeAsync(() => cut.Find("[data-testid=consent-confirm]").Click());
+
+        cut.WaitForAssertion(() =>
+            approvedClaims.Should().Contain("portrait",
+                "the pre-ticked default must be honoured end-to-end when the citizen confirms without changing anything"));
+    }
+
+    [Fact]
+    public async Task Consent_UntickPreselectedOptionalClaim_GenuinelyWithholdsItFromBuiltPresentation()
+    {
+        var match = MakeMatchWithOptional("portrait");
+        _engine.Setup(e => e.Select(
+                It.IsAny<ParsedPresentationRequest>(), It.IsAny<IReadOnlyList<CachedCredential>>(),
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<PresentationSurface>()))
+            .Returns(Selected(match, PresentationSigningMode.Device));
+
+        IReadOnlyList<string>? approvedClaims = null;
+        SetupBuildVpTokenCapturingApproved(a => approvedClaims = a);
+        _deviceKey.Setup(d => d.SignAsync(It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+                  .ReturnsAsync(new byte[] { 7 });
+
+        var cut = await ContinueAsync();
+        cut.WaitForAssertion(() => cut.FindAll("[data-testid=consent-optional-claim]").Should().ContainSingle());
+
+        // THE CONSENT GUARANTEE: a pre-ticked optional claim remains visible and freely untickable.
+        await cut.InvokeAsync(() => cut.Find("[data-testid=consent-optional-claim]").Change(false));
+
+        await cut.InvokeAsync(() => cut.Find("[data-testid=consent-confirm]").Click());
+
+        cut.WaitForAssertion(() =>
+        {
+            approvedClaims.Should().NotBeNull();
+            approvedClaims!.Should().Contain("givenName",
+                "the required claim is untouched by the optional toggle — required-claim handling is unchanged");
+            approvedClaims.Should().NotContain("portrait",
+                "unticking a pre-selected optional claim must genuinely withhold it from the built " +
+                "presentation — this is the consent guarantee, non-negotiable");
+        });
+    }
+
+    [Fact]
+    public async Task MultiConsent_VerifierRequestedOptionalClaim_ArrivesPreSelected()
+    {
+        // Feature 181 US2 path (BuildConsentView) — the same pre-tick default applies per query,
+        // since it drives from the same CredentialMatch.AvailableOptional.
+        const string AddressVct = "https://sorcha.dev/vc/address/v1";
+        var identityCred = new CachedCredential
+        {
+            Id = Guid.NewGuid(), Vct = Vct, RawSdJwt = "h.p.s", AvailableClaimNames = ["givenName", "portrait"],
+        };
+        var addressCred = new CachedCredential
+        {
+            Id = Guid.NewGuid(), Vct = AddressVct, RawSdJwt = "h.p.s", AvailableClaimNames = ["postcode"],
+        };
+
+        var request = MakeMultiRequest(("identity", Vct), ("address", AddressVct));
+        _engine.Setup(e => e.ParseAsync(
+                It.IsAny<string>(), It.IsAny<Func<string, CancellationToken, Task<string>>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(request);
+        _engine.Setup(e => e.MatchQuery(
+                It.IsAny<ParsedPresentationRequest>(), It.IsAny<IReadOnlyList<CachedCredential>>()))
+            .Returns(new DcqlMatchResult
+            {
+                Satisfiable = true,
+                PerQuery =
+                [
+                    new DcqlQueryMatch
+                    {
+                        QueryId = "identity", Vct = Vct,
+                        RequiredClaims = ["givenName"], OptionalClaims = ["portrait"],
+                        Candidates =
+                        [
+                            new CredentialMatch
+                            {
+                                Credential = identityCred, SatisfiedRequired = ["givenName"],
+                                AvailableOptional = ["portrait"],
+                            },
+                        ],
+                    },
+                    new DcqlQueryMatch
+                    {
+                        QueryId = "address", Vct = AddressVct,
+                        RequiredClaims = ["postcode"], OptionalClaims = [],
+                        Candidates =
+                        [
+                            new CredentialMatch
+                            {
+                                Credential = addressCred, SatisfiedRequired = ["postcode"], AvailableOptional = [],
+                            },
+                        ],
+                    },
+                ],
+                UnsatisfiedRequiredQueryIds = [],
+                SetChoices = [],
+            });
+
+        var cut = await ContinueAsync();
+
+        cut.WaitForAssertion(() =>
+            cut.Find("[data-testid=consent-optional-claim]").HasAttribute("checked").Should().BeTrue(
+                "the multi-credential consent view (Feature 181 US2) applies the same pre-tick default per query"));
+    }
+
     // ────────────────────────── helpers ──────────────────────────
 
     /// <summary>Render the page, paste a deep link, and press Continue.</summary>
@@ -396,6 +533,23 @@ public sealed class PresentSelectionWiringTests : ComponentTestFixture
                 JsonElement jwk, Func<byte[], CancellationToken, Task<byte[]>> signer, CancellationToken ct) =>
             {
                 onJwk(jwk);
+                await signer(new byte[] { 1, 2, 3 }, ct);
+                return "vp";
+            });
+    }
+
+    /// <summary>Mock BuildVpTokenAsync to capture the APPROVED CLAIMS actually passed through —
+    /// what the consent-default pre-tick fix needs proving (disclosed vs. withheld).</summary>
+    private void SetupBuildVpTokenCapturingApproved(Action<IReadOnlyList<string>> onApproved)
+    {
+        _engine.Setup(e => e.BuildVpTokenAsync(
+                It.IsAny<CredentialMatch>(), It.IsAny<IReadOnlyList<string>>(),
+                It.IsAny<ParsedPresentationRequest>(), It.IsAny<JsonElement>(),
+                It.IsAny<Func<byte[], CancellationToken, Task<byte[]>>>(), It.IsAny<CancellationToken>()))
+            .Returns(async (CredentialMatch _, IReadOnlyList<string> approved, ParsedPresentationRequest _,
+                JsonElement _, Func<byte[], CancellationToken, Task<byte[]>> signer, CancellationToken ct) =>
+            {
+                onApproved(approved);
                 await signer(new byte[] { 1, 2, 3 }, ct);
                 return "vp";
             });
@@ -434,6 +588,21 @@ public sealed class PresentSelectionWiringTests : ComponentTestFixture
         Credential = MakeCredential(),
         SatisfiedRequired = ["givenName"],
         AvailableOptional = [],
+    };
+
+    /// <summary>A match carrying one verifier-requested optional claim available on the credential —
+    /// i.e. exactly what <c>CredentialMatch.AvailableOptional</c> represents (request ∩ credential).</summary>
+    private static CredentialMatch MakeMatchWithOptional(string optionalClaim) => new()
+    {
+        Credential = new CachedCredential
+        {
+            Id = Guid.NewGuid(),
+            Vct = Vct,
+            RawSdJwt = "h.p.s",
+            AvailableClaimNames = ["givenName", optionalClaim],
+        },
+        SatisfiedRequired = ["givenName"],
+        AvailableOptional = [optionalClaim],
     };
 
     /// <summary>A two-query DCQL request so the page takes the multi-credential (F181 US2) path.</summary>

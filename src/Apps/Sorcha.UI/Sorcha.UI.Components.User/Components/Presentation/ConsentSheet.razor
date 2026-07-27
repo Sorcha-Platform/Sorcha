@@ -129,7 +129,8 @@
             <MudText Typo="Typo.body2" Class="mt-3 mb-1"><strong>Optional:</strong></MudText>
             @foreach (var name in Selected.AvailableOptional)
             {
-                <MudCheckBox T="bool" @bind-Value="OptionalToggles[name]" Label="@name" />
+                <MudCheckBox T="bool" @bind-Value="OptionalToggles[name]" Label="@name"
+                             data-testid="consent-optional-claim" />
             }
         }
 

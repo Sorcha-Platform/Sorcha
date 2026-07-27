@@ -439,8 +439,13 @@
 
     private void EnterConsent()
     {
+        // Pre-tick every optional claim the verifier actually requested (AvailableOptional is
+        // already the request's optional-claim list intersected with what this credential can
+        // disclose — never "every optional field the credential could ever expose"). Presenting
+        // it pre-selected matches the verifier's stated intent; the citizen can still untick
+        // anything before confirming (the consent guarantee — see ConsentSheet, unchanged).
         _optionalToggles = (_selected?.AvailableOptional ?? Array.Empty<string>())
-            .ToDictionary(n => n, _ => false);
+            .ToDictionary(n => n, _ => true);
         _phase = Phase.Consent;
     }
 
@@ -701,7 +706,8 @@
         {
             if (_selections.TryGetValue(id, out var sel))
             {
-                _queryOptionalToggles[id] = sel.AvailableOptional.ToDictionary(n => n, _ => false);
+                // Same pre-tick rationale as EnterConsent() above, applied per-query.
+                _queryOptionalToggles[id] = sel.AvailableOptional.ToDictionary(n => n, _ => true);
             }
         }
     }
