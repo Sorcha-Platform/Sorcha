@@ -138,6 +138,142 @@ public class RedisPendingPresentationStoreTests
     }
 
     [Fact]
+    public async Task StoreAsync_ThenGetAsync_RoundTripsT032VerifierSessionFields()
+    {
+        // Regression test for the #1195 Phase 2 / T032 field-drop bug: PendingPresentation
+        // grew Nonce/VerifierClientId/CredentialType/RequiredClaimNames, but the store's
+        // hand-maintained field list on the way into Redis and the hand-maintained
+        // reconstruction on the way out never picked them up. Every field was silently
+        // dropped, so every sorcha-wallet presentation declined in production ("the
+        // pending state carries no nonce/credentialType"). This drives the real
+        // StoreAsync path (capturing exactly what would be HSET to Redis) and feeds
+        // those captured fields back through HashGetAllAsync, so it fails the moment
+        // StoreAsync and GetAsync drift on any field again.
+        var id = Guid.NewGuid();
+        var pending = MakePending(id, validitySeconds: 300) with
+        {
+            Nonce = "nonce-abc123",
+            VerifierClientId = "did:sorcha:org:ws11qcouncil",
+            CredentialType = "urn:eu.europa.ec.eudi:pid:1",
+            RequiredClaimNames = new List<string> { "given_name", "birth_date" }
+        };
+
+        var capturedFields = await CaptureStoredFieldsAsync(pending);
+        SetupHashGetAllFromCapturedFields(capturedFields);
+
+        var result = await _store.GetAsync(id);
+
+        result.Should().NotBeNull();
+        result!.Nonce.Should().Be("nonce-abc123");
+        result.VerifierClientId.Should().Be("did:sorcha:org:ws11qcouncil");
+        result.CredentialType.Should().Be("urn:eu.europa.ec.eudi:pid:1");
+        result.RequiredClaimNames.Should().BeEquivalentTo(new[] { "given_name", "birth_date" });
+
+        // Pre-existing fields must still round-trip alongside the new ones.
+        result.InstanceId.Should().Be(pending.InstanceId);
+        result.SubmitterWallet.Should().Be(pending.SubmitterWallet);
+        result.CredentialRequirementDigestHex.Should().Be(pending.CredentialRequirementDigestHex);
+    }
+
+    [Fact]
+    public async Task StoreAsync_ThenGetAsync_RoundTripsRequiredClaimNamesNull()
+    {
+        var id = Guid.NewGuid();
+        var pending = MakePending(id, validitySeconds: 300) with
+        {
+            Nonce = "nonce-1",
+            VerifierClientId = "did:sorcha:org:x",
+            CredentialType = "urn:vct:x",
+            RequiredClaimNames = null
+        };
+
+        var capturedFields = await CaptureStoredFieldsAsync(pending);
+        SetupHashGetAllFromCapturedFields(capturedFields);
+
+        var result = await _store.GetAsync(id);
+
+        result.Should().NotBeNull();
+        result!.RequiredClaimNames.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task StoreAsync_ThenGetAsync_RoundTripsRequiredClaimNamesEmptyList_DistinctFromNull()
+    {
+        var id = Guid.NewGuid();
+        var pending = MakePending(id, validitySeconds: 300) with
+        {
+            Nonce = "nonce-2",
+            VerifierClientId = "did:sorcha:org:x",
+            CredentialType = "urn:vct:x",
+            RequiredClaimNames = new List<string>()
+        };
+
+        var capturedFields = await CaptureStoredFieldsAsync(pending);
+        SetupHashGetAllFromCapturedFields(capturedFields);
+
+        var result = await _store.GetAsync(id);
+
+        result.Should().NotBeNull();
+        result!.RequiredClaimNames.Should().NotBeNull();
+        result.RequiredClaimNames.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task StoreAsync_ThenGetAsync_RoundTripsRequiredClaimNamesPopulated()
+    {
+        var id = Guid.NewGuid();
+        var pending = MakePending(id, validitySeconds: 300) with
+        {
+            Nonce = "nonce-3",
+            VerifierClientId = "did:sorcha:org:x",
+            CredentialType = "urn:vct:x",
+            RequiredClaimNames = new List<string> { "family_name", "age_over_18", "document_number" }
+        };
+
+        var capturedFields = await CaptureStoredFieldsAsync(pending);
+        SetupHashGetAllFromCapturedFields(capturedFields);
+
+        var result = await _store.GetAsync(id);
+
+        result.Should().NotBeNull();
+        result!.RequiredClaimNames.Should().BeEquivalentTo(
+            new[] { "family_name", "age_over_18", "document_number" });
+    }
+
+    /// <summary>
+    /// Drives the real <c>StoreAsync</c> path and captures the <see cref="HashEntry"/>[]
+    /// it would HSET to Redis, so round-trip tests exercise the actual write logic
+    /// instead of hand-crafting the expected wire shape.
+    /// </summary>
+    private async Task<HashEntry[]> CaptureStoredFieldsAsync(PendingPresentation pending)
+    {
+        var mockBatch = new Mock<IBatch>();
+        _mockDb.Setup(d => d.CreateBatch(It.IsAny<object>())).Returns(mockBatch.Object);
+
+        HashEntry[]? captured = null;
+        mockBatch.Setup(b => b.HashSetAsync(
+                It.IsAny<RedisKey>(), It.IsAny<HashEntry[]>(),
+                It.IsAny<CommandFlags>()))
+            .Callback<RedisKey, HashEntry[], CommandFlags>((_, f, _) => captured = f)
+            .Returns(Task.CompletedTask);
+        mockBatch.Setup(b => b.KeyExpireAsync(
+                It.IsAny<RedisKey>(), It.IsAny<TimeSpan?>(),
+                It.IsAny<ExpireWhen>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+
+        await _store.StoreAsync(pending);
+
+        return captured!;
+    }
+
+    /// <summary>Wires HashGetAllAsync to return exactly the fields StoreAsync wrote.</summary>
+    private void SetupHashGetAllFromCapturedFields(HashEntry[] fields)
+    {
+        _mockDb.Setup(d => d.HashGetAllAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(fields);
+    }
+
+    [Fact]
     public async Task TryClaimOutcomeSentinelAsync_UsesSetNx()
     {
         var id = Guid.NewGuid();

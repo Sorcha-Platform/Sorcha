@@ -100,11 +100,15 @@ public sealed class SorchaWalletPresentationConsumer : IPresentationConsumer
         {
             if (string.IsNullOrEmpty(context.Nonce) || string.IsNullOrEmpty(context.CredentialType))
             {
-                // Legacy pending entry (pre-session-wiring) or a caller that never initiated —
-                // no nonce means nothing the KB-JWT could be verified against. Named decline.
+                // No nonce/credentialType on the pending state means nothing the KB-JWT could be
+                // verified against. Since T032 the store persists these on every entry, so this is
+                // NOT a legacy row — it means the pending presentation expired/was deleted before
+                // this callback arrived (TTL or post-outcome cleanup), or initiation never ran for
+                // this requestId. Named decline either way.
                 _logger.LogWarning(
                     "Sorcha-wallet consumer cannot rebuild a VerifierSession for requestId={RequestId}: " +
-                    "the pending state carries no nonce/credentialType (pre-T032 entry?).",
+                    "the pending state carries no nonce/credentialType (expired/deleted pending entry, " +
+                    "or initiation never ran for this requestId).",
                     context.PresentationRequestId);
                 return new PresentationOutcome(
                     Kind: PresentationOutcomeKind.Decline,
