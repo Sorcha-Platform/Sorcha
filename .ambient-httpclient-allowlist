@@ -15,6 +15,14 @@
 #   #1167       — F181 admin clients; ListAsync swallowed the 401 into an empty list.
 #   #1310       — the PWA's OpenID4VP direct_post.
 #
+# This gate is FORWARD-ONLY — the three incidents above are its motivation,
+# not proof it would have caught them. It scans `.razor` for ambient
+# `HttpClient` injection only, so it would not have caught #1167 (a typed
+# client missing its auth handler in a `.cs` registration) and would simply
+# have seeded #1310's Present.razor onto this allowlist rather than flagged
+# it, since the ambient injection predated the fix. What it does is stop the
+# *next* `.razor` ambient-injection site from landing unnoticed.
+#
 # Enforced by scripts/check-ambient-httpclient.ps1 (CI: ambient-httpclient-gate).
 #
 # THIS LIST IS A RATCHET — it may only shrink, never grow. Every entry below
@@ -27,7 +35,7 @@
 #
 # One relative path per line (forward slashes); trailing # comments allowed.
 
-src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/CredentialGate/CredentialGateComponent.razor   # UNAUDITED — not yet reviewed against #1311
+src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/CredentialGate/CredentialGateComponent.razor   # DELIBERATE — GET /api/presentations/{id}/disclosed-claims?token=...; that route is .AllowAnonymous() and the token itself is the credential (single-use, TTL-bound, bound to one presentationRequestId). Attaching the citizen's bearer here would add nothing — the endpoint deliberately authorises on the token, not the caller's session.
 src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/EnrolGate/EnrolGateComponent.razor              # DELIBERATE — GET /api/auth/whoami; a 401 IS the cold-start answer (not signed in). Attaching auth would turn an expected 401 into a redirect-to-login and break the F126 cold-start gate.
 src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Wallet/ReceiptProofCard.razor                   # UNAUDITED — not yet reviewed against #1311
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/BlueprintServiceAdmin.razor                          # UNAUDITED — not yet reviewed against #1311

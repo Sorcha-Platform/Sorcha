@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
 using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.Wallet.Pwa.Services;
@@ -37,6 +39,15 @@ namespace Sorcha.Wallet.Pwa.Services;
 /// authorise the wallet service to sign on the citizen's behalf. A leaked token is a leaked
 /// signing capability, not just a leaked session — which is why the same-origin gate exists
 /// unconditionally here rather than as an opt-in per typed client (#1310).
+///
+/// Cross-origin <em>redirects</em> are outside this handler's reach — it stamps the header
+/// before <see cref="SendAsync"/> hands off to the primary handler, so it never sees a 3xx
+/// hop the runtime follows on its behalf. Do NOT "helpfully" add redirect handling here to
+/// re-check the origin after a hop: the protection on that path already comes from the
+/// runtime, not this handler — the Fetch spec strips <c>Authorization</c> on a cross-origin
+/// redirect in the browser, and <see cref="System.Net.Http.SocketsHttpHandler"/> drops it
+/// when scheme, host or port change across a redirect. Adding bespoke redirect logic here
+/// would only create a second, weaker copy of a guarantee the platform already gives us.
 /// </remarks>
 public sealed class BearerTokenHandler : DelegatingHandler
 {
@@ -44,6 +55,14 @@ public sealed class BearerTokenHandler : DelegatingHandler
     private readonly HttpClient _refreshHttp;
     private readonly ISessionExpiryNotifier _sessionExpiry;
     private readonly Uri _gatewayOrigin;
+    private readonly ILogger<BearerTokenHandler>? _logger;
+
+    // Withheld-bearer origins we've already logged. A presentation flow retries the same
+    // foreign response_uri, so logging per-request would flood; this dedupes per distinct
+    // foreign origin for the lifetime of the handler instance instead. On the intended
+    // attack path (a malicious QR's response_uri), this single Warning line is also the
+    // detection signal an operator would search for.
+    private readonly ConcurrentDictionary<string, bool> _loggedForeignOrigins = new();
 
     /// <summary>Initialises a new instance.</summary>
     /// <param name="store">The token store that holds the citizen's JWT and refresh token.</param>
@@ -58,13 +77,20 @@ public sealed class BearerTokenHandler : DelegatingHandler
     /// resolved <see cref="HttpRequestMessage.RequestUri"/> shares this origin (scheme, host,
     /// port) — see the type-level remarks for why this exists.
     /// </param>
+    /// <param name="logger">
+    /// Optional logger used to record when the same-origin gate withholds the bearer token.
+    /// Nullable so existing test construction (which predates this parameter) keeps working —
+    /// production DI always supplies one.
+    /// </param>
     public BearerTokenHandler(
-        IAccessTokenStore store, HttpClient refreshHttp, ISessionExpiryNotifier sessionExpiry, Uri gatewayOrigin)
+        IAccessTokenStore store, HttpClient refreshHttp, ISessionExpiryNotifier sessionExpiry, Uri gatewayOrigin,
+        ILogger<BearerTokenHandler>? logger = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _refreshHttp = refreshHttp ?? throw new ArgumentNullException(nameof(refreshHttp));
         _sessionExpiry = sessionExpiry ?? throw new ArgumentNullException(nameof(sessionExpiry));
         _gatewayOrigin = gatewayOrigin ?? throw new ArgumentNullException(nameof(gatewayOrigin));
+        _logger = logger;
     }
 
     /// <inheritdoc />
@@ -75,6 +101,10 @@ public sealed class BearerTokenHandler : DelegatingHandler
         // before the handler pipeline runs, so by the time we see it here it is always absolute.
         // A cross-origin destination (an attacker-supplied response_uri) never sees the token.
         var sameOrigin = IsSameOrigin(request.RequestUri, _gatewayOrigin);
+        if (!sameOrigin)
+        {
+            LogWithheldBearerOnce(request.RequestUri);
+        }
 
         var record = sameOrigin ? await _store.GetAsync(ct) : null;
         if (record is not null && !string.IsNullOrEmpty(record.AccessToken))
@@ -154,6 +184,33 @@ public sealed class BearerTokenHandler : DelegatingHandler
            && Uri.Compare(
                   requestUri, origin, UriComponents.SchemeAndServer, UriFormat.UriEscaped,
                   StringComparison.OrdinalIgnoreCase) == 0;
+
+    /// <summary>
+    /// Logs a Warning the first time the same-origin gate withholds the bearer token for a
+    /// given foreign origin. Deduped per distinct origin (not per request) — a presentation
+    /// flow retries against the same foreign <c>response_uri</c>, so a per-request log would
+    /// flood, and the first occurrence is already the detection signal that matters. Only the
+    /// authority (scheme+host+port) is logged, never the path or query, so nothing from the
+    /// (potentially attacker-supplied) URI beyond the origin itself lands in logs.
+    /// </summary>
+    private void LogWithheldBearerOnce(Uri? requestUri)
+    {
+        if (_logger is null || requestUri is null || !requestUri.IsAbsoluteUri)
+        {
+            return;
+        }
+
+        var foreignOrigin = requestUri.GetLeftPart(UriPartial.Authority);
+        if (!_loggedForeignOrigins.TryAdd(foreignOrigin, true))
+        {
+            return;
+        }
+
+        var gatewayOrigin = _gatewayOrigin.GetLeftPart(UriPartial.Authority);
+        _logger.LogWarning(
+            "bearer withheld — {RequestOrigin} is not the gateway origin {GatewayOrigin}",
+            foreignOrigin, gatewayOrigin);
+    }
 
     private static async Task<HttpRequestMessage> CloneAsync(
         HttpRequestMessage req, CancellationToken ct)

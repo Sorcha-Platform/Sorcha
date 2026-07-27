@@ -29,9 +29,13 @@ public interface IPresentationDirectPostClient
 {
     /// <summary>
     /// POST the <c>direct_post</c> form body (<c>vp_token</c> + <c>state</c>) to the verifier's
-    /// <c>response_uri</c>. The URI is absolute — for the <c>sorcha-wallet</c> consumer it is a
-    /// same-gateway route, but the client makes no assumption about that; a third-party
-    /// verifier's <c>response_uri</c> would be posted exactly the same way.
+    /// <c>response_uri</c>. For the shipped configuration (<c>PresentationLifecycleOptions.PublicBaseUrl</c>
+    /// unset), the <c>sorcha-wallet</c> consumer's <c>response_uri</c> is emitted <em>relative</em> and
+    /// resolves same-origin against this client's <c>BaseAddress</c>; if <c>PublicBaseUrl</c> is ever
+    /// configured, it is absolute instead. The client makes no assumption either way — a third-party
+    /// verifier's <c>response_uri</c> would be posted exactly the same way —
+    /// <c>Sorcha.Wallet.Pwa.Services.BearerTokenHandler</c>'s same-origin gate is what decides
+    /// whether the bearer token accompanies it.
     /// </summary>
     Task<HttpResponseMessage> PostAsync(
         string responseUri, FormUrlEncodedContent form, CancellationToken ct = default);

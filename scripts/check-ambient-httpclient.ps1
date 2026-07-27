@@ -9,9 +9,23 @@
 # it would be circular DI (see Program.cs in each host). It carries NO
 # Authorization header. A component that injects it and calls an
 # authenticated endpoint gets a silent 401 — often rendered as a convincing
-# empty state rather than a visible error. This has caused three incidents:
-# #1165/#1166 (device pairing dead for every citizen), #1167 (F181 admin
-# clients silently emptied), #1310 (PWA OpenID4VP direct_post).
+# empty state rather than a visible error. #1165/#1166 (device pairing dead
+# for every citizen), #1167 (F181 admin clients silently emptied), and #1310
+# (PWA OpenID4VP direct_post) are the motivating incidents for this gate.
+#
+# This gate is FORWARD-ONLY — it is not a retroactive detector and would not
+# have caught any of the three incidents above as they actually occurred:
+# #1167 was a typed client registered without its auth handler in a .cs file
+# (this gate only scans .razor for ambient injection); #1310's Present.razor
+# already injected the ambient HttpClient before the fix and so would simply
+# have been seeded onto the allowlist rather than flagged. What this gate
+# does do is stop the *next* occurrence of the .razor ambient-injection shape
+# from landing unnoticed.
+#
+# Scope limit: this gate scans `.razor` files for ambient `HttpClient`
+# injection only. It does NOT cover a typed client registered in a `.cs` file
+# without its auth message handler wired in (the #1167 class of bug) — that
+# needs a different check (e.g. a source/DI-registration audit), not this one.
 #
 # To stop new ambient-client sites appearing unnoticed, this gate fails the
 # build when any .razor file outside the allowlist (.ambient-httpclient-allowlist)
