@@ -10,21 +10,34 @@ using Sorcha.UI.Core.Extensions;
 namespace Sorcha.Wallet.Pwa.Services;
 
 /// <summary>
-/// Attaches the wallet's bearer token to every outbound request. On a 401 for a
-/// request that carried a token, transparently refreshes once when a refresh
-/// token is held (POST /api/auth/token/refresh — re-mints the same tier per F136,
-/// so a Consumer refresh stays Consumer) and retries. Only a <em>failed refresh</em>
-/// is treated as session death: the token is cleared and
+/// Attaches the wallet's bearer token to every outbound request whose destination is the
+/// Sorcha gateway itself. On a 401 for a request that carried a token, transparently
+/// refreshes once when a refresh token is held (POST /api/auth/token/refresh — re-mints
+/// the same tier per F136, so a Consumer refresh stays Consumer) and retries. Only a
+/// <em>failed refresh</em> is treated as session death: the token is cleared and
 /// <see cref="ISessionExpiryNotifier.NotifyExpired"/> fires so the shell sends the
 /// citizen to /signin. A 401 with no refresh token is left untouched — it may be a
 /// per-endpoint authorization gap, not an expired session, so the token must NOT be
 /// cleared (doing so nukes good sessions); the auth gate handles true clock expiry.
 /// </summary>
+/// <remarks>
+/// Security fix (I1, #1310/#1311 follow-up): several typed clients wired with this handler
+/// (e.g. <see cref="Sorcha.Wallet.Pwa.Services.Presentation.IPresentationDirectPostClient"/>)
+/// POST to an absolute URI taken from untrusted input — the <c>response_uri</c> of an
+/// <c>openid4vp://</c> request the citizen scanned or pasted on <c>/present</c>. Before this
+/// fix the handler attached the citizen's bearer token unconditionally, so a malicious QR
+/// could harvest it via a third-party <c>response_uri</c>. The gate below is same-origin:
+/// the token is attached (and 401-refresh is attempted) ONLY when the outbound request's
+/// scheme+host+port matches the gateway's own origin. This lives in the shared handler —
+/// not in any one typed client — so no future caller of any client already wired with this
+/// handler can accidentally reintroduce the leak by reusing it against a third-party URI.
+/// </remarks>
 public sealed class BearerTokenHandler : DelegatingHandler
 {
     private readonly IAccessTokenStore _store;
     private readonly HttpClient _refreshHttp;
     private readonly ISessionExpiryNotifier _sessionExpiry;
+    private readonly Uri _gatewayOrigin;
 
     /// <summary>Initialises a new instance.</summary>
     /// <param name="store">The token store that holds the citizen's JWT and refresh token.</param>
@@ -34,18 +47,30 @@ public sealed class BearerTokenHandler : DelegatingHandler
     /// in its pipeline — adding it would create infinite recursion on 401.
     /// </param>
     /// <param name="sessionExpiry">Raised when an unrecoverable 401 clears the stored session.</param>
-    public BearerTokenHandler(IAccessTokenStore store, HttpClient refreshHttp, ISessionExpiryNotifier sessionExpiry)
+    /// <param name="gatewayOrigin">
+    /// The Sorcha gateway's own origin. The bearer token is attached only to requests whose
+    /// resolved <see cref="HttpRequestMessage.RequestUri"/> shares this origin (scheme, host,
+    /// port) — see the type-level remarks for why this exists.
+    /// </param>
+    public BearerTokenHandler(
+        IAccessTokenStore store, HttpClient refreshHttp, ISessionExpiryNotifier sessionExpiry, Uri gatewayOrigin)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _refreshHttp = refreshHttp ?? throw new ArgumentNullException(nameof(refreshHttp));
         _sessionExpiry = sessionExpiry ?? throw new ArgumentNullException(nameof(sessionExpiry));
+        _gatewayOrigin = gatewayOrigin ?? throw new ArgumentNullException(nameof(gatewayOrigin));
     }
 
     /// <inheritdoc />
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken ct)
     {
-        var record = await _store.GetAsync(ct);
+        // Same-origin gate: HttpClient resolves a relative RequestUri against its BaseAddress
+        // before the handler pipeline runs, so by the time we see it here it is always absolute.
+        // A cross-origin destination (an attacker-supplied response_uri) never sees the token.
+        var sameOrigin = IsSameOrigin(request.RequestUri, _gatewayOrigin);
+
+        var record = sameOrigin ? await _store.GetAsync(ct) : null;
         if (record is not null && !string.IsNullOrEmpty(record.AccessToken))
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", record.AccessToken);
 
@@ -53,7 +78,7 @@ public sealed class BearerTokenHandler : DelegatingHandler
 
         // Only react to auth failures on requests that actually carried a token —
         // an anonymous call getting a 401 has no session to refresh or clear.
-        if (response.StatusCode != HttpStatusCode.Unauthorized
+        if (!sameOrigin || response.StatusCode != HttpStatusCode.Unauthorized
             || record is null || string.IsNullOrEmpty(record.AccessToken))
         {
             return response;
@@ -111,6 +136,18 @@ public sealed class BearerTokenHandler : DelegatingHandler
         }
         catch { return null; }
     }
+
+    /// <summary>
+    /// True when <paramref name="requestUri"/> shares scheme, host and port with
+    /// <paramref name="origin"/>. A relative or null <paramref name="requestUri"/> is treated
+    /// as NOT same-origin — this handler must never assume trust in the absence of proof.
+    /// </summary>
+    private static bool IsSameOrigin(Uri? requestUri, Uri origin)
+        => requestUri is not null
+           && requestUri.IsAbsoluteUri
+           && Uri.Compare(
+                  requestUri, origin, UriComponents.SchemeAndServer, UriFormat.UriEscaped,
+                  StringComparison.OrdinalIgnoreCase) == 0;
 
     private static async Task<HttpRequestMessage> CloneAsync(
         HttpRequestMessage req, CancellationToken ct)

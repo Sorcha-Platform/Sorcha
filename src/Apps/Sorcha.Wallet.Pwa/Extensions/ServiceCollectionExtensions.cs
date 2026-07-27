@@ -200,7 +200,8 @@ public static class ServiceCollectionExtensions
         services.AddTransient(sp => new BearerTokenHandler(
             sp.GetRequiredService<IAccessTokenStore>(),
             sp.GetRequiredService<IHttpClientFactory>().CreateClient("AuthRefresh"),
-            sp.GetRequiredService<ISessionExpiryNotifier>()));
+            sp.GetRequiredService<ISessionExpiryNotifier>(),
+            new Uri(gatewayBaseAddress)));
 
         // Auth surface: a separate HttpClient that does NOT inject the bearer token
         // (so sign-in requests don't carry stale tokens). Still observes the server
