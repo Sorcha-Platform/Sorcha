@@ -473,6 +473,75 @@ function Get-CyberDecisionNotice {
     return $null
 }
 
+function Assert-CyberFixtureAnswersMatchBlueprint {
+    # Guard against fixture/blueprint drift (M2 review finding). The fixture answer strings above
+    # ARE the scoring keys: agent/cyber.checks.json's 'scored-questionnaire' check (ExternalCheckFactory)
+    # matches them against the presented value with StringComparer.Ordinal — case-sensitive,
+    # codepoint-exact. A fixture that drifts from the blueprint's own enum (even by a single
+    # letter's case) scores that field 0 SILENTLY: no exception, no warning, just a wrong total —
+    # and this rehearsal would go on to assert a band that is no longer what the fixture claims.
+    #
+    # This reads the blueprint template's OWN enum arrays at runtime rather than comparing against
+    # a second hardcoded list — a copy-vs-copy check proves nothing about drift from the real
+    # source of truth. Runs ONLY for the cyber scenario, before any live API call, so a drift
+    # aborts in milliseconds instead of burning minutes against a live deployment on assertions
+    # that were never going to mean what they claim.
+    param(
+        [Parameter(Mandatory)][string]$BlueprintPath,
+        [Parameter(Mandatory)][hashtable[]]$Fixtures
+    )
+    if (-not (Test-Path -LiteralPath $BlueprintPath)) {
+        throw "Assert-CyberFixtureAnswersMatchBlueprint: blueprint template not found at '$BlueprintPath' — cannot verify fixture answers against the enum source of truth."
+    }
+    $bp = Get-Content -LiteralPath $BlueprintPath -Raw | ConvertFrom-Json
+    $properties = $bp.template.actions[0].dataSchemas[0].properties
+
+    # Only the enum-typed (Selection) fields are scoring keys under case-sensitive match.
+    # sharedPasswordCount/streamingPasswordSharers are integer sliders, scored by range in
+    # cyber.checks.json — not applicable here.
+    $enumsByField = @{}
+    foreach ($fieldName in $properties.PSObject.Properties.Name) {
+        $prop = $properties.$fieldName
+        if ($prop.PSObject.Properties.Name -contains 'enum' -and $prop.enum) {
+            $enumsByField[$fieldName] = @($prop.enum)
+        }
+    }
+
+    $ordinal = [System.StringComparison]::Ordinal
+    $ordinalIgnoreCase = [System.StringComparison]::OrdinalIgnoreCase
+    $mismatches = @()
+    foreach ($fixture in $Fixtures) {
+        foreach ($fieldName in $fixture.Keys) {
+            $value = $fixture[$fieldName]
+            if ($value -isnot [string]) { continue }   # slider fields — not enum-scored
+
+            if (-not $enumsByField.ContainsKey($fieldName)) {
+                $mismatches += "field '$fieldName': fixture supplies a string answer ('$value') but the blueprint schema has no enum for this field at all — check the field name."
+                continue
+            }
+
+            $candidates = $enumsByField[$fieldName]
+            $exactHit = $false
+            foreach ($candidate in $candidates) {
+                if ([string]::Equals($candidate, $value, $ordinal)) { $exactHit = $true; break }
+            }
+            if ($exactHit) { continue }
+
+            # Case-insensitive match, to name the fix precisely for a 9am operator.
+            $closest = $candidates | Where-Object { [string]::Equals($_, $value, $ordinalIgnoreCase) } | Select-Object -First 1
+            if ($closest) {
+                $mismatches += "field '$fieldName': fixture answer '$value' does not match the blueprint enum verbatim (case/codepoint drift) — blueprint enum has '$closest'."
+            } else {
+                $mismatches += "field '$fieldName': fixture answer '$value' does not match ANY blueprint enum value. Blueprint enum for this field: '$($candidates -join "' | '")'."
+            }
+        }
+    }
+
+    if ($mismatches.Count -gt 0) {
+        throw "Cyber fixture/blueprint enum drift detected in rehearse.ps1 — the real scoring path (StringComparer.Ordinal) would NOT match these and would silently score 0:`n - $($mismatches -join "`n - ")"
+    }
+}
+
 if ($Scenario -eq 'identity') {
 
 # ---------------------------------------------------------------------------
@@ -562,6 +631,13 @@ try {
 
 }
 elseif ($Scenario -eq 'cyber') {
+
+# Fail fast, before any live API call: the fixture answer strings above must match the blueprint's
+# enum values verbatim (see Assert-CyberFixtureAnswersMatchBlueprint for why this matters).
+Assert-CyberFixtureAnswersMatchBlueprint `
+    -BlueprintPath (Join-Path $PSScriptRoot "blueprints/aias-cyber-level.template.json") `
+    -Fixtures @($script:CyberAnswersPerfect, $script:CyberAnswersTrapped, $script:CyberAnswersDire)
+Write-WtSuccess "cyber fixture answers verified verbatim (case-sensitive) against the blueprint enums"
 
 # ---------------------------------------------------------------------------
 # Cyber rehearsal 1/4 — PLATINUM (perfect card, portrait-bearing identity presented)
