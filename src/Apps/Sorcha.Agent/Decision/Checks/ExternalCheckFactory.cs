@@ -58,6 +58,24 @@ public static class ExternalCheckFactory
                 ParseOfflineMode(def.OfflineMode),
                 def.BaseUrl,
                 loggerFactory?.CreateLogger(typeof(PostcodeExistsCheck).FullName!)),
+            "scored-questionnaire" => new ScoredQuestionnaireCheck(
+                def.Name,
+                (def.Answers ?? [])
+                    .ToDictionary(
+                        kv => kv.Key,
+                        // Explicit ordinal comparer on the inner (per-question) table too — the CLR
+                        // default for Dictionary<string,int> happens to be ordinal, but relying on
+                        // that default silently would let a future refactor change the comparer
+                        // (e.g. a StringComparer.OrdinalIgnoreCase swap upstream) with no compile
+                        // error and every answer quietly scoring 0.
+                        kv => (IReadOnlyDictionary<string, int>)new Dictionary<string, int>(kv.Value, StringComparer.Ordinal),
+                        StringComparer.Ordinal),
+                (def.Ranges ?? [])
+                    .ToDictionary(
+                        kv => kv.Key,
+                        kv => (IReadOnlyList<ScoreRange>)kv.Value
+                            .Select(r => new ScoreRange(r.Max, r.Points)).ToArray(),
+                        StringComparer.Ordinal)),
             _ => throw new NotSupportedException($"Unknown check type '{def.Type}' for check '{def.Name}'")
         };
     }

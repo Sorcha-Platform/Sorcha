@@ -82,4 +82,12 @@ public static class VctUris
     /// <summary>Building permit credential v1.</summary>
     public const string BuildingPermitV1 =
         "https://sorcha.dev/vc/building-permit/v1";
+
+    /// <summary>
+    /// AIAS Cyber Level credential v1. Issued after the cyber-hygiene questionnaire is
+    /// scored into a band; carries the level plus the portrait carried forward from the
+    /// Assured Identity credential presented at the gate.
+    /// </summary>
+    public const string CyberLevelV1 =
+        "https://sorcha.dev/vc/cyber-level/v1";
 }

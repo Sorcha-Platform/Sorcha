@@ -45,6 +45,16 @@ public class CredentialRequirement
     public IEnumerable<ClaimConstraint>? RequiredClaims { get; set; }
 
     /// <summary>
+    /// Claims the verifier asks for but the holder may withhold. A credential that omits every
+    /// optional claim still satisfies the requirement — which is what lets a workflow accept the
+    /// presentation and then make its own decision about a missing claim, rather than failing at
+    /// the OID4VP gate with a generic protocol error.
+    /// </summary>
+    [JsonPropertyName("optionalClaims")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IEnumerable<ClaimConstraint>? OptionalClaims { get; set; }
+
+    /// <summary>
     /// Policy for handling revocation check failures. Defaults to FailClosed.
     /// </summary>
     [JsonPropertyName("revocationCheckPolicy")]

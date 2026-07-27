@@ -200,7 +200,9 @@ public static class ServiceCollectionExtensions
         services.AddTransient(sp => new BearerTokenHandler(
             sp.GetRequiredService<IAccessTokenStore>(),
             sp.GetRequiredService<IHttpClientFactory>().CreateClient("AuthRefresh"),
-            sp.GetRequiredService<ISessionExpiryNotifier>()));
+            sp.GetRequiredService<ISessionExpiryNotifier>(),
+            new Uri(gatewayBaseAddress),
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<BearerTokenHandler>>()));
 
         // Auth surface: a separate HttpClient that does NOT inject the bearer token
         // (so sign-in requests don't carry stale tokens). Still observes the server
@@ -277,6 +279,16 @@ public static class ServiceCollectionExtensions
         // bearer chain for the direct_post + request-object fetch.
         services.AddSingleton(new DeviceBindingOptions());
         services.AddHttpClient<IDeviceBindingService, DeviceBindingService>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+
+        // #1310/#1311 — Present.razor's own direct_post (single-ask ConfirmAsync +
+        // multi-credential ConfirmMultiAsync) must carry the SAME bearer chain as
+        // DeviceBindingService above; the ambient @inject HttpClient it used before carries no
+        // bearer (Program.cs:23) and 401s against the callback's RequireConsumerAudience gate.
+        services.AddHttpClient<Sorcha.Wallet.Pwa.Services.Presentation.IPresentationDirectPostClient,
+                               Sorcha.Wallet.Pwa.Services.Presentation.PresentationDirectPostClient>(c =>
             c.BaseAddress = new Uri(gatewayBaseAddress))
             .AddHttpMessageHandler<BearerTokenHandler>()
             .AddHttpMessageHandler<ServerClockHandler>();

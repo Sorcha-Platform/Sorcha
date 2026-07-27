@@ -36,6 +36,7 @@
 @inject ICitizenWalletClient WalletClient
 @inject IHolderKeyClient HolderKeys
 @inject HttpClient Http
+@inject IPresentationDirectPostClient DirectPost
 @inject IJSRuntime JS
 @inject IPresentationLog PresentationLog
 @inject IServiceProvider Services
@@ -438,8 +439,13 @@
 
     private void EnterConsent()
     {
+        // Pre-tick every optional claim the verifier actually requested (AvailableOptional is
+        // already the request's optional-claim list intersected with what this credential can
+        // disclose — never "every optional field the credential could ever expose"). Presenting
+        // it pre-selected matches the verifier's stated intent; the citizen can still untick
+        // anything before confirming (the consent guarantee — see ConsentSheet, unchanged).
         _optionalToggles = (_selected?.AvailableOptional ?? Array.Empty<string>())
-            .ToDictionary(n => n, _ => false);
+            .ToDictionary(n => n, _ => true);
         _phase = Phase.Consent;
     }
 
@@ -495,7 +501,10 @@
                 ["vp_token"] = vpTokenEnvelope,
                 ["state"] = _request.State,
             });
-            var resp = await Http.PostAsync(_request.ResponseUri, form);
+            // #1310/#1311 — the callback is [Authorize(RequireConsumerAudience)]; this MUST go
+            // through the bearer-carrying typed client, never the ambient Http (that has no
+            // bearer and 401s). Http itself stays for the anonymous request-object GET above.
+            var resp = await DirectPost.PostAsync(_request.ResponseUri, form);
             if (resp.IsSuccessStatusCode)
             {
                 _responseStatus = "ok";
@@ -697,7 +706,8 @@
         {
             if (_selections.TryGetValue(id, out var sel))
             {
-                _queryOptionalToggles[id] = sel.AvailableOptional.ToDictionary(n => n, _ => false);
+                // Same pre-tick rationale as EnterConsent() above, applied per-query.
+                _queryOptionalToggles[id] = sel.AvailableOptional.ToDictionary(n => n, _ => true);
             }
         }
     }
@@ -808,7 +818,8 @@
                 ["vp_token"] = vpTokenEnvelope,
                 ["state"] = _request.State,
             });
-            var resp = await Http.PostAsync(_request.ResponseUri, form);
+            // #1310/#1311 — same bearer-carrying typed client as ConfirmAsync above.
+            var resp = await DirectPost.PostAsync(_request.ResponseUri, form);
             if (resp.IsSuccessStatusCode)
             {
                 _responseStatus = "ok";

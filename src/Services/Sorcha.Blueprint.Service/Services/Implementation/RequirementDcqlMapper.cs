@@ -52,7 +52,8 @@ public static class RequirementDcqlMapper
             used.Add(id);
             idByRequirement.Add((req, id));
             var requiredClaims = req.RequiredClaims?.Select(c => c.ClaimName).ToList() ?? [];
-            asks.Add(DcqlCredentialAsk.SdJwt(id, req.Type, requiredClaims));
+            var optionalClaims = req.OptionalClaims?.Select(c => c.ClaimName).ToList();
+            asks.Add(DcqlCredentialAsk.SdJwt(id, req.Type, requiredClaims, optionalClaims));
         }
 
         // No alternative groups anywhere ⇒ plain AND (no credential_sets).

@@ -1,0 +1,62 @@
+[
+  {
+    "actionName": "AIAS scores your answers",
+    "condition": { "==": [{ "var": "checks.portraitPresent" }, false] },
+    "decision": "submit",
+    "payload": {
+      "decision": "rejected",
+      "reasonCode": "no-portrait",
+      "verificationNotes": "AIAS cannot issue a Cyber Level without a face to put on it. Your Assured Identity arrived without a portrait."
+    }
+  },
+  {
+    "actionName": "AIAS scores your answers",
+    "condition": { "<": [{ "var": "checks.cyberScore" }, 12] },
+    "decision": "submit",
+    "payload": {
+      "decision": "rejected",
+      "reasonCode": "cyber-fail",
+      "verificationNotes": "AIAS admires the honesty, but cannot certify this. Your overall cyber hygiene score falls short across the board — no single fix, just steadier habits all round."
+    }
+  },
+  {
+    "actionName": "AIAS scores your answers",
+    "condition": { "<": [{ "var": "checks.cyberScore" }, 16] },
+    "decision": "submit",
+    "payload": {
+      "decision": "approved",
+      "level": "Bronze",
+      "verificationNotes": "Bronze. The basics are there. The rest is habit."
+    }
+  },
+  {
+    "actionName": "AIAS scores your answers",
+    "condition": { "<": [{ "var": "checks.cyberScore" }, 21] },
+    "decision": "submit",
+    "payload": {
+      "decision": "approved",
+      "level": "Silver",
+      "verificationNotes": "Silver. Solid habits, with one or two things you already know about."
+    }
+  },
+  {
+    "actionName": "AIAS scores your answers",
+    "condition": { "<": [{ "var": "checks.cyberScore" }, 24] },
+    "decision": "submit",
+    "payload": {
+      "decision": "approved",
+      "level": "Gold",
+      "verificationNotes": "Gold. Genuinely well looked after. AIAS is quietly impressed."
+    }
+  },
+  {
+    "actionName": "AIAS scores your answers",
+    "condition": { "==": [1, 1] },
+    "decision": "submit",
+    "payload": {
+      "decision": "approved",
+      "level": "Platinum",
+      "verificationNotes": "Platinum. A perfect card. AIAS has notes for everyone else."
+    }
+  }
+]

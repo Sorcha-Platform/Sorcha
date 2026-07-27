@@ -1,0 +1,66 @@
+{
+  "$comment": "AIAS Cyber-mode external checks (M2). Answer keys MUST match the enum values in demos/AIAS/blueprints/aias-cyber-level.template.json verbatim — the Selection control has no separate display labels, so the answer sentence IS the scoring key. Range entries are evaluated top-down with 'max' as an INCLUSIVE upper bound; the entry with no 'max' is the catch-all.",
+  "checks": [
+    {
+      "name": "portraitPresent",
+      "type": "field-present",
+      "field": "/presentedCredential/portrait"
+    },
+    {
+      "name": "cyberScore",
+      "type": "scored-questionnaire",
+      "answers": {
+        "/passwordStorage": {
+          "A password manager": 3,
+          "Saved in my browser": 2,
+          "A notebook by the desk": 1,
+          "The same one everywhere, and hope": 0
+        },
+        "/emailSecondStep": {
+          "Yes — an app or a hardware key": 3,
+          "Yes — a code by text message": 2,
+          "Only when it nags me": 1,
+          "No, just the password": 0
+        },
+        "/passwordChangeHabit": {
+          "Only when I think one's been exposed": 3,
+          "Once a year, whether it needs it or not": 2,
+          "Every 30 days, like clockwork": 1,
+          "Change them?": 0
+        },
+        "/phoneUpdates": {
+          "It installs automatically": 3,
+          "I install it within a few days": 2,
+          "I click 'remind me later', repeatedly": 1,
+          "There's a red badge I've been ignoring since spring": 0
+        },
+        "/suspiciousEmail": {
+          "Ignore the email and open the bank's app myself": 3,
+          "Check the sender address carefully, then decide": 1,
+          "Hover the link to see where it goes, then decide": 1,
+          "Click it — it looked legitimate": 0
+        },
+        "/laptopLoss": {
+          "Nothing — it backs up automatically": 3,
+          "A day's work at most": 2,
+          "I copied things to a USB stick once": 1,
+          "Everything. Please don't say that.": 0
+        }
+      },
+      "ranges": {
+        "/sharedPasswordCount": [
+          { "max": 0, "points": 3 },
+          { "max": 2, "points": 2 },
+          { "max": 5, "points": 1 },
+          { "points": 0 }
+        ],
+        "/streamingPasswordSharers": [
+          { "max": 1, "points": 3 },
+          { "max": 3, "points": 2 },
+          { "max": 6, "points": 1 },
+          { "points": 0 }
+        ]
+      }
+    }
+  ]
+}

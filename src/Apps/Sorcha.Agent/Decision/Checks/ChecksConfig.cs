@@ -41,7 +41,10 @@ public sealed record CheckDefinition
     /// <summary>Stable fact key the rules reference (e.g. <c>postcodeExists</c>).</summary>
     public required string Name { get; init; }
 
-    /// <summary>Discriminator: <c>email-verified</c>, <c>field-present</c>, <c>uk-postcode</c>, or <c>profanity</c>.</summary>
+    /// <summary>
+    /// Discriminator: <c>email-verified</c>, <c>field-present</c>, <c>uk-postcode</c>,
+    /// <c>profanity</c>, or <c>scored-questionnaire</c>.
+    /// </summary>
     public required string Type { get; init; }
 
     /// <summary>JSON-Pointer to a single field (<c>field-present</c>, <c>email-verified</c>).</summary>
@@ -70,4 +73,27 @@ public sealed record CheckDefinition
 
     /// <summary>Path (relative to the config file) of a newline-delimited wordlist file (<c>profanity</c>).</summary>
     public string? WordlistFile { get; init; }
+
+    /// <summary>
+    /// JSON-Pointer → (exact answer string → points), for <c>scored-questionnaire</c>. The answer
+    /// keys must match the blueprint's <c>enum</c> values verbatim — the answer sentence IS the
+    /// scoring key, because the Selection control has no separate display labels.
+    /// </summary>
+    public Dictionary<string, Dictionary<string, int>>? Answers { get; init; }
+
+    /// <summary>
+    /// JSON-Pointer → ordered bands, for <c>scored-questionnaire</c>. Evaluated top-down with
+    /// <c>max</c> as an INCLUSIVE upper bound; an entry with no <c>max</c> is the catch-all.
+    /// </summary>
+    public Dictionary<string, RangeDefinition[]>? Ranges { get; init; }
+}
+
+/// <summary>One band in a <c>scored-questionnaire</c> range: inclusive upper bound plus points.</summary>
+public sealed record RangeDefinition
+{
+    /// <summary>Inclusive upper bound. Null makes this the catch-all (must be last).</summary>
+    public int? Max { get; init; }
+
+    /// <summary>Points awarded when this band matches.</summary>
+    public int Points { get; init; }
 }

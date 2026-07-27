@@ -37,7 +37,19 @@ public sealed class ExternalCheckRunner : IExternalCheckRunner
         var merged = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (var result in results)
         {
-            merged[result.Name] = result.Value;
+            // A numeric check merges its number; everything else merges its boolean. This is an
+            // EITHER/OR per fact key, not an either-and-both: when Numeric is set, Value is NOT
+            // separately reachable from rules — a check that sets both a meaningful boolean and a
+            // number loses the boolean entirely. That's intentional (one fact key per check name),
+            // not a defect; see the Value/Numeric XML docs on ExternalCheckResult. A check that needs
+            // both visible to rules must expose them as two distinct fact keys.
+            //
+            // A check that faults is contained by SafeEvaluateAsync into a boolean false (Numeric
+            // null), which JSON Logic coerces to 0 — so a broken scorer lands in the lowest band
+            // rather than passing.
+            merged[result.Name] = result.Numeric.HasValue
+                ? result.Numeric.Value
+                : result.Value;
             if (result.Detail is not null)
                 merged[$"{result.Name}Detail"] = result.Detail;
         }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Json.Logic;
@@ -181,6 +182,18 @@ public class RulesDecisionEngine : IDecisionEngine
                 bool b => JsonValue.Create(b),
                 string s => JsonValue.Create(s),
                 null => null,
+                // Numeric checks (ExternalCheckResult.Numeric, e.g. a questionnaire score out of 24) must
+                // reach Json.Logic as a genuine JSON number, not a stringified one — a boxed double used
+                // to fall into the catch-all below and come out as JsonValueKind.String. That "18" vs 18
+                // distinction is invisible to loose operators ("<", ">=", "+") because Json.Logic coerces
+                // them back to a number, but it silently breaks any type-sensitive comparison ("===", "in")
+                // — the exact defect a review caught (see RulesDecisionEngineChecksTests
+                // .Decide_PerfectNumericScore_MatchesExactTierRule_NotGenericApproveBand). Handled via
+                // IConvertible rather than "double only" so an int/long/decimal fact from any future
+                // IExternalCheckRunner implementation (the interface only promises object?, not double)
+                // hits the same safe path instead of silently re-opening this hole under a different CLR
+                // numeric type.
+                IConvertible c when IsNumeric(c) => JsonValue.Create(Convert.ToDouble(c, CultureInfo.InvariantCulture)),
                 _ => JsonValue.Create(value.ToString())
             };
         }
@@ -193,6 +206,21 @@ public class RulesDecisionEngine : IDecisionEngine
 
         return obj;
     }
+
+    /// <summary>
+    /// True for the CLR numeric <see cref="IConvertible"/> type codes (excludes <c>bool</c>, <c>string</c>,
+    /// <c>char</c>, <c>DateTime</c>, etc., which also implement <see cref="IConvertible"/> but are not
+    /// numbers and must not be routed through <see cref="Convert.ToDouble(object, IFormatProvider)"/>).
+    /// </summary>
+    private static bool IsNumeric(IConvertible value) => value.GetTypeCode() switch
+    {
+        TypeCode.SByte or TypeCode.Byte
+            or TypeCode.Int16 or TypeCode.UInt16
+            or TypeCode.Int32 or TypeCode.UInt32
+            or TypeCode.Int64 or TypeCode.UInt64
+            or TypeCode.Single or TypeCode.Double or TypeCode.Decimal => true,
+        _ => false
+    };
 
     /// <summary>
     /// True when the action carries no usable disclosed prior-action payload — null, a non-object, or an

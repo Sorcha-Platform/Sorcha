@@ -53,6 +53,11 @@ public sealed class PresentIntakeLayoutTests : ComponentTestFixture
             Microsoft.Extensions.Logging.Abstractions.NullLogger<PresentPage>.Instance);
         Services.AddScoped<System.Net.Http.HttpClient>(_ =>
             new System.Net.Http.HttpClient());
+        // #1310/#1311 — Present.razor now injects IPresentationDirectPostClient for the
+        // outcome POST; these tests never reach ConfirmAsync/ConfirmMulti, so a plain instance
+        // over a fresh HttpClient satisfies DI without needing network behaviour.
+        Services.AddScoped<IPresentationDirectPostClient>(_ =>
+            new PresentationDirectPostClient(new System.Net.Http.HttpClient()));
     }
 
     private Mock<IDeviceProfileProbe> SetupProbe(DeviceFormFactor factor, CameraAvailability camera)

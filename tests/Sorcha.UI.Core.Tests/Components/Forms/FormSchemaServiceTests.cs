@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using FluentAssertions;
+using Sorcha.Blueprint.Models;
 using Sorcha.UI.Core.Services.Forms;
 using Xunit;
 
@@ -819,5 +820,48 @@ public class FormSchemaServiceTests
 
         errors.Should().ContainKey("/title");
         errors["/title"].Should().Contain(e => e.Contains("required"));
+    }
+
+    [Fact]
+    public void AutoGenerateForm_IntegerWithXSlider_InfersSliderControl()
+    {
+        var schema = JsonDocument.Parse("""
+            {"type":"object","properties":{
+              "sharedPasswordCount":{"type":"integer","minimum":0,"maximum":10,
+                "x-slider":{"step":1,"minLabel":"None","maxLabel":"10 or more"}}}}
+            """);
+
+        var root = _sut.AutoGenerateForm([schema]);
+
+        root.Elements.Should().ContainSingle()
+            .Which.ControlType.Should().Be(ControlTypes.Slider);
+    }
+
+    [Fact]
+    public void AutoGenerateForm_IntegerWithoutXSlider_StillInfersNumeric()
+    {
+        var schema = JsonDocument.Parse("""
+            {"type":"object","properties":{
+              "deviceCount":{"type":"integer","minimum":0,"maximum":10}}}
+            """);
+
+        var root = _sut.AutoGenerateForm([schema]);
+
+        root.Elements.Should().ContainSingle()
+            .Which.ControlType.Should().Be(ControlTypes.Numeric);
+    }
+
+    [Fact]
+    public void AutoGenerateForm_StringWithXSlider_DoesNotInferSlider()
+    {
+        var schema = JsonDocument.Parse("""
+            {"type":"object","properties":{
+              "notANumber":{"type":"string","x-slider":{"step":1}}}}
+            """);
+
+        var root = _sut.AutoGenerateForm([schema]);
+
+        root.Elements.Should().ContainSingle()
+            .Which.ControlType.Should().Be(ControlTypes.TextLine);
     }
 }

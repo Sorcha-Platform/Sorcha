@@ -112,4 +112,49 @@ public class ExternalCheckFactoryTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task Build_ScoredQuestionnaireCheck_DeserialisesAndScores()
+    {
+        // Guards the config -> factory path: a naming/shape mismatch between CheckDefinition's
+        // Answers/Ranges properties and the JSON below would build a check with empty tables
+        // (scoring everything 0) rather than fail loudly, so this exercises real deserialisation.
+        var config = ChecksConfig.Parse("""
+        {
+          "checks": [
+            {
+              "name": "cyberScore",
+              "type": "scored-questionnaire",
+              "answers": {
+                "/passwordStorage": {
+                  "A password manager": 3,
+                  "Saved in my browser": 2,
+                  "A notebook by the desk": 1,
+                  "The same one everywhere, and hope": 0
+                }
+              },
+              "ranges": {
+                "/sharedPasswordCount": [
+                  { "max": 0, "points": 3 },
+                  { "max": 2, "points": 2 },
+                  { "max": 5, "points": 1 },
+                  { "points": 0 }
+                ]
+              }
+            }
+          ]
+        }
+        """);
+
+        var runner = ExternalCheckFactory.BuildRunner(config, ".", new HttpClient());
+        runner.HasChecks.Should().BeTrue();
+
+        var payload = CheckTestSupport.Payload("""
+        { "passwordStorage": "A password manager", "sharedPasswordCount": 1 }
+        """);
+
+        var facts = await runner.RunAsync(payload, default);
+
+        facts["cyberScore"].Should().Be(5.0, "3 for the top answer plus 2 for the [1,2] band");
+    }
 }

@@ -136,3 +136,66 @@ public sealed class RequirementDcqlMapperTests
         act.Should().Throw<System.ArgumentException>();
     }
 }
+
+/// <summary>
+/// AIAS M2 Task 3 — <see cref="CredentialRequirement.OptionalClaims"/> threading through
+/// <see cref="RequirementDcqlMapper.Build"/> into the DCQL ask's optional-claims position
+/// (contract §4, feature 174). Asserts the actual DCQL structure — which claim_sets option a
+/// claim id lands in — rather than merely that the serialized JSON mentions the claim name.
+/// </summary>
+public sealed class RequirementDcqlMapperOptionalClaimsTests
+{
+    [Fact]
+    public void Map_RequirementWithOptionalClaims_PlacesPortraitInOptionalClaimSetOnly()
+    {
+        var requirement = new CredentialRequirement
+        {
+            Type = "https://sorcha.dev/vc/assured-identity/v1",
+            RequiredClaims = [new ClaimConstraint { ClaimName = "givenName" }],
+            OptionalClaims = [new ClaimConstraint { ClaimName = "portrait" }],
+        };
+
+        var query = RequirementDcqlMapper.Build([requirement]);
+
+        query.Validate().Should().BeEmpty();
+        var credential = query.Credentials.Should().ContainSingle().Subject;
+
+        credential.Claims.Should().NotBeNull();
+        var portraitClaim = credential.Claims!.Should().ContainSingle(c => c.Path.SequenceEqual(new[] { "portrait" })).Subject;
+        var givenNameClaim = credential.Claims!.Should().ContainSingle(c => c.Path.SequenceEqual(new[] { "givenName" })).Subject;
+
+        // Both claims carry an id once any optional claim exists, so claim_sets can reference them.
+        portraitClaim.Id.Should().NotBeNullOrEmpty();
+        givenNameClaim.Id.Should().NotBeNullOrEmpty();
+
+        // R2 mapping: first (preferred) claim_sets option = required + optional; second = required-only.
+        // Asserting this directly proves "portrait" lands specifically in the optional position,
+        // not merely that the word "portrait" appears somewhere in the serialized document.
+        credential.ClaimSets.Should().HaveCount(2);
+        credential.ClaimSets![0].Should().Contain(givenNameClaim.Id!).And.Contain(portraitClaim.Id!);
+        credential.ClaimSets![1].Should().Contain(givenNameClaim.Id!).And.NotContain(portraitClaim.Id!);
+    }
+
+    [Fact]
+    public void Build_RequirementWithoutOptionalClaims_BehavesAsBefore()
+    {
+        var requirement = new CredentialRequirement
+        {
+            Type = "https://sorcha.dev/vc/assured-identity/v1",
+            RequiredClaims = [new ClaimConstraint { ClaimName = "givenName" }],
+        };
+
+        var query = RequirementDcqlMapper.Build([requirement]);
+
+        query.Validate().Should().BeEmpty();
+        var credential = query.Credentials.Should().ContainSingle().Subject;
+
+        // Omitting optionalClaims must reproduce today's exact wire shape: no claim_sets, and the
+        // single claim carries no id (ids are only assigned once an optional claim exists).
+        credential.ClaimSets.Should().BeNull("omitting optionalClaims must not change the pre-existing wire shape");
+        credential.Claims.Should().ContainSingle(c => c.Path.SequenceEqual(new[] { "givenName" }) && c.Id == null);
+
+        var json = DcqlRequestBuilder.ToJson(query);
+        json.Should().NotContain("claim_sets");
+    }
+}
