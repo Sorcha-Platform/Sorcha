@@ -220,10 +220,26 @@ function Submit-RehearsalApplication {
     # agent's email gate rejects, which the old hardcoded true masked).
     if ($Applicant.EmailVerified) { $payload.emailVerified = $true }
     if ($WithPortrait) {
-        # Tiny valid-JPEG-ish token well under the F107 ~27KB gate so the portrait
-        # claim is carried. (Real applicants supply a camera/upload-sized photo.)
-        $bytes = [byte[]](0xFF,0xD8,0xFF,0xE0,0x00,0x10,0x4A,0x46,0x49,0x46,0x00,0x01,0xFF,0xD9)
-        $payload.portrait = @{ tokenImageBase64 = [Convert]::ToBase64String($bytes) }
+        # Real, decodable 240x320 JPEG fixture (fixtures/generate-sample-portrait.py) — a flat
+        # background with a synthetic geometric head-and-shoulders silhouette, well under the
+        # F107 ~27KB base64 gate. Three of the four cyber paths need a portrait-bearing
+        # credential and the fourth needs a portrait-less one (Test-CyberCredentialDelivered /
+        # the no-portrait hard-gate), so a missing or oversized fixture must fail loudly here
+        # rather than silently degrading -WithPortrait into a no-portrait submission that would
+        # look exactly like a genuine agent rejection. Unlike run-phase1-identity.ps1's
+        # warn-and-continue on a missing sample, this is fail-fast by design.
+        $samplePortraitPath = Join-Path $PSScriptRoot "fixtures/sample-portrait.jpg"
+        if (-not (Test-Path $samplePortraitPath)) {
+            Write-WtFail "Portrait fixture not found at $samplePortraitPath — cannot submit -WithPortrait. Regenerate with: python demos/AIAS/fixtures/generate-sample-portrait.py"
+            exit 2
+        }
+        $bytes = [System.IO.File]::ReadAllBytes($samplePortraitPath)
+        $base64 = [Convert]::ToBase64String($bytes)
+        if ($base64.Length -gt 27000) {
+            Write-WtFail "sample-portrait.jpg is $($base64.Length) base64 chars — over the F107 ~27KB gate. Regenerate a smaller fixture (fixtures/generate-sample-portrait.py) before rehearsing."
+            exit 2
+        }
+        $payload.portrait = @{ tokenImageBase64 = $base64 }
     }
 
     # Carry holder keys so the issued credential can be bound + delivered (F137).
