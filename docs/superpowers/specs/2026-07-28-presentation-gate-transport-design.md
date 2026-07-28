@@ -65,7 +65,7 @@ PresentationRequestCard            (Sorcha.UI.Components.User — shared with th
 
 IPresentationGateTransport
 ├── Task<GateOutcome> WaitForOutcomeAsync(Guid requestId, CancellationToken ct)
-└── Task<IReadOnlyDictionary<string, JsonElement>?> FetchClaimsAsync(
+└── Task<IReadOnlyDictionary<string, object?>?> FetchClaimsAsync(
         Guid requestId, string? claimsFetchToken, CancellationToken ct)
 
   SorchaWalletGateTransport   races PresentationHubConnection.PresentationOutcomeReady against a
@@ -75,10 +75,14 @@ IPresentationGateTransport
                               so FetchClaims reads what the outcome already returned
 ```
 
-Claims are `JsonElement`-valued because that is what HAIP's `VerifiedClaims` already carries and
-it is lossless for non-string claims (`age_over_18` is a bool, a portrait is a long base64
-string). The F127 transport adapts `DisclosedClaimsResponse` into the same shape, so the card
-renders one claims type regardless of transport.
+Claims are `object?`-valued, matching F127's existing `DisclosedClaimsResponse.Claims`
+(`IReadOnlyDictionary<string, object?>`). HAIP's `Dictionary<string, JsonElement>` adapts into it
+for free, since a `JsonElement` boxes as `object?`; the reverse would require re-serialising. It
+is lossless for non-string claims (`age_over_18` is a bool, a portrait a long base64 string). The
+card formats values for display, so it renders one claims type regardless of transport.
+
+(Corrected during planning: the design first specified `JsonElement`, which would have forced the
+F127 transport to re-serialise its own response.)
 
 `GateOutcome` is a shared enum — `Pending / Submitted / Success / Declined / Expired / Abandoned /
 Unreachable` — and each transport maps its own vocabulary onto it. F127's
