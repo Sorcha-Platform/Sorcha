@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Blueprint.Models.Credentials;
+
 namespace Sorcha.Blueprint.Service.Models.Responses;
 
 /// <summary>
@@ -95,10 +97,11 @@ public record ActionSubmissionResponse
     public HaipCredentialOfferResponse? CredentialOffer { get; init; }
 
     /// <summary>
-    /// HAIP presentation request details when the action requires a credential from an external wallet.
-    /// Present when the action has credentialRequirements with presentationSource HaipExternalWallet.
+    /// Presentation request details when the action requires a credential from an external wallet.
+    /// Present when the action has credentialRequirements with presentationSource
+    /// HaipExternalWallet or SorchaWallet; the response's <c>Source</c> says which.
     /// </summary>
-    public HaipPresentationRequestResponse? PresentationRequest { get; init; }
+    public PresentationRequestResponse? PresentationRequest { get; init; }
 
     /// <summary>
     /// Feature 111 — set when the action is awaiting an external presentation outcome.
@@ -180,13 +183,19 @@ public record HaipCredentialOfferResponse
 }
 
 /// <summary>
-/// HAIP presentation request details for QR code rendering and verification polling.
-/// Returned when a Blueprint action requires a credential presentation from an external
-/// HAIP wallet via the OpenID4VP direct_post flow.
+/// Presentation request details for QR code rendering and outcome polling. Returned when a
+/// Blueprint action requires a credential presentation from an external wallet over OpenID4VP —
+/// either a HAIP wallet (direct_post via the HAIP verifier) or the Sorcha Citizen Wallet (the
+/// Feature 111 / 127 presentation lifecycle).
 /// </summary>
-public record HaipPresentationRequestResponse
+/// <remarks>
+/// <see cref="Source"/> is what tells the client which of those two lifecycles owns the request,
+/// and therefore which endpoints it must poll. Without it every gate was routed to HAIP, so a
+/// SorchaWallet gate polled a verifier that had never heard of it.
+/// </remarks>
+public record PresentationRequestResponse
 {
-    /// <summary>The unique request identifier, used for verification result polling.</summary>
+    /// <summary>The unique request identifier, used for outcome polling.</summary>
     public required Guid RequestId { get; init; }
 
     /// <summary>The openid4vp://authorize URI to render as a QR code.</summary>
@@ -200,6 +209,16 @@ public record HaipPresentationRequestResponse
 
     /// <summary>When the presentation request expires.</summary>
     public required DateTimeOffset ExpiresAt { get; init; }
+
+    /// <summary>Which lifecycle owns this request — decides the client transport.</summary>
+    public required PresentationSource Source { get; init; }
+
+    /// <summary>
+    /// Feature 127 single-use token bound to <see cref="RequestId"/>, presented on
+    /// <c>GET /api/presentations/{id}/disclosed-claims</c>. Null for HAIP, which returns claims
+    /// inline with the verification result.
+    /// </summary>
+    public string? ClaimsFetchToken { get; init; }
 }
 
 /// <summary>

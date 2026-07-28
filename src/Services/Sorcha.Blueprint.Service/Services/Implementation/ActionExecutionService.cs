@@ -307,7 +307,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         // presentation sources. HAIP keeps first pick (byte-identical behaviour for existing
         // blueprints); a SorchaWallet requirement now also initiates instead of falling through
         // to the internal synchronous verifier (which could never satisfy an async wallet gate).
-        var haipRequirement = actionDef.CredentialRequirements?
+        var presentationRequirement = actionDef.CredentialRequirements?
             .FirstOrDefault(r => r.PresentationSource == PresentationSource.HaipExternalWallet)
             ?? actionDef.CredentialRequirements?
             .FirstOrDefault(r => r.PresentationSource == PresentationSource.SorchaWallet);
@@ -315,7 +315,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         {
             var hasSubmittedPresentations = request.CredentialPresentations is { Count: > 0 };
 
-            if (haipRequirement != null && !hasSubmittedPresentations && _presentationLifecycle != null)
+            if (presentationRequirement != null && !hasSubmittedPresentations && _presentationLifecycle != null)
             {
                 // Feature 111 — timebound presentation lifecycle. The attempt itself is
                 // recorded on the register via a PresentationInitiated transaction; the
@@ -344,7 +344,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                 }
 
                 var lifecycleResult = await _presentationLifecycle.InitiateAsync(
-                    blueprint, instance, actionDef, haipRequirement,
+                    blueprint, instance, actionDef, presentationRequirement,
                     submitterWallet: request.SenderWallet,
                     delegationToken: delegationToken,
                     draftPayload: request.PayloadData,
@@ -361,24 +361,28 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                     InstanceId = instance.Id,
                     IsComplete = false,
                     AwaitingPresentation = true,
-                    PresentationRequest = new HaipPresentationRequestResponse
+                    PresentationRequest = new PresentationRequestResponse
                     {
                         RequestId = lifecycleResult.PresentationRequestId,
                         PresentationRequestUri = lifecycleResult.AuthorizationRequestUri,
-                        CredentialType = haipRequirement.Type,
-                        RequestedClaims = haipRequirement.RequiredClaims?
+                        CredentialType = presentationRequirement.Type,
+                        RequestedClaims = presentationRequirement.RequiredClaims?
                             .Select(c => c.ClaimName).ToList(),
-                        ExpiresAt = lifecycleResult.ExpiresAt
+                        ExpiresAt = lifecycleResult.ExpiresAt,
+                        // Both of these used to be dropped here. Source is what tells the client
+                        // which lifecycle to poll; without it every gate went to HAIP.
+                        Source = presentationRequirement.PresentationSource,
+                        ClaimsFetchToken = lifecycleResult.ClaimsFetchToken
                     }
                 };
             }
-            else if (haipRequirement != null && !hasSubmittedPresentations)
+            else if (presentationRequirement != null && !hasSubmittedPresentations)
             {
                 // Deployment-configuration error: this branch is only reachable when
                 // IPresentationLifecycleService is not registered. Fail fast rather
                 // than silently skipping the presentation requirement.
                 throw new InvalidOperationException(
-                    $"An external-wallet presentation ({haipRequirement.PresentationSource}) was requested " +
+                    $"An external-wallet presentation ({presentationRequirement.PresentationSource}) was requested " +
                     "but IPresentationLifecycleService is not registered. Ensure PresentationLifecycleOptions " +
                     "and related services are wired in the DI container.");
             }
