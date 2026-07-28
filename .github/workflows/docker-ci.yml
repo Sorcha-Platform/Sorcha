@@ -71,7 +71,17 @@ jobs:
           CHANGED="["
           FIRST=true
           for SVC in "${!SERVICE_PATHS[@]}"; do
-            if echo "$CHANGED_FILES" | grep -q "^${SERVICE_PATHS[$SVC]}"; then
+            MATCHED=false
+            # Unquoted expansion is deliberate — word-split the space-separated path list so a
+            # service watching more than one directory matches on ANY of them. Grepping the whole
+            # value as a single pattern silently matches nothing the moment a second path is added.
+            for SVC_PATH in ${SERVICE_PATHS[$SVC]}; do
+              if echo "$CHANGED_FILES" | grep -q "^${SVC_PATH}"; then
+                MATCHED=true
+                break
+              fi
+            done
+            if [ "$MATCHED" = true ]; then
               if [ "$FIRST" = true ]; then FIRST=false; else CHANGED="$CHANGED,"; fi
               CHANGED="$CHANGED\"$SVC\""
             fi

@@ -53,6 +53,29 @@ function Read-WorkflowMaps([string]$workflowName) {
         exit 1
     }
 
+    # A multi-path entry is only meaningful if the consuming loop WORD-SPLITS it. Grepping the
+    # whole value as one pattern makes a two-path entry match nothing at all — strictly worse
+    # than the single path it replaced, and completely silent. That regression was written and
+    # nearly shipped: docker-ci.yml's map was widened while its loop still did
+    # `grep -q "^${SERVICE_PATHS[$SVC]}"`, and the only symptom was two images being validated
+    # where three had been before.
+    $hasMultiPath = $servicePaths.Values | Where-Object { $_.Count -gt 1 }
+    if ($hasMultiPath) {
+        $raw = Get-Content $workflow -Raw
+        if ($raw -notmatch 'for\s+SVC_PATH\s+in\s+\$\{SERVICE_PATHS\[\$SVC\]\}') {
+            Write-Host ''
+            Write-Host 'publish-paths gate FAILED' -ForegroundColor Red
+            Write-Host ''
+            Write-Host ("{0} has SERVICE_PATHS entries with more than one path, but its matching" -f $workflowName)
+            Write-Host 'loop does not word-split them. Every multi-path entry silently matches NOTHING.'
+            Write-Host ''
+            Write-Host 'Fix: iterate the value, e.g.'
+            Write-Host '    for SVC_PATH in ${SERVICE_PATHS[$SVC]}; do   # unquoted on purpose'
+            Write-Host ''
+            exit 1
+        }
+    }
+
     return @{ ServicePaths = $servicePaths; Dockerfiles = $dockerfiles }
 }
 
