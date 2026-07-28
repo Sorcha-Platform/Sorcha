@@ -102,9 +102,13 @@ public sealed class SorchaWalletLocalPresenter : ISorchaWalletLocalPresenter
             return null;
         }
 
-        // 3. The single credential ask (the SorchaWallet consumer is single-ask today).
+        // 3. The single credential ask (the SorchaWallet consumer is single-ask today). A
+        //    multi-credential DCQL query (a two-requirement action) cannot be satisfied by local
+        //    consent — it only ever presents ONE credential — so refuse the local route entirely
+        //    rather than silently verifying just the first (#1330 finding 2, mirror of #1311:
+        //    multi-credential local consent is out of scope; degrade to QR, which fails loudly).
         var dcql = DcqlRequestParser.ParseFromRequestObjectPayload(root);
-        if (dcql.Credentials.Count == 0) return null;
+        if (dcql.Credentials.Count != 1) return null;
         var credentialQuery = dcql.Credentials[0];
         var vct = credentialQuery.Meta?.VctValues is { Count: > 0 } vcts ? vcts[0] : null;
         if (string.IsNullOrEmpty(vct)) return null;
@@ -226,24 +230,59 @@ public sealed class SorchaWalletLocalPresenter : ISorchaWalletLocalPresenter
         if (export is null || string.IsNullOrEmpty(export.RawToken))
             return LocalPresentResult.Failed("Credential export returned no raw token.");
 
-        // 2. Keep only consented disclosures. Issued tokens carry no KB-JWT, but guard anyway
-        //    (a 2-dot final segment is a KB-JWT, not a disclosure).
         var segments = export.RawToken.Split('~');
         var credentialJwt = segments[0];
+
+        // 2. cnf-binding pre-check (#1330 finding 1): a holder-cnf root and a device-cnf copy can
+        //    share the same vct, so /credentials/match cannot tell them apart. If this export is
+        //    the device copy, signing the KB-JWT with THIS session's holder key produces a
+        //    KB-JWT the shared validator declines server-side ("not signed by the credential's
+        //    cnf key") — which CONSUMES the presentation request and kills both the local and QR
+        //    routes. Refuse locally, before any HTTP call past the export, when the credential
+        //    carries a cnf that doesn't match this session's key. No cnf at all ⇒ legacy
+        //    unbound credential, verified against holder custody server-side — proceed.
+        using var credentialPayload = ParseJwtPayload(credentialJwt);
+        if (credentialPayload is not null &&
+            credentialPayload.RootElement.TryGetProperty("cnf", out var cnf) &&
+            cnf.ValueKind == JsonValueKind.Object &&
+            cnf.TryGetProperty("jwk", out var boundJwk))
+        {
+            var boundThumbprint = ComputeJwkThumbprint(boundJwk);
+            if (!string.Equals(boundThumbprint, candidate.KidThumbprint, StringComparison.Ordinal))
+            {
+                return LocalPresentResult.Failed(
+                    "This credential is bound to another device — scan the QR code with that device instead.");
+            }
+        }
+
+        // 3. Every disclosure name in the export (not just the consented ones) — needed so we can
+        //    pre-check that each REQUIRED claim is actually satisfiable before signing anything.
+        //    A required claim missing from both the disclosures and the JWT body would sign a
+        //    KB-JWT over a vp_token that can never satisfy the requirement — a doomed direct_post
+        //    that consumes the request server-side (mirror of rehearse.ps1:563's guard).
+        var allDisclosureNames = new HashSet<string>(StringComparer.Ordinal);
         var selected = new List<string>();
         for (var i = 1; i < segments.Length; i++)
         {
             var seg = segments[i];
             if (string.IsNullOrEmpty(seg) || seg.Count(c => c == '.') == 2) continue;
-            if (ReadDisclosureName(seg) is { } name && consented.Contains(name))
-                selected.Add(seg);
+            if (ReadDisclosureName(seg) is not { } name) continue;
+            allDisclosureNames.Add(name);
+            if (consented.Contains(name)) selected.Add(seg);
         }
 
-        // 3. RFC 9901 sd_hash over the exact to-be-presented prefix (order preserved, trailing ~).
+        foreach (var required in candidate.RequiredClaims)
+        {
+            if (allDisclosureNames.Contains(required)) continue;
+            if (credentialPayload is not null && credentialPayload.RootElement.TryGetProperty(required, out _)) continue;
+            return LocalPresentResult.Failed($"Required claim '{required}' is not present in this credential.");
+        }
+
+        // 4. RFC 9901 sd_hash over the exact to-be-presented prefix (order preserved, trailing ~).
         var hashable = credentialJwt + string.Concat(selected.Select(s => "~" + s)) + "~";
         var sdHash = Base64Url.EncodeToString(SHA256.HashData(Encoding.ASCII.GetBytes(hashable)));
 
-        // 4. KB-JWT signed server-custody: the holder key never leaves the Wallet Service.
+        // 5. KB-JWT signed server-custody: the holder key never leaves the Wallet Service.
         var now = _clock.GetUtcNow();
         var header = new Dictionary<string, object>
         {
@@ -278,7 +317,7 @@ public sealed class SorchaWalletLocalPresenter : ISorchaWalletLocalPresenter
                 $"sign-kb signed '{sign.Algorithm}' but the KB-JWT header declares '{candidate.JoseAlgorithm}'.");
         }
 
-        // 5. Assemble + direct_post the OpenID4VP 1.0 object-keyed envelope.
+        // 6. Assemble + direct_post the OpenID4VP 1.0 object-keyed envelope.
         var vpToken = hashable + $"{signingInput}.{sign.Signature}";
         var envelope = JsonSerializer.Serialize(
             new Dictionary<string, string[]> { [candidate.QueryId] = [vpToken] });
@@ -310,6 +349,26 @@ public sealed class SorchaWalletLocalPresenter : ISorchaWalletLocalPresenter
                 : null;
         }
         catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Decodes a JWT's payload segment (index 1) to JSON. Null on any parse failure —
+    /// callers treat "can't tell" the same as "no cnf claim", never as a hard error.</summary>
+    private static JsonDocument? ParseJwtPayload(string jwt)
+    {
+        var parts = jwt.Split('.');
+        if (parts.Length < 2 || parts[1].Length == 0) return null;
+        try
+        {
+            return JsonDocument.Parse(Base64Url.DecodeFromChars(parts[1]));
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+        catch (JsonException)
         {
             return null;
         }

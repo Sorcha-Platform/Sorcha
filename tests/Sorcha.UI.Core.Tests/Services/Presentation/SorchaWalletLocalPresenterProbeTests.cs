@@ -160,6 +160,41 @@ public class SorchaWalletLocalPresenterProbeTests
         var (presenter, _, _, _) = Build(BuildRequestObjectJwt(nonce: null));
         (await presenter.ProbeAsync(DeepLink())).Should().BeNull();
     }
+
+    /// <summary>
+    /// #1330 finding 2 — a two-requirement SorchaWallet action emits a two-credential DCQL
+    /// query. Local consent only ever satisfies ONE credential per share, so presenting a single
+    /// candidate against a multi-credential ask would silently leave the second requirement
+    /// unverified (the very failure #1311 closed loudly on the QR path). The probe must decline
+    /// the local route entirely and degrade to QR, not just pick <c>Credentials[0]</c>.
+    /// </summary>
+    [Fact]
+    public async Task ProbeAsync_MultiCredentialQuery_ReturnsNull()
+    {
+        var header = Base64Url.EncodeToString(Encoding.UTF8.GetBytes("""{"alg":"none","typ":"oauth-authz-req+jwt"}"""));
+        var payload = new Dictionary<string, object?>
+        {
+            ["client_id"] = "did:sorcha:org:ws1qabc",
+            ["response_uri"] = "https://unit.test/api/presentations/callbacks/sorcha-wallet/rid-1",
+            ["nonce"] = "n-123",
+            ["state"] = "rid-1",
+            ["response_mode"] = "direct_post",
+            ["dcql_query"] = JsonDocument.Parse($$"""
+                {"credentials":[
+                    {"id":"credential","format":"dc+sd-jwt","meta":{"vct_values":["{{Vct}}"]},
+                      "claims":[{"id":"c0","path":["givenName"]}]},
+                    {"id":"credential2","format":"dc+sd-jwt","meta":{"vct_values":["https://sorcha.dev/vc/other/v1"]},
+                      "claims":[{"id":"c1","path":["licenceNumber"]}]}
+                  ]}
+                """).RootElement,
+        };
+        var payloadSeg = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(payload));
+        var jwt = $"{header}.{payloadSeg}.";
+
+        var (presenter, _, _, _) = Build(jwt);
+        (await presenter.ProbeAsync(DeepLink())).Should().BeNull(
+            "multi-credential local consent is out of scope — degrade to the QR route, which fails loudly by design (#1311)");
+    }
 }
 
 /// <summary>Records every request and answers via the supplied responder.</summary>

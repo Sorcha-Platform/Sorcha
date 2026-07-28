@@ -44,16 +44,24 @@ public class SorchaWalletLocalPresenterPresentTests
         KidThumbprint = "thumb",
     };
 
+    private static string BuildCredentialJwt(object payload)
+    {
+        var header = Base64Url.EncodeToString(Encoding.UTF8.GetBytes("""{"alg":"EdDSA"}"""));
+        var payloadSeg = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(payload));
+        return $"{header}.{payloadSeg}.c2ln";
+    }
+
     private static (SorchaWalletLocalPresenter Presenter, CapturingHandler Http) Build(
         string signKbAlgorithm = "EdDSA",
         string callbackKind = "Success",
-        HttpStatusCode callbackStatus = HttpStatusCode.OK)
+        HttpStatusCode callbackStatus = HttpStatusCode.OK,
+        string? rawToken = null)
     {
         var handler = new CapturingHandler(req =>
         {
             var path = req.RequestUri!.PathAndQuery;
             if (path.Contains("/export"))
-                return Json($$"""{"id":"urn:uuid:c1","type":"x","rawToken":"{{RawToken}}"}""");
+                return Json($$"""{"id":"urn:uuid:c1","type":"x","rawToken":"{{rawToken ?? RawToken}}"}""");
             if (path.Contains("/sign-kb"))
                 return Json($$"""{"signature":"ZmFrZXNpZw","algorithm":"{{signKbAlgorithm}}"}""");
             if (path.Contains("/callbacks/"))
@@ -166,5 +174,83 @@ public class SorchaWalletLocalPresenterPresentTests
         var (presenter, _) = Build(callbackStatus: HttpStatusCode.InternalServerError);
         var result = await presenter.PresentAsync(Candidate(), ["givenName", "familyName"]);
         result.Status.Should().Be(LocalPresentStatus.Failed);
+    }
+
+    /// <summary>
+    /// #1330 finding 1 — a holder-cnf root and a device-cnf copy can share the same vct, so
+    /// <c>/credentials/match</c> can't tell them apart. If the wallet exported the device copy,
+    /// signing the KB-JWT with the session's holder key produces a KB-JWT the shared validator
+    /// declines server-side — which CONSUMES the presentation request. The pre-check must catch
+    /// the cnf-thumbprint mismatch BEFORE sign-kb or the callback are ever called.
+    /// </summary>
+    [Fact]
+    public async Task PresentAsync_CnfThumbprintMismatch_FailsBeforeAnyServerCall()
+    {
+        var mismatchedJwk = new { kty = "OKP", crv = "Ed25519", x = "deviceKeyX" };
+        var credentialJwt = BuildCredentialJwt(new { vct = "x", cnf = new { jwk = mismatchedJwk } });
+        var rawToken = $"{credentialJwt}~{DGiven}~{DFamily}~{DPortrait}~";
+        var (presenter, http) = Build(rawToken: rawToken);
+
+        var result = await presenter.PresentAsync(Candidate(), ["givenName", "familyName", "portrait"]);
+
+        result.Status.Should().Be(LocalPresentStatus.Failed);
+        result.Detail.Should().Contain("bound to another device");
+        http.Requests.Should().ContainSingle(r => r.RequestUri!.PathAndQuery.Contains("/export"));
+        http.Requests.Should().NotContain(r => r.RequestUri!.PathAndQuery.Contains("/sign-kb"));
+        http.Requests.Should().NotContain(r => r.RequestUri!.PathAndQuery.Contains("/callbacks/"));
+    }
+
+    /// <summary>
+    /// A required claim absent from BOTH the disclosures and the JWT body would sign a KB-JWT
+    /// over a vp_token that can never satisfy the requirement — a doomed direct_post that burns
+    /// the gate on the server side. Mirror of rehearse.ps1:563's guard: fail locally first.
+    /// </summary>
+    [Fact]
+    public async Task PresentAsync_RequiredClaimMissingFromExport_FailsBeforeSignKb()
+    {
+        // familyName is required but has no disclosure AND isn't a top-level JWT claim.
+        var rawToken = $"{CredentialJwt}~{DGiven}~{DPortrait}~";
+        var (presenter, http) = Build(rawToken: rawToken);
+
+        var result = await presenter.PresentAsync(Candidate(), ["givenName", "familyName", "portrait"]);
+
+        result.Status.Should().Be(LocalPresentStatus.Failed);
+        result.Detail.Should().Contain("familyName");
+        http.Requests.Should().NotContain(r => r.RequestUri!.PathAndQuery.Contains("/sign-kb"));
+        http.Requests.Should().NotContain(r => r.RequestUri!.PathAndQuery.Contains("/callbacks/"));
+    }
+
+    /// <summary>A cnf-MATCHING export (this session's holder key) must still proceed normally.</summary>
+    [Fact]
+    public async Task PresentAsync_CnfMatchingExport_ProceedsToSubmitted()
+    {
+        var jwk = new { kty = "OKP", crv = "Ed25519", x = "deviceKeyX" };
+        var thumbprint = SorchaWalletLocalPresenter.ComputeJwkThumbprint(
+            JsonDocument.Parse(JsonSerializer.Serialize(jwk)).RootElement);
+        var credentialJwt = BuildCredentialJwt(new { vct = "x", cnf = new { jwk } });
+        var rawToken = $"{credentialJwt}~{DGiven}~{DFamily}~{DPortrait}~";
+        var (presenter, http) = Build(rawToken: rawToken);
+
+        var candidate = new LocalPresentationCandidate
+        {
+            CredentialId = "urn:uuid:c1",
+            WalletAddress = "ws1qcitizen",
+            Vct = "https://sorcha.dev/vc/assured-identity/v1",
+            RequiredClaims = ["givenName", "familyName"],
+            OptionalClaims = ["portrait"],
+            Nonce = "n-123",
+            ClientId = "did:sorcha:org:ws1qabc",
+            ResponseUri = "/api/presentations/callbacks/sorcha-wallet/rid-1",
+            QueryId = "credential",
+            RequestState = "rid-1",
+            JoseAlgorithm = "EdDSA",
+            KidThumbprint = thumbprint,
+        };
+
+        var result = await presenter.PresentAsync(candidate, ["givenName", "familyName", "portrait"]);
+
+        result.Status.Should().Be(LocalPresentStatus.Submitted);
+        http.Requests.Should().Contain(r => r.RequestUri!.PathAndQuery.Contains("/sign-kb"));
+        http.Requests.Should().Contain(r => r.RequestUri!.PathAndQuery.Contains("/callbacks/"));
     }
 }

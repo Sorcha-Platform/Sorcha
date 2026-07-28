@@ -39,7 +39,16 @@
                          ValueChanged="@((bool v) => _optionalConsent[name] = v)" />
         }
 
-        @if (_error is not null)
+        @if (_status == LocalPresentStatus.Declined)
+        {
+            @* The presentation request is CONSUMED server-side — retry and the QR are BOTH dead
+               (they share the same request), so this copy must not suggest either. *@
+            <MudAlert Severity="Severity.Error" Dense="true" data-testid="use-this-device-declined">
+                This request was declined and is now closed — please submit the form again to get
+                a fresh request.
+            </MudAlert>
+        }
+        else if (_error is not null)
         {
             <MudAlert Severity="Severity.Error" Dense="true" data-testid="use-this-device-error">
                 We couldn't share your credential from this device — you can try again, or scan
@@ -67,6 +76,7 @@
     private readonly Dictionary<string, bool> _optionalConsent = new(StringComparer.Ordinal);
     private bool _busy;
     private string? _error;
+    private LocalPresentStatus? _status;
     private string? _consentFor;
 
     protected override void OnParametersSet()
@@ -91,6 +101,7 @@
     {
         _busy = true;
         _error = null;
+        _status = null;
         StateHasChanged();
         try
         {
@@ -106,6 +117,7 @@
             }
             else
             {
+                _status = result.Status;
                 _error = result.Detail ?? result.Status.ToString();
             }
         }

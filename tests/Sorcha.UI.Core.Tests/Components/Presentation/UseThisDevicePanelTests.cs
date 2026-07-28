@@ -117,6 +117,31 @@ public sealed class UseThisDevicePanelTests : BunitContext
         submitted.Should().BeFalse();
     }
 
+    /// <summary>
+    /// #1330 finding 1b/1c — <see cref="LocalPresentStatus.Declined"/> means the SERVER verified
+    /// and refused the presentation: the presentation request is consumed and cannot be retried.
+    /// Unlike <see cref="LocalPresentStatus.Failed"/> (nothing reached the verifier), the QR
+    /// route is equally dead — the same consumed request backs it — so the copy must not repeat
+    /// "try again" or point at the QR, and must not resemble the #1324 "no matching credential" lie.
+    /// </summary>
+    [Fact]
+    public void ShareAndContinue_Declined_ShowsClosedCopyWithoutQrAdvice()
+    {
+        _presenter.Setup(p => p.PresentAsync(It.IsAny<LocalPresentationCandidate>(),
+                It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(LocalPresentResult.Declined("server declined"));
+
+        var submitted = false;
+        var cut = RenderPanel(p => p.Add(x => x.OnSubmitted, () => submitted = true));
+        cut.Find("[data-testid=use-this-device-share]").Click();
+
+        cut.Markup.Should().NotContain("QR");
+        cut.Markup.Should().NotContain("try again");
+        cut.Markup.Should().NotContain("no matching credential");
+        cut.Markup.Should().Contain("declined");
+        submitted.Should().BeFalse();
+    }
+
     [Fact]
     public void OnParametersSet_CandidateSwap_ResetsOptionalConsentToDefaultOn()
     {

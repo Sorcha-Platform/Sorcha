@@ -77,7 +77,11 @@ public enum LocalPresentStatus
     /// <summary>The presentation was built, signed, and direct_posted successfully.</summary>
     Submitted,
 
-    /// <summary>The citizen declined to present.</summary>
+    /// <summary>
+    /// The SERVER verified the presentation and refused it (e.g. a KB-JWT signed by the wrong
+    /// device key). The presentation request is CONSUMED by this outcome and cannot be retried —
+    /// distinct from <see cref="Failed"/>, where nothing ever reached the verifier.
+    /// </summary>
     Declined,
 
     /// <summary>The presentation could not be completed.</summary>
@@ -96,7 +100,7 @@ public sealed class LocalPresentResult
     /// <summary>The presentation was submitted successfully.</summary>
     public static LocalPresentResult Submitted() => new() { Status = LocalPresentStatus.Submitted };
 
-    /// <summary>The citizen declined to present.</summary>
+    /// <summary>The server verified and refused the presentation; the request is now consumed.</summary>
     public static LocalPresentResult Declined(string detail) => new() { Status = LocalPresentStatus.Declined, Detail = detail };
 
     /// <summary>The presentation could not be completed.</summary>
