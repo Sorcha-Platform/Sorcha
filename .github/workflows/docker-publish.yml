@@ -59,7 +59,22 @@ jobs:
             exit 0
           fi
 
-          # Check individual services and apps
+          # Check individual services and apps.
+          #
+          # Each entry is a SPACE-SEPARATED list of paths; the image is rebuilt when ANY of
+          # them changed. Multiple paths exist because an app can ProjectReference a library
+          # that lives under a DIFFERENT app's directory — changes under src/Common/ and
+          # src/Core/ already force a rebuild-all above, but cross-references inside
+          # src/Apps/ do not, so they must be listed explicitly here.
+          #
+          # Concretely: Sorcha.UI.Components.User (the Feature 122 shared user-facing
+          # component library) lives under src/Apps/Sorcha.UI/ but is consumed by
+          # wallet-pwa and verifier too. Listing only each app's own directory rebuilt
+          # ui-web and silently shipped a STALE wallet-pwa bundle — a slider render-loop
+          # fix (#1319) landed on web while the phone kept the frozen build, which reads
+          # as "the fix didn't work" rather than "the image wasn't rebuilt".
+          #
+          # ADDING A CROSS-APP ProjectReference? Add the referenced path here too.
           declare -A SERVICE_PATHS
           SERVICE_PATHS["blueprint-service"]="src/Services/Sorcha.Blueprint.Service/"
           SERVICE_PATHS["wallet-service"]="src/Services/Sorcha.Wallet.Service/"
@@ -71,13 +86,24 @@ jobs:
           SERVICE_PATHS["mcp-server"]="src/Apps/Sorcha.McpServer/"
           SERVICE_PATHS["ui-web"]="src/Apps/Sorcha.UI/"
           SERVICE_PATHS["haip-service"]="src/Services/Sorcha.Haip.Service/"
-          SERVICE_PATHS["wallet-pwa"]="src/Apps/Sorcha.Wallet.Pwa/"
-          SERVICE_PATHS["verifier"]="src/Apps/Sorcha.Verifier/"
+          # wallet-pwa + verifier both ProjectReference Sorcha.UI.Components.User.
+          SERVICE_PATHS["wallet-pwa"]="src/Apps/Sorcha.Wallet.Pwa/ src/Apps/Sorcha.UI/Sorcha.UI.Components.User/"
+          SERVICE_PATHS["verifier"]="src/Apps/Sorcha.Verifier/ src/Apps/Sorcha.UI/Sorcha.UI.Components.User/"
+
+          DIFF_FILES=$(git diff --name-only HEAD~1 HEAD)
 
           CHANGED="["
           FIRST=true
           for SVC in "${!SERVICE_PATHS[@]}"; do
-            if git diff --name-only HEAD~1 HEAD | grep -q "${SERVICE_PATHS[$SVC]}"; then
+            MATCHED=false
+            # Unquoted expansion is deliberate — word-split the space-separated path list.
+            for SVC_PATH in ${SERVICE_PATHS[$SVC]}; do
+              if echo "$DIFF_FILES" | grep -q "$SVC_PATH"; then
+                MATCHED=true
+                break
+              fi
+            done
+            if [ "$MATCHED" = true ]; then
               if [ "$FIRST" = true ]; then
                 FIRST=false
               else
