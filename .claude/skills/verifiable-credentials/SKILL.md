@@ -206,9 +206,63 @@ A single credential-issuing org has **three distinct identities**, and `did:sorc
 - **A `did-allowlist` pinning `did:sorcha:org:{A}` won't match a credential whose `iss` is `did:sorcha:org:{C}`** (no `alsoKnownAs` bridges them). Adding a master key to an org that pins its operational DID silently breaks its own trust check.
 - **Blueprint Service's verifier doesn't read the published did.json.** `SorchaDidResolver` is wired there with the 2-arg ctor (no `HttpClient`), so it **skips** the Tenant `/orgs/{id}/did.json` fetch and **rebuilds the doc locally from the wallet row**, synthesising a **hardcoded `#vc-issuance-1`** VM. Works only for rotation index 1 — `#vc-issuance-2` won't match → latent rotation bug.
 
-**The correct fix (identified, not yet implemented):** re-anchor the issuer `iss`/`kid`/did.json `id` from the derived child **C** to the operational wallet **A** (publish C's public key as a VM *under* `did:sorcha:org:{A}`, e.g. `did:sorcha:org:{A}#vc-issuance-{n}`). Edit points: `IssuanceKeyService.cs:128,233-234` + `OrgDidDocumentService.cs:52` (change together + regenerate cached docs, or the verifier fails closed). Blast radius is strictly positive — fixes F127 `client_id`, VC-`iss`↔invitation↔X.509-SAN consistency, and the allowlist footgun; tests assert the `#vc-issuance-{n}` *suffix*, not the address. Add the old C-DID to `alsoKnownAs` for backward-compat with already-issued creds. (Anchoring to the stable `orgId` GUID would be even more rotation-proof but touches all the A-consumers — a bigger, separate decision.)
+> ⚠ **SHIPPED — this section describes the PRE-F149 world.** The re-anchor below landed in
+> **#1002 (2026-06-13)**. Today `IssuanceKeyService.GetActiveSigningMaterialAsync` anchors
+> `iss`/`kid` on the canonical operational wallet **A** (via `IOrgInfoClient.ResolveCanonicalWalletAddressAsync`)
+> and **fails closed** when A is unresolvable; `CredentialEndpoints` refuses to mint (409) rather
+> than fall back to a bare-wallet `iss`. `SorchaDidResolver` no longer rebuilds an org document
+> from the wallet row — it resolves the Tenant-published `did.json` by DID, or returns null.
+> **Do not diagnose a modern issuer failure as the three-address split-brain**; on a post-#1002
+> org, `iss` == the published document's `id` == A. A demo's own "issuer wallet" in `state.json`
+> is NOT A — A is Tenant's `Organization.WalletAddress` — so seeing three addresses is expected
+> and is not itself evidence of a fault.
+>
+> **The failure this actually masked (fixed #1316, 2026-07-28):** the document resolved fine and
+> was then discarded by `DidResolverRegistry.CrossResolveAsync`, because every org publishes a
+> `did:web:{PlatformDomain}:orgs:{orgId}` `alsoKnownAs` that **nothing serves** — and an
+> unreachable link used to `return null`. An unverifiable advisory hint had veto power over a
+> verified identity. Unreachable links are now advisory. See "did:web is half-built" below.
+
+**The pre-F149 fix, for historical context:** re-anchor the issuer `iss`/`kid`/did.json `id` from the derived child **C** to the operational wallet **A** (publish C's public key as a VM *under* `did:sorcha:org:{A}`, e.g. `did:sorcha:org:{A}#vc-issuance-{n}`). Edit points: `IssuanceKeyService.cs:128,233-234` + `OrgDidDocumentService.cs:52` (change together + regenerate cached docs, or the verifier fails closed). Blast radius is strictly positive — fixes F127 `client_id`, VC-`iss`↔invitation↔X.509-SAN consistency, and the allowlist footgun; tests assert the `#vc-issuance-{n}` *suffix*, not the address. Add the old C-DID to `alsoKnownAs` for backward-compat with already-issued creds. (Anchoring to the stable `orgId` GUID would be even more rotation-proof but touches all the A-consumers — a bigger, separate decision.)
 
 **Walkthrough rule:** any org that issues native SorchaLocalWallet VCs **MUST** call `Set-SorchaOrgMasterKey` for that org, or it falls to the bare-wallet-`iss` path above. `ForestryCertification`/`TradeFinance`/`SelfBuildHouse` do; `CyberEssentialsUac`/`AssuredIdentity` historically did **not** (they only provisioned HAIP enrolment).
+
+### `did:web` is half-built — and the resolution paths that mislead
+
+Sorcha **computes, stores and indexes** a federated `did:web:{PlatformDomain}:orgs:{orgId}`
+(`OrgDidDocumentService.cs:58`, `OrgDidDocument.FederatedDid`, `IX_OrgDidDocuments_FederatedDid`)
+and advertises it in every published document's `alsoKnownAs` — but **nothing serves a
+`did:web`-shaped document, and nothing reads that index**. Two independent reasons it cannot
+resolve, so don't "fix" only the first:
+
+1. `TenantSettings.PlatformDomain` defaults to `sorcha.dev` (the marketing site) and is set in no
+   `appsettings.json` — so it is the default on every deployment. The document lives on the node host.
+2. **Even at the right host it fails**: `WebDidResolver.cs:81-86` requires `doc.Id == did`, and the
+   served document's `id` is the `did:sorcha` form. Repointing the domain fetches the document and
+   then rejects it on ID mismatch.
+
+Finishing it means serving a *second*, `did:web`-shaped document (same key material, `id` = the
+did:web form) off the existing route, keyed on that unused index. Per DID Core the link is
+non-reciprocated and unverifiable regardless, so this buys federation reach, **not trust**.
+
+**Resolution paths that produce misleading 404s** (all three cost real diagnosis time):
+
+| Probe | Result | Why |
+|---|---|---|
+| `GET /orgs/{orgId}/did.json` | ✅ 200 | the gateway route (`tenant-org-did-document`) |
+| `GET /api/orgs/{orgId}/did.json` | ❌ bodiless 404 | **no `/api` prefix on this route** |
+| `GET /orgs/by-did/{did}/did.json` | ❌ 404 via gateway, ✅ 200 direct to Tenant | F149's route has **no gateway route at all** |
+
+A bodiless 404 is the gateway-routing signature (same tell as the F111 trap). Blueprint Service
+calls Tenant *directly*, so the missing by-did gateway route does not affect internal verification —
+but it does mean an external verifier cannot resolve by DID, and it makes manual probing lie to you.
+
+**No repair path for a published document:** `OrgDidDocumentService.RegenerateAsync(orgId, reason)`
+**throws `NotSupportedException`**, while `OrgDidDocumentClient` logs "lazy rebuild will recover"
+on a failed publish. That comment is false. The publish is fire-and-forget, non-throwing, and fires
+only on the first key *derivation* — so a document that fails to publish stays missing until a key
+event. Signing fails closed on canonical-address resolution but **not** on "is the document actually
+published", so issuance can succeed while the document is absent.
 
 ### Standards conformance of the issuer-signing model
 
