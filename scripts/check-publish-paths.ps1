@@ -21,30 +21,39 @@
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$workflow = Join-Path $repoRoot '.github/workflows/docker-publish.yml'
 
-if (-not (Test-Path $workflow)) {
-    Write-Error "docker-publish.yml not found at $workflow"
-    exit 1
-}
-
-$lines = Get-Content $workflow
+# BOTH workflows carry their own copy of the SERVICE_PATHS map, and both must stay covered.
+# docker-publish.yml decides what gets REBUILT AND SHIPPED; docker-ci.yml decides what gets
+# BUILD-VALIDATED on a PR. Fixing only the publish copy (as #1320 did) leaves PR validation
+# under-building: a change to a shared library never proves the consuming images still build,
+# and the first sign of trouble is a publish failure on master.
+$workflowNames = @('docker-publish.yml', 'docker-ci.yml')
 
 # --- Parse SERVICE_PATHS["svc"]="p1 p2 ..." and DOCKERFILES["svc"]="path/to/Dockerfile" ---
-$servicePaths = @{}
-$dockerfiles  = @{}
-foreach ($line in $lines) {
-    if ($line -match 'SERVICE_PATHS\["([^"]+)"\]="([^"]*)"') {
-        $servicePaths[$Matches[1]] = @($Matches[2] -split '\s+' | Where-Object { $_ })
+function Read-WorkflowMaps([string]$workflowName) {
+    $workflow = Join-Path $repoRoot ".github/workflows/$workflowName"
+    if (-not (Test-Path $workflow)) {
+        Write-Error "$workflowName not found at $workflow"
+        exit 1
     }
-    elseif ($line -match 'DOCKERFILES\["([^"]+)"\]="([^"]*)"') {
-        $dockerfiles[$Matches[1]] = $Matches[2]
-    }
-}
 
-if ($servicePaths.Count -eq 0) {
-    Write-Error "Parsed zero SERVICE_PATHS entries — the workflow format changed; update this gate."
-    exit 1
+    $servicePaths = @{}
+    $dockerfiles  = @{}
+    foreach ($line in (Get-Content $workflow)) {
+        if ($line -match 'SERVICE_PATHS\["([^"]+)"\]="([^"]*)"') {
+            $servicePaths[$Matches[1]] = @($Matches[2] -split '\s+' | Where-Object { $_ })
+        }
+        elseif ($line -match 'DOCKERFILES\["([^"]+)"\]="([^"]*)"') {
+            $dockerfiles[$Matches[1]] = $Matches[2]
+        }
+    }
+
+    if ($servicePaths.Count -eq 0) {
+        Write-Error "Parsed zero SERVICE_PATHS entries from $workflowName — the workflow format changed; update this gate."
+        exit 1
+    }
+
+    return @{ ServicePaths = $servicePaths; Dockerfiles = $dockerfiles }
 }
 
 function Normalize([string]$p) { ($p -replace '\\', '/').TrimEnd('/') }
@@ -86,6 +95,11 @@ function Get-TransitiveAppRefs([string]$csprojPath) {
 
 $violations = @()
 
+foreach ($workflowName in $workflowNames) {
+$maps = Read-WorkflowMaps $workflowName
+$servicePaths = $maps.ServicePaths
+$dockerfiles  = $maps.Dockerfiles
+
 foreach ($svc in $servicePaths.Keys | Sort-Object) {
     if (-not $dockerfiles.ContainsKey($svc)) { continue }
 
@@ -104,9 +118,15 @@ foreach ($svc in $servicePaths.Keys | Sort-Object) {
             if ($refDir -eq $w -or $refDir.StartsWith("$w/")) { $covered = $true; break }
         }
         if (-not $covered) {
-            $violations += [pscustomobject]@{ Service = $svc; Referenced = $refDir; Watched = ($watched -join ', ') }
+            $violations += [pscustomobject]@{
+                Workflow   = $workflowName
+                Service    = $svc
+                Referenced = $refDir
+                Watched    = ($watched -join ', ')
+            }
         }
     }
+}
 }
 
 if ($violations.Count -gt 0) {
@@ -118,16 +138,17 @@ if ($violations.Count -gt 0) {
     Write-Host 'this one STALE, with no error:'
     Write-Host ''
     foreach ($v in $violations) {
-        Write-Host ("  {0}" -f $v.Service) -ForegroundColor Yellow
+        Write-Host ("  {0}  [{1}]" -f $v.Service, $v.Workflow) -ForegroundColor Yellow
         Write-Host ("      references : {0}" -f $v.Referenced)
         Write-Host ("      watches    : {0}" -f $v.Watched)
     }
     Write-Host ''
-    Write-Host 'Fix: add the referenced directory to that service''s SERVICE_PATHS entry in'
-    Write-Host '.github/workflows/docker-publish.yml (entries are space-separated, ANY-match).'
+    Write-Host 'Fix: add the referenced directory to that service''s SERVICE_PATHS entry in the'
+    Write-Host 'named workflow (entries are space-separated, ANY-match). Both docker-publish.yml'
+    Write-Host 'and docker-ci.yml carry their own copy of the map — keep them in step.'
     Write-Host ''
     exit 1
 }
 
-Write-Host "publish-paths gate passed — every src/Apps/ cross-reference is watched by its consuming image." -ForegroundColor Green
+Write-Host ("publish-paths gate passed — every src/Apps/ cross-reference is watched by its consuming image in {0}." -f ($workflowNames -join ' + ')) -ForegroundColor Green
 exit 0

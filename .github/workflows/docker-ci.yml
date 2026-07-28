@@ -62,9 +62,11 @@ jobs:
           SERVICE_PATHS["api-gateway"]="src/Services/Sorcha.ApiGateway/"
           SERVICE_PATHS["mcp-server"]="src/Apps/Sorcha.McpServer/"
           SERVICE_PATHS["ui-web"]="src/Apps/Sorcha.UI/"
-          SERVICE_PATHS["wallet-pwa"]="src/Apps/Sorcha.Wallet.Pwa/"
-          SERVICE_PATHS["verifier"]="src/Apps/Sorcha.Verifier/"
-          SERVICE_PATHS["sample-strathcarron-portal"]="samples/strathcarron-portal/"
+          # wallet-pwa + verifier both ProjectReference Sorcha.UI.Components.User.
+          SERVICE_PATHS["wallet-pwa"]="src/Apps/Sorcha.Wallet.Pwa/ src/Apps/Sorcha.UI/Sorcha.UI.Components.User/"
+          SERVICE_PATHS["verifier"]="src/Apps/Sorcha.Verifier/ src/Apps/Sorcha.UI/Sorcha.UI.Components.User/"
+          # The sample council portal consumes the shared user-facing component library too.
+          SERVICE_PATHS["sample-strathcarron-portal"]="samples/strathcarron-portal/ src/Apps/Sorcha.UI/Sorcha.UI.Components.User/"
 
           CHANGED="["
           FIRST=true
