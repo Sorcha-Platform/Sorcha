@@ -11,7 +11,7 @@ namespace Sorcha.UI.E2E.Tests.Docker;
 
 /// <summary>
 /// End-to-end tests for HAIP QR code components: CredentialOfferQrCard and
-/// PresentationRequestQrCard. These tests verify that the components render
+/// PresentationRequestCard. These tests verify that the components render
 /// correctly, display QR codes, and poll for status updates.
 ///
 /// Prerequisites:
@@ -99,7 +99,7 @@ public class HaipQrComponentTests : MultiUserTestBase
     [Test]
     [Order(3)]
     [CancelAfter(120_000)]
-    public async Task PresentationRequestQrCard_RendersQrCode_AndShowsMetadata()
+    public async Task PresentationRequest_RendersQrCode_AndShowsMetadata()
     {
         // Arrange — create a presentation request via the HAIP Service API
         var request = await CreateTestPresentationRequestAsync();

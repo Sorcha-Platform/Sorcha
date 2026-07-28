@@ -239,7 +239,11 @@
                     { x => x.RequestId, presentation.RequestId },
                     { x => x.CredentialType, presentation.CredentialType },
                     { x => x.RequestedClaims, presentation.RequestedClaims },
-                    { x => x.ExpiresAt, presentation.ExpiresAt }
+                    { x => x.ExpiresAt, presentation.ExpiresAt },
+                    // Without these the dialog defaults to HAIP and a SorchaWallet gate polls a
+                    // verifier that has never heard of it.
+                    { x => x.Source, presentation.Source },
+                    { x => x.ClaimsFetchToken, presentation.ClaimsFetchToken }
                 };
                 var requestOptions = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
                 var requestDialog = await DialogService.ShowAsync<Components.Credentials.PresentationRequestQrDialog>(

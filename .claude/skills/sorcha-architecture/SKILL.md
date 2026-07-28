@@ -1252,26 +1252,44 @@ HAIP impls remain unchanged. `SorchaWalletPresentationConsumer` overrides `Build
 
 `Task PresentationOutcomeReady(string presentationRequestId)` on `IBlueprintHubClient`. Published from `PresentationLifecycleService.HandleOutcomeAsync` to `BlueprintHubGroups.PresentationNonce(presentationRequestId)` on every terminal outcome write (success or decline). Thin-signal contract — opaque ID only; council page fetches lifecycle state via F111's status endpoint, and on success fetches plaintext claims via the new disclosed-claims endpoint.
 
-### Library component (council-page-side)
+### Library component — one card, two transports
 
-`CredentialGateComponent` in `Sorcha.UI.Components.User` (under `Sorcha.UI.Core.Components.CredentialGate` namespace). Consumer-side API:
+`PresentationRequestCard` in `Sorcha.UI.Components.User` (namespace `Sorcha.UI.Core.Components.Presentation`) is the **single** credential-gate surface. It replaced both `CredentialGateComponent` (council pages) and the web app's HAIP-only `PresentationRequestQrCard`, which are deleted.
 
 ```razor
 <EnrolGateComponent CouncilName="..." OnReady="@HandleCitizenReady">
-    <CredentialGateComponent Init="@_init"
-                             OnPresented="@HandlePresentedAsync"
+    <PresentationRequestCard RequestId="@_init.PresentationRequestId"
+                             PresentationRequestUri="@_init.AuthorizationRequestUri"
+                             ClaimsFetchToken="@_init.ClaimsFetchToken"
+                             Source="PresentationSource.SorchaWallet"
                              LinkBackUrl="/services/driving-licence"
-                             NameOfMissingCredentialType="Assured Identity">
+                             NameOfMissingCredentialType="an Assured Identity"
+                             OnClaims="@HandleClaimsAsync">
         <BlueBadgeForm Disclosed="@_disclosed" OnSubmit="HandleFormSubmit" />
-    </CredentialGateComponent>
+    </PresentationRequestCard>
 </EnrolGateComponent>
 ```
 
-The page owns the action-submission HTTP call (its own auth, retry policy, error UX) and hands the gate a `CredentialGateInit` (`PresentationRequestId` + `AuthorizationRequestUri` + `ClaimsFetchToken`). The gate owns the subsequent QR + signal + claims-fetch + autofill handoff.
+The page owns the action-submission HTTP call (its own auth, retry policy, error UX); the card owns QR + waiting + claims-fetch + autofill handoff. `ChildContent` renders only after `GateOutcome.Success`. `OnClaims` yields `IReadOnlyDictionary<string, object?>?` — the same shape as `DisclosedClaimsResponse.Claims`.
+
+**`Source` is load-bearing.** The card resolves an `IPresentationGateTransport` from it:
+
+| Source | Transport | Waits on | Claims |
+|---|---|---|---|
+| `SorchaWallet` | `SorchaWalletGateTransport` | `IPresentationSignal` (hub + `/status` poll) | `/disclosed-claims?token=` |
+| `HaipExternalWallet` | `HaipGateTransport` | `IHaipOfferService` result poll | inline with the outcome |
+
+Each transport maps its own vocabulary onto `GateOutcome` (`Pending`/`Submitted`/`Success`/`Declined`/`Expired`/`Abandoned`/`Unreachable`); F111's `abandoned-with-late-outcome` maps to `Success`. **`Unreachable` is distinct from `Expired` on purpose** — the lifecycle holds no such request, which is our fault, not the citizen's. `AddSorchaPresentationGate(baseAddress)` registers the SorchaWallet transport; the HAIP transport is registered beside `IHaipOfferService` in `AddCoreServices`, because a council page has no HAIP service and the card injects `IEnumerable<IPresentationGateTransport>`.
+
+> **Why this exists.** `ActionExecutionService` dropped both the `PresentationSource` and the `ClaimsFetchToken` when mapping `PresentationInitiationResult` onto the submission response, so the web app routed **every** gate to HAIP. A SorchaWallet gate therefore polled a verifier that had never heard of it, 404'd for five minutes, and reported "Expired". Both fields now ride on `PresentationRequestResponse`/`PresentationRequestInfo`, guarded by `Sorcha.UI.ContractTests`.
 
 ### Cross-device coordination
 
 `IPresentationSignal` composes `PresentationHubConnection.OnPresentationOutcomeReady` (SignalR primary) with a 3-second F111 `/status` poll (fallback after 2 s of no hub connection). Manual-recovery affordance fires after 60 s of no signal. Mirror of F126's `IEnrolPairingSignal` cadence.
+
+`OnRequestUnreachable` fires after **three consecutive 404s** from `/status`. A 404 is permanent — the lifecycle holds no such request — while a 500 may succeed next tick; collapsing the two into one null is what let a doomed gate run out its whole window and then read as an expiry. Three, not one, because a just-created request can 404 briefly before its lifecycle row is visible.
+
+> The `/status` response field is **`state`**, not `status` (`PresentationSignal.StatusProbeShape`). Reading the wrong one deserialises to null on every poll and hangs the gate silently.
 
 > Named `PresentationHubConnection` rather than `BlueprintHubConnection` because `Sorcha.UI.Core.Services.BlueprintHubConnection` already exists for admin / workflow notifications and the two would collide.
 

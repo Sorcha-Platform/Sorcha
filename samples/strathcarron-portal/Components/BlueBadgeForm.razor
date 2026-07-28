@@ -2,25 +2,24 @@
     SPDX-License-Identifier: MIT
     Copyright (c) 2026 Sorcha Contributors
 
-    Feature 127 / PR-C — Blue Badge application form. Renders after the
-    CredentialGateComponent surfaces disclosed claims from the citizen's
+    Feature 127 / PR-C — Blue Badge application form. Renders after
+    PresentationRequestCard surfaces disclosed claims from the citizen's
     AssuredIdentityCredential. Identity fields are read-only chips at the
     top; the citizen fills the two Blue Badge-specific fields and submits.
 *@
 @using System.Text.Json
-@using Sorcha.UI.Core.Models.User.Presentation
 
 <MudPaper Class="pa-4" Elevation="1">
 
-    @if (Disclosed?.Claims is not null && Disclosed.Claims.Count > 0)
+    @if (Disclosed is { Count: > 0 })
     {
         <MudAlert Severity="Severity.Success" Class="mb-3" Icon="@MudBlazor.Icons.Material.Filled.Verified">
-            Verified ✓ — @(Disclosed.SubjectDisplayName ?? "your Assured Identity has been confirmed")
+            Verified ✓ — @(SubjectDisplayName ?? "your Assured Identity has been confirmed")
         </MudAlert>
 
         <MudText Typo="Typo.subtitle2" Class="mb-1">Identity (from your Sorcha Wallet)</MudText>
         <MudChipSet T="string" Class="mb-4" ReadOnly>
-            @foreach (var claim in Disclosed.Claims)
+            @foreach (var claim in Disclosed)
             {
                 <MudChip T="string">@claim.Key: @FormatClaimValue(claim.Value)</MudChip>
             }
@@ -71,8 +70,30 @@
 </MudPaper>
 
 @code {
-    /// <summary>Disclosed claims surfaced by CredentialGateComponent — null pre-presentation.</summary>
-    [Parameter] public DisclosedClaimsResponse? Disclosed { get; set; }
+    /// <summary>Disclosed claims surfaced by PresentationRequestCard — null pre-presentation.</summary>
+    [Parameter] public IReadOnlyDictionary<string, object?>? Disclosed { get; set; }
+
+    /// <summary>
+    /// Composed from the disclosed name claims. The card hands over claims only; the
+    /// SubjectDisplayName convenience field belonged to the retired gate component's response
+    /// shape, and a council page is the right place to decide how to greet its own citizens.
+    /// </summary>
+    private string? SubjectDisplayName
+    {
+        get
+        {
+            if (Disclosed is null) return null;
+            var given = Claim("givenName");
+            var family = Claim("familyName");
+            var full = $"{given} {family}".Trim();
+            return full.Length > 0 ? full : null;
+        }
+    }
+
+    private string Claim(string key)
+        => Disclosed is not null && Disclosed.TryGetValue(key, out var v)
+            ? FormatClaimValue(v)
+            : string.Empty;
 
     /// <summary>Fires when the citizen submits the form. Parent owns the HTTP call.</summary>
     [Parameter] public EventCallback<BlueBadgeSubmission> OnSubmit { get; set; }
