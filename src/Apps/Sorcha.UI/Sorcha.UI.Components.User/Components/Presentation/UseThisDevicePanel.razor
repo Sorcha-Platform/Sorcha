@@ -67,9 +67,20 @@
     private readonly Dictionary<string, bool> _optionalConsent = new(StringComparer.Ordinal);
     private bool _busy;
     private string? _error;
+    private string? _consentFor;
 
     protected override void OnParametersSet()
     {
+        // Candidate identity changed (a fresh probe swapped in a different request) — the previous
+        // candidate's toggles are stale and must not leak into this one, so start clean before
+        // re-seeding default ON. See file header comment for why default ON is load-bearing.
+        var candidateKey = $"{Candidate.CredentialId}|{Candidate.RequestState}";
+        if (_consentFor != candidateKey)
+        {
+            _optionalConsent.Clear();
+            _consentFor = candidateKey;
+        }
+
         foreach (var claim in Candidate.OptionalClaims)
         {
             _optionalConsent.TryAdd(claim, true); // default ON — see file header comment
@@ -83,8 +94,10 @@
         StateHasChanged();
         try
         {
+            // Scoped to the CURRENT candidate's optional claims — never the whole dictionary,
+            // which may still carry entries from a previous candidate (see OnParametersSet).
             var consented = Candidate.RequiredClaims
-                .Concat(_optionalConsent.Where(kv => kv.Value).Select(kv => kv.Key))
+                .Concat(Candidate.OptionalClaims.Where(c => _optionalConsent.TryGetValue(c, out var v) && v))
                 .ToList();
             var result = await Presenter.PresentAsync(Candidate, consented);
             if (result.Status == LocalPresentStatus.Submitted)

@@ -37,6 +37,15 @@ public sealed class UseThisDevicePanelTests : BunitContext
         RequestState = "rid-1", JoseAlgorithm = "EdDSA", KidThumbprint = "t",
     };
 
+    private static LocalPresentationCandidate Candidate(
+        string credentialId, string requestState, IReadOnlyList<string> optionalClaims) => new()
+    {
+        CredentialId = credentialId, WalletAddress = "ws1q", Vct = "https://sorcha.dev/vc/assured-identity/v1",
+        RequiredClaims = ["givenName", "familyName"], OptionalClaims = optionalClaims,
+        Nonce = "n", ClientId = "did:sorcha:org:x", ResponseUri = "/cb", QueryId = "credential",
+        RequestState = requestState, JoseAlgorithm = "EdDSA", KidThumbprint = "t",
+    };
+
     private IRenderedComponent<UseThisDevicePanel> RenderPanel(
         Action<ComponentParameterCollectionBuilder<UseThisDevicePanel>>? extra = null)
         => Render<UseThisDevicePanel>(p =>
@@ -106,5 +115,36 @@ public sealed class UseThisDevicePanelTests : BunitContext
         cut.Markup.Should().Contain("couldn't share"); // inline error, QR remains the fallback
         cut.Markup.Should().NotContain("no matching credential");
         submitted.Should().BeFalse();
+    }
+
+    [Fact]
+    public void OnParametersSet_CandidateSwap_ResetsOptionalConsentToDefaultOn()
+    {
+        var candidateA = Candidate("urn:uuid:c1", "rid-1", ["portrait", "nickname"]);
+        var candidateB = Candidate("urn:uuid:c2", "rid-2", ["portrait"]);
+
+        IReadOnlyCollection<string>? sent = null;
+        _presenter.Setup(p => p.PresentAsync(It.IsAny<LocalPresentationCandidate>(),
+                It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .Callback<LocalPresentationCandidate, IReadOnlyCollection<string>, CancellationToken>(
+                (_, claims, _) => sent = claims)
+            .ReturnsAsync(LocalPresentResult.Submitted());
+
+        var cut = Render<UseThisDevicePanel>(p => p
+            .Add(x => x.Candidate, candidateA)
+            .Add(x => x.CredentialDisplayName, "Assured Identity"));
+
+        // Uncheck portrait on candidate A — it should NOT stay off once we move to candidate B.
+        var portraitToggle = cut.FindComponents<MudCheckBox<bool>>()
+            .First(c => c.Instance.Label == "portrait");
+        cut.InvokeAsync(() => portraitToggle.Instance.ValueChanged.InvokeAsync(false));
+
+        // Swap to a different candidate — new CredentialId/RequestState, same claim name recurring.
+        cut.Render(p => p.Add(x => x.Candidate, candidateB));
+        cut.Find("[data-testid=use-this-device-share]").Click();
+
+        sent.Should().NotBeNull();
+        sent.Should().Contain("portrait"); // default ON restored despite being unchecked on candidate A
+        sent.Should().NotContain("nickname"); // never existed on candidate B — must not leak across the swap
     }
 }
