@@ -148,9 +148,34 @@
  * changes). See research.md Decision 6.
  */
 
+/* THEME-DERIVED, NOT THEME-DETECTED.
+ *
+ * These colours are mixed from the live MudBlazor palette variables, so they follow
+ * whichever theme is active with no dark-mode selector at all.
+ *
+ * The previous version hardcoded a light cream here and corrected it under
+ * `:global([data-mud-theme="dark"])`. That override NEVER APPLIED: MudBlazor 9.5's
+ * MudThemeProvider signals the theme purely by swapping `--mud-palette-*` custom
+ * properties on :root — it puts no class or attribute in the DOM for theme state, and
+ * emits no `data-mud-theme` anywhere. So dark mode kept the light cream while MudBlazor
+ * switched its text to light, giving light-on-cream: unreadable.
+ *
+ * Mixing against `--mud-palette-surface` means the tint is pale on a light surface and
+ * muted-warm on a dark one automatically, and `--mud-palette-text-primary` is by
+ * definition the readable foreground for the active theme.
+ *
+ * NOTE: the sibling PersonaFillSummary.razor.css carried the same dead selectors and is
+ * fixed the same way. Those two files were the only source occurrences in the repo (an
+ * earlier count of ~35 was inflated by build-artifact copies under obj/ and bin/).
+ */
+
 .sorcha-field.autofilled {
-    background-color: #fff8e1; /* cream — WCAG AA against dark text */
-    border-left: 3px solid #ffcc80; /* warm amber accent */
+    /* Fallback for engines without color-mix (pre-Chrome 111 / Safari 16.2 / FF 113);
+     * the mixed values below win everywhere else. */
+    background-color: #fff8e1;
+    background-color: color-mix(in srgb, var(--mud-palette-warning) 14%, var(--mud-palette-surface));
+    border-left: 3px solid var(--mud-palette-warning);
+    color: var(--mud-palette-text-primary);
     padding: 6px 8px 6px 10px;
     border-radius: 4px;
     transition: background-color 160ms ease-out, border-color 160ms ease-out;
@@ -167,28 +192,15 @@
     line-height: 1.4;
     text-transform: uppercase;
     letter-spacing: 0.03em;
-    color: #4e342e; /* deep warm brown — ≥4.5:1 on #fff8e1 */
+    color: var(--mud-palette-text-primary);
     background-color: #ffe0b2;
+    background-color: color-mix(in srgb, var(--mud-palette-warning) 30%, var(--mud-palette-surface));
     border: 1px solid #ffcc80;
+    border: 1px solid color-mix(in srgb, var(--mud-palette-warning) 55%, var(--mud-palette-surface));
     border-radius: 999px;
 }
 
 .sorcha-field.autofilled .persona-tick::before {
     content: "\2713"; /* check mark */
     font-weight: 700;
-}
-
-/* Dark-mode palette. MudBlazor sets `data-mud-theme="dark"` on <html> when
- * dark mode is active. The darker cream + brighter accent keeps the tinted
- * state visible without blowing out contrast. */
-
-:global([data-mud-theme="dark"]) .sorcha-field.autofilled {
-    background-color: #3f3622; /* muted dark cream */
-    border-left-color: #ffb74d;
-}
-
-:global([data-mud-theme="dark"]) .sorcha-field.autofilled .persona-tick {
-    color: #fff3e0;
-    background-color: #5d4037;
-    border-color: #ffb74d;
 }
