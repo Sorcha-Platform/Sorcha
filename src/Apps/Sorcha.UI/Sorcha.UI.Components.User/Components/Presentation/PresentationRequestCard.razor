@@ -15,6 +15,7 @@
     resulting silence as an expiry.
 *@
 @namespace Sorcha.UI.Core.Components.Presentation
+@using Microsoft.Extensions.DependencyInjection
 @using Microsoft.Extensions.Logging
 @using Sorcha.Blueprint.Models.Credentials
 @using Sorcha.UI.Core.Components.EnrolGate
@@ -23,6 +24,7 @@
 @implements IDisposable
 @inject IEnumerable<IPresentationGateTransport> Transports
 @inject ILogger<PresentationRequestCard> Logger
+@inject IServiceProvider ServiceProvider
 
 <MudCard Elevation="3" Class="presentation-request-card pa-4">
     <MudCardHeader>
@@ -126,6 +128,23 @@
                 Verifying presented credential...
             </MudText>
         }
+        else if (_localCandidate is not null)
+        {
+            <UseThisDevicePanel Candidate="@_localCandidate"
+                                CredentialDisplayName="@NameOfMissingCredentialType"
+                                OnSubmitted="@OnLocalSubmitted" />
+            <MudExpansionPanels Elevation="0" Class="mb-2" Style="max-width: 400px; width: 100%;">
+                <MudExpansionPanel Text="Or scan with your phone">
+                    <div class="presentation-request-card__qr mb-2 d-flex justify-center">
+                        <HybridQrAffordance QrUrl="@PresentationRequestUri"
+                                            Layout="HybridQrAffordance.HybridQrLayout.Auto" />
+                    </div>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Waiting for your credential...
+            </MudText>
+        }
         else
         {
             <div class="presentation-request-card__qr mb-4">
@@ -209,6 +228,7 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     private GateOutcome _outcome = GateOutcome.Pending;
+    private LocalPresentationCandidate? _localCandidate;
     private IReadOnlyDictionary<string, object?>? _claims;
     private bool _claimsFetchFailed;
     private bool _noTransport;
@@ -251,6 +271,7 @@
         _outcome = GateOutcome.Pending;
         _claims = null;
         _claimsFetchFailed = false;
+        _localCandidate = null;
 
         var transport = Transports.FirstOrDefault(t => t.Source == Source);
         if (transport is null)
@@ -269,6 +290,39 @@
         _noTransport = false;
         _cts = new CancellationTokenSource();
         _ = AwaitOutcomeAsync(transport, RequestId, _cts.Token);
+
+        if (Source == PresentationSource.SorchaWallet)
+        {
+            _ = ProbeLocalRouteAsync(RequestId, PresentationRequestUri, _cts.Token);
+        }
+    }
+
+    /// <summary>
+    /// #1330 — can the signed-in citizen satisfy this gate from their own server-custody
+    /// wallet? Resolved via GetService so hosts that don't register the presenter (the
+    /// council sample portal) and any probe failure degrade silently to the QR route.
+    /// </summary>
+    private async Task ProbeLocalRouteAsync(Guid requestId, string requestUri, CancellationToken ct)
+    {
+        var presenter = ServiceProvider.GetService<ISorchaWalletLocalPresenter>();
+        if (presenter is null) return;
+
+        var candidate = await presenter.ProbeAsync(requestUri, ct);
+        if (candidate is null) return;
+
+        await InvokeAsync(() =>
+        {
+            if (_disposed || requestId != _awaitedRequestId || GateOutcomes.IsTerminal(_outcome)) return;
+            _localCandidate = candidate;
+            StateHasChanged();
+        });
+    }
+
+    private void OnLocalSubmitted()
+    {
+        if (GateOutcomes.IsTerminal(_outcome)) return;
+        _outcome = GateOutcome.Submitted; // the transport's signal drives it to Success/Declined
+        StateHasChanged();
     }
 
     private async Task AwaitOutcomeAsync(

@@ -154,6 +154,17 @@ builder.Services.AddSorchaPresentationGate(
         };
     });
 
+// #1330 — local (same-device) completion of a SorchaWallet presentation gate. Registered ONLY
+// on hosts with a signed-in citizen session: every call (export, sign-kb, direct_post) is
+// consumer-tier, so the client MUST carry the bearer (see the ambient-HttpClient warning above).
+// PresentationRequestCard resolves this via GetService — hosts without it (the council sample
+// portal) fall back to the QR route.
+builder.Services.AddHttpClient<Sorcha.UI.Core.Services.User.Presentation.ISorchaWalletLocalPresenter,
+                               Sorcha.UI.Core.Services.User.Presentation.SorchaWalletLocalPresenter>(client =>
+{
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+}).AddHttpMessageHandler<AuthenticatedHttpMessageHandler>();
+
 // Feature 181 US3 (T037) — platform-admin trusted-list snapshot management. The endpoints are
 // admin + platform-audience gated, so the client must carry the admin's bearer token.
 builder.Services.AddHttpClient<Sorcha.UI.Core.Services.Admin.ITrustedListAdminService,
