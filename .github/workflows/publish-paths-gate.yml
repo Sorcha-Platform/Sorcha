@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Publish-path coverage gate. Fails when an image ProjectReferences a project under
+# src/Apps/ that its docker-publish.yml SERVICE_PATHS entry does not watch.
+#
+# Such an image is never rebuilt when only that project changes — it publishes a STALE
+# bundle with no error anywhere. That happened with Sorcha.UI.Components.User (shared by
+# ui-web, wallet-pwa and verifier): a fix rebuilt ui-web and shipped a stale wallet-pwa
+# carrying the same bug, which reads as "the fix didn't work" rather than "the image is
+# stale". src/Common/ and src/Core/ already force a rebuild-all, so this covers exactly
+# the remaining gap: cross-references inside src/Apps/.
+#
+# See scripts/check-publish-paths.ps1.
+
+name: publish-paths-gate
+
+on:
+  pull_request:
+    paths:
+      - "src/Apps/**/*.csproj"
+      - "src/Services/**/*.csproj"
+      - ".github/workflows/docker-publish.yml"
+      - "scripts/check-publish-paths.ps1"
+      - ".github/workflows/publish-paths-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  publish-paths:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check publish-path coverage
+        shell: pwsh
+        run: ./scripts/check-publish-paths.ps1
