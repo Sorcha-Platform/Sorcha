@@ -25,8 +25,10 @@ public interface IDidResolverRegistry
     /// <summary>
     /// Resolves the primary DID and any DIDs declared in its alsoKnownAs property,
     /// verifies the same verification key material appears in every linked document,
-    /// and returns the merged DidDocument. Returns null if any link fails to resolve,
-    /// or if verification keys diverge across the equivalence chain.
+    /// and returns the merged DidDocument. An unresolvable link is advisory — it is
+    /// skipped and equivalence is withheld from it, never invalidating the primary.
+    /// Returns null only if the primary fails to resolve, or if verification keys
+    /// diverge across the links that DID resolve.
     /// </summary>
     /// <param name="did">The primary DID to resolve.</param>
     /// <param name="ct">Cancellation token.</param>
@@ -63,10 +65,13 @@ public interface IDidResolverRegistry
 3. For each linked DID in primary.alsoKnownAs:
    a. Avoid cycles: if linked == did or already-visited, skip.
    b. Resolve linked via ResolveAsync(linked).
-      On null:
+      On null (ADVISORY — an unverifiable hint must never veto a verified identity;
+      W3C DID Core §5.1.3: "the presence of an alsoKnownAs assertion does not prove
+      that this assertion is true"):
         Log warning "alsoKnownAs link unreachable for {did}: {linked}".
-        Tag span did.alsoKnownAs.match=unreachable.
-        Return null.
+        Increment the alsoKnownAs-unreachable metric.
+        SKIP this link — equivalence is withheld from it and its key material is
+        never merged. Continue to the next link.
    c. Compute the intersection of verification-method key material between
       primary and linked:
         For each VM in primary.verificationMethod:
@@ -77,10 +82,13 @@ public interface IDidResolverRegistry
       A cross-verified VM is one whose public key bytes appear in every
       linked document. Other VMs are dropped.
 
-4. If, after step 3, primary.verificationMethod has ZERO cross-verified VMs:
+4. If at least one link resolved AND primary.verificationMethod has ZERO
+   cross-verified VMs:
    Log warning "alsoKnownAs cross-resolution found no shared keys for {did}".
    Tag span did.alsoKnownAs.match=mismatch.
    Return null.
+   (With no link resolved there was no intersection to survive, so this branch
+   does not apply — the primary passes through with its own key material.)
 
 5. Construct merged DidDocument:
    - id: primary.id
@@ -89,7 +97,8 @@ public interface IDidResolverRegistry
    - assertionMethod, authentication, etc.: preserved from primary, filtered
      to reference only cross-verified VMs
 
-6. Tag span did.alsoKnownAs.cross_resolved=true, did.alsoKnownAs.match=match.
+6. Tag span did.alsoKnownAs.cross_resolved=(any link verified),
+   did.alsoKnownAs.match=match when a link verified, else unreachable.
    Return merged document.
 ```
 

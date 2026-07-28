@@ -142,16 +142,29 @@ public class DidResolverRegistry : IDidResolverRegistry
                 continue;
             }
 
-            // Step 3b — resolve linked doc.
+            // Step 3b — resolve linked doc. An unresolvable alsoKnownAs link is ADVISORY,
+            // never fatal: per W3C DID Core §5.1.3 alsoKnownAs is an unverifiable assertion
+            // ("the presence of an alsoKnownAs assertion does not prove that this assertion
+            // is true"), so it MUST NOT be able to veto a primary document that resolved and
+            // cross-verified on its own. Skipping the link withholds equivalence from the
+            // linked identity — which is exactly what the spec asks for — without discarding
+            // the identity that did verify.
+            //
+            // This previously returned null. That let any unreachable federation hint
+            // invalidate a cryptographically sound issuer DID: every Sorcha org publishes a
+            // did:web:{PlatformDomain}:orgs:{orgId} link that nothing serves, so EVERY
+            // org-issued credential failed issuer-signature verification once a verifier
+            // actually ran (found live on n1, 2026-07-28).
             var linkedDoc = await ResolveAsync(linked, ct).ConfigureAwait(false);
             if (linkedDoc is null)
             {
                 _logger.LogWarning(
-                    "alsoKnownAs link unreachable for {Primary}: {Linked}", did, linked);
-                activity?.SetTag("did.alsoKnownAs.match", "unreachable");
+                    "alsoKnownAs link unreachable for {Primary}: {Linked} — treating the link as "
+                    + "unverified (equivalence withheld); primary document is unaffected.",
+                    did, linked);
                 _metrics?.AlsoKnownAsUnreachable.Add(1,
                     new KeyValuePair<string, object?>("method", method));
-                return null;
+                continue;
             }
 
             // Step 3c — intersect: drop any primary VM whose key bytes do not
@@ -171,8 +184,11 @@ public class DidResolverRegistry : IDidResolverRegistry
             if (survivors.Count == 0) break; // short-circuit; step 4 will reject.
         }
 
-        // Step 4 — reject on zero shared keys.
-        if (survivors.Count == 0)
+        // Step 4 — reject on zero shared keys, but ONLY when at least one link actually
+        // resolved. With no verified link there was no intersection to survive, so an empty
+        // survivor set means "the primary declares no verification methods" — a different
+        // fault, and not one this branch's message or metric describes.
+        if (verifiedLinks.Count > 0 && survivors.Count == 0)
         {
             _logger.LogWarning(
                 "alsoKnownAs cross-resolution found no shared keys for {Primary}", did);
@@ -198,9 +214,12 @@ public class DidResolverRegistry : IDidResolverRegistry
             Service = primary.Service
         };
 
-        // Step 6 — tag span and return.
-        activity?.SetTag("did.alsoKnownAs.cross_resolved", true);
-        activity?.SetTag("did.alsoKnownAs.match", "match");
+        // Step 6 — tag span and return. `merged` always carries only the links that actually
+        // resolved AND cross-verified, so a caller can never mistake an advisory link for a
+        // verified one: with every link unreachable, AlsoKnownAs comes back empty and the
+        // document is the primary's own key material, unwidened.
+        activity?.SetTag("did.alsoKnownAs.cross_resolved", verifiedLinks.Count > 0);
+        activity?.SetTag("did.alsoKnownAs.match", verifiedLinks.Count > 0 ? "match" : "unreachable");
         return merged;
     }
 

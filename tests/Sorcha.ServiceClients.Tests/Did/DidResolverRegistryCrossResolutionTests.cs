@@ -99,8 +99,13 @@ public sealed class DidResolverRegistryCrossResolutionTests
     }
 
     [Fact]
-    public async Task OneLinkUnreachable_ReturnsNull()
+    public async Task OneLinkUnreachable_ReturnsPrimaryWithEquivalenceWithheld()
     {
+        // W3C DID Core §5.1.3 — alsoKnownAs is an unverifiable assertion, so an
+        // unreachable link must NOT invalidate a primary document that resolved.
+        // It is skipped: the primary's own key material survives intact, and the
+        // unverified link is absent from the result so no caller can read it as
+        // verified equivalence.
         var primary = new DidDocument
         {
             Id = PrimaryDid,
@@ -113,7 +118,41 @@ public sealed class DidResolverRegistryCrossResolutionTests
 
         var result = await registry.ResolveWithAlsoKnownAsAsync(PrimaryDid);
 
-        result.Should().BeNull();
+        result.Should().NotBeNull();
+        result!.Id.Should().Be(PrimaryDid);
+        result.VerificationMethod.Should().HaveCount(1);
+        result.AlsoKnownAs.Should().NotContain(LinkedDidA,
+            "an unresolvable link must not be reported as verified equivalence");
+    }
+
+    [Fact]
+    public async Task OrgIssuerDid_WithUnservedDidWebLink_StillYieldsIssuanceKey()
+    {
+        // Regression for the live n1 failure (2026-07-28): every Sorcha org publishes a
+        // did:web:{PlatformDomain}:orgs:{orgId} alsoKnownAs that nothing serves. That
+        // unreachable hint was discarding the whole issuer document, so EVERY org-issued
+        // credential failed issuer-signature verification the first time a verifier ran.
+        const string orgDid = "did:sorcha:org:ws11qz8yulqml9wq";
+        const string unservedWebDid = "did:web:sorcha.dev:orgs:1065431a-a5b0-4c61-a7ed-38ec08337c81";
+        var kid = $"{orgDid}#vc-issuance-1";
+
+        var primary = new DidDocument
+        {
+            Id = orgDid,
+            AlsoKnownAs = [unservedWebDid],
+            VerificationMethod = [Vm(kid, orgDid, KeyJwkA)],
+            AssertionMethod = [kid]
+        };
+        var registry = BuildRegistry(
+            ("sorcha", new() { [orgDid] = primary }),
+            ("web", new() { [unservedWebDid] = null })); // nothing serves did:web
+
+        var result = await registry.ResolveWithAlsoKnownAsAsync(orgDid);
+
+        result.Should().NotBeNull("an unserved federation hint must not veto the issuer DID");
+        result!.AssertionMethod.Should().Contain(kid,
+            "the issuance key must remain usable for issuer-signature verification");
+        result.VerificationMethod.Should().ContainSingle(v => v.Id == kid);
     }
 
     [Fact]
