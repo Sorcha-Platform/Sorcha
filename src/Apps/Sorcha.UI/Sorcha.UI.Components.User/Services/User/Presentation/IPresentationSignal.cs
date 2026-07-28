@@ -42,6 +42,13 @@ public interface IPresentationSignal
     event Action? OnManualRecoveryRequired;
 
     /// <summary>
+    /// Fires when the lifecycle reports it holds no such request — repeated 404s from the status
+    /// endpoint. Permanent: no amount of further waiting can succeed, so the consumer should stop
+    /// and say so rather than let the request run out its clock and report an expiry.
+    /// </summary>
+    event Action? OnRequestUnreachable;
+
+    /// <summary>
     /// Starts listening for outcome signals on the given presentation request.
     /// </summary>
     Task StartAsync(Guid presentationRequestId, CancellationToken ct);

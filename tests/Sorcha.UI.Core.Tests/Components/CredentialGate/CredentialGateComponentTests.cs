@@ -199,6 +199,7 @@ public sealed class CredentialGateComponentTests : BunitContext
         public event Func<PresentationSignalOutcome, Task>? OnOutcomeReady;
         public event Action? OnFallbackEngaged;
         public event Action? OnManualRecoveryRequired;
+        public event Action? OnRequestUnreachable;
 
         public Task StartAsync(Guid presentationRequestId, CancellationToken ct) => Task.CompletedTask;
         public Task StopAsync() => Task.CompletedTask;
@@ -213,6 +214,7 @@ public sealed class CredentialGateComponentTests : BunitContext
 
         public void RaiseFallbackEngaged() => OnFallbackEngaged?.Invoke();
         public void RaiseManualRecoveryRequired() => OnManualRecoveryRequired?.Invoke();
+        public void RaiseRequestUnreachable() => OnRequestUnreachable?.Invoke();
     }
 
     private sealed class StubHandler : HttpMessageHandler
