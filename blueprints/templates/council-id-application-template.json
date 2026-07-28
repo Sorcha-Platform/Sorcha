@@ -51,12 +51,12 @@
         ],
         "disclosures": [
           {
-            "participantId": "citizen",
-            "paths": ["/*"]
+            "participantAddress": "citizen",
+            "dataPointers": ["/*"]
           },
           {
-            "participantId": "id-dept",
-            "paths": ["/*"]
+            "participantAddress": "id-dept",
+            "dataPointers": ["/*"]
           }
         ],
         "routes": [
@@ -86,12 +86,12 @@
         ],
         "disclosures": [
           {
-            "participantId": "citizen",
-            "paths": ["/decision"]
+            "participantAddress": "citizen",
+            "dataPointers": ["/decision"]
           },
           {
-            "participantId": "id-dept",
-            "paths": ["/*"]
+            "participantAddress": "id-dept",
+            "dataPointers": ["/*"]
           }
         ],
         "routes": [
@@ -142,12 +142,12 @@
         },
         "disclosures": [
           {
-            "participantId": "citizen",
-            "paths": ["/*"]
+            "participantAddress": "citizen",
+            "dataPointers": ["/*"]
           },
           {
-            "participantId": "id-dept",
-            "paths": ["/*"]
+            "participantAddress": "id-dept",
+            "dataPointers": ["/*"]
           }
         ],
         "routes": [

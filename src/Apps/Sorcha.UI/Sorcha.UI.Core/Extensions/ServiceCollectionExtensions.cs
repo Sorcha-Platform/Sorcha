@@ -19,6 +19,7 @@ using Sorcha.UI.Core.Services.Forms;
 using Sorcha.UI.Core.Services.Credentials;
 using Sorcha.UI.Core.Services.Admin;
 using Sorcha.UI.Core.Services.Identity;
+using Sorcha.UI.Core.Services.User.Presentation;
 using Sorcha.UI.Core.Services.Wallet;
 
 namespace Sorcha.UI.Core.Extensions;
@@ -305,6 +306,16 @@ public static class ServiceCollectionExtensions
             var logger = sp.GetRequiredService<ILogger<HaipOfferService>>();
             return new HaipOfferService(httpClient, logger);
         });
+
+        // The HAIP gate transport is registered HERE rather than in AddSorchaPresentationGate,
+        // because it needs IHaipOfferService and that only exists in hosts like this one. A
+        // council page has no HAIP service, and PresentationRequestCard injects
+        // IEnumerable<IPresentationGateTransport> — so a factory that threw on resolve would take
+        // the SorchaWallet transport down with it.
+        services.AddScoped<IPresentationGateTransport>(sp => new HaipGateTransport(
+            sp.GetRequiredService<IHaipOfferService>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<HaipGateTransport>>()));
 
         // Feature 103 wave 13: HAIP Local Receive Service — drives the
         // OpenID4VCI pre-authorized-code flow with the user's Sorcha wallet

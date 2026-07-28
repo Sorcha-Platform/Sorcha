@@ -160,6 +160,77 @@ public sealed class PresentationSignalTests : IAsyncDisposable
         fallbackEngaged.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task RequestUnreachable_Fires_AfterConsecutiveNotFounds()
+    {
+        // A 404 is permanent: the lifecycle holds no such request, so no number of further polls
+        // can succeed. Previously it was collapsed into the same null as a transient failure, so
+        // the gate waited out the whole 60 s window and then blamed the citizen's wallet.
+        _handler.NextStatus = HttpStatusCode.NotFound;
+        var unreachableFired = false;
+        _sut.OnRequestUnreachable += () => unreachableFired = true;
+
+        await _sut.StartAsync(_requestId, CancellationToken.None);
+
+        for (var i = 0; i < 4; i++)
+        {
+            _time.Advance(TimeSpan.FromSeconds(4));
+            await Task.Yield();
+            await Task.Delay(20);
+        }
+
+        unreachableFired.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RequestUnreachable_DoesNotFire_OnServerError()
+    {
+        // A 500 may genuinely succeed on the next tick — conflating it with 404 would give up on
+        // a live request.
+        _handler.NextStatus = HttpStatusCode.InternalServerError;
+        var unreachableFired = false;
+        _sut.OnRequestUnreachable += () => unreachableFired = true;
+
+        await _sut.StartAsync(_requestId, CancellationToken.None);
+
+        for (var i = 0; i < 4; i++)
+        {
+            _time.Advance(TimeSpan.FromSeconds(4));
+            await Task.Yield();
+            await Task.Delay(20);
+        }
+
+        unreachableFired.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RequestUnreachable_DoesNotFire_WhenNotFoundsAreNotConsecutive()
+    {
+        // A just-created request can 404 briefly before the lifecycle row is visible. One or two
+        // in isolation must not condemn it.
+        _handler.NextStatus = HttpStatusCode.NotFound;
+        var unreachableFired = false;
+        _sut.OnRequestUnreachable += () => unreachableFired = true;
+
+        await _sut.StartAsync(_requestId, CancellationToken.None);
+
+        _time.Advance(TimeSpan.FromSeconds(4));
+        await Task.Yield();
+        await Task.Delay(20);
+
+        _handler.NextStatus = HttpStatusCode.OK;
+        _time.Advance(TimeSpan.FromSeconds(4));
+        await Task.Yield();
+        await Task.Delay(20);
+
+        _handler.NextStatus = HttpStatusCode.NotFound;
+        _time.Advance(TimeSpan.FromSeconds(4));
+        await Task.Yield();
+        await Task.Delay(20);
+
+        unreachableFired.Should().BeFalse();
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _sut.DisposeAsync();
@@ -171,10 +242,13 @@ public sealed class PresentationSignalTests : IAsyncDisposable
     {
         public string NextState { get; set; } = "awaiting-presentation";
 
+        /// <summary>Status the status endpoint answers with. 404 means "no such request".</summary>
+        public HttpStatusCode NextStatus { get; set; } = HttpStatusCode.OK;
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = $"{{\"presentationRequestId\":\"00000000-0000-0000-0000-000000000000\",\"state\":\"{NextState}\"}}";
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            return Task.FromResult(new HttpResponseMessage(NextStatus)
             {
                 Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
             });

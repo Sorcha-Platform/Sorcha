@@ -44,6 +44,7 @@
     -->
     <ProjectReference Include="..\..\src\Apps\Sorcha.UI\Sorcha.UI.Components.User\Sorcha.UI.Components.User.csproj" />
     <ProjectReference Include="..\..\src\Services\Sorcha.Tenant.Service\Sorcha.Tenant.Service.csproj" />
+    <ProjectReference Include="..\..\src\Services\Sorcha.Blueprint.Service\Sorcha.Blueprint.Service.csproj" />
   </ItemGroup>
 
 </Project>

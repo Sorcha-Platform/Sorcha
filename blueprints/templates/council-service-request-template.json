@@ -56,16 +56,16 @@
         ],
         "disclosures": [
           {
-            "participantId": "citizen",
-            "paths": ["/*"]
+            "participantAddress": "citizen",
+            "dataPointers": ["/*"]
           },
           {
-            "participantId": "service-dept",
-            "paths": ["/*"]
+            "participantAddress": "service-dept",
+            "dataPointers": ["/*"]
           },
           {
-            "participantId": "return-dept",
-            "paths": ["/serviceType", "/credentialRef"]
+            "participantAddress": "return-dept",
+            "dataPointers": ["/serviceType", "/credentialRef"]
           }
         ],
         "routes": [
@@ -94,16 +94,16 @@
         ],
         "disclosures": [
           {
-            "participantId": "citizen",
-            "paths": ["/decision", "/priority"]
+            "participantAddress": "citizen",
+            "dataPointers": ["/decision", "/priority"]
           },
           {
-            "participantId": "service-dept",
-            "paths": ["/*"]
+            "participantAddress": "service-dept",
+            "dataPointers": ["/*"]
           },
           {
-            "participantId": "return-dept",
-            "paths": ["/*"]
+            "participantAddress": "return-dept",
+            "dataPointers": ["/*"]
           }
         ],
         "routes": [
@@ -145,16 +145,16 @@
         ],
         "disclosures": [
           {
-            "participantId": "citizen",
-            "paths": ["/*"]
+            "participantAddress": "citizen",
+            "dataPointers": ["/*"]
           },
           {
-            "participantId": "service-dept",
-            "paths": ["/*"]
+            "participantAddress": "service-dept",
+            "dataPointers": ["/*"]
           },
           {
-            "participantId": "return-dept",
-            "paths": ["/*"]
+            "participantAddress": "return-dept",
+            "dataPointers": ["/*"]
           }
         ],
         "routes": [

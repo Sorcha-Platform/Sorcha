@@ -1,0 +1,9 @@
+/* SPDX-License-Identifier: MIT */
+/* Copyright (c) 2026 Sorcha Contributors */
+
+/* Caps the QR at a size that still scans from a phone held at arm's length but doesn't dominate
+   a dialog. ::deep because the SVG is rendered by HybridQrAffordance, a child component. */
+.presentation-request-card__qr ::deep svg {
+    max-width: 280px;
+    max-height: 280px;
+}

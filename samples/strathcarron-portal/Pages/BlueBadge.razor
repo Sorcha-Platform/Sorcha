@@ -4,15 +4,15 @@
 
     Feature 127 / PR-C — Strathcarron Council Blue Badge application
     page. Composes the F126 EnrolGateComponent (gets the citizen signed
-    in and wallet-paired) with the new F127 CredentialGateComponent
-    (gets the citizen's AssuredIdentityCredential presented) around the
-    Blue Badge form (gets the citizen-specific fields submitted).
+    in and wallet-paired) with PresentationRequestCard (gets the citizen's
+    AssuredIdentityCredential presented) around the Blue Badge form (gets
+    the citizen-specific fields submitted).
 
     Page-level responsibilities:
       (1) submit the verify-identity action against F111's lifecycle
           endpoint; receive (PresentationRequestId, AuthorizationRequestUri,
-          ClaimsFetchToken); hand to CredentialGateComponent.
-      (2) receive disclosed claims from the gate's OnPresented callback;
+          ClaimsFetchToken); hand to PresentationRequestCard.
+      (2) receive disclosed claims from the card's OnClaims callback;
           pass them to BlueBadgeForm for autofill.
       (3) on form submit, send the second action (submit-blue-badge) to
           the blueprint runtime with the form payload + disclosed claims.
@@ -51,13 +51,17 @@
         }
         else
         {
-            <CredentialGateComponent Init="@_init"
-                                     OnPresented="HandlePresentedAsync"
+            <PresentationRequestCard RequestId="@_init.PresentationRequestId"
+                                     PresentationRequestUri="@_init.AuthorizationRequestUri"
+                                     ClaimsFetchToken="@_init.ClaimsFetchToken"
+                                     Source="PresentationSource.SorchaWallet"
+                                     CredentialType="Assured Identity"
                                      LinkBackUrl="/services/driving-licence"
-                                     NameOfMissingCredentialType="Assured Identity">
+                                     NameOfMissingCredentialType="an Assured Identity"
+                                     OnClaims="HandleClaimsAsync">
                 <BlueBadgeForm Disclosed="@_disclosed"
                                OnSubmit="HandleFormSubmitAsync" />
-            </CredentialGateComponent>
+            </PresentationRequestCard>
         }
     </EnrolGateComponent>
 </MudContainer>
@@ -66,7 +70,7 @@
     private Guid? _platformUserId;
     private CredentialGateInit? _init;
     private string? _initError;
-    private DisclosedClaimsResponse? _disclosed;
+    private IReadOnlyDictionary<string, object?>? _disclosed;
 
     private async Task HandleCitizenReadyAsync(Guid? platformUserId)
     {
@@ -137,12 +141,12 @@
         return Task.FromResult<Guid?>(null);
     }
 
-    private Task HandlePresentedAsync(DisclosedClaimsResponse disclosed)
+    private Task HandleClaimsAsync(IReadOnlyDictionary<string, object?>? disclosed)
     {
         _disclosed = disclosed;
         Logger.LogInformation(
             "Blue Badge gate cleared; {ClaimCount} claims disclosed for autofill",
-            disclosed.Claims?.Count ?? 0);
+            disclosed?.Count ?? 0);
         return Task.CompletedTask;
     }
 

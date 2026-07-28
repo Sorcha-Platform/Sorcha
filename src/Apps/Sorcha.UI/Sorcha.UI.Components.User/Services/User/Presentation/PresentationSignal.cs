@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
@@ -21,6 +22,13 @@ public sealed class PresentationSignal : IPresentationSignal, IAsyncDisposable
     private static readonly TimeSpan PollingCadence = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan ManualRecoveryWindow = TimeSpan.FromSeconds(60);
 
+    /// <summary>
+    /// Consecutive 404s from the status endpoint before the request is declared unreachable. More
+    /// than one, because a just-created request can 404 briefly before its lifecycle row is
+    /// visible to the read path.
+    /// </summary>
+    private const int UnreachableThreshold = 3;
+
     private static readonly HashSet<string> TerminalStates = new(StringComparer.Ordinal)
     {
         "success", "decline", "abandoned", "abandoned-with-late-outcome", "expired"
@@ -37,10 +45,13 @@ public sealed class PresentationSignal : IPresentationSignal, IAsyncDisposable
     private Task? _pollingLoop;
     private Task? _manualRecoveryTimer;
     private bool _signalReceived;
+    private int _notFoundStreak;
+    private bool _unreachableRaised;
 
     public event Func<PresentationSignalOutcome, Task>? OnOutcomeReady;
     public event Action? OnFallbackEngaged;
     public event Action? OnManualRecoveryRequired;
+    public event Action? OnRequestUnreachable;
 
     public PresentationSignal(
         PresentationHubConnection hub,
@@ -64,6 +75,8 @@ public sealed class PresentationSignal : IPresentationSignal, IAsyncDisposable
         _presentationRequestId = presentationRequestId;
         _groupName = $"presentation:{presentationRequestId:N}";
         _signalReceived = false;
+        _notFoundStreak = 0;
+        _unreachableRaised = false;
 
         _cts?.Cancel();
         _cts?.Dispose();
@@ -214,10 +227,32 @@ public sealed class PresentationSignal : IPresentationSignal, IAsyncDisposable
         {
             using var response = await _http.GetAsync(
                 $"/api/presentations/{_presentationRequestId:D}/status", ct).ConfigureAwait(false);
+
+            // 404 is a PERMANENT fact — the lifecycle holds no such request, so retrying cannot
+            // help. Every other failure (500, network) may genuinely succeed next tick. Collapsing
+            // the two into one null is what let a doomed gate poll out its full window and then
+            // surface as "expired", pointing the citizen at their own wallet.
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                if (++_notFoundStreak >= UnreachableThreshold && !_unreachableRaised && !_signalReceived)
+                {
+                    _unreachableRaised = true;
+                    _logger.LogError(
+                        "Presentation lifecycle has no request {RequestId} after {Streak} "
+                        + "consecutive 404s — declaring it unreachable.",
+                        _presentationRequestId, _notFoundStreak);
+                    OnRequestUnreachable?.Invoke();
+                }
+                return null;
+            }
+
             if (!response.IsSuccessStatusCode)
             {
                 return null;
             }
+
+            _notFoundStreak = 0;
+
             var payload = await response.Content
                 .ReadFromJsonAsync<StatusProbeShape>(JsonDefaults.Api, ct)
                 .ConfigureAwait(false);

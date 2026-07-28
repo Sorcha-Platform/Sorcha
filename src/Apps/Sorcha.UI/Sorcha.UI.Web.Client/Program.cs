@@ -12,6 +12,7 @@ using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Services;
 using Sorcha.UI.Core.Services.Http;
 using Sorcha.UI.Core.Services.User.Enrolment;
+using Sorcha.UI.Core.Services.User.Presentation;
 using Sorcha.UI.Web.Client;
 using Sorcha.UI.Web.Client.Services;
 
@@ -123,6 +124,16 @@ builder.Services.AddHttpClient<Sorcha.UI.Core.Services.User.Pairing.IPairingClie
 {
     client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
 }).AddHttpMessageHandler<AuthenticatedHttpMessageHandler>();
+
+// Feature 127 — the presentation-gate stack: BlueprintHub connection, IPresentationSignal, and the
+// SorchaWalletGateTransport that PresentationRequestCard resolves for a SorchaWallet gate. Until
+// now only the sample council portal registered this, so the web app had no transport for a
+// SorchaWallet-sourced gate and fell through to HAIP.
+//
+// Deliberately NOT wrapped in AuthenticatedHttpMessageHandler: /api/presentations/{id}/status and
+// /disclosed-claims are AllowAnonymous by design, authenticated instead by the high-entropy
+// request id and the single-use ClaimsFetchToken.
+builder.Services.AddSorchaPresentationGate(builder.HostEnvironment.BaseAddress);
 
 // Feature 181 US3 (T037) — platform-admin trusted-list snapshot management. The endpoints are
 // admin + platform-audience gated, so the client must carry the admin's bearer token.

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Blueprint.Models.Credentials;
+
 namespace Sorcha.UI.Core.Models.Workflows;
 
 /// <summary>
@@ -67,10 +69,11 @@ public record ActionSubmissionResultViewModel
     public HaipCredentialOfferInfo? CredentialOffer { get; init; }
 
     /// <summary>
-    /// HAIP presentation request URI when the action requires a credential from an external wallet.
-    /// Present when PresentationSource is HaipExternalWallet.
+    /// Presentation request URI when the action requires a credential from an external wallet.
+    /// Present when PresentationSource is HaipExternalWallet or SorchaWallet; the info record's
+    /// <c>Source</c> says which lifecycle owns it.
     /// </summary>
-    public HaipPresentationRequestInfo? PresentationRequest { get; init; }
+    public PresentationRequestInfo? PresentationRequest { get; init; }
 
     /// <summary>
     /// Whether this result includes a HAIP external wallet interaction.
@@ -113,15 +116,23 @@ public record HaipCredentialOfferInfo
 }
 
 /// <summary>
-/// HAIP presentation request details for QR rendering.
+/// Presentation request details for QR rendering. Client mirror of the Blueprint Service's
+/// <c>PresentationRequestResponse</c> — kept member-for-member by
+/// <c>Sorcha.UI.ContractTests.PresentationRequestContractTests</c>.
 /// </summary>
-public record HaipPresentationRequestInfo
+public record PresentationRequestInfo
 {
     public Guid RequestId { get; init; }
     public string PresentationRequestUri { get; init; } = string.Empty;
     public string CredentialType { get; init; } = string.Empty;
     public IReadOnlyList<string>? RequestedClaims { get; init; }
     public DateTimeOffset ExpiresAt { get; init; }
+
+    /// <summary>Which lifecycle owns this request — selects the client transport.</summary>
+    public PresentationSource Source { get; init; }
+
+    /// <summary>Single-use Feature 127 claims-fetch token; null for HAIP.</summary>
+    public string? ClaimsFetchToken { get; init; }
 }
 
 /// <summary>

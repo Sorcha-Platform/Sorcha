@@ -70,6 +70,7 @@
               { "claimName": "paymentDueDate" }
             ],
             "revocationCheckPolicy": "FailOpen",
+            "presentationSource": "SorchaInternal",
             "description": "A verified invoice credential from the procurement register is required to request financing"
           },
           {
@@ -81,6 +82,7 @@
               { "claimName": "expiryDate" }
             ],
             "revocationCheckPolicy": "FailOpen",
+            "presentationSource": "SorchaInternal",
             "optional": true,
             "description": "Optional Digital Product Passport for sustainably-sourced goods. When presented with a sustainability score of 70 or higher, the funder applies a preferential advance-rate uplift in the evaluation step."
           }

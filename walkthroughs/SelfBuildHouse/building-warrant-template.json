@@ -61,6 +61,7 @@
               { "claimName": "siteAddress" }
             ],
             "revocationCheckPolicy": "FailOpen",
+            "presentationSource": "SorchaInternal",
             "description": "Valid planning permission is required before a building warrant can be applied for"
           }
         ],
@@ -918,6 +919,7 @@
               { "claimName": "warrantReference" }
             ],
             "revocationCheckPolicy": "FailOpen",
+            "presentationSource": "SorchaInternal",
             "description": "Valid building warrant required for staged inspections"
           }
         ],
