@@ -205,16 +205,14 @@ public class WorkflowService : IWorkflowService
                 instanceId = request.InstanceId,
                 senderWallet = request.SenderWallet,
                 registerAddress = request.RegisterAddress,
-                payloadData = request.PayloadData,
-                // Populated when the citizen satisfied the gate from their OWN wallet. The server
-                // then skips the cross-device presentation lifecycle entirely, so no QR appears.
-                credentialPresentations = request.CredentialPresentations
+                payloadData = request.PayloadData
             };
 
             using var httpRequest = new HttpRequestMessage(HttpMethod.Post,
                 $"/api/instances/{request.InstanceId}/actions/{request.ActionId}/execute");
-            // Explicit options: the anonymous fields above are hand-cased, but CredentialPresentation
-            // is a real type and would serialise PascalCase under the default options.
+            // Explicit options rather than the serializer defaults: the anonymous fields above are
+            // hand-cased, so any typed value added here would otherwise go out PascalCase against a
+            // camelCase-binding server.
             httpRequest.Content = JsonContent.Create(body, options: JsonDefaults.Api);
             httpRequest.Headers.Add("X-Delegation-Token", "delegate");
 

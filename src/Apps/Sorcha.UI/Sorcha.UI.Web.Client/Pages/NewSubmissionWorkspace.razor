@@ -175,13 +175,7 @@
                 InstanceId = instance.InstanceId,
                 SenderWallet = _selectedWallet,
                 RegisterAddress = RegisterId,
-                PayloadData = payloadData,
-                // The citizen's own consented credential selection, from CredentialGatePanel.
-                // Dropping this is what forced a cross-device QR on someone who was signed in,
-                // holding the credential, and had already consented.
-                CredentialPresentations = submission.CredentialPresentations is { Count: > 0 }
-                    ? submission.CredentialPresentations
-                    : null
+                PayloadData = payloadData
             };
 
             var result = await WorkflowService.SubmitActionExecuteAsync(request);

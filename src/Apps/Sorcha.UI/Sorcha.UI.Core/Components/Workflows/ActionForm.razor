@@ -70,13 +70,7 @@
             InstanceId = Action.InstanceId,
             Data = submission.Data.ToDictionary(
                 kvp => kvp.Key.TrimStart('/'),
-                kvp => kvp.Value ?? (object)string.Empty),
-            // Carry the citizen's consented credential selection through the dialog. Without it
-            // the server never learns the gate was already satisfied locally and falls back to a
-            // cross-device QR.
-            CredentialPresentations = submission.CredentialPresentations is { Count: > 0 }
-                ? submission.CredentialPresentations
-                : null
+                kvp => kvp.Value ?? (object)string.Empty)
         };
 
         MudDialog?.Close(DialogResult.Ok(submissionVm));
