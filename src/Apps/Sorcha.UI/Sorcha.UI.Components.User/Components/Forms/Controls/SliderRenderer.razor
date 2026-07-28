@@ -127,7 +127,23 @@ else
         // Write the seeded value straight back so an untouched slider still submits a real
         // integer. Without this, a citizen who accepts the default answer submits nothing and
         // the scoring check sees a missing field.
-        FormContext?.SetValue(Control.Scope, _value);
+        //
+        // The write MUST be idempotent. OnParametersSet runs on every re-render;
+        // FormContext.SetValue raises OnDataChanged; ControlDispatcher re-renders on
+        // OnDataChanged. Writing unconditionally therefore closes a feedback loop that never
+        // settles — it froze the browser tab on the AIAS Cyber form (two sliders, mutually
+        // reinforcing) with no console error and no further network requests. Skipping the
+        // write when the stored value is already this exact integer breaks the cycle while
+        // keeping the seed. A non-int stored value is still overwritten, so the field is
+        // normalised to a real integer (a stringly-typed answer scores 0 in every band).
+        var alreadySeeded =
+            FormContext is not null
+            && FormContext.FormData.TryGetValue(Control.Scope, out var stored)
+            && stored is int storedInt
+            && storedInt == _value;
+
+        if (!alreadySeeded)
+            FormContext?.SetValue(Control.Scope, _value);
 
         UpdateErrors();
     }
