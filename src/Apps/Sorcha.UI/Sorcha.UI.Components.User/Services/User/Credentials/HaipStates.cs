@@ -38,6 +38,17 @@ public static class HaipPollingDefaults
 
     /// <summary>Delay (ms) before auto-closing a dialog after reaching an error state.</summary>
     public const int ErrorCloseDelayMs = 3000;
+
+    /// <summary>
+    /// Consecutive "request not found" polls tolerated before the card gives up and reports
+    /// <see cref="HaipVerificationStates.Unreachable"/>.
+    /// </summary>
+    /// <remarks>
+    /// Non-zero because a freshly-created request can 404 for a moment; failing on the very first
+    /// miss would be flaky. Small because the defect being fixed is polling a doomed request for
+    /// the whole <see cref="MaxPollTicks"/> window (5 minutes) while telling the citizen nothing.
+    /// </remarks>
+    public const int MaxConsecutiveNotFound = 3;
 }
 
 /// <summary>
@@ -53,7 +64,20 @@ public static class HaipVerificationStates
     public const string Expired = "Expired";
     public const string Cancelled = "Cancelled";
 
+    /// <summary>
+    /// CLIENT-SIDE ONLY — the verifier has no such request, so polling can never succeed.
+    /// Not a HAIP server state; it has no counterpart in PresentationRequestState.
+    /// </summary>
+    /// <remarks>
+    /// Exists because a 404 used to be collapsed into the same null as a transient failure, so the
+    /// card polled a doomed request for the full five-minute window, showed the citizen only
+    /// "Waiting for wallet to scan…", and finally reported <see cref="Expired"/> — a wrong
+    /// diagnosis. Found live on n1 (2026-07-28), where a SorchaWallet-sourced gate's request lives
+    /// in Blueprint's F127 lifecycle and HAIP has never heard of it.
+    /// </remarks>
+    public const string Unreachable = "Unreachable";
+
     /// <summary>Whether the state is terminal (no further transitions expected).</summary>
     public static bool IsTerminal(string state) =>
-        state is Verified or Denied or Expired or Cancelled;
+        state is Verified or Denied or Expired or Cancelled or Unreachable;
 }

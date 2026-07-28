@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -49,25 +50,43 @@ public class HaipOfferService : IHaipOfferService
 
     public async Task<HaipVerificationResult?> GetVerificationResultAsync(
         Guid requestId, CancellationToken ct = default)
+        => (await PollVerificationResultAsync(requestId, ct)).Result;
+
+    /// <inheritdoc />
+    public async Task<HaipPollOutcome> PollVerificationResultAsync(
+        Guid requestId, CancellationToken ct = default)
     {
         try
         {
             var response = await _httpClient.GetAsync(
                 $"/api/v1/verifier/requests/{requestId}/result", ct);
 
+            // 404 is a PERMANENT fact — this verifier has no such request, so retrying cannot
+            // help. Every other failure (500, network) may genuinely succeed on the next tick.
+            // Collapsing the two into one null is what let the card poll a doomed request 150
+            // times and then misreport it as Expired.
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                _logger.LogDebug(
+                    "Verifier has no request {RequestId} (404) — not retryable", requestId);
+                return HaipPollOutcome.NotFound;
+            }
+
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Failed to get verification result for {RequestId}: {StatusCode}",
                     requestId, response.StatusCode);
-                return null;
+                return HaipPollOutcome.Transient;
             }
 
-            return await response.Content.ReadFromJsonAsync<HaipVerificationResult>(JsonOptions, ct);
+            var result = await response.Content
+                .ReadFromJsonAsync<HaipVerificationResult>(JsonOptions, ct);
+            return new HaipPollOutcome(result, RequestNotFound: false);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Error polling verification result for {RequestId}", requestId);
-            return null;
+            return HaipPollOutcome.Transient;
         }
     }
 }
