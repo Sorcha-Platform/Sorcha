@@ -550,7 +550,11 @@
         {
             // Credential requirements
             _credentialRequirements = Action.CredentialRequirements?.ToList() ?? [];
-            _formContext.CredentialGateSatisfied = !_credentialRequirements.Any();
+
+            // Async-source (SorchaWallet/HAIP) gates are enforced post-submit by the presentation
+            // lifecycle; only inline (SorchaInternal) requirements need a pre-submit selection.
+            _formContext.CredentialGateSatisfied = _credentialRequirements.All(r =>
+                r.PresentationSource != Sorcha.Blueprint.Models.Credentials.PresentationSource.SorchaInternal);
 
             // Calculations
             _hasCalculations = Action.Calculations?.Count > 0;
