@@ -706,13 +706,25 @@ public class CredentialApiService : ICredentialApiService
                 return results ?? [];
             }
 
-            _logger.LogWarning("Credential match failed: {StatusCode}", response.StatusCode);
-            return [];
+            // Do NOT return an empty list here. "The request failed" and "you hold no matching
+            // credential" are different facts, and CredentialGatePanel renders an empty list as
+            // "No matching credential — check your wallet". A 400 from a serialisation mismatch
+            // therefore accused citizens of not owning credentials they demonstrably held, and
+            // pointed them at their wallet instead of at the bug (n1, 2026-07-28). Throw so the
+            // caller can show its error state.
+            var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            _logger.LogError(
+                "Credential match request failed for wallet {WalletAddress}: {StatusCode} {Body}",
+                walletAddress, response.StatusCode, body);
+            throw new HttpRequestException(
+                $"Credential match failed with {(int)response.StatusCode} {response.StatusCode}.",
+                inner: null,
+                statusCode: response.StatusCode);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error matching credentials for wallet {WalletAddress}", walletAddress);
-            return [];
+            throw;
         }
     }
 

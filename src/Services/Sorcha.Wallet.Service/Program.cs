@@ -314,6 +314,29 @@ builder.AddSorchaOpenApi("Sorcha Wallet Service API", "Cryptographic wallet mana
 builder.Services.AddHealthChecks()
     .AddWalletServiceHealthChecks(builder.Configuration);
 
+// Minimal-API JSON: read/write the shared SorchaJson shape (camelCase properties + kebab-case
+// string enums), matching Tenant Service and what every client already sends.
+//
+// Without this, body binding used ASP.NET's DEFAULT options, which know only the PascalCase names
+// from each enum's type-level [JsonConverter(typeof(JsonStringEnumConverter))]. The UI serialises
+// with JsonDefaults.Api (SorchaJson), whose kebab converter in the Converters collection OUTRANKS
+// that attribute — so it sends "fail-closed" / "sorcha-wallet" and the binder threw before the
+// handler ran.
+//
+// Live consequence (n1, 2026-07-28): every POST /credentials/match returned 400 in ~1ms, and the
+// client turns a non-success status into an empty match list — so the AIAS Cyber gate told a
+// citizen holding a valid, Active, correctly-typed Assured Identity credential that they had
+// "No matching credential". The endpoint had never worked from the web UI; it went unnoticed
+// because M1's actions declare no credentialRequirements.
+//
+// Scoped deliberately to this service rather than platform-wide (see the same call in Tenant's
+// Program.cs): services fronting standards surfaces — OAuth/OIDC snake_case, VC token bodies —
+// must NOT get a uniform casing. Wallet's standards output (the status-list JWT, credential
+// export) is written as text/pre-serialised tokens, not through minimal-API JSON serialisation,
+// so it is unaffected.
+builder.Services.ConfigureHttpJsonOptions(
+    options => Sorcha.Serialization.SorchaJson.Configure(options.SerializerOptions));
+
 // Configure CORS - production restriction handled at API Gateway (YARP)
 builder.AddSorchaCors();
 
