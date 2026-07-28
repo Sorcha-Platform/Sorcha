@@ -360,7 +360,6 @@ db.registers.getIndexes()  // Only shows _id index
 
 ## Related Documentation
 
-- [MongoDB Integration Results](RESULTS.md)
 - [MongoDB Integration Guide](README.md)
 - [Register Service Specification](../../.specify/specs/sorcha-register-service.md)
 - [Docker Compose Reference](../../docker-compose.yml)
