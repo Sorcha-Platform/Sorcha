@@ -182,11 +182,164 @@ public sealed class SorchaWalletLocalPresenter : ISorchaWalletLocalPresenter
         return Base64Url.EncodeToString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
 
-    // PresentAsync arrives in Task 2.
     /// <inheritdoc />
-    public Task<LocalPresentResult> PresentAsync(
+    public async Task<LocalPresentResult> PresentAsync(
         LocalPresentationCandidate candidate,
         IReadOnlyCollection<string> consentedClaims,
         CancellationToken ct = default)
-        => throw new NotImplementedException();
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        ArgumentNullException.ThrowIfNull(consentedClaims);
+        try
+        {
+            return await PresentCoreAsync(candidate, consentedClaims, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Local presentation failed for request {State}.", candidate.RequestState);
+            return LocalPresentResult.Failed(ex.Message);
+        }
+    }
+
+    private async Task<LocalPresentResult> PresentCoreAsync(
+        LocalPresentationCandidate candidate,
+        IReadOnlyCollection<string> consentedClaims,
+        CancellationToken ct)
+    {
+        var consented = new HashSet<string>(consentedClaims, StringComparer.Ordinal);
+
+        // Every required claim must be consented — mirrors PresentationEngine's sanity check.
+        foreach (var required in candidate.RequiredClaims)
+        {
+            if (!consented.Contains(required))
+                return LocalPresentResult.Failed($"Required claim '{required}' was not consented.");
+        }
+
+        // 1. Export the held credential's raw SD-JWT.
+        var export = await _http.GetFromJsonAsync<CredentialExportResponse>(
+            $"/api/v1/wallets/{Uri.EscapeDataString(candidate.WalletAddress)}/credentials/{Uri.EscapeDataString(candidate.CredentialId)}/export",
+            JsonOptions, ct);
+        if (export is null || string.IsNullOrEmpty(export.RawToken))
+            return LocalPresentResult.Failed("Credential export returned no raw token.");
+
+        // 2. Keep only consented disclosures. Issued tokens carry no KB-JWT, but guard anyway
+        //    (a 2-dot final segment is a KB-JWT, not a disclosure).
+        var segments = export.RawToken.Split('~');
+        var credentialJwt = segments[0];
+        var selected = new List<string>();
+        for (var i = 1; i < segments.Length; i++)
+        {
+            var seg = segments[i];
+            if (string.IsNullOrEmpty(seg) || seg.Count(c => c == '.') == 2) continue;
+            if (ReadDisclosureName(seg) is { } name && consented.Contains(name))
+                selected.Add(seg);
+        }
+
+        // 3. RFC 9901 sd_hash over the exact to-be-presented prefix (order preserved, trailing ~).
+        var hashable = credentialJwt + string.Concat(selected.Select(s => "~" + s)) + "~";
+        var sdHash = Base64Url.EncodeToString(SHA256.HashData(Encoding.ASCII.GetBytes(hashable)));
+
+        // 4. KB-JWT signed server-custody: the holder key never leaves the Wallet Service.
+        var now = _clock.GetUtcNow();
+        var header = new Dictionary<string, object>
+        {
+            ["alg"] = candidate.JoseAlgorithm,
+            ["typ"] = "kb+jwt",
+            ["kid"] = candidate.KidThumbprint,
+        };
+        var kbPayload = new Dictionary<string, object>
+        {
+            ["iat"] = now.ToUnixTimeSeconds(),
+            ["exp"] = now.AddSeconds(120).ToUnixTimeSeconds(), // Feature 138 US5 window
+            ["aud"] = candidate.ClientId,
+            ["nonce"] = candidate.Nonce,
+            ["sd_hash"] = sdHash,
+        };
+        var signingInput =
+            $"{Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(header))}." +
+            $"{Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(kbPayload))}";
+
+        using var signResponse = await _http.PostAsJsonAsync(
+            "/api/v1/wallet/presentations/sign-kb", new { signingInput }, JsonOptions, ct);
+        if (!signResponse.IsSuccessStatusCode)
+            return LocalPresentResult.Failed($"sign-kb returned {(int)signResponse.StatusCode}.");
+        var sign = await signResponse.Content.ReadFromJsonAsync<KbSignResponse>(JsonOptions, ct);
+        if (sign is null || string.IsNullOrEmpty(sign.Signature))
+            return LocalPresentResult.Failed("sign-kb returned no signature.");
+        if (!string.Equals(sign.Algorithm, candidate.JoseAlgorithm, StringComparison.Ordinal))
+        {
+            // A silently mismatched alg fails verification downstream with no local error
+            // (rehearse.ps1:599 carries the same guard).
+            return LocalPresentResult.Failed(
+                $"sign-kb signed '{sign.Algorithm}' but the KB-JWT header declares '{candidate.JoseAlgorithm}'.");
+        }
+
+        // 5. Assemble + direct_post the OpenID4VP 1.0 object-keyed envelope.
+        var vpToken = hashable + $"{signingInput}.{sign.Signature}";
+        var envelope = JsonSerializer.Serialize(
+            new Dictionary<string, string[]> { [candidate.QueryId] = [vpToken] });
+        using var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["vp_token"] = envelope,
+            ["state"] = candidate.RequestState,
+        });
+        using var callback = await _http.PostAsync(candidate.ResponseUri, form, ct);
+        if (!callback.IsSuccessStatusCode)
+            return LocalPresentResult.Failed($"Presentation callback returned {(int)callback.StatusCode}.");
+
+        var body = await callback.Content.ReadAsStringAsync(ct);
+        var kind = ReadKind(body);
+        return string.Equals(kind, "Success", StringComparison.OrdinalIgnoreCase)
+            ? LocalPresentResult.Submitted()
+            : LocalPresentResult.Declined(kind ?? "unknown outcome");
+    }
+
+    /// <summary>Claim name of a 3-element disclosure ([salt, name, value]). A 2-element
+    /// disclosure is an unnamed array element — never claim-selectable, so null.</summary>
+    internal static string? ReadDisclosureName(string segment)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(Base64Url.DecodeFromChars(segment));
+            return doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() == 3
+                ? doc.RootElement[1].GetString()
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? ReadKind(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement.TryGetProperty("kind", out var k) && k.ValueKind == JsonValueKind.String
+                ? k.GetString()
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed class CredentialExportResponse
+    {
+        public string? Id { get; set; }
+        public string? Type { get; set; }
+        public string? RawToken { get; set; }
+    }
+
+    private sealed class KbSignResponse
+    {
+        public string Signature { get; set; } = string.Empty;
+        public string Algorithm { get; set; } = string.Empty;
+    }
 }
