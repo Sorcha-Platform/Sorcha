@@ -1281,6 +1281,8 @@ The page owns the action-submission HTTP call (its own auth, retry policy, error
 
 Each transport maps its own vocabulary onto `GateOutcome` (`Pending`/`Submitted`/`Success`/`Declined`/`Expired`/`Abandoned`/`Unreachable`); F111's `abandoned-with-late-outcome` maps to `Success`. **`Unreachable` is distinct from `Expired` on purpose** — the lifecycle holds no such request, which is our fault, not the citizen's. `AddSorchaPresentationGate(baseAddress)` registers the SorchaWallet transport; the HAIP transport is registered beside `IHaipOfferService` in `AddCoreServices`, because a council page has no HAIP service and the card injects `IEnumerable<IPresentationGateTransport>`.
 
+#1330 adds a same-device route: when the citizen's own server-custody wallet holds a match, `PresentationRequestCard` probes via `ISorchaWalletLocalPresenter` (Sorcha.UI.Components.User) and renders a "Use this device" consent panel (`UseThisDevicePanel`) with the QR collapsed beneath; hosts without the presenter registered (council portal) stay QR-only.
+
 > **Why this exists.** `ActionExecutionService` dropped both the `PresentationSource` and the `ClaimsFetchToken` when mapping `PresentationInitiationResult` onto the submission response, so the web app routed **every** gate to HAIP. A SorchaWallet gate therefore polled a verifier that had never heard of it, 404'd for five minutes, and reported "Expired". Both fields now ride on `PresentationRequestResponse`/`PresentationRequestInfo`, guarded by `Sorcha.UI.ContractTests`.
 
 ### Cross-device coordination

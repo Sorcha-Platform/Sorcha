@@ -1,0 +1,130 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+@*
+    Feature 127 / #1330 — the "Use this device" half of the presentation gate. Rendered by
+    PresentationRequestCard when the signed-in citizen's own server-custody wallet holds a
+    matching credential. Consent here mirrors the PWA ConsentSheet semantics: required claims
+    locked on, optional claims toggleable (default ON — a default-off portrait turns the AIAS
+    cyber happy path into a hard reject). On success the card's existing IPresentationSignal
+    observes the outcome; this panel never drives gate state itself.
+*@
+@namespace Sorcha.UI.Core.Components.Presentation
+@using Sorcha.UI.Core.Services.User.Presentation
+@inject ISorchaWalletLocalPresenter Presenter
+
+<MudPaper Outlined="true" Class="pa-4 mb-3" Style="width: 100%; max-width: 400px;">
+    <MudStack Spacing="2">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.Badge" Color="Color.Primary" />
+            <MudText Typo="Typo.subtitle1">Use this device</MudText>
+        </MudStack>
+        <MudText Typo="Typo.body2">
+            You already hold a matching <b>@CredentialDisplayName</b> in your Sorcha wallet.
+            Confirm what you're happy to share:
+        </MudText>
+
+        @* Required claims are always shared — rendered as a locked row, not an interactive
+           checkbox, so the only toggleable control on this panel is an optional claim. *@
+        @foreach (var claim in Candidate.RequiredClaims)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="ml-1">
+                <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Color="Color.Secondary" />
+                <MudText Typo="Typo.body2">@claim (required)</MudText>
+            </MudStack>
+        }
+        @foreach (var claim in Candidate.OptionalClaims)
+        {
+            var name = claim;
+            <MudCheckBox T="bool" Value="@_optionalConsent[name]" Dense="true" Label="@name"
+                         ValueChanged="@((bool v) => _optionalConsent[name] = v)" />
+        }
+
+        @if (_status == LocalPresentStatus.Declined)
+        {
+            @* The presentation request is CONSUMED server-side — retry and the QR are BOTH dead
+               (they share the same request), so this copy must not suggest either. *@
+            <MudAlert Severity="Severity.Error" Dense="true" data-testid="use-this-device-declined">
+                This request was declined and is now closed — please submit the form again to get
+                a fresh request.
+            </MudAlert>
+        }
+        else if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" data-testid="use-this-device-error">
+                We couldn't share your credential from this device — you can try again, or scan
+                the QR code with your phone instead. (@_error)
+            </MudAlert>
+        }
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@_busy"
+                   data-testid="use-this-device-share" OnClick="ShareAsync">
+            @(_busy ? "Sharing..." : "Share & continue")
+        </MudButton>
+    </MudStack>
+</MudPaper>
+
+@code {
+    /// <summary>The probed local candidate — presence is what makes this panel render at all.</summary>
+    [Parameter, EditorRequired] public LocalPresentationCandidate Candidate { get; set; } = default!;
+
+    /// <summary>Human name of the credential, e.g. "Assured Identity".</summary>
+    [Parameter] public string CredentialDisplayName { get; set; } = "credential";
+
+    /// <summary>Fires after a successful direct_post. The card's signal machinery takes over.</summary>
+    [Parameter] public EventCallback OnSubmitted { get; set; }
+
+    private readonly Dictionary<string, bool> _optionalConsent = new(StringComparer.Ordinal);
+    private bool _busy;
+    private string? _error;
+    private LocalPresentStatus? _status;
+    private string? _consentFor;
+
+    protected override void OnParametersSet()
+    {
+        // Candidate identity changed (a fresh probe swapped in a different request) — the previous
+        // candidate's toggles are stale and must not leak into this one, so start clean before
+        // re-seeding default ON. See file header comment for why default ON is load-bearing.
+        var candidateKey = $"{Candidate.CredentialId}|{Candidate.RequestState}";
+        if (_consentFor != candidateKey)
+        {
+            _optionalConsent.Clear();
+            _consentFor = candidateKey;
+        }
+
+        foreach (var claim in Candidate.OptionalClaims)
+        {
+            _optionalConsent.TryAdd(claim, true); // default ON — see file header comment
+        }
+    }
+
+    private async Task ShareAsync()
+    {
+        _busy = true;
+        _error = null;
+        _status = null;
+        StateHasChanged();
+        try
+        {
+            // Scoped to the CURRENT candidate's optional claims — never the whole dictionary,
+            // which may still carry entries from a previous candidate (see OnParametersSet).
+            var consented = Candidate.RequiredClaims
+                .Concat(Candidate.OptionalClaims.Where(c => _optionalConsent.TryGetValue(c, out var v) && v))
+                .ToList();
+            var result = await Presenter.PresentAsync(Candidate, consented);
+            if (result.Status == LocalPresentStatus.Submitted)
+            {
+                await OnSubmitted.InvokeAsync();
+            }
+            else
+            {
+                _status = result.Status;
+                _error = result.Detail ?? result.Status.ToString();
+            }
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+}

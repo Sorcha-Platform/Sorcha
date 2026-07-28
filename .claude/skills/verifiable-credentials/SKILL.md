@@ -41,7 +41,7 @@ Sorcha implements W3C Verifiable Credentials 2.0 using the **SD-JWT VC profile**
 | `Multicodec` | `src/Common/Sorcha.ServiceClients.Http/Utilities/` | `publicKeyMultibase` varint + base58btc encoding |
 | `ICredentialStore` (server) | `src/Services/Sorcha.Wallet.Service/Credentials/` | Wallet-side credential persistence |
 | `CredentialMatcher` | `src/Services/Sorcha.Wallet.Service/Credentials/` | Matches stored credentials against requirements |
-| `PresentationRequestService` | `src/Services/Sorcha.Wallet.Service/Services/` | Builds SD-JWT presentations with selective disclosure |
+| `PresentationRequestService` | `src/Services/Sorcha.Wallet.Service/Services/` | Legacy OID4VP request lifecycle — creates/matches/VERIFIES a caller-built vpToken (in-memory store; it builds nothing) |
 
 ### Issuing a VC — the actual API shape
 
@@ -309,7 +309,7 @@ SD-JWT compact form: `<issuer JWT>~<disclosure1>~<disclosure2>~...~<key binding 
 - **Holder** (`SdJwtService.PresentAsync`): strips disclosures not requested by the verifier, signs a key-binding JWT with nonce + audience.
 - **Verifier** (`SdJwtService.VerifyAsync`): verifies issuer signature, recomputes disclosure hashes, verifies key-binding JWT, checks status list.
 
-`PresentationRequestService` in the Wallet Service is the holder-side orchestrator. Feature 093 added stricter verification (nonce binding, audience check, revocation fail-closed) in `PresentationRequestVerificationTests.cs` — read those tests to understand the contract.
+Presentations are built CLIENT-side: the PWA's PresentationEngine and the web app's SorchaWalletLocalPresenter (Sorcha.UI.Components.User) assemble jwt~disclosures~kb-jwt, with server-custody KB-JWT signing via POST /api/v1/wallet/presentations/sign-kb. PresentationRequestService only VERIFIES a submitted vpToken (its /submit endpoint) — it has no build path. Feature 093 added stricter verification (nonce binding, audience check, revocation fail-closed) in `PresentationRequestVerificationTests.cs` — read those tests to understand the contract.
 
 ## Blueprint Integration
 
