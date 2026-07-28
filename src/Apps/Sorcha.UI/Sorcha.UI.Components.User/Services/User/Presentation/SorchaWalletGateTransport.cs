@@ -47,11 +47,18 @@ public sealed class SorchaWalletGateTransport(
             return Task.CompletedTask;
         }
 
+        // A 404 streak IS terminal: the lifecycle holds no such request, so no amount of further
+        // waiting can succeed.
         void OnUnreachable() => completion.TrySetResult(GateOutcome.Unreachable);
 
-        // 60 s with neither transport surfacing anything is an infrastructure problem, not a
-        // holder decision — say so, rather than blaming the citizen's wallet.
-        void OnManualRecovery() => completion.TrySetResult(GateOutcome.Unreachable);
+        // Manual-recovery fires after 60 s with no signal. That is NOT terminal and must never be
+        // reported as Unreachable: a presentation request is valid for its whole window (ten
+        // minutes on n1), and sixty seconds is simply how long it takes a citizen to pick up their
+        // phone, unlock it and scan. Ending the wait here told a citizen "nothing was sent from
+        // your wallet" about a request that was alive and waiting for them — the same wrong
+        // diagnosis this component exists to remove, pointed at a different innocent party.
+        // Expiry is the lifecycle's job: /status reports "expired" and that maps to Expired.
+        void OnManualRecovery() => progress?.Report(GateOutcome.Pending);
 
         void OnFallback() => progress?.Report(GateOutcome.Pending);
 

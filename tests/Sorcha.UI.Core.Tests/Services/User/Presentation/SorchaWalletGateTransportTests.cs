@@ -120,17 +120,40 @@ public class SorchaWalletGateTransportTests
     }
 
     [Fact]
-    public async Task ManualRecoveryEndsTheWaitAsUnreachable()
+    public async Task ManualRecoveryDoesNotEndTheWait()
     {
+        // Observed live on n1 (2026-07-28): a request valid for TEN MINUTES was reported to the
+        // citizen as "nothing was sent from your wallet" after 60 s, while it sat in
+        // awaiting-presentation waiting for them to scan. Sixty seconds is how long it takes to
+        // pick up a phone — not evidence of failure.
         var signal = new FakeSignal();
         var sut = Build(signal);
+        var id = Guid.NewGuid();
 
-        var waiting = sut.WaitForOutcomeAsync(Guid.NewGuid());
+        var waiting = sut.WaitForOutcomeAsync(id);
         signal.RaiseManualRecovery();
 
-        (await waiting).Should().Be(GateOutcome.Unreachable,
-            "60 s with no signal from either transport is an infrastructure problem, "
-            + "not the holder declining");
+        waiting.IsCompleted.Should().BeFalse(
+            "the request is still valid; only a terminal outcome or expiry may end the wait");
+
+        await signal.RaiseOutcomeAsync(id, "success");
+        (await waiting).Should().Be(GateOutcome.Success,
+            "a late scan must still succeed");
+    }
+
+    [Fact]
+    public async Task ExpiryStillEndsTheWait()
+    {
+        // Expiry is the lifecycle's call, surfaced through /status — not a client-side timer.
+        var signal = new FakeSignal();
+        var sut = Build(signal);
+        var id = Guid.NewGuid();
+
+        var waiting = sut.WaitForOutcomeAsync(id);
+        signal.RaiseManualRecovery();
+        await signal.RaiseOutcomeAsync(id, "expired");
+
+        (await waiting).Should().Be(GateOutcome.Expired);
     }
 
     [Fact]
