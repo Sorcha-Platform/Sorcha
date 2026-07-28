@@ -91,6 +91,50 @@ public class SliderRendererRenderTests : BunitContext
     }
 
     [Fact]
+    public void Rerender_WithUnchangedValue_RaisesNoFurtherDataChange()
+    {
+        // THE RENDER-LOOP GUARD. The seed write lives in OnParametersSet, which runs on every
+        // re-render. FormContext.SetValue raises OnDataChanged; ControlDispatcher subscribes to
+        // OnDataChanged and calls StateHasChanged; that re-renders this component, running
+        // OnParametersSet again. Writing unconditionally therefore closes a feedback loop that
+        // never settles — it froze the browser tab on the AIAS Cyber form (two sliders, mutually
+        // reinforcing) with no error and no further network activity.
+        //
+        // ControlDispatcher is not in this render tree, so the loop cannot be reproduced here
+        // directly. What IS reproducible — and is precisely the condition that closes it — is a
+        // redundant write when nothing changed. Seeding must be idempotent.
+        var ctx = MakeContext();
+        var host = RenderSlider(ctx);
+        var slider = host.FindComponent<SliderRenderer>();
+
+        var writesAfterSeed = 0;
+        ctx.OnDataChanged += () => writesAfterSeed++;
+
+        // Drive OnParametersSet the way a parent re-render does. Re-rendering the CONTAINER is
+        // not enough — Blazor only re-runs a child's OnParametersSet when its parameters are
+        // actually set again, which is exactly what ControlDispatcher's StateHasChanged causes.
+        slider.Render(p => p.Add(c => c.Control, MakeControl()));
+
+        writesAfterSeed.Should().Be(0,
+            "an already-seeded slider must not write again on re-render; each redundant write "
+            + "re-raises OnDataChanged and drives another render");
+    }
+
+    [Fact]
+    public void Rerender_StillPreservesTheSeededValue()
+    {
+        // Guard the guard: suppressing the redundant write must not lose the seed.
+        var ctx = MakeContext();
+        var host = RenderSlider(ctx);
+
+        host.FindComponent<SliderRenderer>()
+            .Render(p => p.Add(c => c.Control, MakeControl()));
+
+        ctx.GetValue<int?>("/sharedPasswordCount").Should().Be(2);
+        ctx.FormData["/sharedPasswordCount"].Should().BeOfType<int>();
+    }
+
+    [Fact]
     public void OnInit_ExistingValue_IsPreserved()
     {
         var ctx = MakeContext();
