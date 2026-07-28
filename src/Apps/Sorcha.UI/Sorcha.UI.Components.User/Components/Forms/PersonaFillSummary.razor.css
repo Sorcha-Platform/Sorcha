@@ -14,15 +14,20 @@
     gap: 8px;
     padding: 8px 12px;
     margin: 0 0 12px 0;
+    /* Theme-derived (see the note at the foot of this file) — fallbacks first. */
     background-color: #fff8e1;
+    background-color: color-mix(in srgb, var(--mud-palette-warning) 14%, var(--mud-palette-surface));
     border: 1px solid #ffcc80;
+    border: 1px solid color-mix(in srgb, var(--mud-palette-warning) 55%, var(--mud-palette-surface));
     border-radius: 6px;
     color: #4e342e;
+    color: var(--mud-palette-text-primary);
     font-size: 0.875rem;
 }
 
 .persona-fill-summary-icon {
     color: #ef6c00;
+    color: var(--mud-palette-warning);
     flex-shrink: 0;
 }
 
@@ -54,10 +59,13 @@
     margin: -6px 0 12px 0;
     padding: 8px 12px 12px 12px;
     background-color: #fffdf7;
+    background-color: color-mix(in srgb, var(--mud-palette-warning) 6%, var(--mud-palette-surface));
     border: 1px solid #ffe0b2;
+    border: 1px solid color-mix(in srgb, var(--mud-palette-warning) 35%, var(--mud-palette-surface));
     border-top: none;
     border-radius: 0 0 6px 6px;
-    box-shadow: 0 2px 4px rgba(78, 52, 46, 0.06);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+    color: var(--mud-palette-text-primary);
 }
 
 .persona-fill-review-header {
@@ -89,20 +97,15 @@
     font-weight: 500;
 }
 
-/* --- Dark mode --- */
-
-:global([data-mud-theme="dark"]) .persona-fill-summary {
-    background-color: #3f3622;
-    border-color: #ffb74d;
-    color: #fff3e0;
-}
-
-:global([data-mud-theme="dark"]) .persona-fill-summary-icon {
-    color: #ffb74d;
-}
-
-:global([data-mud-theme="dark"]) .persona-fill-review {
-    background-color: #2a241a;
-    border-color: #5d4037;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
-}
+/* --- Dark mode: nothing to do here, deliberately ---
+ *
+ * This file previously carried three `:global([data-mud-theme="dark"])` overrides. They
+ * NEVER APPLIED. MudBlazor 9.5's MudThemeProvider signals the active theme purely by
+ * swapping `--mud-palette-*` custom properties on :root — it adds no class or attribute to
+ * the DOM for theme state and emits no `data-mud-theme` at all. The banner therefore kept
+ * its light cream in dark mode while MudBlazor switched the surrounding text to light.
+ *
+ * The rules above now mix against `--mud-palette-surface` / `--mud-palette-text-primary`,
+ * so they track the active palette with no theme detection. Do NOT reintroduce a
+ * `[data-mud-theme]` selector — it is not a real hook.
+ */
