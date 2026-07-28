@@ -20,10 +20,17 @@ public interface IOrgDidDocumentService
     /// </summary>
     Task<OrgDidDocument?> GetByPrimaryDidAsync(string primaryDid, CancellationToken ct = default);
 
-    /// <summary>
-    /// Regenerates the DID document for the org. Idempotent — returns the existing row
-    /// unchanged when the recomputed key-version fingerprint matches the persisted one.
-    /// </summary>
-    Task<OrgDidDocument> RegenerateAsync(
-        Guid organizationId, KeyEventReason reason, CancellationToken ct = default);
+    // NOTE: there is deliberately NO RegenerateAsync(orgId, reason) here.
+    //
+    // It existed, was never called, and unconditionally threw NotSupportedException — Tenant
+    // holds no key material, so it cannot rebuild a document from an orgId alone. Its presence
+    // implied a server-side rebuild capability that does not exist, and the Wallet-side client
+    // documented a matching "lazy rebuild will recover" that was equally untrue. Together they
+    // made a failed publish look self-healing when it was permanent.
+    //
+    // Regeneration is snapshot-driven and Wallet-initiated: the key holder POSTs its current
+    // active-key snapshot to /orgs/{orgId}/did-document/regenerate
+    // (OrgDidDocumentService.RegenerateFromSnapshotAsync, idempotent on the key-version
+    // fingerprint). The repair path lives in IssuanceKeyService.EnsureDidDocumentPublishedAsync,
+    // which re-ensures publication before every signature and fails closed if it cannot.
 }

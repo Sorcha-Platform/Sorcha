@@ -25,7 +25,7 @@ public sealed class OrgDidDocumentClient : IOrgDidDocumentClient
     }
 
     /// <inheritdoc />
-    public async Task RegenerateAsync(OrgDidRegenerateRequest request, CancellationToken ct = default)
+    public async Task<bool> RegenerateAsync(OrgDidRegenerateRequest request, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         try
@@ -37,16 +37,22 @@ public sealed class OrgDidDocumentClient : IOrgDidDocumentClient
 
             if (!resp.IsSuccessStatusCode)
             {
+                // NOT recoverable on its own — there is no background rebuild. The caller
+                // decides whether to fail closed; see IOrgDidDocumentClient.RegenerateAsync.
                 _logger.LogWarning(
                     "OrgDidDocument regenerate returned {Status} for org {OrgId} reason {Reason}",
                     resp.StatusCode, request.OrganizationId, request.KeyEventReason);
+                return false;
             }
+
+            return true;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
-                "OrgDidDocument regenerate failed for org {OrgId} reason {Reason}; lazy rebuild will recover",
+                "OrgDidDocument regenerate failed for org {OrgId} reason {Reason}",
                 request.OrganizationId, request.KeyEventReason);
+            return false;
         }
     }
 
