@@ -2,7 +2,7 @@
 
 **Created:** 2026-07-28
 **Tracking issue:** [#1330](https://github.com/Sorcha-Platform/Sorcha/issues/1330)
-**Status:** research not started
+**Status:** superseded — see docs/superpowers/specs/2026-07-28-local-credential-presentation-design.md (§4 unknowns established 2026-07-28; Route A chosen)
 
 Paste this whole file as the opening prompt of a fresh session. It is written to be read cold.
 
@@ -73,6 +73,9 @@ The gate polls `/api/presentations/{id}/status` correctly. It waits because noth
 Do not assume any of these. Each is a real fork in the road.
 
 1. **Can a signed SD-JWT VP be produced for a web-app citizen at all?** The wallet service exposes `POST /presentations/request`, `POST /{requestId}/submit`, `GET /{requestId}/result` (`PresentationEndpoints.cs`) and `POST /presentations/sign-kb` (`CitizenWalletEndpoints.cs`). **Read what each actually does.** Do not infer from the names — that is the mistake this brief exists to prevent.
+
+> **ANSWERED:** /presentations/request|submit|result are a legacy in-memory OID4VP mini-flow that VERIFIES a caller-built vpToken — nothing in it builds one. sign-kb signs a client-built KB-JWT input with the slot-108 holder key.
+
 2. **Whose key signs it?** The web citizen's wallet is server-custody. `citizen-oid4vp-device-cnf` says holder-cnf is the web root and device-cnf is a copy. Which binding does a gate require, and does the verifier accept a holder-cnf presentation with no device binding?
 3. **Does `PresentationRequestService` do selective disclosure from a credential id + chosen claims?** Documented as such in the `verifiable-credentials` skill. Confirm against the code.
 4. **What does `CredentialMatcher` return?** `CredentialMatchResult` shape decides what the panel can pass on.
@@ -125,6 +128,9 @@ Present options with trade-offs and get a decision before implementing.
 3. **If yes** — prove it outside the UI first. A test or a scripted call that produces a presentation which `CredentialVerifier.VerifyAsync` accepts. **This is the pivotal evidence.** Everything downstream is plumbing already mapped in §3.
 4. **If no** — identify precisely what is missing, then §6.
 5. Re-apply the threading from `5c0ce81e` (revert it back in) *only once* step 3 passes. The four copy sites and the wire test are in that commit and were correct.
+
+> **CORRECTED 2026-07-28:** step 5 presumed the sync inline route. Investigation showed the sync path never checks key binding (CredentialVerifier sets no nonce/audience) and skips the F111 register record, while the async path was already proven completable server-custody with no device (rehearse.ps1 Complete-SorchaWalletPresentation, green on n1). 5c0ce81e stays reverted; the fix is the local completion of the async lifecycle.
+
 6. **Live-verify on n1.** Submit the AIAS Cyber questionnaire signed in as a citizen holding an Assured Identity credential. Expected: no QR, submission completes.
 7. Update `seam-bugs-nothing-verifies-the-join` with whatever new instance this turns up.
 
