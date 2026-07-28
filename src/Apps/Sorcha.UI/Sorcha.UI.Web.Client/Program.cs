@@ -10,6 +10,8 @@ using Sorcha.UI.Components.User.Extensions;
 using Sorcha.UI.Components.User.Services.Verification;
 using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Services;
+using Sorcha.UI.Core.Services.Authentication;
+using Sorcha.UI.Core.Services.Configuration;
 using Sorcha.UI.Core.Services.Http;
 using Sorcha.UI.Core.Services.User.Enrolment;
 using Sorcha.UI.Core.Services.User.Presentation;
@@ -130,10 +132,27 @@ builder.Services.AddHttpClient<Sorcha.UI.Core.Services.User.Pairing.IPairingClie
 // now only the sample council portal registered this, so the web app had no transport for a
 // SorchaWallet-sourced gate and fell through to HAIP.
 //
-// Deliberately NOT wrapped in AuthenticatedHttpMessageHandler: /api/presentations/{id}/status and
-// /disclosed-claims are AllowAnonymous by design, authenticated instead by the high-entropy
-// request id and the single-use ClaimsFetchToken.
-builder.Services.AddSorchaPresentationGate(builder.HostEnvironment.BaseAddress);
+// The typed HTTP clients are deliberately NOT wrapped in AuthenticatedHttpMessageHandler:
+// /api/presentations/{id}/status and /disclosed-claims are AllowAnonymous by design,
+// authenticated instead by the high-entropy request id and the single-use ClaimsFetchToken.
+//
+// The HUB is different. AddSorchaPresentationGate defaults its accessTokenProvider to null for the
+// council-page case (a third-party portal has no user session), but /hubs/blueprint DOES require
+// auth — so on this host, which always has a session, omitting the provider makes negotiate 401
+// and the hub never connects. Observed live on n1: the gate silently degraded to the 3s poll
+// fallback on every presentation.
+builder.Services.AddSorchaPresentationGate(
+    builder.HostEnvironment.BaseAddress,
+    accessTokenProvider: sp =>
+    {
+        var authService = sp.GetRequiredService<IAuthenticationService>();
+        var configService = sp.GetRequiredService<IConfigurationService>();
+        return async () =>
+        {
+            var profileName = await configService.GetActiveProfileNameAsync();
+            return await authService.GetAccessTokenAsync(profileName);
+        };
+    });
 
 // Feature 181 US3 (T037) — platform-admin trusted-list snapshot management. The endpoints are
 // admin + platform-audience gated, so the client must carry the admin's bearer token.

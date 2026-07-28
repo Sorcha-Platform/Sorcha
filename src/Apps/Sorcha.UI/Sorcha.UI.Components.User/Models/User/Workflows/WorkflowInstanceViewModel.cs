@@ -3,6 +3,7 @@
 
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Sorcha.Blueprint.Models.Credentials;
 
 namespace Sorcha.UI.Core.Models.Workflows;
 
@@ -58,6 +59,12 @@ public record ActionSubmissionViewModel
     public string ActionId { get; init; } = string.Empty;
     public string InstanceId { get; init; } = string.Empty;
     public Dictionary<string, object> Data { get; init; } = new();
+
+    /// <summary>
+    /// Credentials the citizen selected from their own wallet, carried from the form's
+    /// <c>CredentialGatePanel</c> through the dialog to the execute request.
+    /// </summary>
+    public List<CredentialPresentation>? CredentialPresentations { get; init; }
 }
 
 /// <summary>
@@ -71,4 +78,18 @@ public record ActionExecuteRequest
     public string SenderWallet { get; init; } = string.Empty;
     public string RegisterAddress { get; init; } = string.Empty;
     public Dictionary<string, object> PayloadData { get; init; } = new();
+
+    /// <summary>
+    /// Credentials the citizen selected from their own wallet to satisfy the action's
+    /// requirements, and consented to disclose.
+    /// </summary>
+    /// <remarks>
+    /// Load-bearing. The server skips the cross-device presentation lifecycle entirely when this
+    /// is populated (<c>ActionExecutionService</c>: <c>!hasSubmittedPresentations</c>). This field
+    /// did not exist, so a citizen who picked a credential in <c>CredentialGatePanel</c> — while
+    /// signed in, with that credential in their own wallet — had the selection silently dropped
+    /// here and was then shown a QR code to scan with a second device. The UI offered a consent
+    /// control wired to nothing.
+    /// </remarks>
+    public List<CredentialPresentation>? CredentialPresentations { get; init; }
 }

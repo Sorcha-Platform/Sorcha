@@ -441,7 +441,10 @@
             {
                 ActionId = action.ActionId,
                 InstanceId = action.InstanceId,
-                Data = FormPayloadBuilder.BuildNested(cardSubmission.Data)
+                Data = FormPayloadBuilder.BuildNested(cardSubmission.Data),
+                CredentialPresentations = cardSubmission.CredentialPresentations is { Count: > 0 }
+                    ? cardSubmission.CredentialPresentations
+                    : null
             };
             result = DialogResult.Ok(adapted);
         }
@@ -484,7 +487,8 @@
                     InstanceId = submission.InstanceId,
                     SenderWallet = walletAddress,
                     RegisterAddress = action.RegisterId,
-                    PayloadData = submission.Data
+                    PayloadData = submission.Data,
+                    CredentialPresentations = submission.CredentialPresentations
                 };
 
                 var submitResult = await WorkflowService.SubmitActionExecuteAsync(executeRequest);
