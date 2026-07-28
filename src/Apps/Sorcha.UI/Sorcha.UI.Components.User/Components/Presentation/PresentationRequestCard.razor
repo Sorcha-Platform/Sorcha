@@ -1,0 +1,341 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    The single credential-gate surface. Replaces both the web app's HAIP-only
+    PresentationRequestQrCard and the council-page CredentialGateComponent.
+
+    This component owns the chrome — QR affordance, state display, claims table,
+    ChildContent gating — and nothing else. Which lifecycle the request belongs to,
+    how to wait on it, and how to retrieve disclosed claims all live behind
+    IPresentationGateTransport, selected from the Source parameter.
+
+    Source is load-bearing: before it existed, every gate was routed to HAIP, so a
+    SorchaWallet gate polled a verifier that had never heard of it and reported the
+    resulting silence as an expiry.
+*@
+@namespace Sorcha.UI.Core.Components.Presentation
+@using Microsoft.Extensions.Logging
+@using Sorcha.Blueprint.Models.Credentials
+@using Sorcha.UI.Core.Components.EnrolGate
+@using Sorcha.UI.Core.Services.Credentials
+@using Sorcha.UI.Core.Services.User.Presentation
+@implements IDisposable
+@inject IEnumerable<IPresentationGateTransport> Transports
+@inject ILogger<PresentationRequestCard> Logger
+
+<MudCard Elevation="3" Class="presentation-request-card pa-4">
+    <MudCardHeader>
+        <CardHeaderAvatar>
+            @if (_outcome == GateOutcome.Success)
+            {
+                <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Color="Color.Success" Size="Size.Large" />
+            }
+            else if (_noTransport || GateOutcomes.IsTerminal(_outcome))
+            {
+                <MudIcon Icon="@Icons.Material.Filled.GppBad" Color="Color.Error" Size="Size.Large" />
+            }
+            else
+            {
+                <MudIcon Icon="@Icons.Material.Filled.QrCode2" Color="Color.Primary" Size="Size.Large" />
+            }
+        </CardHeaderAvatar>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h6">@HeaderText</MudText>
+            @if (!string.IsNullOrEmpty(CredentialType))
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@CredentialType</MudText>
+            }
+        </CardHeaderContent>
+    </MudCardHeader>
+
+    <MudCardContent Class="d-flex flex-column align-center">
+        @if (_noTransport)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4">
+                We couldn't start this verification. Please close this and try again, and tell us
+                if it keeps happening.
+            </MudAlert>
+        }
+        else if (_outcome == GateOutcome.Success)
+        {
+            <MudAlert Severity="Severity.Success" Class="mb-4" Variant="Variant.Filled">
+                Credential verified successfully.
+            </MudAlert>
+
+            @if (_claimsFetchFailed)
+            {
+                @* The presentation DID succeed. An error here would repeat the "no matching
+                   credential" lie of #1324 — the claims fetch is a separate, lesser failure. *@
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-4">
+                    We couldn't retrieve the details that were shared. Your credential was verified,
+                    so you can continue — you may need to fill the form in yourself.
+                </MudAlert>
+            }
+            else if (_claims is { Count: > 0 })
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-2 align-self-start">Disclosed Claims</MudText>
+                <MudSimpleTable Dense="true" Bordered="true" Class="mb-4" Style="max-width: 400px; width: 100%;">
+                    <tbody>
+                        @foreach (var claim in _claims)
+                        {
+                            <tr>
+                                <td><MudText Typo="Typo.body2" Color="Color.Secondary">@claim.Key</MudText></td>
+                                <td><MudText Typo="Typo.body2">@FormatClaimValue(claim.Value)</MudText></td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+        }
+        else if (_outcome == GateOutcome.Declined)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4">
+                The wallet holder denied the presentation request.
+            </MudAlert>
+            @RetryHint
+        }
+        else if (_outcome == GateOutcome.Expired)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-4">
+                This request has expired. A new presentation request is needed.
+            </MudAlert>
+            @RetryHint
+        }
+        else if (_outcome == GateOutcome.Abandoned)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-4">
+                Your wallet didn't respond in time. Please try again with a fresh QR code.
+            </MudAlert>
+            @RetryHint
+        }
+        else if (_outcome == GateOutcome.Unreachable)
+        {
+            @* Deliberately NOT phrased as an expiry: this is our fault, not the citizen's, and
+               telling them their request "expired" sends them to inspect their own wallet. *@
+            <MudAlert Severity="Severity.Error" Class="mb-4">
+                Nothing was sent from your wallet — we couldn't reach this verification request.
+                Please close this and try again, and tell us if it keeps happening.
+            </MudAlert>
+            @RetryHint
+        }
+        else if (_outcome == GateOutcome.Submitted)
+        {
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" Class="mb-4" />
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Verifying presented credential...
+            </MudText>
+        }
+        else
+        {
+            <div class="presentation-request-card__qr mb-4">
+                <HybridQrAffordance QrUrl="@PresentationRequestUri"
+                                    Layout="HybridQrAffordance.HybridQrLayout.Auto" />
+            </div>
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-2" Style="max-width: 280px;" />
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Waiting for your wallet...
+            </MudText>
+        }
+
+        <MudSimpleTable Dense="true" Bordered="false" Class="mt-4" Style="max-width: 400px;">
+            <tbody>
+                @if (!string.IsNullOrEmpty(CredentialType))
+                {
+                    <tr>
+                        <td><MudText Typo="Typo.body2" Color="Color.Secondary">Required Credential</MudText></td>
+                        <td><MudText Typo="Typo.body2">@CredentialType</MudText></td>
+                    </tr>
+                }
+                @if (RequestedClaims is { Count: > 0 })
+                {
+                    <tr>
+                        <td><MudText Typo="Typo.body2" Color="Color.Secondary">Requested Claims</MudText></td>
+                        <td><MudText Typo="Typo.body2">@string.Join(", ", RequestedClaims)</MudText></td>
+                    </tr>
+                }
+                @if (ExpiresAt.HasValue && !GateOutcomes.IsTerminal(_outcome))
+                {
+                    <tr>
+                        <td><MudText Typo="Typo.body2" Color="Color.Secondary">Request Expires</MudText></td>
+                        <td><MudText Typo="Typo.body2">@ExpiresAt.Value.LocalDateTime.ToString("dd MMM HH:mm")</MudText></td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </MudCardContent>
+</MudCard>
+
+@if (_outcome == GateOutcome.Success && ChildContent is not null)
+{
+    @ChildContent
+}
+
+@code {
+    /// <summary>The openid4vp://authorize URI to render as a QR code and tap-link.</summary>
+    [Parameter, EditorRequired] public string PresentationRequestUri { get; set; } = string.Empty;
+
+    /// <summary>Identifier of the presentation request being awaited.</summary>
+    [Parameter, EditorRequired] public Guid RequestId { get; set; }
+
+    /// <summary>Which lifecycle owns the request. Selects the transport.</summary>
+    [Parameter] public PresentationSource Source { get; set; } = PresentationSource.HaipExternalWallet;
+
+    /// <summary>Feature 127 single-use claims-fetch token. Null for HAIP.</summary>
+    [Parameter] public string? ClaimsFetchToken { get; set; }
+
+    /// <summary>The credential type being requested, for display.</summary>
+    [Parameter] public string CredentialType { get; set; } = string.Empty;
+
+    /// <summary>Claims requested for disclosure, for display.</summary>
+    [Parameter] public IReadOnlyList<string>? RequestedClaims { get; set; }
+
+    /// <summary>When the request expires, for display.</summary>
+    [Parameter] public DateTimeOffset? ExpiresAt { get; set; }
+
+    /// <summary>Where to send a citizen who has no matching credential.</summary>
+    [Parameter] public string? LinkBackUrl { get; set; }
+
+    /// <summary>Human-readable name of the gating credential, e.g. "Assured Identity".</summary>
+    [Parameter] public string NameOfMissingCredentialType { get; set; } = "credential";
+
+    /// <summary>Fires whenever the outcome changes, terminal or not.</summary>
+    [Parameter] public EventCallback<GateOutcome> OnOutcome { get; set; }
+
+    /// <summary>Fires once on success with the disclosed claims, or null if none were available.</summary>
+    [Parameter] public EventCallback<IReadOnlyDictionary<string, object?>?> OnClaims { get; set; }
+
+    /// <summary>Rendered only after the gate clears — typically the form to prefill.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private GateOutcome _outcome = GateOutcome.Pending;
+    private IReadOnlyDictionary<string, object?>? _claims;
+    private bool _claimsFetchFailed;
+    private bool _noTransport;
+    private Guid _awaitedRequestId;
+    private CancellationTokenSource? _cts;
+    private bool _disposed;
+
+    private string HeaderText => _noTransport
+        ? "Verification unavailable"
+        : _outcome switch
+        {
+            GateOutcome.Success => "Credential Verified",
+            GateOutcome.Declined => "Presentation Denied",
+            GateOutcome.Expired => "Request Expired",
+            GateOutcome.Abandoned => "No Response",
+            GateOutcome.Unreachable => "Couldn't Reach Your Wallet",
+            GateOutcome.Submitted => "Verifying Credential...",
+            _ => "Scan to Present Credential"
+        };
+
+    private RenderFragment? RetryHint => string.IsNullOrEmpty(LinkBackUrl)
+        ? null
+        : @<MudText Typo="Typo.body2" Class="mt-2">
+              Don't have @NameOfMissingCredentialType yet?
+              <MudLink Href="@LinkBackUrl">Apply for one first</MudLink>.
+          </MudText>;
+
+    protected override void OnParametersSet()
+    {
+        // Guard on the request id, not on a bool: re-entering OnParametersSet for an unrelated
+        // parameter change must not restart the wait, and a genuinely new request must.
+        if (RequestId == Guid.Empty || RequestId == _awaitedRequestId)
+        {
+            return;
+        }
+
+        _cts?.Cancel();
+        _cts?.Dispose();
+        _awaitedRequestId = RequestId;
+        _outcome = GateOutcome.Pending;
+        _claims = null;
+        _claimsFetchFailed = false;
+
+        var transport = Transports.FirstOrDefault(t => t.Source == Source);
+        if (transport is null)
+        {
+            // Rendering nothing here would be indistinguishable from an unscanned QR code, which
+            // is precisely the silent failure this component exists to end.
+            Logger.LogError(
+                "No IPresentationGateTransport registered for {Source}. The host must call "
+                + "AddSorchaPresentationGate (and register IHaipOfferService for HAIP gates).",
+                Source);
+            _noTransport = true;
+            _cts = null;
+            return;
+        }
+
+        _noTransport = false;
+        _cts = new CancellationTokenSource();
+        _ = AwaitOutcomeAsync(transport, RequestId, _cts.Token);
+    }
+
+    private async Task AwaitOutcomeAsync(
+        IPresentationGateTransport transport, Guid requestId, CancellationToken ct)
+    {
+        var progress = new Progress<GateOutcome>(reported => _ = InvokeAsync(() =>
+        {
+            if (_disposed || GateOutcomes.IsTerminal(_outcome)) return;
+            _outcome = reported;
+            StateHasChanged();
+        }));
+
+        GateOutcome outcome;
+        try
+        {
+            outcome = await transport.WaitForOutcomeAsync(requestId, progress, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Gate transport threw awaiting {RequestId}", requestId);
+            outcome = GateOutcome.Unreachable;
+        }
+
+        if (outcome == GateOutcome.Success)
+        {
+            _claims = await transport.FetchClaimsAsync(requestId, ClaimsFetchToken, ct);
+            _claimsFetchFailed = _claims is null;
+        }
+
+        await InvokeAsync(async () =>
+        {
+            if (_disposed) return;
+            _outcome = outcome;
+            StateHasChanged();
+
+            if (OnOutcome.HasDelegate)
+            {
+                await OnOutcome.InvokeAsync(outcome);
+            }
+
+            if (outcome == GateOutcome.Success && OnClaims.HasDelegate)
+            {
+                await OnClaims.InvokeAsync(_claims);
+            }
+        });
+    }
+
+    /// <summary>
+    /// Renders a claim value as safe display text. Delegates to the shared formatter so an
+    /// unresolved SD-JWT digest array — <c>{"_sd":[…]}</c> — can never reach a citizen's screen
+    /// as raw JSON.
+    /// </summary>
+    private static string FormatClaimValue(object? value)
+    {
+        var text = CredentialClaimDisplayFormatter.FormatClaimForDetailDisplay(value);
+        return string.IsNullOrEmpty(text) ? "—" : text; // em dash
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _cts?.Cancel();
+        _cts?.Dispose();
+        _cts = null;
+    }
+}

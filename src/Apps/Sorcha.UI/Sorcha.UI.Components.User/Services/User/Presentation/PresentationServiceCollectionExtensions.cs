@@ -62,6 +62,17 @@ public static class PresentationServiceCollectionExtensions
             client.BaseAddress = new Uri(baseAddress);
         });
 
+        // The SorchaWallet gate transport, for PresentationRequestCard. Registered here because
+        // everything it needs is registered here. The HAIP transport is NOT — it needs
+        // IHaipOfferService, which a council page does not have; it is registered alongside that
+        // service in the hosts that do.
+        services.AddHttpClient<SorchaWalletGateTransport>(client =>
+        {
+            client.BaseAddress = new Uri(baseAddress);
+        });
+        services.AddTransient<IPresentationGateTransport>(
+            sp => sp.GetRequiredService<SorchaWalletGateTransport>());
+
         services.TryAddSingletonTimeProvider();
         return services;
     }
