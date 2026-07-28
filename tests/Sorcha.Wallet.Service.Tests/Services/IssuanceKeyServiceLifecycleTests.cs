@@ -58,7 +58,7 @@ public sealed class IssuanceKeyServiceLifecycleTests : IDisposable
                 "Active", "Custodial", DateTime.UtcNow));
 
         _didClient.Setup(x => x.RegenerateAsync(It.IsAny<OrgDidRegenerateRequest>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync(true);
 
         // Feature 149: resolve the org's canonical operational wallet (A) for DID anchoring.
         _orgInfo.Setup(x => x.ResolveCanonicalWalletAddressAsync(_orgId, It.IsAny<CancellationToken>()))
@@ -163,6 +163,108 @@ public sealed class IssuanceKeyServiceLifecycleTests : IDisposable
             Times.Never);
     }
 
+    /// <summary>
+    /// Seeds the wallet row holding the issuance key's private material, so
+    /// <see cref="IssuanceKeyService.GetActiveSigningMaterialAsync"/> reaches the
+    /// DID-document gate instead of bailing on a missing/undecryptable wallet.
+    /// </summary>
+    private void SeedIssuanceWallet()
+    {
+        _db.Wallets.Add(new WalletEntity
+        {
+            Address = _walletAddress,
+            Algorithm = "ED25519",
+            PublicKey = Convert.ToBase64String(new byte[32]),
+            EncryptedPrivateKey = Convert.ToBase64String(new byte[48]),
+            EncryptionKeyId = "test-key",
+            Owner = "org",
+            Tenant = "system",
+            Name = "issuance-key-wallet"
+        });
+        _db.SaveChanges();
+
+        _protection.Setup(x => x.DecryptSeedAsync(
+                It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new byte[32]);
+    }
+
+    [Fact]
+    public async Task GetActiveSigningMaterialAsync_RepublishesDidDocument_WhenKeyAlreadyExists()
+    {
+        // The repair path. Publication used to fire ONLY on first key derivation, so a
+        // document that failed to publish (or was lost) stayed missing forever while
+        // issuance carried on minting credentials no verifier could check.
+        SeedActiveKey();
+        SeedIssuanceWallet();
+
+        var material = await _sut.GetActiveSigningMaterialAsync(_orgId);
+
+        material.Should().NotBeNull();
+        _didClient.Verify(x => x.RegenerateAsync(
+            It.Is<OrgDidRegenerateRequest>(r => r.OrganizationId == _orgId
+                                             && r.WalletAddress == _canonicalAddress),
+            It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce,
+            "signing must ensure the issuer's DID document is published, not assume it");
+    }
+
+    [Fact]
+    public async Task GetActiveSigningMaterialAsync_UnpublishableDidDocument_ReturnsNull()
+    {
+        // Fail closed. Signing already refuses when the canonical address is unresolvable;
+        // it must equally refuse when the document backing the kid cannot be published,
+        // rather than mint a credential whose issuer DID resolves to nothing.
+        SeedActiveKey();
+        SeedIssuanceWallet();
+        _didClient.Setup(x => x.RegenerateAsync(
+                It.IsAny<OrgDidRegenerateRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _didClient.Setup(x => x.ResolveCanonicalDidAsync(_orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null); // and none was previously published
+
+        var material = await _sut.GetActiveSigningMaterialAsync(_orgId);
+
+        material.Should().BeNull(
+            "minting against an unpublishable issuer DID produces an unverifiable credential");
+    }
+
+    [Fact]
+    public async Task GetActiveSigningMaterialAsync_PublishFailsButDocumentAlreadyPublished_ReturnsMaterial()
+    {
+        // Availability guard: a transient Tenant write failure must NOT block issuance when
+        // a correctly-anchored document is already published and serving.
+        SeedActiveKey();
+        SeedIssuanceWallet();
+        _didClient.Setup(x => x.RegenerateAsync(
+                It.IsAny<OrgDidRegenerateRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _didClient.Setup(x => x.ResolveCanonicalDidAsync(_orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync($"did:sorcha:org:{_canonicalAddress}");
+
+        var material = await _sut.GetActiveSigningMaterialAsync(_orgId);
+
+        material.Should().NotBeNull();
+        material!.IssuerDid.Should().Be($"did:sorcha:org:{_canonicalAddress}");
+    }
+
+    [Fact]
+    public async Task GetActiveSigningMaterialAsync_PublishedDocumentAnchoredElsewhere_ReturnsNull()
+    {
+        // Drift guard: a stale document anchored on a DIFFERENT address does not back the kid
+        // we are about to sign with, so it must not be accepted as confirmation.
+        SeedActiveKey();
+        SeedIssuanceWallet();
+        _didClient.Setup(x => x.RegenerateAsync(
+                It.IsAny<OrgDidRegenerateRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _didClient.Setup(x => x.ResolveCanonicalDidAsync(_orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("did:sorcha:org:ws11qpsomeotherwalletentirely");
+
+        var material = await _sut.GetActiveSigningMaterialAsync(_orgId);
+
+        material.Should().BeNull();
+    }
+
     [Fact]
     public async Task RevokeAsync_UnknownRotation_ReturnsNull()
     {
@@ -256,7 +358,21 @@ public sealed class IssuanceKeyServiceLifecycleTests : IDisposable
             // Ignore every other entity type — they bring jsonb / Postgres-specific
             // mappings the relational test provider can't satisfy. We only need
             // IssuanceKeyState + DerivedKeyRecord for IssuanceKeyService coverage.
-            modelBuilder.Ignore<WalletEntity>();
+            // Wallet IS mapped (minimally): GetActiveSigningMaterialAsync reads it for the
+            // issuance private key, so ignoring it left that whole method uncovered. Only the
+            // jsonb dictionaries and navigations are dropped — they are what the relational
+            // test provider cannot satisfy, not the scalar columns we assert on.
+            modelBuilder.Entity<WalletEntity>(e =>
+            {
+                e.ToTable("Wallets");
+                e.HasKey(w => w.Address);
+                e.Ignore(w => w.Metadata);
+                e.Ignore(w => w.Tags);
+                e.Ignore(w => w.Addresses);
+                e.Ignore(w => w.Delegates);
+                e.Ignore(w => w.Transactions);
+                e.Ignore(w => w.RecoveryKeyWraps);
+            });
             modelBuilder.Ignore<Sorcha.Wallet.Core.Domain.Entities.WalletAddress>();
             modelBuilder.Ignore<Sorcha.Wallet.Core.Domain.Entities.WalletAccess>();
             modelBuilder.Ignore<Sorcha.Wallet.Core.Domain.Entities.WalletTransaction>();

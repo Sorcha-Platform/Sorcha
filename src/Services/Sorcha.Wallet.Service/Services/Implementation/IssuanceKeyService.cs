@@ -126,35 +126,12 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
             organizationId, state.Algorithm, state.RotationIndex);
 
         // Feature 149: publish the DID document anchored on the CANONICAL operational wallet (A),
-        // not the derived child (C). If A is unresolvable, skip the publish — the signing-material
-        // path fails closed, so an unanchored document would never be used.
-        var canonicalAddress = await _orgInfo
-            .ResolveCanonicalWalletAddressAsync(organizationId, ct)
-            .ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(canonicalAddress))
-        {
-            _logger.LogWarning(
-                "Derived issuance key for org {OrgId} but no canonical wallet address to anchor the " +
-                "DID document; skipping publish (issuance fails closed until the org is provisioned).",
-                organizationId);
-        }
-        else
-        {
-            // Fire-and-forget DID-document regeneration trigger; the client is non-throwing.
-            var snapshot = new OrgDidRegenerateRequest(
-                OrganizationId: organizationId,
-                KeyEventReason: "IssuanceKeyDerived",
-                WalletAddress: canonicalAddress,
-                ActiveKeys:
-                [
-                    new OrgDidActiveKey(
-                        RotationIndex: state.RotationIndex,
-                        Algorithm: state.Algorithm,
-                        PublicKeyJwk: jwkJson,
-                        Thumbprint: state.Thumbprint)
-                ]);
-            await _didDocClient.RegenerateAsync(snapshot, ct).ConfigureAwait(false);
-        }
+        // not the derived child (C). Best-effort here — a failure is NOT fatal to derivation,
+        // because GetActiveSigningMaterialAsync re-ensures publication before every signature
+        // and fails closed there. That is what makes a failed publish recoverable rather than
+        // permanent; this call just gets the common case done early.
+        await EnsureDidDocumentPublishedAsync(
+            organizationId, "IssuanceKeyDerived", canonicalAddress: null, ct).ConfigureAwait(false);
 
         return state;
     }
@@ -267,6 +244,25 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
             return null;
         }
 
+        // THE REPAIR PATH. Publication used to fire only on first key derivation, and the
+        // client swallowed failures, so a document that never published stayed missing forever
+        // while issuance carried on minting credentials no verifier could resolve. Ensuring it
+        // here — the last gate before signing — makes every mint self-healing and fails closed
+        // when the document backing this kid cannot be published or confirmed.
+        //
+        // No new availability coupling: resolving canonicalAddress above already requires Tenant.
+        if (!await EnsureDidDocumentPublishedAsync(
+                organizationId, "IssuanceKeyDerived", canonicalAddress, ct).ConfigureAwait(false))
+        {
+            _logger.LogError(
+                "Refusing to supply issuance signing material for org {OrgId}: the issuer DID "
+                + "document could not be published or confirmed, so a credential signed with "
+                + "kid #vc-issuance-{Rotation} would be unverifiable.",
+                organizationId, state.RotationIndex);
+            Array.Clear(privateKey); // drop the decrypted key we will not use
+            return null;
+        }
+
         var issuerDid = $"did:sorcha:org:{canonicalAddress}";
         var kid = $"{issuerDid}#vc-issuance-{state.RotationIndex}";
 
@@ -351,8 +347,8 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
             .ConfigureAwait(false);
         if (derivedRecord is not null)
         {
-            await PushDidDocumentSnapshotAsync(
-                organizationId, "IssuanceKeyRotated", ct)
+            await EnsureDidDocumentPublishedAsync(
+                organizationId, "IssuanceKeyRotated", canonicalAddress: null, ct)
                 .ConfigureAwait(false);
         }
 
@@ -407,8 +403,8 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
             .ConfigureAwait(false);
         if (derivedRecord is not null)
         {
-            await PushDidDocumentSnapshotAsync(
-                organizationId, "IssuanceKeyRevoked", ct)
+            await EnsureDidDocumentPublishedAsync(
+                organizationId, "IssuanceKeyRevoked", canonicalAddress: null, ct)
                 .ConfigureAwait(false);
         }
 
@@ -416,15 +412,25 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
     }
 
     /// <summary>
-    /// Builds an active-keys snapshot from the current persisted state and pushes it
-    /// to the Tenant Service via <see cref="IOrgDidDocumentClient"/>. Used after
-    /// rotation/revocation to regenerate the published DID document.
+    /// Builds an active-keys snapshot from the current persisted state, publishes it to the
+    /// Tenant Service, and reports whether the org now has a correctly-anchored published DID
+    /// document. Idempotent — the Tenant side no-ops on an unchanged key-version fingerprint,
+    /// so this is safe to call on every issuance and is the org's only repair path.
     /// </summary>
-    private async Task PushDidDocumentSnapshotAsync(
-        Guid organizationId, string keyEventReason, CancellationToken ct)
+    /// <returns>
+    /// <c>true</c> when the snapshot was accepted, or when the publish failed but a document
+    /// anchored on the expected canonical wallet is already published and serving (a transient
+    /// Tenant write failure must not block issuance). <c>false</c> otherwise — callers about to
+    /// sign MUST fail closed.
+    /// </returns>
+    private async Task<bool> EnsureDidDocumentPublishedAsync(
+        Guid organizationId,
+        string keyEventReason,
+        string? canonicalAddress,
+        CancellationToken ct)
     {
         // Feature 149: anchor the regenerated document on the canonical operational wallet (A).
-        var canonicalAddress = await _orgInfo
+        canonicalAddress ??= await _orgInfo
             .ResolveCanonicalWalletAddressAsync(organizationId, ct)
             .ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(canonicalAddress))
@@ -432,7 +438,7 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
             _logger.LogWarning(
                 "Cannot publish DID document for org {OrgId} ({Reason}) — no canonical wallet address.",
                 organizationId, keyEventReason);
-            return;
+            return false;
         }
 
         var activeKeys = await _db.IssuanceKeyStates
@@ -456,7 +462,35 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
             KeyEventReason: keyEventReason,
             WalletAddress: canonicalAddress,
             ActiveKeys: snapshotKeys);
-        await _didDocClient.RegenerateAsync(snapshot, ct).ConfigureAwait(false);
+
+        if (await _didDocClient.RegenerateAsync(snapshot, ct).ConfigureAwait(false))
+            return true;
+
+        // The publish failed. Before failing closed, check whether a correctly-anchored
+        // document is ALREADY published — a transient Tenant write failure must not block
+        // issuance for an org whose document is present and serving.
+        var publishedDid = await _didDocClient
+            .ResolveCanonicalDidAsync(organizationId, ct)
+            .ConfigureAwait(false);
+        var expectedDid = $"did:sorcha:org:{canonicalAddress}";
+
+        if (string.Equals(publishedDid, expectedDid, StringComparison.Ordinal))
+        {
+            _logger.LogWarning(
+                "DID document publish failed for org {OrgId} ({Reason}), but the already-published "
+                + "document is correctly anchored on {ExpectedDid} — continuing.",
+                organizationId, keyEventReason, expectedDid);
+            return true;
+        }
+
+        // Either nothing is published, or what IS published is anchored elsewhere and therefore
+        // does not back the kid we are about to sign with.
+        _logger.LogError(
+            "DID document publish failed for org {OrgId} ({Reason}) and no correctly-anchored "
+            + "document is published (expected {ExpectedDid}, found {PublishedDid}). There is no "
+            + "background rebuild — issuance must fail closed until this succeeds.",
+            organizationId, keyEventReason, expectedDid, publishedDid ?? "(none)");
+        return false;
     }
 
     /// <summary>

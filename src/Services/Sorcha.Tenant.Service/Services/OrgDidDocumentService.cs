@@ -114,14 +114,6 @@ public sealed class OrgDidDocumentService : IOrgDidDocumentService
         return existing;
     }
 
-    /// <inheritdoc />
-    public Task<OrgDidDocument> RegenerateAsync(
-        Guid organizationId, KeyEventReason reason, CancellationToken ct = default)
-        => throw new NotSupportedException(
-            "RegenerateAsync(orgId, reason) requires a key snapshot — use the snapshot overload " +
-            "via the regenerate endpoint. Direct in-process regeneration without keys is not " +
-            "supported in v1 (no Tenant→Wallet readback path).");
-
     private static List<DidVerificationMethod> BuildVerificationMethods(
         string primaryDid, IReadOnlyList<OrgDidActiveKey> keys)
     {
