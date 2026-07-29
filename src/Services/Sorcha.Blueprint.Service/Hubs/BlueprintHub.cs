@@ -26,6 +26,7 @@ namespace Sorcha.Blueprint.Service.Hubs;
 /// Server Methods (called by clients):
 /// - <see cref="SubscribeToWallet"/>: Subscribe to notifications for a wallet
 /// - <see cref="UnsubscribeFromWallet"/>: Unsubscribe from wallet notifications
+/// - <see cref="JoinGroup"/> / <see cref="LeaveGroup"/>: F127 presentation-outcome groups ONLY (#1333)
 /// </remarks>
 [Authorize]
 public class BlueprintHub : Hub<IBlueprintHubClient>
@@ -146,6 +147,92 @@ public class BlueprintHub : Hub<IBlueprintHubClient>
             "Client unsubscribed from wallet notifications. ConnectionId: {ConnectionId}, Wallet: {Wallet}",
             Context.ConnectionId,
             walletAddress);
+    }
+
+    /// <summary>
+    /// Join an F127 presentation-outcome group (#1333). This is the server half of
+    /// <c>PresentationHubConnection.JoinGroupAsync</c> — the client half shipped with F127,
+    /// the publisher (<c>PresentationLifecycleService.HandleOutcomeAsync</c>) has always sent
+    /// <see cref="IBlueprintHubClient.PresentationOutcomeReady"/> to
+    /// <see cref="BlueprintHubGroups.PresentationNonce"/>, and until this method existed the
+    /// group had no possible members — every gate silently rode the 3-second status poll.
+    /// </summary>
+    /// <remarks>
+    /// The ONLY groups joinable here are presentation groups
+    /// (<c>presentation:{32 lowercase hex}</c> — the exact shape
+    /// <see cref="BlueprintHubGroups.PresentationNonce"/> emits). Wallet groups have their own
+    /// ownership-validated <see cref="SubscribeToWallet"/> path and MUST NOT be reachable via
+    /// this RPC. Authorization model for presentation groups: the name embeds the high-entropy
+    /// request id known only to the submitter that received the 202, and the only event the
+    /// group ever carries is the thin opaque-id <c>PresentationOutcomeReady</c> signal — the
+    /// same information the anonymous <c>/api/presentations/{id}/status</c> endpoint serves.
+    /// </remarks>
+    /// <param name="groupName">Presentation group name, e.g. <c>presentation:4f7ef492…</c>.</param>
+    public async Task JoinGroup(string groupName)
+    {
+        if (!IsPresentationGroup(groupName))
+        {
+            _logger.LogWarning(
+                "JoinGroup refused for non-presentation group. ConnectionId: {ConnectionId}",
+                Context.ConnectionId);
+            throw new HubException("Only presentation groups can be joined via JoinGroup.");
+        }
+
+        await Groups.AddToGroupAsync(Context.ConnectionId, groupName);
+
+        _logger.LogInformation(
+            "Client joined presentation group {Group}. ConnectionId: {ConnectionId}",
+            groupName, Context.ConnectionId);
+    }
+
+    /// <summary>
+    /// Leave an F127 presentation-outcome group previously joined via <see cref="JoinGroup"/>.
+    /// Idempotent — leaving a group the connection never joined is a no-op.
+    /// </summary>
+    /// <param name="groupName">Presentation group name.</param>
+    public async Task LeaveGroup(string groupName)
+    {
+        if (!IsPresentationGroup(groupName))
+        {
+            throw new HubException("Only presentation groups can be left via LeaveGroup.");
+        }
+
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, groupName);
+
+        _logger.LogInformation(
+            "Client left presentation group {Group}. ConnectionId: {ConnectionId}",
+            groupName, Context.ConnectionId);
+    }
+
+    /// <summary>
+    /// True iff <paramref name="groupName"/> is exactly <c>presentation:</c> followed by 32
+    /// lowercase hex characters — the shape <see cref="BlueprintHubGroups.PresentationNonce"/>
+    /// (<c>{guid:N}</c>) emits. Anything else (wallet groups, uppercase, hyphenated GUIDs,
+    /// wrong length) is refused so this RPC cannot be used as a generic group-join oracle.
+    /// </summary>
+    internal static bool IsPresentationGroup(string? groupName)
+    {
+        const string Prefix = "presentation:";
+        if (groupName is null || groupName.Length != Prefix.Length + 32)
+        {
+            return false;
+        }
+
+        if (!groupName.StartsWith(Prefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        for (var i = Prefix.Length; i < groupName.Length; i++)
+        {
+            var c = groupName[i];
+            if (c is (< '0' or > '9') and (< 'a' or > 'f'))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
