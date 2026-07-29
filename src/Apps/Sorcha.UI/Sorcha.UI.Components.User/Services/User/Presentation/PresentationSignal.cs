@@ -48,6 +48,15 @@ public sealed class PresentationSignal : IPresentationSignal, IAsyncDisposable
     private int _notFoundStreak;
     private bool _unreachableRaised;
 
+    /// <summary>
+    /// The expiry the status endpoint advertised while the request was last seen ALIVE. The
+    /// discriminator for the 404 verdict (#1333, minor half): the Redis pending entry lapses at
+    /// the validity window and /status then 404s — so 404s that begin AFTER an expiry we
+    /// observed are an <c>expired</c> outcome, while 404s with no live sighting (or before the
+    /// expiry) remain genuinely unreachable.
+    /// </summary>
+    private DateTimeOffset? _lastSeenExpiresAt;
+
     public event Func<PresentationSignalOutcome, Task>? OnOutcomeReady;
     public event Action? OnFallbackEngaged;
     public event Action? OnManualRecoveryRequired;
@@ -77,6 +86,7 @@ public sealed class PresentationSignal : IPresentationSignal, IAsyncDisposable
         _signalReceived = false;
         _notFoundStreak = 0;
         _unreachableRaised = false;
+        _lastSeenExpiresAt = null;
 
         _cts?.Cancel();
         _cts?.Dispose();
@@ -236,6 +246,20 @@ public sealed class PresentationSignal : IPresentationSignal, IAsyncDisposable
             {
                 if (++_notFoundStreak >= UnreachableThreshold && !_unreachableRaised && !_signalReceived)
                 {
+                    // A request we WATCHED alive whose 404s begin after its own advertised
+                    // expiry has EXPIRED — the pending entry lapsed at the validity window
+                    // and the read path forgot it. Reporting that as "couldn't reach your
+                    // wallet" sends the citizen to debug the wrong thing (#1333, minor half).
+                    if (_lastSeenExpiresAt is { } expiresAt && _time.GetUtcNow() > expiresAt)
+                    {
+                        _unreachableRaised = true; // terminal either way — suppress the outage path
+                        _logger.LogInformation(
+                            "Presentation request {RequestId} 404s after its observed expiry "
+                            + "{ExpiresAt:O} — reporting expired.",
+                            _presentationRequestId, expiresAt);
+                        return "expired";
+                    }
+
                     _unreachableRaised = true;
                     _logger.LogError(
                         "Presentation lifecycle has no request {RequestId} after {Streak} "
@@ -256,6 +280,10 @@ public sealed class PresentationSignal : IPresentationSignal, IAsyncDisposable
             var payload = await response.Content
                 .ReadFromJsonAsync<StatusProbeShape>(JsonDefaults.Api, ct)
                 .ConfigureAwait(false);
+            if (payload?.ExpiresAt is { } seenExpiry)
+            {
+                _lastSeenExpiresAt = seenExpiry;
+            }
             return payload?.State;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { return null; }
@@ -281,5 +309,6 @@ public sealed class PresentationSignal : IPresentationSignal, IAsyncDisposable
     private sealed record StatusProbeShape
     {
         [JsonPropertyName("state")] public string? State { get; init; }
+        [JsonPropertyName("expiresAt")] public DateTimeOffset? ExpiresAt { get; init; }
     }
 }
