@@ -853,7 +853,13 @@ public static class WalletEndpoints
         string address,
         [FromBody] SignTransactionRequest request,
         WalletManager walletManager,
-        Sorcha.Wallet.Core.Data.WalletDbContext dbContext,
+        // Nullable + explicit [FromServices]: WalletDbContext is registered ONLY when a Postgres
+        // connection string is present (WalletServiceExtensions.AddWalletDatabase). Declared
+        // non-nullable and un-attributed, minimal APIs could not infer it at endpoint-build time
+        // and the whole host failed to start with "Failure to infer one or more parameters" —
+        // so the Wallet Service could not run on the in-memory storage path at all, which
+        // Pattern #13 explicitly supports outside Production. Nullable resolves via GetService.
+        [FromServices] Sorcha.Wallet.Core.Data.WalletDbContext? dbContext,
         HttpContext context,
         ILogger<Program> logger,
         CancellationToken cancellationToken = default)
@@ -891,12 +897,16 @@ public static class WalletEndpoints
 
             // Only check derived key status if this is an org-derived wallet.
             // Use DerivedKeyRecordId FK to avoid a full table scan for standalone wallets.
-            var derivedKeyRecordId = await dbContext.Wallets
-                .Where(w => w.Address == address)
-                .Select(w => w.DerivedKeyRecordId)
-                .FirstOrDefaultAsync(cancellationToken);
+            // Skipped entirely without a relational store: org key derivation is Postgres-backed,
+            // so on the in-memory path there are no DerivedKeyRecords to rotate or revoke.
+            var derivedKeyRecordId = dbContext is null
+                ? null
+                : await dbContext.Wallets
+                    .Where(w => w.Address == address)
+                    .Select(w => w.DerivedKeyRecordId)
+                    .FirstOrDefaultAsync(cancellationToken);
 
-            if (derivedKeyRecordId is not null)
+            if (derivedKeyRecordId is not null && dbContext is not null)
             {
                 var derivedKeyRecord = await dbContext.DerivedKeyRecords
                     .FirstOrDefaultAsync(d => d.Id == derivedKeyRecordId, cancellationToken);
@@ -2179,11 +2189,31 @@ public static class WalletEndpoints
     }
 
     /// <summary>
+    /// Uniform answer for endpoints whose feature genuinely requires the relational store, when
+    /// the host is running on the in-memory storage path (no Postgres connection string). Returns
+    /// 503 rather than throwing: the capability is unavailable in this configuration, which is a
+    /// deployment fact, not a request error. Production/Staging already fail fast on an in-memory
+    /// <c>IWalletRepository</c> (Pattern #13), so this is only reachable in dev/test.
+    /// </summary>
+    private static IResult RelationalStoreRequired(string capability) =>
+        Results.Json(
+            new ProblemDetails
+            {
+                Title = "Relational store required",
+                Detail = $"{capability} requires the Postgres-backed wallet store, but this host is "
+                       + "running on the in-memory storage path. Configure "
+                       + "ConnectionStrings:Wallet:Postgres (or ConnectionStrings:Sorcha:Postgres).",
+                Status = StatusCodes.Status503ServiceUnavailable
+            },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+
+    /// <summary>
     /// POST /api/v1/wallets/recover/delegations/preserve — selective delegation preservation.
     /// </summary>
     private static async Task<IResult> PreserveDelegations(
         PreserveDelegationsRequest request,
-        Sorcha.Wallet.Core.Data.WalletDbContext dbContext,
+        // See SignTransaction: nullable so the host still starts without Postgres.
+        [FromServices] Sorcha.Wallet.Core.Data.WalletDbContext? dbContext,
         Sorcha.Wallet.Core.Services.Interfaces.IDelegationService delegationService,
         HttpContext context,
         CancellationToken cancellationToken)
@@ -2191,6 +2221,9 @@ public static class WalletEndpoints
         var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
             return TypedResults.Unauthorized();
+
+        if (dbContext is null)
+            return RelationalStoreRequired("Selective delegation preservation");
 
         var preserved = 0;
         foreach (var delegationId in request.DelegationIds)
@@ -2221,13 +2254,17 @@ public static class WalletEndpoints
     /// GET /api/v1/wallets/recovery-status — check recovery capabilities.
     /// </summary>
     private static async Task<IResult> GetRecoveryStatus(
-        Sorcha.Wallet.Core.Data.WalletDbContext dbContext,
+        // See SignTransaction: nullable so the host still starts without Postgres.
+        [FromServices] Sorcha.Wallet.Core.Data.WalletDbContext? dbContext,
         HttpContext context,
         CancellationToken cancellationToken)
     {
         var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
             return TypedResults.Unauthorized();
+
+        if (dbContext is null)
+            return RelationalStoreRequired("Recovery status");
 
         var wallets = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
             .ToListAsync(dbContext.Wallets.Where(w => w.Owner == userId), cancellationToken);
