@@ -148,16 +148,60 @@ public sealed class SorchaWalletLocalPresenter : ISorchaWalletLocalPresenter
         };
     }
 
-    /// <summary>Absolute same-origin URLs become relative paths; cross-origin returns null.</summary>
+    /// <summary>
+    /// Maps a server-supplied URI onto a same-origin request path, or null to refuse. This client
+    /// attaches the citizen's bearer to every call, so refusal is the fail-safe.
+    /// <para>
+    /// A rooted path (<c>/api/…</c>) is accepted as same-origin by construction — this is THE
+    /// SHIPPED SHAPE: <c>PresentationLifecycleOptions.PublicBaseUrl</c> is unset on every
+    /// deployment, so the lifecycle emits relative request_uri/response_uri values. The rooted
+    /// check MUST come before <see cref="Uri.TryCreate(string, UriKind, out Uri)"/>: on
+    /// non-Windows runtimes (including browser-wasm) a rooted path parses as an ABSOLUTE
+    /// <c>file://</c> URI with an empty Authority, so the previous "TryCreate(Absolute) failed ⇒
+    /// relative" test silently classified the shipped shape as cross-origin — the local route
+    /// never fetched anything and every gate fell back to the QR (#1330 live-gate finding,
+    /// n1 2026-07-29; invisible to tests, which run on Windows semantics).
+    /// </para>
+    /// Protocol-relative (<c>//host/…</c>) and backslash-carrying values are refused outright —
+    /// resolved against an https base they can escape the origin.
+    /// </summary>
     private string? ToSameOriginRelative(string uri)
     {
-        if (!Uri.TryCreate(uri, UriKind.Absolute, out var abs))
-            return uri; // already relative — same origin by construction
-        var baseAddress = _http.BaseAddress;
-        if (baseAddress is null) return null;
-        return string.Equals(abs.Authority, baseAddress.Authority, StringComparison.OrdinalIgnoreCase)
-            ? abs.PathAndQuery
-            : null;
+        if (string.IsNullOrEmpty(uri))
+            return null;
+
+        if (uri.Contains('\\'))
+        {
+            _logger.LogWarning("Local presentation route refused a backslash-carrying URI.");
+            return null;
+        }
+
+        if (uri.StartsWith("//", StringComparison.Ordinal))
+        {
+            _logger.LogWarning("Local presentation route refused a protocol-relative URI.");
+            return null;
+        }
+
+        if (uri.StartsWith('/'))
+            return uri; // rooted path — same-origin by construction (shipped shape)
+
+        if (Uri.TryCreate(uri, UriKind.Absolute, out var abs)
+            && (abs.Scheme == Uri.UriSchemeHttp || abs.Scheme == Uri.UriSchemeHttps))
+        {
+            var baseAddress = _http.BaseAddress;
+            if (baseAddress is null) return null;
+            if (!string.Equals(abs.Authority, baseAddress.Authority, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "Local presentation route refused a cross-origin URI (authority {Authority}).",
+                    abs.Authority);
+                return null;
+            }
+            return abs.PathAndQuery;
+        }
+
+        _logger.LogWarning("Local presentation route refused an unrecognised URI shape.");
+        return null;
     }
 
     private static string? ReadString(JsonElement root, string name)

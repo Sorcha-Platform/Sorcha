@@ -195,6 +195,62 @@ public class SorchaWalletLocalPresenterProbeTests
         (await presenter.ProbeAsync(DeepLink())).Should().BeNull(
             "multi-credential local consent is out of scope — degrade to the QR route, which fails loudly by design (#1311)");
     }
+
+    /// <summary>
+    /// #1330 live-gate regression (found on n1, 2026-07-29) — THE SHIPPED SHAPE.
+    /// <c>PresentationLifecycleOptions.PublicBaseUrl</c> is unset on every deployment
+    /// (rehearse.ps1:402 documents this), so the lifecycle emits request_uri and response_uri as
+    /// RELATIVE rooted paths. <c>Uri.TryCreate("/api/…", UriKind.Absolute)</c> SUCCEEDS as a
+    /// file:// URI with an empty Authority, so the original guard misclassified the shipped shape
+    /// as cross-origin and silently killed the local route — the QR-only fallback rendered on
+    /// every real gate while all tests (absolute-URL fixtures only) stayed green.
+    /// </summary>
+    [Fact]
+    public async Task ProbeAsync_RelativeRequestAndResponseUris_ReturnsCandidate()
+    {
+        var jwt = BuildRequestObjectJwt(
+            responseUri: "/api/presentations/callbacks/sorcha-wallet/rid-1");
+        var (presenter, http, _, _) = Build(jwt, baseAddress: "https://unit.test/app/");
+
+        var candidate = await presenter.ProbeAsync(
+            DeepLink("/api/presentations/rid1hex/request-object"));
+
+        candidate.Should().NotBeNull("the shipped PublicBaseUrl-unset shape is relative and same-origin by construction");
+        candidate!.ResponseUri.Should().Be("/api/presentations/callbacks/sorcha-wallet/rid-1");
+        // A rooted path must resolve against the ORIGIN, not the /app/ base path.
+        http.Requests[0].RequestUri.Should().Be(new Uri("https://unit.test/api/presentations/rid1hex/request-object"));
+    }
+
+    /// <summary>
+    /// A protocol-relative value ("//host/…") is NOT a rooted same-origin path — resolved against
+    /// an https base it becomes https://host/…, and this client attaches the citizen's bearer to
+    /// every call. Must be refused before any fetch.
+    /// </summary>
+    [Fact]
+    public async Task ProbeAsync_ProtocolRelativeRequestUri_RefusedWithoutFetching()
+    {
+        var (presenter, http, _, _) = Build(BuildRequestObjectJwt());
+        (await presenter.ProbeAsync(DeepLink("//evil.example/api/presentations/x/request-object"))).Should().BeNull();
+        http.Requests.Should().BeEmpty("a protocol-relative request_uri must never be fetched");
+    }
+
+    [Fact]
+    public async Task ProbeAsync_ProtocolRelativeResponseUri_ReturnsNull()
+    {
+        var jwt = BuildRequestObjectJwt(responseUri: "//evil.example/collect");
+        var (presenter, _, _, _) = Build(jwt);
+        (await presenter.ProbeAsync(DeepLink())).Should().BeNull(
+            "a protocol-relative response_uri would direct_post the bearer to a foreign origin");
+    }
+
+    [Fact]
+    public async Task ProbeAsync_BackslashRequestUri_RefusedWithoutFetching()
+    {
+        // Backslashes normalise unpredictably during URI combination — refuse outright.
+        var (presenter, http, _, _) = Build(BuildRequestObjectJwt());
+        (await presenter.ProbeAsync(DeepLink(@"/\evil.example/x"))).Should().BeNull();
+        http.Requests.Should().BeEmpty();
+    }
 }
 
 /// <summary>Records every request and answers via the supplied responder.</summary>
