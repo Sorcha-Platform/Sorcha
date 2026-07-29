@@ -231,6 +231,80 @@ public sealed class PresentationSignalTests : IAsyncDisposable
         unreachableFired.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task NotFounds_AfterObservedExpiry_RaiseExpiredOutcome_NotUnreachable()
+    {
+        // #1333 (minor half) — the Redis pending entry lapses at the validity window, after
+        // which /status 404s. For a request the signal WATCHED alive, 404s that begin after
+        // its own advertised expiresAt are an EXPIRY: telling the citizen "we couldn't reach
+        // your wallet" sends them to debug the wrong thing.
+        _handler.NextState = "awaiting-presentation";
+        _handler.NextExpiresAt = _time.GetUtcNow().AddSeconds(6);
+
+        var unreachableFired = false;
+        PresentationSignalOutcome? captured = null;
+        var done = new TaskCompletionSource();
+        _sut.OnRequestUnreachable += () => unreachableFired = true;
+        _sut.OnOutcomeReady += outcome =>
+        {
+            captured = outcome;
+            done.TrySetResult();
+            return Task.CompletedTask;
+        };
+
+        await _sut.StartAsync(_requestId, CancellationToken.None);
+
+        // First poll sees the request ALIVE (and learns its expiry).
+        _time.Advance(TimeSpan.FromSeconds(4));
+        await Task.Yield();
+        await Task.Delay(20);
+
+        // The window lapses; the pending entry is gone; every poll now 404s.
+        _handler.NextStatus = HttpStatusCode.NotFound;
+        for (var i = 0; i < 4; i++)
+        {
+            _time.Advance(TimeSpan.FromSeconds(4));
+            await Task.Yield();
+            await Task.Delay(20);
+        }
+
+        await done.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        captured.Should().NotBeNull();
+        captured!.Kind.Should().Be("expired");
+        unreachableFired.Should().BeFalse("an expiry we can prove is not an outage");
+    }
+
+    [Fact]
+    public async Task NotFounds_BeforeObservedExpiry_StillRaiseUnreachable()
+    {
+        // 404s while the request should still be alive ARE our fault — a vanished lifecycle
+        // row, not a lapsed window. The unreachable path must survive the expiry carve-out.
+        _handler.NextState = "awaiting-presentation";
+        _handler.NextExpiresAt = _time.GetUtcNow().AddMinutes(10);
+
+        var unreachableFired = false;
+        PresentationSignalOutcome? captured = null;
+        _sut.OnRequestUnreachable += () => unreachableFired = true;
+        _sut.OnOutcomeReady += outcome => { captured = outcome; return Task.CompletedTask; };
+
+        await _sut.StartAsync(_requestId, CancellationToken.None);
+
+        _time.Advance(TimeSpan.FromSeconds(4));
+        await Task.Yield();
+        await Task.Delay(20);
+
+        _handler.NextStatus = HttpStatusCode.NotFound;
+        for (var i = 0; i < 4; i++)
+        {
+            _time.Advance(TimeSpan.FromSeconds(4));
+            await Task.Yield();
+            await Task.Delay(20);
+        }
+
+        unreachableFired.Should().BeTrue();
+        captured.Should().BeNull("a mid-window vanish must not masquerade as an expiry");
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _sut.DisposeAsync();
@@ -245,9 +319,13 @@ public sealed class PresentationSignalTests : IAsyncDisposable
         /// <summary>Status the status endpoint answers with. 404 means "no such request".</summary>
         public HttpStatusCode NextStatus { get; set; } = HttpStatusCode.OK;
 
+        /// <summary>Optional expiresAt carried on 200 bodies — the real endpoint always sends it.</summary>
+        public DateTimeOffset? NextExpiresAt { get; set; }
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            var body = $"{{\"presentationRequestId\":\"00000000-0000-0000-0000-000000000000\",\"state\":\"{NextState}\"}}";
+            var expires = NextExpiresAt is { } e ? $",\"expiresAt\":\"{e:O}\"" : string.Empty;
+            var body = $"{{\"presentationRequestId\":\"00000000-0000-0000-0000-000000000000\",\"state\":\"{NextState}\"{expires}}}";
             return Task.FromResult(new HttpResponseMessage(NextStatus)
             {
                 Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
