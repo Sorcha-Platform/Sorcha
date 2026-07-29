@@ -831,8 +831,10 @@ public class ValidationEngineTests
         // fields). The lifecycle payload here carries only submitter/requirements metadata —
         // none of the action's required fields ("name", "amount") — and must NOT be evaluated
         // against the action's data schema.
+        // `type` sits INSIDE the signed payload (TransactionBuilderService writes it before
+        // signing) — that, not Metadata["Type"], is what earns the carve-out post-C-VAL.
         var tx = CreateValidTransaction(
-            payloadJson: """{"submitterWallet":"addr-1","requirementsDigest":"abc123","presentationRequestId":"req-1","consumer":"sorcha-wallet"}""");
+            payloadJson: """{"type":"presentation-initiated","submitterWallet":"addr-1","requirementsDigest":"abc123","presentationRequestId":"req-1","consumer":"sorcha-wallet"}""");
         tx.Metadata["Type"] = "PresentationInitiated";
 
         var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId!);
@@ -851,14 +853,18 @@ public class ValidationEngineTests
     }
 
     [Theory]
-    [InlineData("PresentationOutcome")]
-    [InlineData("PresentationAbandoned")]
-    public async Task ValidateSchemaAsync_OtherLifecycleTransactionTypes_SkipActionPayloadSchema(string lifecycleType)
+    [InlineData("presentation-outcome", "PresentationOutcome")]
+    [InlineData("presentation-abandoned", "PresentationAbandoned")]
+    public async Task ValidateSchemaAsync_OtherLifecycleTransactionTypes_SkipActionPayloadSchema(
+        string signedPayloadType, string metadataType)
     {
         // Arrange — the other two lifecycle transaction types (Feature 119) must also be
         // exempted; the predicate (IsLifecycleTransaction) covers all three uniformly.
-        var tx = CreateValidTransaction(payloadJson: """{"outcome":"accepted"}""");
-        tx.Metadata["Type"] = lifecycleType;
+        // Post-C-VAL the exemption comes from the SIGNED payload type, with metadata merely
+        // agreeing (as a genuine transaction's does).
+        var tx = CreateValidTransaction(
+            payloadJson: $"{{\"type\":\"{signedPayloadType}\",\"outcome\":\"accepted\"}}");
+        tx.Metadata["Type"] = metadataType;
 
         var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId!);
         _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
@@ -2302,6 +2308,67 @@ public class ValidationEngineTests
     #endregion
 
     #region Helper Methods
+
+    // ── C-VAL (catch-up security review 2026-07-29) ─────────────────────────────────────────
+    // The lifecycle schema-skip was keyed on Metadata["Type"], which is NOT covered by the
+    // signature (signed data is "{TransactionId}:{PayloadHash}"), NOT in PayloadHash (only
+    // Payload is hashed), and NOT in the merkle leaf. So one unsigned string could disable the
+    // schema check on ANY transaction. The discriminator must come from the SIGNED payload.
+
+    [Fact]
+    public async Task ValidateSchemaAsync_ForgedLifecycleMetadata_WithoutSignedPayloadType_StillValidatesSchema()
+    {
+        // The forgery: metadata claims a lifecycle type, but the signed payload does not say so
+        // and is missing the action schema's required fields. Schema validation MUST still run.
+        var tx = CreateValidTransaction(payloadJson: """{"unrelated":"value"}""");
+        tx.Metadata["Type"] = "PresentationInitiated";
+
+        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId!);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(blueprint);
+
+        var result = await _engine.ValidateSchemaAsync(tx);
+
+        result.IsValid.Should().BeFalse(
+            "unsigned metadata must not be able to skip schema validation");
+        result.Errors.Should().Contain(e => e.Code == "VAL_SCHEMA_004",
+            "the action's required properties are absent from the payload");
+    }
+
+    [Fact]
+    public async Task ValidateSchemaAsync_GenuineLifecycleTransaction_SignedPayloadType_SkipsSchema()
+    {
+        // A genuine lifecycle transaction carries `type` INSIDE the signed payload (set by
+        // TransactionBuilderService before signing), so it is still correctly skipped.
+        var tx = CreateValidTransaction(
+            payloadJson: """{"type":"presentation-initiated","submitterWallet":"addr-1","presentationRequestId":"req-1"}""");
+        tx.Metadata["Type"] = "PresentationInitiated";
+
+        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId!);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(blueprint);
+
+        var result = await _engine.ValidateSchemaAsync(tx);
+
+        result.IsValid.Should().BeTrue(
+            "lifecycle payloads never carry the gated action's data fields");
+    }
+
+    [Fact]
+    public async Task ValidateSchemaAsync_LifecyclePayloadType_WithNoMetadata_IsStillRecognised()
+    {
+        // The signed payload alone is authoritative — metadata is not required at all.
+        var tx = CreateValidTransaction(
+            payloadJson: """{"type":"presentation-outcome","kind":"success"}""");
+
+        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId!);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(blueprint);
+
+        var result = await _engine.ValidateSchemaAsync(tx);
+
+        result.IsValid.Should().BeTrue();
+    }
 
     private static Transaction CreateValidTransaction(
         string? transactionId = null,
