@@ -307,7 +307,56 @@ Manually triggers a single validation pipeline iteration (for testing/debugging)
 
 ---
 
+## Transaction-type carve-outs must come from SIGNED data
+
+`TransactionTypeClassifier` decides which transactions are exempt from certain rules. Three
+carve-outs matter for presentation-lifecycle transactions:
+
+| Predicate | Waives |
+|-----------|--------|
+| `IsLifecycleTransaction` | the action-data schema check (`VAL_SCHEMA_001/002/003/004`) |
+| `IsIntraActionLifecycleTerminal` | the routing-decision attestation, and `VAL_BP_003` route reachability |
+
+**These predicates read the `type` field inside the transaction's `Payload`, never
+`Metadata["Type"]` — and new carve-outs must do the same.**
+
+`Metadata` is **not** signed. The signed data is `"{TransactionId}:{PayloadHash}"`;
+`PayloadHash` covers **only** `Payload`; and the docket merkle leaf does not include metadata
+either. So anything that can submit a transaction can set `Metadata["Type"]` freely with nothing
+detecting the change — no signature failure, no hash mismatch, no log.
+
+Until the 2026-07-29 catch-up security review these predicates keyed on `Metadata["Type"]`, so
+adding one unsigned string (`Metadata["Type"] = "PresentationInitiated"`) to **any** transaction
+disabled the schema check, the routing attestation and the reachability check at once, and it
+sealed normally. `Payload.type` is inside the hash the signature covers, so it is the only
+trustworthy discriminator. (`IsRejectionTransaction` already consulted the payload for the same
+reason — it was the precedent, not the exception.)
+
+Genuine lifecycle transactions always carry it: `TransactionBuilderServiceExtensions
+.BuildPresentationInitiatedAsync` / `BuildPresentationOutcomeAsync` /
+`BuildPresentationAbandonedAsync` each write `type` as the first payload property **before**
+signing (`presentation-initiated`, `presentation-outcome`, `presentation-abandoned`). The
+PascalCase `Metadata["Type"]` values still exist for the docket-build trigger's own purposes;
+they are simply not authoritative for validation carve-outs.
+
+When metadata claims a lifecycle type the signed payload does not corroborate, the exemption is
+refused **and** `ValidationEngine` logs a warning — a transaction requesting an exemption it is
+not entitled to is what an attempted schema-validation bypass looks like on the wire.
+
 ## gRPC Services
+
+> **⚠️ The gRPC surface is currently UNAUTHENTICATED.** `app.MapGrpcService<ValidatorGrpcService>()`
+> in `Program.cs` carries no `.RequireAuthorization(...)`, while every REST group in the same file
+> does — and compose publishes the gRPC port (`5801:8081`). This is a platform-wide gap, not
+> specific to this service: no `MapGrpcService` call anywhere in the repo is authorized, and no
+> `*GrpcService` class carries `[Authorize]`.
+>
+> It is **not** a one-line fix. `ConsensusEngine.CollectVoteFromValidatorAsync` and
+> `SignatureCollector.RequestSignatureAsync` both build a plain `GrpcChannel` with no credentials,
+> so simply adding a policy would break validator-to-validator consensus outright. Even fixing
+> both call sites leaves a rolling-deploy window in which updated nodes reject not-yet-updated
+> peers' votes. Tracked separately from the signed-discriminator fix above so that a network-wide
+> change is rolled out deliberately (client-side token attachment first, enforcement second).
 
 ### Proto Definition Location
 `specs/002-validator-service/contracts/validator.proto`
