@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Sorcha.ServiceClients.OrgDidDocument;
 using Sorcha.ServiceDefaults;
+using Sorcha.Tenant.Service.Data.Repositories;
+using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
 
 namespace Sorcha.Tenant.Service.Endpoints;
@@ -50,6 +52,15 @@ public static class OrgDidDocumentEndpoints
             .RequireRateLimiting(RateLimitPolicies.Api);
 
         // Internal regenerate endpoint — wallet → tenant trigger after a key event.
+        //
+        // C1 (catch-up security review 2026-07-29): this MUST be RequireService. It shipped with
+        // no authorization attribute at all, and the Tenant Service configures no fallback policy,
+        // so it was anonymous on the published Tenant port. The document it writes is the issuer
+        // key material every verifier trusts for this org, and the handler takes the caller's
+        // WalletAddress + JWKs verbatim — so an anonymous POST carrying a victim's orgId and
+        // wallet address (both public values) with an attacker's JWK made attacker-signed
+        // credentials verify as that organisation's. The two GETs above are deliberately
+        // AllowAnonymous (public DID resolution); only this write path is privileged.
         app.MapPost("/orgs/{orgId:guid}/did-document/regenerate", RegenerateDocument)
             .WithName("RegenerateOrgDidDocument")
             .WithSummary("Regenerate the published DID document for an organisation")
@@ -57,7 +68,14 @@ public static class OrgDidDocumentEndpoints
                 "Internal endpoint used by Wallet Service after a key event (issuance key " +
                 "derivation / rotation / revocation). Rebuilds the document from the supplied " +
                 "key snapshot, persists it, and returns the new version. Idempotent — returns " +
-                "the existing row unchanged if the recomputed key-version fingerprint matches.")
+                "the existing row unchanged if the recomputed key-version fingerprint matches. " +
+                "Requires a service-tier token: this is an internal service-to-service call, " +
+                "never a user-initiated one.")
+            .RequireAuthorization(AuthorizationPolicies.RequireService)
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
             .RequireRateLimiting(RateLimitPolicies.Api);
 
         return app;
@@ -105,10 +123,46 @@ public static class OrgDidDocumentEndpoints
         [FromRoute] Guid orgId,
         [FromBody] OrgDidRegenerateRequest request,
         [FromServices] IOrgDidDocumentService service,
+        [FromServices] IOrganizationRepository organizations,
+        [FromServices] ILogger<OrgDidDocument> logger,
         CancellationToken ct)
     {
         if (request.OrganizationId != orgId)
             return Results.BadRequest(new { error = "Route orgId does not match payload OrganizationId." });
+
+        // C1 (catch-up security review 2026-07-29) — defence in depth behind RequireService.
+        // The canonical identifier is built verbatim as did:sorcha:org:{WalletAddress} from this
+        // body, so the address must be the organisation's own and not merely well-formed.
+        var org = await organizations.GetByIdAsync(orgId, ct);
+        if (org is null)
+            return Results.BadRequest(new { error = "Unknown organisation." });
+
+        if (string.IsNullOrWhiteSpace(org.WalletAddress))
+        {
+            // Deliberately permissive, NOT an oversight: an org whose canonical wallet address has
+            // not been recorded yet has nothing to compare against, and refusing here would break
+            // first-time DID publication — a failure the Wallet side swallows into `false`, so it
+            // would surface only as credentials that silently never verify. RequireService already
+            // bounds who can reach this. Tighten to a hard refusal once the provisioning order
+            // guarantees WalletAddress is always set before the first key event.
+            logger.LogWarning(
+                "Organisation {OrgId} has no recorded canonical wallet address; publishing DID "
+                + "document from the supplied address {WalletAddress} without verification.",
+                orgId, request.WalletAddress);
+        }
+        else if (!string.Equals(org.WalletAddress, request.WalletAddress, StringComparison.Ordinal))
+        {
+            logger.LogError(
+                "REFUSED DID-document regeneration for organisation {OrgId}: supplied wallet address "
+                + "{Supplied} is not the organisation's canonical address {Canonical}. This is what an "
+                + "issuer-impersonation attempt looks like.",
+                orgId, request.WalletAddress, org.WalletAddress);
+
+            return Results.BadRequest(new
+            {
+                error = "WalletAddress does not match the organisation's canonical wallet address."
+            });
+        }
 
         if (service is OrgDidDocumentService impl)
         {

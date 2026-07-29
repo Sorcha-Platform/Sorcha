@@ -94,8 +94,110 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
 
+  /orgs/{orgId}/did-document/regenerate:
+    post:
+      summary: Regenerate an organisation's published DID document from a key snapshot.
+      description: |
+        Internal Wallet → Tenant trigger, called after a key event (issuance key derivation,
+        rotation, or revocation). Rebuilds the document from the supplied key snapshot, persists
+        it, and returns the new version. Idempotent: returns the existing row unchanged when the
+        recomputed key-version fingerprint is unchanged.
+
+        **This is a privileged write path, NOT a public one.** The document it publishes is the
+        issuer key material every verifier trusts for this organisation, and the canonical
+        identifier is derived verbatim from the supplied `walletAddress` as
+        `did:sorcha:org:{walletAddress}`. Two controls apply:
+
+        1. **`RequireService`** — a service-tier token is mandatory. Anonymous callers and human
+           tokens of any role (including Administrator) are refused. This endpoint carried no
+           authorization attribute at all until the 2026-07-29 catch-up security review; because
+           the Tenant Service configures no fallback policy, it was reachable anonymously on the
+           published Tenant port, allowing an attacker to publish their own key as any
+           organisation's issuer key.
+        2. **Canonical wallet-address check** — `walletAddress` must equal the organisation's
+           recorded canonical wallet address. An organisation with no recorded address yet is
+           permitted (with a warning) so first-time publication is not broken.
+      operationId: regenerateOrgDidDocument
+      tags: [Internal]
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The organisation's platform identifier. Must equal body `organizationId`.
+      security:
+        - serviceBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrgDidRegenerateRequest'
+      responses:
+        '200':
+          description: Document regenerated (or unchanged, when the fingerprint already matched).
+        '400':
+          description: |
+            Route `orgId` did not match body `organizationId`; unknown organisation; or
+            `walletAddress` is not the organisation's canonical wallet address.
+        '401':
+          description: No service-tier token presented.
+        '403':
+          description: Token presented is not service-tier (e.g. a human or admin token).
+
 components:
+  securitySchemes:
+    serviceBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Service-tier Sorcha JWT — `token_type=service` plus this installation's `:service`
+        audience (see the `RequireService` policy). Minted via the OAuth2 client-credentials
+        grant against the Tenant Service and attached by `IServiceAuthClient`.
+
   schemas:
+    OrgDidRegenerateRequest:
+      type: object
+      description: Wallet → Tenant snapshot of the organisation's Active issuance keys.
+      required: [organizationId, keyEventReason, walletAddress, activeKeys]
+      properties:
+        organizationId:
+          type: string
+          format: uuid
+          description: Owning organisation. Must equal the route `orgId`.
+        keyEventReason:
+          type: string
+          description: What triggered regeneration (key derivation, rotation, revocation).
+        walletAddress:
+          type: string
+          description: |
+            Organisation wallet address forming the canonical `did:sorcha:org:{addr}` identifier.
+            Validated against the organisation's recorded canonical address.
+        activeKeys:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/OrgDidActiveKey' }
+
+    OrgDidActiveKey:
+      type: object
+      required: [rotationIndex, algorithm, publicKeyJwk, thumbprint]
+      properties:
+        rotationIndex:
+          type: integer
+          description: Monotonic rotation counter; forms the versioned kid suffix.
+        algorithm:
+          type: string
+          description: Wallet algorithm string (e.g. `ED25519`).
+        publicKeyJwk:
+          type: string
+          description: Pre-built JWK JSON for the public key.
+        thumbprint:
+          type: string
+          description: RFC 7638 SHA-256 base64url thumbprint of the JWK.
+
     DidDocument:
       type: object
       description: |
