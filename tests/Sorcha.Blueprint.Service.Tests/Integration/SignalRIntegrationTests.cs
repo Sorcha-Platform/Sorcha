@@ -488,6 +488,87 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
 
     #endregion
 
+    #region Presentation Group Tests (#1333)
+
+    [Fact]
+    public async Task JoinGroup_PresentationGroup_ReceivesPublishedOutcomeReady()
+    {
+        // #1333 — the client has always invoked JoinGroup, the publisher has always sent
+        // PresentationOutcomeReady to the group, and no server method ever existed between
+        // them. This test IS the join: a real hub client must receive the published event.
+        var connection = CreateHubConnection();
+        var received = Channel.CreateUnbounded<string>();
+        connection.On<string>("PresentationOutcomeReady", id => received.Writer.TryWrite(id));
+
+        await connection.StartAsync();
+        var requestId = Guid.NewGuid();
+        await connection.InvokeAsync("JoinGroup", BlueprintHubGroups.PresentationNonce(requestId));
+
+        var hub = _factory.Services.GetRequiredService<IHubContext<BlueprintHub, IBlueprintHubClient>>();
+        await hub.Clients.Group(BlueprintHubGroups.PresentationNonce(requestId))
+            .PresentationOutcomeReady(requestId.ToString("N"));
+
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var deliveredId = await received.Reader.ReadAsync(cts.Token);
+        deliveredId.Should().Be(requestId.ToString("N"));
+    }
+
+    [Fact]
+    public async Task JoinGroup_WalletGroup_ThrowsHubException()
+    {
+        // JoinGroup must not become a generic group-join oracle: wallet groups have their
+        // own ownership-validated SubscribeToWallet path and must not be reachable here.
+        var connection = CreateHubConnection();
+        await connection.StartAsync();
+
+        var act = async () => await connection.InvokeAsync(
+            "JoinGroup", BlueprintHubGroups.Wallet("ws1qvictim"));
+        await act.Should().ThrowAsync<HubException>().WithMessage("*presentation*");
+    }
+
+    [Fact]
+    public async Task JoinGroup_MalformedPresentationGroup_ThrowsHubException()
+    {
+        var connection = CreateHubConnection();
+        await connection.StartAsync();
+
+        var act = async () => await connection.InvokeAsync("JoinGroup", "presentation:not-a-hex-guid");
+        await act.Should().ThrowAsync<HubException>();
+    }
+
+    [Fact]
+    public async Task LeaveGroup_AfterJoin_StopsReceiving()
+    {
+        var connection = CreateHubConnection();
+        var received = Channel.CreateUnbounded<string>();
+        connection.On<string>("PresentationOutcomeReady", id => received.Writer.TryWrite(id));
+
+        await connection.StartAsync();
+        var requestId = Guid.NewGuid();
+        var group = BlueprintHubGroups.PresentationNonce(requestId);
+        await connection.InvokeAsync("JoinGroup", group);
+        await connection.InvokeAsync("LeaveGroup", group);
+
+        var hub = _factory.Services.GetRequiredService<IHubContext<BlueprintHub, IBlueprintHubClient>>();
+        await hub.Clients.Group(group).PresentationOutcomeReady(requestId.ToString("N"));
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(750));
+        var receivedAfterLeave = false;
+        try
+        {
+            await received.Reader.ReadAsync(cts.Token);
+            receivedAfterLeave = true;
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected — the connection left the group before the publish.
+        }
+
+        receivedAfterLeave.Should().BeFalse("the connection left the group before the publish");
+    }
+
+    #endregion
+
     #region Helper Methods
 
     /// <summary>
