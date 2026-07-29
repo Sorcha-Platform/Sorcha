@@ -144,6 +144,69 @@ public class OrgDidDocumentEndpointsAuthorizationTests : IClassFixture<TenantSer
             "the legitimate Wallet-side key-event path must still publish");
     }
 
+    // ── Review findings on the first cut of this fix (claude-review, PR #1338) ────────────
+    // Both concern the "organisation has no recorded canonical address yet" branch, which is
+    // permissive so that first-time DID publication is not broken. Permissive must not mean
+    // unvalidated: the branch still has to reject a degenerate or already-claimed identity.
+
+    [Fact]
+    public async Task Regenerate_BlankWalletAddress_IsRejected()
+    {
+        // The mismatch check alone never fired on a blank address when the org had none recorded,
+        // so `did:sorcha:org:` (empty suffix) was published as that org's identity — a degenerate
+        // DID that every org taking this path would collide on.
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
+        var org = await db.Organizations.FirstAsync(o => o.Id == TestDataSeeder.TestOrganizationId);
+        org.WalletAddress = null;
+        await db.SaveChangesAsync();
+
+        var client = CreateServicePrincipalClient();
+
+        var response = await client.PostAsJsonAsync(
+            Route(TestDataSeeder.TestOrganizationId),
+            Snapshot(TestDataSeeder.TestOrganizationId, walletAddress: "   "));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+            "a blank wallet address cannot form a canonical DID");
+    }
+
+    [Fact]
+    public async Task Regenerate_WalletAddressAlreadyClaimedByAnotherOrg_IsRejected()
+    {
+        // PrimaryDid is a NON-unique index and GetByPrimaryDidAsync resolves with an unordered
+        // FirstOrDefaultAsync, so two rows sharing a PrimaryDid resolve non-deterministically.
+        // Without this check, an address-less org could be given another org's DID and
+        // GET /orgs/by-did/{did}/did.json would serve either org's key material for it.
+        const string victimAddress = "ws1victimorgwallet";
+        var otherOrgId = Guid.NewGuid();
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
+
+        db.OrgDidDocuments.Add(new Sorcha.Tenant.Service.Models.OrgDidDocument
+        {
+            OrganizationId = otherOrgId,
+            PrimaryDid = $"did:sorcha:org:{victimAddress}",
+            FederatedDid = $"did:web:test:orgs:{otherOrgId}",
+            DocumentJson = """{"id":"did:sorcha:org:ws1victimorgwallet"}""",
+            KeyVersionFingerprint = "fingerprint-victim"
+        });
+
+        var org = await db.Organizations.FirstAsync(o => o.Id == TestDataSeeder.TestOrganizationId);
+        org.WalletAddress = null;   // the permissive branch
+        await db.SaveChangesAsync();
+
+        var client = CreateServicePrincipalClient();
+
+        var response = await client.PostAsJsonAsync(
+            Route(TestDataSeeder.TestOrganizationId),
+            Snapshot(TestDataSeeder.TestOrganizationId, walletAddress: victimAddress));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+            "an address already published as another organisation's DID must not be re-claimed");
+    }
+
     private HttpClient CreateServicePrincipalClient()
     {
         var client = _factory.CreateClient();

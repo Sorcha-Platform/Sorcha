@@ -130,6 +130,14 @@ public static class OrgDidDocumentEndpoints
         if (request.OrganizationId != orgId)
             return Results.BadRequest(new { error = "Route orgId does not match payload OrganizationId." });
 
+        // The canonical identifier is `did:sorcha:org:{WalletAddress}`, built verbatim from this
+        // body, so a blank address would publish `did:sorcha:org:` — a degenerate identity that
+        // every organisation taking that path collides on. Checked before anything else because
+        // it is a malformed request, not an authorization question. (OrgDidRegenerateRequest has
+        // no declarative validation, and no validation filter is registered for this route.)
+        if (string.IsNullOrWhiteSpace(request.WalletAddress))
+            return Results.BadRequest(new { error = "WalletAddress is required." });
+
         // C1 (catch-up security review 2026-07-29) — defence in depth behind RequireService.
         // The canonical identifier is built verbatim as did:sorcha:org:{WalletAddress} from this
         // body, so the address must be the organisation's own and not merely well-formed.
@@ -145,6 +153,28 @@ public static class OrgDidDocumentEndpoints
             // would surface only as credentials that silently never verify. RequireService already
             // bounds who can reach this. Tighten to a hard refusal once the provisioning order
             // guarantees WalletAddress is always set before the first key event.
+            //
+            // Permissive must not mean unvalidated. `PrimaryDid` is a NON-unique index and
+            // GetByPrimaryDidAsync resolves with an unordered FirstOrDefaultAsync, so if two rows
+            // shared a PrimaryDid the public by-DID route would serve either org's key material
+            // for it — cross-org issuer-key confusion. Refuse an address already published as some
+            // other organisation's DID.
+            var claimed = await service.GetByPrimaryDidAsync(
+                OrgDidDocumentService.BuildPrimaryDid(request.WalletAddress), ct);
+
+            if (claimed is not null && claimed.OrganizationId != orgId)
+            {
+                logger.LogError(
+                    "REFUSED DID-document regeneration for organisation {OrgId}: wallet address "
+                    + "{WalletAddress} is already published as organisation {OwnerOrgId}'s DID.",
+                    orgId, request.WalletAddress, claimed.OrganizationId);
+
+                return Results.BadRequest(new
+                {
+                    error = "WalletAddress is already published as another organisation's DID."
+                });
+            }
+
             logger.LogWarning(
                 "Organisation {OrgId} has no recorded canonical wallet address; publishing DID "
                 + "document from the supplied address {WalletAddress} without verification.",

@@ -116,7 +116,13 @@ paths:
            organisation's issuer key.
         2. **Canonical wallet-address check** — `walletAddress` must equal the organisation's
            recorded canonical wallet address. An organisation with no recorded address yet is
-           permitted (with a warning) so first-time publication is not broken.
+           permitted (with a warning) so first-time publication is not broken — but permissive
+           does not mean unvalidated. On that path the address must still be non-blank (a blank
+           one would publish the degenerate `did:sorcha:org:`, which every organisation taking the
+           path would collide on) and must not already be published as a **different**
+           organisation's DID. `PrimaryDid` is a non-unique index resolved by an unordered
+           `FirstOrDefault`, so two rows sharing one would make the public by-DID route serve
+           either organisation's key material — cross-org issuer-key confusion.
       operationId: regenerateOrgDidDocument
       tags: [Internal]
       parameters:
