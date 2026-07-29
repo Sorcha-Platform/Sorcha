@@ -553,6 +553,38 @@ The Tenant Service also exposes passkey public key data used by the Wallet Servi
 
 **Note:** Internal endpoints are excluded from public API documentation.
 
+### Organisation DID Documents (`/orgs/...`) — Feature 120
+
+Per-organisation W3C DID documents. Contract:
+`specs/120-production-issuer-signature-verification/contracts/org-did-document-endpoint.openapi.yaml`.
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/orgs/{orgId}/did.json` | GET | Anonymous | Resolve an org's published DID document (`application/did+json`, cacheable 6h) |
+| `/orgs/by-did/{did}/did.json` | GET | Anonymous | Resolve by canonical `did:sorcha:org:{addr}` — a verifier holds the DID, not the org GUID (Feature 149) |
+| `/orgs/{orgId}/did-document/regenerate` | POST | **`RequireService`** | Internal Wallet → Tenant trigger after a key event; rebuilds and publishes the document from the pushed key snapshot. Idempotent. |
+
+**The two GETs are deliberately anonymous** — public DID resolution is the point. **The POST is
+privileged and must stay that way.** It writes the issuer key material every verifier trusts for
+that organisation, and derives the canonical identifier verbatim from the request body's
+`walletAddress`. It shipped with no authorization attribute, and because this service configures no
+fallback policy that made it *anonymous* on the published Tenant port — an attacker posting a
+victim's orgId and wallet address (both public values) with their own JWK would have had their key
+served as the victim's issuer key, so attacker-signed credentials verified as that organisation's.
+Fixed in the 2026-07-29 catch-up security review with two controls:
+
+1. `RequireAuthorization(AuthorizationPolicies.RequireService)` — anonymous callers and human
+   tokens of **any** role (Administrator included) are refused; this path is service-to-service only.
+2. The supplied `walletAddress` must equal the organisation's recorded canonical wallet address.
+   An org with no recorded address yet is allowed through with a warning, so first-time publication
+   is not broken; tighten to a hard refusal once provisioning guarantees the address is set first.
+
+The caller is `IOrgDidDocumentClient.RegenerateAsync` (Wallet Service `IssuanceKeyService`), which
+attaches a service token via `IServiceAuthClient` and **fails closed before sending** if it cannot
+get one. That matters because `RegenerateAsync` maps every failure to `false`, which callers largely
+swallow — so an unauthenticated call would have looked like an intermittent Tenant fault while DID
+publishing silently stopped. Token rejection (401/403) is logged at `Error` for the same reason.
+
 For full API documentation, open **Scalar UI** at `https://localhost:7080/scalar`.
 
 ---
