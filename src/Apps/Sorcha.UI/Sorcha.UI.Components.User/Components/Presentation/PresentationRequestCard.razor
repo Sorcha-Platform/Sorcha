@@ -304,10 +304,33 @@
     /// </summary>
     private async Task ProbeLocalRouteAsync(Guid requestId, string requestUri, CancellationToken ct)
     {
-        var presenter = ServiceProvider.GetService<ISorchaWalletLocalPresenter>();
-        if (presenter is null) return;
+        // This method is fired-and-forgotten, so nothing here may throw silently: a DI
+        // construction failure resolving the presenter (or anything else unexpected) must land
+        // in the browser console, not in an unobserved task. The #1330 live gate failed
+        // invisibly precisely because every failure path on this route was quiet.
+        LocalPresentationCandidate? candidate;
+        try
+        {
+            var presenter = ServiceProvider.GetService<ISorchaWalletLocalPresenter>();
+            if (presenter is null)
+            {
+                Logger.LogInformation(
+                    "No ISorchaWalletLocalPresenter registered on this host — SorchaWallet gate is QR-only.");
+                return;
+            }
 
-        var candidate = await presenter.ProbeAsync(requestUri, ct);
+            candidate = await presenter.ProbeAsync(requestUri, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Local-presentation probe failed unexpectedly; the gate stays QR-only.");
+            return;
+        }
+
         if (candidate is null) return;
 
         await InvokeAsync(() =>
