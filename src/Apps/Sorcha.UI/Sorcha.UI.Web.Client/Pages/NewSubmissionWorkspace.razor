@@ -211,6 +211,14 @@
             // and the other four submission paths silently discarded the same warnings.
             result.SurfaceWarnings(Feedback);
 
+            // #1330 — the submission HTTP call is DONE; release the workspace's "Submitting..."
+            // overlay (ZIndex 9999) NOW. This handler doesn't return until any credential
+            // offer/presentation dialog below CLOSES, so leaving the overlay up parks it on top
+            // of the dialog for its entire life — blocking "Share & continue", "Open on this
+            // device" and "Copy link" on both desktop and phone. The cross-device QR only ever
+            // worked because a camera can scan through the dimmed overlay.
+            _workspace?.ClearSubmitting();
+
             // HAIP external wallet interactions — show QR dialog before navigating away
             if (result.CredentialOffer is { } offer)
             {
