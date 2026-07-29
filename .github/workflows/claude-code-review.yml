@@ -34,20 +34,24 @@ jobs:
       - name: Run Claude Code Review
         id: claude-review
         # PINNED, deliberately. `@v1` is a FLOATING tag: it moves with every
-        # claude-code-action release, so an upstream change silently breaks this job
-        # with no commit on our side. That happened — 105 consecutive failures with
-        # zero successes beginning 2026-07-21, the exact day v1.0.180 shipped
-        # (v1.0.179, 2026-07-20, was the last green run). Our OAuth token secret had
-        # been unchanged since 2026-04-26 and this workflow since 2026-06-04, so
-        # nothing here changed when it broke.
+        # claude-code-action release, so an upstream change can silently break this
+        # job with no commit on our side. Bump the pin deliberately after checking a
+        # run goes green — do NOT restore @v1.
         #
-        # The failure mode is nasty: the action reports subtype "success" with
-        # is_error:true, num_turns 1, $0 cost and NO error text, so the log gives you
-        # nothing to diagnose from and it reads as an infra blip rather than a
-        # regression. Reviews stopped happening on every PR, including ones touching
-        # fail-closed security paths, and were merged past as "flaky".
+        # HISTORY — the 2026-07-21 outage was the OAUTH TOKEN, not the action.
+        # 105+ consecutive failures began 2026-07-21. That was the day v1.0.180
+        # shipped, so the first diagnosis blamed the release and added this pin
+        # (#1323) — but runs kept failing identically ON the pinned v1.0.179. The
+        # real cause: CLAUDE_CODE_OAUTH_TOKEN had been minted 2026-04-26 and expired
+        # ~86 days later. Refreshed 2026-07-29 (`claude setup-token` + `gh secret
+        # set`); the very next re-run went green with no other change.
         #
-        # Bump this pin deliberately after checking a run goes green — do NOT restore @v1.
+        # The failure signature of an expired/invalid token is nasty: the action
+        # reports subtype "success" with is_error:true, num_turns 1, $0 cost and NO
+        # error text, right after "Claude Code initialized". If you see that shape
+        # again, refresh the token FIRST — only suspect the action version if a
+        # fresh token still fails. Reviews silently stopped on every PR for a week,
+        # including fail-closed security paths, and were merged past as "flaky".
         uses: anthropics/claude-code-action@v1.0.179
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
