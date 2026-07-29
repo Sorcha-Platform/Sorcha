@@ -24,6 +24,7 @@ using Sorcha.ServiceClients.Participant;
 using Sorcha.Wallet.Contracts.Models;
 using Sorcha.Wallet.Service.Mappers;
 using Sorcha.Wallet.Service.Models;
+using Sorcha.Wallet.Service.Authorization;
 
 namespace Sorcha.Wallet.Service.Endpoints;
 
@@ -206,23 +207,32 @@ public static class WalletEndpoints
             .Produces(StatusCodes.Status404NotFound);
 
         // PATCH /api/v1/wallets/{address} - Update wallet metadata
+        // G1 (catch-up security review 2026-07-29): had NO ownership check. GET/sign/decrypt/
+        // decapsulate on this group each verify wallet.Owner inline, but the two MUTATING routes
+        // did not — so any authenticated org-scoped caller (i.e. any citizen) could rename, retag
+        // or soft-DELETE any wallet by address. Gated with the shared primitive rather than another
+        // hand-copied inline check, since hand-copied checks are exactly what went missing here.
         walletGroup.MapPatch("/{address}", UpdateWallet)
             .WithRequestValidation()
+            .RequireWalletOwnership()
             .WithName("UpdateWallet")
             .WithSummary("Update wallet metadata")
             .WithDescription("Update wallet name and tags")
             .Produces<WalletDto>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound);
 
         // DELETE /api/v1/wallets/{address} - Delete wallet (soft delete)
         walletGroup.MapDelete("/{address}", DeleteWallet)
+            .RequireWalletOwnership()
             .WithName("DeleteWallet")
             .WithSummary("Delete wallet")
             .WithDescription("Soft delete a wallet (can be recovered by support)")
             .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound);
 
         // POST /api/v1/wallets/{address}/sign - Sign transaction
