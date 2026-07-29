@@ -408,6 +408,55 @@ promised.
 
 ---
 
+## Full Rehearsal executes as its own initiator (Feature 142 / Issue #1284)
+
+`RehearsalOrchestrationService.SubmitStepAsync` calls the real
+`IActionExecutionService.ExecuteAsync` for every step, so a rehearsal exercises
+the SAME execution pipeline a live submission does — including any
+`x-claim-source` bindings (Issue #1264) declared on the action's `dataSchemas`.
+Those bindings resolve their value from `IPlatformUserClaimsClient`, keyed off
+the caller's `platform_user_id` claim — there is no other way to know *whose*
+live value to read.
+
+The call used to pass `caller: null` (a leftover from when rehearsal only
+needed to skip wallet-ownership validation for the sandbox wallets it mints
+itself). `ActionExecutionService` fails closed rather than default a value it
+cannot vouch for, so a null caller made it throw for ANY action with an
+`x-claim-source` binding — Full Rehearsal could never pass for such a
+blueprint, which includes the AIAS assured-identity template. Go-live was
+reachable only via the audited override.
+
+The fix builds a synthetic `ClaimsPrincipal` from the rehearsal session's own
+initiator (`RehearsalSession.StartedByPlatformUserId`, captured at
+`StartFullAsync`) and passes that as `caller` instead. This is semantically
+the right behaviour, not a workaround: **rehearsal means "walk this workflow
+as me"**, so claim-source bindings should resolve the real live values of the
+person running the rehearsal — which also makes the rehearsal a truthful dry
+run of what go-live will stamp. The synthetic principal carries two claims:
+`platform_user_id` (read by claim-source resolution) and a `NameIdentifier`
+("sub") of the same value — required because a non-null caller now also
+activates `ValidateWalletOwnershipAsync` (SEC-006), which a null caller always
+skipped outright; the principal deliberately omits `org_id` so that check
+short-circuits to "no participant-based validation" instead of querying the
+Participant Service for a sandbox wallet that was never given a real
+participant profile (Feature 103 open-participant walk-in path).
+
+**Known residual gap (tracked separately, not fixed by the above):** Feature
+145 changed `ActionExecutionService.ExecuteAsync` to an always-async
+"submit and let the `InstanceProjector` fold the sealed docket" contract —
+every successful call now returns `IsComplete=false` / `NextActions=[]`
+unconditionally. `RehearsalOrchestrationService.SubmitStepAsync` still reads
+those two fields synchronously to decide `RehearsalOutcome.Passed` and to
+advance the walk-through to the next step. Wired to the real
+`ActionExecutionService`, a rehearsal can therefore still not reach `Passed`
+or advance past its first step — for any blueprint, not just claim-source
+ones. `RehearsalOrchestrationServiceTests` does not catch this because it
+mocks `IActionExecutionService` wholesale and fabricates `IsComplete`/
+`NextActions`; see `RehearsalClaimSourceOrchestrationTests`, which wires the
+real service and documents the gap inline.
+
+---
+
 ## Development
 
 ### Project Structure

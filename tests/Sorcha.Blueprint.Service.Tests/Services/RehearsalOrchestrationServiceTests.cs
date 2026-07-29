@@ -12,6 +12,7 @@ using Sorcha.Blueprint.Service.Models.Responses;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
+using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Blueprint.Models;
 using Sorcha.ServiceClients.Wallet;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
@@ -182,17 +183,21 @@ public class RehearsalOrchestrationServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(NextActionResponseFor(nextActionId: 2));
 
+        var platformUserId = Guid.NewGuid();
         var service = CreateService();
-        var started = await service.StartFullAsync(BlueprintId, OrgId, Guid.NewGuid());
+        var started = await service.StartFullAsync(BlueprintId, OrgId, platformUserId);
         await service.SwitchRoleAsync(started.RehearsalId, "applicant");
 
         await service.SubmitStepAsync(started.RehearsalId, actionId: 1, payloadJson: "{\"x\":1}");
 
         // Assert the execution pipeline + publish only ever saw the sandbox register id.
+        // Issue #1284 — caller is no longer null: it is a synthetic principal carrying the
+        // rehearsal's own initiator (StartedByPlatformUserId), so x-claim-source bindings resolve
+        // that person's live values instead of ActionExecutionService always throwing.
         _execution.Verify(e => e.ExecuteAsync(
             It.IsAny<string>(), It.IsAny<int>(),
             It.Is<ActionSubmissionRequest>(r => r.RegisterAddress == SandboxRegisterId),
-            It.IsAny<string>(), null, It.IsAny<CancellationToken>()), Times.Once);
+            It.IsAny<string>(), CallerFor(platformUserId), It.IsAny<CancellationToken>()), Times.Once);
         _execution.Verify(e => e.ExecuteAsync(
             It.IsAny<string>(), It.IsAny<int>(),
             It.Is<ActionSubmissionRequest>(r => r.RegisterAddress == LiveRegisterId),
@@ -219,18 +224,31 @@ public class RehearsalOrchestrationServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(NextActionResponseFor(nextActionId: 2));
 
+        var platformUserId = Guid.NewGuid();
         var service = CreateService();
-        var started = await service.StartFullAsync(BlueprintId, OrgId, Guid.NewGuid());
+        var started = await service.StartFullAsync(BlueprintId, OrgId, platformUserId);
         await service.SwitchRoleAsync(started.RehearsalId, "applicant");
 
         await service.SubmitStepAsync(started.RehearsalId, 1, "{}");
 
         // The acting role's ephemeral sandbox wallet is the SenderWallet (server signs as it).
+        // Issue #1284 — caller carries the rehearsal's own initiator, not null (see above).
         _execution.Verify(e => e.ExecuteAsync(
             It.IsAny<string>(), 1,
             It.Is<ActionSubmissionRequest>(r => r.SenderWallet.StartsWith("ws11q-sandbox-")),
-            It.IsAny<string>(), null, It.IsAny<CancellationToken>()), Times.Once);
+            It.IsAny<string>(), CallerFor(platformUserId), It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    /// <summary>
+    /// Matches the synthetic rehearsal caller principal built in
+    /// <see cref="RehearsalOrchestrationService.SubmitStepAsync"/> — a non-null principal carrying
+    /// <c>platform_user_id</c> equal to the rehearsal's own initiator (Issue #1284). Verifying the
+    /// exact claim value (not just non-null) is what would have caught the original defect being
+    /// hardcoded <c>null</c>.
+    /// </summary>
+    private static System.Security.Claims.ClaimsPrincipal? CallerFor(Guid platformUserId) =>
+        It.Is<System.Security.Claims.ClaimsPrincipal?>(p =>
+            p != null && p.FindFirst(TokenClaimConstants.PlatformUserId)!.Value == platformUserId.ToString());
 
     // -------------------------------------------------------------------------
     // RehearsalPass on terminal success

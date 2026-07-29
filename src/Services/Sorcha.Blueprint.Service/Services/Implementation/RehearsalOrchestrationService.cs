@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Collections.Concurrent;
+using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Sorcha.Blueprint.Engine.Implementation;
@@ -10,6 +11,7 @@ using Sorcha.Blueprint.Service.Models.Requests;
 using Sorcha.Blueprint.Service.Models.Responses;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
+using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Wallet;
 using ContractRehearsal = Sorcha.ServiceClients.Blueprint.Models.Rehearsal;
@@ -285,14 +287,43 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
             var execution = scope.ServiceProvider
                 .GetRequiredService<IActionExecutionService>();
 
-            // caller: null — server-orchestrated; skip wallet-ownership validation (we minted the
-            // ephemeral wallets ourselves). Signing happens server-side inside ExecuteAsync against
-            // request.SenderWallet (the acting role's sandbox wallet) — T027 "sign-as-acting-role".
+            // Issue #1284 (H-REHEARSAL) — rehearsal means "walk this workflow as me": build a
+            // synthetic caller principal from the rehearsal's own initiator (StartedByPlatformUserId,
+            // captured at StartFullAsync) rather than passing null. This used to be hardcoded null,
+            // which made ActionExecutionService throw InvalidOperationException for ANY action that
+            // declares an x-claim-source binding (it has no caller to resolve live values for) — Full
+            // Rehearsal could never pass for such a blueprint, including the AIAS assured-identity
+            // template. The fix is semantically right, not a workaround: the claim-source bindings
+            // should resolve the REAL live values of the person running the rehearsal, which also
+            // makes the rehearsal a truthful dry run of what go-live will stamp.
+            //
+            // Two claims, deliberately:
+            //  - platform_user_id: what ActionExecutionService's x-claim-source resolution reads
+            //    (via IPlatformUserClaimsClient.ResolveAsync) to look up live values for THIS user.
+            //  - NameIdentifier ("sub"), same value: passing a non-null caller now also activates
+            //    ValidateWalletOwnershipAsync (SEC-006), which the null-caller path always skipped
+            //    outright. Without a parseable "sub" claim that check throws
+            //    UnauthorizedAccessException — trading the #1284 exception for a new one. org_id is
+            //    deliberately OMITTED so that check short-circuits to "no participant-based
+            //    validation" instead of querying the Participant Service for a sandbox wallet that
+            //    has no real participant profile (Feature 103 open-participant walk-in path).
+            var rehearsalCaller = new ClaimsPrincipal(new ClaimsIdentity(
+                [
+                    new Claim(TokenClaimConstants.PlatformUserId, session.StartedByPlatformUserId.ToString()),
+                    new Claim(ClaimTypes.NameIdentifier, session.StartedByPlatformUserId.ToString()),
+                ],
+                authenticationType: "rehearsal"));
+
+            // Wallet-ownership validation still passes through (see above) but skips the
+            // participant-based check (no org_id claim), so it is a no-op for sandbox wallets we
+            // minted ourselves — matching the intent of the old "caller: null" comment. Signing
+            // happens server-side inside ExecuteAsync against request.SenderWallet (the acting
+            // role's sandbox wallet) — T027 "sign-as-acting-role".
             try
             {
                 response = await execution.ExecuteAsync(
                     instanceId, actionId, request, RehearsalDelegationToken,
-                    caller: null, cancellationToken);
+                    caller: rehearsalCaller, cancellationToken);
             }
             catch (Exception ex)
             {
