@@ -592,7 +592,15 @@ its absence here was a gap, not a decision.
 `CustomDomainEndpoints`, `DomainRestrictionEndpoints`, `DashboardEndpoints` (both `/dashboard` and
 `/dashboard-summary`), the 13 per-organisation routes in `OrganizationEndpoints` (user management +
 recovery-config), and — wave 2 — `IdpConfigurationEndpoints`, `OrgSettingsEndpoints`,
-`ParticipantEndpoints`, `RegisterInvitationEndpoints`, `RegisterSubscriptionEndpoints`.
+`ParticipantEndpoints` (**both** of its groups — see below), `RegisterInvitationEndpoints`,
+`RegisterSubscriptionEndpoints`.
+
+> **`ParticipantEndpoints` maps TWO groups on the SAME prefix** (`orgGroup` and `serviceGroup`).
+> Wave 2 gated only the first, leaving `GET .../participants/by-user/{userId}` on plain
+> `.RequireAuthorization()` — no role check, no caller-org bind — so any signed-in principal,
+> including a citizen, could read a participant record for any user in any organisation. Caught in
+> review of #1346 and fixed. The wiring guard now enumerates **by route prefix**, not by group
+> variable, because a per-group review cannot see a second group sharing a prefix.
 
 Two wave-2 cases are worth calling out:
 
@@ -606,10 +614,19 @@ Two wave-2 cases are worth calling out:
 **Deliberately NOT gated — `PlatformOrgEndpoints`.** `/api/platform/organizations` is cross-org **by
 design** (platform topology administration) and is *already* correctly scoped: both
 `RequireSystemAdmin` and `RequirePlatformAuditor` assert membership of the system-admin org, not
-merely a role. Adding a caller-org bind keyed on the route's `{orgId}` would refuse the platform
-admin for every organisation but their own — breaking a real capability while appearing to harden it.
-`OrgScopedCallerBindingTests` pins this as a deliberate non-change so nobody "completes the sweep"
-later. `InternalEndpoints` and the DID-document regenerate route are `RequireService`, out of scope.
+merely a role.
+
+The principal a caller-org bind would actually break is **not** the SystemAdmin — the gate exempts
+SystemAdmin-in-system-admin-org unconditionally. It is a **platform auditor**:
+`RequirePlatformAuditor` admits an `Auditor` (or `Administrator`) role in the system-admin org, and
+that principal has **no exemption arm**, so a route-org comparison would refuse them for every
+organisation except `…0001`. (An earlier version of this note gave the SystemAdmin as the affected
+principal, which was wrong — corrected in review of #1346.)
+
+`OrgScopedCallerBindingTests` pins this as a deliberate non-change **via route metadata**, not by
+driving a request: a behavioural test using a SystemAdmin client passes whether or not the gate is
+applied, because that caller is exempt either way — so it could never detect the regression it
+claimed to pin. `InternalEndpoints` and the DID-document regenerate route are `RequireService`, out of scope.
 
 **One legitimate cross-org flow depends on the SystemAdmin exemption:** cross-node public-org
 subscription (`Add-SorchaPublicOrgSubscription` → `POST /organizations/{publicOrgId}/register-subscriptions`)

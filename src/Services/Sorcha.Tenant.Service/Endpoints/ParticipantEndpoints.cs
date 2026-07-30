@@ -224,9 +224,21 @@ public static class ParticipantEndpoints
             .Produces(StatusCodes.Status409Conflict);
 
         // Service-internal endpoints (used by Blueprint Service for wallet ownership validation)
+        //
+        // B2+ wave 2 follow-up: this is a SECOND group on the SAME route prefix as orgGroup above,
+        // and gating only that one left this one open — plain .RequireAuthorization(), no role check
+        // and no caller-org bind, while GET /by-user/{userId} resolves the participant straight from
+        // route values. Any authenticated principal, including a citizen, could read a participant
+        // record for any user in any organisation. Two groups sharing a prefix is exactly how a
+        // route-family sweep misses one; the wiring guard below now enumerates by prefix rather than
+        // by group variable.
+        //
+        // Blueprint Service (the intended caller) is unaffected: CallerOrganizationGate exempts
+        // token_type=service.
         var serviceGroup = app.MapGroup("/api/organizations/{organizationId:guid}/participants")
             .WithTags("Participants (Service)")
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireCallerOrganization();
 
         serviceGroup.MapGet("/by-user/{userId:guid}", GetParticipantByUser)
             .WithName("GetParticipantByUser")
