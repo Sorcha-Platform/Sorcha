@@ -220,7 +220,13 @@ public class RehearsalClaimSourceOrchestrationTests
             _sandboxProvider.Object,
             metrics,
             NullLogger<RehearsalOrchestrationService>.Instance,
-            new ExecutableDefinitionHasher());
+            new ExecutableDefinitionHasher(),
+            // This harness drives the REAL ActionExecutionService but runs no InstanceProjector, so
+            // nothing ever folds the submitted transaction. Post-F145 the step therefore always ends
+            // at the sealing-timeout — keep the wait in milliseconds rather than the 90s production
+            // default, and assert on WHICH end state it reaches (below).
+            projectionTimeout: TimeSpan.FromMilliseconds(150),
+            projectionPollInterval: TimeSpan.FromMilliseconds(10));
     }
 
     /// <summary>The AIAS action-1 shape: a headless, read-only emailVerified field bound to the claim.</summary>
@@ -277,12 +283,17 @@ public class RehearsalClaimSourceOrchestrationTests
             started.RehearsalId, actionId: 1, payloadJson: """{"name":"Stuart","emailVerified":false}""");
 
         result.Should().NotBeNull();
-        result!.Outcome.Should().NotBe(RehearsalOutcome.Failed,
-            "server-orchestrated rehearsal must not fail on an x-claim-source action just because " +
-            "it has no externally-authenticated caller (#1284) — the rehearsal's own initiator " +
-            "should be used to resolve live values");
-        result.Log.Should().NotContain(e => e.Message.Contains("no usable"),
+
+        // #1284: the claim-source path must no longer throw. That is asserted by its ABSENCE from the
+        // log plus the fact that execution reached schema validation (below) — NOT by the overall
+        // outcome, because this harness runs no InstanceProjector, so post-F145 the step legitimately
+        // ends at the named sealing-timeout. Asserting "not Failed" here would be asserting that a
+        // projector we never started did its job.
+        result!.Log.Should().NotContain(e => e.Message.Contains("no usable"),
             "the caller:null symptom (#1284) must not resurface in the rehearsal log");
+        result.Log.Should().Contain(e => e.Message.Contains("did not seal"),
+            "with no projector in this harness the step must end at the named sealing-timeout — "
+            + "which is the correct end state, and distinguishable from a claim-source failure");
 
         _validatedPayload.Should().NotBeNull(
             "execution must reach schema validation rather than throwing before it");

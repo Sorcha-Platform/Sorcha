@@ -408,6 +408,58 @@ promised.
 
 ---
 
+## Full Rehearsal reads its outcome from the ledger, not the response (Feature 142 / F145)
+
+`RehearsalOrchestrationService.SubmitStepAsync` used to decide success with
+`terminalSuccess = response.IsComplete`, and drive step routing from
+`response.NextActions`. **Post-Feature-145 neither field can carry that information.**
+
+`ActionExecutionService` returns 202 on every accepted submission and hard-codes
+`IsComplete = false` and `NextActions = []` — the real routing goes only onto the
+on-chain `RoutingDecision`, for the `InstanceProjector` to fold when the docket
+seals. There is no `IsComplete = true` anywhere in `src/`; the only one in the
+repo was a **test fixture**, so the rehearsal tests passed while the feature was
+structurally incapable of working.
+
+Consequences before this fix, for **every** blueprint (not only `x-claim-source`
+ones):
+
+- `RehearsalPass` was never written, so `PublishGate`'s soft gate never returned
+  `Proceed` — publish was **override-only**, permanently.
+- the walk-through could never advance past step 1, because the next action ids
+  never arrived.
+
+**Now the projection is the source of truth.** After `ExecuteAsync` returns, the
+step waits for the `InstanceProjector` to fold *its own* transaction — matching
+on `Instance.LastAppliedTxId`, the projector's idempotency watermark, so a
+previous step's projection is never mistaken for this one's — then reads the
+result:
+
+| Projection | Rehearsal outcome |
+|---|---|
+| `State == Completed` (no current actions remain) | **Passed** → records the `RehearsalPass` that unlocks Go live |
+| `State == Rejected` | **Failed**, named as a terminal rejection |
+| still `Active` | in progress; next steps taken from `CurrentActionIds` |
+| never folded within the timeout | **Failed**, named as a *sealing delay* — explicitly "not a blueprint problem" — and **no pass is recorded** |
+
+The timeout defaults to **90s with a 1s poll**, mirroring the proven walkthrough
+helper `Wait-SorchaActorReady`; the validator's docket-build threshold is 5-10s,
+so that is generous rather than tight. Both are constructor parameters so tests
+run in milliseconds.
+
+**This works because sandbox-register dockets seal automatically.** Register
+creation embeds the local validator on the roster when none is supplied
+(`RegisterCreationOrchestrator`) and fires `register:relationship-changed`, which
+the validator's `RegisterMonitoringBootstrap` consumes to enrol the register for
+monitoring. No separate enrolment step, and no operator action.
+
+A step that returns `AwaitingPresentation` is left in progress and does **not**
+wait — there is no seal pending, the action is blocked on an external credential
+presentation.
+
+The named-timeout failure is deliberate: an unverified pass would be worse than
+no pass, and a designer must be able to tell a slow node from a broken blueprint.
+
 ## Full Rehearsal executes as its own initiator (Feature 142 / Issue #1284)
 
 `RehearsalOrchestrationService.SubmitStepAsync` calls the real

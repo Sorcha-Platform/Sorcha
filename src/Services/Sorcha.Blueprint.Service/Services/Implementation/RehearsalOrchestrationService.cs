@@ -43,19 +43,33 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
     /// <summary>Server-orchestrated rehearsals run against the devMode sandbox with a synthetic token.</summary>
     private const string RehearsalDelegationToken = "rehearsal-sandbox";
 
+    /// <summary>
+    /// How long a step waits for the InstanceProjector to fold its sealed docket. Default mirrors the
+    /// proven walkthrough helper (<c>Wait-SorchaActorReady</c>: 90s timeout, 1s interval) — the
+    /// validator's docket-build threshold is 5-10s, so this is generous rather than tight.
+    /// </summary>
+    private readonly TimeSpan _projectionTimeout;
+
+    /// <summary>Interval between projection polls.</summary>
+    private readonly TimeSpan _projectionPollInterval;
+
     /// <summary>Initialises a new instance of the <see cref="RehearsalOrchestrationService"/> class.</summary>
     public RehearsalOrchestrationService(
         IServiceScopeFactory scopeFactory,
         ISandboxRegisterProvider sandboxProvider,
         BlueprintDesignerMetrics metrics,
         ILogger<RehearsalOrchestrationService> logger,
-        ExecutableDefinitionHasher? hasher = null)
+        ExecutableDefinitionHasher? hasher = null,
+        TimeSpan? projectionTimeout = null,
+        TimeSpan? projectionPollInterval = null)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _sandboxProvider = sandboxProvider ?? throw new ArgumentNullException(nameof(sandboxProvider));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _hasher = hasher ?? new ExecutableDefinitionHasher();
+        _projectionTimeout = projectionTimeout ?? TimeSpan.FromSeconds(90);
+        _projectionPollInterval = projectionPollInterval ?? TimeSpan.FromSeconds(1);
     }
 
     /// <inheritdoc/>
@@ -341,14 +355,75 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
             }
         }
 
+        // ── F145 reconciliation ────────────────────────────────────────────────────────────────
+        // ExecuteAsync returns 202. Post-Feature-145 it NEVER reports completion synchronously:
+        // `IsComplete` is hard-coded false on every return path (the only `IsComplete = true` in the
+        // repo was a TEST fixture), and `NextActions` is hard-coded `[]` — the real routing goes only
+        // onto the on-chain RoutingDecision for the InstanceProjector to fold. Reading either from
+        // the response meant the rehearsal could never reach a terminal state NOR advance past step 1
+        // — for ANY blueprint — so `RehearsalPass` was never written and F142's Go-live gate was
+        // unearnable, leaving publish override-only.
+        //
+        // The authoritative answer lives in the instance projection the InstanceProjector writes when
+        // the sandbox docket seals. Sandbox registers DO seal automatically: register creation embeds
+        // the local validator on the roster and fires `register:relationship-changed`, which
+        // RegisterMonitoringBootstrap consumes to enrol the register for monitoring — no separate
+        // step. So we wait for OUR transaction to be folded, then read the projection.
+        if (response.AwaitingPresentation)
+        {
+            // Genuinely mid-flight: the action is blocked on an external credential presentation, so
+            // there is no seal to wait for. Leave the step current and report progress unchanged.
+            lock (session.SyncRoot)
+            {
+                AppendLog(session, RehearsalEventKind.Gate,
+                    $"Action {actionId} is awaiting a credential presentation.");
+                return ToContract(session);
+            }
+        }
+
+        if (string.IsNullOrEmpty(response.TransactionId))
+        {
+            return FailStepNamed(session, actingRole,
+                $"Step '{actingRole}' could not be confirmed: the submission returned no transaction "
+                + "id, so its sealing could not be tracked. Nothing was recorded — retry the step.");
+        }
+
+        var projected = await WaitForProjectionAsync(instanceId, response.TransactionId, cancellationToken);
+
+        if (projected is null)
+        {
+            // NAMED failure, deliberately distinct from "your blueprint is broken": the submission was
+            // accepted and may still seal later, but this rehearsal cannot vouch for it. No
+            // RehearsalPass is written — an unverified pass would be worse than no pass.
+            return FailStepNamed(session, actingRole,
+                $"Step '{actingRole}' was submitted (tx {Short(response.TransactionId)}) but the "
+                + $"sandbox register did not seal it within {_projectionTimeout.TotalSeconds:0}s, so "
+                + "the rehearsal could not confirm it. This is a sealing delay, not a blueprint "
+                + "problem — no pass was recorded. Retry the rehearsal.");
+        }
+
+        if (projected.State == InstanceState.Rejected)
+        {
+            return FailStepNamed(session, actingRole,
+                $"Step '{actingRole}' was rejected on the sandbox register — the workflow reached a "
+                + "terminal rejection, so this version is not cleared for Go live.");
+        }
+
         bool terminalSuccess;
         string execDefHash;
         string blueprintId;
         Guid userId;
         lock (session.SyncRoot)
         {
-            AdvanceWalkThrough(session, actionId, actingRole, payload, response);
-            terminalSuccess = response.IsComplete;
+            // Terminal and routing both come from the projection now. InstanceProjection sets
+            // State = Completed exactly when CurrentActionIds is empty, i.e. every branch reached a
+            // route-graph terminal — which is precisely what the F142 gate needs to attest.
+            terminalSuccess = projected.State == InstanceState.Completed;
+
+            AdvanceWalkThrough(
+                session, actionId, actingRole, payload, response,
+                nextActionIds: projected.CurrentActionIds, isComplete: terminalSuccess);
+
             execDefHash = session.ExecDefHash;
             blueprintId = session.BlueprintId;
             userId = session.StartedByPlatformUserId;
@@ -467,12 +542,77 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
         }
     }
 
+    /// <summary>
+    /// Polls the instance projection until the InstanceProjector has folded
+    /// <paramref name="transactionId"/>, or the timeout elapses. Returns the projected instance, or
+    /// <c>null</c> on timeout.
+    /// </summary>
+    /// <remarks>
+    /// Matching on <c>LastAppliedTxId</c> — the projector's idempotency watermark — rather than on
+    /// state alone, so we observe OUR submission's effect and never mistake a previous step's
+    /// projection for this one's.
+    /// </remarks>
+    private async Task<Instance?> WaitForProjectionAsync(
+        string instanceId, string transactionId, CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + _projectionTimeout;
+
+        while (true)
+        {
+            using (var scope = _scopeFactory.CreateScope())
+            {
+                var instanceStore = scope.ServiceProvider.GetRequiredService<IInstanceStore>();
+                var instance = await instanceStore.GetAsync(instanceId, cancellationToken);
+
+                if (instance is not null
+                    && string.Equals(instance.LastAppliedTxId, transactionId, StringComparison.Ordinal))
+                {
+                    return instance;
+                }
+            }
+
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                _logger.LogWarning(
+                    "Rehearsal step timed out waiting for the projection of tx {TxId} on instance "
+                    + "{InstanceId} after {Timeout}s",
+                    transactionId, instanceId, _projectionTimeout.TotalSeconds);
+                return null;
+            }
+
+            await Task.Delay(_projectionPollInterval, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Marks the rehearsal failed with a specific, actionable reason and records the terminal metric.
+    /// Deliberately never writes a <c>RehearsalPass</c>.
+    /// </summary>
+    private ContractRehearsal FailStepNamed(RehearsalSession session, string actingRole, string reason)
+    {
+        ContractRehearsal contract;
+        lock (session.SyncRoot)
+        {
+            session.Outcome = RehearsalOutcome.Failed;
+            AppendLog(session, RehearsalEventKind.Error, reason);
+            contract = ToContract(session);
+        }
+
+        _metrics.RecordRehearsalTerminal(session.Mode, RehearsalOutcome.Failed,
+            (DateTimeOffset.UtcNow - session.StartedAt).TotalSeconds);
+
+        _logger.LogWarning("Rehearsal step failed for role {ActingRole}: {Reason}", actingRole, reason);
+        return contract;
+    }
+
     private void AdvanceWalkThrough(
         RehearsalSession session,
         int actionId,
         string actingRole,
         IReadOnlyDictionary<string, object> payload,
-        ActionSubmissionResponse response)
+        ActionSubmissionResponse response,
+        IReadOnlyList<int> nextActionIds,
+        bool isComplete)
     {
         var step = session.Steps.FirstOrDefault(s => s.ActionId == actionId);
         if (step is not null)
@@ -480,7 +620,8 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
             step.Status = RehearsalStepStatus.Done;
             step.ActingRole = actingRole;
             step.SubmittedPayload = payload;
-            step.RoutingOutcome = response.NextActions.Select(n => n.ActionId).ToList();
+            // From the projection, not response.NextActions — the latter is always empty post-F145.
+            step.RoutingOutcome = nextActionIds.ToList();
         }
 
         AppendLog(session, RehearsalEventKind.Gate,
@@ -495,13 +636,15 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
                 $"A {credType} was issued and delivered to the recipient.");
         }
 
-        if (response.IsComplete)
+        if (isComplete)
         {
             return;
         }
 
-        // Mark the routed next action(s) current and announce the routing.
-        var nextIds = response.NextActions.Select(n => n.ActionId).ToHashSet();
+        // Mark the routed next action(s) current and announce the routing. The ids come from the
+        // instance projection (the ledger's answer), so names are resolved from the session's own
+        // step list rather than from the response, which no longer carries them.
+        var nextIds = nextActionIds.ToHashSet();
         if (nextIds.Count > 0)
         {
             foreach (var next in session.Steps.Where(s => nextIds.Contains(s.ActionId)
@@ -516,8 +659,13 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
                 session.CurrentActingRole = nextStep.ActingRole;
             }
 
-            var routedNames = response.NextActions
-                .Select(n => $"action {n.ActionId} ({n.ActionTitle})");
+            var routedNames = nextIds
+                .OrderBy(id => id)
+                .Select(id =>
+                {
+                    var role = session.Steps.FirstOrDefault(s => s.ActionId == id)?.ActingRole;
+                    return string.IsNullOrEmpty(role) ? $"action {id}" : $"action {id} ({role})";
+                });
             AppendLog(session, RehearsalEventKind.Routed,
                 $"Routed to {string.Join(", ", routedNames)}.");
         }
