@@ -48,18 +48,6 @@ public sealed class SorchaWalletServerCustodyE2ETests
             requireIssuerSignature: false);
     }
 
-    private static VerifierSession Session() => new()
-    {
-        SessionId = "sess-server-custody",
-        ClientId = ClientId,
-        Nonce = Nonce,
-        RequiredVct = Vct,
-        RequiredClaims = ["givenName"],
-        Purpose = "credential-gate",
-        CreatedAt = DateTimeOffset.UtcNow,
-        ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5),
-    };
-
     private static PresentationInitiationContext Context() => new(
         PresentationRequestId: Guid.Parse("33333333-3333-3333-3333-333333333333"),
         InstanceId: Guid.Parse("44444444-4444-4444-4444-444444444444"),
@@ -72,7 +60,12 @@ public sealed class SorchaWalletServerCustodyE2ETests
         VerifierClientId: ClientId,
         CredentialType: Vct,
         RequiredClaimNames: ["givenName"],
-        PublicBaseUrl: "https://gateway.example");
+        PublicBaseUrl: "https://gateway.example",
+        // G2 fix — the consumer now ALWAYS rebuilds the VerifierSession from context (never from
+        // a client-supplied wire field), so the pending row must carry the nonce the KB-JWT was
+        // minted against or the rebuild refuses with a named session-missing decline.
+        Nonce: Nonce,
+        ExpiresAt: DateTimeOffset.UtcNow.AddMinutes(5));
 
     [Fact]
     public async Task VerifyAsync_ServerCustody_HolderSignedNoDelegation_Succeeds_AndEmitsClaims()
@@ -86,7 +79,7 @@ public sealed class SorchaWalletServerCustodyE2ETests
 
         var outcome = await consumer.VerifyAsync(
             Context(),
-            new SorchaWalletVerificationPayload { VpToken = vpToken, DelegationCredential = null, Session = Session() },
+            new SorchaWalletVerificationPayload { VpToken = vpToken, DelegationCredential = null },
             CancellationToken.None);
 
         outcome.Kind.Should().Be(PresentationOutcomeKind.Success);
@@ -107,7 +100,7 @@ public sealed class SorchaWalletServerCustodyE2ETests
 
         var outcome = await consumer.VerifyAsync(
             Context(),
-            new SorchaWalletVerificationPayload { VpToken = vpToken, DelegationCredential = null, Session = Session() },
+            new SorchaWalletVerificationPayload { VpToken = vpToken, DelegationCredential = null },
             CancellationToken.None);
 
         outcome.Kind.Should().Be(PresentationOutcomeKind.Decline);

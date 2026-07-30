@@ -527,6 +527,21 @@ await connection.start();
 - Selective disclosure enforced through disclosure rules
 - Transaction signatures prevent tampering
 
+### Sorcha-wallet presentation callback (Feature 127) — server-side session only
+
+`POST /api/presentations/callbacks/sorcha-wallet/{requestId}` (`RequireConsumerAudience`) is reached by any
+signed-in citizen, so its request body must never be allowed to influence *which* credential requirement is
+being checked. `SorchaWalletPresentationConsumer.VerifyAsync` therefore **always** rebuilds the
+`VerifierSession` (nonce, required `vct`, required claims, verifier `client_id`) from the server-side
+pending-presentation row (`PresentationInitiationContext`, persisted at initiation) — never from the caller's
+JSON. `SorchaWalletVerificationPayload`, the wire shape the callback deserializes, carries only `VpToken` and
+`DelegationCredential`; it deliberately has no `Session` field. It used to — an optional `session` object that,
+when present, was used verbatim — which let an authenticated citizen post their own session (a weaker
+`RequiredVct`, an emptied `RequiredClaims` gate, an attacker nonce) and satisfy any credential gate with any
+held credential (G2, fixed 2026-07-30; see `.specify/MASTER-TASKS.md` and the `sorcha-architecture` skill's
+"Credential gates (Feature 127)" section for the full writeup). Do not reintroduce a client-supplied session
+field on this or any future presentation-callback payload.
+
 ### Secrets Management
 
 - Wallet Service connection requires service principal credentials (stored in Azure Key Vault or environment variables)
