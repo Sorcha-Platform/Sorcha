@@ -181,6 +181,109 @@ public class OrgScopedCallerBindingTests : IClassFixture<TenantServiceWebApplica
             "denial of service against another organisation's users must be refused");
     }
 
+    // ── Wave 2: the remaining org-scoped groups ─────────────────────────────────────────────
+    // Left out of the first pass deliberately, each needing its own judgement. All five below
+    // turned out to need the bind; `PlatformOrgEndpoints` turned out NOT to (see below).
+
+    public static TheoryData<string, string> ForeignOrgRoutesWave2() => new()
+    {
+        // IDP configuration is the most serious of the entire set: it decides HOW USERS
+        // AUTHENTICATE into an organisation. An administrator of org A repointing org B's
+        // identity provider at an IDP they control is account takeover of org B.
+        { "GET", "idp" },
+        { "GET", "settings" },
+        { "GET", "participants" },
+        { "GET", "register-invitations" },
+        { "GET", "register-subscriptions" },
+    };
+
+    [Theory]
+    [MemberData(nameof(ForeignOrgRoutesWave2))]
+    public async Task PlainOrgAdmin_ReadingAnotherOrgWave2_IsForbidden(string method, string segment)
+    {
+        var client = CreatePlainOrgAdminClient(CallerOwnOrgId);
+
+        var response = await client.SendAsync(new HttpRequestMessage(
+            new HttpMethod(method), $"/api/organizations/{ForeignOrgId}/{segment}"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden,
+            $"an Administrator of one organisation must not reach another organisation's {segment}");
+    }
+
+    [Theory]
+    [MemberData(nameof(ForeignOrgRoutesWave2))]
+    public async Task PlainOrgAdmin_ReadingTheirOwnOrgWave2_IsNotForbidden(string method, string segment)
+    {
+        var client = CreatePlainOrgAdminClient(ForeignOrgId);
+
+        var response = await client.SendAsync(new HttpRequestMessage(
+            new HttpMethod(method), $"/api/organizations/{ForeignOrgId}/{segment}"));
+
+        response.StatusCode.Should().NotBe(HttpStatusCode.Forbidden,
+            $"an Administrator must still administer their own organisation's {segment}");
+    }
+
+    [Fact]
+    public async Task PlainOrgAdmin_RewritingAnotherOrgsIdpConfiguration_IsForbidden()
+    {
+        // Account takeover, stated plainly: repointing org B's identity provider means every
+        // subsequent org B login is authenticated by an IDP the attacker controls.
+        var client = CreatePlainOrgAdminClient(CallerOwnOrgId);
+
+        // Every `required` member of IdpConfigurationRequest is present deliberately: minimal-API
+        // argument binding runs BEFORE endpoint filters, so a body missing a required member 400s
+        // during deserialisation and never reaches the gate — passing for the wrong reason.
+        var response = await client.PutAsJsonAsync(
+            $"/api/organizations/{ForeignOrgId}/idp",
+            new
+            {
+                providerPreset = "GenericOidc",
+                issuerUrl = "https://idp.attacker.test",
+                clientId = "attacker",
+                clientSecret = "attacker-secret",
+                displayName = "Attacker IDP"
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden,
+            "rewriting another organisation's identity provider is account takeover of that org");
+    }
+
+    [Fact]
+    public async Task AnyAuthenticatedNonAdmin_ListingAnotherOrgsRegisterSubscriptions_IsForbidden()
+    {
+        // This route was gated on plain `.RequireAuthorization()` — not even a role check — so ANY
+        // signed-in principal, including a citizen, could enumerate any organisation's register
+        // subscriptions.
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Role", "Consumer");
+        client.DefaultRequestHeaders.Add("X-Test-User-Id", Guid.NewGuid().ToString());
+        client.DefaultRequestHeaders.Add("X-Test-Organization-Id", CallerOwnOrgId.ToString());
+
+        var response = await client.GetAsync(
+            $"/api/organizations/{ForeignOrgId}/register-subscriptions");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden,
+            "which registers an organisation subscribes to is not public to every signed-in user");
+    }
+
+    [Fact]
+    public async Task PlatformOrgEndpoints_AreNotGated_TheyAreSystemAdminOrgScopedByPolicy()
+    {
+        // Deliberate NON-change, pinned so nobody "completes the sweep" by gating it later.
+        // /api/platform/organizations is cross-org BY DESIGN (platform topology administration) and
+        // is already correctly scoped: RequireSystemAdmin AND RequirePlatformAuditor both assert
+        // membership of the system-admin org, not merely a role. Adding a caller-org bind keyed on
+        // the ROUTE's {orgId} would refuse the platform admin for every organisation but their own —
+        // breaking a real capability while appearing to harden it.
+        var client = CreateSystemAdminClient();
+
+        var response = await client.GetAsync(
+            $"/api/platform/organizations/{ForeignOrgId}/users");
+
+        response.StatusCode.Should().NotBe(HttpStatusCode.Forbidden,
+            "platform topology administration is intentionally cross-organisation");
+    }
+
     [Theory]
     [MemberData(nameof(ForeignOrgRoutes))]
     public async Task PlatformSystemAdmin_ReadingAnyOrg_IsNotForbidden(string method, string segment)
