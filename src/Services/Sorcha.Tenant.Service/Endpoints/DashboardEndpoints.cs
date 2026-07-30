@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.Http.HttpResults;
 
+using Sorcha.Tenant.Service.Authorization;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 
@@ -22,7 +23,10 @@ public static class DashboardEndpoints
             .WithTags("Dashboard")
             // Spec 136: platform-tier admin surface — tier gate (RequirePlatformAudience) composes
             // ON TOP OF the role gate, so a consumer token is refused even if it carried an admin role.
-            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
+            // B2+ (2026-07-29 review): neither gate compared the caller to {organizationId}, so an
+            // administrator of one organisation could read another's dashboard.
+            .RequireCallerOrganization();
 
         group.MapGet("/", GetDashboard)
             .WithName("GetDashboard")
@@ -39,6 +43,9 @@ public static class DashboardEndpoints
         app.MapGet("/api/organizations/{organizationId:guid}/dashboard-summary", GetOrgSummary)
             .WithTags("Dashboard")
             .RequireAuthorization()
+            // Broader ROLE access than /dashboard (any signed-in org member), but still strictly
+            // org-scoped: "any member" must mean any member OF THIS ORGANISATION.
+            .RequireCallerOrganization()
             .WithName("GetOrgDashboardSummary")
             .WithSummary("Get the org-scoped dashboard summary")
             .WithDescription("Returns active users, pending invitations, subscribed registers, and recent transactions across subscribed registers — the four cards rendered on Home.razor in org-scope view.")

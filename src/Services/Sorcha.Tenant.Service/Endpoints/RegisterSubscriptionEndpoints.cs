@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Mvc;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 
+using Sorcha.Tenant.Service.Authorization;
+
 namespace Sorcha.Tenant.Service.Endpoints;
 
 /// <summary>
@@ -23,7 +25,13 @@ public static class RegisterSubscriptionEndpoints
     {
         // Org-scoped endpoints requiring at least Member role for reads, Admin for writes
         var orgGroup = app.MapGroup("/api/organizations/{orgId:guid}/register-subscriptions")
-            .WithTags("Register Subscriptions");
+            .WithTags("Register Subscriptions")
+            // B2+ wave 2 (2026-07-29 review): the read routes carried plain .RequireAuthorization()
+            // — not even a role check — so ANY signed-in principal, including a citizen, could
+            // enumerate ANY organisation's register subscriptions. Applied at group level so the
+            // Administrator-gated writes are bound too. The /api/me/... and /api/internal/... routes
+            // below are intentionally outside this group: neither is org-scoped by route.
+            .RequireCallerOrganization();
 
         orgGroup.MapGet("/", ListSubscriptions)
             .WithName("ListRegisterSubscriptions")

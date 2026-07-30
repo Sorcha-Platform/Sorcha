@@ -6,6 +6,8 @@ using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 
+using Sorcha.Tenant.Service.Authorization;
+
 namespace Sorcha.Tenant.Service.Endpoints;
 
 /// <summary>
@@ -19,7 +21,10 @@ public static class AuditEndpoints
     public static IEndpointRouteBuilder MapAuditEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/organizations/{organizationId:guid}/audit")
-            .WithTags("Audit Log");
+            .WithTags("Audit Log")
+            // B2+ (2026-07-29 review): nothing compared the caller to {organizationId}, so an
+            // administrator of one organisation could read another's audit log.
+            .RequireCallerOrganization();
 
         group.MapGet("/", GetAuditEvents)
             .WithName("GetAuditEvents")

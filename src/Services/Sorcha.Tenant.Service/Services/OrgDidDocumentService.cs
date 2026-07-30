@@ -34,6 +34,14 @@ public sealed class OrgDidDocumentService : IOrgDidDocumentService
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
+    /// <summary>
+    /// Builds the canonical <c>did:sorcha:org:{walletAddress}</c> identifier. Shared with the
+    /// endpoint so the "is this address already another org's DID" pre-check derives the DID
+    /// EXACTLY as regeneration will write it — computing it independently at the two sites would be
+    /// a silent drift risk, and the answer would just stop matching with nothing failing.
+    /// </summary>
+    public static string BuildPrimaryDid(string walletAddress) => $"did:sorcha:org:{walletAddress}";
+
     /// <inheritdoc />
     public Task<OrgDidDocument?> GetAsync(Guid organizationId, CancellationToken ct = default)
         => _db.OrgDidDocuments.AsNoTracking()
@@ -54,7 +62,7 @@ public sealed class OrgDidDocumentService : IOrgDidDocumentService
         if (snapshot.ActiveKeys.Count == 0)
             throw new ArgumentException("Snapshot must declare at least one Active key.", nameof(snapshot));
 
-        var primaryDid = $"did:sorcha:org:{snapshot.WalletAddress}";
+        var primaryDid = BuildPrimaryDid(snapshot.WalletAddress);
         var federatedDid = $"did:web:{_settings.PlatformDomain}:orgs:{snapshot.OrganizationId}";
 
         var verificationMethods = BuildVerificationMethods(primaryDid, snapshot.ActiveKeys);

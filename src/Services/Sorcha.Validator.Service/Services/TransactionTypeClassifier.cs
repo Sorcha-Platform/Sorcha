@@ -109,12 +109,77 @@ internal static class TransactionTypeClassifier
     /// </summary>
     public static bool IsLifecycleTransaction(Transaction transaction)
     {
+        var signedType = SignedPayloadType(transaction);
+
+        return IsLifecyclePayloadType(signedType, includeInitiated: true);
+    }
+
+    /// <summary>
+    /// Signed lifecycle payload types, as written INSIDE the payload by
+    /// <c>TransactionBuilderServiceExtensions.BuildPresentation*Async</c> before signing.
+    /// </summary>
+    private const string PayloadTypeInitiated = "presentation-initiated";
+    private const string PayloadTypeOutcome = "presentation-outcome";
+    private const string PayloadTypeAbandoned = "presentation-abandoned";
+
+    private static bool IsLifecyclePayloadType(string? payloadType, bool includeInitiated)
+    {
+        if (payloadType is null) return false;
+
+        if (includeInitiated
+            && string.Equals(payloadType, PayloadTypeInitiated, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return string.Equals(payloadType, PayloadTypeOutcome, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(payloadType, PayloadTypeAbandoned, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Reads the transaction type from the <b>signed</b> payload.
+    ///
+    /// <para>C-VAL (catch-up security review 2026-07-29): the lifecycle predicates used to read
+    /// <c>Metadata["Type"]</c>. Metadata is NOT part of the signed data (which is
+    /// <c>"{TransactionId}:{PayloadHash}"</c>), NOT part of <c>PayloadHash</c> (only
+    /// <c>Payload</c> is hashed), and NOT part of the docket merkle leaf — so it is freely
+    /// settable by anyone who can submit, with nothing detecting the change. Because these
+    /// predicates gate the action-schema check, the routing-decision attestation and the
+    /// VAL_BP_003 reachability check, one unsigned string could disable all three at once on an
+    /// arbitrary transaction. <c>Payload.type</c> is inside the hash the signature covers, so it
+    /// is the only trustworthy discriminator. <c>IsRejectionTransaction</c> already consulted the
+    /// payload for the same reason.</para>
+    /// </summary>
+    private static string? SignedPayloadType(Transaction transaction)
+    {
+        if (transaction.Payload.ValueKind != System.Text.Json.JsonValueKind.Object)
+            return null;
+
+        if (!transaction.Payload.TryGetProperty("type", out var payloadType))
+            return null;
+
+        return payloadType.ValueKind == System.Text.Json.JsonValueKind.String
+            ? payloadType.GetString()
+            : null;
+    }
+
+    /// <summary>
+    /// True when <c>Metadata["Type"]</c> claims a presentation-lifecycle transaction but the
+    /// signed payload does not corroborate it. Never used to grant an exemption — only so the
+    /// engine can record that something asked for a lifecycle carve-out it was not entitled to,
+    /// which is what an attempted schema-validation bypass looks like on the wire.
+    /// </summary>
+    public static bool HasUncorroboratedLifecycleMetadata(Transaction transaction)
+    {
         if (!transaction.Metadata.TryGetValue("Type", out var typeStr) || typeStr is null)
             return false;
 
-        return string.Equals(typeStr, "PresentationInitiated", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(typeStr, "PresentationOutcome", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(typeStr, "PresentationAbandoned", StringComparison.OrdinalIgnoreCase);
+        var claimsLifecycle =
+            string.Equals(typeStr, "PresentationInitiated", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(typeStr, "PresentationOutcome", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(typeStr, "PresentationAbandoned", StringComparison.OrdinalIgnoreCase);
+
+        return claimsLifecycle && !IsLifecycleTransaction(transaction);
     }
 
     /// <summary>
@@ -128,10 +193,9 @@ internal static class TransactionTypeClassifier
     /// </summary>
     public static bool IsIntraActionLifecycleTerminal(Transaction transaction)
     {
-        if (!transaction.Metadata.TryGetValue("Type", out var typeStr) || typeStr is null)
-            return false;
-
-        return string.Equals(typeStr, "PresentationOutcome", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(typeStr, "PresentationAbandoned", StringComparison.OrdinalIgnoreCase);
+        // Same signed-payload rule as IsLifecycleTransaction — this predicate waives the
+        // VAL_BP_003 reachability check and the routing-decision attestation, so it must not be
+        // reachable from unsigned metadata either.
+        return IsLifecyclePayloadType(SignedPayloadType(transaction), includeInitiated: false);
     }
 }

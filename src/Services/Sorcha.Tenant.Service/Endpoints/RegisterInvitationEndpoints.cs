@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Mvc;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 
+using Sorcha.Tenant.Service.Authorization;
+
 namespace Sorcha.Tenant.Service.Endpoints;
 
 /// <summary>
@@ -20,7 +22,12 @@ public static class RegisterInvitationEndpoints
     public static IEndpointRouteBuilder MapRegisterInvitationEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/organizations/{orgId:guid}/register-invitations")
-            .WithTags("Register Invitations");
+            .WithTags("Register Invitations")
+            // B2+ wave 2 (2026-07-29 review): nothing compared the caller to {orgId}. Safe for the
+            // accept route too — AcceptInvitation passes the ROUTE orgId to
+            // IRegisterInvitationService.AcceptAsync as the ACCEPTING organisation, so the caller
+            // must be a member of it; binding them is the intended semantics, not a restriction.
+            .RequireCallerOrganization();
 
         group.MapPost("/", CreateInvitation)
             .WithName("CreateRegisterInvitation")

@@ -203,8 +203,22 @@ builder.Services.AddControlBlueprintVersionResolver();
 // Add control docket processor (Sprint 9F - VAL-9.41)
 builder.Services.AddControlDocketProcessor();
 
-// Add gRPC services
-builder.Services.AddGrpc();
+// Add gRPC services.
+//
+// The peer surface is deliberately NOT behind .RequireAuthorization(): validator-to-validator
+// consensus is federated across installations, and Sorcha's service tokens are installation-scoped
+// by design (Feature 136 rejects another installation's tokens), so a blanket gate would sever
+// federation permanently rather than merely during a rolling deploy. Instead
+// ValidatorGrpcAccessInterceptor applies the same opportunistic-auth shape as Peer's interceptor
+// and then ENFORCES a per-method policy: the federation-necessary methods (whose payloads are
+// signature-verified against the validator roster downstream) stay reachable, everything else —
+// including anything newly added — requires an authenticated caller. See
+// ValidatorGrpcAccessPolicy for the reasoning per method.
+builder.Services.AddSingleton<Sorcha.Validator.Service.GrpcServices.ValidatorGrpcAccessInterceptor>();
+builder.Services.AddGrpc(options =>
+{
+    options.Interceptors.Add<Sorcha.Validator.Service.GrpcServices.ValidatorGrpcAccessInterceptor>();
+});
 
 var app = builder.Build();
 

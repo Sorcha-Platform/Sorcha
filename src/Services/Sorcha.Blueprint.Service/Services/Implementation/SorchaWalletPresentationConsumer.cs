@@ -90,13 +90,17 @@ public sealed class SorchaWalletPresentationConsumer : IPresentationConsumer
                 PresentationSubmissionHash: null);
         }
 
-        // #1195 Phase 2 (Task 6b) — T032 landed: when the caller supplies no session (the
-        // wallet posts only {vpToken}), rebuild the VerifierSession from the pending-state
-        // fields the lifecycle persisted at initiation. Every refusal here is NAMED and
-        // distinct — wrong nonce (validator: "KB-JWT nonce does not match session"),
-        // expired session, and genuinely-unknown session are three different answers.
-        var session = payload.Session;
-        if (session is null)
+        // #1195 Phase 2 (Task 6b) — T032 landed: the VerifierSession is ALWAYS rebuilt from the
+        // pending-state fields the lifecycle persisted at initiation (context) — never accepted
+        // from the caller. (G2 fix, 2026-07-29 catch-up security review: the wire payload used to
+        // carry an optional `session` object that, when present, was used verbatim. An
+        // authenticated citizen could POST their own session with an attacker-chosen
+        // RequiredVct/RequiredClaims/nonce and satisfy any credential gate with any held
+        // credential. The `Session` wire field has been removed entirely — this rebuild path is
+        // now the ONLY path.) Every refusal here is NAMED and distinct — wrong nonce (validator:
+        // "KB-JWT nonce does not match session"), expired session, and genuinely-unknown session
+        // are three different answers.
+        VerifierSession session;
         {
             if (string.IsNullOrEmpty(context.Nonce) || string.IsNullOrEmpty(context.CredentialType))
             {
@@ -406,7 +410,20 @@ public sealed class SorchaWalletPresentationConsumer : IPresentationConsumer
 /// </summary>
 /// <param name="VpToken">SD-JWT VC compact-JWS presentation.</param>
 /// <param name="DelegationCredential">Optional device delegation credential when the wallet's signing key is bound to the holder via a separate VC.</param>
-/// <param name="Session">In-memory verifier session reconstructed by the lifecycle service from pending state. T032 populates this; until then, payloads without a session are rejected with VerifierError.</param>
+/// <remarks>
+/// G2 security fix (2026-07-29 catch-up review): this record deliberately carries NO
+/// client-supplied <c>VerifierSession</c>. It used to — an optional <c>session</c> wire field
+/// that, when present, was used verbatim instead of the server-rebuilt session. Since the
+/// callback endpoint only requires consumer-tier authentication (any signed-in citizen — see
+/// <c>RequireConsumerAudience</c>, CLAUDE.md §13), that let an attacker POST their own session
+/// object carrying an attacker-chosen <c>RequiredVct</c>, an emptied <c>RequiredClaims</c> gate,
+/// and an attacker nonce/clientId — satisfying any credential gate with any held credential, with
+/// no forgery required. <see cref="SorchaWalletPresentationConsumer.VerifyAsync"/> now ALWAYS
+/// rebuilds the <c>VerifierSession</c> from the server-side pending-presentation row
+/// (<c>PresentationInitiationContext</c>); nothing under this record's shape can influence which
+/// session the validator checks against. System.Text.Json silently drops any unknown
+/// <c>session</c> property an old or malicious caller still sends.
+/// </remarks>
 public sealed record SorchaWalletVerificationPayload
 {
     [JsonPropertyName("vpToken")]
@@ -414,7 +431,4 @@ public sealed record SorchaWalletVerificationPayload
 
     [JsonPropertyName("delegationCredential")]
     public string? DelegationCredential { get; init; }
-
-    [JsonPropertyName("session")]
-    public VerifierSession? Session { get; init; }
 }

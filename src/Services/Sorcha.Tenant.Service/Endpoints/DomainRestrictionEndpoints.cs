@@ -4,6 +4,8 @@
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 
+using Sorcha.Tenant.Service.Authorization;
+
 namespace Sorcha.Tenant.Service.Endpoints;
 
 /// <summary>
@@ -19,7 +21,9 @@ public static class DomainRestrictionEndpoints
     {
         var group = app.MapGroup("/api/organizations/{organizationId:guid}/domain-restrictions")
             .WithTags("Domain Restrictions")
-            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
+            // B2+ (2026-07-29 review): role+tier alone never compared the caller to {organizationId}.
+            .RequireCallerOrganization();
 
         group.MapGet("/", GetDomainRestrictions)
             .WithName("GetDomainRestrictions")

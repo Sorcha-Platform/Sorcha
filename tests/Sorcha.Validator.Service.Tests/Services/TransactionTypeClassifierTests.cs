@@ -123,30 +123,76 @@ public class TransactionTypeClassifierTests
         TransactionTypeClassifier.IsRevocationTransaction(tx).Should().Be(expected);
     }
 
+    // ── C-VAL (catch-up security review 2026-07-29) ─────────────────────────────────────────
+    // These predicates waive the action-schema check, the routing-decision attestation and the
+    // VAL_BP_003 reachability check. They therefore key on the SIGNED payload's `type` (inside
+    // PayloadHash, which the signature covers) and NOT on Metadata["Type"], which sits outside
+    // the signature, the payload hash and the merkle leaf. The theories below were previously
+    // driven by metadata alone — i.e. they asserted the vulnerable behaviour as correct.
+
+    /// <summary>Builds a transaction whose SIGNED payload declares <paramref name="payloadType"/>.</summary>
+    private static Transaction TxWithSignedPayloadType(string payloadType)
+        => Build(blueprintId: "bp-1",
+                 payloadJson: $"{{\"type\":\"{payloadType}\"}}");
+
     [Theory]
-    [InlineData("PresentationInitiated", true)]
-    [InlineData("PresentationOutcome", true)]
-    [InlineData("PresentationAbandoned", true)]
-    [InlineData("presentationoutcome", true)]
-    [InlineData("Action", false)]
-    [InlineData("Control", false)]
-    public void IsLifecycleTransaction_CoversAllThreeLifecycleTypes(string type, bool expected)
+    [InlineData("presentation-initiated", true)]
+    [InlineData("presentation-outcome", true)]
+    [InlineData("presentation-abandoned", true)]
+    [InlineData("Presentation-Outcome", true)]   // wire values are ours; matching stays case-insensitive
+    [InlineData("action", false)]
+    [InlineData("control", false)]
+    public void IsLifecycleTransaction_CoversAllThreeLifecycleTypes(string payloadType, bool expected)
     {
-        var tx = TxWithMetadata(("Type", type));
+        var tx = TxWithSignedPayloadType(payloadType);
 
         TransactionTypeClassifier.IsLifecycleTransaction(tx).Should().Be(expected);
     }
 
     [Theory]
-    [InlineData("PresentationOutcome", true)]
-    [InlineData("PresentationAbandoned", true)]
-    [InlineData("PresentationInitiated", false)] // intentionally excluded — gets full reachability check
-    [InlineData("Action", false)]
-    public void IsIntraActionLifecycleTerminal_ExcludesInitiated(string type, bool expected)
+    [InlineData("presentation-outcome", true)]
+    [InlineData("presentation-abandoned", true)]
+    [InlineData("presentation-initiated", false)] // intentionally excluded — gets full reachability check
+    [InlineData("action", false)]
+    public void IsIntraActionLifecycleTerminal_ExcludesInitiated(string payloadType, bool expected)
     {
-        var tx = TxWithMetadata(("Type", type));
+        var tx = TxWithSignedPayloadType(payloadType);
 
         TransactionTypeClassifier.IsIntraActionLifecycleTerminal(tx).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("PresentationInitiated")]
+    [InlineData("PresentationOutcome")]
+    [InlineData("PresentationAbandoned")]
+    public void IsLifecycleTransaction_ForgedMetadataOnly_ReturnsFalse(string metadataType)
+    {
+        // THE bypass: metadata alone must never buy the lifecycle carve-out.
+        var tx = TxWithMetadata(("Type", metadataType));
+
+        TransactionTypeClassifier.IsLifecycleTransaction(tx).Should().BeFalse();
+        TransactionTypeClassifier.IsIntraActionLifecycleTerminal(tx).Should().BeFalse();
+        TransactionTypeClassifier.HasUncorroboratedLifecycleMetadata(tx).Should().BeTrue(
+            "the engine logs this as an attempted exemption it was not entitled to");
+    }
+
+    [Fact]
+    public void HasUncorroboratedLifecycleMetadata_GenuineLifecycleTransaction_ReturnsFalse()
+    {
+        // Metadata and signed payload agree — nothing suspicious to report.
+        var tx = Build(blueprintId: "bp-1",
+                       payloadJson: "{\"type\":\"presentation-outcome\"}",
+                       ("Type", "PresentationOutcome"));
+
+        TransactionTypeClassifier.HasUncorroboratedLifecycleMetadata(tx).Should().BeFalse();
+    }
+
+    [Fact]
+    public void HasUncorroboratedLifecycleMetadata_OrdinaryTransaction_ReturnsFalse()
+    {
+        var tx = TxWithMetadata(("Type", "Action"));
+
+        TransactionTypeClassifier.HasUncorroboratedLifecycleMetadata(tx).Should().BeFalse();
     }
 
     [Fact]

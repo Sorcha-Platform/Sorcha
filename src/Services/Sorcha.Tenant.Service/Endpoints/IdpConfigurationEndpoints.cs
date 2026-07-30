@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 
+using Sorcha.Tenant.Service.Authorization;
+
 namespace Sorcha.Tenant.Service.Endpoints;
 
 /// <summary>
@@ -21,7 +23,12 @@ public static class IdpConfigurationEndpoints
     {
         var group = app.MapGroup("/api/organizations/{orgId:guid}/idp")
             .WithTags("Identity Provider Configuration")
-            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
+            // B2+ wave 2 (2026-07-29 review): the MOST serious of the org-scoped set. This surface
+            // decides HOW USERS AUTHENTICATE into an organisation, and role+tier alone never
+            // compared the caller to {orgId} — so an administrator of org A could repoint org B's
+            // identity provider at an IDP they control, which is account takeover of org B.
+            .RequireCallerOrganization();
 
         group.MapGet("/", GetConfiguration)
             .WithName("GetIdpConfiguration")

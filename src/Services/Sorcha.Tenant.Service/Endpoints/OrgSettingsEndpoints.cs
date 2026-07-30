@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models.Dtos;
 
+using Sorcha.Tenant.Service.Authorization;
+
 namespace Sorcha.Tenant.Service.Endpoints;
 
 /// <summary>
@@ -19,7 +21,9 @@ public static class OrgSettingsEndpoints
     {
         var group = app.MapGroup("/api/organizations/{orgId:guid}/settings")
             .WithTags("Organization Settings")
-            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
+            // B2+ wave 2 (2026-07-29 review): role+tier never compared the caller to {orgId}.
+            .RequireCallerOrganization();
 
         group.MapGet("/", GetSettings)
             .WithName("GetOrgSettings")

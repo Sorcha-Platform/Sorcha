@@ -553,6 +553,101 @@ The Tenant Service also exposes passkey public key data used by the Wallet Servi
 
 **Note:** Internal endpoints are excluded from public API documentation.
 
+### Caller-organisation binding (required on every org-scoped route)
+
+`RequireAdministrator` is **not** an organisation check. It is literally
+`RequireRole("SystemAdmin", "Administrator")` and never inspects `org_id`. Composing
+`RequirePlatformAudience` on top adds a *tier* check, not an organisation one. Neither answers
+"*whose* organisation may this administrator administer?"
+
+Any route whose template names an organisation must therefore also apply
+**`.RequireCallerOrganization()`** (`Authorization/CallerOrganizationGate.cs`):
+
+```csharp
+var group = app.MapGroup("/api/organizations/{organizationId:guid}/invitations")
+    .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")  // is an admin at all
+    .RequireCallerOrganization();                                             // of THIS org
+```
+
+The gate allows: **service tokens** (internal S2S, not org-scoped); a **platform SystemAdmin**
+(`SystemAdmin` role **and** membership of `WellKnownIds.SystemAdminOrgId` — mirroring the
+`RequireSystemAdmin` policy's own test, so a stray `SystemAdmin` role claim in another org buys
+nothing); otherwise the caller's `org_id` **must equal** the route's organisation, else **403** with
+a `SEC-AUDIT` log. Applied to a route with no organisation id in its template it **fails closed** —
+a mis-wiring must not look like a working control. It reads both `{organizationId}` and `{orgId}`.
+
+**Cross-org access by a genuine platform SystemAdmin is intended and preserved** — verified live on
+n1, where the seeded `admin@sorcha.local` reads other organisations deliberately.
+
+**Why this was needed (B2+, 2026-07-29 catch-up security review):** six org-scoped groups had *zero*
+caller-org binding, and no handler compared the caller either. An `Administrator` of org A could
+read org B's audit log, alter its custom domain and domain restrictions, read its dashboard, manage
+its invitations (a resend **rotates the token and emails the invitee**), and — worst — **add users to
+org B, change their roles, and suspend them**. Confirmed empirically before the fix: a plain
+Administrator of one organisation reached four other organisations' routes with HTTP 200. That the
+codebase knows how to bind org is not in doubt — `RequireSystemAdmin` does exactly this check — so
+its absence here was a gap, not a decision.
+
+**Gated (every org-scoped group):** `InvitationEndpoints`, `AuditEndpoints`,
+`CustomDomainEndpoints`, `DomainRestrictionEndpoints`, `DashboardEndpoints` (both `/dashboard` and
+`/dashboard-summary`), the 13 per-organisation routes in `OrganizationEndpoints` (user management +
+recovery-config), and — wave 2 — `IdpConfigurationEndpoints`, `OrgSettingsEndpoints`,
+`ParticipantEndpoints`, `RegisterInvitationEndpoints`, `RegisterSubscriptionEndpoints`.
+
+Two wave-2 cases are worth calling out:
+
+- **`IdpConfigurationEndpoints` is the most serious of the whole set.** It decides *how users
+  authenticate* into an organisation. An administrator of org A repointing org B's identity provider
+  at an IDP they control is **account takeover of org B**.
+- **`RegisterSubscriptionEndpoints`' read routes carried plain `.RequireAuthorization()`** — not even
+  a role check — so **any** signed-in principal, including a citizen, could enumerate any
+  organisation's register subscriptions.
+
+**Deliberately NOT gated — `PlatformOrgEndpoints`.** `/api/platform/organizations` is cross-org **by
+design** (platform topology administration) and is *already* correctly scoped: both
+`RequireSystemAdmin` and `RequirePlatformAuditor` assert membership of the system-admin org, not
+merely a role. Adding a caller-org bind keyed on the route's `{orgId}` would refuse the platform
+admin for every organisation but their own — breaking a real capability while appearing to harden it.
+`OrgScopedCallerBindingTests` pins this as a deliberate non-change so nobody "completes the sweep"
+later. `InternalEndpoints` and the DID-document regenerate route are `RequireService`, out of scope.
+
+**One legitimate cross-org flow depends on the SystemAdmin exemption:** cross-node public-org
+subscription (`Add-SorchaPublicOrgSubscription` → `POST /organizations/{publicOrgId}/register-subscriptions`)
+posts with **sysadmin** headers, so it passes via the platform-SystemAdmin arm rather than an org
+match. Removing that exemption would break federated subscribe.
+
+### Organisation DID Documents (`/orgs/...`) — Feature 120
+
+Per-organisation W3C DID documents. Contract:
+`specs/120-production-issuer-signature-verification/contracts/org-did-document-endpoint.openapi.yaml`.
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/orgs/{orgId}/did.json` | GET | Anonymous | Resolve an org's published DID document (`application/did+json`, cacheable 6h) |
+| `/orgs/by-did/{did}/did.json` | GET | Anonymous | Resolve by canonical `did:sorcha:org:{addr}` — a verifier holds the DID, not the org GUID (Feature 149) |
+| `/orgs/{orgId}/did-document/regenerate` | POST | **`RequireService`** | Internal Wallet → Tenant trigger after a key event; rebuilds and publishes the document from the pushed key snapshot. Idempotent. |
+
+**The two GETs are deliberately anonymous** — public DID resolution is the point. **The POST is
+privileged and must stay that way.** It writes the issuer key material every verifier trusts for
+that organisation, and derives the canonical identifier verbatim from the request body's
+`walletAddress`. It shipped with no authorization attribute, and because this service configures no
+fallback policy that made it *anonymous* on the published Tenant port — an attacker posting a
+victim's orgId and wallet address (both public values) with their own JWK would have had their key
+served as the victim's issuer key, so attacker-signed credentials verified as that organisation's.
+Fixed in the 2026-07-29 catch-up security review with two controls:
+
+1. `RequireAuthorization(AuthorizationPolicies.RequireService)` — anonymous callers and human
+   tokens of **any** role (Administrator included) are refused; this path is service-to-service only.
+2. The supplied `walletAddress` must equal the organisation's recorded canonical wallet address.
+   An org with no recorded address yet is allowed through with a warning, so first-time publication
+   is not broken; tighten to a hard refusal once provisioning guarantees the address is set first.
+
+The caller is `IOrgDidDocumentClient.RegenerateAsync` (Wallet Service `IssuanceKeyService`), which
+attaches a service token via `IServiceAuthClient` and **fails closed before sending** if it cannot
+get one. That matters because `RegenerateAsync` maps every failure to `false`, which callers largely
+swallow — so an unauthenticated call would have looked like an intermittent Tenant fault while DID
+publishing silently stopped. Token rejection (401/403) is logged at `Error` for the same reason.
+
 For full API documentation, open **Scalar UI** at `https://localhost:7080/scalar`.
 
 ---

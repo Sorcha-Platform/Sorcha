@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.AspNetCore.Mvc;
+using Sorcha.Wallet.Service.Authorization;
 using Sorcha.Wallet.Service.Mappers;
 using Sorcha.Wallet.Service.Models;
 using Sorcha.Wallet.Core.Domain;
@@ -21,9 +22,16 @@ public static class DelegationEndpoints
     /// </summary>
     public static IEndpointRouteBuilder MapDelegationEndpoints(this IEndpointRouteBuilder app)
     {
+        // G1 (catch-up security review 2026-07-29): this group had the same missing ownership bind
+        // as the credentials group, with a worse consequence — GrantAccess let ANY caller satisfying
+        // CanManageWallets (i.e. any authenticated citizen) grant THEMSELVES Owner rights over
+        // someone else's wallet. That is a privilege-escalation path which would also defeat an
+        // ownership check built on delegation, so it is fixed in the same change as the credentials
+        // group rather than after it.
         var delegationGroup = app.MapGroup("/api/v1/wallets/{walletAddress}/access")
             .WithTags("Delegation")
-            .RequireAuthorization("CanManageWallets");
+            .RequireAuthorization("CanManageWallets")
+            .RequireWalletOwnership();
 
         // POST /api/v1/wallets/{walletAddress}/access - Grant access
         delegationGroup.MapPost("/", GrantAccess)

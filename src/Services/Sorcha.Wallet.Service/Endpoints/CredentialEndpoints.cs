@@ -17,6 +17,7 @@ using Sorcha.ServiceClients.Trust;
 using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Core.Services.Interfaces;
+using Sorcha.Wallet.Service.Authorization;
 using Sorcha.Wallet.Service.Credentials;
 using Sorcha.Wallet.Service.Services.Implementation;
 using Sorcha.Wallet.Service.Services.Interfaces;
@@ -35,9 +36,19 @@ public static class CredentialEndpoints
     /// </summary>
     public static IEndpointRouteBuilder MapCredentialEndpoints(this IEndpointRouteBuilder app)
     {
+        // G1 (catch-up security review 2026-07-29): CanManageWallets alone is NOT sufficient here.
+        // It means "the token carries any non-empty org_id, or is a service token" and never looks
+        // at {walletAddress}; consumer-tier citizen tokens carry org_id, so every authenticated
+        // citizen passed it for every wallet. No handler below checked ownership either, so any
+        // citizen could list, export (raw SD-JWT: name, DOB, address, portrait) and DELETE any
+        // other citizen's credentials — browser-reachable, since the gateway proxies
+        // /api/v1/wallets/{**catch-all} under RequireAuthenticated only.
+        // RequireWalletOwnership binds the caller to the wallet in the route; service tokens are
+        // still allowed through because issuance legitimately targets the issuing org's wallet.
         var credentialGroup = app.MapGroup("/api/v1/wallets/{walletAddress}/credentials")
             .WithTags("Credentials")
-            .RequireAuthorization("CanManageWallets");
+            .RequireAuthorization("CanManageWallets")
+            .RequireWalletOwnership();
 
         credentialGroup.MapGet("/", ListCredentials)
             .WithName("ListCredentials")

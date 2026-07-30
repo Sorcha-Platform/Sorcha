@@ -307,7 +307,89 @@ Manually triggers a single validation pipeline iteration (for testing/debugging)
 
 ---
 
+## Transaction-type carve-outs must come from SIGNED data
+
+`TransactionTypeClassifier` decides which transactions are exempt from certain rules. Three
+carve-outs matter for presentation-lifecycle transactions:
+
+| Predicate | Waives |
+|-----------|--------|
+| `IsLifecycleTransaction` | the action-data schema check (`VAL_SCHEMA_001/002/003/004`) |
+| `IsIntraActionLifecycleTerminal` | the routing-decision attestation, and `VAL_BP_003` route reachability |
+
+**These predicates read the `type` field inside the transaction's `Payload`, never
+`Metadata["Type"]` — and new carve-outs must do the same.**
+
+`Metadata` is **not** signed. The signed data is `"{TransactionId}:{PayloadHash}"`;
+`PayloadHash` covers **only** `Payload`; and the docket merkle leaf does not include metadata
+either. So anything that can submit a transaction can set `Metadata["Type"]` freely with nothing
+detecting the change — no signature failure, no hash mismatch, no log.
+
+Until the 2026-07-29 catch-up security review these predicates keyed on `Metadata["Type"]`, so
+adding one unsigned string (`Metadata["Type"] = "PresentationInitiated"`) to **any** transaction
+disabled the schema check, the routing attestation and the reachability check at once, and it
+sealed normally. `Payload.type` is inside the hash the signature covers, so it is the only
+trustworthy discriminator. (`IsRejectionTransaction` already consulted the payload for the same
+reason — it was the precedent, not the exception.)
+
+Genuine lifecycle transactions always carry it: `TransactionBuilderServiceExtensions
+.BuildPresentationInitiatedAsync` / `BuildPresentationOutcomeAsync` /
+`BuildPresentationAbandonedAsync` each write `type` as the first payload property **before**
+signing (`presentation-initiated`, `presentation-outcome`, `presentation-abandoned`). The
+PascalCase `Metadata["Type"]` values still exist for the docket-build trigger's own purposes;
+they are simply not authoritative for validation carve-outs.
+
+When metadata claims a lifecycle type the signed payload does not corroborate, the exemption is
+refused **and** `ValidationEngine` logs a warning — a transaction requesting an exemption it is
+not entitled to is what an attempted schema-validation bypass looks like on the wire.
+
 ## gRPC Services
+
+### gRPC access is TIERED, not blanket-authorized
+
+`MapGrpcService<ValidatorGrpcService>()` is deliberately **not** behind
+`.RequireAuthorization(...)`, even though every REST group in the same `Program.cs` is.
+
+**Why a blanket gate would be wrong, not merely inconvenient.** Validator-to-validator consensus is
+federated across *installations*, and Sorcha service tokens are installation-scoped by design
+(Feature 136: issuer `urn:sorcha:{installation}`, audience `{installation}:service`, and bearer
+validation deliberately **rejects** another installation's tokens). Requiring a token here would not
+create a rolling-deploy window — it would **permanently sever consensus between installations**.
+`PeerAuthInterceptor` already encodes the same conclusion: it validates a token when one is present,
+otherwise lets the peer through "with lower trust" (FR-014), and sets `ValidateAudience = false`
+precisely because "peer-to-peer traffic may not have audience set".
+
+**What actually authenticates consensus is the payload, not the transport.** Votes, signatures and
+dockets carry signatures verified against the **validator roster**: `ConsensusEngine
+.CollectVoteFromValidatorAsync` resolves the voter via `IValidatorRegistry.GetValidatorAsync`, and
+`DocketConfirmer` calls `IValidatorRegistry.IsRegisteredAsync`. The roster is installation-neutral,
+which is exactly why it — not an installation-scoped JWT — is the right trust anchor. A forged vote
+or docket from a stranger fails roster verification regardless of transport auth.
+
+So the residual risk was never forgery; it was methods that mutate local state without a
+roster-verified payload, plus resource exhaustion. `ValidatorGrpcAccessInterceptor` therefore
+classifies the caller (a token if presented — an invalid or expired one degrades to anonymous rather
+than failing the call — plus the Feature 175 mTLS node-identity thumbprint) and **enforces**
+`ValidatorGrpcAccessPolicy`:
+
+| RPC | Unauthenticated caller | Why |
+|-----|------------------------|-----|
+| `RequestVote` | ✅ allowed | vote signature resolved against the roster |
+| `ValidateDocket` | ✅ allowed | read-only with respect to the chain |
+| `ExchangeSignature` | ✅ allowed | collector rejects duplicate / invalid entries |
+| `ReceiveConfirmedDocket` | ✅ allowed | initiator must be a registered validator |
+| `GetHealthStatus` | ✅ allowed | liveness — a validator that cannot be probed cannot be federated with |
+| `ReceiveTransaction` | ❌ refused | mempool ingest: no roster gate on admission, no cross-installation caller |
+| *anything new* | ❌ refused | **fails closed** — private by default |
+
+`ValidatorGrpcAccessPolicyTests` reflects over the generated `ValidatorServiceBase` and fails if any
+RPC is unclassified **or** if the policy names an RPC that no longer exists — so adding an RPC to the
+proto forces a deliberate access decision instead of silently publishing it.
+
+**Known gap elsewhere:** `PeerAuthInterceptor` sets `IsAuthenticatedKey` and the node-identity
+thumbprint, but **nothing in the repo consumes them** — the Peer service classifies callers and then
+treats them all alike, so FR-014's "lower trust" half is inert there. Peer's RPCs need the same
+enforcement step this service now has.
 
 ### Proto Definition Location
 `specs/002-validator-service/contracts/validator.proto`
