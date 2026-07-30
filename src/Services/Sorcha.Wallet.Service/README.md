@@ -176,6 +176,48 @@ OPENTELEMETRY__ZIPKINENDPOINT="https://zipkin.yourcompany.com"
 
 ## API Endpoints
 
+### Wallet ownership binding (required on every wallet-scoped route)
+
+`CanManageWallets` is **not** an ownership check. It asserts only that the token carries some
+non-empty `org_id` **or** is a service token (`Extensions/AuthenticationExtensions.cs`). Consumer-tier
+citizen tokens carry `org_id` (their home org, Feature 136), so **every authenticated citizen
+satisfies it — for every wallet**. It answers "is this a legitimate wallet-API caller at all", never
+"may they act on *this* wallet".
+
+Any route whose template names a wallet must therefore also apply **`.RequireWalletOwnership()`**
+(`Authorization/WalletOwnershipGate.cs`):
+
+```csharp
+var group = app.MapGroup("/api/v1/wallets/{walletAddress}/credentials")
+    .RequireAuthorization("CanManageWallets")   // is a wallet-API caller
+    .RequireWalletOwnership();                  // may act on THIS wallet
+```
+
+The gate: **service tokens pass** (issuance legitimately targets the *issuing org's* wallet while the
+recipient is another citizen); otherwise the caller identity — `platform_user_id` falling back to
+`NameIdentifier`, matching what `WalletEndpoints.GetCurrentUser` stamps as `Wallets.Owner` — must
+equal the wallet's owner, else **403** with a `SEC-AUDIT` log. Unknown wallet is **404** for
+everyone, so the response never reveals existence. A route carrying the gate but **no** wallet
+address in its template **fails closed** — a mis-wiring must not look like a working control.
+
+It reads both `{walletAddress}` and `{address}`, because the routes are not consistently named.
+
+**Why a shared filter and not a check per handler:** the G1 defect (2026-07-29 catch-up security
+review) was not a subtly wrong check — it was **no check at all**, in several groups at once, while
+four sibling routes in `WalletEndpoints` did verify ownership inline. `RequireWalletOwnership()` also
+stamps marker metadata so `WalletOwnershipWiringTests` can assert every wallet-scoped route carries
+it; an endpoint filter is otherwise invisible to route metadata, which would make "the new group
+forgot the gate" undetectable.
+
+**Gated today:** the credentials group, the delegation (`/access`) group, and `PATCH` / `DELETE`
+`/api/v1/wallets/{address}`.
+
+**Not yet gated (tracked):** the HD-address, accounts, gap-status and encapsulate/decapsulate routes.
+Each needs an individual decision rather than a blanket sweep — `encrypt`, for instance, deliberately
+lets a caller encrypt *to* a wallet they do not own, and `GET /{address}` intentionally also accepts
+an active delegate. `sign`, `decrypt`, `decapsulate` and `GET /{address}` already verify ownership
+inline.
+
 ### Wallet Management
 
 | Method | Endpoint | Description |

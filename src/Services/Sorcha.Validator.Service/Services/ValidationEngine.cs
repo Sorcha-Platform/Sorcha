@@ -518,6 +518,11 @@ public class ValidationEngine : IValidationEngine
             // never seal (VAL_SCHEMA_004 on every PresentationInitiated). Chain integrity, signature
             // verification, sender authorisation and route reachability all still apply — this skips
             // ONLY the action-data-payload schema check.
+            //
+            // C-VAL (catch-up security review 2026-07-29): the discriminator is the SIGNED
+            // payload's `type`, never Metadata["Type"]. Metadata is outside the signature, the
+            // payload hash and the merkle leaf, so keying this carve-out on it let one unsigned
+            // string disable schema validation on any transaction.
             if (TransactionTypeClassifier.IsLifecycleTransaction(transaction))
             {
                 _logger.LogDebug(
@@ -527,6 +532,18 @@ public class ValidationEngine : IValidationEngine
                     transaction.TransactionId,
                     transaction.RegisterId,
                     sw.Elapsed);
+            }
+
+            if (TransactionTypeClassifier.HasUncorroboratedLifecycleMetadata(transaction))
+            {
+                // Metadata asked for the lifecycle carve-out but the signed payload does not
+                // corroborate it. The exemption is (correctly) refused above; log it, because a
+                // transaction claiming an exemption it is not entitled to is what an attempted
+                // schema-validation bypass looks like. Validation continues normally.
+                _logger.LogWarning(
+                    "Transaction {TransactionId} carries lifecycle metadata Type={MetadataType} that the "
+                    + "signed payload does not corroborate; schema validation is NOT being skipped",
+                    transaction.TransactionId, transaction.Metadata["Type"]);
             }
 
             // Get the blueprint
