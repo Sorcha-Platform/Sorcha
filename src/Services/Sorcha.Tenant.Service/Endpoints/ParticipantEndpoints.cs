@@ -8,6 +8,8 @@ using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 
+using Sorcha.Tenant.Service.Authorization;
+
 namespace Sorcha.Tenant.Service.Endpoints;
 
 /// <summary>
@@ -22,7 +24,12 @@ public static class ParticipantEndpoints
     {
         var orgGroup = app.MapGroup("/api/organizations/{organizationId:guid}/participants")
             .WithTags("Participants")
-            .RequireAuthorization();
+            .RequireAuthorization()
+            // B2+ wave 2 (2026-07-29 review): the per-route policies here are role checks
+            // (RequireAdministrator / RequireOrganizationMember) and none compared the caller to
+            // {organizationId}. Note the non-org-scoped SearchParticipants handler DOES scope its
+            // results by the caller's org_id — the org-scoped routes simply never got the same care.
+            .RequireCallerOrganization();
 
         // Participant CRUD within organization
         orgGroup.MapPost("/", CreateParticipant)

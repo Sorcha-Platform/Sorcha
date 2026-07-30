@@ -588,16 +588,33 @@ Administrator of one organisation reached four other organisations' routes with 
 codebase knows how to bind org is not in doubt — `RequireSystemAdmin` does exactly this check — so
 its absence here was a gap, not a decision.
 
-**Gated today:** `InvitationEndpoints`, `AuditEndpoints`, `CustomDomainEndpoints`,
-`DomainRestrictionEndpoints`, `DashboardEndpoints` (both `/dashboard` and `/dashboard-summary`), and
-the 13 per-organisation routes in `OrganizationEndpoints` (user management + recovery-config).
+**Gated (every org-scoped group):** `InvitationEndpoints`, `AuditEndpoints`,
+`CustomDomainEndpoints`, `DomainRestrictionEndpoints`, `DashboardEndpoints` (both `/dashboard` and
+`/dashboard-summary`), the 13 per-organisation routes in `OrganizationEndpoints` (user management +
+recovery-config), and — wave 2 — `IdpConfigurationEndpoints`, `OrgSettingsEndpoints`,
+`ParticipantEndpoints`, `RegisterInvitationEndpoints`, `RegisterSubscriptionEndpoints`.
 
-**NOT yet gated — known outstanding, each needs its own judgement rather than a blanket sweep:**
-`IdpConfigurationEndpoints`, `OrgSettingsEndpoints`, `ParticipantEndpoints`,
-`PlatformOrgEndpoints`, `RegisterInvitationEndpoints`, `RegisterSubscriptionEndpoints`.
-`PlatformOrgEndpoints` in particular is *probably* intentionally cross-org (platform topology
-administration) and must not be gated reflexively. `InternalEndpoints` and the DID-document
-regenerate route are `RequireService` and out of scope.
+Two wave-2 cases are worth calling out:
+
+- **`IdpConfigurationEndpoints` is the most serious of the whole set.** It decides *how users
+  authenticate* into an organisation. An administrator of org A repointing org B's identity provider
+  at an IDP they control is **account takeover of org B**.
+- **`RegisterSubscriptionEndpoints`' read routes carried plain `.RequireAuthorization()`** — not even
+  a role check — so **any** signed-in principal, including a citizen, could enumerate any
+  organisation's register subscriptions.
+
+**Deliberately NOT gated — `PlatformOrgEndpoints`.** `/api/platform/organizations` is cross-org **by
+design** (platform topology administration) and is *already* correctly scoped: both
+`RequireSystemAdmin` and `RequirePlatformAuditor` assert membership of the system-admin org, not
+merely a role. Adding a caller-org bind keyed on the route's `{orgId}` would refuse the platform
+admin for every organisation but their own — breaking a real capability while appearing to harden it.
+`OrgScopedCallerBindingTests` pins this as a deliberate non-change so nobody "completes the sweep"
+later. `InternalEndpoints` and the DID-document regenerate route are `RequireService`, out of scope.
+
+**One legitimate cross-org flow depends on the SystemAdmin exemption:** cross-node public-org
+subscription (`Add-SorchaPublicOrgSubscription` → `POST /organizations/{publicOrgId}/register-subscriptions`)
+posts with **sysadmin** headers, so it passes via the platform-SystemAdmin arm rather than an org
+match. Removing that exemption would break federated subscribe.
 
 ### Organisation DID Documents (`/orgs/...`) — Feature 120
 
