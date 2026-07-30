@@ -25,6 +25,9 @@ using Sorcha.Wallet.Core.Repositories.Implementation;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Core.Services.Implementation;
 using Sorcha.Wallet.Core.Services.Interfaces;
+using EfCoreHolderAddressLookup = Sorcha.Wallet.Service.Services.Implementation.EfCoreHolderAddressLookup;
+using IHolderAddressLookup = Sorcha.Wallet.Service.Services.Interfaces.IHolderAddressLookup;
+using InMemoryHolderAddressLookup = Sorcha.Wallet.Service.Services.Implementation.InMemoryHolderAddressLookup;
 using Sorcha.ServiceClients.Configuration;
 
 namespace Sorcha.Wallet.Service.Extensions;
@@ -139,6 +142,15 @@ public static class WalletServiceExtensions
         var storageLog = services.GetStorageRegistrationLog();
         var interfaceName = typeof(IWalletRepository).FullName!;
 
+        // IHolderAddressLookup is registered here rather than in Program.cs because its backend is
+        // decided by exactly this connection-string branch. It used to be an unconditional
+        // AddScoped<IHolderAddressLookup, EfCoreHolderAddressLookup> at Program.cs, which cannot be
+        // activated without a WalletDbContext — so on the supported no-Postgres path every endpoint
+        // that touches it (POST /api/v1/wallets included) threw
+        // "Unable to resolve service for type WalletDbContext" and returned 500. Keeping the choice
+        // next to the branch that causes it also avoids a third hand-copy of the cascade check.
+        var holderLookupInterfaceName = typeof(IHolderAddressLookup).FullName!;
+
         if (!string.IsNullOrEmpty(connectionString))
         {
             // Configure NpgsqlDataSource with dynamic JSON support (required for Dictionary<string, string> serialization)
@@ -181,6 +193,13 @@ public static class WalletServiceExtensions
                 interfaceName,
                 typeof(EfCoreWalletRepository).FullName!,
                 "postgres");
+
+            // Feature 114 / US4 — holder-address index. Scoped because it consumes WalletDbContext.
+            services.AddScoped<IHolderAddressLookup, EfCoreHolderAddressLookup>();
+            storageLog.RegisterPersistent(
+                holderLookupInterfaceName,
+                typeof(EfCoreHolderAddressLookup).FullName!,
+                "postgres");
         }
         else
         {
@@ -189,6 +208,14 @@ public static class WalletServiceExtensions
             storageLog.RegisterInMemory(
                 interfaceName,
                 typeof(InMemoryWalletRepository).FullName!,
+                "no Postgres connection string in ConnectionStrings:Wallet:Postgres or ConnectionStrings:Sorcha:Postgres");
+
+            // Singleton so the map outlives request scopes, matching the persistence the EF Core
+            // implementation gets from its table.
+            services.AddSingleton<IHolderAddressLookup, InMemoryHolderAddressLookup>();
+            storageLog.RegisterInMemory(
+                holderLookupInterfaceName,
+                typeof(InMemoryHolderAddressLookup).FullName!,
                 "no Postgres connection string in ConnectionStrings:Wallet:Postgres or ConnectionStrings:Sorcha:Postgres");
         }
 
