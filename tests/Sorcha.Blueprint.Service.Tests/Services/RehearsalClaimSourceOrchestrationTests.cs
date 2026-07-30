@@ -42,18 +42,18 @@ namespace Sorcha.Blueprint.Service.Tests.Services;
 /// the harness in <c>ActionExecutionLiveClaimSourceTests</c> (guards the sibling #1264 defect).
 /// </para>
 /// <para>
-/// SCOPE NOTE: this suite deliberately does NOT assert <c>RehearsalOutcome.Passed</c>. Feature 145
-/// changed <c>ActionExecutionService.ExecuteAsync</c> to an always-async "submit and let the
-/// InstanceProjector fold the sealed docket" contract — every successful call now returns
+/// SCOPE NOTE: this suite deliberately does NOT assert <c>RehearsalOutcome.Passed</c>, because
+/// reaching a terminal state is no longer decided at this seam. Feature 145 changed
+/// <c>ActionExecutionService.ExecuteAsync</c> to an always-async "submit and let the
+/// InstanceProjector fold the sealed docket" contract — every successful call returns
 /// <c>IsComplete=false</c> / <c>NextActions=[]</c> unconditionally (all three
 /// <c>return new ActionSubmissionResponse</c> sites agree). <c>RehearsalOrchestrationService</c>
-/// still reads those two fields synchronously to decide Passed / advance the walk-through, so a real
-/// rehearsal can never reach Passed or advance past its first step — independent of this fix, and for
-/// every blueprint, not just claim-source ones. That is a SEPARATE, pre-existing defect (the same
-/// "mocked seam drifted from the real contract" class as #1284 itself) and is out of scope here; see
-/// the PR description. This suite instead proves the concrete, in-scope claim: the caller:null defect
-/// is gone (the step no longer fails) and the LIVE server value — not the client's submission — is
-/// what gets validated.
+/// therefore reads the outcome from the instance projection instead; that reconciliation is a
+/// separate, independently-guarded concern — see
+/// <c>RehearsalOrchestrationServiceTests.SubmitStep_TerminalComesFromTheProjection_NotTheResponse</c>
+/// and the README section "Full Rehearsal reads its outcome from the ledger, not the response".
+/// This suite proves the concrete, in-scope claim: the caller:null defect is gone (the step no longer
+/// fails) and the LIVE server value — not the client's submission — is what gets validated.
 /// </para>
 /// </summary>
 public class RehearsalClaimSourceOrchestrationTests

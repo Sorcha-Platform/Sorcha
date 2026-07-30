@@ -493,19 +493,24 @@ short-circuits to "no participant-based validation" instead of querying the
 Participant Service for a sandbox wallet that was never given a real
 participant profile (Feature 103 open-participant walk-in path).
 
-**Known residual gap (tracked separately, not fixed by the above):** Feature
-145 changed `ActionExecutionService.ExecuteAsync` to an always-async
-"submit and let the `InstanceProjector` fold the sealed docket" contract —
-every successful call now returns `IsComplete=false` / `NextActions=[]`
-unconditionally. `RehearsalOrchestrationService.SubmitStepAsync` still reads
-those two fields synchronously to decide `RehearsalOutcome.Passed` and to
-advance the walk-through to the next step. Wired to the real
-`ActionExecutionService`, a rehearsal can therefore still not reach `Passed`
-or advance past its first step — for any blueprint, not just claim-source
-ones. `RehearsalOrchestrationServiceTests` does not catch this because it
-mocks `IActionExecutionService` wholesale and fabricates `IsComplete`/
-`NextActions`; see `RehearsalClaimSourceOrchestrationTests`, which wires the
-real service and documents the gap inline.
+**The initiator id is `PlatformUser.Id`, not `UserIdentity.Id`.**
+`RehearsalEndpoints.ResolvePlatformUserId` reads the `platform_user_id` claim
+(Feature 136; on every human-tier token) and falls back to `sub` only for
+tokens minted before that claim existed. The two are different GUIDs:
+`RegistrationService` generates a `PlatformUser` and a `UserIdentity`
+independently, linked only by a FK, and they coincide **only** for the seeded
+default admin (`DatabaseInitializer` reuses `WellKnownIds.DefaultAdminUserId`
+for both). Reading `sub` therefore works on a freshly seeded dev box and 404s
+for every real user — `IPlatformUserClaimsClient.ResolveAsync` finds no matching
+`PlatformUser` and the step dies with "Could not confirm your account details
+with the platform", trading #1284's exception for a new one on exactly the
+blueprints this fix targets. The destination field is named
+`RehearsedByPlatformUserId`, so `PlatformUser.Id` was always the intent.
+Guarded by `RehearsalInitiatorIdentityTests`.
+
+Reaching a terminal state is a separate concern, handled by the projection
+reconciliation described in the preceding section — the response's
+`IsComplete` / `NextActions` are no longer read at all.
 
 ---
 
