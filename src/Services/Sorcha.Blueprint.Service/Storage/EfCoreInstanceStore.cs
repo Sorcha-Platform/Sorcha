@@ -134,6 +134,13 @@ public class EfCoreInstanceStore : IInstanceStore
         entity.Version = instance.Version;
         entity.UpdatedAt = instance.UpdatedAt;
         entity.CompletedAt = instance.CompletedAt;
+        // Feature 145 projection watermark. Omitted from this copy list until 2026-07-30, which cost
+        // nothing visible: InstanceProjection sets it on the line after LastTransactionId, so the
+        // instance still advanced correctly and only this column stayed NULL. Two things depended on
+        // it and both failed open — the projector's replay guard (it re-reads the instance before
+        // every fold, so an already-folded tx was never recognised) and Feature 142's rehearsal wait
+        // (it matches on this watermark, so the go-live gate could never be earned).
+        entity.LastAppliedTxId = instance.LastAppliedTxId;
 
         try
         {
