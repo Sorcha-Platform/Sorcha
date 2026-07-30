@@ -408,6 +408,112 @@ promised.
 
 ---
 
+## Full Rehearsal reads its outcome from the ledger, not the response (Feature 142 / F145)
+
+`RehearsalOrchestrationService.SubmitStepAsync` used to decide success with
+`terminalSuccess = response.IsComplete`, and drive step routing from
+`response.NextActions`. **Post-Feature-145 neither field can carry that information.**
+
+`ActionExecutionService` returns 202 on every accepted submission and hard-codes
+`IsComplete = false` and `NextActions = []` — the real routing goes only onto the
+on-chain `RoutingDecision`, for the `InstanceProjector` to fold when the docket
+seals. There is no `IsComplete = true` anywhere in `src/`; the only one in the
+repo was a **test fixture**, so the rehearsal tests passed while the feature was
+structurally incapable of working.
+
+Consequences before this fix, for **every** blueprint (not only `x-claim-source`
+ones):
+
+- `RehearsalPass` was never written, so `PublishGate`'s soft gate never returned
+  `Proceed` — publish was **override-only**, permanently.
+- the walk-through could never advance past step 1, because the next action ids
+  never arrived.
+
+**Now the projection is the source of truth.** After `ExecuteAsync` returns, the
+step waits for the `InstanceProjector` to fold *its own* transaction — matching
+on `Instance.LastAppliedTxId`, the projector's idempotency watermark, so a
+previous step's projection is never mistaken for this one's — then reads the
+result:
+
+| Projection | Rehearsal outcome |
+|---|---|
+| `State == Completed` (no current actions remain) | **Passed** → records the `RehearsalPass` that unlocks Go live |
+| `State == Rejected` | **Failed**, named as a terminal rejection |
+| still `Active` | in progress; next steps taken from `CurrentActionIds` |
+| never folded within the timeout | **Failed**, named as a *sealing delay* — explicitly "not a blueprint problem" — and **no pass is recorded** |
+
+The timeout defaults to **90s with a 1s poll**, mirroring the proven walkthrough
+helper `Wait-SorchaActorReady`; the validator's docket-build threshold is 5-10s,
+so that is generous rather than tight. Both are constructor parameters so tests
+run in milliseconds.
+
+**This works because sandbox-register dockets seal automatically.** Register
+creation embeds the local validator on the roster when none is supplied
+(`RegisterCreationOrchestrator`) and fires `register:relationship-changed`, which
+the validator's `RegisterMonitoringBootstrap` consumes to enrol the register for
+monitoring. No separate enrolment step, and no operator action.
+
+A step that returns `AwaitingPresentation` is left in progress and does **not**
+wait — there is no seal pending, the action is blocked on an external credential
+presentation.
+
+The named-timeout failure is deliberate: an unverified pass would be worse than
+no pass, and a designer must be able to tell a slow node from a broken blueprint.
+
+## Full Rehearsal executes as its own initiator (Feature 142 / Issue #1284)
+
+`RehearsalOrchestrationService.SubmitStepAsync` calls the real
+`IActionExecutionService.ExecuteAsync` for every step, so a rehearsal exercises
+the SAME execution pipeline a live submission does — including any
+`x-claim-source` bindings (Issue #1264) declared on the action's `dataSchemas`.
+Those bindings resolve their value from `IPlatformUserClaimsClient`, keyed off
+the caller's `platform_user_id` claim — there is no other way to know *whose*
+live value to read.
+
+The call used to pass `caller: null` (a leftover from when rehearsal only
+needed to skip wallet-ownership validation for the sandbox wallets it mints
+itself). `ActionExecutionService` fails closed rather than default a value it
+cannot vouch for, so a null caller made it throw for ANY action with an
+`x-claim-source` binding — Full Rehearsal could never pass for such a
+blueprint, which includes the AIAS assured-identity template. Go-live was
+reachable only via the audited override.
+
+The fix builds a synthetic `ClaimsPrincipal` from the rehearsal session's own
+initiator (`RehearsalSession.StartedByPlatformUserId`, captured at
+`StartFullAsync`) and passes that as `caller` instead. This is semantically
+the right behaviour, not a workaround: **rehearsal means "walk this workflow
+as me"**, so claim-source bindings should resolve the real live values of the
+person running the rehearsal — which also makes the rehearsal a truthful dry
+run of what go-live will stamp. The synthetic principal carries two claims:
+`platform_user_id` (read by claim-source resolution) and a `NameIdentifier`
+("sub") of the same value — required because a non-null caller now also
+activates `ValidateWalletOwnershipAsync` (SEC-006), which a null caller always
+skipped outright; the principal deliberately omits `org_id` so that check
+short-circuits to "no participant-based validation" instead of querying the
+Participant Service for a sandbox wallet that was never given a real
+participant profile (Feature 103 open-participant walk-in path).
+
+**The initiator id is `PlatformUser.Id`, not `UserIdentity.Id`.**
+`RehearsalEndpoints.ResolvePlatformUserId` reads the `platform_user_id` claim
+(Feature 136; on every human-tier token) and falls back to `sub` only for
+tokens minted before that claim existed. The two are different GUIDs:
+`RegistrationService` generates a `PlatformUser` and a `UserIdentity`
+independently, linked only by a FK, and they coincide **only** for the seeded
+default admin (`DatabaseInitializer` reuses `WellKnownIds.DefaultAdminUserId`
+for both). Reading `sub` therefore works on a freshly seeded dev box and 404s
+for every real user — `IPlatformUserClaimsClient.ResolveAsync` finds no matching
+`PlatformUser` and the step dies with "Could not confirm your account details
+with the platform", trading #1284's exception for a new one on exactly the
+blueprints this fix targets. The destination field is named
+`RehearsedByPlatformUserId`, so `PlatformUser.Id` was always the intent.
+Guarded by `RehearsalInitiatorIdentityTests`.
+
+Reaching a terminal state is a separate concern, handled by the projection
+reconciliation described in the preceding section — the response's
+`IsComplete` / `NextActions` are no longer read at all.
+
+---
+
 ## Development
 
 ### Project Structure
