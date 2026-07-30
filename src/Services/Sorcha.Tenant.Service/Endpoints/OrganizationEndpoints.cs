@@ -14,6 +14,8 @@ using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 
+using Sorcha.Tenant.Service.Authorization;
+
 namespace Sorcha.Tenant.Service.Endpoints;
 
 /// <summary>
@@ -132,6 +134,7 @@ public static class OrganizationEndpoints
 
         // User management within organization
         group.MapPost("/{organizationId:guid}/users", AddUserToOrganization)
+            .RequireCallerOrganization()
             .WithName("AddUserToOrganization")
             .WithSummary("Add user to organization")
             .WithDescription("Adds a user to the organization. Requires administrator role.")
@@ -143,6 +146,7 @@ public static class OrganizationEndpoints
             .Produces(StatusCodes.Status403Forbidden);
 
         group.MapPost("/{organizationId:guid}/users/provision", ProvisionOrgUser)
+            .RequireCallerOrganization()
             .WithName("ProvisionOrgUser")
             .WithSummary("Provision an org-scoped password user")
             .WithDescription("Creates a NEW single-org password user (no public account, no invitation) in the organization. The emailVerified bypass is gated by Platform:AllowAdminVerifiedUserCreation. Requires administrator role.")
@@ -154,6 +158,7 @@ public static class OrganizationEndpoints
             .Produces(StatusCodes.Status403Forbidden);
 
         group.MapGet("/{organizationId:guid}/users", GetOrganizationUsers)
+            .RequireCallerOrganization()
             .WithName("GetOrganizationUsers")
             .WithSummary("List organization users")
             .WithDescription("Lists all users in the organization.")
@@ -164,6 +169,7 @@ public static class OrganizationEndpoints
             .Produces(StatusCodes.Status403Forbidden);
 
         group.MapGet("/{organizationId:guid}/users/{userId:guid}", GetOrganizationUser)
+            .RequireCallerOrganization()
             .WithName("GetOrganizationUser")
             .WithSummary("Get organization user")
             .WithDescription("Gets details of a specific user in the organization.")
@@ -174,6 +180,7 @@ public static class OrganizationEndpoints
             .Produces(StatusCodes.Status403Forbidden);
 
         group.MapPut("/{organizationId:guid}/users/{userId:guid}", UpdateOrganizationUser)
+            .RequireCallerOrganization()
             .WithName("UpdateOrganizationUser")
             .WithSummary("Update organization user")
             .WithDescription("Updates a user in the organization. Requires administrator role.")
@@ -185,6 +192,7 @@ public static class OrganizationEndpoints
             .Produces(StatusCodes.Status403Forbidden);
 
         group.MapDelete("/{organizationId:guid}/users/{userId:guid}", RemoveUserFromOrganization)
+            .RequireCallerOrganization()
             .WithName("RemoveUserFromOrganization")
             .WithSummary("Remove user from organization")
             .WithDescription("Removes a user from the organization. Requires administrator role.")
@@ -196,6 +204,7 @@ public static class OrganizationEndpoints
 
         // User lifecycle management
         group.MapPost("/{organizationId:guid}/users/{userId:guid}/unlock", UnlockUser)
+            .RequireCallerOrganization()
             .WithName("UnlockUser")
             .WithSummary("Unlock a locked user account")
             .WithDescription("Resets the failed login counter and removes lockout for a user account.")
@@ -206,6 +215,7 @@ public static class OrganizationEndpoints
             .Produces(StatusCodes.Status403Forbidden);
 
         group.MapPost("/{organizationId:guid}/users/{userId:guid}/suspend", SuspendUser)
+            .RequireCallerOrganization()
             .WithName("SuspendUser")
             .WithSummary("Suspend a user account")
             .WithDescription("Suspends a user account, preventing authentication. Active sessions are invalidated.")
@@ -216,6 +226,7 @@ public static class OrganizationEndpoints
             .Produces(StatusCodes.Status403Forbidden);
 
         group.MapPost("/{organizationId:guid}/users/{userId:guid}/reactivate", ReactivateUser)
+            .RequireCallerOrganization()
             .WithName("ReactivateUser")
             .WithSummary("Reactivate a suspended user account")
             .WithDescription("Reactivates a previously suspended user account.")
@@ -227,6 +238,7 @@ public static class OrganizationEndpoints
             .Produces(StatusCodes.Status403Forbidden);
 
         group.MapPost("/{organizationId:guid}/users/{userId:guid}/verify-email", AdminVerifyEmail)
+            .RequireCallerOrganization()
             .WithName("AdminVerifyEmail")
             .WithSummary("Admin override to mark user email as verified")
             .WithDescription("Allows an organisation administrator to mark a user's email as verified without requiring the email verification loop. Sets EmailVerified=true, clears verification token, records audit event.")
@@ -238,6 +250,7 @@ public static class OrganizationEndpoints
             .Produces(StatusCodes.Status403Forbidden);
 
         group.MapPut("/{organizationId:guid}/users/{userId:guid}/role", ChangeUserRole)
+            .RequireCallerOrganization()
             .WithName("ChangeUserRole")
             .WithSummary("Change a user's role")
             .WithDescription("Changes a user's role. Cannot target SystemAdmin users or assign SystemAdmin role.")
@@ -250,6 +263,7 @@ public static class OrganizationEndpoints
 
         // Feature 060: Organization recovery config endpoints
         group.MapPost("/{orgId:guid}/recovery-config", CreateOrgRecoveryConfig)
+            .RequireCallerOrganization()
             .WithName("CreateOrgRecoveryConfig")
             .WithSummary("Configure organization recovery key pair")
             .WithDescription("Sets the organization's ED25519 recovery public key for wrapping wallet recovery keys. "
@@ -259,6 +273,7 @@ public static class OrganizationEndpoints
             .Produces(StatusCodes.Status409Conflict);
 
         group.MapGet("/{orgId:guid}/recovery-config", GetOrgRecoveryConfig)
+            .RequireCallerOrganization()
             .WithName("GetOrgRecoveryConfig")
             .WithSummary("Get organization recovery configuration")
             .WithDescription("Returns the organization's recovery key configuration status. Requires org membership.")

@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 
+using Sorcha.Tenant.Service.Authorization;
+
 namespace Sorcha.Tenant.Service.Endpoints;
 
 /// <summary>
@@ -22,7 +24,9 @@ public static class CustomDomainEndpoints
     {
         var group = app.MapGroup("/api/organizations/{organizationId:guid}/custom-domain")
             .WithTags("Custom Domain")
-            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
+            // B2+ (2026-07-29 review): role+tier alone never compared the caller to {organizationId}.
+            .RequireCallerOrganization();
 
         group.MapGet("/", GetCustomDomain)
             .WithName("GetCustomDomain")
