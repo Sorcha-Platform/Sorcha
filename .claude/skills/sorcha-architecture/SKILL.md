@@ -1223,6 +1223,10 @@ issue-blue-badge        licensing-officer
 
 Worked example: `walkthroughs/Strathcarron/blueprints/strathcarron-blue-badge.json`.
 
+### The callback verifies ONLY against the server-side pending row (G2 fix, 2026-07-29)
+
+`SorchaWalletVerificationPayload` (the wire shape `POST /callbacks/sorcha-wallet/{requestId}` binds) carries `VpToken` and `DelegationCredential` — **no `VerifierSession`**. It used to carry an optional `session` field that, when present, was used verbatim instead of the server-rebuilt one. Since the callback only requires consumer-tier authentication (any signed-in citizen — `RequireConsumerAudience`, CLAUDE.md §13), an attacker could POST their own session object with an attacker-chosen `RequiredVct`, an emptied `RequiredClaims` gate, and an attacker nonce/clientId — satisfying any credential gate with any held credential, no forgery required. `SorchaWalletPresentationConsumer.VerifyAsync` now **always** rebuilds the `VerifierSession` from the pending-presentation `PresentationInitiationContext` (`Nonce`, `CredentialType`, `RequiredClaimNames`, resolved `ClientId`); nothing under the wire payload's shape can influence which session the validator checks against. System.Text.Json silently drops an unknown `session` property a stale or malicious caller still sends.
+
 ### Server surface (extends F111's existing surface)
 
 | Method | Path | Owner | Status |
