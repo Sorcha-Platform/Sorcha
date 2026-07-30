@@ -345,18 +345,51 @@ not entitled to is what an attempted schema-validation bypass looks like on the 
 
 ## gRPC Services
 
-> **⚠️ The gRPC surface is currently UNAUTHENTICATED.** `app.MapGrpcService<ValidatorGrpcService>()`
-> in `Program.cs` carries no `.RequireAuthorization(...)`, while every REST group in the same file
-> does — and compose publishes the gRPC port (`5801:8081`). This is a platform-wide gap, not
-> specific to this service: no `MapGrpcService` call anywhere in the repo is authorized, and no
-> `*GrpcService` class carries `[Authorize]`.
->
-> It is **not** a one-line fix. `ConsensusEngine.CollectVoteFromValidatorAsync` and
-> `SignatureCollector.RequestSignatureAsync` both build a plain `GrpcChannel` with no credentials,
-> so simply adding a policy would break validator-to-validator consensus outright. Even fixing
-> both call sites leaves a rolling-deploy window in which updated nodes reject not-yet-updated
-> peers' votes. Tracked separately from the signed-discriminator fix above so that a network-wide
-> change is rolled out deliberately (client-side token attachment first, enforcement second).
+### gRPC access is TIERED, not blanket-authorized
+
+`MapGrpcService<ValidatorGrpcService>()` is deliberately **not** behind
+`.RequireAuthorization(...)`, even though every REST group in the same `Program.cs` is.
+
+**Why a blanket gate would be wrong, not merely inconvenient.** Validator-to-validator consensus is
+federated across *installations*, and Sorcha service tokens are installation-scoped by design
+(Feature 136: issuer `urn:sorcha:{installation}`, audience `{installation}:service`, and bearer
+validation deliberately **rejects** another installation's tokens). Requiring a token here would not
+create a rolling-deploy window — it would **permanently sever consensus between installations**.
+`PeerAuthInterceptor` already encodes the same conclusion: it validates a token when one is present,
+otherwise lets the peer through "with lower trust" (FR-014), and sets `ValidateAudience = false`
+precisely because "peer-to-peer traffic may not have audience set".
+
+**What actually authenticates consensus is the payload, not the transport.** Votes, signatures and
+dockets carry signatures verified against the **validator roster**: `ConsensusEngine
+.CollectVoteFromValidatorAsync` resolves the voter via `IValidatorRegistry.GetValidatorAsync`, and
+`DocketConfirmer` calls `IValidatorRegistry.IsRegisteredAsync`. The roster is installation-neutral,
+which is exactly why it — not an installation-scoped JWT — is the right trust anchor. A forged vote
+or docket from a stranger fails roster verification regardless of transport auth.
+
+So the residual risk was never forgery; it was methods that mutate local state without a
+roster-verified payload, plus resource exhaustion. `ValidatorGrpcAccessInterceptor` therefore
+classifies the caller (a token if presented — an invalid or expired one degrades to anonymous rather
+than failing the call — plus the Feature 175 mTLS node-identity thumbprint) and **enforces**
+`ValidatorGrpcAccessPolicy`:
+
+| RPC | Unauthenticated caller | Why |
+|-----|------------------------|-----|
+| `RequestVote` | ✅ allowed | vote signature resolved against the roster |
+| `ValidateDocket` | ✅ allowed | read-only with respect to the chain |
+| `ExchangeSignature` | ✅ allowed | collector rejects duplicate / invalid entries |
+| `ReceiveConfirmedDocket` | ✅ allowed | initiator must be a registered validator |
+| `GetHealthStatus` | ✅ allowed | liveness — a validator that cannot be probed cannot be federated with |
+| `ReceiveTransaction` | ❌ refused | mempool ingest: no roster gate on admission, no cross-installation caller |
+| *anything new* | ❌ refused | **fails closed** — private by default |
+
+`ValidatorGrpcAccessPolicyTests` reflects over the generated `ValidatorServiceBase` and fails if any
+RPC is unclassified **or** if the policy names an RPC that no longer exists — so adding an RPC to the
+proto forces a deliberate access decision instead of silently publishing it.
+
+**Known gap elsewhere:** `PeerAuthInterceptor` sets `IsAuthenticatedKey` and the node-identity
+thumbprint, but **nothing in the repo consumes them** — the Peer service classifies callers and then
+treats them all alike, so FR-014's "lower trust" half is inert there. Peer's RPCs need the same
+enforcement step this service now has.
 
 ### Proto Definition Location
 `specs/002-validator-service/contracts/validator.proto`
