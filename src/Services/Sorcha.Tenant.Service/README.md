@@ -553,6 +553,52 @@ The Tenant Service also exposes passkey public key data used by the Wallet Servi
 
 **Note:** Internal endpoints are excluded from public API documentation.
 
+### Caller-organisation binding (required on every org-scoped route)
+
+`RequireAdministrator` is **not** an organisation check. It is literally
+`RequireRole("SystemAdmin", "Administrator")` and never inspects `org_id`. Composing
+`RequirePlatformAudience` on top adds a *tier* check, not an organisation one. Neither answers
+"*whose* organisation may this administrator administer?"
+
+Any route whose template names an organisation must therefore also apply
+**`.RequireCallerOrganization()`** (`Authorization/CallerOrganizationGate.cs`):
+
+```csharp
+var group = app.MapGroup("/api/organizations/{organizationId:guid}/invitations")
+    .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")  // is an admin at all
+    .RequireCallerOrganization();                                             // of THIS org
+```
+
+The gate allows: **service tokens** (internal S2S, not org-scoped); a **platform SystemAdmin**
+(`SystemAdmin` role **and** membership of `WellKnownIds.SystemAdminOrgId` — mirroring the
+`RequireSystemAdmin` policy's own test, so a stray `SystemAdmin` role claim in another org buys
+nothing); otherwise the caller's `org_id` **must equal** the route's organisation, else **403** with
+a `SEC-AUDIT` log. Applied to a route with no organisation id in its template it **fails closed** —
+a mis-wiring must not look like a working control. It reads both `{organizationId}` and `{orgId}`.
+
+**Cross-org access by a genuine platform SystemAdmin is intended and preserved** — verified live on
+n1, where the seeded `admin@sorcha.local` reads other organisations deliberately.
+
+**Why this was needed (B2+, 2026-07-29 catch-up security review):** six org-scoped groups had *zero*
+caller-org binding, and no handler compared the caller either. An `Administrator` of org A could
+read org B's audit log, alter its custom domain and domain restrictions, read its dashboard, manage
+its invitations (a resend **rotates the token and emails the invitee**), and — worst — **add users to
+org B, change their roles, and suspend them**. Confirmed empirically before the fix: a plain
+Administrator of one organisation reached four other organisations' routes with HTTP 200. That the
+codebase knows how to bind org is not in doubt — `RequireSystemAdmin` does exactly this check — so
+its absence here was a gap, not a decision.
+
+**Gated today:** `InvitationEndpoints`, `AuditEndpoints`, `CustomDomainEndpoints`,
+`DomainRestrictionEndpoints`, `DashboardEndpoints` (both `/dashboard` and `/dashboard-summary`), and
+the 13 per-organisation routes in `OrganizationEndpoints` (user management + recovery-config).
+
+**NOT yet gated — known outstanding, each needs its own judgement rather than a blanket sweep:**
+`IdpConfigurationEndpoints`, `OrgSettingsEndpoints`, `ParticipantEndpoints`,
+`PlatformOrgEndpoints`, `RegisterInvitationEndpoints`, `RegisterSubscriptionEndpoints`.
+`PlatformOrgEndpoints` in particular is *probably* intentionally cross-org (platform topology
+administration) and must not be gated reflexively. `InternalEndpoints` and the DID-document
+regenerate route are `RequireService` and out of scope.
+
 ### Organisation DID Documents (`/orgs/...`) — Feature 120
 
 Per-organisation W3C DID documents. Contract:
