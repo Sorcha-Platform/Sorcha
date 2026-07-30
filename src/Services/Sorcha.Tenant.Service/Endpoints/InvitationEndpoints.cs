@@ -11,6 +11,8 @@ using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 
+using Sorcha.Tenant.Service.Authorization;
+
 namespace Sorcha.Tenant.Service.Endpoints;
 
 /// <summary>
@@ -25,7 +27,11 @@ public static class InvitationEndpoints
     {
         var group = app.MapGroup("/api/organizations/{organizationId:guid}/invitations")
             .WithTags("Invitations")
-            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
+            // B2+ (2026-07-29 review): role+tier alone never compared the caller to {organizationId},
+            // so an administrator of org A could resend org B's invitations -- rotating B's token
+            // and emailing B's invitee.
+            .RequireCallerOrganization();
 
         group.MapPost("/", CreateInvitation)
             .WithName("CreateInvitation")
