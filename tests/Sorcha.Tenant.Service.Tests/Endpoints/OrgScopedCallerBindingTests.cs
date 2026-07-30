@@ -6,6 +6,10 @@ using System.Net.Http.Json;
 
 using FluentAssertions;
 
+using Microsoft.AspNetCore.Routing;
+
+using Sorcha.Tenant.Service.Authorization;
+using Sorcha.Tenant.Service.Endpoints;
 using Sorcha.Tenant.Service.Tests.Infrastructure;
 
 namespace Sorcha.Tenant.Service.Tests.Endpoints;
@@ -270,18 +274,94 @@ public class OrgScopedCallerBindingTests : IClassFixture<TenantServiceWebApplica
     public async Task PlatformOrgEndpoints_AreNotGated_TheyAreSystemAdminOrgScopedByPolicy()
     {
         // Deliberate NON-change, pinned so nobody "completes the sweep" by gating it later.
+        //
         // /api/platform/organizations is cross-org BY DESIGN (platform topology administration) and
         // is already correctly scoped: RequireSystemAdmin AND RequirePlatformAuditor both assert
-        // membership of the system-admin org, not merely a role. Adding a caller-org bind keyed on
-        // the ROUTE's {orgId} would refuse the platform admin for every organisation but their own —
-        // breaking a real capability while appearing to harden it.
-        var client = CreateSystemAdminClient();
+        // membership of the system-admin org, not merely a role.
+        //
+        // The principal that WOULD be broken by adding the bind is NOT the SystemAdmin — the gate
+        // exempts SystemAdmin-in-system-admin-org unconditionally. It is a **platform auditor**:
+        // RequirePlatformAuditor admits an `Auditor` (or `Administrator`) role in the system-admin
+        // org, and that principal has NO exemption arm in the gate, so a route-org comparison would
+        // refuse them for every organisation except `…0001`.
+        //
+        // This is asserted against ROUTE METADATA, not by driving a request. An earlier version of
+        // this test drove the route with a SystemAdmin client and asserted "not Forbidden" — which
+        // the gate's SystemAdmin exemption satisfies whether or not the gate is applied, so it could
+        // never have detected the regression it claimed to pin. (Caught in review of #1346.)
+        var endpoints = EndpointAuthorizationMetadata.Collect(rb => rb.MapPlatformOrgEndpoints());
+
+        var orgScoped = endpoints
+            .Where(e => e.RoutePattern.RawText!.Contains("{orgId", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        orgScoped.Should().NotBeEmpty("PlatformOrgEndpoints must expose per-organisation routes");
+
+        foreach (var endpoint in orgScoped)
+        {
+            endpoint.Metadata.GetMetadata<CallerOrganizationRequiredMetadata>().Should().BeNull(
+                $"'{endpoint.RoutePattern.RawText}' is intentionally cross-organisation — it is scoped "
+                + "by system-admin-org membership in RequireSystemAdmin / RequirePlatformAuditor. "
+                + "Binding it to the route's organisation would refuse a platform AUDITOR for every "
+                + "organisation but the system-admin org, breaking a real capability.");
+        }
+    }
+
+    [Fact]
+    public async Task AnyAuthenticatedNonAdmin_ReadingAnotherOrgsParticipantByUser_IsForbidden()
+    {
+        // ParticipantEndpoints maps TWO groups on the SAME prefix. Wave 2 gated `orgGroup` but not
+        // `serviceGroup`, whose GET /by-user/{userId} carried plain .RequireAuthorization() — no role
+        // check, no caller-org bind — and resolves the participant straight from route values. So any
+        // authenticated principal, including a citizen, could read a participant record for any user
+        // in any organisation. (Caught in review of #1346.)
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Role", "Consumer");
+        client.DefaultRequestHeaders.Add("X-Test-User-Id", Guid.NewGuid().ToString());
+        client.DefaultRequestHeaders.Add("X-Test-Organization-Id", CallerOwnOrgId.ToString());
 
         var response = await client.GetAsync(
-            $"/api/platform/organizations/{ForeignOrgId}/users");
+            $"/api/organizations/{ForeignOrgId}/participants/by-user/{Guid.NewGuid()}");
 
-        response.StatusCode.Should().NotBe(HttpStatusCode.Forbidden,
-            "platform topology administration is intentionally cross-organisation");
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden,
+            "a second group sharing a route prefix must be bound too — participant records in another "
+            + "organisation are not readable by any signed-in principal");
+    }
+
+    [Fact]
+    public void EveryOrgScopedRouteInTheGatedFiles_CarriesTheBind()
+    {
+        // Enumerates BY ROUTE PREFIX rather than by group variable. The wave-2 miss happened because
+        // ParticipantEndpoints declares two groups on one prefix and only one was gated — a
+        // per-group review cannot see that, but a per-route sweep can.
+        var maps = new (string Name, Action<IEndpointRouteBuilder> Map)[]
+        {
+            ("Invitation", rb => rb.MapInvitationEndpoints()),
+            ("Audit", rb => rb.MapAuditEndpoints()),
+            ("CustomDomain", rb => rb.MapCustomDomainEndpoints()),
+            ("DomainRestriction", rb => rb.MapDomainRestrictionEndpoints()),
+            ("IdpConfiguration", rb => rb.MapIdpConfigurationEndpoints()),
+            ("OrgSettings", rb => rb.MapOrgSettingsEndpoints()),
+            ("Participant", rb => rb.MapParticipantEndpoints()),
+            ("RegisterInvitation", rb => rb.MapRegisterInvitationEndpoints()),
+            ("RegisterSubscription", rb => rb.MapRegisterSubscriptionEndpoints()),
+        };
+
+        foreach (var (name, map) in maps)
+        {
+            var endpoints = EndpointAuthorizationMetadata.Collect(map);
+
+            var orgScoped = endpoints.Where(e =>
+                e.RoutePattern.RawText!.Contains("/api/organizations/{organizationId", StringComparison.OrdinalIgnoreCase)
+                || e.RoutePattern.RawText!.Contains("/api/organizations/{orgId", StringComparison.OrdinalIgnoreCase));
+
+            foreach (var endpoint in orgScoped)
+            {
+                endpoint.Metadata.GetMetadata<CallerOrganizationRequiredMetadata>().Should().NotBeNull(
+                    $"[{name}] '{endpoint.RoutePattern.RawText}' names an organisation in its route, so "
+                    + "the caller must be bound to it — RequireAdministrator is a role check only");
+            }
+        }
     }
 
     [Theory]
