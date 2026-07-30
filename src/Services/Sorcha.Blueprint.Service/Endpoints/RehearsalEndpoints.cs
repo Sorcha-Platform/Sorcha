@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 
 using Sorcha.Blueprint.Service.Extensions;
 using Sorcha.Blueprint.Service.Services.Interfaces;
+using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Blueprint.Models;
 
 namespace Sorcha.Blueprint.Service.Endpoints;
@@ -110,7 +111,7 @@ public static class RehearsalEndpoints
             return TypedResults.Forbid();
         }
 
-        var platformUserId = ResolvePlatformUserId(context);
+        var platformUserId = ResolvePlatformUserId(context.User);
 
         try
         {
@@ -203,14 +204,38 @@ public static class RehearsalEndpoints
     }
 
     /// <summary>
-    /// Resolves the platform user id from the caller's claims (<c>NameIdentifier</c> then <c>sub</c>).
-    /// Returns <see cref="Guid.Empty"/> when absent or non-GUID — the id is only used to attribute the
-    /// recorded RehearsalPass and is not a trust boundary.
+    /// Resolves the initiating <c>PlatformUser.Id</c> from the caller's claims: the
+    /// <c>platform_user_id</c> claim (Feature 136, present on every human-tier token) first, falling
+    /// back to <c>NameIdentifier</c>/<c>sub</c> only for tokens minted before that claim existed.
+    /// Returns <see cref="Guid.Empty"/> when neither is present or parseable.
     /// </summary>
-    private static Guid ResolvePlatformUserId(HttpContext context)
+    /// <remarks>
+    /// The preference order matters and is not cosmetic. <c>sub</c> is <c>UserIdentity.Id</c>;
+    /// <c>platform_user_id</c> is <c>PlatformUser.Id</c>. <c>RegistrationService</c> generates the two
+    /// independently (separate <c>Guid.NewGuid()</c> calls linked only by a FK), so they differ for
+    /// every real user and coincide only for the seeded default admin, where <c>DatabaseInitializer</c>
+    /// deliberately reuses <c>WellKnownIds.DefaultAdminUserId</c> for both rows.
+    /// <para>
+    /// Since #1284 this value is no longer a mere attribution label:
+    /// <c>RehearsalOrchestrationService</c> mints it as the <c>platform_user_id</c> claim on the
+    /// synthetic rehearsal caller, and <c>ActionExecutionService</c> passes it to
+    /// <c>IPlatformUserClaimsClient.ResolveAsync</c> to resolve x-claim-source bindings. A
+    /// <c>UserIdentity.Id</c> matches no <c>PlatformUser</c> row, so reading <c>sub</c> here 404s and
+    /// fails the step for every non-seed user — the exact blueprints (AIAS assured-identity among
+    /// them) that #1284 set out to unblock. The destination field is named
+    /// <c>RehearsedByPlatformUserId</c>; <c>PlatformUser.Id</c> was always the intent.
+    /// </para>
+    /// </remarks>
+    internal static Guid ResolvePlatformUserId(ClaimsPrincipal user)
     {
-        var raw = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? context.User.FindFirst("sub")?.Value;
+        var platformUserId = user.FindFirst(TokenClaimConstants.PlatformUserId)?.Value;
+        if (Guid.TryParse(platformUserId, out var pid))
+        {
+            return pid;
+        }
+
+        var raw = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? user.FindFirst("sub")?.Value;
         return Guid.TryParse(raw, out var id) ? id : Guid.Empty;
     }
 }
