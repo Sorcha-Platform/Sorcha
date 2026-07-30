@@ -50,6 +50,13 @@ namespace Sorcha.Blueprint.Service.Tests.Storage;
 /// </description></item>
 /// </list>
 /// <para>
+/// <b>Why nothing caught it:</b> <c>InMemoryInstanceStore.UpdateAsync</c> stores the model <i>by
+/// reference</i> (<c>_instances[instance.Id] = instance</c>), so every field round-trips for free.
+/// The EF Core store is the only <c>IInstanceStore</c> with a hand-written copy list, and it had no
+/// round-trip test at all — so the suite exercised the one implementation that structurally cannot
+/// exhibit the bug, and never the one deployments run.
+/// </para>
+/// <para>
 /// The round-trip test below is written against the whole model rather than the one field, because
 /// the defect is structural: the next field added to <c>Instance</c> can be forgotten the same way.
 /// </para>

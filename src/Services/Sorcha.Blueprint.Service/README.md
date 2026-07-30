@@ -466,10 +466,17 @@ run in milliseconds.
 > 2. **This rehearsal wait**, which is why the go-live gate stayed unearnable in any
 >    Postgres deployment even after the projection change above.
 >
-> `EfCoreInstanceStoreUpdateRoundTripTests` guards it, and deliberately asserts over the
-> **whole model by reflection** rather than this one field — the defect is the
-> hand-maintained copy list, so the next property added to `Instance` can be dropped the
-> same way.
+> **Why no test caught it:** `InMemoryInstanceStore.UpdateAsync` stores the model **by
+> reference** (`_instances[instance.Id] = instance`), so every field round-trips for free.
+> The EF Core store is the only `IInstanceStore` with a hand-written copy list, so the
+> in-memory suite could never see the difference — and the EF Core store had no
+> round-trip test at all. A test that exercises only the reference-semantics store proves
+> nothing about the one deployments actually run.
+>
+> `EfCoreInstanceStoreUpdateRoundTripTests` guards it against the **EF Core** store
+> specifically, and deliberately asserts over the **whole model by reflection** rather
+> than this one field — the defect is the hand-maintained copy list, so the next property
+> added to `Instance` can be dropped the same way.
 
 **This works because sandbox-register dockets seal automatically.** Register
 creation embeds the local validator on the roster when none is supplied
