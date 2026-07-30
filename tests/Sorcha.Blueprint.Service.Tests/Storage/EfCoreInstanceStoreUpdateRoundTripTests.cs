@@ -4,19 +4,17 @@
 using System.Reflection;
 using System.Text.Json.Nodes;
 
-using FluentAssertions;
-
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
-using Microsoft.Extensions.DependencyInjection;
+using FluentAssertions;
+using Moq;
 
 using Sorcha.Blueprint.Service.Data;
 using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.Blueprint.Service.Storage;
-
-using Moq;
 
 namespace Sorcha.Blueprint.Service.Tests.Storage;
 
@@ -69,9 +67,21 @@ public class EfCoreInstanceStoreUpdateRoundTripTests
     /// </summary>
     private static readonly Dictionary<string, string> NotRoundTripped = new()
     {
-        ["Version"] = "UpdateAsync increments it — that is the optimistic-concurrency contract",
-        ["UpdatedAt"] = "UpdateAsync stamps it to UtcNow by design",
-        ["TenantId"] = "not a column; persisted inside the Metadata dictionary",
+        // TenantId does NOT round-trip, and this entry is load-bearing for the test staying green.
+        // It is a pre-existing gap of exactly the class this file exists to catch, kept separate
+        // because closing it needs an entity column + a migration, which under this repo's
+        // squashed-migration rule is a deployment decision rather than a code change:
+        //   - InstanceEntity has NO TenantId column at all, so neither ToEntity nor UpdateAsync can
+        //     persist it;
+        //   - ToModel reads it back via metadata.GetValueOrDefault("TenantId", string.Empty), but
+        //     NOTHING anywhere writes Metadata["TenantId"] — grep the solution;
+        //   - so every instance read from Postgres has TenantId == "", despite the model declaring
+        //     it `required`.
+        // No authorization decision currently reads it back off a stored instance (it is written at
+        // projection time and consumed in-flight), so this is silent data loss rather than a
+        // security hole — but do not let this entry read as "handled elsewhere".
+        ["TenantId"] = "PRE-EXISTING BUG, not by design — no column exists and nothing writes the " +
+                       "Metadata fallback, so it always reads back empty. See the comment above.",
     };
 
     private static EfCoreInstanceStore CreateStore(string dbName)
@@ -137,7 +147,11 @@ public class EfCoreInstanceStoreUpdateRoundTripTests
         i.State = InstanceState.Completed;
         i.CurrentActionIds = [3, 5];
         i.ParticipantWallets["reviewer"] = "ws-r";
-        i.FirstTransactionId = "tx-first";      // immutable by design once set
+        // Must differ from the seed. Setting it back to the seed value would make the guard vacuous
+        // for this field: CreateAsync already persisted that value, so expected and actual would
+        // compare equal whether or not UpdateAsync copies it — the exact silent-drop bug this file
+        // exists to catch, undetected on the field adjacent to the one that was dropped.
+        i.FirstTransactionId = "tx-first-mutated";
         i.LastTransactionId = "tx-second";
         i.CompletedActionCount = 2;
         i.AccumulatedData["field"] = "value";
@@ -183,6 +197,14 @@ public class EfCoreInstanceStoreUpdateRoundTripTests
 
         var reread = await store.GetAsync("inst-all-fields");
         reread.Should().NotBeNull();
+
+        // Version and UpdatedAt go through the reflection loop below rather than being excluded.
+        // UpdateAsync stamps both onto the SAME instance object the test holds as `created`, so the
+        // comparison is still meaningful — and excluding them would mean nothing in the repo fails
+        // if `entity.Version = instance.Version` is deleted, silently freezing the
+        // IsConcurrencyToken()-configured column at 0 and disabling optimistic concurrency.
+        reread!.Version.Should().Be(1, "UpdateAsync increments the concurrency token and persists it");
+        reread.UpdatedAt.Should().BeAfter(reread.CreatedAt, "UpdateAsync stamps UpdatedAt");
 
         var dropped = new List<string>();
         foreach (var prop in typeof(Instance).GetProperties(BindingFlags.Public | BindingFlags.Instance))
