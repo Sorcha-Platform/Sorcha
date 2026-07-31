@@ -16,6 +16,7 @@ namespace Sorcha.UI.Components.User.Services.Verification;
 public sealed class DefaultPresetCatalogue : IVerificationPresetCatalogue
 {
     private const string AssuredIdentityVct = VctUris.AssuredIdentityV1;
+    private const string CyberLevelVct = VctUris.CyberLevelV1;
 
     /// <summary>
     /// Builtin presets, used when no presets are configured. Mirrors the desk verifier's original
@@ -39,6 +40,25 @@ public sealed class DefaultPresetCatalogue : IVerificationPresetCatalogue
             RequiredClaims: new[] { "fullName", "portrait" },
             OptionalClaims: new[] { "dateOfBirth" },
             KnownCredentialClaims: new[] { "age_over_18", "portrait", "fullName", "dateOfBirth" }),
+        // AIAS M3. Without this the Cyber Level credential could be ISSUED but never REQUESTED —
+        // this catalogue is what every verify surface drives, and it carried only the two Assured
+        // Identity presets. Deliberately a builtin rather than per-deployment config: two of the
+        // three surfaces (the web /app client and the wallet PWA) are Blazor WebAssembly, so their
+        // configuration is a wwwroot/appsettings.json baked into the image — "just configure it"
+        // is not a deployment knob there, and the kiosk sets no VerifierPresets either.
+        //
+        // level + portrait are BOTH required because the design's claim is a verdict showing
+        // "photo + selective level disclosure"; a verdict missing either is not that claim. The
+        // name claims stay optional so a holder can prove their level without identifying
+        // themselves. Claim names track the aias-cyber-level template's `disclosable` set.
+        new VerificationPreset(
+            Key: "cyber-level",
+            Label: "Cyber level",
+            Purpose: "Confirm the holder's certified cyber level",
+            RequiredVct: CyberLevelVct,
+            RequiredClaims: new[] { "level", "portrait" },
+            OptionalClaims: new[] { "givenName", "familyName" },
+            KnownCredentialClaims: new[] { "level", "portrait", "givenName", "familyName" }),
     };
 
     private readonly IReadOnlyList<VerificationPreset> _presets;
