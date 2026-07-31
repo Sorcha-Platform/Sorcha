@@ -23,6 +23,20 @@ namespace Sorcha.Wallet.Service.Tests.Extensions;
 public class AddWalletDatabaseStorageRegistrationTests
 {
     private static readonly string AuditedInterface = typeof(IWalletRepository).FullName!;
+    private static readonly string HolderLookupInterface =
+        typeof(Sorcha.Wallet.Service.Services.Interfaces.IHolderAddressLookup).FullName!;
+
+    /// <summary>
+    /// Finds a registration by interface name. Both registrations this method makes are driven by
+    /// the same connection-string branch, so asserting on positional index would break every time
+    /// the branch gains a member — and would silently assert against the wrong interface rather
+    /// than fail loudly.
+    /// </summary>
+    private static StorageRegistrationRecord Record(IServiceCollection services, string interfaceName)
+    {
+        var snapshot = services.GetStorageRegistrationLog().Snapshot();
+        return snapshot.Should().ContainSingle(r => r.InterfaceName == interfaceName).Subject;
+    }
 
     private static IConfiguration Config(Dictionary<string, string?>? values = null) =>
         new ConfigurationBuilder()
@@ -44,14 +58,51 @@ public class AddWalletDatabaseStorageRegistrationTests
 
         services.AddWalletDatabase(Config());
 
-        var snapshot = services.GetStorageRegistrationLog().Snapshot();
-        snapshot.Should().HaveCount(1);
-        snapshot[0].InterfaceName.Should().Be(AuditedInterface);
-        snapshot[0].IsInMemory.Should().BeTrue();
-        snapshot[0].IsAudited.Should().BeTrue();
-        snapshot[0].ImplementationName.Should().EndWith("InMemoryWalletRepository");
-        snapshot[0].Reason.Should().Contain("ConnectionStrings:Wallet:Postgres");
-        snapshot[0].Reason.Should().Contain("ConnectionStrings:Sorcha:Postgres");
+        var repository = Record(services, AuditedInterface);
+        repository.IsInMemory.Should().BeTrue();
+        repository.IsAudited.Should().BeTrue();
+        repository.ImplementationName.Should().EndWith("InMemoryWalletRepository");
+        repository.Reason.Should().Contain("ConnectionStrings:Wallet:Postgres");
+        repository.Reason.Should().Contain("ConnectionStrings:Sorcha:Postgres");
+    }
+
+    [Fact]
+    public void NoConnectionString_RegistersInMemoryHolderAddressLookup()
+    {
+        // IHolderAddressLookup used to be an unconditional AddScoped to the EF Core implementation
+        // in Program.cs, which cannot be activated without a WalletDbContext — so the supported
+        // no-Postgres path 500'd on every endpoint that touched it, including POST /api/v1/wallets.
+        var services = NewServicesWithStorageRegistration();
+
+        services.AddWalletDatabase(Config());
+
+        var lookup = Record(services, HolderLookupInterface);
+        lookup.IsInMemory.Should().BeTrue();
+        lookup.ImplementationName.Should().EndWith("InMemoryHolderAddressLookup");
+        lookup.Reason.Should().Contain("ConnectionStrings:Wallet:Postgres");
+
+        // Deliberately NOT audited: it shares IWalletRepository's connection-string branch, so it
+        // can never be the only audited interface on an in-memory backend — the repository's
+        // fail-fast already covers exactly the same condition. Listing it would add a second
+        // identical trigger, not a second safeguard.
+        lookup.IsAudited.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ConnectionString_RegistersEfCoreHolderAddressLookup()
+    {
+        var services = NewServicesWithStorageRegistration();
+        var config = Config(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Wallet:Postgres"] = "Host=wallet-pg;Username=wallet"
+        });
+
+        services.AddWalletDatabase(config);
+
+        var lookup = Record(services, HolderLookupInterface);
+        lookup.IsInMemory.Should().BeFalse();
+        lookup.Backend.Should().Be("postgres");
+        lookup.ImplementationName.Should().EndWith("EfCoreHolderAddressLookup");
     }
 
     [Fact]
@@ -65,12 +116,11 @@ public class AddWalletDatabaseStorageRegistrationTests
 
         services.AddWalletDatabase(config);
 
-        var snapshot = services.GetStorageRegistrationLog().Snapshot();
-        snapshot.Should().HaveCount(1);
-        snapshot[0].IsInMemory.Should().BeFalse();
-        snapshot[0].IsAudited.Should().BeTrue();
-        snapshot[0].Backend.Should().Be("postgres");
-        snapshot[0].ImplementationName.Should().EndWith("EfCoreWalletRepository");
+        var repository = Record(services, AuditedInterface);
+        repository.IsInMemory.Should().BeFalse();
+        repository.IsAudited.Should().BeTrue();
+        repository.Backend.Should().Be("postgres");
+        repository.ImplementationName.Should().EndWith("EfCoreWalletRepository");
     }
 
     [Fact]
@@ -84,10 +134,9 @@ public class AddWalletDatabaseStorageRegistrationTests
 
         services.AddWalletDatabase(config);
 
-        var snapshot = services.GetStorageRegistrationLog().Snapshot();
-        snapshot.Should().HaveCount(1);
-        snapshot[0].IsInMemory.Should().BeFalse();
-        snapshot[0].Backend.Should().Be("postgres");
+        var repository = Record(services, AuditedInterface);
+        repository.IsInMemory.Should().BeFalse();
+        repository.Backend.Should().Be("postgres");
     }
 
     [Fact]

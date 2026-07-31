@@ -193,10 +193,13 @@ builder.Services.GetStorageRegistrationLog().RegisterPersistent(
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ICitizenSyncService,
     Sorcha.Wallet.Service.Services.Implementation.CitizenSyncService>();
 
-// Feature 114 / US4: Holder-address index + citizen-inbox projector. Both
-// scoped because they consume WalletDbContext.
-builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHolderAddressLookup,
-    Sorcha.Wallet.Service.Services.Implementation.EfCoreHolderAddressLookup>();
+// Feature 114 / US4: citizen-inbox projector. Scoped because it consumes WalletDbContext.
+//
+// IHolderAddressLookup is NOT registered here. It used to be, unconditionally, bound to the EF Core
+// implementation — which cannot be activated without a WalletDbContext, and the DbContext is
+// registered only when a Postgres connection string is present. On the supported no-Postgres path
+// (Pattern #13) every endpoint touching the lookup returned 500. It now lives in
+// WalletServiceExtensions.AddWalletDatabase, next to the branch that decides its backend.
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ICitizenInboxProjector,
     Sorcha.Wallet.Service.Services.Implementation.CitizenInboxProjector>();
 

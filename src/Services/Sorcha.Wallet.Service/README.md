@@ -366,6 +366,38 @@ External Libraries:
 
 > **The service has no `Repositories/` directory and no in-memory `WalletRepository`/`AddressRepository`** — those never existed here. The real store is `IWalletRepository` → `EfCoreWalletRepository` (PostgreSQL), which lives in the **`Sorcha.Wallet.Core`** library (this matches the Architecture → Repositories section above). Address registration is `IAddressRegistrationService`, not an `IAddressRepository`.
 
+### Storage backends are chosen in one place
+
+`WalletServiceExtensions.AddWalletDatabase` owns the Postgres-or-in-memory decision (the
+`SorchaConnections` cascade: `ConnectionStrings:Wallet:Postgres` → `ConnectionStrings:Sorcha:Postgres`)
+and registers **every** interface whose backend depends on it, recording each through
+`IStorageRegistrationLog` (Pattern #13):
+
+| Interface | With Postgres | Without |
+|---|---|---|
+| `IWalletRepository` (audited) | `EfCoreWalletRepository` | `InMemoryWalletRepository` |
+| `IHolderAddressLookup` | `EfCoreHolderAddressLookup` | `InMemoryHolderAddressLookup` |
+
+> **Do not register a `WalletDbContext`-consuming service outside this branch.** `IHolderAddressLookup`
+> was registered unconditionally in `Program.cs` bound to the EF Core implementation, which cannot be
+> activated without a `WalletDbContext` — and the DbContext exists only on the Postgres branch. On the
+> supported no-Postgres path (Pattern #13 explicitly allows it outside Production) every endpoint that
+> touched the lookup returned 500 with *"Unable to resolve service for type WalletDbContext"*,
+> including `POST /api/v1/wallets`. This is what held `Sorcha.Wallet.Service.IntegrationTests` at
+> **5/33** after the host-startup fix in #1339, and that suite is the service's only HTTP-level
+> authorization coverage — a large part of why the wallet-ownership holes fixed in #1340 survived
+> review. It is now **33/33**.
+>
+> `IHolderAddressLookup` is deliberately **not** on the audited list: it shares `IWalletRepository`'s
+> branch, so it can never be the only audited interface on an in-memory backend — the repository's
+> fail-fast already covers the identical condition. Listing it would add a second identical trigger,
+> not a second safeguard.
+>
+> The two implementations are held to the same behaviour by `HolderAddressLookupParityTests`, which
+> runs one set of assertions against both (ordinal address matching, idempotent registration,
+> conflicting writes keep the first entry). An in-memory stand-in that behaved differently would turn
+> 33 green integration tests into 33 tests that prove nothing about production.
+
 ### Running Tests
 
 ```bash
