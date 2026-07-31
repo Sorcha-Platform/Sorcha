@@ -3,6 +3,7 @@
 
 using FluentAssertions;
 using Microsoft.Extensions.Options;
+using Sorcha.CitizenWallet.Abstractions.Constants;
 using Sorcha.UI.Components.User.Services.Verification;
 using Xunit;
 
@@ -55,6 +56,42 @@ public class DefaultPresetCatalogueTests
         catalogue.GetAll()[0].RequiredClaims.Should().Equal("licenceNumber", "categories");
         // Builtin presets are NOT returned once a config set is supplied.
         catalogue.GetByKey("age-over-18").Should().BeNull();
+    }
+
+    [Fact]
+    public void Builtin_CarriesACyberLevelPreset()
+    {
+        // AIAS M3 — the Cyber Level credential could be ISSUED but no surface could REQUEST it:
+        // the builtin catalogue only carried the two Assured Identity presets, and the catalogue is
+        // what every verify surface drives. Added as a builtin rather than per-deployment config
+        // because two of the three surfaces (web /app client, wallet PWA) are Blazor WebAssembly —
+        // their configuration is a wwwroot/appsettings.json baked into the image, so "just configure
+        // it" is not a deployment knob there.
+        var preset = Build().GetByKey("cyber-level");
+
+        preset.Should().NotBeNull("no verify surface can request a credential type absent from the catalogue");
+        preset!.RequiredVct.Should().Be(VctUris.CyberLevelV1);
+
+        // The design calls for the verdict to show "photo + selective level disclosure", so both are
+        // required rather than optional — a verdict missing either is not the demo's claim.
+        preset.RequiredClaims.Should().BeEquivalentTo(new[] { "level", "portrait" });
+        preset.OptionalClaims.Should().BeEquivalentTo(new[] { "givenName", "familyName" });
+
+        // Every claim the credential actually carries (aias-cyber-level template `disclosable`),
+        // so the surface can render whatever the holder consents to.
+        preset.KnownCredentialClaims.Should()
+            .BeEquivalentTo(new[] { "level", "portrait", "givenName", "familyName" });
+    }
+
+    [Fact]
+    public void Builtin_CyberLevelPreset_RequestsOnlyClaimsTheCredentialCarries()
+    {
+        // A preset that asks for a claim the credential does not carry is unsatisfiable, and the
+        // holder sees "none of your credentials match" for a credential they genuinely hold.
+        var preset = Build().GetByKey("cyber-level")!;
+
+        preset.RequiredClaims.Concat(preset.OptionalClaims).Should()
+            .BeSubsetOf(preset.KnownCredentialClaims);
     }
 
     [Fact]

@@ -68,6 +68,43 @@ The UI.Core grant is intentional: UI.Core is privileged here because it shipped 
 | A view-model record used by user-facing components | `Models/User/{subject}/` |
 | A protocol or domain model shared by both audiences | `Models/Shared/{subject}/` |
 
+## Verification presets
+
+`Services/User/Verification/DefaultPresetCatalogue.cs` is the catalogue **every** verify surface
+drives — the standalone `Sorcha.Verifier` kiosk, the web `/app` client, and the wallet PWA. A
+credential type absent from it **cannot be requested by any surface**, however well its issuance
+works.
+
+The catalogue is config-driven: a `VerifierPresets` section overrides the builtin set. Builtin
+presets today:
+
+| Key | Credential | Required | Optional |
+|---|---|---|---|
+| `age-over-18` | Assured Identity | `age_over_18`, `portrait` | — |
+| `confirm-identity` | Assured Identity | `fullName`, `portrait` | `dateOfBirth` |
+| `cyber-level` | Cyber Level (AIAS M3) | `level`, `portrait` | `givenName`, `familyName` |
+
+> **New credential types belong in `Builtin`, not in per-deployment config.** Two of the three
+> surfaces (the web `/app` client and the wallet PWA) are Blazor **WebAssembly**, so their
+> configuration is a `wwwroot/appsettings.json` baked into the image — editing it means rewriting a
+> static file inside a container, not turning a deployment knob. The kiosk sets no `VerifierPresets`
+> either, so in practice every surface runs on the builtin set. Config remains the right mechanism
+> for a *deployment* that wants to replace the question set wholesale.
+
+**A preset must only request claims the credential actually carries.** Ask for one it doesn't and
+the request is unsatisfiable — the holder is told "none of your credentials match" for a credential
+they genuinely hold. `AssuredIdentityPresetRegressionTests` and `CyberLevelPresetRegressionTests`
+(both in `Sorcha.Wallet.Pwa.Tests`) guard this by running each preset through the real
+`DcqlRequestBuilder` → `PresentationEngine.MatchQuery` path rather than asserting the catalogue
+merely contains an entry — which would not catch wrong claims or a subtly wrong `vct`.
+
+**One preset names exactly one credential type.** `VerificationPreset.RequiredVct` is a single
+string, so an operator must pick the exact credential up front and a holder who has A but was asked
+for B simply fails. Widening this to alternatives is
+[#1351](https://github.com/Sorcha-Platform/Sorcha/issues/1351) / TRUST-011 — the engine underneath
+already supports it (`credential_sets`), and note that a *truly* generic "any credential" ask is not
+legal under OpenID4VP 1.0.
+
 ## EnrolGate (Feature 126)
 
 `Components/EnrolGate/` houses the council-page cold-start onboarding gate from Spec 3 of the Strathcarron citizen arc. Drop-in component that any council page wraps its application form in — handles all three citizen tiers (cold-start / mini-gate / fast-path) transparently.
