@@ -59,7 +59,7 @@ public class DefaultPresetCatalogueTests
     }
 
     [Fact]
-    public void Builtin_CarriesACyberLevelPreset()
+    public void GetByKey_CyberLevelKey_ReturnsPresetWithTheCredentialsClaims()
     {
         // AIAS M3 — the Cyber Level credential could be ISSUED but no surface could REQUEST it:
         // the builtin catalogue only carried the two Assured Identity presets, and the catalogue is
@@ -84,7 +84,7 @@ public class DefaultPresetCatalogueTests
     }
 
     [Fact]
-    public void Builtin_CyberLevelPreset_RequestsOnlyClaimsTheCredentialCarries()
+    public void GetByKey_CyberLevelKey_RequestsOnlyClaimsTheCredentialCarries()
     {
         // A preset that asks for a claim the credential does not carry is unsatisfiable, and the
         // holder sees "none of your credentials match" for a credential they genuinely hold.
