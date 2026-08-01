@@ -206,6 +206,50 @@ assertion failure.
 
 ---
 
+## Verify the Cyber Level (M3)
+
+```powershell
+./demos/AIAS/verify-cyber.ps1 -Target n1 -Email <citizen holding a Cyber Level credential>
+```
+
+Drives the whole verify moment headlessly: creates an OpenID4VP request for
+`https://sorcha.dev/vc/cyber-level/v1`, answers it **as the holder**, and reads the verifier's own
+result back. Exit 0 means the moment works. A passing run asserts `state=Verified`, `isValid=true`,
+`holderKeyVerified=true`, and that `level` + `portrait` were actually disclosed.
+
+The holder lives in **`lib/HolderPresentation.ps1`** (`Complete-SorchaWalletPresentation`), shared
+with `rehearse.ps1` — the same server-custody path `Sorcha.Wallet.Pwa`'s `Present.razor` uses
+(RFC 9901 `sd_hash` → KB-JWT signed by `POST /api/v1/wallet/presentations/sign-kb` → OpenID4VP
+object-keyed `vp_token` posted to the request's own `response_uri`). It is transport-agnostic
+because it reads `nonce`, `client_id` and `response_uri` **from the request object**, so the same
+function answers a blueprint credential gate and a verifier request.
+
+> **Why this is scriptable at all:** an AIAS credential is issued `SorchaLocalWallet` — an SD-JWT
+> encrypted to the citizen wallet's key with the holder private key in server custody — so there is
+> no device in the loop. The `sorcha-agent haip present` CLI holder **cannot** substitute: it
+> consumes an OpenID4VCI *offer* into a file wallet, and no offer exists for a SorchaLocalWallet
+> credential.
+
+Three things that will waste your time otherwise:
+
+- **Credentials arrive as OFFERS.** Feature 106 lands inbound register-native credentials as
+  `PendingAcceptance`, and the credential listing defaults to **Active only** — so a freshly-issued
+  credential is invisible to a plain `GET .../credentials` and reads as "holds no Cyber Level
+  credential" when they demonstrably do. Use `?status=All` and accept it (`PATCH .../credentials/{id}`
+  with `{"status":"Active"}`) as the script does. The rehearsals assert *delivery* and stop there, so
+  nothing else in the demo exercises acceptance.
+- **The create-response's `state` is the request STATUS enum**, not the OAuth `state` parameter — a
+  name collision. The OAuth state this request declares is the request id. Passing `$vreq.state`
+  gets you `"state parameter does not match the request"` from `direct_post`.
+- **The verifier result's `state` is on the envelope**, not inside `result`:
+  `{ requestId, state, result: { isValid, verifiedClaims, holderKeyVerified, … }, vpToken }`.
+
+The kiosk's `service-verifier` principal is registered with scope `blueprints:read`. The verifier
+endpoints gate on `RequireService` (token_type=service), **not** a `haip:*` scope — requesting a
+scope the principal does not hold returns 401, which looks exactly like "not provisioned".
+
+---
+
 ## Status & reset
 
 ```powershell
