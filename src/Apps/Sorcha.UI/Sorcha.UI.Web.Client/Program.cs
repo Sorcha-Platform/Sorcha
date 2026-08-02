@@ -190,6 +190,32 @@ builder.Services.AddHttpClient<Sorcha.UI.Core.Services.User.Devices.IHasPairedDe
     client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
 }).AddHttpMessageHandler<AuthenticatedHttpMessageHandler>();
 
+// Issue #1311 — the My Devices page's list + revoke. Registered auth-wrapped because both endpoints
+// are authenticated; the page previously used the ambient HttpClient (no Authorization header) and
+// so 401'd on every request, reporting it to the citizen as a connection problem.
+builder.Services.AddHttpClient<Sorcha.UI.Core.Services.User.Devices.IMyDevicesClient,
+                               Sorcha.UI.Core.Services.User.Devices.MyDevicesClient>(client =>
+{
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+}).AddHttpMessageHandler<AuthenticatedHttpMessageHandler>();
+
+// Issue #1311 — Feature 085 file-chunk upload. /api/file-chunks carries .RequireAuthorization(),
+// and FileReferenceField previously POSTed to it on the ambient HttpClient, so every chunk 401'd.
+builder.Services.AddHttpClient<Sorcha.UI.Core.Services.User.Files.IFileChunkUploadClient,
+                               Sorcha.UI.Core.Services.User.Files.FileChunkUploadClient>(client =>
+{
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+}).AddHttpMessageHandler<AuthenticatedHttpMessageHandler>();
+
+// Issue #1311 — the F079 verification-bundle download (CanReadTransactions). Only this ONE call of
+// ReceiptProofCard's two moves to a typed client: its sibling POST .../receipts/verify is genuinely
+// AllowAnonymous and deliberately stays on the ambient client.
+builder.Services.AddHttpClient<Sorcha.UI.Core.Services.User.Verification.IVerificationBundleClient,
+                               Sorcha.UI.Core.Services.User.Verification.VerificationBundleClient>(client =>
+{
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+}).AddHttpMessageHandler<AuthenticatedHttpMessageHandler>();
+
 // Feature 128 US3 — PWA-installability probe used by PairingHandoffSurface
 // to switch between the QR variant and the install-flavoured variant.
 // Singleton so the cached verdict survives across surface re-renders.

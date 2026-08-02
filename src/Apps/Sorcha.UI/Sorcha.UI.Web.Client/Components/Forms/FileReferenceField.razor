@@ -4,7 +4,8 @@
 @using Microsoft.AspNetCore.Components.Forms
 @using System.Security.Cryptography
 @using Sorcha.UI.Core.Models.Forms
-@inject HttpClient Http
+@using Sorcha.UI.Core.Services.User.Files
+@inject Sorcha.UI.Core.Services.User.Files.IFileChunkUploadClient ChunkUploadClient
 
 <MudStack Spacing="2">
 
@@ -370,30 +371,28 @@
     /// Returns the full server response including the chunk transaction ID,
     /// upload session ID, and salt.
     /// </summary>
-    private async Task<ChunkUploadResponse> PostChunkAsync(
+    private async Task<FileChunkUploadResult> PostChunkAsync(
         FileReferenceInfo info,
         int chunkIndex,
         int totalChunks,
         byte[] data,
         string? uploadSessionId)
     {
-        var request = new
-        {
-            senderWallet = SenderWallet,
-            registerAddress = RegisterAddress,
-            chunkIndex,
-            totalChunks,
-            fileHash = $"sha256:{info.Hash}",
-            contentType = info.ContentType,
-            contentBase64 = Convert.ToBase64String(data),
-            uploadSessionId  // null on first chunk; server-assigned ID on subsequent chunks
-        };
+        // Issue #1311 — through a typed, bearer-carrying client. This POSTed on the ambient
+        // HttpClient, which sends no Authorization header, while /api/file-chunks carries
+        // .RequireAuthorization() — so every chunk 401'd and F085 upload could not work at all.
+        var request = new FileChunkUploadRequest(
+            SenderWallet: SenderWallet!,
+            RegisterAddress: RegisterAddress!,
+            ChunkIndex: chunkIndex,
+            TotalChunks: totalChunks,
+            FileHash: $"sha256:{info.Hash}",
+            ContentType: info.ContentType,
+            ContentBase64: Convert.ToBase64String(data),
+            UploadSessionId: uploadSessionId);  // null on first chunk; server-assigned thereafter
 
-        var response = await Http.PostAsJsonAsync("/api/file-chunks", request);
-        response.EnsureSuccessStatusCode();
-
-        var result = await response.Content.ReadFromJsonAsync<ChunkUploadResponse>(JsonDefaults.Api);
-        if (result?.ChunkTransactionId is null)
+        var result = await ChunkUploadClient.UploadChunkAsync(request);
+        if (result.ChunkTransactionId is null)
             throw new InvalidOperationException("Server did not return a chunk transaction ID.");
         return result;
     }
@@ -447,13 +446,7 @@
         _files.Count(f => f.Status == UploadStatus.Complete) >= (IsArray ? MinItems : (MinItems > 0 ? 1 : 0))
         && !_files.Any(f => f.Status == UploadStatus.Failed);
 
-    // ── Nested response DTO ───────────────────────────────────────────────────
-
-    /// <summary>
-    /// Subset of FileChunkSubmissionResponse used by the Blazor client.
-    /// </summary>
-    private sealed record ChunkUploadResponse(
-        string ChunkTransactionId,
-        string? UploadSessionId,
-        string? SaltBase64);
+    // The nested ChunkUploadResponse DTO moved to FileChunkUploadResult on
+    // IFileChunkUploadClient (#1311), so request and response live with the client that owns the
+    // wire contract rather than inside a component.
 }

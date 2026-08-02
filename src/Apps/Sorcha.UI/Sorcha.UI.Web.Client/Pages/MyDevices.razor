@@ -28,8 +28,9 @@
 @using MudBlazor
 @using Sorcha.CitizenWallet.Abstractions.Models
 @using Sorcha.UI.Core.Services.Feedback
+@using Sorcha.UI.Core.Services.User.Devices
 
-@inject HttpClient Http
+@inject Sorcha.UI.Core.Services.User.Devices.IMyDevicesClient DevicesClient
 @inject IDialogService DialogService
 @inject IInlineFeedback Feedback
 @inject ILogger<MyDevices> Logger
@@ -153,20 +154,19 @@
     {
         _loading = true;
         _loadError = null;
-        try
+        // Issue #1311 — through a typed, bearer-carrying client. This used the ambient HttpClient,
+        // which sends no Authorization header, so an authenticated endpoint 401'd every time and the
+        // catch below reported it as a connection problem. The page could never have worked.
+        var devices = await DevicesClient.ListAsync();
+        if (devices is null)
         {
-            var response = await Http.GetFromJsonAsync<DeviceListResponse>("/api/v1/me/devices", JsonDefaults.Api);
-            _devices = response?.Devices.ToList() ?? new List<DeviceSummary>();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to load /api/v1/me/devices");
             _loadError = "Could not load devices. Check your connection and try again.";
         }
-        finally
+        else
         {
-            _loading = false;
+            _devices = devices.ToList();
         }
+        _loading = false;
     }
 
     private async Task RevokeAsync(DeviceSummary device)
@@ -182,40 +182,39 @@
         _busyDeviceId = device.DeviceId;
         try
         {
-            var response = await Http.DeleteAsync($"/api/v1/me/devices/{device.DeviceId}");
-            if (response.StatusCode == HttpStatusCode.NoContent)
+            // Issue #1311 — bearer-carrying typed client; see LoadAsync. The outcomes below are the
+            // same four the raw status codes drove, kept distinct because "already gone" and
+            // "revoked here but the status-list flip failed" need different words from a flat failure.
+            switch (await DevicesClient.RevokeAsync(device.DeviceId))
             {
-                var idx = _devices!.FindIndex(d => d.DeviceId == device.DeviceId);
-                if (idx >= 0)
-                {
-                    _devices[idx] = device with
+                case DeviceRevokeOutcome.Revoked:
+                    var idx = _devices!.FindIndex(d => d.DeviceId == device.DeviceId);
+                    if (idx >= 0)
                     {
-                        Status = DeviceStatus.Revoked,
-                        RevokedAt = DateTimeOffset.UtcNow
-                    };
-                }
-                Feedback.ShowSuccess("Device revoked.");
+                        _devices[idx] = device with
+                        {
+                            Status = DeviceStatus.Revoked,
+                            RevokedAt = DateTimeOffset.UtcNow
+                        };
+                    }
+                    Feedback.ShowSuccess("Device revoked.");
+                    break;
+
+                case DeviceRevokeOutcome.NotFound:
+                    Feedback.ShowWarning("Device not found.");
+                    await LoadAsync();
+                    break;
+
+                case DeviceRevokeOutcome.StatusListFlipFailed:
+                    // Tenant row IS revoked but Wallet S2S failed. Caller should retry.
+                    Feedback.ShowWarning("Device marked revoked, but the wallet status-list flip failed. Try again to complete revocation.");
+                    await LoadAsync();
+                    break;
+
+                default:
+                    Feedback.ShowError("Revoke failed. Please try again.", autoDismissMs: 0);
+                    break;
             }
-            else if (response.StatusCode == HttpStatusCode.NotFound)
-            {
-                Feedback.ShowWarning("Device not found.");
-                await LoadAsync();
-            }
-            else if (response.StatusCode == HttpStatusCode.BadGateway)
-            {
-                // Tenant row IS revoked but Wallet S2S failed. Caller should retry.
-                Feedback.ShowWarning("Device marked revoked, but the wallet status-list flip failed. Try again to complete revocation.");
-                await LoadAsync();
-            }
-            else
-            {
-                Feedback.ShowError($"Revoke failed (HTTP {(int)response.StatusCode}).", autoDismissMs: 0);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Revoke /api/v1/me/devices/{DeviceId} failed", device.DeviceId);
-            Feedback.ShowError($"Revoke failed: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {

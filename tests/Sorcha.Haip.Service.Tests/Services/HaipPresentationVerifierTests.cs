@@ -87,7 +87,7 @@ public class HaipPresentationVerifierTests
     /// returning the presentation plus the root cert DER for the trust anchor.
     /// </summary>
     private async Task<(string presentation, byte[] rootCertDer)> CreatePresentationWithX5cAsync(
-        string audience, string nonce)
+        string audience, string nonce, string? vct = null)
     {
         var (rootCertDer, rootPrivateKey, _) = X509CertificateBuilder.BuildSelfSignedRoot("ES256", "CN=Test Root CA");
 
@@ -101,8 +101,16 @@ public class HaipPresentationVerifierTests
         var (holderPrivate, holderPublic) = GenerateP256KeyPair();
         var holderJwk = CreateHolderJwk(holderPublic);
 
+        var claims = new Dictionary<string, object> { ["licenseType"] = "ClassA", ["holder"] = "Alice" };
+        if (vct is not null)
+        {
+            // vct is the SD-JWT VC type identifier: a plain payload claim, never selectively
+            // disclosable, so it is always present for the verifier to gate on.
+            claims["vct"] = vct;
+        }
+
         var token = await _sdJwtService.CreateTokenAsync(
-            new Dictionary<string, object> { ["licenseType"] = "ClassA", ["holder"] = "Alice" },
+            claims,
             disclosableClaims: ["licenseType", "holder"],
             issuer: "did:sorcha:org:ws1qtest",
             subject: "did:sorcha:w:holder1",
@@ -216,6 +224,115 @@ public class HaipPresentationVerifierTests
 
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("Nonce mismatch"));
+    }
+
+    // --- vct gating (issue #1198) ---------------------------------------------
+    //
+    // VerifyAsync accepted `requiredCredentialType` and never read it. The only real match gates
+    // were the object-keyed envelope id, required-CLAIM presence, and issuer trust — so a holder
+    // could present a credential of an entirely DIFFERENT type and pass, provided it came from a
+    // trusted issuer and disclosed claims with the right NAMES. Claim-name overlap across types
+    // (givenName, dateOfBirth, holder, …) makes that reachable, not theoretical: it weakens
+    // "prove you hold THIS KIND of credential" to "prove you hold SOME trusted credential with
+    // these field names".
+    //
+    // OpenID4VP/DCQL carries the requirement as `meta.vct_values`, a SET of acceptable URIs; a
+    // conformant verifier rejects a presentation whose vct is outside it.
+
+    private const string LicenceVct = "https://sorcha.example/vc/driving-licence/v1";
+    private const string IdentityVct = "https://sorcha.example/vc/assured-identity/v1";
+
+    [Fact]
+    public async Task Verify_VctMatchesRequirement_Succeeds()
+    {
+        var (presentation, rootCertDer) = await CreatePresentationWithX5cAsync(
+            "https://verifier.example.com", "vct-nonce-1", vct: LicenceVct);
+        var verifier = CreateVerifier(trustedRootDer: rootCertDer);
+
+        var result = await verifier.VerifyAsync(
+            presentation, expectedNonce: "vct-nonce-1", expectedAudience: "https://verifier.example.com",
+            requiredCredentialType: LicenceVct);
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Verify_VctDoesNotMatchRequirement_Fails()
+    {
+        // A perfectly valid, trusted-issuer credential — of the WRONG TYPE.
+        var (presentation, rootCertDer) = await CreatePresentationWithX5cAsync(
+            "https://verifier.example.com", "vct-nonce-2", vct: IdentityVct);
+        var verifier = CreateVerifier(trustedRootDer: rootCertDer);
+
+        var result = await verifier.VerifyAsync(
+            presentation, expectedNonce: "vct-nonce-2", expectedAudience: "https://verifier.example.com",
+            requiredCredentialType: LicenceVct);
+
+        result.IsValid.Should().BeFalse(
+            "a credential whose vct is outside the requested set must be rejected, however trusted its issuer");
+        result.Errors.Should().Contain(e => e.Contains("vct", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Verify_VctDiffersOnlyByCase_Fails()
+    {
+        // vct matching is case-SENSITIVE (Ordinal) platform-wide since #1187 — the vct is a URI and
+        // an exact identifier, not a label.
+        var (presentation, rootCertDer) = await CreatePresentationWithX5cAsync(
+            "https://verifier.example.com", "vct-nonce-3", vct: LicenceVct.ToUpperInvariant());
+        var verifier = CreateVerifier(trustedRootDer: rootCertDer);
+
+        var result = await verifier.VerifyAsync(
+            presentation, expectedNonce: "vct-nonce-3", expectedAudience: "https://verifier.example.com",
+            requiredCredentialType: LicenceVct);
+
+        result.IsValid.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Verify_VctMatchesOneOfSeveralAcceptedValues_Succeeds()
+    {
+        // DCQL meta.vct_values is a SET. Gating on only the first would falsely reject a holder
+        // presenting a legitimate alternative — trading the missing gate for a new bug.
+        var (presentation, rootCertDer) = await CreatePresentationWithX5cAsync(
+            "https://verifier.example.com", "vct-nonce-4", vct: IdentityVct);
+        var verifier = CreateVerifier(trustedRootDer: rootCertDer);
+
+        var result = await verifier.VerifyAsync(
+            presentation, expectedNonce: "vct-nonce-4", expectedAudience: "https://verifier.example.com",
+            acceptedVctValues: [LicenceVct, IdentityVct]);
+
+        result.IsValid.Should().BeTrue("presenting any one of the accepted vct values satisfies the ask");
+    }
+
+    [Fact]
+    public async Task Verify_NoVctRequirement_DoesNotGate()
+    {
+        // Callers that ask for no particular type keep working — the gate is opt-in, so this does
+        // not become a breaking change for a request that never declared meta.vct_values.
+        var (presentation, rootCertDer) = await CreatePresentationWithX5cAsync(
+            "https://verifier.example.com", "vct-nonce-5", vct: IdentityVct);
+        var verifier = CreateVerifier(trustedRootDer: rootCertDer);
+
+        var result = await verifier.VerifyAsync(
+            presentation, expectedNonce: "vct-nonce-5", expectedAudience: "https://verifier.example.com");
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Verify_RequiredVctButCredentialCarriesNone_Fails()
+    {
+        // Fail closed: a credential with no vct cannot demonstrate it is of the requested type.
+        var (presentation, rootCertDer) = await CreatePresentationWithX5cAsync(
+            "https://verifier.example.com", "vct-nonce-6", vct: null);
+        var verifier = CreateVerifier(trustedRootDer: rootCertDer);
+
+        var result = await verifier.VerifyAsync(
+            presentation, expectedNonce: "vct-nonce-6", expectedAudience: "https://verifier.example.com",
+            requiredCredentialType: LicenceVct);
+
+        result.IsValid.Should().BeFalse();
     }
 
     [Fact]

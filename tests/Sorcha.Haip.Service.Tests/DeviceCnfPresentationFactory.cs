@@ -26,6 +26,13 @@ internal static class DeviceCnfPresentationFactory
     internal const string DisclosedClaim = "licenseType";
 
     /// <summary>
+    /// The credential type <see cref="CreateAsync"/> mints. Issue #1198 — this factory previously
+    /// emitted NO <c>vct</c>, which is malformed for an SD-JWT VC (the profile requires it) and only
+    /// went unnoticed because the verifier never gated on credential type.
+    /// </summary>
+    internal const string LicenceVct = "https://sorcha.example/vc/licence/v1";
+
+    /// <summary>
     /// Produces a device-cnf SD-JWT VC presentation bound to <paramref name="audience"/> / <paramref name="nonce"/>.
     /// Returns the compact presentation string and the DER of the test root to anchor for trust.
     /// </summary>
@@ -55,7 +62,7 @@ internal static class DeviceCnfPresentationFactory
         }));
 
         var token = await sdJwtService.CreateTokenAsync(
-            new Dictionary<string, object> { ["licenseType"] = "ClassA", ["holder"] = "Alice" },
+            new Dictionary<string, object> { ["licenseType"] = "ClassA", ["holder"] = "Alice", ["vct"] = LicenceVct },
             disclosableClaims: ["licenseType", "holder"],
             issuer: "did:sorcha:org:ws1qtest",
             subject: "did:sorcha:w:holder1",

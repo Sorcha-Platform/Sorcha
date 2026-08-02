@@ -90,10 +90,15 @@ public class VerifierEndpointTests
             Mock.Of<ILogger<MdocPresentationVerifier>>());
     }
 
-    private Task<PresentationRequest> CreateRequestAsync(List<string>? requiredClaims = null) =>
+    // Issue #1198 — the requested type must be the one the presentations in this file actually
+    // carry. It used to be "LicenseCredential" against an AIAS presentation, which only held together
+    // because the verifier never gated on vct; now that mismatch is (correctly) a rejection.
+    private Task<PresentationRequest> CreateRequestAsync(
+        List<string>? requiredClaims = null,
+        string credentialType = DeviceCnfPresentationFactory.AiasVct) =>
         _store.CreateAsync(
             clientId: IssuerUrl,
-            credentialType: "LicenseCredential",
+            credentialType: credentialType,
             requiredClaims: requiredClaims,
             acceptedIssuers: null,
             baseUrl: IssuerUrl);
@@ -179,7 +184,10 @@ public class VerifierEndpointTests
     [Fact]
     public async Task GetRequestObject_ValidRequest_PayloadCarriesDcqlQueryAndNoPresentationDefinition()
     {
-        var request = await CreateRequestAsync(requiredClaims: ["licenseNumber", "locality"]);
+        // Requests its type explicitly rather than inheriting the helper's default — this asserts the
+        // served DCQL echoes what was ASKED for, so it must not silently track a default that moved.
+        var request = await CreateRequestAsync(
+            requiredClaims: ["licenseNumber", "locality"], credentialType: "LicenseCredential");
 
         var (status, body) = await ExecuteAsync(await InvokeGetRequestObjectAsync(request.Id));
 
@@ -437,10 +445,13 @@ public class VerifierEndpointTests
     {
         // Arrange: the citizen wallet's Phase-1 output — an SD-JWT VC whose cnf.jwk is the DEVICE
         // key (P-256), presented with a device-signed KB-JWT and an x5c chain to a test root. The
-        // request requires the one claim the presentation discloses (licenseType); vct/credentialType
-        // is not gated by the verifier (requiredCredentialType is advisory), so the real match contract
-        // is: object-keyed envelope under the DEFAULT query id + required-claim presence + trusted root.
-        var request = await CreateRequestAsync(requiredClaims: [DeviceCnfPresentationFactory.DisclosedClaim]);
+        // request requires the one claim the presentation discloses (licenseType). The match contract
+        // is: object-keyed envelope under the DEFAULT query id + required-claim presence + trusted
+        // root + the credential's vct being among the requested type(s) (#1198 — that last gate was
+        // missing, and this comment used to say requiredCredentialType was advisory).
+        var request = await CreateRequestAsync(
+            requiredClaims: [DeviceCnfPresentationFactory.DisclosedClaim],
+            credentialType: DeviceCnfPresentationFactory.LicenceVct);
 
         var (presentation, rootCertDer) = await DeviceCnfPresentationFactory.CreateAsync(
             new SdJwtService(), audience: request.ClientId, nonce: request.Nonce);
