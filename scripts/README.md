@@ -1,6 +1,25 @@
-# Sorcha Docker Scripts
+# Sorcha Scripts
 
-This directory contains utility scripts for managing Sorcha Docker deployments, including state reset, bootstrapping, and publishing images.
+Utility scripts for installing, bootstrapping and operating Sorcha.
+
+## I want to… → run this
+
+The names in here used to collide badly enough to send new contributors down the wrong path — three
+overlapping "setup" entry points, one of which was retired but still documented (issue #1234). Start
+from this table.
+
+| I want to… | Run | Notes |
+|---|---|---|
+| **Install Sorcha from scratch** (don't have the repo) | `install.sh` / `install.ps1` | The one-liners in the root README. Clone the repo, then hand off to `sorcha-setup.sh`. `install.ps1` runs it via bash — there is no PowerShell wizard. |
+| **Set up / re-run the stack** (already have the repo) | **`sorcha-setup.sh`** | **The canonical stack setup.** Prerequisite checks, config questions, `.env` + JWT key, image pull, start, bootstrap. Bats-tested; what both installers and the README use. |
+| **Point the Sorcha CLI at a running instance** | `bootstrap-sorcha.sh` / `bootstrap-sorcha.ps1` | **A different concern from the above** — this configures a CLI *auth profile*, it does not install or start anything. See `README-BOOTSTRAP.md`. The `bootstrap-` prefix is the trap: it reads like "bootstrap the platform" and isn't. |
+| **Wipe local Docker state and start clean** | `reset-docker-state.sh` / `.ps1` | Documented below. |
+| **Check a clean install works** | `check-clean-install.sh` | CI/verification helper. |
+
+**Retired (issue #1234):** `setup.sh`, `setup.ps1` and `setup-config.yaml` — an older first-run
+wizard pair superseded by `sorcha-setup.sh`. Removed rather than left alongside it, because the whole
+problem was three things called "setup" with no way to tell which was live. If you find a reference
+to them anywhere, it is stale.
 
 ---
 

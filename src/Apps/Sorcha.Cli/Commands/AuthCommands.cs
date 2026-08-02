@@ -158,7 +158,7 @@ public class AuthLoginCommand : Command
         }
 
         // Authenticate
-        var request = new LoginRequest
+        var request = new PasswordGrantRequest
         {
             Username = username,
             Password = password

@@ -17,7 +17,7 @@ public interface IAuthenticationService
     /// <param name="request">Login request</param>
     /// <param name="profileName">Profile to use for authentication</param>
     /// <returns>Token response</returns>
-    Task<TokenResponse> LoginAsync(LoginRequest request, string profileName);
+    Task<TokenResponse> LoginAsync(PasswordGrantRequest request, string profileName);
 
     /// <summary>
     /// Authenticates a service principal with client credentials.

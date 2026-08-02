@@ -1,6 +1,11 @@
 ﻿<#
 .SYNOPSIS
-    Bootstrap script for initial Sorcha platform setup using Sorcha CLI
+    Sorcha CLI - auth profile bootstrap (NOT platform install)
+
+    Issue #1234 - configures a Sorcha CLI auth profile against an ALREADY-RUNNING instance.
+    It does NOT install, start or configure the platform. To do that use
+    scripts/sorcha-setup.sh. The "bootstrap-" name is the main trap in this directory;
+    see scripts/README.md for a map of which script does what.
 .DESCRIPTION
     Interactive PowerShell script to configure a fresh Sorcha installation using
     the `sorcha bootstrap` command. This script:
