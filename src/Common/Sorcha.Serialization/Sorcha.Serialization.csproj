@@ -7,4 +7,12 @@
     <RootNamespace>Sorcha.Serialization</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Issue #1159 — for the Wallet contracts' source-generated JSON context, chained into the
+         platform options by SorchaJson.Configure so the WASM client is trim-safe. Sorcha.Wallet.Contracts
+         is a dependency-free leaf by design (CLAUDE.md §15), so this adds no transitive weight and
+         cannot cycle. See the remarks on SorchaJson.Configure for why it lives here. -->
+    <ProjectReference Include="..\Sorcha.Wallet.Contracts\Sorcha.Wallet.Contracts.csproj" />
+  </ItemGroup>
+
 </Project>

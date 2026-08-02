@@ -30,6 +30,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Common\Sorcha.Wallet.Contracts\Sorcha.Wallet.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Common\Sorcha.Serialization\Sorcha.Serialization.csproj" />
   </ItemGroup>
 
 </Project>
