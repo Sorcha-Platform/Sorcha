@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 #
-# Sorcha Platform Bootstrap Script
-# Interactive Bash script to configure a fresh Sorcha installation
+# Sorcha CLI — Auth Profile Bootstrap
+#
+# Configures a Sorcha CLI *auth profile* against an ALREADY-RUNNING instance.
+# It does NOT install, start or configure the platform itself.
+#
+# Issue #1234 — the "bootstrap-" name reads like "bootstrap the platform" and is the main trap in
+# this directory. To install or start the stack, use scripts/sorcha-setup.sh. See scripts/README.md.
 #
 # Usage:
 #   ./bootstrap-sorcha.sh                    # Interactive mode

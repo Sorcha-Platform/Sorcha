@@ -38,27 +38,36 @@ This guide covers the first-time setup of the Sorcha platform. The setup wizard 
 ### Windows (PowerShell)
 
 ```powershell
-# Clone the repository
-git clone https://github.com/sorcha-platform/sorcha.git
-cd Sorcha
-
-# Run the setup wizard
-.\scripts\setup.ps1
+irm https://raw.githubusercontent.com/Sorcha-Platform/Sorcha/master/scripts/install.ps1 | iex
 ```
+
+The Windows one-liner hands off to `scripts/sorcha-setup.sh` via bash (Git for Windows / Docker
+Desktop both provide it) — there is no separate PowerShell wizard.
 
 ### Linux / macOS (Bash)
 
 ```bash
-# Clone the repository
-git clone https://github.com/sorcha-platform/sorcha.git
-cd Sorcha
-
-# Make scripts executable
-chmod +x scripts/*.sh
-
-# Run the setup wizard
-./scripts/setup.sh
+curl -fsSL https://raw.githubusercontent.com/Sorcha-Platform/Sorcha/master/scripts/install.sh | bash
 ```
+
+### Already cloned the repo?
+
+Run the same interactive setup directly, on any platform:
+
+```bash
+./scripts/sorcha-setup.sh
+```
+
+> **Issue #1234.** This page previously pointed at `scripts/setup.ps1` and `scripts/setup.sh` — an
+> older pair of first-run wizards that `sorcha-setup.sh` superseded. Both are now removed, and
+> `sorcha-setup.sh` is the single entry point (it is what the README and both installer one-liners
+> use, and the only one with bats coverage). See `scripts/README.md` for a map of which script does
+> what.
+>
+> The step-by-step walkthrough below was written against the retired wizard. The overall shape is
+> unchanged — prerequisites, configuration questions, `.env` generation, image pull, service start —
+> but the individual step numbering and console output have not been re-verified against
+> `sorcha-setup.sh` and may differ in detail.
 
 ## Setup Wizard Steps
 
