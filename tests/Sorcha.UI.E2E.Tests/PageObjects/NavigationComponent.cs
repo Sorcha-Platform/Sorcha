@@ -35,7 +35,10 @@ public class NavigationComponent
 
     // Navigation links — match translated text OR raw i18n key
     public ILocator DashboardLink => NavLink("Dashboard", "nav.dashboard");
-    public ILocator PendingActionsLink => NavLink("Pending Actions", "nav.pendingActions");
+    // Feature 186 (#1163): "Pending Actions" was renamed to "Work Queue" so it stops reading as a
+    // synonym of My Applications. Same route, same page, same wallet-scoped behaviour.
+    public ILocator WorkQueueLink => NavLink("Work Queue", "nav.workQueue");
+    public ILocator MyApplicationsLink => NavLink("My Applications", "nav.myApplications");
     public ILocator NewSubmissionLink => NavLink("New Submission", "nav.newSubmission");
     public ILocator MyTransactionsLink => NavLink("My Transactions", "nav.myTransactions");
     public ILocator MyWalletLink => NavLink("My Wallet", "nav.myWallet");
