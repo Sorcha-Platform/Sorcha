@@ -7,6 +7,7 @@
 @using System.Net.Http.Json
 @using Sorcha.UI.Core.Extensions
 @inject HttpClient Http
+@inject Sorcha.UI.Core.Services.User.Verification.IVerificationBundleClient BundleClient
 @inject IJSRuntime JS
 
 @if (!string.IsNullOrEmpty(ReceiptId))
@@ -135,18 +136,21 @@
 
         try
         {
-            var url = $"/api/register/registers/{Uri.EscapeDataString(RegisterId!)}/transactions/{Uri.EscapeDataString(TransactionId!)}/verification-bundle";
-            var response = await Http.GetAsync(url);
+            // Issue #1311 — through a bearer-carrying typed client. This used the ambient
+            // HttpClient (no Authorization header) while the endpoint requires CanReadTransactions,
+            // so it 401'd and reported the failure as "the Register Service may be unavailable" —
+            // blaming availability for an auth problem. The verify POST above deliberately stays on
+            // the ambient client: that endpoint IS AllowAnonymous, by design.
+            var content = await BundleClient.DownloadAsync(RegisterId!, TransactionId!);
 
-            if (response.IsSuccessStatusCode)
+            if (content is not null)
             {
-                var content = await response.Content.ReadAsStringAsync();
                 var fileName = $"verification-bundle-{TransactionId![..8]}.json";
                 await JS.InvokeVoidAsync("downloadFile", fileName, "application/json", content);
             }
             else
             {
-                _errorMessage = $"Bundle download failed (HTTP {(int)response.StatusCode}). The Register Service may be unavailable.";
+                _errorMessage = "Bundle download failed. Please try again.";
             }
         }
         catch (Exception)
