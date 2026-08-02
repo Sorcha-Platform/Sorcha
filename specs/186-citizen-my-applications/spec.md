@@ -103,6 +103,7 @@ A signed-in user reading the navigation can tell at a glance which entry answers
 - **A page of results beyond the last.** Requesting a page past the end returns an empty page with a truthful total, not an error.
 - **Concurrent progress.** An application that advances while the citizen is reading the list must not cause the page to show a state that never existed; a refresh shows the newer state.
 - **No reason ever recorded.** Applications decided before reason recording existed must display their state with no reason, and must not be presented as though the reason were missing due to an error.
+- **A refusal that ends the application.** An application refused on its final step finishes with nothing left to do. Its internal lifecycle state is indistinguishable from a favourable finish, so the outcome shown must come from the recorded decision (FR-027) or the citizen is told their refused application "completed".
 - **Multi-node delivery.** A decision made on another node must still be visible here once its transaction is folded locally, independent of whether a notification was ever delivered.
 
 ## Requirements *(mandatory)*
@@ -129,6 +130,7 @@ A signed-in user reading the navigation can tell at a glance which entry answers
 - **FR-013**: The system MUST omit the reason entirely when the service defined no citizen-facing notice for the route taken, and MUST NOT substitute generic or invented wording.
 - **FR-014**: The system MUST NOT expose an internal reason code to the citizen.
 - **FR-015**: The system MUST show the decision and its reason durably — independent of whether any notification was delivered, read, or dismissed, and on every device the citizen signs in from.
+- **FR-027**: Where an application carries a recorded decision, the system MUST derive the outcome it shows the citizen from that decision — not from the application's internal lifecycle state alone. An application that finished because it was refused MUST NOT be presented to the citizen as merely "completed".
 
 **Continuing an application**
 
