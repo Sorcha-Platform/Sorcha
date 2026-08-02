@@ -124,6 +124,10 @@ public class EfCoreInstanceStoreUpdateRoundTripTests
         CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-5),
         UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-5),
         LastAppliedTxId = null,
+        // Feature 186. Seeded non-null and mutated to a DIFFERENT value below, for the reason given
+        // against FirstTransactionId: seed-equals-mutation makes the guard vacuous for that field.
+        DecisionRouteId = "route-seed",
+        DecisionReasonCode = "REASON_SEED",
     };
 
     /// <summary>
@@ -151,6 +155,45 @@ public class EfCoreInstanceStoreUpdateRoundTripTests
         i.Metadata["k"] = "v1";
         i.CompletedAt = DateTimeOffset.UtcNow;
         i.LastAppliedTxId = "tx-second";
+        i.DecisionRouteId = "route-refuse";
+        i.DecisionReasonCode = "DOC_UNREADABLE";
+    }
+
+    [Fact]
+    public async Task UpdateAsync_PersistsTheProjectedDecision()
+    {
+        // Feature 186. The citizen-facing reason is resolved from these two at read time, so a drop
+        // here does not fail — it silently tells a refused applicant their application "completed",
+        // which is precisely the failure mode this feature exists to remove.
+        var store = CreateStore(nameof(UpdateAsync_PersistsTheProjectedDecision) + Guid.NewGuid());
+        var created = await store.CreateAsync(SeedInstance("inst-decision"));
+
+        created.DecisionRouteId = "route-refuse";
+        created.DecisionReasonCode = "DOC_UNREADABLE";
+        await store.UpdateAsync(created);
+
+        var reread = await store.GetAsync("inst-decision");
+        reread.Should().NotBeNull();
+        reread!.DecisionRouteId.Should().Be("route-refuse");
+        reread.DecisionReasonCode.Should().Be("DOC_UNREADABLE");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_PersistsTheClearingOfADecision()
+    {
+        // The clear direction is as load-bearing as the set: an application refused on one branch and
+        // then advanced on another must not keep the old reason. A copy list that writes only
+        // non-null values would pass the test above and fail this one.
+        var store = CreateStore(nameof(UpdateAsync_PersistsTheClearingOfADecision) + Guid.NewGuid());
+        var created = await store.CreateAsync(SeedInstance("inst-decision-cleared"));
+
+        created.DecisionRouteId = null;
+        created.DecisionReasonCode = null;
+        await store.UpdateAsync(created);
+
+        var reread = await store.GetAsync("inst-decision-cleared");
+        reread!.DecisionRouteId.Should().BeNull();
+        reread.DecisionReasonCode.Should().BeNull();
     }
 
     [Fact]

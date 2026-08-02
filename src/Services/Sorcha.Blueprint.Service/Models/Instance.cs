@@ -142,6 +142,28 @@ public class Instance
     /// first sealed action is folded.
     /// </summary>
     public string? LastAppliedTxId { get; set; }
+
+    /// <summary>
+    /// Feature 186: the id of the route the most recently folded decision took, from the signed
+    /// <c>RoutingDecision</c> on the transaction's clear metadata. Null when the last fold carried
+    /// no decision, on transactions sealed before Feature 184, and on presentation outcomes.
+    /// </summary>
+    /// <remarks>
+    /// This is what lets a reader find the taken route in the replicated blueprint and discover
+    /// whether the outcome was adverse. It is load-bearing rather than merely informative: a
+    /// refusal is expressed as a route carrying an <c>x-decision-notice</c>, not as a distinct
+    /// instance state, so an application refused on its final step reaches
+    /// <see cref="InstanceState.Completed"/> and is otherwise indistinguishable from an approved
+    /// one.
+    /// </remarks>
+    public string? DecisionRouteId { get; set; }
+
+    /// <summary>
+    /// Feature 186: the non-sensitive reason code carried on that same decision, resolved to
+    /// citizen-facing text at read time through the taken route's
+    /// <c>x-decision-notice</c> catalogue. Never shown to a citizen directly.
+    /// </summary>
+    public string? DecisionReasonCode { get; set; }
 }
 
 /// <summary>

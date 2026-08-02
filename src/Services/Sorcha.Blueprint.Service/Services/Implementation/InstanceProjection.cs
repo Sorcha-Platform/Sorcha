@@ -17,13 +17,24 @@ namespace Sorcha.Blueprint.Service.Services.Implementation;
 /// <param name="NextActionIds">The full next-action set from the validated <c>RoutingDecision</c> (preserves parallel branches).</param>
 /// <param name="ParticipantBindings">Participant-id → wallet bindings this transaction contributes (already resolved against the blueprint; never self-keyed by the projector).</param>
 /// <param name="IsRejection">True when this transaction is a terminal rejection.</param>
+/// <param name="RouteId">
+/// Feature 186 — the route the sender took, from the signed <c>RoutingDecision</c>. Null on
+/// transactions sealed before Feature 184 and on presentation-outcome decisions.
+/// </param>
+/// <param name="ReasonCode">
+/// Feature 186 — the non-sensitive reason code the sender stamped on the decision, from the same
+/// signed source. Null unless the taken route declares an <c>x-decision-notice</c> with a
+/// <c>reasonCodeField</c> that resolved against the submitted payload.
+/// </param>
 public sealed record ProjectedTransaction(
     string TxId,
     string? PreviousTransactionId,
     int CompletedActionId,
     IReadOnlyList<int> NextActionIds,
     IReadOnlyDictionary<string, string> ParticipantBindings,
-    bool IsRejection = false);
+    bool IsRejection = false,
+    string? RouteId = null,
+    string? ReasonCode = null);
 
 /// <summary>
 /// The pure, deterministic core of Feature 145: folds a set of sealed action transactions into
@@ -127,6 +138,18 @@ public static class InstanceProjection
         instance.LastTransactionId = tx.TxId;
         instance.LastAppliedTxId = tx.TxId;
         instance.UpdatedAt = DateTimeOffset.UtcNow;
+
+        // Feature 186: record the decision this transaction carried. Both values come from the
+        // signed clear metadata, so the fold stays byte-identical on every node and a rebuild
+        // reproduces them. The citizen-facing WORDING is deliberately not recorded here — it is
+        // resolved on read from the local blueprint, and folding it would put node-local state
+        // inside a fold FR-001 requires to be node-independent.
+        //
+        // Assigned unconditionally, so a transaction carrying no decision CLEARS the previous one:
+        // an application refused on one branch and then advanced on another must not keep showing
+        // the reason for a step it has already moved past.
+        instance.DecisionRouteId = tx.RouteId;
+        instance.DecisionReasonCode = tx.ReasonCode;
 
         // Derive terminal state: a rejection is terminal; no remaining current actions means
         // every branch has reached a route-graph terminal (Completed).

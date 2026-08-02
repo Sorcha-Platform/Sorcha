@@ -172,4 +172,66 @@ public class InstanceProjectionTests
         var instance = InstanceProjection.Project("inst-1", "reg", "bp", 1, "tenant", []);
         instance.Should().BeNull();
     }
+
+    // ---- Feature 186: the decision recorded on the fold. ----
+
+    private static ProjectedTransaction DecisionTx(
+        string id, string? prev, int completed, int[] next, string? routeId, string? reasonCode)
+        => new(id, prev, completed, next, NoBindings,
+               IsRejection: false, RouteId: routeId, ReasonCode: reasonCode);
+
+    [Fact]
+    public void Apply_StampsTheDecisionRouteAndReasonOntoTheInstance()
+    {
+        var instance = InstanceProjection.Project("inst-1", "reg", "bp", 1, "tenant",
+        [
+            DecisionTx("tx1", null, 1, [], "route-refuse", "DOC_UNREADABLE"),
+        ])!;
+
+        instance.DecisionRouteId.Should().Be("route-refuse");
+        instance.DecisionReasonCode.Should().Be("DOC_UNREADABLE");
+    }
+
+    [Fact]
+    public void Apply_LaterFoldWithoutADecision_ClearsTheRecordedDecision()
+    {
+        // A refusal on one branch must not stay attached to an application that then advances on
+        // another. Leaving it would show a citizen a reason belonging to a step already behind them.
+        var instance = InstanceProjection.Project("inst-1", "reg", "bp", 1, "tenant",
+        [
+            DecisionTx("tx1", null, 1, [2], "route-refer", "NEEDS_REVIEW"),
+        ])!;
+        instance.DecisionRouteId.Should().Be("route-refer");
+
+        InstanceProjection.Apply(instance, Tx("tx2", "tx1", 2, [3]));
+
+        instance.DecisionRouteId.Should().BeNull();
+        instance.DecisionReasonCode.Should().BeNull();
+    }
+
+    [Fact]
+    public void Project_DecisionIsOrderIndependentAndRebuildIdentical()
+    {
+        // FR-010: the recorded decision must be part of the deterministic fold, so a batch rebuild
+        // and an incremental fold of the same sealed set agree — on the decision as well as on
+        // control state.
+        var chain = new List<ProjectedTransaction>
+        {
+            Tx("tx1", null, 1, [2]),
+            DecisionTx("tx2", "tx1", 2, [], "route-refuse", "DOC_UNREADABLE"),
+        };
+
+        var batch = InstanceProjection.Project("inst-1", "reg", "bp", 1, "tenant", chain)!;
+        var reversed = InstanceProjection.Project("inst-1", "reg", "bp", 1, "tenant",
+            Enumerable.Reverse(chain).ToList())!;
+
+        var incremental = InstanceProjection.Project("inst-1", "reg", "bp", 1, "tenant", [chain[0]])!;
+        InstanceProjection.Apply(incremental, chain[1]);
+
+        batch.DecisionRouteId.Should().Be("route-refuse");
+        reversed.DecisionRouteId.Should().Be(batch.DecisionRouteId);
+        reversed.DecisionReasonCode.Should().Be(batch.DecisionReasonCode);
+        incremental.DecisionRouteId.Should().Be(batch.DecisionRouteId);
+        incremental.DecisionReasonCode.Should().Be(batch.DecisionReasonCode);
+    }
 }

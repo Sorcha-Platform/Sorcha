@@ -141,6 +141,10 @@ public class EfCoreInstanceStore : IInstanceStore
         // every fold, so an already-folded tx was never recognised) and Feature 142's rehearsal wait
         // (it matches on this watermark, so the go-live gate could never be earned).
         entity.LastAppliedTxId = instance.LastAppliedTxId;
+        // Feature 186 projected decision. Assigned unconditionally so a clear (both null) persists —
+        // an application refused on one branch and then advanced on another must not keep the reason.
+        entity.DecisionRouteId = instance.DecisionRouteId;
+        entity.DecisionReasonCode = instance.DecisionReasonCode;
 
         try
         {
@@ -503,6 +507,8 @@ public class EfCoreInstanceStore : IInstanceStore
             UpdatedAt = instance.UpdatedAt != default ? instance.UpdatedAt : DateTimeOffset.UtcNow,
             CompletedAt = instance.CompletedAt,
             LastAppliedTxId = instance.LastAppliedTxId,
+            DecisionRouteId = instance.DecisionRouteId,
+            DecisionReasonCode = instance.DecisionReasonCode,
         };
     }
 
@@ -544,6 +550,8 @@ public class EfCoreInstanceStore : IInstanceStore
                 UpdatedAt = entity.UpdatedAt,
                 CompletedAt = entity.CompletedAt,
                 LastAppliedTxId = entity.LastAppliedTxId,
+                DecisionRouteId = entity.DecisionRouteId,
+                DecisionReasonCode = entity.DecisionReasonCode,
             };
         }
         catch (Exception ex)
