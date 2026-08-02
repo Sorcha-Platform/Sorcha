@@ -263,7 +263,12 @@ public static class VerifierEndpoints
 
         // Per-entry format dispatch: an SD-JWT VC presentation is ~-delimited; an mdoc presentation is a
         // bare base64url DeviceResponse (verified via the unified ITrustEvaluator over the issuer x5chain).
-        async Task<VerificationResult> VerifyEntryAsync(string presentation, string vct, List<string>? requiredClaims)
+        // Issue #1198 — acceptedVcts is the SET the SD-JWT verifier gates on. DCQL meta.vct_values is
+        // a set by specification, so passing only its first entry (as this did before the gate
+        // existed) would falsely reject a holder presenting a legitimate alternative. mdoc ignores
+        // it: an mdoc entry has no vct, and its doctype is gated by the mdoc handler's requirement.
+        async Task<VerificationResult> VerifyEntryAsync(
+            string presentation, IReadOnlyList<string>? acceptedVcts, List<string>? requiredClaims)
         {
             if (!presentation.Contains('~'))
             {
@@ -274,8 +279,8 @@ public static class VerifierEndpoints
             }
             return await verifier.VerifyAsync(
                 presentation, expectedNonce: request.Nonce, expectedAudience: request.ClientId,
-                requiredCredentialType: vct, requiredClaims: requiredClaims,
-                acceptedIssuers: request.AcceptedIssuers, ct: ct);
+                requiredClaims: requiredClaims, acceptedIssuers: request.AcceptedIssuers,
+                acceptedVctValues: acceptedVcts, ct: ct);
         }
 
         VerificationResult result;
@@ -290,7 +295,10 @@ public static class VerifierEndpoints
                     error_description = $"vp_token carries no entry for query id '{DefaultQueryId}'."
                 });
             }
-            result = await VerifyEntryAsync(presentations[0], request.CredentialType, request.RequiredClaims);
+            var singleAskVct = string.IsNullOrWhiteSpace(request.CredentialType)
+                ? null
+                : new[] { request.CredentialType };
+            result = await VerifyEntryAsync(presentations[0], singleAskVct, request.RequiredClaims);
         }
         else
         {
@@ -300,7 +308,9 @@ public static class VerifierEndpoints
             var validIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (var cq in request.DeclaredQuery.Credentials)
             {
-                var vct = cq.Meta.VctValues is { Count: > 0 } ? cq.Meta.VctValues[0] : cq.Meta.DoctypeValue ?? string.Empty;
+                // The whole accepted set, not VctValues[0] — see VerifyEntryAsync. Null for an mdoc
+                // query (no vct); its doctype is the mdoc handler's concern.
+                var acceptedVcts = cq.Meta.VctValues is { Count: > 0 } ? cq.Meta.VctValues : null;
                 var (required, _) = DcqlRequestParser.SplitClaims(cq);
                 if (!envelope.Presentations.TryGetValue(cq.Id, out var entries) || entries.Count == 0)
                 {
@@ -308,7 +318,7 @@ public static class VerifierEndpoints
                     continue;
                 }
 
-                var one = await VerifyEntryAsync(entries[0], vct, required.ToList());
+                var one = await VerifyEntryAsync(entries[0], acceptedVcts, required.ToList());
                 result.PerQuery[cq.Id] = new PerQueryVerification { IsValid = one.IsValid, Issuer = one.Issuer, Errors = one.Errors };
                 if (one.IsValid)
                 {

@@ -80,8 +80,8 @@ public sealed class MultiCredentialPresentationTests
             new DcqlQuery { Credentials = [Cq("identity", "IdentityCredential"), Cq("address", "AddressCredential")] });
 
         var vpToken = Envelope(
-            ("identity", await BuildPresentationAsync(root, rootPriv, request.ClientId, request.Nonce)),
-            ("address", await BuildPresentationAsync(root, rootPriv, request.ClientId, request.Nonce)));
+            ("identity", await BuildPresentationAsync(root, rootPriv, request.ClientId, request.Nonce, "IdentityCredential")),
+            ("address", await BuildPresentationAsync(root, rootPriv, request.ClientId, request.Nonce, "AddressCredential")));
 
         var (status, _) = await ExecuteAsync(await InvokeDirectPostAsync(request.Id, vpToken, verifierRoot: root));
 
@@ -101,7 +101,7 @@ public sealed class MultiCredentialPresentationTests
             new DcqlQuery { Credentials = [Cq("identity", "IdentityCredential"), Cq("address", "AddressCredential")] });
 
         // Only the identity query is supplied — AND semantics ⇒ overall block.
-        var vpToken = Envelope(("identity", await BuildPresentationAsync(root, rootPriv, request.ClientId, request.Nonce)));
+        var vpToken = Envelope(("identity", await BuildPresentationAsync(root, rootPriv, request.ClientId, request.Nonce, "IdentityCredential")));
 
         var (status, _) = await ExecuteAsync(await InvokeDirectPostAsync(request.Id, vpToken, verifierRoot: root));
 
@@ -125,7 +125,7 @@ public sealed class MultiCredentialPresentationTests
         });
 
         // The citizen holds only the driving licence — supply that option alone.
-        var vpToken = Envelope(("licence", await BuildPresentationAsync(root, rootPriv, request.ClientId, request.Nonce)));
+        var vpToken = Envelope(("licence", await BuildPresentationAsync(root, rootPriv, request.ClientId, request.Nonce, "DrivingLicenceCredential")));
 
         var (status, _) = await ExecuteAsync(await InvokeDirectPostAsync(request.Id, vpToken, verifierRoot: root));
 
@@ -184,7 +184,14 @@ public sealed class MultiCredentialPresentationTests
     /// carried in the x5c header, an issuer-signed token, and a holder-bound KB-JWT over the request's
     /// audience + nonce. Mirrors what the credential endpoint produces (see HaipPresentationVerifierTests).
     /// </summary>
-    private async Task<string> BuildPresentationAsync(byte[] rootDer, byte[] rootPriv, string audience, string nonce)
+    /// <summary>
+    /// Issue #1198 — <paramref name="vct"/> is now load-bearing. These fixtures previously minted
+    /// credentials carrying NO vct while the queries declared types like IdentityCredential, which
+    /// only passed because the verifier never gated on type. Each presentation now carries the vct
+    /// its query asks for, so the flow is coherent and the gate is genuinely exercised.
+    /// </summary>
+    private async Task<string> BuildPresentationAsync(
+        byte[] rootDer, byte[] rootPriv, string audience, string nonce, string vct)
     {
         using var issuerEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var issuerPublicKey = issuerEcdsa.ExportSubjectPublicKeyInfo();
@@ -197,7 +204,7 @@ public sealed class MultiCredentialPresentationTests
         var holderJwk = CreateHolderJwk(holderPublic);
 
         var token = await _sdJwt.CreateTokenAsync(
-            new Dictionary<string, object> { ["licenseType"] = "ClassA", ["holder"] = "Alice" },
+            new Dictionary<string, object> { ["licenseType"] = "ClassA", ["holder"] = "Alice", ["vct"] = vct },
             disclosableClaims: ["licenseType", "holder"],
             issuer: "did:sorcha:org:ws1qtest",
             subject: "did:sorcha:w:holder1",

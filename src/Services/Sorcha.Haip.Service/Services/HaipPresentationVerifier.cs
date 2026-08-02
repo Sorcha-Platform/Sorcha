@@ -59,6 +59,7 @@ public class HaipPresentationVerifier
         string? requiredCredentialType = null,
         List<string>? requiredClaims = null,
         List<string>? acceptedIssuers = null,
+        IReadOnlyList<string>? acceptedVctValues = null,
         CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(vpToken);
@@ -131,6 +132,38 @@ public class HaipPresentationVerifier
                 return result;
             }
 
+            // Step 4a: credential TYPE gate (issue #1198).
+            //
+            // This parameter was accepted and never read. The only real match gates were the
+            // object-keyed envelope id, required-CLAIM presence and issuer trust — so a holder could
+            // present a credential of an entirely DIFFERENT type and pass, provided it came from a
+            // trusted issuer and disclosed claims with the right NAMES. Claim-name overlap across
+            // credential types (givenName, dateOfBirth, …) makes that reachable in practice, and it
+            // weakens "prove you hold THIS KIND of credential" to "prove you hold SOME trusted
+            // credential carrying these field names".
+            //
+            // Matching is Ordinal (case-SENSITIVE) — a vct is an absolute URI and an exact machine
+            // identifier, consistent with the platform-wide rule since #1187. Fails closed: a
+            // credential carrying no vct at all cannot demonstrate it is of the requested type.
+            var acceptedTypes = BuildAcceptedVctSet(requiredCredentialType, acceptedVctValues);
+            if (acceptedTypes.Count > 0)
+            {
+                var presentedVct = sdJwtResult.Claims.TryGetValue("vct", out var vctClaim)
+                    ? vctClaim?.ToString()
+                    : null;
+
+                if (presentedVct is null || !acceptedTypes.Contains(presentedVct))
+                {
+                    result.IsValid = false;
+                    result.Errors.Add(
+                        $"Presented credential vct '{presentedVct ?? "(none)"}' is not among the "
+                        + $"requested type(s): {string.Join(", ", acceptedTypes)}.");
+                    _logger.LogWarning(
+                        "HAIP presentation rejected on credential type: presented={Presented} accepted={Accepted}",
+                        presentedVct ?? "(none)", string.Join(", ", acceptedTypes));
+                }
+            }
+
             // Step 4: Required-claim presence (verifier-level constraint, not trust).
             if (requiredClaims != null)
             {
@@ -160,6 +193,37 @@ public class HaipPresentationVerifier
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// The set of credential types this request will accept, unioning the DCQL
+    /// <c>meta.vct_values</c> (a SET of acceptable URIs, per OpenID4VP) with the legacy single
+    /// <c>requiredCredentialType</c>. Empty means the request asked for no particular type, and the
+    /// gate does not apply — so this stays opt-in and does not break a caller that never declared one.
+    ///
+    /// <para><see cref="StringComparer.Ordinal"/> deliberately: matching a vct is exact-identifier
+    /// matching, not label matching (#1187).</para>
+    /// </summary>
+    private static HashSet<string> BuildAcceptedVctSet(
+        string? requiredCredentialType,
+        IReadOnlyList<string>? acceptedVctValues)
+    {
+        var accepted = new HashSet<string>(StringComparer.Ordinal);
+
+        if (!string.IsNullOrWhiteSpace(requiredCredentialType))
+        {
+            accepted.Add(requiredCredentialType);
+        }
+
+        if (acceptedVctValues is not null)
+        {
+            foreach (var vct in acceptedVctValues)
+            {
+                if (!string.IsNullOrWhiteSpace(vct)) accepted.Add(vct);
+            }
+        }
+
+        return accepted;
     }
 
     /// <summary>
