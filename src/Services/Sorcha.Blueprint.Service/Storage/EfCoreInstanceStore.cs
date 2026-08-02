@@ -130,7 +130,7 @@ public class EfCoreInstanceStore : IInstanceStore
         entity.AccumulatedData = SerializeJson(instance.AccumulatedData);
         entity.PendingActionPayloads = SerializePendingActionPayloads(instance.PendingActionPayloads);
         entity.ActiveBranches = SerializeJson(instance.ActiveBranches);
-        entity.Metadata = SerializeJson(instance.Metadata);
+        entity.Metadata = SerializeMetadataWithTenant(instance);
         entity.Version = instance.Version;
         entity.UpdatedAt = instance.UpdatedAt;
         entity.CompletedAt = instance.CompletedAt;
@@ -453,6 +453,33 @@ public class EfCoreInstanceStore : IInstanceStore
         return await context.Instances.CountAsync(i => i.State == state, cancellationToken);
     }
 
+    /// <summary>
+    /// Issue #1350 — the metadata key <see cref="Instance.TenantId"/> is carried in.
+    /// <see cref="InstanceEntity"/> has no TenantId column, and <see cref="ToModel"/> has always read
+    /// the value back out of metadata — but nothing ever wrote it, so every instance loaded from
+    /// Postgres had <c>TenantId == ""</c> despite the model declaring the property <c>required</c>.
+    /// </summary>
+    private const string TenantIdMetadataKey = "TenantId";
+
+    /// <summary>
+    /// Serialises an instance's metadata with <see cref="Instance.TenantId"/> folded in under
+    /// <see cref="TenantIdMetadataKey"/>, closing #1350 with no schema change — adding a real column
+    /// would need a migration, which under this repo's squashed-migration rule is a deployment
+    /// decision (DB recreate) rather than a code change.
+    ///
+    /// <para>The caller's own dictionary is never mutated: the key is merged into a copy, so an
+    /// <c>Instance</c> handed to the store does not silently grow a metadata entry.</para>
+    /// </summary>
+    private static string SerializeMetadataWithTenant(Instance instance)
+    {
+        var metadata = new Dictionary<string, string>(instance.Metadata)
+        {
+            [TenantIdMetadataKey] = instance.TenantId,
+        };
+
+        return SerializeJson(metadata);
+    }
+
     private static InstanceEntity ToEntity(Instance instance)
     {
         return new InstanceEntity
@@ -470,7 +497,7 @@ public class EfCoreInstanceStore : IInstanceStore
             AccumulatedData = SerializeJson(instance.AccumulatedData),
             PendingActionPayloads = SerializePendingActionPayloads(instance.PendingActionPayloads),
             ActiveBranches = SerializeJson(instance.ActiveBranches),
-            Metadata = SerializeJson(instance.Metadata),
+            Metadata = SerializeMetadataWithTenant(instance),
             Version = instance.Version,
             CreatedAt = instance.CreatedAt != default ? instance.CreatedAt : DateTimeOffset.UtcNow,
             UpdatedAt = instance.UpdatedAt != default ? instance.UpdatedAt : DateTimeOffset.UtcNow,
@@ -486,8 +513,12 @@ public class EfCoreInstanceStore : IInstanceStore
             var metadata = DeserializeJson<Dictionary<string, string>>(entity.Metadata)
                            ?? new Dictionary<string, string>();
 
-            // Extract TenantId from metadata if stored there; default to empty
-            var tenantId = metadata.GetValueOrDefault("TenantId", string.Empty);
+            // Issue #1350 — TenantId travels inside Metadata (InstanceEntity has no column for it).
+            // Removing the key after reading it is load-bearing, not tidiness: Metadata is handed
+            // back to the caller wholesale below, so leaving the key in would surface a phantom
+            // entry the caller never wrote and break Metadata's own round-trip.
+            var tenantId = metadata.GetValueOrDefault(TenantIdMetadataKey, string.Empty);
+            metadata.Remove(TenantIdMetadataKey);
 
             return new Instance
             {

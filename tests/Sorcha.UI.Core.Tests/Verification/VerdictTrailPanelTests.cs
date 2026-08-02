@@ -39,6 +39,80 @@ public class VerdictTrailPanelTests : BunitContext
 
     private readonly Mock<IRegisterAnchorClient> _mockAnchorClient = new();
 
+    /// <summary>
+    /// Issue #1180 — an outcome carrying a STRUCTURED disclosed claim (a nested <c>address</c>
+    /// object, boxed as a <see cref="System.Text.Json.JsonElement"/> exactly as it arrives off the
+    /// wire), plus a raw <c>_sd</c> digest array that must never be shown.
+    /// </summary>
+    private static VerificationOutcome BuildOutcomeWithStructuredClaim()
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(
+            """
+            {
+              "address": { "street": "6/2 Warrender Park Terrace", "city": "Edinburgh", "postcode": "EH9 1JA" },
+              "sdDigests": { "_sd": ["zSH_kfTeW2Mlc", "qX2vBn8Lp0Ra"] }
+            }
+            """);
+
+        return new VerificationOutcome
+        {
+            Accepted = true,
+            DisclosedClaims = new Dictionary<string, object?>
+            {
+                ["fullName"] = "Stuart Fraser",
+                ["address"] = doc.RootElement.GetProperty("address").Clone(),
+                ["sdDigests"] = doc.RootElement.GetProperty("sdDigests").Clone(),
+            },
+            Errors = [],
+            CompletedAt = DateTimeOffset.UtcNow,
+            IssuerSignature = IssuerSignatureStatus.Verified,
+            Layers =
+            [
+                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = LayerStatus.Pass, Headline = "Valid KB-JWT" },
+                new ValidationLayerResult { Layer = ValidationLayer.IssuerSignature, Status = LayerStatus.Pass, Headline = "Verified" },
+                new ValidationLayerResult { Layer = ValidationLayer.Revocation, Status = LayerStatus.Pass, Headline = "Not revoked" },
+            ],
+        };
+    }
+
+    /// <summary>
+    /// Issue #1180 — a disclosed structured claim must RENDER (formatted), not be silently dropped.
+    ///
+    /// <para>The original defect was raw <c>{"_sd":[…]}</c> JSON reaching the operator's verdict
+    /// panel. That was mitigated by skipping any value whose text starts with <c>{</c> or <c>[</c> —
+    /// which stopped the raw JSON but also means a genuinely disclosed nested claim, such as the
+    /// address a citizen chose to share, VANISHES from the verdict with no trace. A verifier reading
+    /// the panel cannot tell "not disclosed" from "disclosed but undisplayable".</para>
+    /// </summary>
+    [Fact]
+    public void StructuredDisclosedClaim_IsRenderedFormatted_NotDropped()
+    {
+        var vm = VerdictViewModel.From(IdentityPreset, BuildOutcomeWithStructuredClaim());
+
+        vm.Disclosed.Should().ContainSingle(p => p.Key == "address",
+            "a claim the citizen chose to disclose must appear on the verdict, not silently disappear");
+
+        var address = vm.Disclosed.Single(p => p.Key == "address").Value;
+        address.Should().Contain("Edinburgh").And.Contain("EH9 1JA",
+            "the value must be rendered for a human, via the shared claim formatter");
+        address.Should().NotContain("{").And.NotContain("\"street\"",
+            "it must be formatted, never dumped as raw JSON");
+    }
+
+    /// <summary>
+    /// Issue #1180 — the protocol plumbing must still never reach the panel. This is the half the
+    /// skip-filter got right, and it must survive routing through the shared formatter.
+    /// </summary>
+    [Fact]
+    public void RawSdDigestArray_NeverReachesTheVerdictPanel()
+    {
+        var vm = VerdictViewModel.From(IdentityPreset, BuildOutcomeWithStructuredClaim());
+
+        var rendered = string.Join(" | ", vm.Disclosed.Select(p => $"{p.Key}={p.Value}"));
+        rendered.Should().NotContain("zSH_kfTeW2Mlc").And.NotContain("_sd",
+            "selective-disclosure digests are credential plumbing and must never be shown");
+    }
+
     private static VerificationOutcome BuildOutcomeWithThreeLayers(bool accepted = true)
     {
         return new VerificationOutcome

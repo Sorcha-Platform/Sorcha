@@ -40,6 +40,28 @@ public class FormKeywordClassifierTests
         FormKeywordClassifier.IsPresentational(keyword).Should().BeFalse();
     }
 
+    /// <summary>
+    /// Issue #1303 — three keywords the code genuinely consumes were absent from both declared sets
+    /// and reached "behavioural" only through the fail-safe, so a reader could not tell "deliberately
+    /// behavioural" from "nobody thought about it".
+    ///
+    /// <para>This asserts DECLARED MEMBERSHIP rather than <c>IsBehavioural(...)</c> on purpose. Every
+    /// <c>x-</c> keyword already returns true from <c>IsBehavioural</c> via the fail-safe, so an
+    /// <c>IsBehavioural</c> assertion here would pass whether or not the keyword had ever been
+    /// classified — a test that cannot fail for the reason it exists.</para>
+    /// </summary>
+    [Theory]
+    [InlineData("x-rule")]
+    [InlineData("x-claim-source")]
+    [InlineData("x-sorcha-disclosure")]
+    public void BehaviouralKeywords_DeclaresKeywordsTheCodeConsumes(string keyword)
+    {
+        FormKeywordClassifier.BehaviouralKeywords.Should().Contain(keyword,
+            "a keyword the engine acts on must be classified by declaration, not by the fail-safe");
+        FormKeywordClassifier.IsBehavioural(keyword).Should().BeTrue();
+        FormKeywordClassifier.IsPresentational(keyword).Should().BeFalse();
+    }
+
     [Theory]
     [InlineData("x-foo")]
     [InlineData("x-unknown-future-keyword")]
@@ -85,6 +107,10 @@ public class FormKeywordClassifierTests
             // classification is unchanged — it previously reached "behavioural" via the fail-safe —
             // so no executable-definition hash or rehearsal-gate behaviour changes here.
             "x-file", "x-credential-offer", "x-holder-key", "x-device-key",
+            // #1303 — same story for these three: each was already behavioural via the fail-safe, so
+            // declaring them changes no hash and no gate behaviour. See the source comments for why
+            // x-rule is behavioural despite governing *display* (it can hide a still-required field).
+            "x-rule", "x-claim-source", "x-sorcha-disclosure",
         });
     }
 
