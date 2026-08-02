@@ -3,11 +3,23 @@
 
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
+using Sorcha.Wallet.Contracts.Models;
 
 namespace Sorcha.Demo.Services.Api;
 
 /// <summary>
-/// Client for Wallet Service API
+/// Client for Wallet Service API.
+///
+/// <para>Issue #1158 — this client used to declare its own <c>CreateWalletResponse</c>,
+/// <c>WalletDetails</c>, <c>WalletResponse</c> and <c>SignatureResponse</c>, and was the sole entry
+/// in <c>.wallet-contracts-allowlist</c>. It now binds the canonical
+/// <see cref="Sorcha.Wallet.Contracts.Models"/> shapes, so the ratchet is empty.</para>
+///
+/// <para>The bespoke <c>WalletResponse</c> was not merely duplicative, it was wrong on the wire for
+/// two of the four calls it served: <c>GetWalletAsync</c> and <c>ListWalletsAsync</c> deserialised
+/// the server's <see cref="WalletDto"/> into a type carrying <c>Mnemonic</c> and
+/// <c>AccountIndex</c> (which no read endpoint returns, so they were always null) while silently
+/// dropping <c>Status</c>, <c>Owner</c>, <c>Tenant</c> and <c>UpdatedAt</c> (which it does).</para>
 /// </summary>
 public class WalletApiClient : ApiClientBase
 {
@@ -22,7 +34,7 @@ public class WalletApiClient : ApiClientBase
     /// <summary>
     /// Creates a new HD wallet
     /// </summary>
-    public async Task<WalletResponse?> CreateWalletAsync(
+    public async Task<CreateWalletResponse?> CreateWalletAsync(
         string name,
         string algorithm = "ED25519",
         CancellationToken ct = default)
@@ -33,46 +45,32 @@ public class WalletApiClient : ApiClientBase
             algorithm
         };
 
-        // New API returns nested structure with wallet + mnemonic
-        var response = await PostAsync<object, CreateWalletResponse>($"{_baseUrl}/wallets", request, ct);
-
-        if (response == null)
-        {
-            return null;
-        }
-
-        // Convert to flat WalletResponse for backward compatibility
-        return new WalletResponse
-        {
-            Address = response.Wallet.Address,
-            Name = response.Wallet.Name,
-            Algorithm = response.Wallet.Algorithm,
-            PublicKey = response.Wallet.PublicKey,
-            Mnemonic = response.MnemonicWords != null ? string.Join(" ", response.MnemonicWords) : null,
-            CreatedAt = response.Wallet.CreatedAt
-        };
+        // Returns the canonical nested shape: { wallet: WalletDto, mnemonicWords: string[], … }.
+        // Previously flattened into a bespoke WalletResponse "for backward compatibility" with a
+        // caller that no longer exists — the one consumer reads the nested shape directly now.
+        return await PostAsync<object, CreateWalletResponse>($"{_baseUrl}/wallets", request, ct);
     }
 
     /// <summary>
     /// Gets wallet details by address
     /// </summary>
-    public async Task<WalletResponse?> GetWalletAsync(string address, CancellationToken ct = default)
+    public async Task<WalletDto?> GetWalletAsync(string address, CancellationToken ct = default)
     {
-        return await GetAsync<WalletResponse>($"{_baseUrl}/wallets/{address}", ct);
+        return await GetAsync<WalletDto>($"{_baseUrl}/wallets/{address}", ct);
     }
 
     /// <summary>
     /// Lists all wallets
     /// </summary>
-    public async Task<List<WalletResponse>?> ListWalletsAsync(CancellationToken ct = default)
+    public async Task<List<WalletDto>?> ListWalletsAsync(CancellationToken ct = default)
     {
-        return await GetAsync<List<WalletResponse>>($"{_baseUrl}/wallets", ct);
+        return await GetAsync<List<WalletDto>>($"{_baseUrl}/wallets", ct);
     }
 
     /// <summary>
     /// Signs data with a wallet
     /// </summary>
-    public async Task<SignatureResponse?> SignAsync(
+    public async Task<SignTransactionResponse?> SignAsync(
         string walletAddress,
         string dataToSign,
         CancellationToken ct = default)
@@ -82,7 +80,7 @@ public class WalletApiClient : ApiClientBase
             data = dataToSign
         };
 
-        return await PostAsync<object, SignatureResponse>(
+        return await PostAsync<object, SignTransactionResponse>(
             $"{_baseUrl}/wallets/{walletAddress}/sign",
             request,
             ct);
@@ -91,7 +89,7 @@ public class WalletApiClient : ApiClientBase
     /// <summary>
     /// Derives a child wallet (for delegation scenarios)
     /// </summary>
-    public async Task<WalletResponse?> DeriveChildWalletAsync(
+    public async Task<WalletDto?> DeriveChildWalletAsync(
         string parentAddress,
         uint childIndex,
         string? name = null,
@@ -103,7 +101,7 @@ public class WalletApiClient : ApiClientBase
             name = name ?? $"Child-{childIndex}"
         };
 
-        return await PostAsync<object, WalletResponse>(
+        return await PostAsync<object, WalletDto>(
             $"{_baseUrl}/wallets/{parentAddress}/derive",
             request,
             ct);
@@ -116,55 +114,4 @@ public class WalletApiClient : ApiClientBase
     {
         return await base.CheckHealthAsync(_baseUrl, ct);
     }
-}
-
-/// <summary>
-/// Response from wallet creation (new format with nested wallet object)
-/// </summary>
-public class CreateWalletResponse
-{
-    public WalletDetails Wallet { get; set; } = new();
-    public string[]? MnemonicWords { get; set; }
-    public string? Warning { get; set; }
-}
-
-/// <summary>
-/// Wallet details (used in nested responses)
-/// </summary>
-public class WalletDetails
-{
-    public string Address { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-    public string Algorithm { get; set; } = string.Empty;
-    public string? PublicKey { get; set; }
-    public string Status { get; set; } = string.Empty;
-    public string Owner { get; set; } = string.Empty;
-    public string Tenant { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-    public Dictionary<string, string>? Metadata { get; set; }
-}
-
-/// <summary>
-/// Response from wallet creation/retrieval (legacy flat format for GET requests)
-/// </summary>
-public class WalletResponse
-{
-    public string Address { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-    public string Algorithm { get; set; } = string.Empty;
-    public string? PublicKey { get; set; }
-    public string? Mnemonic { get; set; } // Only returned on creation
-    public int? AccountIndex { get; set; }
-    public DateTime CreatedAt { get; set; }
-}
-
-/// <summary>
-/// Response from signing operation
-/// </summary>
-public class SignatureResponse
-{
-    public string Signature { get; set; } = string.Empty;
-    public string PublicKey { get; set; } = string.Empty;
-    public string Algorithm { get; set; } = string.Empty;
 }

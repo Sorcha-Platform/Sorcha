@@ -96,22 +96,25 @@ public class ParticipantManager
             throw new InvalidOperationException($"Failed to create wallet for participant: {participantId}");
         }
 
+        // Issue #1158 — reads the canonical nested CreateWalletResponse directly. The client used to
+        // flatten it into a bespoke WalletResponse whose single-string Mnemonic was joined from
+        // MnemonicWords here; joining at the point of use keeps one wire shape instead of two.
         var participant = new ParticipantContext
         {
             ParticipantId = participantId,
             Name = participantId,
-            WalletAddress = walletResponse.Address,
-            Algorithm = walletResponse.Algorithm,
-            Mnemonic = walletResponse.Mnemonic, // Store for demo (INSECURE!)
-            CreatedAt = walletResponse.CreatedAt,
+            WalletAddress = walletResponse.Wallet.Address,
+            Algorithm = walletResponse.Wallet.Algorithm,
+            Mnemonic = string.Join(" ", walletResponse.MnemonicWords), // Store for demo (INSECURE!)
+            CreatedAt = walletResponse.Wallet.CreatedAt,
             ActionsExecuted = 0
         };
 
         _logger.LogInformation("Created wallet for {ParticipantId}: {Address}",
             participantId,
-            walletResponse.Address.Length > 16
-                ? walletResponse.Address[..16] + "..."
-                : walletResponse.Address);
+            walletResponse.Wallet.Address.Length > 16
+                ? walletResponse.Wallet.Address[..16] + "..."
+                : walletResponse.Wallet.Address);
 
         return participant;
     }

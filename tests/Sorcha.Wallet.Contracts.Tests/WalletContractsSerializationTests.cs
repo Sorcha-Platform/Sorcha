@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using FluentAssertions;
 using Sorcha.Wallet.Contracts.Models;
 using Sorcha.Wallet.Contracts.Serialization;
@@ -18,6 +19,71 @@ public class WalletContractsSerializationTests
     // Use the context's own baked options (camelCase + source-gen metadata) — the self-contained usage.
     // Hosts that instead chain the resolver into their existing options inherit those options' camelCase.
     private static readonly JsonSerializerOptions Options = WalletContractsJsonContext.Default.Options;
+
+    /// <summary>
+    /// Issue #1159 — the source-generated context existed and was test-validated, but was registered
+    /// in NO host, so every Wallet contract actually (de)serialised by reflection: correct, but not
+    /// trim-safe. The main casualty is the Blazor WASM client, where a Release publish trims the
+    /// reflection metadata the fallback depends on.
+    ///
+    /// <para>It is registered on <see cref="SorchaJson"/> rather than per host. That is deliberate and
+    /// slightly awkward — a generic serialisation helper naming a domain contract — but per-host
+    /// chaining could not have covered the main beneficiary: <see cref="SorchaJson.Options"/> is the
+    /// instance UI clients deserialise with and it is <c>MakeReadOnly()</c>, so nothing can chain a
+    /// resolver into it after construction. Registering inside <c>Configure</c> reaches both that
+    /// static and every host that calls it, and no host can be forgotten. Cycle-safe: both projects
+    /// are dependency-free leaves.</para>
+    /// </summary>
+    [Fact]
+    public void SorchaJsonOptions_ResolveWalletContractsThroughSourceGeneration()
+    {
+        Sorcha.Serialization.SorchaJson.Options.TypeInfoResolverChain
+            .Should().Contain(r => r is WalletContractsJsonContext,
+                "the platform options must resolve Wallet contracts via source generation, not reflection");
+    }
+
+    /// <summary>
+    /// Issue #1159 — chaining a resolver must not cost every OTHER type its metadata.
+    ///
+    /// <para>A <see cref="JsonSerializerOptions"/> carries an implicit default reflection resolver only
+    /// while its chain is untouched; inserting anything removes it. The first cut of this change
+    /// inserted the Wallet context alone, which left the platform options able to resolve seven types
+    /// and nothing else — <c>Sorcha.UI.ContractTests</c> went 18-red with "JsonTypeInfo metadata for
+    /// type 'InboxSeverity' was not provided". This pins the fallback so the one-line version cannot
+    /// come back.</para>
+    /// </summary>
+    [Fact]
+    public void SorchaJsonOptions_StillResolveTypesOutsideTheWalletContracts()
+    {
+        // A type the Wallet context knows nothing about must still round-trip.
+        var json = JsonSerializer.Serialize(
+            new Dictionary<string, object> { ["kind"] = "unrelated", ["n"] = 42 },
+            Sorcha.Serialization.SorchaJson.Options);
+
+        json.Should().Contain("unrelated");
+
+        Sorcha.Serialization.SorchaJson.Options.TypeInfoResolverChain
+            .Should().Contain(r => r is DefaultJsonTypeInfoResolver,
+                "the default reflection resolver must remain in the chain as the fallback for every "
+                + "type the source-generated context does not cover");
+    }
+
+    /// <summary>
+    /// Issue #1159 — the load-bearing caveat. Chaining the resolver must NOT disturb the wire names:
+    /// the contracts go out camelCase, and a regression here would silently break every Wallet client.
+    /// </summary>
+    [Fact]
+    public void SorchaJsonOptions_StillEmitCamelCaseWireNames()
+    {
+        var json = JsonSerializer.Serialize(SampleWallet(), Sorcha.Serialization.SorchaJson.Options);
+
+        json.Should().Contain("\"address\"").And.Contain("\"publicKey\"").And.Contain("\"createdAt\"");
+        json.Should().NotContain("\"Address\"").And.NotContain("\"PublicKey\"");
+
+        var round = JsonSerializer.Deserialize<WalletDto>(json, Sorcha.Serialization.SorchaJson.Options);
+        round!.Address.Should().Be("ws1qexample");
+        round.Metadata.Should().ContainKey("k");
+    }
 
     private static WalletDto SampleWallet() => new()
     {

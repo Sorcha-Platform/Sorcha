@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace Sorcha.Serialization;
 
@@ -43,6 +44,40 @@ public static class SorchaJson
         if (!options.Converters.OfType<JsonStringEnumConverter>().Any())
         {
             options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.KebabCaseLower));
+        }
+
+        // Issue #1159 — source-generated metadata for the Wallet contracts. Chained (Insert at 0)
+        // rather than assigned, so it takes precedence for those types while every other type still
+        // falls through to the default reflection resolver. The naming policy set above governs the
+        // wire names either way, so this changes performance and trim-safety, not the wire format.
+        //
+        // Why here rather than per host, despite the awkwardness of a generic serialisation helper
+        // naming a domain contract: `Options` below is the instance UI clients deserialise with, and
+        // it is MakeReadOnly() — nothing can chain a resolver into it afterwards. Per-host
+        // registration therefore could NOT have covered the WASM client, which is the main
+        // beneficiary (Release publish trims the reflection metadata the fallback needs). Doing it
+        // in Configure reaches that static and every host that calls it, and no host can be missed.
+        // Sorcha.Wallet.Contracts is a dependency-free leaf, so this cannot cycle.
+        if (!options.TypeInfoResolverChain.Any(r => r is Wallet.Contracts.Serialization.WalletContractsJsonContext))
+        {
+            options.TypeInfoResolverChain.Insert(
+                0, Wallet.Contracts.Serialization.WalletContractsJsonContext.Default);
+
+            // MANDATORY, and the reason this is three lines rather than one. A JsonSerializerOptions
+            // carries an IMPLICIT default reflection resolver only while its chain is untouched. The
+            // moment anything is inserted, that implicit default is gone — so adding the Wallet
+            // context alone leaves the chain able to resolve seven types and NOTHING else, and every
+            // other payload in the platform dies with "JsonTypeInfo metadata for type X was not
+            // provided by TypeInfoResolver". MakeReadOnly(populateMissingResolver: true) does not
+            // save you either: a resolver is no longer "missing", so it adds nothing.
+            //
+            // Appending the default restores the previous behaviour exactly — Wallet contracts hit
+            // the source-generated metadata first, everything else falls through to reflection as
+            // before. (Caught by Sorcha.UI.ContractTests, which went 18-red on the one-line version.)
+            if (!options.TypeInfoResolverChain.Any(r => r is DefaultJsonTypeInfoResolver))
+            {
+                options.TypeInfoResolverChain.Add(new DefaultJsonTypeInfoResolver());
+            }
         }
     }
 
