@@ -874,10 +874,49 @@ only what `SorchaFormRenderer` reads to render and validate the form for this on
 sender, which this endpoint's caller always is). `404` if the instance, blueprint, or action is not
 found; `403` if the caller is not a recorded participant on the instance.
 
-> **Known gap, not fixed here (flagged, not silently copied):** the sibling `GET /api/instances/{id}`
-> endpoint on the same group performs **no participant check at all** — any authenticated caller can
-> read any instance by id. This endpoint intentionally does not repeat that gap. Tightening
-> `GET /api/instances/{id}` itself is out of scope for this fix and tracked separately.
+> **That known gap is now CLOSED (issue #1182).** `GET /api/instances/{id}` and its two siblings had
+> no participant check at all — any authenticated caller could read any instance by id. All three are
+> now gated; see below.
+
+### Instance read endpoints — participant gate (issue #1182)
+
+`GET /api/instances/{instanceId}`, `GET /api/instances/{instanceId}/state` and
+`GET /api/instances/{instanceId}/next-actions` previously returned instance content to **any**
+authenticated caller. The `/api/instances` group carries only `CanExecuteBlueprints`, which resolves
+to a bare `RequireAuthenticatedUser()` — so knowledge of a GUID was the only thing protecting another
+citizen's in-flight application. `GET /{instanceId}` was the most serious: it returned the `Instance`
+verbatim, including `accumulatedData` (on an identity workflow: name, date of birth, address and
+portrait image tokens in plaintext) and `participantWallets` (which de-anonymises every participant).
+
+| Method | Path | Authorization |
+|--------|------|---------------|
+| GET | `/api/instances/` | Authenticated; returns only instances where a wallet the caller controls is a participant |
+| GET | `/api/instances/{instanceId}` | Authenticated **and** (caller controls a participant wallet **or** the instance is an unstarted open-participant shell) |
+| GET | `/api/instances/{instanceId}/state` | As above, plus the `X-Delegation-Token` header |
+| GET | `/api/instances/{instanceId}/next-actions` | As above |
+
+Two behaviours are deliberate and easy to get wrong in the opposite direction:
+
+- **The caller's wallets are resolved, not read from a claim.** A consumer-tier token — every real
+  citizen sign-in, web and PWA — carries no `wallet_address` (Feature 136). Resolution goes through
+  `ParticipantWalletResolver` (claim fast path, then Wallet-Service lookup by owner) and matches
+  against the caller's full wallet set. A claim-only gate would 403 every genuine citizen while
+  leaving platform-tier callers unrestricted.
+- **An unstarted instance awaiting its open (Feature 103) participant is readable by any
+  authenticated caller.** `CreateInstance` seeds `participantWallets` only from participants that
+  already carry a wallet, so the walk-in applicant is absent until their first submission seals — and
+  the PWA reads `GET /api/instances/{id}` to find the current action *before* they submit anything.
+  The carve-out requires `completedActionCount == 0` **and** a current action whose sender is unbound,
+  so it holds no accumulated data and only wallets the published blueprint already carries in the
+  clear on the register. It closes the moment any action completes.
+
+`403` returns the same body for "not a participant" as for "blueprint/action not found", so a
+non-participant cannot probe instance internals by reading the difference (#1183).
+
+**Also fixed (same root cause, opposite symptom):** `GET /api/instances/` read the `wallet_address`
+claim directly and returned an empty page when it was absent — so every consumer-tier citizen saw
+none of their own applications. It now resolves through the same seam, spans every wallet the caller
+controls, deduplicates by instance id and orders newest-first.
 
 ### Timebound Presentation Lifecycle (Feature 111)
 

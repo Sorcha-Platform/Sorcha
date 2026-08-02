@@ -27,7 +27,9 @@ Sorcha uses **JWT Bearer authentication** with the **Tenant Service** as the tok
 
 **Mint mapping today:** `TokenService.GenerateUserTokenAsync` → `platform`; `GenerateServiceTokenAsync` → `service`; `EnrolSessionService` redeem → `consumer`, mint → `enrol-session`. Refresh tokens carry a `tier` claim and re-mint the same tier.
 
-> **In-progress (US1/US4/US5, not yet landed):** tier *selection* at login (consumer-vs-platform from `returnTo`), per-endpoint tier *classification* across services, the `RequireService` `:service`-audience extension, and the `IdentityMetrics` (`Sorcha.Identity` meter) DI/OTel wiring. Until US1 lands, endpoints are not yet tier-gated — any valid tier audience authenticates. Spec/plan/tasks: `specs/136-jwt-audience-tiers/`.
+> **Status: all five user stories SHIPPED** (verified 2026-08-02 — `AuthorizationPolicyExtensions` registers `RequireConsumerAudience` / `RequirePlatformAudience`, `RequireService` adds `TierAudienceRequirement(Tier.Service)`, and `IdentityMetrics` is wired in `ServiceDefaults`). Tier selection at login, per-endpoint tier classification, the `:service` audience extension and the `Sorcha.Identity` meter are all live. Spec/plan/tasks: `specs/136-jwt-audience-tiers/`.
+>
+> This block previously read "not yet landed … endpoints are not yet tier-gated". That was stale and load-bearing in the wrong direction: it tells a reader the tier gate is inert, so they skip adding one. Treat CLAUDE.md §13 and the `sorcha-architecture` skill as co-authoritative and keep all three in step.
 
 **No migration:** coordinated config rollout; existing tokens expire (pre-release).
 
@@ -106,6 +108,49 @@ options.AddPolicy("CanManageBlueprints", policy =>
 
 The Wallet Service's `CanRecoverSystemWallet` (system-wallet BIP39 import) follows the same shape:
 service-tier **OR** (`Administrator`/`SystemAdmin` role AND `:platform` audience).
+
+### Resource ownership is NOT a policy — gate it in the handler (issue #1182)
+
+**A tier policy answers "what kind of caller is this", never "does this row belong to them".** Both
+questions must be answered, and only the first can live in `.RequireAuthorization(...)`. Conflating
+them is how `GET /api/instances/{id}` shipped returning any citizen's identity application — name,
+date of birth, address and portrait tokens — to any authenticated stranger who knew a GUID. The group
+carried `CanExecuteBlueprints`, which looks like authorization but resolves to a bare
+`RequireAuthenticatedUser()`.
+
+**Audit rule with teeth: a handler that takes an id and returns per-subject data, but does not take
+`HttpContext`, cannot be checking ownership.** It has no caller identity to check against. That
+signature alone convicted three endpoints here.
+
+```csharp
+// Tier gate on the route; ownership gate in the handler. You need BOTH.
+var instance = await instanceStore.GetAsync(instanceId, ct);
+if (instance is null) return Results.NotFound(...);
+
+var blueprint = await blueprintStore.GetAsync(instance.BlueprintId);   // BEFORE the decision
+if (!await InstanceParticipantGate.IsParticipantAsync(httpContext, instance, walletClient, logger, ct)
+    && !InstanceParticipantGate.IsAwaitingOpenParticipant(instance, blueprint))
+{
+    return Results.Problem("You are not a participant on this instance.", statusCode: 403);
+}
+```
+
+Two traps make the obvious implementation wrong in **opposite** directions — this codebase has now hit
+both, more than once each:
+
+| Trap | Symptom | Rule |
+|---|---|---|
+| Reading `wallet_address` off the claim set | 403s every real citizen (consumer tokens omit it, FR-014) **while leaving platform-tier callers unrestricted** | Always resolve via `ParticipantWalletResolver.ResolveUserWalletAddressesAsync` — claim fast path, then Wallet-Service lookup by owner. Match against the caller's FULL wallet set. |
+| Gating on recorded participation alone | 403s the Feature 103 open participant on their own freshly-created instance — `CreateInstance` seeds `ParticipantWallets` only from participants that already carry a wallet, so the walk-in citizen is absent until their first submission seals | Add an explicit empty-shell carve-out (`CompletedActionCount == 0` **and** a current action whose sender is unbound). It closes the instant real data exists. |
+
+Ordering matters too: resolve the blueprint **before** the gate decides, and raise any
+"blueprint/action not found" error **after** it, so a non-participant cannot read the difference
+between error bodies to probe instance internals (#1183).
+
+An empty resolved wallet set means "could not resolve", not "any wallet" — **fail closed**.
+
+Canonical implementations: `Sorcha.Blueprint.Service.Services.Infrastructure.InstanceParticipantGate`
+and its four callers (`InstanceReadEndpoints`, `InstanceActionEndpoints`).
 
 ### Extract Claims in Handler
 
