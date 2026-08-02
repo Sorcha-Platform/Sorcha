@@ -218,9 +218,9 @@ These were decided before specification and are inputs to planning, not open que
 
 ## Out of Scope
 
-- **Email on decision.** Independent of this view: it needs the transactional email facade and a new template, and gates nothing here. Raise separately.
+- **Email on decision.** Independent of this view: it needs the transactional email facade and a new template, and gates nothing here. Raised as #1361.
 - **A citizen wallet app applications list.** The wallet app keeps its current surfaces and its notification-routing stopgap.
-- **A pre-existing command-line wire mismatch.** The instance-listing client declares a bare list against an endpoint that returns a paged envelope, and sends a filter the server never binds. It is untouched here because the endpoint is untouched; raise separately under the CLI wire-contract rule.
+- **A pre-existing command-line wire mismatch.** The instance-listing client declares a bare list against an endpoint that returns a paged envelope, and sends a filter the server never binds. It is untouched here because the endpoint is untouched. Raised as #1362.
 
 ## Dependencies
 
