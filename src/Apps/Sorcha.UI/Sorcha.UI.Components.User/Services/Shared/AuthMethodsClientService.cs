@@ -138,6 +138,26 @@ public interface IAuthMethodsClientService
     /// Begin enabling email one-time codes (Feature 150 US2) — sends a confirmation code to the
     /// account email. Returns false on transport failure or while rate-limited (429).
     /// </summary>
+    /// <summary>
+    /// Issue #1210 — re-send the account's email-verification link via
+    /// <c>POST /api/auth/resend-verification</c> (rate-limited to 3/hour per user, server-side).
+    ///
+    /// <para>The endpoint pre-dates any caller: nothing in the web app, the PWA or the Tenant
+    /// Service's own Razor Pages invoked it, so a user whose verification email was lost, expired or
+    /// filtered had no self-serve recovery at all — and AIAS gates on <c>email_verified</c>, so the
+    /// consequence was not cosmetic.</para>
+    ///
+    /// <para>It is an AUTHENTICATED endpoint, which is workable because login does not refuse an
+    /// unverified user — <c>LoginService</c> mints a token carrying <c>email_verified: false</c>. So
+    /// the affordance belongs on a signed-in surface (the Security page, beside the Unverified chip),
+    /// NOT on the anonymous login page where it could not authenticate.</para>
+    /// </summary>
+    /// <returns>
+    /// <see cref="ResendVerificationOutcome.Sent"/>, <see cref="ResendVerificationOutcome.RateLimited"/>
+    /// (server returned 429), or <see cref="ResendVerificationOutcome.Failed"/>.
+    /// </returns>
+    Task<ResendVerificationOutcome> ResendVerificationEmailAsync(CancellationToken cancellationToken = default);
+
     Task<bool> EnableEmailOtpAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -161,6 +181,23 @@ public interface IAuthMethodsClientService
 
     /// <summary>Disable SMS one-time codes. False on transport failure.</summary>
     Task<bool> DisableSmsOtpAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>Outcome of a resend-verification-email request (issue #1210).</summary>
+public enum ResendVerificationOutcome
+{
+    /// <summary>Server accepted the request and dispatched a fresh verification email.</summary>
+    Sent = 0,
+
+    /// <summary>
+    /// Server returned 429 — the 3-per-hour limit is spent. Distinguished from a plain failure
+    /// because it needs different copy: the user has done nothing wrong and should simply wait,
+    /// whereas "couldn't send" invites a pointless retry.
+    /// </summary>
+    RateLimited = 1,
+
+    /// <summary>Transport failure or unexpected status.</summary>
+    Failed = 2,
 }
 
 /// <summary>Outcome surfaced for an email/SMS OTP enable-verify call (Feature 150).</summary>
@@ -571,6 +608,32 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
     }
 
     /// <inheritdoc />
+    /// <inheritdoc />
+    public async Task<ResendVerificationOutcome> ResendVerificationEmailAsync(
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // The endpoint binds a ResendVerificationRequest body but reads the user from the
+            // principal, so an empty object is the correct payload — it must still be JSON, or model
+            // binding rejects the request before the handler runs.
+            using var response = await _httpClient.PostAsJsonAsync(
+                "/api/auth/resend-verification", new { }, cancellationToken);
+
+            return response.StatusCode switch
+            {
+                System.Net.HttpStatusCode.TooManyRequests => ResendVerificationOutcome.RateLimited,
+                _ when response.IsSuccessStatusCode => ResendVerificationOutcome.Sent,
+                _ => ResendVerificationOutcome.Failed,
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Resend verification email failed");
+            return ResendVerificationOutcome.Failed;
+        }
+    }
+
     public async Task<bool> EnableEmailOtpAsync(CancellationToken cancellationToken = default)
     {
         try

@@ -346,7 +346,7 @@ public class AuthCommandsTests : IDisposable
 
         _httpHandler.SetResponse(HttpStatusCode.OK, tokenResponse);
 
-        var loginRequest = new LoginRequest
+        var loginRequest = new PasswordGrantRequest
         {
             Username = "cachetest",
             Password = "password123"

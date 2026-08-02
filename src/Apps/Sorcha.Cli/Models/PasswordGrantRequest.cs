@@ -3,9 +3,17 @@
 namespace Sorcha.Cli.Models;
 
 /// <summary>
-/// User login request.
+/// Input to the OAuth2 <b>password grant</b> — sent FORM-ENCODED to the token endpoint as
+/// <c>grant_type=password</c> with <c>username</c> / <c>password</c> / <c>client_id</c> / <c>scope</c>.
+///
+/// <para>Issue #1160 — this was called <c>LoginRequest</c>, which collided by name with the Tenant
+/// Service's <c>LoginRequest</c> (the JSON body of <c>POST /api/auth/login</c>, carrying
+/// <c>email</c> / <c>password</c> / <c>tier</c> / <c>returnTo</c>). The two never travel the same
+/// request and share no field but <c>password</c>, so the collision was pure noise — it forced a
+/// standing justification in <c>CliWireContractTests.NotAWireContract</c>, whose own text named
+/// renaming this type as the real fix. The name now says which grant it is.</para>
 /// </summary>
-public class LoginRequest
+public class PasswordGrantRequest
 {
     /// <summary>
     /// Username or email.

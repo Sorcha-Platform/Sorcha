@@ -86,6 +86,47 @@ public sealed class SecurityHomeTests : BunitContext
         ],
         SmsAvailable: false);
 
+    /// <summary>
+    /// Issue #1210 — the resend affordance must appear ONLY when the account email is unverified.
+    /// Rendering it for a verified account would be noise on every user's security page forever.
+    /// </summary>
+    [Fact]
+    public void ResendVerification_IsHidden_WhenEmailIsVerified()
+    {
+        _client.Setup(c => c.GetAuthMethodsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(PopulatedMethods());   // EmailVerified: true
+
+        var cut = Render(HomeUnderPopover());
+
+        cut.WaitForAssertion(() =>
+            cut.FindAll("[data-testid=security-resend-verification]").Should().BeEmpty());
+    }
+
+    /// <summary>
+    /// Issue #1210 — an unverified account gets a working resend button. Before this, the Unverified
+    /// chip was the end of the road: the endpoint had existed since before any caller, and nothing
+    /// anywhere invoked it, so a user whose verification email was lost had no self-serve recovery —
+    /// and AIAS gates on email_verified.
+    /// </summary>
+    [Fact]
+    public void ResendVerification_IsOffered_AndCallsTheEndpoint_WhenEmailIsUnverified()
+    {
+        _client.Setup(c => c.GetAuthMethodsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(PopulatedMethods() with { EmailVerified = false });
+        _client.Setup(c => c.ResendVerificationEmailAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ResendVerificationOutcome.Sent);
+
+        var cut = Render(HomeUnderPopover());
+
+        cut.WaitForAssertion(() =>
+            cut.Find("[data-testid=security-resend-verification]").Should().NotBeNull());
+
+        cut.Find("[data-testid=security-resend-verification]").Click();
+
+        cut.WaitForAssertion(() =>
+            _client.Verify(c => c.ResendVerificationEmailAsync(It.IsAny<CancellationToken>()), Times.Once));
+    }
+
     [Fact]
     public void RendersThreeJobGroups_WithAssuranceBadges()
     {

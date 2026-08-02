@@ -54,6 +54,32 @@ else
                     @(_methods.EmailVerified ? "Verified" : "Unverified")
                 </MudChip>
             </div>
+
+            @* Issue #1210 — until now the Unverified chip was the end of the road: the resend
+               endpoint had existed (rate-limited, 3/hour) since before any caller, and nothing in the
+               web app, the PWA or the Tenant Service's Razor Pages ever invoked it. A user whose
+               verification email was lost, expired or filtered had no self-serve recovery, and AIAS
+               gates on email_verified, so the dead-end was total.
+
+               It sits here, on a signed-in surface, because the endpoint is authenticated — which
+               works only because LoginService does NOT refuse an unverified user, it mints a token
+               carrying email_verified: false. An affordance on the anonymous login page could not
+               have called it. *@
+            @if (!_methods.EmailVerified)
+            {
+                <div class="d-flex align-center mt-3" data-testid="security-email-unverified">
+                    <MudText Typo="Typo.body2" Class="flex-grow-1 mud-text-secondary">
+                        Didn't get the verification email? Check your spam folder, or send a new one.
+                    </MudText>
+                    <MudButton Variant="Variant.Outlined"
+                               Size="Size.Small"
+                               Disabled="@_resending"
+                               OnClick="ResendVerificationAsync"
+                               data-testid="security-resend-verification">
+                        @(_resending ? "Sending…" : "Resend email")
+                    </MudButton>
+                </div>
+            }
         </MudPaper>
 
         <PasswordSection Password="_methods.Password"
@@ -106,7 +132,48 @@ else
         && _methods.Socials.Count == 0
         && !_methods.Passkeys.Any(p => string.Equals(p.Status, "Active", StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>Issue #1210 — guards the resend button against a double-tap while in flight.</summary>
+    private bool _resending;
+
     protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    /// <summary>
+    /// Issue #1210 — request a fresh verification email. Feedback is inline per the notification
+    /// routing rules (CLAUDE.md §12): this is the actor's own action on the current page, so it is
+    /// <see cref="IInlineFeedback"/>, not an inbox entry.
+    ///
+    /// <para>Rate-limited (429) is reported distinctly from failure. The user has done nothing wrong
+    /// and only needs to wait, whereas "couldn't send" invites an immediate retry that would burn
+    /// another of the three hourly attempts.</para>
+    /// </summary>
+    private async Task ResendVerificationAsync()
+    {
+        _resending = true;
+        StateHasChanged();
+        try
+        {
+            var outcome = await AuthMethodsClient.ResendVerificationEmailAsync();
+            switch (outcome)
+            {
+                case ResendVerificationOutcome.Sent:
+                    Feedback.ShowSuccess("Verification email sent — check your inbox.");
+                    break;
+                case ResendVerificationOutcome.RateLimited:
+                    Feedback.ShowWarning(
+                        "You've requested several verification emails recently. Please wait a while before trying again.",
+                        autoDismissMs: 0);
+                    break;
+                default:
+                    Feedback.ShowError("We couldn't send the verification email. Please try again.", autoDismissMs: 0);
+                    break;
+            }
+        }
+        finally
+        {
+            _resending = false;
+            StateHasChanged();
+        }
+    }
 
     private async Task LoadAsync()
     {

@@ -33,7 +33,7 @@ public class AuthenticationService : IAuthenticationService
     }
 
     /// <inheritdoc/>
-    public async Task<TokenResponse> LoginAsync(LoginRequest request, string profileName)
+    public async Task<TokenResponse> LoginAsync(PasswordGrantRequest request, string profileName)
     {
         if (request == null)
         {

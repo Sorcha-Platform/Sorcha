@@ -80,12 +80,11 @@ public sealed class CliWireContractTests
             + "assembly. The CLI type matches it field-for-field. The public type the harness would "
             + "otherwise pair against lives in Peer.Service and is a different surface entirely — a "
             + "name collision, not a shared contract.",
-        ["LoginRequest"] =
-            "Different concept, same name. The CLI's is the input to an OAuth2 password-grant, sent "
-            + "form-encoded to the token endpoint (username/password/client_id/scope). The Tenant "
-            + "Service's is the JSON body of /api/auth/login (email/password/tier/returnTo). They "
-            + "never travel the same request. Renaming the CLI's would be the real fix; tracked on "
-            + "DRIFT-004.",
+        // ["LoginRequest"] is GONE (issue #1160). Its own justification said renaming the CLI type
+        // was the real fix, so that is what happened: Sorcha.Cli.Models.LoginRequest is now
+        // PasswordGrantRequest, which no server type shares a name with, so discovery pairs nothing
+        // and no entry is needed. An entry removed by killing the collision is the outcome this list
+        // is supposed to drive towards — do not re-add one to silence a future pairing.
     };
 
     /// <summary>
