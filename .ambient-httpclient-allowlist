@@ -36,10 +36,9 @@
 # One relative path per line (forward slashes); trailing # comments allowed.
 
 src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/EnrolGate/EnrolGateComponent.razor              # DELIBERATE — GET /api/auth/whoami; a 401 IS the cold-start answer (not signed in). Attaching auth would turn an expected 401 into a redirect-to-login and break the F126 cold-start gate.
-src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Wallet/ReceiptProofCard.razor                   # UNAUDITED — not yet reviewed against #1311
+src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Wallet/ReceiptProofCard.razor                   # AUDITED 2026-08-02 — HALF BROKEN. POST .../receipts/verify is genuinely public (AllowAnonymous) so that call is fine; GET .../verification-bundle requires CanReadTransactions (VerificationEndpoints.cs ~:396) and therefore 401s. Needs a typed client for the bundle download. See #1311 follow-up.
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/BlueprintServiceAdmin.razor                          # UNAUDITED — not yet reviewed against #1311
-src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/PeerServiceAdmin.razor                                # UNAUDITED — not yet reviewed against #1311
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Forms/FileReferenceField.razor                        # UNAUDITED — not yet reviewed against #1311
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/StatusFooter.razor                             # UNAUDITED — not yet reviewed against #1311
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyDevices.razor                                            # UNAUDITED — not yet reviewed against #1311
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/PeerServiceAdmin.razor                                # UNAUDITED — not yet reviewed against #1311 (calls POST/DELETE /api/peers/{id}/ban — admin peer management; verify the group's auth before moving)
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Forms/FileReferenceField.razor                        # AUDITED 2026-08-02 — BROKEN. POSTs /api/file-chunks, whose group carries .RequireAuthorization() (FileChunkEndpoints.cs:29), so every chunk 401s and F085 file-attachment upload cannot work from the web form renderer. Needs a typed client. See #1311 follow-up.
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/StatusFooter.razor                             # AUDITED 2026-08-02 — DELIBERATE. GET /api/health only; unauthenticated by design.
 src/Apps/Sorcha.Wallet.Pwa/Pages/Present.razor                                                           # DELIBERATE — remaining ambient use is the anonymous request-object GET; PresentationEndpoints.cs marks that route .AllowAnonymous(). The authenticated direct_post path was moved to PresentationDirectPostClient (BearerTokenHandler) under #1310.

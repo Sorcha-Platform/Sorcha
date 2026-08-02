@@ -190,6 +190,15 @@ builder.Services.AddHttpClient<Sorcha.UI.Core.Services.User.Devices.IHasPairedDe
     client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
 }).AddHttpMessageHandler<AuthenticatedHttpMessageHandler>();
 
+// Issue #1311 — the My Devices page's list + revoke. Registered auth-wrapped because both endpoints
+// are authenticated; the page previously used the ambient HttpClient (no Authorization header) and
+// so 401'd on every request, reporting it to the citizen as a connection problem.
+builder.Services.AddHttpClient<Sorcha.UI.Core.Services.User.Devices.IMyDevicesClient,
+                               Sorcha.UI.Core.Services.User.Devices.MyDevicesClient>(client =>
+{
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+}).AddHttpMessageHandler<AuthenticatedHttpMessageHandler>();
+
 // Feature 128 US3 — PWA-installability probe used by PairingHandoffSurface
 // to switch between the QR variant and the install-flavoured variant.
 // Singleton so the cached verdict survives across surface re-renders.
