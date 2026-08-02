@@ -67,21 +67,12 @@ public class EfCoreInstanceStoreUpdateRoundTripTests
     /// </summary>
     private static readonly Dictionary<string, string> NotRoundTripped = new()
     {
-        // TenantId does NOT round-trip, and this entry is load-bearing for the test staying green.
-        // It is a pre-existing gap of exactly the class this file exists to catch, kept separate
-        // because closing it needs an entity column + a migration, which under this repo's
-        // squashed-migration rule is a deployment decision rather than a code change:
-        //   - InstanceEntity has NO TenantId column at all, so neither ToEntity nor UpdateAsync can
-        //     persist it;
-        //   - ToModel reads it back via metadata.GetValueOrDefault("TenantId", string.Empty), but
-        //     NOTHING anywhere writes Metadata["TenantId"] — grep the solution;
-        //   - so every instance read from Postgres has TenantId == "", despite the model declaring
-        //     it `required`.
-        // No authorization decision currently reads it back off a stored instance (it is written at
-        // projection time and consumed in-flight), so this is silent data loss rather than a
-        // security hole — but do not let this entry read as "handled elsewhere".
-        ["TenantId"] = "PRE-EXISTING BUG, not by design — no column exists and nothing writes the " +
-                       "Metadata fallback, so it always reads back empty. See the comment above.",
+        // (Issue #1350 — the TenantId entry that used to live here is GONE, which is the whole test.
+        //  It documented that no InstanceEntity column exists and nothing wrote the Metadata
+        //  fallback, so every instance read back from Postgres had TenantId == "" despite the model
+        //  declaring it `required`. ToEntity/UpdateAsync now write Metadata["TenantId"], which the
+        //  existing ToModel read path already expected — no column and no migration needed.
+        //  Do NOT re-add it: this dictionary is a list of holes in the guard, not a changelog.)
     };
 
     private static EfCoreInstanceStore CreateStore(string dbName)

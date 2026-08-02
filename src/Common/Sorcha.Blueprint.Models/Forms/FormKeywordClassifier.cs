@@ -75,6 +75,24 @@ public static class FormKeywordClassifier
             "x-holder-key",
             // Same idea on a sorcha-device-key field (#1195 Phase 2) — see HolderKeySchemaExtension.
             "x-device-key",
+            // Issue #1303 — three more keywords the code genuinely consumes, previously reaching
+            // "behavioural" only through the fail-safe. Declaring them changes no behaviour; it makes
+            // the classification readable as deliberate, which is the point of a single source of truth.
+            //
+            // x-rule drives conditional display (FormSchemaService.TryParseXRule). Display sounds
+            // presentational, and the call was genuinely arguable — but it is BEHAVIOURAL, because a
+            // show/hide rule decides whether the citizen can supply a field that the schema may still
+            // mark `required`. Change a rule so a required field is hidden and a previously
+            // submittable form stops being submittable: that is a change to which payloads the
+            // definition accepts, which is exactly what the executable-definition hash exists to track.
+            "x-rule",
+            // x-claim-source stamps a platform-vouched JWT claim into the signed payload server-side
+            // (ActionExecutionService step 6a-bis, ClaimSourceBindings.Discover — Feature 183 US1). It
+            // is arguably the most execution-relevant keyword there is: it changes what gets signed.
+            "x-claim-source",
+            // x-sorcha-disclosure selects who can decrypt which fields. Disclosure is the D in DAD —
+            // altering it changes who can read the data, so it can never be display-only.
+            "x-sorcha-disclosure",
         };
 
     /// <summary>

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.UI.Components.User.Models.Verification;
+using Sorcha.UI.Core.Services.Credentials;
 using Sorcha.Verifier.Engine.Models;
 
 namespace Sorcha.UI.Components.User.Models.Verification;
@@ -93,15 +94,28 @@ public sealed class VerdictViewModel
             : (IReadOnlyList<string>)question.RequiredClaims;
         var withheld = known.Where(c => !disclosed.ContainsKey(c)).ToList();
 
+        // Issue #1180 — formatted through the SHARED claim formatter, the same one the four credential
+        // -card paths use, rather than ToString(). A structured claim boxed as a JsonElement stringifies
+        // to its raw JSON (GetRawText()), which is how a {"_sd":[…]} digest array could reach the
+        // operator's verdict panel — the "fifth door".
+        //
+        // The first mitigation SKIPPED any value whose text opened with '{' or '[', which stopped the
+        // raw JSON but threw out the real claims with it: a nested `address` the citizen deliberately
+        // disclosed simply vanished from the verdict, indistinguishable from never having been shared.
+        // Formatting renders it properly instead ("Street: …, City: Edinburgh, Postcode: EH9 1JA") and
+        // still drops `_`-prefixed protocol keys at every depth, so the digests never appear.
+        //
+        // The empty filter is what keeps the plumbing out: a claim carrying ONLY protocol keys formats
+        // to an empty string, so it is dropped rather than rendered as a blank row. The portrait is
+        // exempt from formatting — it renders separately as a marker row.
         var disclosedPairs = disclosed
             .Where(kvp => !NonDisplayClaims.Contains(kvp.Key))
-            // Skip structured (object/array) values — e.g. an undisclosed `address` surfaced as its
-            // raw {"_sd":[…]} digest — which would dump machine JSON into the operator's view. The
-            // portrait is exempt (it renders separately as a marker row).
-            .Where(kvp => kvp.Key == PortraitClaim || !LooksLikeStructuredJson(kvp.Value))
             .Select(kvp => new KeyValuePair<string, string>(
                 kvp.Key,
-                kvp.Key == PortraitClaim ? "<portrait>" : kvp.Value?.ToString() ?? ""))
+                kvp.Key == PortraitClaim
+                    ? "<portrait>"
+                    : CredentialClaimDisplayFormatter.FormatClaimForDetailDisplay(kvp.Value)))
+            .Where(kvp => kvp.Value.Length > 0)
             .ToList();
 
         var headline = ageOver18 switch
@@ -172,9 +186,4 @@ public sealed class VerdictViewModel
     /// the shape an undisclosed nested claim (e.g. a partially-disclosed address carrying its raw
     /// <c>_sd</c> digests) takes. Such values are machine plumbing, not a human-readable disclosure.
     /// </summary>
-    private static bool LooksLikeStructuredJson(object? value)
-    {
-        var s = value?.ToString()?.TrimStart();
-        return !string.IsNullOrEmpty(s) && (s[0] == '{' || s[0] == '[');
-    }
 }
