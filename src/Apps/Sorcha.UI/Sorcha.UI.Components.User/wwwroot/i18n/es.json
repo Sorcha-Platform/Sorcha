@@ -11,7 +11,8 @@
 
   "nav.section.myActivity": "MI ACTIVIDAD",
   "nav.newSubmission": "Nueva presentación",
-  "nav.pendingActions": "Acciones pendientes",
+  "nav.myApplications": "Mis solicitudes",
+  "nav.workQueue": "Cola de trabajo",
   "nav.myWallet": "Mi billetera",
   "nav.myCredentials": "Mis credenciales",
   "nav.myTransactions": "Mis transacciones",

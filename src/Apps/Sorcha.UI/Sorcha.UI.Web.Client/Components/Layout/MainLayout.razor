@@ -89,8 +89,19 @@
                     <MudNavLink Href="new-submissions" Icon="@Icons.Material.Filled.PostAdd">
                         @Loc.T("nav.newSubmission")
                     </MudNavLink>
+                    @* Feature 186 (#1163) — "what did I submit". Sits above the work queue
+                       because it is the question a citizen asks first, and because the queue goes
+                       empty the moment they submit, which is why a submitted application looked
+                       lost (#1267). *@
+                    <MudNavLink Href="my-applications" Icon="@Icons.Material.Filled.Inbox">
+                        @Loc.T("nav.myApplications")
+                    </MudNavLink>
+                    @* Renamed from "Pending Actions" — it read as a near-synonym of the entry
+                       above, which is the confusion #1267/#1268 recorded. Route, scope and
+                       behaviour are unchanged: it is wallet-scoped, not role-scoped, so it still
+                       serves the analyst work queue as well as the citizen. *@
                     <MudNavLink Href="my-actions" Icon="@Icons.Material.Filled.Task">
-                        @Loc.T("nav.pendingActions")
+                        @Loc.T("nav.workQueue")
                     </MudNavLink>
                     <MudNavLink Href="wallets" Icon="@Icons.Material.Filled.AccountBalanceWallet">
                         @Loc.T("nav.myWallet")

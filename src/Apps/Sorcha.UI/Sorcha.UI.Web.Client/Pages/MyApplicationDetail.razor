@@ -1,0 +1,167 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@* Feature 186 (#1163) — one application, its progress and its decision.
+
+   This is also where an inbox decision notice lands: WebInboxDetailRouter maps the
+   /api/instances/{id} reference an entry carries onto this route. Before it existed the web host
+   fell through to the refusing default router, so a decision notice — the very thing Feature 184
+   delivers — rendered as a dead row with nowhere to go. *@
+
+@page "/my-applications/{InstanceId}"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@using Sorcha.UI.Core.Models.Workflows
+@using Sorcha.UI.Core.Services
+@inject IMyApplicationsService Applications
+@inject NavigationManager Navigation
+
+<PageTitle>Application - Sorcha</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
+               Href="my-applications" Class="mb-3" data-testid="my-application-back">
+        My Applications
+    </MudButton>
+
+    @if (_loading)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true"
+                             data-testid="my-application-detail-loading" />
+    }
+    else if (_detail is null)
+    {
+        @* The server answers "not yours" and "no such thing" identically, so this is the only
+           honest wording available — and the only one that does not leak which ids exist. *@
+        <MudAlert Severity="Severity.Info" data-testid="my-application-not-found">
+            We couldn't find that application. It may have been removed, or it may not be yours.
+        </MudAlert>
+    }
+    else
+    {
+        var summary = _detail.Summary;
+
+        <MudPaper Class="pa-4 mb-4" Elevation="1" data-testid="my-application-detail">
+            <MudStack Spacing="2">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap">
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                             Color="@OutcomeColour(summary)"
+                             data-testid="my-application-detail-state">
+                        @OutcomeLabel(summary)
+                    </MudChip>
+                    <MudText Typo="Typo.h5">@summary.BlueprintTitle</MudText>
+                </MudStack>
+
+                @if (!string.IsNullOrWhiteSpace(summary.InstanceReference))
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Reference @summary.InstanceReference
+                    </MudText>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(summary.DecisionReason))
+                {
+                    <MudAlert Severity="@ReasonSeverity(summary)" Dense="true"
+                              data-testid="my-application-detail-reason">
+                        @if (!string.IsNullOrWhiteSpace(summary.DecisionTitle))
+                        {
+                            <strong>@summary.DecisionTitle</strong>
+                            <br />
+                        }
+                        @summary.DecisionReason
+                    </MudAlert>
+                }
+
+                @if (summary.NeedsYou)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               OnClick="@(() => Navigation.NavigateTo("my-actions"))"
+                               Class="align-self-start"
+                               data-testid="my-application-detail-continue">
+                        Continue
+                    </MudButton>
+                }
+
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    Submitted @summary.CreatedAt.ToLocalTime().ToString("d MMM yyyy")
+                    · Last updated @summary.UpdatedAt.ToLocalTime().ToString("d MMM yyyy")
+                </MudText>
+            </MudStack>
+        </MudPaper>
+
+        <MudText Typo="Typo.h6" Class="mb-2">Progress</MudText>
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudTimeline TimelineOrientation="TimelineOrientation.Vertical"
+                         TimelinePosition="TimelinePosition.Start"
+                         data-testid="my-application-steps">
+                @foreach (var step in _detail.Steps)
+                {
+                    <MudTimelineItem Color="@StepColour(step.Status)" Size="Size.Small">
+                        <MudStack Spacing="0"
+                                  data-testid="@($"my-application-step-{step.ActionId}")">
+                            <MudText Typo="Typo.body1">@step.Title</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@StepLabel(step.Status)</MudText>
+                        </MudStack>
+                    </MudTimelineItem>
+                }
+            </MudTimeline>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    /// <summary>The application to show.</summary>
+    [Parameter] public string InstanceId { get; set; } = string.Empty;
+
+    private bool _loading = true;
+    private MyApplicationDetailViewModel? _detail;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _detail = await Applications.GetMyApplicationAsync(InstanceId);
+        _loading = false;
+    }
+
+    private static string OutcomeLabel(MyApplicationViewModel application) => application.Outcome switch
+    {
+        "NotApproved" or "Rejected" => "Not approved",
+        "Active" => application.NeedsYou ? "Needs you" : "In progress",
+        "TimedOut" => "Timed out",
+        var other => other,
+    };
+
+    private static Color OutcomeColour(MyApplicationViewModel application) => application.Outcome switch
+    {
+        "NotApproved" or "Rejected" => Color.Error,
+        "TimedOut" or "Cancelled" => Color.Warning,
+        "Completed" => Color.Success,
+        "Active" => application.NeedsYou ? Color.Warning : Color.Info,
+        _ => Color.Default,
+    };
+
+    private static Severity ReasonSeverity(MyApplicationViewModel application) =>
+        application.DecisionSeverity switch
+        {
+            "Error" => Severity.Error,
+            "Success" => Severity.Success,
+            "Info" => Severity.Info,
+            _ => Severity.Warning,
+        };
+
+    private static Color StepColour(string status) => status switch
+    {
+        "Completed" => Color.Success,
+        "Current" => Color.Primary,
+        _ => Color.Default,
+    };
+
+    private static string StepLabel(string status) => status switch
+    {
+        "Completed" => "Done",
+        "Current" => "In progress",
+        _ => "Not started yet",
+    };
+}

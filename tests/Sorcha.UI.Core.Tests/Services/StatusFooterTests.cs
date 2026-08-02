@@ -164,8 +164,8 @@ public class StatusFooterTests : BunitContext
         await Task.Delay(200);
         cut.Render();
 
-        // Assert - no "pending action" link should be rendered when count is 0
-        cut.Markup.Should().NotContain("pending action");
+        // Assert - no work-queue link should be rendered when count is 0
+        cut.Markup.Should().NotContain("work queue");
         cut.Markup.Should().NotContain("my-actions");
     }
 
@@ -199,10 +199,12 @@ public class StatusFooterTests : BunitContext
         // Re-render to pick up the state change
         cut.Render();
 
-        // Assert - link should now appear with correct text and href
-        cut.Markup.Should().Contain("pending action");
+        // Assert - link should now appear with correct text and href. Wording follows the
+        // Feature 186 (#1163) rename: the destination is the Work Queue, so the footer names it
+        // that rather than "pending actions", which now reads as a synonym of My Applications.
+        cut.Markup.Should().Contain("work queue");
         cut.Markup.Should().Contain("my-actions");
-        cut.Markup.Should().Contain("3 pending actions");
+        cut.Markup.Should().Contain("3 items in your work queue");
     }
 
     [Fact]
@@ -226,9 +228,10 @@ public class StatusFooterTests : BunitContext
 
         cut.Render();
 
-        // Assert - should use singular "action" (not "actions")
-        cut.Markup.Should().Contain("1 pending action");
-        cut.Markup.Should().NotContain("1 pending actions");
+        // Assert - singular, not plural. The noun changed with the Feature 186 rename; the
+        // pluralisation this test exists to pin did not.
+        cut.Markup.Should().Contain("1 item in your work queue");
+        cut.Markup.Should().NotContain("1 items");
     }
 
     #endregion

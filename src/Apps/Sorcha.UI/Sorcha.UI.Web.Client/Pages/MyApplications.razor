@@ -1,0 +1,186 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@* Feature 186 (#1163) — "what did I submit, and what happened?".
+
+   The row reports the state of the APPLICATION, not of an action. That distinction is the point:
+   Pending Actions goes empty the moment a citizen submits, which is why a submitted application
+   appeared to vanish (#1267), and why a stale action row could still offer a "Take Action" button
+   for work already done (#1268). Here the Continue affordance is gated on the server-computed
+   NeedsYou, so it cannot be offered when it cannot be taken. *@
+
+@page "/my-applications"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@using Sorcha.UI.Core.Models.Common
+@using Sorcha.UI.Core.Models.Workflows
+@using Sorcha.UI.Core.Services
+@inject IMyApplicationsService Applications
+@inject NavigationManager Navigation
+
+<PageTitle>My Applications - Sorcha</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudStack Spacing="0" Class="mb-4">
+        <MudText Typo="Typo.h4">
+            <MudIcon Icon="@Icons.Material.Filled.Inbox" Class="mr-2" />
+            My Applications
+        </MudText>
+        <MudText Typo="Typo.body1" Color="Color.Secondary">
+            Everything you have submitted, and what happened to it
+        </MudText>
+    </MudStack>
+
+    @if (_loading)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true"
+                             data-testid="my-applications-loading" />
+    }
+    else if (_applications.Count == 0)
+    {
+        <MudPaper Class="pa-6" Elevation="0" data-testid="my-applications-empty">
+            <MudText Typo="Typo.subtitle1">You haven't applied for anything yet</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                When you apply for a service, it will appear here — along with its progress and
+                any decision made on it.
+            </MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       Href="new-submissions" data-testid="my-applications-start">
+                Start an application
+            </MudButton>
+        </MudPaper>
+    }
+    else
+    {
+        <MudStack Spacing="3">
+            @foreach (var application in _applications)
+            {
+                <MudPaper Class="pa-4" Elevation="1"
+                          data-testid="@($"my-application-row-{application.InstanceId}")">
+                    <MudStack Row="true" Wrap="Wrap.Wrap" Justify="Justify.SpaceBetween"
+                              AlignItems="AlignItems.Center" Spacing="2">
+                        <MudStack Spacing="1" Style="flex: 1 1 320px; min-width: 0;">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2"
+                                      Wrap="Wrap.Wrap">
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                         Color="@OutcomeColour(application)"
+                                         data-testid="@($"my-application-state-{application.InstanceId}")">
+                                    @OutcomeLabel(application)
+                                </MudChip>
+                                <MudText Typo="Typo.subtitle1">@application.BlueprintTitle</MudText>
+                            </MudStack>
+
+                            @if (!string.IsNullOrWhiteSpace(application.InstanceReference))
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    Reference @application.InstanceReference
+                                </MudText>
+                            }
+
+                            @* FR-013: absent means absent. A blank reason line reads as a fault. *@
+                            @if (!string.IsNullOrWhiteSpace(application.DecisionReason))
+                            {
+                                <MudAlert Severity="@ReasonSeverity(application)" Dense="true"
+                                          Class="mt-2"
+                                          data-testid="@($"my-application-reason-{application.InstanceId}")">
+                                    @if (!string.IsNullOrWhiteSpace(application.DecisionTitle))
+                                    {
+                                        <strong>@application.DecisionTitle</strong>
+                                        <br />
+                                    }
+                                    @application.DecisionReason
+                                </MudAlert>
+                            }
+
+                            @if (application.StepNumber is { } step && application.TotalSteps is { } total)
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    Step @step of @total@(string.IsNullOrWhiteSpace(application.CurrentActionTitle)
+                                        ? string.Empty
+                                        : $" — {application.CurrentActionTitle}")
+                                </MudText>
+                            }
+
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Submitted @application.CreatedAt.ToLocalTime().ToString("d MMM yyyy")
+                            </MudText>
+                        </MudStack>
+
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                            @* Gated on the server-computed NeedsYou, never on "there is a current
+                               action" — that distinction is #1268. *@
+                            @if (application.NeedsYou)
+                            {
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                           OnClick="@(() => Continue(application))"
+                                           data-testid="@($"my-application-continue-{application.InstanceId}")">
+                                    Continue
+                                </MudButton>
+                            }
+                            <MudButton Variant="Variant.Text" Color="Color.Primary"
+                                       Href="@($"my-applications/{application.InstanceId}")"
+                                       data-testid="@($"my-application-open-{application.InstanceId}")">
+                                Details
+                            </MudButton>
+                        </MudStack>
+                    </MudStack>
+                </MudPaper>
+            }
+        </MudStack>
+    }
+</MudContainer>
+
+@code {
+    private bool _loading = true;
+    private IReadOnlyList<MyApplicationViewModel> _applications = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var page = await Applications.GetMyApplicationsAsync();
+        _applications = page.Items;
+        _loading = false;
+    }
+
+    /// <summary>
+    /// Sends the citizen to the work queue, which owns the form-filling experience. Deliberately not
+    /// a second submission path — this page reports, it does not execute.
+    /// </summary>
+    private void Continue(MyApplicationViewModel application) =>
+        Navigation.NavigateTo("my-actions");
+
+    /// <summary>
+    /// The label shown to the citizen. Reads <c>Outcome</c>, not <c>State</c>: a refusal ends an
+    /// application exactly as an approval does, so the lifecycle state alone would report a refused
+    /// application as "Completed".
+    /// </summary>
+    private static string OutcomeLabel(MyApplicationViewModel application) => application.Outcome switch
+    {
+        "NotApproved" => "Not approved",
+        "Active" => application.NeedsYou ? "Needs you" : "In progress",
+        "Completed" => "Completed",
+        "Rejected" => "Not approved",
+        "TimedOut" => "Timed out",
+        "Cancelled" => "Cancelled",
+        var other => other,
+    };
+
+    private static Color OutcomeColour(MyApplicationViewModel application) => application.Outcome switch
+    {
+        "NotApproved" or "Rejected" => Color.Error,
+        "TimedOut" or "Cancelled" => Color.Warning,
+        "Completed" => Color.Success,
+        "Active" => application.NeedsYou ? Color.Warning : Color.Info,
+        _ => Color.Default,
+    };
+
+    private static Severity ReasonSeverity(MyApplicationViewModel application) =>
+        application.DecisionSeverity switch
+        {
+            "Error" => Severity.Error,
+            "Success" => Severity.Success,
+            "Info" => Severity.Info,
+            _ => Severity.Warning,
+        };
+}

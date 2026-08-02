@@ -1,10 +1,11 @@
 @* SPDX-License-Identifier: MIT *@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
-@* Legacy route — redirects to /new-submissions. Feature 091 replaced this page
-   with the searchable blueprint catalogue. This stub preserves deep links from
-   bookmarks and external references. TODO: remove in a future cleanup PR once
-   analytics show no traffic on /my-workflows. *@
+@* Legacy route — redirects to /my-applications (Feature 186 / #1163).
+
+   It used to land on /new-submissions, so the route a citizen would guess for "what did I
+   submit" took them to "start a new one" instead. Now that a My Applications view exists,
+   this stub sends the bookmark where its name always implied. *@
 
 @page "/my-workflows"
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
@@ -17,13 +18,13 @@
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
     <MudStack AlignItems="AlignItems.Center" Spacing="2">
         <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
-        <MudText Typo="Typo.body1">Redirecting to New Submissions...</MudText>
+        <MudText Typo="Typo.body1">Redirecting to My Applications…</MudText>
     </MudStack>
 </MudContainer>
 
 @code {
     protected override void OnInitialized()
     {
-        Navigation.NavigateTo("new-submissions", replace: true);
+        Navigation.NavigateTo("my-applications", replace: true);
     }
 }
