@@ -179,9 +179,16 @@ public sealed class MeApplicationEndpointsTests
         return (Task<IResult>)method!.Invoke(null, args)!;
     }
 
+    /// <summary>
+    /// Paging arguments are passed as <c>int?</c> and default to <see langword="null"/> here, so the
+    /// harness exercises the same shape a bare <c>GET /api/me/applications</c> produces. Passing
+    /// explicit values (as this harness originally did) is what let a 400 on the real request go
+    /// unnoticed: a non-nullable minimal-API query parameter is REQUIRED, and reflection never
+    /// crosses the binder.
+    /// </summary>
     private static Task<IResult> List(
         HttpContext ctx, IInstanceStore store, BlueprintModel? blueprint, IWalletServiceClient wallets,
-        InstanceState? status = null, int page = 1, int pageSize = 20) =>
+        InstanceState? status = null, int? page = null, int? pageSize = null) =>
         InvokeAsync(nameof(MeApplicationEndpoints.ListMyApplications),
             ctx, store, BlueprintStoreWith(blueprint), wallets,
             NullLogger<MeApplicationEndpoints.MeApplicationEndpointsLogCategory>.Instance,
@@ -307,6 +314,39 @@ public sealed class MeApplicationEndpointsTests
 
         PageOf(result).TotalCount.Should().Be(3,
             "\"what did I submit\" must include applications that have finished");
+    }
+
+    [Fact]
+    public async Task List_WithNoPagingArguments_DefaultsRatherThanFailing()
+    {
+        // A bare GET /api/me/applications must work. It did not: `int page` binds as a REQUIRED
+        // query parameter, so the live request returned 400 "Required parameter "int page" was not
+        // provided from query string" while every unit test passed — reflection hands the handler
+        // values directly and never crosses the binder.
+        var result = await List(
+            ConsumerContext(CitizenUserId),
+            StoreWith(new() { [CitizenWallet] = [Application()] }),
+            Blueprint(),
+            WalletClientFor(CitizenUserId, CitizenWallet),
+            page: null, pageSize: null);
+
+        var page = PageOf(result);
+        page.PageNumber.Should().Be(1);
+        page.PageSize.Should().Be(20);
+        page.Items.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task List_ClampsAnAbsurdPageSize()
+    {
+        var result = await List(
+            ConsumerContext(CitizenUserId),
+            StoreWith(new() { [CitizenWallet] = [Application()] }),
+            Blueprint(),
+            WalletClientFor(CitizenUserId, CitizenWallet),
+            pageSize: 100_000);
+
+        PageOf(result).PageSize.Should().Be(100, "an unbounded page size is a denial-of-service lever");
     }
 
     // ---------------------------------------------------------------------------------------

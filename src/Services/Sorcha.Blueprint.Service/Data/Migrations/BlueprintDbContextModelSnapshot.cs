@@ -219,11 +219,11 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TransactionHash");
-
                     b.HasIndex("CreatedAt")
                         .HasDatabaseName("IX_FileMetadata_Orphans")
                         .HasFilter("\"TransactionHash\" IS NULL");
+
+                    b.HasIndex("TransactionHash");
 
                     b.ToTable("FileMetadata", "blueprint");
                 });

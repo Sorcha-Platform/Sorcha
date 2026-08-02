@@ -97,9 +97,7 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                     CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     CompletedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    LastAppliedTxId = table.Column<string>(type: "text", nullable: true),
-                    DecisionRouteId = table.Column<string>(type: "text", nullable: true),
-                    DecisionReasonCode = table.Column<string>(type: "text", nullable: true)
+                    LastAppliedTxId = table.Column<string>(type: "text", nullable: true)
                 },
                 constraints: table =>
                 {

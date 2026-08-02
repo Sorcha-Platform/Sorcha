@@ -89,12 +89,18 @@ public static class MeApplicationEndpoints
         IWalletServiceClient walletClient,
         ILogger<MeApplicationEndpointsLogCategory> logger,
         InstanceState? status,
-        int page,
-        int pageSize,
+        // Nullable, not `int` with a default. A non-nullable minimal-API query parameter is
+        // REQUIRED: omitting it returns 400 "Required parameter "int page" was not provided from
+        // query string" — which is what a plain GET /api/me/applications did, and no unit test
+        // could see because the reflection-invoked handler always received explicit values.
+        int? page,
+        int? pageSize,
         CancellationToken cancellationToken)
     {
-        page = page < 1 ? 1 : page;
-        pageSize = pageSize < 1 ? 20 : Math.Min(pageSize, MaxPageSize);
+        var requestedPage = page ?? 1;
+        var requestedPageSize = pageSize ?? 20;
+        var resolvedPage = requestedPage < 1 ? 1 : requestedPage;
+        var resolvedPageSize = requestedPageSize < 1 ? 20 : Math.Min(requestedPageSize, MaxPageSize);
 
         var callerWallets = await ParticipantWalletResolver.ResolveUserWalletAddressesAsync(
             httpContext, walletClient, logger, cancellationToken);
@@ -103,7 +109,7 @@ public static class MeApplicationEndpoints
         {
             // "Couldn't resolve", not "not allowed". A citizen who has not yet created a wallet has
             // no applications, and an empty list is the truthful answer to that.
-            return Results.Ok(new MyApplicationPage<MyApplicationSummary>([], 0, page, pageSize));
+            return Results.Ok(new MyApplicationPage<MyApplicationSummary>([], 0, resolvedPage, resolvedPageSize));
         }
 
         // A caller may control several wallets, so the page spans all of them. Deduplicated by
@@ -125,7 +131,7 @@ public static class MeApplicationEndpoints
             .ThenBy(i => i.Id, StringComparer.Ordinal)
             .ToList();
 
-        var pageItems = ordered.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        var pageItems = ordered.Skip((resolvedPage - 1) * resolvedPageSize).Take(resolvedPageSize).ToList();
 
         // One blueprint fetch per distinct blueprint on the page, not per row.
         var blueprints = await LoadBlueprintsAsync(pageItems, blueprintStore);
@@ -135,7 +141,7 @@ public static class MeApplicationEndpoints
             .ToList();
 
         return Results.Ok(new MyApplicationPage<MyApplicationSummary>(
-            rows, ordered.Count, page, pageSize));
+            rows, ordered.Count, resolvedPage, resolvedPageSize));
     }
 
     /// <summary>

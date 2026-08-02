@@ -83,8 +83,13 @@ public class MyApplicationsTests : AuthenticatedDockerTestBase
     {
         // It used to redirect to the start-a-new-application catalogue, so the route a citizen
         // would guess for "what did I submit" took them somewhere that could only start another.
-        await Page.GotoAsync(TestConstants.AuthenticatedRoutes.MyWorkflows);
-        await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        await NavigateAuthenticatedAsync(TestConstants.AuthenticatedRoutes.MyWorkflows);
+
+        // The redirect happens in OnInitialized, i.e. after the WASM runtime boots — so waiting on
+        // NetworkIdle alone can observe the pre-redirect URL and pass or fail for the wrong reason.
+        await Page.WaitForURLAsync(
+            url => url.Contains("my-applications", StringComparison.Ordinal),
+            new PageWaitForURLOptions { Timeout = 15_000 });
 
         Assert.That(Page.Url, Does.Contain("my-applications"));
         Assert.That(Page.Url, Does.Not.Contain("new-submissions"));

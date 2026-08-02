@@ -12,8 +12,8 @@ using Sorcha.Blueprint.Service.Data;
 namespace Sorcha.Blueprint.Service.Data.Migrations
 {
     [DbContext(typeof(BlueprintDbContext))]
-    [Migration("20260528205017_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20260802203304_AddInstanceDecisionProjection")]
+    partial class AddInstanceDecisionProjection
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -222,11 +222,11 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TransactionHash");
-
                     b.HasIndex("CreatedAt")
                         .HasDatabaseName("IX_FileMetadata_Orphans")
                         .HasFilter("\"TransactionHash\" IS NULL");
+
+                    b.HasIndex("TransactionHash");
 
                     b.ToTable("FileMetadata", "blueprint");
                 });
@@ -260,6 +260,12 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
 
                     b.Property<string>("CurrentActionIds")
                         .HasColumnType("jsonb");
+
+                    b.Property<string>("DecisionReasonCode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DecisionRouteId")
+                        .HasColumnType("text");
 
                     b.Property<string>("FirstTransactionId")
                         .HasColumnType("text");

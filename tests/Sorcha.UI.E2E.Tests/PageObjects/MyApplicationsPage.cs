@@ -31,7 +31,9 @@ public class MyApplicationsPage
     /// <summary>Navigates to the list and waits for Blazor to settle.</summary>
     public async Task NavigateAsync()
     {
-        await _page.GotoAsync(TestConstants.AuthenticatedRoutes.MyApplications);
+        // AuthenticatedRoutes entries are PATHS ("/app/…"), not absolute URLs — Playwright's
+        // GotoAsync rejects a bare path with "Cannot navigate to invalid URL".
+        await _page.GotoAsync($"{TestConstants.UiWebUrl}{TestConstants.AuthenticatedRoutes.MyApplications}");
         await _page.WaitForLoadStateAsync(LoadState.NetworkIdle);
         await MudBlazorHelpers.WaitForBlazorAsync(_page);
     }
