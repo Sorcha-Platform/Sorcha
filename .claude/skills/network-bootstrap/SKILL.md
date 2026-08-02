@@ -30,9 +30,14 @@ dotnet run --project src/Apps/Sorcha.Cli -- system-register create --network-id 
 
 **Outputs:**
 - `src/Common/Sorcha.Register.Models/Resources/system-register-genesis.json` (embedded in assembly)
-- `genesis-validator-key.json` (root of repo, DO NOT commit — gitignored)
+- `temp/genesis-validator-key.json` (the gitignored `/temp` dir — DO NOT commit)
 
-**CRITICAL:** Store `genesis-validator-key.json` securely. The mnemonic controls all keys derived from this wallet.
+**CRITICAL:** Store `temp/genesis-validator-key.json` securely, then destroy it after import. The mnemonic controls all keys derived from this wallet — not just the genesis signing key.
+
+> The ceremony writes it into the gitignored `/temp` rather than the repo root. The root default left
+> a `genesis-validator-key.json.bak-pre471` sitting untracked for weeks, and `.gitignore` matched only
+> the exact filename — which a `.bak-*` suffix defeats. `.gitignore` now globs
+> `genesis-validator-key*` as well, so the family is excluded wherever it lands.
 
 > **Genesis freshness window — RESOLVED (2026-06-01, F145 session; static trace).** The 1h window is the intended, enforced, unit-tested behaviour. Genesis is **NOT exempt** — by design it gets a *separate, short* freshness window:
 > - **`ValidateTiming` applies `GenesisMaxAge` (default 1h) to genesis** (vs `MaxTransactionAge`/1h for live txs), rejecting with `VAL_TIME_002` when `CreatedAt` is older. This is a deliberate **replay guard**: a stale-but-accepted genesis lets an attacker seed/hijack a bootstrapping node (rationale in `ValidationEngineConfiguration.GenesisMaxAge` + `ValidateTiming`). Unit-tested: `ValidationEngineTests` VAL_TIME_002 genesis cases (too-old → reject; within-window → pass).
@@ -184,7 +189,7 @@ validator-service finds it.
 .\scripts\n1-reset.ps1 `
   -ResourceGroup sorcha-n1-uk `
   -UpdateCompose `
-  -ImportValidatorKeyPath .\genesis-validator-key.json `
+  -ImportValidatorKeyPath .\temp\genesis-validator-key.json `
   -Yes
 ```
 
@@ -211,7 +216,7 @@ until ssh sorcha@<n1-ip> "docker ps --filter name=sorcha-wallet-service --format
 # Step 5d: import via curl on the sorcha network. The wallet-service
 # container has no shell, so docker exec sh won't work — use a one-shot
 # curl container on the same compose network.
-MNEMONIC=$(python3 -c "import json; print(json.load(open('genesis-validator-key.json'))['mnemonic'])")
+MNEMONIC=$(python3 -c "import json; print(json.load(open('temp/genesis-validator-key.json'))['mnemonic'])")
 ssh sorcha@<n1-ip> "docker run --rm --network=sorcha_sorcha-network curlimages/curl:latest \
   -sk -X POST http://wallet-service:8080/api/v1/wallets/system/recover \
   -H 'Content-Type: application/json' \
@@ -227,7 +232,7 @@ ssh sorcha@<n1-ip> 'cd /opt/sorcha && docker compose \
 **`HTTP 000` from the import almost always means it SUCCEEDED (verified 2026-06-02).** The one-shot curl can exit non-zero (lost response / blip) even though wallet-service processed the POST and logged `system/recover responded 201`. The automated `n1-setup-remote.sh` treats `000` as fatal (`set -euo pipefail`) and **aborts before bringing up the rest of the stack**. Do NOT `down -v` and retry — wallet-service-alone can't auto-generate a `validator:` wallet, so the recovered wallet is real. Verify with `docker exec sorcha-postgres psql -U sorcha -d sorcha_wallet -tc 'select "Owner" from wallet."Wallets" where "Owner" like '"'"'validator:%'"'"';'` (or grep the wallet-service log for `responded 201`), then just run Step 5e (`up -d`) to finish.
 
 **Note on wallet address:** the address returned by `/system/recover`
-will NOT match the `walletAddress` in `genesis-validator-key.json`.
+will NOT match the `walletAddress` in `temp/genesis-validator-key.json`.
 That's expected — the address is derived from a different BIP path than
 the docket-signing key. The roster check uses the
 `m/44'/0'/0'/0/102` (`sorcha:docket-signing`) pubkey, which IS the same

@@ -1,0 +1,8 @@
+# Everything written into /temp is runtime scratch — ignore it all, keep the folder.
+#
+# Self-contained on purpose: because this file lives INSIDE the directory it ignores, the folder
+# exists on every clone (git tracks this file and the README) while its contents never can be
+# committed. That holds even if someone edits or reorders the root .gitignore.
+*
+!.gitignore
+!README.md

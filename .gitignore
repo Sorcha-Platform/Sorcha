@@ -9,8 +9,21 @@
 # GSD local planning/workflow state (roadmaps, phase plans, debug traces) — local only
 .planning/
 
-# Genesis ceremony private key material (never commit)
-genesis-validator-key.json
+# Runtime scratch. /temp carries its own .gitignore so the folder is tracked while its contents
+# never are; this entry is belt-and-braces for anything that resolves the path differently.
+/temp/*
+!/temp/.gitignore
+!/temp/README.md
+
+# Genesis ceremony private key material (never commit).
+#
+# GLOB, not the exact filename — that is the whole point. This rule used to read
+# `genesis-validator-key.json`, which does NOT match `genesis-validator-key.json.bak-pre471`; such a
+# file sat untracked in the repo root for weeks, and its mnemonic controls every key derived from the
+# genesis wallet. One `git add -A` would have published it. Match the family, wherever it lands and
+# whatever suffix a backup or re-ceremony gives it.
+genesis-validator-key*
+**/genesis-validator-key*
 
 # .NET
 bin/

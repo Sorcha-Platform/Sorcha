@@ -346,13 +346,14 @@ sorcha system-register create --network-id sorcha-dev
 
 # Outputs:
 #   system-register-genesis.json  → embed in source tree or deploy as config
-#   genesis-validator-key.json    → import into first validator, then destroy
+#   temp/genesis-validator-key.json → import into first validator, then destroy
+#                                     (the gitignored /temp — it is private key material)
 
 # Verify a genesis file
 sorcha system-register verify path/to/system-register-genesis.json
 
 # Import validator key into running Wallet Service (first validator only)
-sorcha system-register import-validator-key --key genesis-validator-key.json
+sorcha system-register import-validator-key --key temp/genesis-validator-key.json
 ```
 
 ### Bootstrap Flow (Register Service)
