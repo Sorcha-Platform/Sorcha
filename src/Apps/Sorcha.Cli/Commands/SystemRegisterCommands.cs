@@ -266,11 +266,11 @@ public class SystemRegisterCreateCommand : Command
 
         await File.WriteAllTextAsync(genesisPath, genesisJson, ct);
 
-        // Write key file adjacent to genesis when output path is specified (for test isolation),
-        // otherwise to current working directory
-        var keyFilePath = outputPath is not null
-            ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(outputPath)) ?? Directory.GetCurrentDirectory(), "genesis-validator-key.json")
-            : Path.Combine(Directory.GetCurrentDirectory(), "genesis-validator-key.json");
+        var keyFilePath = ResolveValidatorKeyPath(outputPath, Directory.GetCurrentDirectory());
+        var keyFileDir = Path.GetDirectoryName(keyFilePath);
+        if (!string.IsNullOrEmpty(keyFileDir))
+            Directory.CreateDirectory(keyFileDir);
+
         var keyFileJson = JsonSerializer.Serialize(validatorKeyFile, PrettyJsonOptions);
         await File.WriteAllTextAsync(keyFilePath, keyFileJson, ct);
 
@@ -362,6 +362,65 @@ public class SystemRegisterCreateCommand : Command
             _ => "s0"
         };
         return $"{prefix}{Convert.ToHexString(hash)[..40].ToLowerInvariant()}";
+    }
+
+    /// <summary>
+    /// Where the genesis ceremony's validator key file goes.
+    ///
+    /// <para>This is private key material: its mnemonic controls EVERY key derived from the genesis
+    /// wallet, not just the genesis signing key. With no explicit <c>--output</c> it used to land in
+    /// the process's current directory — which, for the documented ceremony workflow, is the repo
+    /// root. A <c>genesis-validator-key.json.bak-pre471</c> duly sat there untracked for weeks, one
+    /// <c>git add -A</c> from being published (<c>.gitignore</c> matched the exact filename, which a
+    /// <c>.bak-*</c> suffix defeats; it now globs the family).</para>
+    ///
+    /// <para>The default is now the repo's gitignored <c>/temp</c>, located by walking up for the
+    /// same marker <see cref="FindDefaultGenesisPath"/> uses — so it does not matter where inside the
+    /// checkout the CLI was invoked from. Outside a checkout (the CLI ships as a global tool and can
+    /// run anywhere) it falls back to the working directory rather than inventing a location.</para>
+    ///
+    /// <para>An explicit <c>--output</c> still keeps the key adjacent to the genesis file. Scripted
+    /// ceremonies pass one and depend on that; only the default moved.</para>
+    ///
+    /// <para>Internal rather than private so it can be tested directly — the alternative is asserting
+    /// on a path the test would have to reproduce by copying this logic, which proves nothing.</para>
+    /// </summary>
+    internal static string ResolveValidatorKeyPath(string? outputPath, string workingDirectory)
+    {
+        const string KeyFileName = "genesis-validator-key.json";
+
+        if (outputPath is not null)
+        {
+            return Path.Combine(
+                Path.GetDirectoryName(Path.GetFullPath(outputPath)) ?? workingDirectory,
+                KeyFileName);
+        }
+
+        var repoRoot = FindRepoRoot(workingDirectory);
+        return repoRoot is not null
+            ? Path.Combine(repoRoot, "temp", KeyFileName)
+            : Path.Combine(workingDirectory, KeyFileName);
+    }
+
+    /// <summary>
+    /// Walks up from <paramref name="startDirectory"/> looking for the Sorcha checkout marker,
+    /// returning the repo root or null when not inside one. Shared by the genesis-file and
+    /// validator-key path defaults so the two cannot disagree about where the repo is.
+    /// </summary>
+    private static string? FindRepoRoot(string startDirectory)
+    {
+        var dir = startDirectory;
+        for (var i = 0; i < 10; i++)
+        {
+            if (Directory.Exists(Path.Combine(dir, "src", "Common", "Sorcha.Register.Models")))
+                return dir;
+
+            var parent = Directory.GetParent(dir);
+            if (parent is null) break;
+            dir = parent.FullName;
+        }
+
+        return null;
     }
 
     private static string FindDefaultGenesisPath()

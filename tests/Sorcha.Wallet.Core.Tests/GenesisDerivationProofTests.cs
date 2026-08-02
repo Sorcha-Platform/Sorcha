@@ -25,24 +25,40 @@ namespace Sorcha.Wallet.Core.Tests;
 /// </remarks>
 public class GenesisDerivationProofTests
 {
-    private static string? FindGenesisKeyFile()
+    /// <summary>
+    /// Locates the genesis validator key, returning it with the repo root it was found under.
+    ///
+    /// <para>Checks <c>temp/</c> at each ancestor as well as the ancestor itself. The ceremony now
+    /// writes the key into the gitignored <c>/temp</c> rather than the repo root (it is private key
+    /// material; the old default left it one <c>git add -A</c> from being published). The repo-root
+    /// location is still accepted so a pre-existing key from an earlier ceremony keeps working.</para>
+    ///
+    /// <para>Returning the repo root explicitly matters: this used to derive it as the key file's own
+    /// directory, which was right only while the key sat AT the root. With the key in <c>temp/</c>
+    /// that would resolve the genesis file under <c>temp/src/…</c>, find nothing, and return null —
+    /// and because this whole suite skips silently when either file is missing, the tests would have
+    /// quietly stopped running rather than failing.</para>
+    /// </summary>
+    private static (string KeyPath, string RepoRoot)? FindGenesisKeyFile()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         for (int i = 0; i < 8 && dir is not null; i++, dir = dir.Parent)
         {
-            var candidate = Path.Combine(dir.FullName, "genesis-validator-key.json");
-            if (File.Exists(candidate)) return candidate;
+            var inTemp = Path.Combine(dir.FullName, "temp", "genesis-validator-key.json");
+            if (File.Exists(inTemp)) return (inTemp, dir.FullName);
+
+            var atRoot = Path.Combine(dir.FullName, "genesis-validator-key.json");
+            if (File.Exists(atRoot)) return (atRoot, dir.FullName);
         }
         return null;
     }
 
     private static (string Mnemonic, string RosterPubKey)? Load()
     {
-        var keyPath = FindGenesisKeyFile();
-        if (keyPath is null) return null;
+        var found = FindGenesisKeyFile();
+        if (found is null) return null;
+        var (keyPath, repoRoot) = found.Value;
 
-        // Resolve genesis file relative to the key file (repo root sibling)
-        var repoRoot = new FileInfo(keyPath).Directory!.FullName;
         var genesisPath = Path.Combine(repoRoot,
             "src", "Common", "Sorcha.Register.Models", "Resources", "system-register-genesis.json");
         if (!File.Exists(genesisPath)) return null;
