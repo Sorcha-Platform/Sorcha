@@ -2176,41 +2176,6 @@ instanceRebuildGroup.MapPost("/{registerId}/{instanceId}/rebuild", async (
 // <summary>
 // List workflow instances for the authenticated user's wallet
 // </summary>
-instancesGroup.MapGet("/", async (
-    HttpContext httpContext,
-    Sorcha.Blueprint.Service.Storage.IInstanceStore instanceStore,
-    Sorcha.Blueprint.Service.Models.InstanceState? status = null,
-    int page = 1,
-    int pageSize = 20) =>
-{
-    var walletAddress = httpContext.User.FindFirst("wallet_address")?.Value;
-    if (string.IsNullOrEmpty(walletAddress))
-    {
-        return Results.Ok(new { items = Array.Empty<object>(), totalCount = 0, pageNumber = page, pageSize });
-    }
-
-    var skip = (page - 1) * pageSize;
-    var items = (await instanceStore.GetByParticipantWalletAsync(
-        walletAddress, status, skip, pageSize)).ToList();
-
-    // Get total count by querying without pagination
-    var allItems = await instanceStore.GetByParticipantWalletAsync(
-        walletAddress, status, 0, int.MaxValue);
-    var totalCount = allItems.Count();
-
-    return Results.Ok(new
-    {
-        items,
-        totalCount,
-        pageNumber = page,
-        pageSize
-    });
-})
-.WithName("ListInstances")
-.WithSummary("List workflow instances for the authenticated user")
-.WithDescription("Returns paginated workflow instances where the authenticated user's wallet is a participant. "
-    + "Supports optional status filtering (Active, Completed, Rejected, TimedOut, Cancelled).");
-
 // <summary>
 // Create a new workflow instance
 // </summary>
@@ -2373,24 +2338,10 @@ instancesGroup.MapPost("/", async (
 .WithSummary("Create workflow instance")
 .WithDescription("Create a new workflow instance for a published blueprint");
 
-// <summary>
-// Get workflow instance by ID
-// </summary>
-instancesGroup.MapGet("/{instanceId}", async (
-    string instanceId,
-    Sorcha.Blueprint.Service.Storage.IInstanceStore instanceStore) =>
-{
-    var instance = await instanceStore.GetAsync(instanceId);
-    if (instance == null)
-    {
-        return Results.NotFound(new { error = "Instance not found" });
-    }
-
-    return Results.Ok(instance);
-})
-.WithName("GetInstance")
-.WithSummary("Get workflow instance")
-.WithDescription("Retrieve a workflow instance by its ID");
+// Issue #1182 — GET /{instanceId}, /{instanceId}/state and /{instanceId}/next-actions. Previously
+// three inline lambdas here, each returning instance content to ANY authenticated caller; now
+// participant-gated handlers in Sorcha.Blueprint.Service.Endpoints.InstanceReadEndpoints.
+instancesGroup.MapInstanceReadEndpoints();
 
 // P0 fix (fix/pwa-p0-claim-and-camera) — GET /{instanceId}/actions/{actionId}: instance-scoped,
 // consumer-readable action schema (see Sorcha.Blueprint.Service.Endpoints.InstanceActionEndpoints).
@@ -2553,141 +2504,6 @@ instancesGroup.MapPost("/{instanceId}/actions/{actionId}/reject", async (
 .WithName("RejectActionInInstance")
 .WithSummary("Reject action in workflow")
 .WithDescription("Reject an action in a workflow instance, routing to the configured rejection target. Requires X-Delegation-Token header.");
-
-// <summary>
-// Get accumulated state for a workflow instance
-// </summary>
-instancesGroup.MapGet("/{instanceId}/state", async (
-    HttpContext context,
-    string instanceId,
-    Sorcha.Blueprint.Service.Services.Interfaces.IStateReconstructionService stateService,
-    Sorcha.Blueprint.Service.Storage.IInstanceStore instanceStore,
-    IBlueprintStore blueprintStore) =>
-{
-    try
-    {
-        // Get delegation token from context (set by middleware)
-        var delegationToken = context.Items["DelegationToken"] as string;
-        if (string.IsNullOrEmpty(delegationToken))
-        {
-            return Results.BadRequest(new { error = "X-Delegation-Token header is required to view state" });
-        }
-
-        var instance = await instanceStore.GetAsync(instanceId);
-        if (instance == null)
-        {
-            return Results.NotFound(new { error = "Instance not found" });
-        }
-
-        var blueprint = await blueprintStore.GetAsync(instance.BlueprintId);
-        if (blueprint == null)
-        {
-            return Results.BadRequest(new { error = "Blueprint not found" });
-        }
-
-        // Use the first current action for state reconstruction
-        var currentActionId = instance.CurrentActionIds.FirstOrDefault();
-        if (currentActionId == 0)
-        {
-            return Results.Ok(new
-            {
-                instanceId,
-                actionCount = 0,
-                previousTransactionId = (string?)null,
-                data = new Dictionary<string, object?>(),
-                branchStates = new Dictionary<string, object>()
-            });
-        }
-
-        var state = await stateService.ReconstructAsync(
-            blueprint,
-            instanceId,
-            currentActionId,
-            instance.RegisterId,
-            delegationToken,
-            instance.ParticipantWallets);
-
-        return Results.Ok(new
-        {
-            instanceId,
-            actionCount = state.ActionCount,
-            previousTransactionId = state.PreviousTransactionId,
-            data = state.GetFlattenedData(),
-            branchStates = state.BranchStates
-        });
-    }
-    catch (Exception ex)
-    {
-        logger.LogWarning(ex, "Request failed");
-        return Results.Problem("An error occurred processing the request.", statusCode: 400);
-    }
-})
-.WithName("GetInstanceState")
-.WithSummary("Get accumulated state")
-.WithDescription("Get the accumulated state from all prior actions in the workflow. Requires X-Delegation-Token header.");
-
-// <summary>
-// Get next available actions for a workflow instance
-// </summary>
-instancesGroup.MapGet("/{instanceId}/next-actions", async (
-    string instanceId,
-    Sorcha.Blueprint.Service.Storage.IInstanceStore instanceStore,
-    IBlueprintStore blueprintStore) =>
-{
-    try
-    {
-        var instance = await instanceStore.GetAsync(instanceId);
-        if (instance == null)
-        {
-            return Results.NotFound(new { error = "Instance not found" });
-        }
-
-        var blueprint = await blueprintStore.GetAsync(instance.BlueprintId);
-        if (blueprint == null)
-        {
-            return Results.BadRequest(new { error = "Blueprint not found" });
-        }
-
-        var nextActions = new List<object>();
-        foreach (var actionId in instance.CurrentActionIds)
-        {
-            var action = blueprint.Actions.FirstOrDefault(a => a.Id == actionId);
-            if (action != null)
-            {
-                // Get participant info
-                var participant = action.Participants?.FirstOrDefault();
-                nextActions.Add(new
-                {
-                    actionId = action.Id,
-                    title = action.Title,
-                    description = action.Description,
-                    participantId = participant?.Principal,
-                    branchId = instance.ActiveBranches
-                        .FirstOrDefault(b => b.CurrentActionId == actionId)?.Id,
-                    blueprintId = instance.BlueprintId,
-                    registerId = instance.RegisterId,
-                    blueprintName = blueprint.Title
-                });
-            }
-        }
-
-        return Results.Ok(new
-        {
-            instanceId,
-            state = instance.State.ToString().ToLowerInvariant(),
-            isComplete = instance.State == Sorcha.Blueprint.Service.Models.InstanceState.Completed,
-            nextActions
-        });
-    }
-    catch (Exception ex)
-    {
-        logger.LogWarning(ex, "Request failed");
-        return Results.Problem("An error occurred processing the request.", statusCode: 400);
-    }
-})
-.WithName("GetNextActions")
-.WithSummary("Get next available actions")
-.WithDescription("Get the next available actions that can be executed in the workflow instance");
 
 // ===========================
 // Health & Status Endpoints
