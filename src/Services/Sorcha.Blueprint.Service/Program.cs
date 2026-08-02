@@ -2343,6 +2343,11 @@ instancesGroup.MapPost("/", async (
 // participant-gated handlers in Sorcha.Blueprint.Service.Endpoints.InstanceReadEndpoints.
 instancesGroup.MapInstanceReadEndpoints();
 
+// Feature 186 (#1163) — the citizen "My Applications" read surface. A SIBLING of /api/instances,
+// not a reshaping of it: the citizen wallet app binds GET /api/instances/{id}, so that group keeps
+// its raw-model shape and this one carries the citizen projection.
+app.MapMeApplicationEndpoints();
+
 // P0 fix (fix/pwa-p0-claim-and-camera) — GET /{instanceId}/actions/{actionId}: instance-scoped,
 // consumer-readable action schema (see Sorcha.Blueprint.Service.Endpoints.InstanceActionEndpoints).
 instancesGroup.MapInstanceActionSchemaEndpoint();
