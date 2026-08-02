@@ -225,6 +225,7 @@ OPENTELEMETRY__ZIPKINENDPOINT="https://zipkin.yourcompany.com"
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/instances/` | List instances for the authenticated user's wallet (paginated, status filter) |
+| GET | `/api/me/applications` | Citizen "My Applications" projection — see below (Feature 186) |
 | POST | `/api/instances/` | Create a new workflow instance |
 | GET | `/api/instances/{instanceId}` | Get a workflow instance by ID |
 | GET | `/api/instances/{instanceId}/actions/{actionId}` | Consumer-readable action schema for one action (P0 fix, `fix/pwa-p0-claim-and-camera`) — see below |
@@ -244,9 +245,37 @@ title, form layout, data schemas, calculations, and this action's own credential
 config) — never routing rules, other participants, or any other action's content. See
 `docs/reference/API-DOCUMENTATION.md` for the full response shape and exclusion list.
 
-> **Note:** `GET /api/instances/{instanceId}` performs no participant check at all today — any
-> authenticated caller can read any instance by ID. The new endpoint above does not repeat that gap,
-> but tightening the existing one is a separate, currently-untracked follow-up.
+> **Note:** the participant-check gap this section used to record on `GET /api/instances/{instanceId}`
+> is **closed** — issue #1182 added `InstanceParticipantGate` to all three instance reads.
+
+### My Applications (Feature 186 / #1163)
+
+The citizen-facing read surface: *what did I submit, and what happened to it?* Lives under
+`/api/me/*`, the platform's personal-scope convention.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/me/applications` | The caller's own applications, newest-first, terminal ones included |
+| GET | `/api/me/applications/{instanceId}` | One application with its step timeline |
+
+A **sibling** of `/api/instances`, not a reshaping of it — the Citizen Wallet PWA binds
+`GET /api/instances/{id}`, so that group keeps its raw-model shape.
+
+Each row carries the service title, human-readable reference, lifecycle state **as a name**, step
+position, a `needsYou` marker, and — where the taken route declared an `x-decision-notice` — the
+citizen-facing decision title and reason, resolved from the blueprint's own catalogue via the same
+`DecisionNotice.ResolveMessage` the inbox dispatcher uses. The internal reason code is never returned.
+
+**`outcome` is not the same field as `state`, and the difference is the point.** Under Feature 184 a
+refusal is expressed as taking a route that declares a decision notice — not as a distinct instance
+state. When such a route ends the branch, the fold sees an empty next-action set and assigns
+`Completed`, so a refused application and an approved one are indistinguishable by state alone.
+`Instance.DecisionRouteId` (projected by `InstanceProjection.ApplyInPlace` from the signed clear
+metadata) is what lets `MyApplicationProjector` recover the difference and report `NotApproved`.
+
+`needsYou` fails closed: a terminal application, an unresolvable blueprint, or an absent participant
+binding all yield `false`, so the page cannot offer an action that turns out not to be takeable
+(issue #1268).
 
 ### Template System
 

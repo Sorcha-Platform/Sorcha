@@ -1922,6 +1922,64 @@ wallet's `Owner` IS the PlatformUserId** — which is what makes a **late-bound 
 
 ---
 
+## Citizen "My Applications" — durable outcome + reason (Feature 186)
+
+The citizen web surface for *"what did I submit, and what happened?"*. Extends F145's fold and reuses
+F184's reason plumbing. **Web only** (`Sorcha.UI.Web.Client`); the PWA keeps `/applications` (F154
+catalogue) and `/applications/{guid}` (`ApplicationInstance.razor`) and is untouched.
+
+| Method | Endpoint | Notes |
+|--------|----------|-------|
+| GET | `/api/me/applications` | Paged; caller's own applications, terminal ones included |
+| GET | `/api/me/applications/{instanceId}` | Adds a step timeline; `404` for "not yours" **and** "no such thing" |
+
+Blueprint Service's first `/api/me/*` group. Authorization is **plain** — not `RequireConsumerAudience`
+— because a citizen is consumer-tier on `/wallet` and platform-tier on `/app` and must see the same
+applications from either (pattern #13: no "any-human" tier, so cross-tier endpoints stay unclassified).
+
+**A sibling of `/api/instances`, never a reshaping of it.** The PWA binds `GET /api/instances/{id}`,
+so that group keeps its raw-model shape and this one carries the citizen projection.
+
+### The load-bearing insight: a refusal is a route, not a state
+
+Under F184 a refusal is expressed as **taking a route that declares `x-decision-notice`**. When such a
+route ends the branch, `InstanceProjection.ApplyInPlace` sees an empty next-action set and assigns
+`InstanceState.Completed` — so a refused application and an approved one are **indistinguishable by
+state**. Report `state` and you tell a refused citizen their application "completed".
+
+Hence `MyApplicationSummary.Outcome`, derived from the taken route's notice severity
+(`Warning`/`Error` ⇒ `NotApproved`), separate from `State`.
+
+- `Instance.DecisionRouteId` / `DecisionReasonCode` are folded from `RoutingDecision` on the signed
+  clear metadata — inside `ComputeSignableBytes`, so determinism and rebuild parity hold. Assigned
+  **unconditionally**, so a fold with no decision *clears* them.
+- The **wording is resolved on read**, via the same `DecisionNotice.ResolveMessage` the
+  `ReactionDispatcher` uses. Deliberately not folded: the blueprint is node-local, and folding it
+  would break F145's "identical on every node". The reason **code** never reaches a citizen.
+- `ResolveMessage` returns `FallbackMessage ?? ""` — treat empty as *no reason* and omit the field.
+
+### Traps
+
+- **`ProjectedTransaction.IsRejection` is dead.** Nothing in `src/` sets it true; only a unit test's
+  own helper does, so `InstanceState.Rejected` is unreachable through the fold. Do not "fix" it here —
+  `BuildRejectionTransactionAsync` writes metadata with no blueprint/instance/action id, so the
+  transaction is not instance-scoped and cannot reach the fold at all. It belongs to F145's retirement
+  of the imperative advance.
+- **`InstanceState` serialises as an integer.** Blueprint Service configures no
+  `JsonStringEnumConverter`. The DTO sends the **name**.
+- **`Metadata["BlueprintTitle"]` is absent on projector-created instances** — only the imperative
+  creation path stamps it. The blueprint lookup fallback is the normal case, not defensive coding.
+- **`EfCoreInstanceStore.UpdateAsync` copies model→entity by hand.** A field missing from that list is
+  written in memory, reported saved, and lost. `EfCoreInstanceStoreUpdateRoundTripTests` is the guard.
+- **`needsYou` must fail closed** — terminal, unresolvable blueprint, or absent binding all ⇒ false.
+  That is what makes #1268 (a stale live "Take Action" button) unable to recur.
+
+`WebInboxDetailRouter` maps inbox `/api/instances/{id}` hrefs to `my-applications/{id}`; the web host
+previously registered nothing and fell through to the refusing default, so decision notices rendered
+as dead rows. Base-relative, like the PWA's router.
+
+---
+
 ## AIAS Cyber Level (M2)
 
 A second AIAS conference-demo workflow (`demos/AIAS/blueprints/aias-cyber-level.template.json`), independent

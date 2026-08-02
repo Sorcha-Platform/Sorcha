@@ -918,6 +918,67 @@ claim directly and returned an empty page when it was absent — so every consum
 none of their own applications. It now resolves through the same seam, spans every wallet the caller
 controls, deduplicates by instance id and orders newest-first.
 
+### My Applications — the citizen read surface (Feature 186 / #1163)
+
+*What did I submit, and what happened to it?* Under `/api/me/*`, the platform's personal-scope
+convention. A **sibling** of `/api/instances`, not a reshaping of it: the Citizen Wallet PWA binds
+`GET /api/instances/{id}`, so that group keeps its raw-model shape.
+
+| Method | Path | Authorization |
+|--------|------|---------------|
+| GET | `/api/me/applications` | Authenticated; returns only applications the caller participates in |
+| GET | `/api/me/applications/{instanceId}` | Authenticated **and** the caller controls a participant wallet |
+
+Authorization is deliberately **plain**, not `RequireConsumerAudience`: the same citizen holds a
+consumer-tier token on `/wallet` and a platform-tier token on `/app`, and must see the same
+applications from either. There is no "any-human" tier (pattern #13), so a genuinely cross-tier
+endpoint stays unclassified rather than being force-fitted to one.
+
+The detail endpoint answers **`404` identically** for "not yours" and "does not exist", so the
+instance-id space cannot be probed — those ids appear in URLs, logs and inbox `detailHref` values.
+
+#### Row shape
+
+```json
+{
+  "instanceId": "3f2a…",
+  "blueprintTitle": "Assured Identity",
+  "instanceReference": "AI-CYB-14-A7K3",
+  "state": "Completed",
+  "outcome": "NotApproved",
+  "decisionTitle": "AIAS could not assure your identity",
+  "decisionReason": "The document you provided could not be read clearly.",
+  "decisionSeverity": "Warning",
+  "stepNumber": null, "totalSteps": 4,
+  "needsYou": false,
+  "createdAt": "…", "updatedAt": "…", "completedAt": "…"
+}
+```
+
+Optional fields are **omitted when absent**, never emitted as `""`. `decisionReason` especially: an
+empty resolution means the route declares no reason, and a blank line reads to a citizen as a fault.
+
+#### `outcome` is not `state`, and the difference is the point
+
+`state` is the instance lifecycle value by **name** (never the underlying integer — this service
+configures no `JsonStringEnumConverter`). `outcome` is what the citizen is shown.
+
+They differ because, under Feature 184, a refusal is expressed as **taking a route that declares an
+`x-decision-notice`** — not as a distinct instance state. When such a route ends the branch, the fold
+sees an empty next-action set and assigns `Completed`, so a refused application and an approved one
+are indistinguishable by state alone. `Instance.DecisionRouteId` and `Instance.DecisionReasonCode`
+— projected by `InstanceProjection.ApplyInPlace` from the transaction's signed clear metadata, and so
+identical on every node and reproduced by a rebuild — are what let the read path find the taken route
+in the replicated blueprint, read its notice severity, and report `NotApproved`.
+
+The wording itself is resolved **on read**, through the same `DecisionNotice.ResolveMessage` the
+inbox dispatcher uses, so the page and the notification cannot disagree. It is deliberately *not*
+folded: the blueprint is node-local state, and folding it would break the requirement that the
+projection be identical on every node. The internal reason **code** is never returned to a citizen.
+
+`needsYou` fails closed — terminal application, unresolvable blueprint, or absent participant binding
+all yield `false` — so the surface cannot offer an action that turns out not to be takeable (#1268).
+
 ### Timebound Presentation Lifecycle (Feature 111)
 
 Three-event on-register lifecycle for timebound credential presentations. When an action carries `credentialRequirements` targeting HaipExternalWallet **or SorchaWallet** (#1195 Phase 2, Task 6b) and the citizen submits without pre-attached presentations, `/execute` returns **`202 Accepted`** with `AwaitingPresentation=true` and a QR code / authorization request URI. A `PresentationInitiated` transaction is written to the register immediately. The action does NOT complete until the verifier callback writes a `PresentationOutcome` with `kind=success`. Retry after a decline is first-class; a second attempt after a successful outcome returns **`409 Conflict`**.
