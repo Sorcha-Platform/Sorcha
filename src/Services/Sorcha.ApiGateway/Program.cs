@@ -601,8 +601,15 @@ app.MapGet("/gateway", async (HealthAggregationService healthService, DashboardS
 // OpenAPI Documentation
 // ===========================
 
-// Gateway's own OpenAPI spec
-app.MapOpenApi();
+// Gateway's own OpenAPI spec.
+//
+// Issue #1364: this used to call app.MapOpenApi() here as well. MapSorchaOpenApiUi (below) already
+// calls it, so /openapi/{documentName}.json was registered TWICE — an exact tie, which routing can
+// only resolve by throwing. Every request to /openapi/v1.json returned 500
+// (AmbiguousMatchException), so the gateway's Scalar docs were unusable. It failed only when the
+// route was hit, which is why startup and health checks stayed clean.
+//
+// The registration now has ONE owner: MapSorchaOpenApiUi. Do not re-add a call here.
 
 // Spec 117 (AI Discoverability) — well-known aliases of the OpenAPI document
 // at /.well-known/openapi.{json,yaml}. Anonymous, cacheable, served from the
