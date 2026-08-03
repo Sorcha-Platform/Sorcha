@@ -35,14 +35,19 @@ public class NavigationComponent
 
     // Navigation links — match translated text OR raw i18n key
     public ILocator DashboardLink => NavLink("Dashboard", "nav.dashboard");
-    public ILocator PendingActionsLink => NavLink("Pending Actions", "nav.pendingActions");
+    // Feature 186 (#1163): "Pending Actions" was renamed to "Work Queue" so it stops reading as a
+    // synonym of My Applications. Same route, same page, same wallet-scoped behaviour.
+    public ILocator WorkQueueLink => NavLink("Work Queue", "nav.workQueue");
+    public ILocator MyApplicationsLink => NavLink("My Applications", "nav.myApplications");
     public ILocator NewSubmissionLink => NavLink("New Submission", "nav.newSubmission");
     public ILocator MyTransactionsLink => NavLink("My Transactions", "nav.myTransactions");
     public ILocator MyWalletLink => NavLink("My Wallet", "nav.myWallet");
     public ILocator MyCredentialsLink => NavLink("My Credentials", "nav.myCredentials");
     public ILocator MyBlueprintsLink => NavLink("My Blueprints", "nav.myBlueprints");
-    public ILocator VisualDesignerLink => NavLink("Visual Designer", "nav.visualDesigner");
-    public ILocator AiChatDesignerLink => NavLink("AI Chat Designer", "nav.aiChatDesigner");
+    // The designer shell at /designer/blueprint. Previously two locators — "Visual Designer",
+    // which had no nav entry at all and made Nav_HasDesignerSection a standing failure, and
+    // "AI Chat Designer", which named one on-ramp rather than the workspace.
+    public ILocator BlueprintDesignerLink => NavLink("Blueprint Designer", "nav.blueprintDesigner");
     public ILocator CatalogueLink => NavLink("Catalogue", "nav.catalogue");
     public ILocator DataSchemasLink => NavLink("Data Schemas", "nav.dataSchemas");
     public ILocator AllWalletsLink => NavLink("All Wallets", "nav.allWallets");

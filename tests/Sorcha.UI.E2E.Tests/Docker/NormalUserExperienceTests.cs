@@ -72,16 +72,16 @@ public class NormalUserExperienceTests : AuthenticatedDockerTestBase
 
         Assert.Multiple(() =>
         {
-            Assert.That(pendingIdx, Is.GreaterThanOrEqualTo(0), "Pending Actions should be in nav");
+            Assert.That(pendingIdx, Is.GreaterThanOrEqualTo(0), "Work Queue should be in nav");
             Assert.That(submissionIdx, Is.GreaterThanOrEqualTo(0), "New Submission should be in nav");
             Assert.That(walletIdx, Is.GreaterThanOrEqualTo(0), "My Wallet should be in nav");
             Assert.That(transactionsIdx, Is.GreaterThanOrEqualTo(0), "My Transactions should be in nav");
 
-            // Actual nav order: New Submission, Pending Actions, My Wallet, My Transactions
+            // Actual nav order: New Submission, My Applications, Work Queue, My Wallet, My Transactions
             Assert.That(pendingIdx, Is.GreaterThan(submissionIdx),
-                "Pending Actions should come after New Submission");
+                "Work Queue should come after New Submission");
             Assert.That(walletIdx, Is.GreaterThan(pendingIdx),
-                "My Wallet should come after Pending Actions");
+                "My Wallet should come after the Work Queue");
             Assert.That(transactionsIdx, Is.GreaterThan(walletIdx),
                 "My Transactions should come after My Wallet");
         });

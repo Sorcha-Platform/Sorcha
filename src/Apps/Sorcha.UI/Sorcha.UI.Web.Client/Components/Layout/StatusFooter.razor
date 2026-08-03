@@ -22,7 +22,7 @@
             @if (_pendingActionCount > 0)
             {
                 <MudLink Typo="Typo.caption" Href="my-actions" Color="Color.Primary">
-                    @_pendingActionCount pending action@(_pendingActionCount != 1 ? "s" : "")
+                    @_pendingActionCount item@(_pendingActionCount != 1 ? "s" : "") in your work queue
                 </MudLink>
             }
         </div>

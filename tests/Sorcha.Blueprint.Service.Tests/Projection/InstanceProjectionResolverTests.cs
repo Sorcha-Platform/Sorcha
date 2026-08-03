@@ -229,4 +229,74 @@ public class InstanceProjectionResolverTests
         instance!.CurrentActionIds.Should().Equal(2);
         instance.ParticipantWallets.Should().Contain("analyst", "ws-analyst");
     }
+
+    // ---- Feature 186: the decision (route + reason code) must survive the resolver into the fold. ----
+    //
+    // These are deliberately written against ResolveAsync rather than a hand-built
+    // ProjectedTransaction. The sibling field IsRejection shows why: the fold handles it correctly
+    // and InstanceProjectionTests proves that, but NOTHING in src/ ever sets it, so
+    // InstanceState.Rejected is unreachable in production and no test noticed. A fold-only test
+    // proves the fold; only a test through the resolver proves the join.
+
+    private static RoutingDecision DecisionWithReason(
+        int completed, string? routeId, string? reasonCode, params int[] next)
+    {
+        var decision = Decision(completed, next);
+        decision.RouteId = routeId;
+        decision.ReasonCode = reasonCode;
+        return decision;
+    }
+
+    [Fact]
+    public async Task ResolveAsync_CarriesRouteIdAndReasonCode_FromTheSignedDecision()
+    {
+        var resolved = await InstanceProjectionResolver.ResolveAsync(
+            Tx(TransactionType.Action, DecisionWithReason(2, "route-refuse", "DOC_UNREADABLE")),
+            NoActionResolver, NullLogger.Instance, CancellationToken.None);
+
+        resolved.Should().NotBeNull();
+        resolved!.Tx.RouteId.Should().Be("route-refuse");
+        resolved.Tx.ReasonCode.Should().Be("DOC_UNREADABLE");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_RouteWithNoReasonCode_CarriesRouteIdOnly()
+    {
+        // A route may declare a notice with no reasonCodeField — the notice then always resolves to
+        // its fallback message. The route id still has to arrive, because it is the only way a
+        // reader can find the taken route and learn the outcome was adverse.
+        var resolved = await InstanceProjectionResolver.ResolveAsync(
+            Tx(TransactionType.Action, DecisionWithReason(2, "route-refuse", reasonCode: null)),
+            NoActionResolver, NullLogger.Instance, CancellationToken.None);
+
+        resolved!.Tx.RouteId.Should().Be("route-refuse");
+        resolved.Tx.ReasonCode.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_PreFeature184Decision_CarriesNeither()
+    {
+        var resolved = await InstanceProjectionResolver.ResolveAsync(
+            Tx(TransactionType.Action, Decision(2, 3)),
+            NoActionResolver, NullLogger.Instance, CancellationToken.None);
+
+        resolved!.Tx.RouteId.Should().BeNull();
+        resolved.Tx.ReasonCode.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_DecisionFlowsIntoTheProjectedInstance()
+    {
+        // The join that matters: resolver → fold → instance. This is what the read surface reads.
+        var resolved = await InstanceProjectionResolver.ResolveAsync(
+            Tx(TransactionType.Action, DecisionWithReason(2, "route-refuse", "DOC_UNREADABLE")),
+            NoActionResolver, NullLogger.Instance, CancellationToken.None);
+
+        var instance = InstanceProjection.Project(
+            "inst-1", "reg", "bp-1", 1, "tenant", [resolved!.Tx]);
+
+        instance.Should().NotBeNull();
+        instance!.DecisionRouteId.Should().Be("route-refuse");
+        instance.DecisionReasonCode.Should().Be("DOC_UNREADABLE");
+    }
 }

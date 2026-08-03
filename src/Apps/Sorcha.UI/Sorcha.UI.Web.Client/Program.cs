@@ -51,6 +51,12 @@ builder.Services.AddSorchaUserComponents(
 builder.Services.AddScoped<IVerifierIdentityProvider, WebVerifierIdentityProvider>();
 builder.Services.AddScoped<IVerificationTransport, HaipVerificationTransport>();
 
+// Feature 186 (#1163) — route inbox detailHrefs to this host's My Applications view. Registered
+// with AddScoped (not TryAdd) so it WINS over the TryAddScoped default in Components.User, which
+// refuses /api/* hrefs and left every decision notice a dead row on the web.
+builder.Services.AddScoped<Sorcha.UI.Components.User.Services.Shared.IInboxDetailRouter,
+    Sorcha.UI.Web.Client.Services.WebInboxDetailRouter>();
+
 // Register authorization
 builder.Services.AddAuthorizationCore();
 

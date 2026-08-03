@@ -219,11 +219,11 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TransactionHash");
-
                     b.HasIndex("CreatedAt")
                         .HasDatabaseName("IX_FileMetadata_Orphans")
                         .HasFilter("\"TransactionHash\" IS NULL");
+
+                    b.HasIndex("TransactionHash");
 
                     b.ToTable("FileMetadata", "blueprint");
                 });
@@ -257,6 +257,12 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
 
                     b.Property<string>("CurrentActionIds")
                         .HasColumnType("jsonb");
+
+                    b.Property<string>("DecisionReasonCode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DecisionRouteId")
+                        .HasColumnType("text");
 
                     b.Property<string>("FirstTransactionId")
                         .HasColumnType("text");

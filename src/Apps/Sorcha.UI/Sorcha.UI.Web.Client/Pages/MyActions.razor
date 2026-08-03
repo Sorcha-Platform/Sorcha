@@ -30,7 +30,7 @@
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
-<PageTitle>My Pending Actions - Sorcha Platform</PageTitle>
+<PageTitle>Work Queue - Sorcha Platform</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
     @* Issue #1275: this row did not wrap, so on a phone the heading was squeezed over three
@@ -41,10 +41,14 @@
         <MudStack Spacing="0" Style="flex: 1 1 260px; min-width: 0;">
             <MudText Typo="Typo.h4">
                 <MudIcon Icon="@Icons.Material.Filled.Task" Class="mr-2" />
-                My Pending Actions
+                @* Feature 186 (#1163): renamed from "My Pending Actions". This page is
+                   wallet-scoped, not role-scoped, so it serves a citizen's outstanding steps AND an
+                   analyst's review queue — "Work Queue" names both, and stops it reading as a
+                   synonym of My Applications. Route, scope and behaviour are unchanged. *@
+                Work Queue
             </MudText>
             <MudText Typo="Typo.body1" Color="Color.Secondary">
-                Actions requiring your attention
+                Everything waiting on you to act
             </MudText>
         </MudStack>
 

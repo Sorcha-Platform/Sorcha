@@ -11,10 +11,9 @@ namespace Sorcha.Wallet.Pwa.Services;
 /// else it cannot render in-app.
 /// </summary>
 /// <remarks>
-/// The PWA has <c>/applications/{instanceId:guid}</c> (<c>Pages/ApplicationInstance.razor</c>), so an
-/// instance reference genuinely resolves here — unlike the web host, which has no per-instance page
-/// until #1163's "My Applications" view lands. That asymmetry is why the router is a per-host seam
-/// rather than one shared rewrite.
+/// The PWA has <c>/applications/{instanceId:guid}</c> (<c>Pages/ApplicationInstance.razor</c>); the
+/// web host now has <c>my-applications/{instanceId}</c> (Feature 186 / #1163). Both resolve, to
+/// different routes — which is why the router stays a per-host seam rather than one shared rewrite.
 /// </remarks>
 public sealed class WalletInboxDetailRouter : DefaultInboxDetailRouter
 {

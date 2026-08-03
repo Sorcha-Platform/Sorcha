@@ -21,10 +21,10 @@ namespace Sorcha.UI.Components.User.Services.Shared;
 /// that reference into one of its own views and must never navigate a browser to it.
 /// </para>
 /// <para>
-/// This is a per-host seam because the hosts genuinely differ: the PWA has
-/// <c>/applications/{instanceId}</c>, the web app has no per-instance page at all (only the
-/// <c>/my-workflows</c> list) until the "My Applications" view in #1163 exists. A shared rewrite
-/// would have to invent a route for one of them.
+/// This is a per-host seam because the hosts genuinely differ, and they still do now that both
+/// resolve: the PWA maps an instance reference to <c>applications/{instanceId}</c>, the web host to
+/// <c>my-applications/{instanceId}</c> (Feature 186 / #1163). A shared rewrite would have to pick one
+/// route for both.
 /// </para>
 /// </remarks>
 public interface IInboxDetailRouter
