@@ -145,6 +145,7 @@ public static class TestConstants
         public const string MyWallet = $"{AppBase}/wallets";
         public const string MyActions = $"{AppBase}/my-actions";
         public const string MyWorkflows = $"{AppBase}/my-workflows";
+        public const string MyApplications = $"{AppBase}/my-applications";
         public const string MyTransactions = $"{AppBase}/my-transactions";
         public const string Registers = $"{AppBase}/registers";
         public const string Participants = $"{AppBase}/participants";

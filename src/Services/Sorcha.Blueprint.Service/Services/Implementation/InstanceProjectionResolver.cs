@@ -73,7 +73,12 @@ public static class InstanceProjectionResolver
             PreviousTransactionId: string.IsNullOrEmpty(tx.PrevTxId) ? null : tx.PrevTxId,
             CompletedActionId: completedActionId,
             NextActionIds: nextActionIds,
-            ParticipantBindings: bindings);
+            ParticipantBindings: bindings,
+            // Feature 186: carry the decision's route and reason code through to the fold. Both ride
+            // the transaction in the clear and are inside RoutingDecision.ComputeSignableBytes, so
+            // they are signed and every node folding this transaction records the same pair.
+            RouteId: decision?.RouteId,
+            ReasonCode: decision?.ReasonCode);
 
         return new ResolvedProjection(blueprintId, instanceId, ResolveTenantId(tx), projected);
     }

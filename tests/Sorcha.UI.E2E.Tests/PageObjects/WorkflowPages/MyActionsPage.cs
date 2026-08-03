@@ -7,7 +7,8 @@ using Sorcha.UI.E2E.Tests.PageObjects.Shared;
 namespace Sorcha.UI.E2E.Tests.PageObjects.WorkflowPages;
 
 /// <summary>
-/// Page object for the My Pending Actions page (/my-actions).
+/// Page object for the Work Queue page (/my-actions) — renamed from "My Pending Actions"
+/// by Feature 186 (#1163); route, scope and behaviour are unchanged.
 /// </summary>
 public class MyActionsPage
 {
@@ -16,7 +17,7 @@ public class MyActionsPage
     public MyActionsPage(IPage page) => _page = page;
 
     // Page header
-    public ILocator PageTitle => _page.Locator("h4:has-text('My Pending Actions')");
+    public ILocator PageTitle => _page.Locator("h4:has-text('Work Queue')");
     public ILocator Subtitle => _page.Locator("text=Actions requiring your attention");
 
     // SignalR connection status chip

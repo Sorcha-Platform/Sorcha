@@ -11,7 +11,8 @@
 
   "nav.section.myActivity": "MY ACTIVITY",
   "nav.newSubmission": "New Submission",
-  "nav.pendingActions": "Pending Actions",
+  "nav.myApplications": "My Applications",
+  "nav.workQueue": "Work Queue",
   "nav.myWallet": "My Wallet",
   "nav.myCredentials": "My Credentials",
   "nav.myTransactions": "My Transactions",
@@ -19,8 +20,7 @@
 
   "nav.section.designer": "DESIGNER",
   "nav.myBlueprints": "My Blueprints",
-  "nav.visualDesigner": "Visual Designer",
-  "nav.aiChatDesigner": "AI Chat Designer",
+  "nav.blueprintDesigner": "Blueprint Designer",
   "nav.catalogue": "Catalogue",
   "nav.dataSchemas": "Data Schemas",
 

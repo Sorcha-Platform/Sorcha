@@ -261,6 +261,12 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                     b.Property<string>("CurrentActionIds")
                         .HasColumnType("jsonb");
 
+                    b.Property<string>("DecisionReasonCode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DecisionRouteId")
+                        .HasColumnType("text");
+
                     b.Property<string>("FirstTransactionId")
                         .HasColumnType("text");
 

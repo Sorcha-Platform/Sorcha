@@ -98,7 +98,8 @@ public class NavigationTests : AuthenticatedDockerTestBase
         await NavigateAuthenticatedAsync(TestConstants.AuthenticatedRoutes.Dashboard);
 
         Assert.That(await _nav.DashboardLink.CountAsync(), Is.GreaterThan(0), "Dashboard link");
-        Assert.That(await _nav.PendingActionsLink.CountAsync(), Is.GreaterThan(0), "Pending Actions link");
+        Assert.That(await _nav.WorkQueueLink.CountAsync(), Is.GreaterThan(0), "Work Queue link");
+        Assert.That(await _nav.MyApplicationsLink.CountAsync(), Is.GreaterThan(0), "My Applications link");
         Assert.That(await _nav.NewSubmissionLink.CountAsync(), Is.GreaterThan(0), "New Submission link");
         Assert.That(await _nav.MyWalletLink.CountAsync(), Is.GreaterThan(0), "My Wallet link");
         Assert.That(await _nav.MyTransactionsLink.CountAsync(), Is.GreaterThan(0), "My Transactions link");
@@ -110,7 +111,7 @@ public class NavigationTests : AuthenticatedDockerTestBase
         await NavigateAuthenticatedAsync(TestConstants.AuthenticatedRoutes.Dashboard);
 
         await Expect(_nav.MyBlueprintsLink).ToBeVisibleAsync();
-        await Expect(_nav.VisualDesignerLink).ToBeVisibleAsync();
+        await Expect(_nav.BlueprintDesignerLink).ToBeVisibleAsync();
         await Expect(_nav.CatalogueLink).ToBeVisibleAsync();
         await Expect(_nav.DataSchemasLink).ToBeVisibleAsync();
     }
@@ -251,7 +252,7 @@ public class NavigationTests : AuthenticatedDockerTestBase
 
         // Clicking a nav link closes the drawer — navigate to a different page so
         // LocationChanged fires (same-route clicks are no-ops in Blazor)
-        await _nav.NavigateToAsync(_nav.PendingActionsLink);
+        await _nav.NavigateToAsync(_nav.WorkQueueLink);
         await Page.WaitForTimeoutAsync(400);
 
         Assert.That(await _nav.IsDrawerOpenAsync(), Is.False,
@@ -281,10 +282,10 @@ public class NavigationTests : AuthenticatedDockerTestBase
     }
 
     [Test]
-    public async Task Nav_PendingActionsLink_NavigatesCorrectly()
+    public async Task Nav_WorkQueueLink_NavigatesCorrectly()
     {
         await NavigateAuthenticatedAsync(TestConstants.AuthenticatedRoutes.Dashboard);
-        await _nav.NavigateToAsync(_nav.PendingActionsLink);
+        await _nav.NavigateToAsync(_nav.WorkQueueLink);
 
         Assert.That(Page.Url, Does.Contain("my-actions"),
             "Should navigate to pending actions");
@@ -388,8 +389,8 @@ public class NavigationTests : AuthenticatedDockerTestBase
 
     [Test]
     [TestCase(TestConstants.AuthenticatedRoutes.Dashboard, "Dashboard")]
-    [TestCase(TestConstants.AuthenticatedRoutes.MyActions, "Pending Actions")]
-    [TestCase(TestConstants.AuthenticatedRoutes.MyWorkflows, "New Submission")]
+    [TestCase(TestConstants.AuthenticatedRoutes.MyActions, "Work Queue")]
+    [TestCase(TestConstants.AuthenticatedRoutes.MyWorkflows, "My Applications")]
     [TestCase(TestConstants.AuthenticatedRoutes.MyTransactions, "My Transactions")]
     [TestCase(TestConstants.AuthenticatedRoutes.MyWallet, "My Wallet")]
     [TestCase(TestConstants.AuthenticatedRoutes.Blueprints, "Blueprints")]

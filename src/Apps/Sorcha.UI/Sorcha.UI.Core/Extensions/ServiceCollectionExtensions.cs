@@ -180,6 +180,24 @@ public static class ServiceCollectionExtensions
             return new WorkflowService(httpClient, logger);
         });
 
+        // Feature 186 (#1163) — the citizen's own applications, over /api/me/applications.
+        // Built on AuthenticatedHttpMessageHandler like every other typed client here: an ambient
+        // HttpClient sends no bearer token, and the resulting 401 renders as an empty list that is
+        // indistinguishable from "you have no applications".
+        services.AddScoped<IMyApplicationsService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+
+            var httpClient = new HttpClient(handler)
+            {
+                BaseAddress = new Uri(baseAddress)
+            };
+
+            var logger = sp.GetRequiredService<ILogger<MyApplicationsService>>();
+            return new MyApplicationsService(httpClient, logger);
+        });
+
         // Blueprint API Service
         services.AddScoped<IBlueprintApiService>(sp =>
         {

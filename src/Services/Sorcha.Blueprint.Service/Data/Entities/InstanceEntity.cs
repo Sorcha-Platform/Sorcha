@@ -113,4 +113,17 @@ public class InstanceEntity
     /// Null until the first sealed action is folded.
     /// </summary>
     public string? LastAppliedTxId { get; set; }
+
+    /// <summary>
+    /// Feature 186: the route the most recently folded decision took, from the signed
+    /// <c>RoutingDecision</c> on the transaction's clear metadata. Null when the last fold carried
+    /// no decision.
+    /// </summary>
+    public string? DecisionRouteId { get; set; }
+
+    /// <summary>
+    /// Feature 186: the non-sensitive reason code carried on that decision. Resolved to
+    /// citizen-facing text at read time; never returned to a citizen as-is.
+    /// </summary>
+    public string? DecisionReasonCode { get; set; }
 }

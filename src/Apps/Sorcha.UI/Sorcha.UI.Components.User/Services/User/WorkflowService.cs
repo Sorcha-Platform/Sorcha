@@ -27,29 +27,6 @@ public class WorkflowService : IWorkflowService
         _logger = logger;
     }
 
-    public async Task<PaginatedList<WorkflowInstanceViewModel>> GetMyWorkflowsAsync(int page = 1, int pageSize = 20, CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            var response = await _httpClient.GetAsync(
-                $"/api/instances?page={page}&pageSize={pageSize}", cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("Failed to fetch workflows: {StatusCode}", response.StatusCode);
-                return new PaginatedList<WorkflowInstanceViewModel>();
-            }
-
-            var result = await response.Content.ReadFromJsonAsync<PaginatedList<WorkflowInstanceViewModel>>(JsonDefaults.Api, cancellationToken: cancellationToken);
-            return result ?? new PaginatedList<WorkflowInstanceViewModel>();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error fetching workflows");
-            return new PaginatedList<WorkflowInstanceViewModel>();
-        }
-    }
-
     public async Task<WorkflowInstanceViewModel?> GetWorkflowAsync(string instanceId, CancellationToken cancellationToken = default)
     {
         try
