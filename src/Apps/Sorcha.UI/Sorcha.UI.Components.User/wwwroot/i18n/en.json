@@ -20,8 +20,7 @@
 
   "nav.section.designer": "DESIGNER",
   "nav.myBlueprints": "My Blueprints",
-  "nav.visualDesigner": "Visual Designer",
-  "nav.aiChatDesigner": "AI Chat Designer",
+  "nav.blueprintDesigner": "Blueprint Designer",
   "nav.catalogue": "Catalogue",
   "nav.dataSchemas": "Data Schemas",
 

@@ -111,7 +111,7 @@ public class NavigationTests : AuthenticatedDockerTestBase
         await NavigateAuthenticatedAsync(TestConstants.AuthenticatedRoutes.Dashboard);
 
         await Expect(_nav.MyBlueprintsLink).ToBeVisibleAsync();
-        await Expect(_nav.VisualDesignerLink).ToBeVisibleAsync();
+        await Expect(_nav.BlueprintDesignerLink).ToBeVisibleAsync();
         await Expect(_nav.CatalogueLink).ToBeVisibleAsync();
         await Expect(_nav.DataSchemasLink).ToBeVisibleAsync();
     }

@@ -126,8 +126,13 @@
                             <MudNavLink Href="blueprints" Icon="@Icons.Material.Filled.Description">
                                 @Loc.T("nav.myBlueprints")
                             </MudNavLink>
-                            <MudNavLink Href="designer/blueprint" Icon="@Icons.Material.Filled.SmartToy">
-                                @Loc.T("nav.aiChatDesigner")
+                            @* /designer/blueprint is the whole Feature 142 designer shell — a
+                               Describe → Understand → Rehearse → Go live workspace in which the AI
+                               chat is one on-ramp, not the destination. "AI Chat Designer" named the
+                               method rather than the thing, and there was no separate visual
+                               designer for it to be distinguished from. *@
+                            <MudNavLink Href="designer/blueprint" Icon="@Icons.Material.Filled.Architecture">
+                                @Loc.T("nav.blueprintDesigner")
                             </MudNavLink>
                             <MudNavLink Href="templates" Icon="@Icons.Material.Filled.ContentCopy">
                                 @Loc.T("nav.catalogue")
