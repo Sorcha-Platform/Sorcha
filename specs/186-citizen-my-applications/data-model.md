@@ -19,7 +19,9 @@
 
 ### Persistence
 
-`InstanceEntity` gains two `text` columns of the same names. Registered in `BlueprintDbContext`, added to the amended `InitialCreate` migration and the model snapshot, and — critically — added to the hand-written model→entity copy list in `EfCoreInstanceStore.UpdateAsync`. A field absent from that list is written in memory, reported saved, and silently lost.
+`InstanceEntity` gains two `text` columns of the same names, folded into the existing `InitialCreate` migration (with its `.Designer.cs` and the model snapshot kept in step) — the service keeps exactly one migration. That is the pre-release rule: no installations exist to migrate, so a database is **recreated** rather than migrated, and a single readable `InitialCreate` beats an accreting chain. It follows that amending it is invisible to a database that already recorded it; bring such a database up to date by resetting it.
+
+Critically, the columns must also be added to the hand-written model→entity copy list in `EfCoreInstanceStore.UpdateAsync`. A field absent from that list is written in memory, reported saved, and silently lost.
 
 ## 2. `ProjectedTransaction` — two new members
 

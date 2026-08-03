@@ -22,7 +22,7 @@ Phase 0 turned up three things that change the build (full detail in [research.m
 
 **Primary Dependencies**: ASP.NET Core Minimal APIs, EF Core (Npgsql), Blazor WebAssembly, MudBlazor
 
-**Storage**: PostgreSQL via `EfCoreInstanceStore`; two new nullable text columns on `Instances`
+**Storage**: PostgreSQL via `EfCoreInstanceStore`; two new nullable text columns on `Instances`, folded into the single `InitialCreate` migration (pre-release: databases are recreated, not migrated)
 
 **Testing**: xUnit v3 + FluentAssertions 8 + Moq (unit/service), bUnit (`Sorcha.UI.Core.Tests`), Playwright/NUnit (`Sorcha.UI.E2E.Tests`)
 
@@ -78,7 +78,7 @@ src/Services/Sorcha.Blueprint.Service/
 ├── Data/
 │   ├── BlueprintDbContext.cs                   # + 2 property mappings
 │   ├── Entities/InstanceEntity.cs              # + DecisionRouteId, DecisionReasonCode
-│   └── Migrations/                             # InitialCreate amended in place (see research R5)
+│   └── Migrations/                             # folded into InitialCreate — one migration (research R5)
 ├── Endpoints/
 │   └── MeApplicationEndpoints.cs               # NEW — GET /api/me/applications[/{id}]
 ├── Models/
@@ -152,6 +152,7 @@ Add `nav.myApplications`; rename `nav.pendingActions` to `nav.workQueue` in all 
 | Risk | Mitigation |
 |---|---|
 | A new `Instance` field is dropped by the hand-written copy list, exactly as `LastAppliedTxId` was | Extend the whole-model round-trip test; it fails on any unlisted field, not just these two |
+| An amended `InitialCreate` never reaches a database that already recorded it | Accepted, pre-release: no installations exist to migrate and environments are recreated. Verified by applying the generated script to a scratch database |
 | A fold-only test passes while production never exercises the path (the R2 shape) | Test the resolver→fold join with a real `RoutingDecision`, not a hand-built `ProjectedTransaction` |
 | Outcome derivation guard passes on first run and proves nothing | Mutation-test it: invert the severity check and confirm a test goes red |
 | Reason wording drifts between page and notification | Both call `DecisionNotice.ResolveMessage`; no second implementation |

@@ -89,17 +89,45 @@ This is what makes projecting `RouteId` load-bearing rather than merely convenie
 
 ---
 
-## R5 — Persistence: amend `InitialCreate`, do not add a migration
+## R5 — Persistence: one migration, squashed into `InitialCreate`
 
-**Decision**: Add `DecisionRouteId` and `DecisionReasonCode` as typed nullable columns, amending the existing `InitialCreate` migration, its `.Designer.cs`, and `BlueprintDbContextModelSnapshot`.
+**Decision**: Add `DecisionRouteId` and `DecisionReasonCode` as typed nullable columns **inside the
+existing `InitialCreate` migration**, with its `.Designer.cs` and `BlueprintDbContextModelSnapshot`
+kept in step. The service keeps exactly one migration.
 
-**Finding**: `Sorcha.Blueprint.Service` has exactly one migration, `20260528205017_InitialCreate`, and `LastAppliedTxId` — added long after that date — appears **inside it**. The repo amends the initial migration in place rather than stacking new ones, consistent with the standing pre-release squash convention. `Program.cs:704` applies migrations on startup when a connection string is present.
+**Finding**: `Sorcha.Blueprint.Service` has one migration, `20260528205017_InitialCreate`, and
+`LastAppliedTxId` — added long after that date — appears **inside it**. `Program.cs:704` applies
+migrations on startup when a connection string is present.
 
-**The hazard to guard**: `EfCoreInstanceStore.UpdateAsync` copies model to entity through a **hand-written field list**. A field missing from it is written in memory, reported as saved, and silently lost. That is what happened to `LastAppliedTxId` — and `InMemoryInstanceStore.UpdateAsync` stores by reference, so the test suite exercised the only implementation that structurally cannot exhibit the fault. The existing whole-model round-trip test is the guard and must be extended, not supplemented.
+**What this costs, stated plainly**: amending an applied migration is invisible to any database that
+already recorded it. `MigrateAsync` compares MigrationIds, sees `InitialCreate` present, and does
+nothing — the new columns never appear. That is not theoretical: a first attempt shipped the columns
+this way and the first live call returned `42703: column i.DecisionReasonCode does not exist` against
+a three-week-old dev database.
 
-**Alternatives considered**: riding in the `Metadata` dictionary, which is already persisted as `jsonb` and already in the copy list — there is precedent, since `TenantId` is smuggled through it by `SerializeMetadataWithTenant`. Rejected: that precedent is a workaround for a known defect (#1350), not a pattern to extend, and typed columns give every consumer a real contract. The round-trip test removes the reason the workaround was attractive.
+**Why it is nonetheless right here**: the platform is pre-release with **no installations to migrate**.
+Under that condition a single, readable `InitialCreate` is worth more than an accreting chain, and any
+environment is brought up to date by recreating it rather than by migrating it. The rule that follows
+is explicit: **while pre-release, every schema change is folded into `InitialCreate`, and an existing
+database is reset rather than migrated.** `LastAppliedTxId` sits in the same migration on the same
+terms, so nothing about it needs separate treatment.
 
----
+**Verified rather than assumed**: `dotnet ef migrations script --idempotent` names exactly one
+migration, and applying it to a scratch database produced `DecisionReasonCode`, `DecisionRouteId` and
+`LastAppliedTxId` on `Instances` with a single `__EFMigrationsHistory` row.
+
+**The hazard to guard, unchanged by any of the above**: `EfCoreInstanceStore.UpdateAsync` copies model
+to entity through a **hand-written field list**. A field missing from it is written in memory, reported
+as saved, and silently lost — what happened to `LastAppliedTxId`. `InMemoryInstanceStore.UpdateAsync`
+stores by reference, so the suite exercised the only implementation that structurally cannot exhibit
+the fault. The existing whole-model round-trip test is the guard and must be extended, not supplemented.
+
+**Alternatives considered**: a separate additive migration, which is what a released product would need
+and what the first attempt used. Rejected on the instruction that pre-release migrations stay squashed:
+with no other installations, the chain buys nothing and costs readability. Also considered riding in the
+`Metadata` dictionary (precedent exists — `TenantId` is smuggled through it by
+`SerializeMetadataWithTenant`); rejected as extending a workaround for a known defect (#1350) rather
+than a pattern.
 
 ## R6 — Endpoint placement
 
