@@ -32,6 +32,16 @@
     writing to /address/line1, /address/town, etc via FormContext.SetValue.
 *@
 
+@* Issue #1278: a postcode is the canonical machine-checked value — this field is literally checked
+   against a gazetteer, and "Eh91ja" is not a postcode. The ExactValueHints applied below are
+   unconditional rather than schema-derived: a field dispatched to THIS renderer is a postcode by
+   definition.
+
+   This comment lives ABOVE the element on purpose. Inside an attribute list a Razor comment is not
+   stripped — it is emitted as an attribute NAME, so the browser threw
+   `InvalidCharacterError: Failed to execute 'setAttribute'` and aborted the render batch. The
+   postcode input never appeared, and the exception took the next field (country) with it, leaving
+   both as bare labels. *@
 <div @onfocusin="OnFocusIn" @onfocusout="OnFocusOut" class="postcode-lookup">
     <MudTextField T="string"
                   data-testid="postcode-input"
@@ -50,10 +60,6 @@
                   Margin="Margin.Dense"
                   DebounceInterval="300"
                   OnBlur="OnBlurAsync"
-                  @* Issue #1278: a postcode is the canonical machine-checked value — this field is
-                     literally checked against a gazetteer, and "Eh91ja" is not a postcode. Hints are
-                     unconditional here rather than schema-derived: a field dispatched to THIS
-                     renderer is a postcode by definition. *@
                   @attributes="ExactValueHints" />
 
     @if (_mode == LookupMode.FullAddress)
