@@ -437,6 +437,40 @@ The `Sorcha.Cli` keeps its own request/response DTOs for most commands (only som
 
 ---
 
+### 19. EF migrations: squash while pre-release, add-only after
+
+**Today (pre-release): every schema change is folded into that service's `InitialCreate`.** All four
+migration sets — Blueprint, Tenant, Peer, Wallet.Core — carry exactly **one** migration each, and they
+stay that way. Amend `InitialCreate.cs`, its `.Designer.cs`, and the `*ModelSnapshot.cs` together.
+
+```bash
+# DON'T, while pre-release — it re-fragments a deliberately single migration:
+dotnet ef migrations add AddSomeColumn
+```
+
+- **The cost is real and must be understood, not discovered.** Amending an applied migration is
+  invisible to any database that already recorded it: `MigrateAsync` compares MigrationIds, sees
+  `InitialCreate` present, and does nothing. The columns never appear and the failure surfaces far
+  away as a raw Postgres error — `42703: column i.DecisionReasonCode does not exist` — on the first
+  query that touches them, long after a green build and a green test suite.
+- **So the remedy is to recreate the database, never to expect `MigrateAsync` to help.** A dev box or
+  a node that predates the change is brought up to date with `docker compose down -v` + re-genesis.
+- **Why it is nonetheless right now**: there are no installations to migrate. One readable
+  `InitialCreate` beats an accreting chain of one-column deltas, and nothing is lost by resetting.
+- **Verify, don't assume.** `dotnet ef migrations script --idempotent` should name exactly one
+  migration and its `CREATE TABLE` should contain your column. Applying that script to a scratch
+  database is the cheap proof.
+
+**At release (a deliberate call by the maintainer, like a `<SorchaMajor>` bump): this rule inverts.**
+From the moment a real installation exists, `InitialCreate` becomes immutable and **every** schema
+change ships as a new additive migration — because an amended migration silently diverges from
+deployed schema with no error at all. Switching this on also means deployment has to own an
+upgrade path (ordered migration application, forward-compatibility of the running image against the
+prior schema, and a rollback story), which does not exist yet and is tracked as **#1365**.
+Do not flip half of this: add-only migrations without an upgrade process is worse than either end.
+
+---
+
 ## Key Documentation
 
 | Document | Purpose |
