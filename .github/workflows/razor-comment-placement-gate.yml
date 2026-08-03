@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Razor comment placement gate. Fails when a @* ... *@ comment sits inside an element's
+# attribute list, where the compiler emits it as an ATTRIBUTE NAME rather than stripping it.
+# The browser then throws InvalidCharacterError at render time and aborts the render batch,
+# so the control — and whatever would have rendered after it — silently disappears.
+#
+# This needs a static gate because nothing else catches it: the C# compiler accepts it with no
+# warning, and bUnit's AngleSharp DOM tolerates an attribute name a real browser rejects, so
+# component tests pass against the broken markup.
+#
+# See scripts/check-razor-comment-placement.ps1.
+
+name: razor-comment-placement-gate
+
+on:
+  pull_request:
+    paths:
+      - "src/**/*.razor"
+      - "scripts/check-razor-comment-placement.ps1"
+      - ".github/workflows/razor-comment-placement-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  razor-comment-placement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Razor comment placement gate
+        shell: pwsh
+        run: ./scripts/check-razor-comment-placement.ps1
