@@ -2,21 +2,53 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 @*
     Boot-time gate for the Feature 173 LinkRequired step-up flow (FR-003).
-    Mounted outside AuthorizeRouteView in Routes.razor so it runs with no ClaimsPrincipal.
-    On first render it checks JS staging for a link-pending token; if present, it renders
-    the LinkExistingAccountPrompt as a full-screen takeover instead of the normal signed-out home.
-    If no token is staged, this component renders nothing (transparent passthrough).
+
+    Mounted in Routes.razor OUTSIDE AuthorizeRouteView so it runs with no ClaimsPrincipal, and it
+    WRAPS the router rather than sitting beside it. On first render it checks JS staging for a
+    link-pending token; if one is present it renders the prompt as a full-screen takeover and does
+    NOT render its children. With no token staged it is a transparent passthrough.
+
+    The wrapping is the point. This component previously rendered the prompt as a SIBLING of the
+    router, so the prompt appeared *in addition to* the routed page — an unstyled block element in
+    normal document flow above MudLayout. Measured live: .mud-main-content sat at 136.56px instead
+    of 0 while the position-fixed .mud-appbar stayed at 0, so the whole application was pushed down
+    by the height of the prompt and the prompt's own text was clipped under the app bar. Rendering
+    one OR the other makes that structurally impossible rather than merely styled against.
+
+    Suppressing the children also closes a functional hole: the page behind an incomplete auth
+    step-up was live, and for a caller who is not yet signed in that page is RedirectToLogin, which
+    would navigate away mid-flow.
+
+    MudBlazor's providers live inside MainLayout — i.e. inside the children this component
+    suppresses — so the takeover branch supplies its own, seeded from the same IThemeService the
+    layout uses. Without that the prompt renders unthemed.
 *@
 @using Microsoft.JSInterop
 @using System.Text.Json
+@using MudBlazor
+@using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Theme
 @inject IJSRuntime JSRuntime
+@inject IThemeService ThemeService
 
 @if (_showPrompt && _token is not null)
 {
+    <MudThemeProvider Theme="SorchaMudTheme.Default" IsDarkMode="@ThemeService.IsDarkMode" />
+    <MudPopoverProvider />
     <Sorcha.UI.Core.Components.AccountLink.LinkExistingAccountPrompt LinkPendingToken="@_token" />
+}
+else
+{
+    @ChildContent
 }
 
 @code {
+    /// <summary>
+    /// The application the gate guards — the router and everything under it. Rendered only when no
+    /// link-pending token is staged.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
     private bool _showPrompt;
     private string? _token;
 
@@ -35,6 +67,12 @@
                 var token = tokenProp.GetString();
                 if (!string.IsNullOrEmpty(token))
                 {
+                    // MainLayout initialises the theme service before reading IsDarkMode. The
+                    // takeover replaces MainLayout, so it has to do the same — otherwise the
+                    // prompt renders light against a dark application.
+                    try { await ThemeService.InitializeAsync(); }
+                    catch { /* fall back to the default theme rather than block the step-up */ }
+
                     _token = token;
                     _showPrompt = true;
                     StateHasChanged();
@@ -43,7 +81,8 @@
         }
         catch
         {
-            // JS interop may not be available in some contexts; treat as absent token
+            // JS interop is unavailable in some hosts. Fall through to the children rather than
+            // swallow the whole UI — failing closed here would render a blank application.
         }
     }
 }
