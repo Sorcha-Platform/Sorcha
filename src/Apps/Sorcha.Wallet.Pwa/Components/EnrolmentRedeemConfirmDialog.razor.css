@@ -1,0 +1,111 @@
+/* SPDX-License-Identifier: MIT */
+/* Copyright (c) 2026 Sorcha Contributors */
+
+/*
+    Feature 126 — styles for the friend-scans-by-mistake confirmation.
+
+    The component is deliberately plain HTML rather than MudBlazor components (it is a recognition
+    gate shown before any device is registered, so it stays independent of the dialog service). That
+    means it depends ENTIRELY on these rules — and they did not exist. Every `enrol-confirm*` class
+    in the markup was undefined anywhere in the repo, so the surface rendered as a bare <h2>, two
+    bare <p>s and two unstyled <button>s running together as one line of text: "Yes, that's me —
+    continue This isn't me". On a phone, straight after scanning the pairing QR, that is the first
+    thing a citizen sees.
+
+    Colours come from the MudBlazor palette variables so the card follows the wallet's light/dark
+    theme rather than pinning its own, with literal fallbacks for any context that renders this
+    outside a MudThemeProvider.
+*/
+
+.enrol-confirm {
+    max-width: 30rem;
+    margin: 0 auto;
+    padding: 1.5rem;
+
+    background-color: var(--mud-palette-surface, #ffffff);
+    color: var(--mud-palette-text-primary, rgba(0, 0, 0, 0.87));
+    border: 1px solid var(--mud-palette-lines-default, rgba(0, 0, 0, 0.12));
+    border-radius: var(--mud-default-borderradius, 8px);
+    box-shadow: var(--mud-elevation-4, 0 2px 8px rgba(0, 0, 0, 0.16));
+}
+
+.enrol-confirm__heading {
+    margin: 0 0 0.75rem;
+    font-size: 1.375rem;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.enrol-confirm__body {
+    margin: 0 0 0.75rem;
+    font-size: 1rem;
+    line-height: 1.5;
+}
+
+/* The consequence line. This is the whole point of the screen — an unintended recipient must be
+   able to see, at a glance, that continuing would bind THEIR device to someone else's account. */
+.enrol-confirm__warning {
+    margin: 0 0 1.25rem;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.9375rem;
+    line-height: 1.4;
+
+    color: var(--mud-palette-warning-text, #ffffff);
+    background-color: var(--mud-palette-warning, #ff9800);
+    border-radius: var(--mud-default-borderradius, 8px);
+}
+
+.enrol-confirm__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+/* Both actions are real targets on a phone held one-handed — 44px is the iOS minimum. */
+.enrol-confirm__confirm,
+.enrol-confirm__cancel {
+    min-height: 44px;
+    padding: 0.625rem 1.25rem;
+    font: inherit;
+    font-weight: 600;
+    border-radius: var(--mud-default-borderradius, 8px);
+    cursor: pointer;
+}
+
+.enrol-confirm__confirm {
+    flex: 1 1 auto;
+    color: var(--mud-palette-primary-text, #ffffff);
+    background-color: var(--mud-palette-primary, #594ae2);
+    border: 1px solid transparent;
+}
+
+.enrol-confirm__confirm:hover {
+    background-color: var(--mud-palette-primary-darken, #4b3fd0);
+}
+
+/* Deliberately quieter than Confirm, but NOT hidden — cancelling is the safe action for the
+   person this screen is protecting, so it stays a visible, full-size target. */
+.enrol-confirm__cancel {
+    color: var(--mud-palette-text-primary, rgba(0, 0, 0, 0.87));
+    background-color: transparent;
+    border: 1px solid var(--mud-palette-lines-default, rgba(0, 0, 0, 0.23));
+}
+
+.enrol-confirm__cancel:hover {
+    background-color: var(--mud-palette-action-default-hover, rgba(0, 0, 0, 0.06));
+}
+
+.enrol-confirm__confirm:focus-visible,
+.enrol-confirm__cancel:focus-visible {
+    outline: 2px solid var(--mud-palette-primary, #594ae2);
+    outline-offset: 2px;
+}
+
+/* Narrow phones: stack so neither action is cramped or accidentally adjacent to the other. */
+@media (max-width: 26rem) {
+    .enrol-confirm__actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
