@@ -666,16 +666,46 @@ try {
     if ($cred) { $failures += "REJECTION: a credential was issued ($($cred.id)) — none should be on rejection." }
     else { Write-WtSuccess "no credential issued (correct)" }
 
-    # The on-brand reason should be on the recorded decision / surfaced to the applicant.
+    # The on-brand reason must reach the APPLICANT, on their own My Applications view (Feature 186).
+    #
+    # This used to read /api/instances/{id} for data.verificationNotes and only WARN when it found
+    # nothing — which it always did. Two reasons: verificationNotes is the agent's own free-text
+    # prose, not the blueprint's citizen-facing copy, and on an encrypted register the applicant
+    # cannot read accumulated data at all. So the check could never pass, and warned instead of
+    # failing, which is how "the citizen cannot see why" stayed invisible through every rehearsal.
+    #
+    # The reason now rides the ledger as a non-sensitive CODE on the signed routing decision, and is
+    # resolved to the service's own wording server-side. Asserted, not warned: a refused applicant
+    # who cannot see why is a demo failure.
     try {
-        $inst = Invoke-SorchaApi -Method GET -Uri "$api/instances/$instId" -Headers $rejectApplicant.Session.Headers
-        $notes = $null
-        if ($inst.PSObject.Properties.Name -contains 'data' -and $inst.data -and ($inst.data.PSObject.Properties.Name -contains 'verificationNotes')) {
-            $notes = [string]$inst.data.verificationNotes
+        $mine = Invoke-SorchaApi -Method GET -Uri "$api/me/applications/$instId" -Headers $rejectApplicant.Session.Headers
+        $summary = if ($mine -and $mine.PSObject.Properties.Name -contains 'summary') { $mine.summary } else { $null }
+
+        if (-not $summary) {
+            $failures += "REJECTION: GET /api/me/applications/$instId returned no summary — the applicant has no view of their own decision."
         }
-        if ($notes -and $notes -match 'AIAS') { Write-WtSuccess "on-brand reason recorded: $notes" }
-        else { Write-WtWarn "REJECTION: could not read the on-brand reason from the instance projection (rejection still recorded)." }
-    } catch { Write-WtWarn "REJECTION: reason read transient error: $($_.Exception.Message)" }
+        elseif ($summary.outcome -ne 'NotApproved') {
+            # The load-bearing distinction: a refusal ENDS the application exactly as an approval
+            # does, so `state` reads Completed either way. Reporting state alone tells a refused
+            # citizen their application "completed".
+            $failures += "REJECTION: outcome is '$($summary.outcome)' (state '$($summary.state)'), expected 'NotApproved' — a refused application must not read as a plain finish."
+        }
+        elseif (-not $summary.decisionReason) {
+            $failures += "REJECTION: no decisionReason on the applicant's view — the refusal is visible but unexplained."
+        }
+        elseif ($summary.decisionReason -notmatch 'AIAS') {
+            $failures += "REJECTION: decisionReason '$($summary.decisionReason)' is not the on-brand copy from the blueprint's reason catalogue."
+        }
+        else {
+            Write-WtSuccess "on-brand reason surfaced to the applicant: $($summary.decisionReason)"
+            # The internal classification code must never reach a citizen (F186 FR-014).
+            if ($summary.PSObject.Properties.Name -contains 'decisionReasonCode') {
+                $failures += "REJECTION: the internal reason code leaked onto the applicant's view."
+            }
+        }
+    } catch {
+        $failures += "REJECTION: could not read the applicant's own decision view — $($_.Exception.Message)"
+    }
 } catch {
     $failures += "REJECTION: threw — $($_.Exception.Message)"
 }
