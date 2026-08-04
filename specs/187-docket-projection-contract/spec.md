@@ -73,25 +73,31 @@ Today the sealed root is discarded and recomputed on demand (`Program.cs:2976`).
 
 ---
 
-## Decision gates — resolve BEFORE executing the affected story
+## Decision gates — RESOLVED 2026-08-04 (Stuart)
 
-Execution must not guess these. US1 is unblocked and can proceed immediately.
+### Gate A → **A1: consensus votes must be auditable.** ✅ DECIDED
 
-### Gate A (blocks US2) — what happens to `Votes`?
+Quorum evidence belongs on the ledger. `Votes` becomes a real persisted `List<ConsensusVote>` — not deleted.
 
-Consensus votes are currently **never persisted** — `ConsensusVote` exists only in `Validator.Service` / `Validator.Core`. So "this docket achieved quorum, here are the signed votes" is not recoverable from the ledger.
+**⚠ This is a six-point chain, not a field addition.** The votes are discarded at three separate places today:
 
-- **A1 — Persist them.** Quorum evidence becomes auditable after the fact. Larger change; adds a real `List<ConsensusVote>` to the persisted shape.
-- **A2 — Delete `Votes`.** Consensus is a liveness mechanism, not a ledger record; the sealed docket hash plus validator roster is the evidence. Cheaper, and honest.
+1. `DocketBuildTriggerService:354` holds `consensusResult` and **never copies `.Votes` onto the docket** (unlike `ValidatorOrchestrator:223-224`, which does).
+2. Neither projection carries votes into `DocketModel`.
+3. `WriteDocketRequest` / `DocketModel` have **no votes field at all**.
 
-*Recommendation: A2 unless quorum evidence is wanted for audit, in which case A1. Either is defensible — the current state is neither.*
+So A1 requires: a wire-side `ConsensusVote` in `Sorcha.Register.Models` (the canonical home — `Register.Models` cannot reference `Validator.Service`, per CLAUDE.md §16); `Votes` on `DocketModel` + `WriteDocketRequest`; path A copying `consensusResult.Votes` onto the docket; the unified mapper carrying them; and `Register.Models.Docket` persisting them.
 
-### Gate B (blocks US3) — persist or cross-check?
+**⚠ Single-validator mode caveat.** `DocketBuildTriggerService:392` writes directly when no `IConsensusEngine` is registered. That is what n1 and local dev run, so persisted quorum evidence will be legitimately **empty** in those deployments. An empty vote list there is correct, **not** an error — do not add a guard that rejects it. A1 delivers nothing observable until multi-validator consensus is actually exercised; that is expected and is not a reason to defer it.
 
-- **B1 — Persist `MerkleRoot`** on the docket and verify recomputed-vs-sealed on read, failing loud on mismatch.
-- **B2 — Keep recomputation** and make the receipt cross-check an explicit, tested integrity path, documenting that docket integrity derives from receipts.
+**Cost:** negligible. N signatures per docket, N capped at 10 by `ValidatorRoster`.
 
-*Recommendation: B1 — cheaper, and matches what the wire contract already carries. Before choosing B2, confirm whether F079's `merkleRootConsistent` (`Program.cs:3186`) already performs the cross-check.*
+### Gate B → **BOTH: persist AND cross-check — but scope the check.** ✅ DECIDED
+
+- **Persist `MerkleRoot`** on the docket. One string per docket; zero cost; matches what the wire contract already carries.
+- **Cross-check sealed-vs-recomputed** where integrity is actually being *asserted* — proof generation, proof verification, the chain-integrity endpoint — and **fail loud on mismatch**.
+- **NOT on every docket read.** Recomputation is O(n) hashing over the docket's transaction ids; docket list/get are hot paths and gain nothing from re-verifying on each fetch. Verifying where a claim is made is the whole value; verifying on every read is a performance drain for no additional guarantee.
+
+**T016 still runs first** — establish whether F079's `merkleRootConsistent` (`Program.cs:3186`) already performs this cross-check, so the work extends it rather than duplicating it.
 
 ---
 

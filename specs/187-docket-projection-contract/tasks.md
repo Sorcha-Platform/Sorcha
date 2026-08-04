@@ -21,28 +21,36 @@ TDD order. T002 must be RED before T003.
 - 📋 **T007** Re-point T002 at the extracted mapper; verify GREEN.
 - 📋 **T008** Live check on n1: seal a docket via the normal path, confirm `RoutingDecision` + `InstanceId` present in Mongo, and an instance advances. *(F145's dormant-routing trap — a green suite does not prove the fold.)*
 
-## US2 — Honest persistence record (#1371) — ⛔ **BLOCKED on Gate A**
+## US2 — Honest persistence record (#1371) — ✅ **Gate A RESOLVED = A1 (persist votes)**
 
-- ⛔ **T009** **GATE A** — decide `Votes`: persist real `List<ConsensusVote>` (A1) or delete (A2). Record the decision and its reasoning in spec.md before proceeding.
-- 📋 **T010** Add `ProposerValidatorId` and `MerkleRoot` to `Register.Models.Docket`.
-- 📋 **T011** `Register.Service/Program.cs:1637-1650` — write `ProposerValidatorId` and `MerkleRoot` to their own fields; stop the `Votes` smuggle.
-- 📋 **T012** `RegisterServiceClient.cs:344-351` — read both from their own fields; delete the `docket.Votes` read and the `MerkleRoot = string.Empty` stub.
-- 📋 **T013** Apply the Gate A decision to `Votes`.
-- 📋 **T014** Round-trip test: `DocketModel` → persist → read → `DocketModel` preserves every contract-declared field. Reflection-based, same shape as T002.
-- 📋 **T015** Confirm no environment needs a read-side shim for dockets already carrying the proposer id in `Votes`; if re-genesis is the remedy, say so explicitly in the PR body.
+Ordered so the wire contract exists before anything tries to fill it.
 
-## US3 — Docket self-verification (#1372) — ⛔ **BLOCKED on Gate B**
+- 📋 **T009** Add a wire-side `ConsensusVote` to `Sorcha.Register.Models` (canonical home — `Register.Models` cannot reference `Validator.Service`, CLAUDE.md §16). Mirror the validator's shape: `VoteId`, `DocketId`, `ValidatorId`, `Decision`, `RejectionReason`, `VotedAt`, `DocketHash`, `ValidatorSignature`.
+- 📋 **T010** Add `ProposerValidatorId`, `MerkleRoot` and `List<ConsensusVote> Votes` to `Register.Models.Docket`. **Remove the old `string? Votes`** and its false doc-comment.
+- 📋 **T011** Add `Votes` to `DocketModel` and `WriteDocketRequest` — neither carries votes today, so the contract must gain the field before either projection can populate it.
+- 📋 **T012** `DocketBuildTriggerService:~354` — copy `consensusResult.Votes` onto the docket before the write. **Currently discarded**; path A has the result in hand and drops it. Mirrors `ValidatorOrchestrator:223-224`.
+- 📋 **T013** Extend the unified mapper (from T003) to carry `Votes`, `ProposerValidatorId`, `MerkleRoot`. T002's completeness test should now cover them.
+- 📋 **T014** `Register.Service/Program.cs:1637-1650` — write `ProposerValidatorId`, `MerkleRoot`, `Votes` to their own fields; **stop the `Votes = request.ProposerValidatorId` smuggle**.
+- 📋 **T015** `RegisterServiceClient.cs:344-351` — read each from its own field; delete the `docket.Votes` read and the `MerkleRoot = string.Empty` stub.
+- 📋 **T016** Round-trip test: `DocketModel` → persist → read → `DocketModel` preserves every contract-declared field. Reflection-based, same shape as T002.
+- 📋 **T017** **Single-validator mode must stay valid.** `DocketBuildTriggerService:~392` writes directly with no consensus engine (this is what n1 and local dev run) — assert an **empty vote list persists cleanly and is not an error**. Do NOT add a guard rejecting empty votes.
+- 📋 **T018** Confirm no environment needs a read-side shim for dockets already carrying the proposer id in the old `string? Votes`; if re-genesis is the remedy, state that explicitly in the PR body.
 
-- 📋 **T016** Establish whether F079's `merkleRootConsistent` (`Program.cs:3186`) already cross-checks sealed-vs-recomputed. **This finding may decide Gate B — do it first.**
-- ⛔ **T017** **GATE B** — persist + verify on read (B1), or explicit receipt cross-check (B2).
-- 📋 **T018** Implement the Gate B decision. If B1, `MerkleRoot` is already added by T010 — this is the read-side verify + fail-loud.
-- 📋 **T019** Test: a docket whose stored transactions have been altered fails verification instead of passing against a recomputed root.
+## US3 — Docket self-verification (#1372) — ✅ **Gate B RESOLVED = both, scoped**
+
+`MerkleRoot` is persisted by T010. This story is the verification side.
+
+- 📋 **T019** Establish whether F079's `merkleRootConsistent` (`Program.cs:3186`) already cross-checks sealed-vs-recomputed. **Do this first** — the work should extend it, not duplicate it.
+- 📋 **T020** Cross-check sealed-vs-recomputed at the points where integrity is **asserted**: proof generation (`Program.cs:~2976`), proof verification, and the chain-integrity endpoint. Fail loud on mismatch.
+- 📋 **T021** **Do NOT verify on every docket read.** Recomputation is O(n) hashing and docket list/get are hot paths. Confirm no verify call landed on a plain read path before closing the story.
+- 📋 **T022** Test: a docket whose stored transactions have been altered fails verification instead of passing against a self-consistent recomputed root.
+- 📋 **T023** Benchmark or reason explicitly about the added cost on the proof paths; record the finding in the PR body. If it is material, narrow the scope further rather than widening it.
 
 ## Close-out
 
-- 📋 **T020** Update `.specify/MASTER-TASKS.md` with the shipped entry.
-- 📋 **T021** Update the `sorcha-architecture` skill if the docket representation table or the seal-path projection changes shape.
-- 📋 **T022** Disposition #1215 separately (delete-or-build the control-versioning subsystem) — do NOT fold it into this feature.
+- 📋 **T024** Update `.specify/MASTER-TASKS.md` with the shipped entry.
+- 📋 **T025** Update the `sorcha-architecture` skill if the docket representation table or the seal-path projection changes shape.
+- 📋 **T026** Disposition #1215 separately (delete-or-build the control-versioning subsystem) — do NOT fold it into this feature.
 
 ---
 
