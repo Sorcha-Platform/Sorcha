@@ -1,0 +1,244 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sorcha Contributors
+
+using System.Security.Cryptography;
+using Sorcha.Provenance.Engine.Evidence;
+using Sorcha.Register.Core.Storage;
+using Sorcha.Register.Models;
+using Sorcha.Register.Models.Constants;
+using Sorcha.Register.Models.Genesis;
+
+namespace Sorcha.Register.Service.Provenance;
+
+/// <summary>
+/// Reads a docket, its predecessor and this node's anchor, and shapes them into engine evidence.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The data-shaping layer the engine boundary costs (plan D1, recorded honestly there). It maps
+/// storage's "absent" conventions onto the engine's: the register stores <c>MerkleRoot</c> and
+/// <c>ProposerValidatorId</c> as non-nullable strings defaulting to empty, so a docket sealed before
+/// Feature 187 arrives blank rather than null. Blank is normalised to null here, because the engine's
+/// contract is that null means "could not be established" and a blank string would otherwise be
+/// compared as a value.
+/// </para>
+/// <para>
+/// <b>Never throws for missing evidence.</b> A view that cannot assemble one link must render the
+/// rest and mark that link unverified with a reason (FR-020, SC-009). Only "no such docket" is
+/// distinguished, as null, so the endpoint can return 404.
+/// </para>
+/// </remarks>
+public sealed class DocketEvidenceAssembler : IDocketEvidenceAssembler
+{
+    private readonly IReadOnlyRegisterRepository _repository;
+    private readonly INodeTrustAnchor _anchor;
+    private readonly ILogger<DocketEvidenceAssembler> _logger;
+
+    /// <summary>Creates an assembler over the register's read-only store and the node's anchor.</summary>
+    public DocketEvidenceAssembler(
+        IReadOnlyRegisterRepository repository,
+        INodeTrustAnchor anchor,
+        ILogger<DocketEvidenceAssembler> logger)
+    {
+        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _anchor = anchor ?? throw new ArgumentNullException(nameof(anchor));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    /// <inheritdoc/>
+    public async Task<DocketEvidenceBundle?> AssembleAsync(
+        string registerId,
+        ulong docketNumber,
+        CancellationToken cancellationToken = default)
+    {
+        var docket = await _repository.GetDocketAsync(registerId, docketNumber, cancellationToken);
+        if (docket is null)
+        {
+            return null;
+        }
+
+        var predecessorHash = await ReadPredecessorHashAsync(registerId, docketNumber, cancellationToken);
+        var anchor = await AssembleAnchorAsync(registerId, cancellationToken);
+
+        var evidence = new DocketEvidence
+        {
+            DocketNumber = docket.Id,
+            Hash = docket.Hash,
+            ClaimedPreviousHash = Blank(docket.PreviousHash),
+            PredecessorHash = predecessorHash,
+            TransactionIds = docket.TransactionIds ?? [],
+            SealedMerkleRoot = Blank(docket.MerkleRoot),
+            ProposerValidatorId = Blank(docket.ProposerValidatorId),
+            Votes = (docket.Votes ?? [])
+                .Select(v => new DocketVoteEvidence
+                {
+                    ValidatorId = v.ValidatorId,
+                    PublicKey = v.ValidatorSignature?.PublicKey is { Length: > 0 } key
+                        ? Convert.ToBase64String(key)
+                        : null,
+                    Decision = v.Decision.ToString(),
+                })
+                .ToList(),
+        };
+
+        return new DocketEvidenceBundle(evidence, anchor);
+    }
+
+    /// <summary>
+    /// The hash of the docket actually preceding this one, or null when this node does not hold it.
+    /// </summary>
+    /// <remarks>
+    /// Null here is what makes a partial replica report Chain as unverified rather than failed. It is
+    /// also correct for the genesis docket, which has no predecessor.
+    /// </remarks>
+    private async Task<string?> ReadPredecessorHashAsync(
+        string registerId,
+        ulong docketNumber,
+        CancellationToken cancellationToken)
+    {
+        if (docketNumber == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            var predecessor = await _repository.GetDocketAsync(registerId, docketNumber - 1, cancellationToken);
+            return Blank(predecessor?.Hash);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "Could not read docket {Predecessor} of register {RegisterId} while assembling provenance evidence",
+                docketNumber - 1, registerId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// What this node can say about where the register came from.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Scope, stated plainly because overstating it would be the worst thing this feature could
+    /// do.</b> A node's trust anchor is the system-register genesis it was deployed with, and on this
+    /// platform it covers <i>only</i> the system register: nothing chains an organisation's register
+    /// back to the network genesis key (see <c>GenesisIngestionService</c> and
+    /// <c>SystemRegisterSyncVerifier</c>, its only two consumers). So:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item><description>
+    ///     <b>System register</b> — the stored genesis transaction's payload hash is compared with the
+    ///     payload hash the trust anchor describes. Agreement establishes that the system register
+    ///     this node holds is the one its anchor covers; disagreement is a genuine contradiction
+    ///     between two known values, and is reported as failed.
+    ///   </description></item>
+    ///   <item><description>
+    ///     <b>Any other register</b> — reported unverified, with a reason saying why: its origin is
+    ///     attested by its owner, and this node's anchor does not cover it. That is the truthful
+    ///     answer, not a hedge, and it is what FR-004 requires of a check that cannot run.
+    ///   </description></item>
+    /// </list>
+    /// <para>
+    /// This deliberately does NOT re-verify the genesis signature. That reconstruction already exists
+    /// in <c>SystemRegisterSyncVerifier</c>, and writing a second one here is exactly the
+    /// duplicate-implementation trap this feature keeps warning about — two implementations agree
+    /// until they don't, and here the disagreement would surface as a false tamper report. Comparing
+    /// the payload hash answers "is this the genesis my anchor describes" without duplicating any
+    /// cryptography.
+    /// </para>
+    /// </remarks>
+    private async Task<AnchorEvidence> AssembleAnchorAsync(string registerId, CancellationToken cancellationToken)
+    {
+        if (!_anchor.IsKnown)
+        {
+            return new AnchorEvidence { IsAnchorKnown = false };
+        }
+
+        var isSystemRegister = string.Equals(
+            registerId,
+            SystemRegisterConstants.SystemRegisterId,
+            StringComparison.OrdinalIgnoreCase);
+
+        if (!isSystemRegister)
+        {
+            return new AnchorEvidence
+            {
+                IsAnchorKnown = true,
+                AnchorFingerprint = _anchor.GenesisPublicKeyFingerprint,
+                OriginFingerprint = null,
+                OriginDescription = "this register's genesis, attested by its owner",
+                UntraceableReason =
+                    $"this node's trust anchor covers the {_anchor.NetworkId ?? "network"} system register; " +
+                    "this register's origin is attested by its owner rather than by the network genesis key, " +
+                    "so there is nothing to trace it to (issue #1374)",
+            };
+        }
+
+        var storedPayloadHash = await ReadStoredGenesisPayloadHashAsync(registerId, cancellationToken);
+
+        return new AnchorEvidence
+        {
+            IsAnchorKnown = true,
+            AnchorFingerprint = _anchor.GenesisPayloadHash,
+            OriginFingerprint = storedPayloadHash,
+            OriginDescription =
+                $"the payload of this node's stored system-register genesis transaction, compared with the " +
+                $"genesis its {_anchor.NetworkId ?? "network"} trust anchor describes " +
+                $"(anchor key fingerprint {_anchor.GenesisPublicKeyFingerprint})",
+            UntraceableReason = storedPayloadHash is null
+                ? "this node holds no readable system-register genesis transaction to compare against its anchor"
+                : null,
+        };
+    }
+
+    /// <summary>
+    /// Hashes the stored genesis transaction's payload the same way the genesis ceremony did.
+    /// </summary>
+    /// <remarks>
+    /// The transaction id is deterministic (<see cref="GenesisSignatureVerifier.ComputeGenesisTxId"/>),
+    /// and the payload is stored base64 or base64url depending on the writer, so both are accepted —
+    /// the same smart decode <c>GovernanceRosterService</c> and <c>SystemRegisterSyncVerifier</c> use.
+    /// </remarks>
+    private async Task<string?> ReadStoredGenesisPayloadHashAsync(
+        string registerId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var genesisTxId = GenesisSignatureVerifier.ComputeGenesisTxId();
+            var transaction = await _repository.GetTransactionAsync(registerId, genesisTxId, cancellationToken);
+
+            var data = transaction?.Payloads?.FirstOrDefault()?.Data;
+            if (string.IsNullOrWhiteSpace(data))
+            {
+                return null;
+            }
+
+            var bytes = data.Contains('+') || data.Contains('/') || data.Contains('=')
+                ? Convert.FromBase64String(data)
+                : System.Buffers.Text.Base64Url.DecodeFromChars(data);
+
+            return Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "Could not read the stored genesis transaction of register {RegisterId} while assembling anchor evidence",
+                registerId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Normalises storage's empty-string "absent" to the engine's null "absent".
+    /// </summary>
+    /// <remarks>
+    /// Load-bearing: <c>DocketHeader.MerkleRoot</c> and <c>ProposerValidatorId</c> are non-nullable
+    /// strings defaulting to empty, so a pre-Feature-187 docket arrives blank. Passing the blank
+    /// through would have the engine compare it as a value rather than treat it as missing evidence.
+    /// (The engine also guards against blanks, so this is belt and braces — deliberately, because the
+    /// failure mode is a false tamper report.)
+    /// </remarks>
+    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
+}

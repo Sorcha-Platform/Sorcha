@@ -184,6 +184,21 @@ builder.Services.AddSingleton<IPendingRegistrationStore, PendingRegistrationStor
 builder.Services.AddScoped<IHashProvider, Sorcha.Cryptography.Core.HashProvider>();
 builder.Services.AddScoped<ICryptoModule, Sorcha.Cryptography.Core.CryptoModule>();
 
+// Feature 188: Provenance — trust-anchor and proof lineage (read-only).
+// The trust anchor is a deploy-time fact read once (singleton); the metrics meter is likewise
+// process-wide. The resolver, assembler and Merkle seam are scoped alongside the repository they
+// read through. MerkleRootCalculator DELEGATES to the platform's one MerkleTree — see its remarks
+// for why a second implementation here would surface as a false tamper report.
+builder.Services.AddSingleton<Sorcha.Register.Service.Provenance.INodeTrustAnchor,
+    Sorcha.Register.Service.Provenance.NodeTrustAnchor>();
+builder.Services.AddSingleton<Sorcha.Register.Service.Provenance.ProvenanceMetrics>();
+builder.Services.AddScoped<Sorcha.Register.Service.Provenance.IRosterAsOfResolver,
+    Sorcha.Register.Service.Provenance.RosterAsOfResolver>();
+builder.Services.AddScoped<Sorcha.Register.Service.Provenance.IDocketEvidenceAssembler,
+    Sorcha.Register.Service.Provenance.DocketEvidenceAssembler>();
+builder.Services.AddScoped<Sorcha.Provenance.Engine.Seams.IMerkleRootCalculator,
+    Sorcha.Register.Service.Provenance.MerkleRootCalculator>();
+
 // Register wallet service client
 builder.Services.AddServiceClients(builder.Configuration);
 
@@ -319,6 +334,10 @@ app.MapObservationEndpoints();
 
 // T027-T042: Inclusion proofs, revocation, verification bundles
 app.MapVerificationEndpoints();
+
+// Feature 188: provenance spine + per-docket trail. Two endpoints deliberately — the spine runs
+// NO verification (plan D6).
+app.MapProvenanceEndpoints();
 
 // Add authentication and authorization middleware (AUTH-002)
 app.UseAuthentication();
