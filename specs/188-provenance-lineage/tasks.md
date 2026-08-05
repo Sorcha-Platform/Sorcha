@@ -11,23 +11,23 @@ Legend: 📋 pending · 🚧 in progress · ✅ done · `[P]` parallelisable (di
 
 ## Phase 1: Setup
 
-- [ ] T001 [P] Create `src/Common/Sorcha.Verification.Abstractions/Sorcha.Verification.Abstractions.csproj` — a zero-dependency leaf targeting `net10.0`. No `PackageReference`, no `ProjectReference`. Add to `Sorcha.sln`.
-- [ ] T002 [P] Create `src/Common/Sorcha.Provenance.Engine/Sorcha.Provenance.Engine.csproj` targeting `net10.0`, referencing **only** `Sorcha.Verification.Abstractions`. Add to `Sorcha.sln`.
-- [ ] T003 [P] Create `tests/Sorcha.Provenance.Engine.Tests/Sorcha.Provenance.Engine.Tests.csproj` — xUnit v3 + FluentAssertions, matching the conventions in `tests/Sorcha.Register.Models.Tests`. Add to `Sorcha.sln`.
+- [X] T001 [P] Create `src/Common/Sorcha.Verification.Abstractions/Sorcha.Verification.Abstractions.csproj` — a zero-dependency leaf targeting `net10.0`. No `PackageReference`, no `ProjectReference`. Add to `Sorcha.sln`.
+- [X] T002 [P] Create `src/Common/Sorcha.Provenance.Engine/Sorcha.Provenance.Engine.csproj` targeting `net10.0`, referencing **only** `Sorcha.Verification.Abstractions`. Add to `Sorcha.sln`.
+- [X] T003 [P] Create `tests/Sorcha.Provenance.Engine.Tests/Sorcha.Provenance.Engine.Tests.csproj` — xUnit v3 + FluentAssertions, matching the conventions in `tests/Sorcha.Register.Models.Tests`. Add to `Sorcha.sln`.
 
 ---
 
 ## Phase 2: Foundational — blocks all of User Story 1
 
-- [ ] T004 **OWN COMMIT.** Hoist the tri-state status: move `LayerStatus` out of `src/Common/Sorcha.Verifier.Engine/Models/VerifierSession.cs` into `src/Common/Sorcha.Verification.Abstractions/VerificationStatus.cs` as `VerificationStatus` (`Verified` / `Failed` / `Unverified`). Add the project reference to `Sorcha.Verifier.Engine.csproj` and repoint every usage **compiler-guided** — do not blanket-rename, `LayerStatus` appears in doc comments and in `ValidationLayerResult`. `ValidationLayer` stays in the verifier: only the status is shared.
+- [X] T004 **OWN COMMIT.** Hoist the tri-state status: move `LayerStatus` out of `src/Common/Sorcha.Verifier.Engine/Models/VerifierSession.cs` into `src/Common/Sorcha.Verification.Abstractions/VerificationStatus.cs` as `VerificationStatus` (`Verified` / `Failed` / `Unverified`). Add the project reference to `Sorcha.Verifier.Engine.csproj` and repoint every usage **compiler-guided** — do not blanket-rename, `LayerStatus` appears in doc comments and in `ValidationLayerResult`. `ValidationLayer` stays in the verifier: only the status is shared.
   - This edits shipped Feature 155 code with **no behaviour change**. Commit it alone so a bisect can isolate it. Verifier and Citizen.Verifier suites must be green before and after, with the counts recorded in the commit message.
-- [ ] T005 Assert the engine is dependency-free, in `tests/Sorcha.Provenance.Engine.Tests/EngineIsPortableTests.cs`: reflect over `typeof(ProvenanceCheck).Assembly.GetReferencedAssemblies()` and fail if any name starts with `Sorcha.Cryptography` or `Sorcha.ServiceClients`.
+- [X] T005 Assert the engine is dependency-free, in `tests/Sorcha.Provenance.Engine.Tests/EngineIsPortableTests.cs`: reflect over `typeof(ProvenanceCheck).Assembly.GetReferencedAssemblies()` and fail if any name starts with `Sorcha.Cryptography` or `Sorcha.ServiceClients`.
   - The entire Phase-3 export path rests on this, and a casual `using` would foreclose it silently. **Mutation-test it**: add a temporary reference to `Sorcha.Cryptography`, confirm the test fails naming the assembly, then remove it.
-- [ ] T006 [P] Create `src/Common/Sorcha.Provenance.Engine/ProvenanceLayer.cs` — `Anchor`, `Chain`, `Seal`, `Signers`, `Proposer`. Register-specific by design; see data-model.md.
-- [ ] T007 [P] Create `src/Common/Sorcha.Provenance.Engine/ProvenanceCheck.cs` — `Layer`, `Status`, `Headline`, `Detail?`, `CheckedAgainst` (**required**), `Reason?`. XML-doc `CheckedAgainst` with the FR-005 rule: for `Seal` it must read as *"recomputed from the docket's stored transaction ids"* and must not imply independent validation.
-- [ ] T008 [P] Create `src/Common/Sorcha.Provenance.Engine/Evidence/` — `DocketEvidence`, `RosterAsOf`, `AnchorEvidence` per data-model.md. Every nullable field carries an XML doc stating that absent ⇒ `Unverified`, **never** `Failed`.
-- [ ] T009 [P] Create `src/Common/Sorcha.Provenance.Engine/Seams/IMerkleRootCalculator.cs` — one method, transaction ids → root. XML-doc why it is a seam (R-003: the real implementation lives in `Sorcha.Cryptography`, which cannot load under browser-wasm).
-- [ ] T010 Create `src/Common/Sorcha.Provenance.Engine/DocketProvenanceVerifier.cs` — the orchestrator taking `DocketEvidence` + `RosterAsOf` + `AnchorEvidence` + `IMerkleRootCalculator`, returning an ordered `ProvenanceTrail`. Checks stubbed to `Unverified("not implemented")` so the ordering is testable before any check exists.
+- [X] T006 [P] Create `src/Common/Sorcha.Provenance.Engine/ProvenanceLayer.cs` — `Anchor`, `Chain`, `Seal`, `Signers`, `Proposer`. Register-specific by design; see data-model.md.
+- [X] T007 [P] Create `src/Common/Sorcha.Provenance.Engine/ProvenanceCheck.cs` — `Layer`, `Status`, `Headline`, `Detail?`, `CheckedAgainst` (**required**), `Reason?`. XML-doc `CheckedAgainst` with the FR-005 rule: for `Seal` it must read as *"recomputed from the docket's stored transaction ids"* and must not imply independent validation.
+- [X] T008 [P] Create `src/Common/Sorcha.Provenance.Engine/Evidence/` — `DocketEvidence`, `RosterAsOf`, `AnchorEvidence` per data-model.md. Every nullable field carries an XML doc stating that absent ⇒ `Unverified`, **never** `Failed`.
+- [X] T009 [P] Create `src/Common/Sorcha.Provenance.Engine/Seams/IMerkleRootCalculator.cs` — one method, transaction ids → root. XML-doc why it is a seam (R-003: the real implementation lives in `Sorcha.Cryptography`, which cannot load under browser-wasm).
+- [X] T010 Create `src/Common/Sorcha.Provenance.Engine/DocketProvenanceVerifier.cs` — the orchestrator taking `DocketEvidence` + `RosterAsOf` + `AnchorEvidence` + `IMerkleRootCalculator`, returning an ordered `ProvenanceTrail`. Checks stubbed to `Unverified("not implemented")` so the ordering is testable before any check exists.
 
 **Checkpoint**: solution builds; T005 green; no check yet claims `Verified`.
 
@@ -43,43 +43,43 @@ Legend: 📋 pending · 🚧 in progress · ✅ done · `[P]` parallelisable (di
 
 > A guard never shown to fail is not a guard. Record the RED output in the PR body for each.
 
-- [ ] T011 [P] [US1] **RED**: `AnchorCheckTests` in `tests/Sorcha.Provenance.Engine.Tests/Checks/` — genesis record verifying against the anchor ⇒ `Verified`; a mismatched anchor ⇒ `Failed`; `IsAnchorKnown == false` ⇒ `Unverified` with a reason (the correct outcome for a node whose anchor does not match the network — issue #1374).
-- [ ] T012 [US1] Implement the Anchor check in `DocketProvenanceVerifier`. T011 green.
-- [ ] T013 [P] [US1] **RED**: `ChainCheckTests` — `PreviousHash` matching the predecessor ⇒ `Verified`; mismatch ⇒ `Failed`; **predecessor not held ⇒ `Unverified`, not `Failed`**. A partial replica must not read as compromised.
-- [ ] T014 [US1] Implement the Chain check. T013 green.
-- [ ] T015 [P] [US1] **RED**: `SealCheckTests` — recomputed root equal to `SealedMerkleRoot` ⇒ `Verified`; **a tampered transaction id ⇒ `Failed`**; **`SealedMerkleRoot == null` (pre-F187 docket) ⇒ `Unverified` with a reason, not `Failed`**. Assert `CheckedAgainst` states recomputation-from-stored-ids rather than implying independent validation.
-- [ ] T016 [US1] Implement the Seal check over `IMerkleRootCalculator`. T015 green.
-- [ ] T017 [P] [US1] **RED — the highest-value test in the feature.** `RosterAsOfTests`: build a register where a validator is removed at docket 12. A docket-**10** signature from that validator ⇒ `Verified` (it held authority then); a docket-**14** signature from the same key ⇒ `Failed`.
+- [X] T011 [P] [US1] **RED**: `AnchorCheckTests` in `tests/Sorcha.Provenance.Engine.Tests/Checks/` — genesis record verifying against the anchor ⇒ `Verified`; a mismatched anchor ⇒ `Failed`; `IsAnchorKnown == false` ⇒ `Unverified` with a reason (the correct outcome for a node whose anchor does not match the network — issue #1374).
+- [X] T012 [US1] Implement the Anchor check in `DocketProvenanceVerifier`. T011 green.
+- [X] T013 [P] [US1] **RED**: `ChainCheckTests` — `PreviousHash` matching the predecessor ⇒ `Verified`; mismatch ⇒ `Failed`; **predecessor not held ⇒ `Unverified`, not `Failed`**. A partial replica must not read as compromised.
+- [X] T014 [US1] Implement the Chain check. T013 green.
+- [X] T015 [P] [US1] **RED**: `SealCheckTests` — recomputed root equal to `SealedMerkleRoot` ⇒ `Verified`; **a tampered transaction id ⇒ `Failed`**; **`SealedMerkleRoot == null` (pre-F187 docket) ⇒ `Unverified` with a reason, not `Failed`**. Assert `CheckedAgainst` states recomputation-from-stored-ids rather than implying independent validation.
+- [X] T016 [US1] Implement the Seal check over `IMerkleRootCalculator`. T015 green.
+- [X] T017 [P] [US1] **RED — the highest-value test in the feature.** `RosterAsOfTests`: build a register where a validator is removed at docket 12. A docket-**10** signature from that validator ⇒ `Verified` (it held authority then); a docket-**14** signature from the same key ⇒ `Failed`.
   - This is the only test that fails against an implementation that looks entirely correct. Verifying against the *current* roster passes every other test in this file and starts reporting false tampering the moment the network grows.
-- [ ] T018 [P] [US1] **RED**: `SignersCheckTests` — every signature valid against `RosterAsOf` ⇒ `Verified`; an invalid signature ⇒ `Failed`; **an empty vote set ⇒ `Unverified` with a reason, never `Verified`**. Single-validator deployments are the common case, not an edge.
-- [ ] T019 [US1] Implement the Signers check. T017 and T018 green. The verifier must consume `RosterAsOf` only — it is never handed a current roster (D5).
-- [ ] T020 [P] [US1] **RED**: `ProposerCheckTests` — proposer present in `RosterAsOf` ⇒ `Verified`; absent ⇒ `Failed`; roster version unresolvable ⇒ `Unverified`.
-- [ ] T021 [US1] Implement the Proposer check. T020 green.
-- [ ] T022 [US1] Coverage guard in `ProvenanceLayerCoverageTests`: reflect over `ProvenanceLayer` and fail if any member is not exercised by at least one test, so a layer cannot be silently left unchecked.
-- [ ] T023 [US1] **Mutation sweep.** For each of the five checks, force it to return `Verified` unconditionally and confirm at least one test fails naming that layer. Record the results in the PR body. This is the only evidence the guards are real.
+- [X] T018 [P] [US1] **RED**: `SignersCheckTests` — every signature valid against `RosterAsOf` ⇒ `Verified`; an invalid signature ⇒ `Failed`; **an empty vote set ⇒ `Unverified` with a reason, never `Verified`**. Single-validator deployments are the common case, not an edge.
+- [X] T019 [US1] Implement the Signers check. T017 and T018 green. The verifier must consume `RosterAsOf` only — it is never handed a current roster (D5).
+- [X] T020 [P] [US1] **RED**: `ProposerCheckTests` — proposer present in `RosterAsOf` ⇒ `Verified`; absent ⇒ `Failed`; roster version unresolvable ⇒ `Unverified`.
+- [X] T021 [US1] Implement the Proposer check. T020 green.
+- [X] T022 [US1] Coverage guard in `ProvenanceLayerCoverageTests`: reflect over `ProvenanceLayer` and fail if any member is not exercised by at least one test, so a layer cannot be silently left unchecked.
+- [X] T023 [US1] **Mutation sweep.** For each of the five checks, force it to return `Verified` unconditionally and confirm at least one test fails naming that layer. Record the results in the PR body. This is the only evidence the guards are real.
 
 ### Register Service — evidence assembly and endpoints
 
-- [ ] T024 [US1] Implement roster-as-of resolution in `src/Services/Sorcha.Register.Service/Provenance/RosterAsOfResolver.cs` — walk control transactions up to a docket's height and return the roster version applying **at that docket**, with `ResolvedFrom` naming the control transaction that established it.
+- [X] T024 [US1] Implement roster-as-of resolution in `src/Services/Sorcha.Register.Service/Provenance/RosterAsOfResolver.cs` — walk control transactions up to a docket's height and return the roster version applying **at that docket**, with `ResolvedFrom` naming the control transaction that established it.
   - The resolver is the only component that may see the full roster history. Nothing downstream receives "the current roster" (D5).
-- [ ] T025 [US1] Implement `src/Services/Sorcha.Register.Service/Provenance/DocketEvidenceAssembler.cs` — read `DocketHeader` + predecessor + anchor, produce `DocketEvidence` / `AnchorEvidence`. Absent inputs map to nulls that the engine renders `Unverified`; the assembler must not throw for missing evidence.
-- [ ] T026 [US1] Implement `MerkleRootCalculator : IMerkleRootCalculator` in the same folder, delegating to the existing `MerkleTree.ComputeMerkleRoot` (`src/Common/Sorcha.Cryptography/Utilities/MerkleTree.cs:32`). **Delegate — do not reimplement** (R-003/D4).
-- [ ] T027 [US1] Add `GET /api/provenance/registers/{registerId}` in `src/Services/Sorcha.Register.Service/Endpoints/ProvenanceEndpoints.cs` — paged spine per `contracts/provenance-api.yaml`. **Runs no checks** (D6). `RequireAdministrator` + `RequirePlatformAudience`. `.WithSummary()` / `.WithDescription()`.
-- [ ] T028 [US1] Add `GET /api/provenance/registers/{registerId}/dockets/{docketNumber}` — assemble, delegate to the engine, return the trail. Same authorization.
-- [ ] T029 [US1] Endpoint tests in `tests/Sorcha.Register.Service.Tests/Endpoints/ProvenanceEndpointTests.cs`: authorization (401 unauthenticated, 403 non-admin, 403 consumer-tier), unknown register ⇒ 404, and — **the important one** — a docket whose evidence cannot be assembled returns **200 with `Unverified` rows carrying reasons, never a 5xx**.
-- [ ] T030 [US1] Assert the spine runs no verification: a spine response over a register with many dockets must contain no check results, and `DocketSpineEntry` must have no status field to populate (D6, SC-007).
+- [X] T025 [US1] Implement `src/Services/Sorcha.Register.Service/Provenance/DocketEvidenceAssembler.cs` — read `DocketHeader` + predecessor + anchor, produce `DocketEvidence` / `AnchorEvidence`. Absent inputs map to nulls that the engine renders `Unverified`; the assembler must not throw for missing evidence.
+- [X] T026 [US1] Implement `MerkleRootCalculator : IMerkleRootCalculator` in the same folder, delegating to the existing `MerkleTree.ComputeMerkleRoot` (`src/Common/Sorcha.Cryptography/Utilities/MerkleTree.cs:32`). **Delegate — do not reimplement** (R-003/D4).
+- [X] T027 [US1] Add `GET /api/provenance/registers/{registerId}` in `src/Services/Sorcha.Register.Service/Endpoints/ProvenanceEndpoints.cs` — paged spine per `contracts/provenance-api.yaml`. **Runs no checks** (D6). `RequireAdministrator` + `RequirePlatformAudience`. `.WithSummary()` / `.WithDescription()`.
+- [X] T028 [US1] Add `GET /api/provenance/registers/{registerId}/dockets/{docketNumber}` — assemble, delegate to the engine, return the trail. Same authorization.
+- [X] T029 [US1] Endpoint tests in `tests/Sorcha.Register.Service.Tests/Endpoints/ProvenanceEndpointTests.cs`: authorization (401 unauthenticated, 403 non-admin, 403 consumer-tier), unknown register ⇒ 404, and — **the important one** — a docket whose evidence cannot be assembled returns **200 with `Unverified` rows carrying reasons, never a 5xx**.
+- [X] T030 [US1] Assert the spine runs no verification: a spine response over a register with many dockets must contain no check results, and `DocketSpineEntry` must have no status field to populate (D6, SC-007).
 
 ### UI — `Sorcha.UI.Core`, not `Components.User`
 
-- [ ] T031 [US1] [P] Add the typed client in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Admin/ProvenanceService.cs` + interface, registered with the authenticated handler chain. **Not** an ambient `HttpClient` — that is anonymous by design and 401s silently.
-- [ ] T032 [US1] Build `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Provenance/RegisterLineage.razor` — the docket spine: chronological from genesis, each docket carrying proposer and signer count, **roster changes rendered as events on the spine** so network growth is visible as history. Paged.
-- [ ] T033 [US1] Build `DocketProvenanceTrail.razor` + `ProvenanceCheckRow.razor` in the same folder — the layered evidence trail, reusing the stacked-expandable idiom of F155's `VerdictTrailPanel`. **Do not invent a second idiom.** Each row shows status, headline, `CheckedAgainst`, and expands to `Detail`. `Unverified` must be visually distinct from `Failed` — amber-neutral versus red — because conflating them is the feature's core misreading.
-- [ ] T034 [US1] bUnit tests in `tests/Sorcha.UI.Core.Tests/Provenance/`: a trail with a `Failed` row renders it distinctly from `Unverified`; a spine with a roster change renders the marker; an empty signer set renders as "not verifiable" rather than a tick or an error.
-- [ ] T035 [US1] Wire the entry point from the existing register explorer (`Components/Explorer/`) so lineage is reachable from a register without a new top-level nav item.
+- [X] T031 [US1] [P] Add the typed client in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Admin/ProvenanceService.cs` + interface, registered with the authenticated handler chain. **Not** an ambient `HttpClient` — that is anonymous by design and 401s silently.
+- [X] T032 [US1] Build `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Provenance/RegisterLineage.razor` — the docket spine: chronological from genesis, each docket carrying proposer and signer count, **roster changes rendered as events on the spine** so network growth is visible as history. Paged.
+- [X] T033 [US1] Build `DocketProvenanceTrail.razor` + `ProvenanceCheckRow.razor` in the same folder — the layered evidence trail, reusing the stacked-expandable idiom of F155's `VerdictTrailPanel`. **Do not invent a second idiom.** Each row shows status, headline, `CheckedAgainst`, and expands to `Detail`. `Unverified` must be visually distinct from `Failed` — amber-neutral versus red — because conflating them is the feature's core misreading.
+- [X] T034 [US1] bUnit tests in `tests/Sorcha.UI.Core.Tests/Provenance/`: a trail with a `Failed` row renders it distinctly from `Unverified`; a spine with a roster change renders the marker; an empty signer set renders as "not verifiable" rather than a tick or an error.
+- [X] T035 [US1] Wire the entry point from the existing register explorer (`Components/Explorer/`) so lineage is reachable from a register without a new top-level nav item.
 
 ### Observability
 
-- [ ] T036 [US1] [P] Add `src/Services/Sorcha.Register.Service/Provenance/ProvenanceMetrics.cs` on a `Sorcha.Provenance` meter: `sorcha_provenance_check_total{layer,status}` and `sorcha_provenance_trail_duration_seconds{surface}`. No subject data on any dimension. Add the meter to the ServiceDefaults export allowlist.
+- [X] T036 [US1] [P] Add `src/Services/Sorcha.Register.Service/Provenance/ProvenanceMetrics.cs` on a `Sorcha.Provenance` meter: `sorcha_provenance_check_total{layer,status}` and `sorcha_provenance_trail_duration_seconds{surface}`. No subject data on any dimension. Add the meter to the ServiceDefaults export allowlist.
 
 ### Live verification
 
