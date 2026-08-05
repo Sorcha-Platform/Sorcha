@@ -233,12 +233,12 @@ public class InclusionProofEndpointTests : IClassFixture<RegisterServiceWebAppli
         return result!.TxId;
     }
 
-    private async Task<Docket> CreateDocketWithTransactionAsync(string txId)
+    private async Task<DocketHeader> CreateDocketWithTransactionAsync(string txId)
     {
         using var scope = _factory.Services.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<IRegisterRepository>();
 
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             RegisterId = _testRegisterId,
             TransactionIds = new List<string> { txId },

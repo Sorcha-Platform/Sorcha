@@ -118,7 +118,7 @@ public class RegisterLocalRelationshipServiceTests
     {
         var repo = new Mock<IReadOnlyRegisterRepository>();
         repo.Setup(r => r.GetDocketAsync(RegisterId, 0, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Docket?)null);
+            .ReturnsAsync((DocketHeader?)null);
 
         var svc = new RegisterLocalRelationshipService(
             repo.Object,
@@ -140,7 +140,7 @@ public class RegisterLocalRelationshipServiceTests
 
         var repo = new Mock<IReadOnlyRegisterRepository>();
         repo.Setup(r => r.GetDocketAsync(RegisterId, 0, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Docket?)null);
+            .ReturnsAsync((DocketHeader?)null);
         repo.Setup(r => r.GetRegisterAsync(RegisterId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Sorcha.Register.Models.Register
             {
@@ -208,7 +208,7 @@ public class RegisterLocalRelationshipServiceTests
         // Genesis exists but has no Control tx (pre-086 heuristic).
         var repo = new Mock<IReadOnlyRegisterRepository>();
         repo.Setup(r => r.GetDocketAsync(RegisterId, 0, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Docket { Id = 0, RegisterId = RegisterId });
+            .ReturnsAsync(new DocketHeader { Id = 0, RegisterId = RegisterId });
         repo.Setup(r => r.GetTransactionsByDocketAsync(RegisterId, 0, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<TransactionModel>());
 
@@ -246,7 +246,7 @@ public class RegisterLocalRelationshipServiceTests
 
         var repo = new Mock<IReadOnlyRegisterRepository>();
         repo.Setup(r => r.GetDocketAsync(RegisterId, 0, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Docket { Id = 0, RegisterId = RegisterId });
+            .ReturnsAsync(new DocketHeader { Id = 0, RegisterId = RegisterId });
         repo.Setup(r => r.GetTransactionsByDocketAsync(RegisterId, 0, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[]
             {
@@ -317,7 +317,7 @@ public class RegisterLocalRelationshipServiceTests
 
         var repo = new Mock<IReadOnlyRegisterRepository>();
         repo.Setup(r => r.GetDocketAsync(RegisterId, 0, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Docket { Id = 0, RegisterId = RegisterId });
+            .ReturnsAsync(new DocketHeader { Id = 0, RegisterId = RegisterId });
         repo.Setup(r => r.GetTransactionsByDocketAsync(RegisterId, 0, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { controlTx });
         return repo;

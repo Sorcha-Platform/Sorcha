@@ -16,7 +16,7 @@ namespace Sorcha.Register.Service.Tests.Unit;
 /// </summary>
 public class DocketWriteReconciliationTests
 {
-    private static Docket DocketWithHash(string hash, ulong number = 7) => new()
+    private static DocketHeader DocketWithHash(string hash, ulong number = 7) => new()
     {
         Id = number,
         RegisterId = "reg-1",
@@ -30,7 +30,7 @@ public class DocketWriteReconciliationTests
         Signature = signature,
     };
 
-    // ---- Docket reconciliation ----
+    // ---- DocketHeader reconciliation ----
 
     [Fact]
     public void ReconcileDocket_SameHash_ReturnsIdempotentMatch()

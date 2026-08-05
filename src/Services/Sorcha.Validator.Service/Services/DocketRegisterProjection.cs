@@ -3,7 +3,7 @@
 
 using System.Buffers.Text;
 using Sorcha.ServiceClients.Register;
-using Docket = Sorcha.Validator.Service.Models.Docket;
+using Sorcha.Validator.Service.Models;
 using Transaction = Sorcha.Validator.Service.Models.Transaction;
 
 namespace Sorcha.Validator.Service.Services;

@@ -5,7 +5,6 @@ using System.Text.Json;
 using FluentAssertions;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
-using Docket = Sorcha.Validator.Service.Models.Docket;
 using Signature = Sorcha.Validator.Service.Models.Signature;
 using Transaction = Sorcha.Validator.Service.Models.Transaction;
 

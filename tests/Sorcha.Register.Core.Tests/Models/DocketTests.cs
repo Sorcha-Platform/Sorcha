@@ -15,7 +15,7 @@ public class DocketTests
     public void Docket_DefaultConstructor_ShouldSetDefaultValues()
     {
         // Act
-        var docket = new Docket();
+        var docket = new DocketHeader();
 
         // Assert
         docket.Id.Should().Be(0ul);
@@ -40,7 +40,7 @@ public class DocketTests
         var timestamp = DateTime.UtcNow.AddHours(-1);
 
         // Act
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             Id = 5,
             RegisterId = registerId,
@@ -70,7 +70,7 @@ public class DocketTests
     public void Docket_WithInvalidRegisterId_ShouldFailValidation(string? invalidRegisterId)
     {
         // Arrange
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             RegisterId = invalidRegisterId!,
             Hash = "some-hash"
@@ -89,7 +89,7 @@ public class DocketTests
     public void Docket_WithInvalidHash_ShouldFailValidation(string? invalidHash)
     {
         // Arrange
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             RegisterId = Guid.NewGuid().ToString("N"),
             Hash = invalidHash!
@@ -111,7 +111,7 @@ public class DocketTests
     public void Docket_WithAllStateValues_ShouldBeValid(DocketState state)
     {
         // Arrange
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             RegisterId = Guid.NewGuid().ToString("N"),
             Hash = "valid-hash",
@@ -129,7 +129,7 @@ public class DocketTests
     public void Docket_TransactionIds_ShouldBeModifiable()
     {
         // Arrange
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             RegisterId = Guid.NewGuid().ToString("N"),
             Hash = "hash123"
@@ -157,7 +157,7 @@ public class DocketTests
             BlueprintId = "blueprint456"
         };
 
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             RegisterId = Guid.NewGuid().ToString("N"),
             Hash = "hash123",
@@ -174,7 +174,7 @@ public class DocketTests
     public void Docket_IdProperty_ShouldAcceptUInt64Values()
     {
         // Arrange
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             RegisterId = Guid.NewGuid().ToString("N"),
             Hash = "hash123"
@@ -195,7 +195,7 @@ public class DocketTests
     public void Docket_EmptyPreviousHash_ShouldBeValidForGenesisBlock()
     {
         // Arrange - Genesis block should have empty previous hash
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             Id = 1,
             RegisterId = Guid.NewGuid().ToString("N"),
@@ -216,7 +216,7 @@ public class DocketTests
     public void Docket_WithManyTransactions_ShouldHandleCorrectly()
     {
         // Arrange
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             RegisterId = Guid.NewGuid().ToString("N"),
             Hash = "hash123"
@@ -239,7 +239,7 @@ public class DocketTests
     public void Docket_FullyPopulated_ShouldPassValidation()
     {
         // Arrange
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             Id = 42,
             RegisterId = Guid.NewGuid().ToString("N"),

@@ -145,7 +145,7 @@ public class CredentialAnchorEndpointTests : IClassFixture<RegisterServiceWebApp
             .ToLowerInvariant();
 
         // Create a docket first so we can stamp DocketNumber on the transactions.
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             RegisterId = _testRegisterId,
             TransactionIds = new List<string> { txId, siblingTxId },

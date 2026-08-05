@@ -10,13 +10,6 @@ using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services.Interfaces;
 using Sorcha.Register.Models;
-// Sorcha.Register.Models and Sorcha.Validator.Service.Models BOTH declare a Docket (#1371).
-// The alias is required, not stylistic, in any file importing both namespaces.
-using Docket = Sorcha.Validator.Service.Models.Docket;
-// Sorcha.Register.Models.ValidatorSignature (a receipt signature, F079) and
-// Sorcha.Validator.Service.Services.Interfaces.ValidatorSignature (a signature-collection
-// record) are DIFFERENT concepts that share a name. Alias to the local one.
-using ValidatorSignature = Sorcha.Validator.Service.Services.Interfaces.ValidatorSignature;
 
 namespace Sorcha.Validator.Service.Services;
 
@@ -73,7 +66,7 @@ public class SignatureCollector : ISignatureCollector
             "Collecting signatures for docket {DocketId} from {ValidatorCount} validators (threshold: {Min}-{Max})",
             docket.DocketId, validators.Count, config.SignatureThresholdMin, config.SignatureThresholdMax);
 
-        var signatures = new ConcurrentBag<ValidatorSignature>();
+        var signatures = new ConcurrentBag<CollectedSignature>();
         var rejectionDetails = new ConcurrentDictionary<string, string>();
         var nonResponders = new ConcurrentBag<string>();
         var responses = 0;
@@ -83,7 +76,7 @@ public class SignatureCollector : ISignatureCollector
         // Add initiator's signature first
         if (docket.ProposerSignature != null)
         {
-            signatures.Add(new ValidatorSignature
+            signatures.Add(new CollectedSignature
             {
                 ValidatorId = docket.ProposerValidatorId,
                 Signature = docket.ProposerSignature,
@@ -141,7 +134,7 @@ public class SignatureCollector : ISignatureCollector
 
                     if (response.Approved && response.Signature != null)
                     {
-                        signatures.Add(new ValidatorSignature
+                        signatures.Add(new CollectedSignature
                         {
                             ValidatorId = response.ValidatorId,
                             Signature = response.Signature,
@@ -414,7 +407,7 @@ public class SignatureCollector : ISignatureCollector
     }
 
     private static SignatureCollectionResult CreateResult(
-        IReadOnlyList<ValidatorSignature> signatures,
+        IReadOnlyList<CollectedSignature> signatures,
         ConsensusConfig config,
         int totalValidators,
         int responsesReceived,

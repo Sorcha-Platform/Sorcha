@@ -8,9 +8,6 @@ using Sorcha.Register.Models.Enums;
 using Sorcha.ServiceClients.Register;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
-// Sorcha.Register.Models and Sorcha.Validator.Service.Models BOTH declare a Docket, and this test
-// necessarily references both sides of the join. The aliases are required, not stylistic.
-using Docket = Sorcha.Validator.Service.Models.Docket;
 using Signature = Sorcha.Validator.Service.Models.Signature;
 using Transaction = Sorcha.Validator.Service.Models.Transaction;
 

@@ -15,9 +15,6 @@ using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services.Interfaces;
 using System.Diagnostics;
 using Sorcha.Register.Models;
-// Sorcha.Register.Models and Sorcha.Validator.Service.Models BOTH declare a Docket (#1371).
-// The alias is required, not stylistic, in any file importing both namespaces.
-using Docket = Sorcha.Validator.Service.Models.Docket;
 // The gRPC contract also declares a VoteDecision (Sorcha.Validator.Grpc.V1). Bare
 // VoteDecision means the canonical ledger enum; the proto one stays Grpc.V1.VoteDecision.
 using VoteDecision = Sorcha.Register.Models.VoteDecision;

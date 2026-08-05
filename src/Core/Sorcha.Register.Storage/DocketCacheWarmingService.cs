@@ -14,7 +14,7 @@ namespace Sorcha.Register.Storage;
 /// </summary>
 public class DocketCacheWarmingService : IHostedService
 {
-    private readonly IVerifiedCache<Docket, ulong>? _docketCache;
+    private readonly IVerifiedCache<DocketHeader, ulong>? _docketCache;
     private readonly RegisterStorageConfiguration _configuration;
     private readonly ILogger<DocketCacheWarmingService> _logger;
     private Task? _backgroundWarmingTask;
@@ -24,7 +24,7 @@ public class DocketCacheWarmingService : IHostedService
     /// Initializes a new instance of the DocketCacheWarmingService.
     /// </summary>
     public DocketCacheWarmingService(
-        IVerifiedCache<Docket, ulong>? docketCache,
+        IVerifiedCache<DocketHeader, ulong>? docketCache,
         IOptions<RegisterStorageConfiguration> options,
         ILogger<DocketCacheWarmingService> logger)
     {
@@ -44,7 +44,7 @@ public class DocketCacheWarmingService : IHostedService
 
         if (_docketCache is null)
         {
-            _logger.LogWarning("Docket cache is not available, skipping cache warming");
+            _logger.LogWarning("DocketHeader cache is not available, skipping cache warming");
             return;
         }
 
@@ -72,7 +72,7 @@ public class DocketCacheWarmingService : IHostedService
                 if (p.DocumentsLoaded % 100 == 0 || p.PercentComplete >= 99)
                 {
                     _logger.LogInformation(
-                        "Docket cache warming progress: {Loaded}/{Total} ({Percent:F1}%) - Elapsed: {Elapsed}",
+                        "DocketHeader cache warming progress: {Loaded}/{Total} ({Percent:F1}%) - Elapsed: {Elapsed}",
                         p.DocumentsLoaded, p.TotalDocuments, p.PercentComplete, p.Elapsed);
                 }
             });
@@ -117,7 +117,7 @@ public class DocketCacheWarmingService : IHostedService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Docket cache warming failed during startup");
+            _logger.LogError(ex, "DocketHeader cache warming failed during startup");
 
             if (cacheConfig.StartupStrategy == CacheStartupStrategy.Blocking)
             {
@@ -129,7 +129,7 @@ public class DocketCacheWarmingService : IHostedService
     /// <inheritdoc/>
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Docket cache warming service stopping");
+        _logger.LogInformation("DocketHeader cache warming service stopping");
 
         // Cancel the background warming task if running
         if (_backgroundCts is not null)

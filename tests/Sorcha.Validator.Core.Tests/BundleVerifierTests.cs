@@ -130,7 +130,7 @@ public class BundleVerifierTests
                 LeafIndex = 0,
                 TreeSize = 2
             },
-            Signatures = new List<ValidatorSignature>
+            Signatures = new List<ReceiptSignature>
             {
                 new()
                 {
@@ -392,7 +392,7 @@ public class BundleVerifierTests
                 LeafIndex = 0,
                 TreeSize = 1
             },
-            Signatures = new List<ValidatorSignature>
+            Signatures = new List<ReceiptSignature>
             {
                 new()
                 {

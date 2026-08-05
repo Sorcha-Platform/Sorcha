@@ -353,9 +353,9 @@ public class ReceiptEndpointTests : IClassFixture<RegisterServiceWebApplicationF
                 LeafIndex = 0,
                 TreeSize = 2
             },
-            Signatures = new List<ValidatorSignature>
+            Signatures = new List<ReceiptSignature>
             {
-                new ValidatorSignature
+                new ReceiptSignature
                 {
                     ValidatorAddress = "validator-001",
                     SignatureValue = new byte[64],

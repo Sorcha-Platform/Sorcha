@@ -14,8 +14,6 @@ using Sorcha.ServiceClients.Wallet;
 using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
-// Both namespaces declare a Docket (#1371); the alias is required, not stylistic.
-using Docket = Sorcha.Validator.Service.Models.Docket;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 

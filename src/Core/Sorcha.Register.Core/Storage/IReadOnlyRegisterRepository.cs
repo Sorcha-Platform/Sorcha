@@ -46,20 +46,20 @@ public interface IReadOnlyRegisterRepository
     Task<int> CountRegistersAsync(CancellationToken cancellationToken = default);
 
     // ===========================
-    // Docket Reads
+    // DocketHeader Reads
     // ===========================
 
     /// <summary>
     /// Gets all dockets for a register
     /// </summary>
-    Task<IEnumerable<Docket>> GetDocketsAsync(
+    Task<IEnumerable<DocketHeader>> GetDocketsAsync(
         string registerId,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets a specific docket by register and docket ID
     /// </summary>
-    Task<Docket?> GetDocketAsync(
+    Task<DocketHeader?> GetDocketAsync(
         string registerId,
         ulong docketId,
         CancellationToken cancellationToken = default);

@@ -86,27 +86,27 @@ public static class RegisterStorageServiceExtensions
         });
 
         // Register WORM store for dockets
-        services.AddSingleton<IWormStore<Docket, ulong>>(sp =>
+        services.AddSingleton<IWormStore<DocketHeader, ulong>>(sp =>
         {
             var config = sp.GetService<IOptions<RegisterStorageConfiguration>>()?.Value
                 ?? new RegisterStorageConfiguration();
 
             // Use in-memory WORM store
-            return new Sorcha.Storage.InMemory.InMemoryWormStore<Docket, ulong>(d => d.Id);
+            return new Sorcha.Storage.InMemory.InMemoryWormStore<DocketHeader, ulong>(d => d.Id);
         });
 
         // Register verified cache for dockets
-        services.AddSingleton<IVerifiedCache<Docket, ulong>>(sp =>
+        services.AddSingleton<IVerifiedCache<DocketHeader, ulong>>(sp =>
         {
             var cacheStore = sp.GetRequiredService<ICacheStore>();
-            var wormStore = sp.GetRequiredService<IWormStore<Docket, ulong>>();
+            var wormStore = sp.GetRequiredService<IWormStore<DocketHeader, ulong>>();
             var config = sp.GetService<IOptions<RegisterStorageConfiguration>>()?.Value
                 ?? new RegisterStorageConfiguration();
-            var logger = sp.GetService<ILogger<VerifiedCache<Docket, ulong>>>();
+            var logger = sp.GetService<ILogger<VerifiedCache<DocketHeader, ulong>>>();
 
             var cacheConfig = Options.Create(config.DocketCacheConfiguration);
 
-            return new VerifiedCache<Docket, ulong>(
+            return new VerifiedCache<DocketHeader, ulong>(
                 cacheStore,
                 wormStore,
                 d => d.Id,
@@ -119,7 +119,7 @@ public static class RegisterStorageServiceExtensions
         services.AddSingleton<IRegisterRepository>(sp =>
         {
             var innerRepo = sp.GetRequiredService<InMemoryRegisterRepository>();
-            var docketCache = sp.GetService<IVerifiedCache<Docket, ulong>>();
+            var docketCache = sp.GetService<IVerifiedCache<DocketHeader, ulong>>();
             var cacheStore = sp.GetRequiredService<ICacheStore>();
             var options = sp.GetService<IOptions<RegisterStorageConfiguration>>()
                 ?? Options.Create(new RegisterStorageConfiguration());

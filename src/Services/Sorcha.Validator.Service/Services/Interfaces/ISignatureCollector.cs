@@ -72,7 +72,7 @@ public interface ISignatureCollector
 public record SignatureCollectionResult
 {
     /// <summary>All collected signatures (including initiator)</summary>
-    public required IReadOnlyList<ValidatorSignature> Signatures { get; init; }
+    public required IReadOnlyList<CollectedSignature> Signatures { get; init; }
 
     /// <summary>Whether minimum threshold was met</summary>
     public required bool ThresholdMet { get; init; }
@@ -108,9 +108,14 @@ public record SignatureCollectionResult
 }
 
 /// <summary>
-/// A signature from a validator
+/// A signature gathered from a validator during consensus signature collection.
 /// </summary>
-public record ValidatorSignature
+/// <remarks>
+/// Named <c>CollectedSignature</c>, not <c>ValidatorSignature</c> (Feature 187 / #1371): the latter
+/// collided with <c>Sorcha.Register.Models.ReceiptSignature</c>, the F079 receipt signature — a
+/// different concept keyed by wallet address rather than validator id.
+/// </remarks>
+public record CollectedSignature
 {
     /// <summary>Validator who provided the signature</summary>
     public required string ValidatorId { get; init; }

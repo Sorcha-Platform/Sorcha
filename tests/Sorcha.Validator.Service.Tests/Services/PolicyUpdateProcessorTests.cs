@@ -7,7 +7,6 @@ using Sorcha.Register.Models;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Service.Services.Interfaces;
-using Docket = Sorcha.Validator.Service.Models.Docket;
 using Transaction = Sorcha.Validator.Service.Models.Transaction;
 using Signature = Sorcha.Validator.Service.Models.Signature;
 

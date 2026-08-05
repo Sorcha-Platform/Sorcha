@@ -24,7 +24,7 @@ namespace Sorcha.Register.Storage;
 public class CachedRegisterRepository : IRegisterRepository
 {
     private readonly IRegisterRepository _innerRepository;
-    private readonly IVerifiedCache<Docket, ulong>? _docketCache;
+    private readonly IVerifiedCache<DocketHeader, ulong>? _docketCache;
     private readonly ICacheStore _cacheStore;
     private readonly RegisterStorageConfiguration _configuration;
     private readonly ILogger<CachedRegisterRepository>? _logger;
@@ -42,7 +42,7 @@ public class CachedRegisterRepository : IRegisterRepository
     /// <param name="logger">Optional logger.</param>
     public CachedRegisterRepository(
         IRegisterRepository innerRepository,
-        IVerifiedCache<Docket, ulong>? docketCache,
+        IVerifiedCache<DocketHeader, ulong>? docketCache,
         ICacheStore cacheStore,
         IOptions<RegisterStorageConfiguration> options,
         ILogger<CachedRegisterRepository>? logger = null)
@@ -153,10 +153,10 @@ public class CachedRegisterRepository : IRegisterRepository
     }
 
     // ===========================
-    // Docket Operations (Verified Cache)
+    // DocketHeader Operations (Verified Cache)
     // ===========================
 
-    public async Task<IEnumerable<Docket>> GetDocketsAsync(
+    public async Task<IEnumerable<DocketHeader>> GetDocketsAsync(
         string registerId,
         CancellationToken cancellationToken = default)
     {
@@ -165,7 +165,7 @@ public class CachedRegisterRepository : IRegisterRepository
         return await _innerRepository.GetDocketsAsync(registerId, cancellationToken);
     }
 
-    public async Task<Docket?> GetDocketAsync(
+    public async Task<DocketHeader?> GetDocketAsync(
         string registerId,
         ulong docketId,
         CancellationToken cancellationToken = default)
@@ -186,7 +186,7 @@ public class CachedRegisterRepository : IRegisterRepository
         return docket;
     }
 
-    public async Task<Docket> InsertDocketAsync(Docket docket, CancellationToken cancellationToken = default)
+    public async Task<DocketHeader> InsertDocketAsync(DocketHeader docket, CancellationToken cancellationToken = default)
     {
         // Dockets are immutable - use verified cache if available
         if (_docketCache is not null)
@@ -428,7 +428,7 @@ public class CachedRegisterRepository : IRegisterRepository
     {
         if (_docketCache is null)
         {
-            _logger?.LogWarning("Docket cache is not available, skipping cache warming");
+            _logger?.LogWarning("DocketHeader cache is not available, skipping cache warming");
             return;
         }
 

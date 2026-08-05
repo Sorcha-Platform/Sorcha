@@ -16,8 +16,6 @@ using Sorcha.Validator.Service.Services.Interfaces;
 using RegisterModels = Sorcha.Register.Models;
 using ValidatorInfo = Sorcha.ServiceClients.Peer.ValidatorInfo;
 using Sorcha.Register.Models;
-// Both namespaces declare a Docket (#1371); the alias is required, not stylistic.
-using Docket = Sorcha.Validator.Service.Models.Docket;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
