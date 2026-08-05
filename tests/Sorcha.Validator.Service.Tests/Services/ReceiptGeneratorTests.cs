@@ -390,7 +390,7 @@ public class ReceiptGeneratorTests
                 Payload = JsonSerializer.SerializeToElement(new { data = $"payload-{i}" }),
                 PayloadHash = $"payload-hash-{i:D4}",
                 CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-transactionCount + i),
-                Signatures = new List<Signature>
+                Signatures = new List<RegisterSignature>
                 {
                     new()
                     {
@@ -423,7 +423,7 @@ public class ReceiptGeneratorTests
             Transactions = transactions,
             MerkleRoot = merkleRoot,
             ProposerValidatorId = "validator-1",
-            ProposerSignature = new Signature
+            ProposerSignature = new RegisterSignature
             {
                 PublicKey = new byte[32],
                 SignatureValue = new byte[] { 1, 2, 3 },

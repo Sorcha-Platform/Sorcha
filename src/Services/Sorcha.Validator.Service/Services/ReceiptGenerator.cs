@@ -108,7 +108,7 @@ public class ReceiptGenerator : IReceiptGenerator
                 var signResult = await _walletClient.SignDataAsync(
                     _config.SystemWalletAddress, signingDataHex, ct);
 
-                var validatorSig = new ValidatorSignature
+                var validatorSig = new ReceiptSignature
                 {
                     ValidatorAddress = _config.SystemWalletAddress,
                     SignatureValue = signResult.Signature,

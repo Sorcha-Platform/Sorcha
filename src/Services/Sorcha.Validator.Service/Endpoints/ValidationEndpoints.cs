@@ -11,6 +11,7 @@ using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Core.Validators;
 using Sorcha.Cryptography.Interfaces;
 using Sorcha.Validator.Service.Services.Interfaces;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Endpoints;
 
@@ -67,7 +68,7 @@ public static class ValidationEndpoints
                 Payload = request.Payload,
                 CreatedAt = request.CreatedAt,
                 ExpiresAt = request.ExpiresAt,
-                Signatures = request.Signatures.Select(s => new Signature
+                Signatures = request.Signatures.Select(s => new RegisterSignature
                 {
                     PublicKey = DecodeBase64(s.PublicKey),
                     SignatureValue = DecodeBase64(s.SignatureValue),

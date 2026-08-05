@@ -8,6 +8,7 @@ using Sorcha.ServiceClients.Register;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Service.Services.Interfaces;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
@@ -627,9 +628,9 @@ public class ValidatorOrchestratorTests
                 ActionId = "action-1",
                 Payload = JsonDocument.Parse("{\"data\":\"test\"}").RootElement,
                 PayloadHash = $"payload-hash-{i}",
-                Signatures = new List<Signature>
+                Signatures = new List<RegisterSignature>
                 {
-                    new Signature
+                    new RegisterSignature
                     {
                         PublicKey = System.Text.Encoding.UTF8.GetBytes("public-key"),
                         SignatureValue = System.Text.Encoding.UTF8.GetBytes("signature-value"),
@@ -653,7 +654,7 @@ public class ValidatorOrchestratorTests
             Transactions = transactions,
             Status = DocketStatus.Proposed,
             ProposerValidatorId = "validator-proposer",
-            ProposerSignature = new Signature
+            ProposerSignature = new RegisterSignature
             {
                 PublicKey = System.Text.Encoding.UTF8.GetBytes("proposer-key"),
                 SignatureValue = System.Text.Encoding.UTF8.GetBytes("proposer-sig"),
@@ -676,7 +677,7 @@ public class ValidatorOrchestratorTests
             ValidatorId = validatorId,
             Decision = decision,
             VotedAt = DateTimeOffset.UtcNow,
-            ValidatorSignature = new Signature
+            ValidatorSignature = new RegisterSignature
             {
                 PublicKey = System.Text.Encoding.UTF8.GetBytes($"{validatorId}-key"),
                 SignatureValue = System.Text.Encoding.UTF8.GetBytes("vote-signature"),

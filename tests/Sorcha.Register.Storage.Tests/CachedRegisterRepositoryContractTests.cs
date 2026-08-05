@@ -27,7 +27,7 @@ public class CachedRegisterRepositoryContractTests : RegisterRepositoryContractT
         var innerRepository = new InMemoryRegisterRepository();
         _innerRepository = innerRepository;
         var cacheStore = new InMemoryCacheStore();
-        var wormStore = new InMemoryWormStore<Docket, ulong>(d => d.Id);
+        var wormStore = new InMemoryWormStore<DocketHeader, ulong>(d => d.Id);
 
         var cacheConfig = Options.Create(new VerifiedCacheConfiguration
         {
@@ -36,7 +36,7 @@ public class CachedRegisterRepositoryContractTests : RegisterRepositoryContractT
             EnableHashVerification = true
         });
 
-        var docketCache = new VerifiedCache<Docket, ulong>(
+        var docketCache = new VerifiedCache<DocketHeader, ulong>(
             cacheStore,
             wormStore,
             d => d.Id,

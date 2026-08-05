@@ -37,7 +37,7 @@ public class MongoRegisterRepository : IRegisterRepository
     // Legacy: used only when UseDatabasePerRegister = false
     private readonly IMongoCollection<TransactionModel>? _legacyTransactions;
     private readonly IMongoCollection<MongoModels.MongoTransactionDocument>? _legacyMongoTransactions;
-    private readonly IMongoCollection<Docket>? _legacyDockets;
+    private readonly IMongoCollection<DocketHeader>? _legacyDockets;
 
     // Lazy async index creation to avoid .GetAwaiter().GetResult() deadlock risk in constructor
     private readonly SemaphoreSlim _indexInitLock = new(1, 1);
@@ -72,7 +72,7 @@ public class MongoRegisterRepository : IRegisterRepository
         {
             _legacyTransactions = registryDatabase.GetCollection<TransactionModel>(_config.TransactionCollectionName);
             _legacyMongoTransactions = registryDatabase.GetCollection<MongoModels.MongoTransactionDocument>(_config.TransactionCollectionName);
-            _legacyDockets = registryDatabase.GetCollection<Docket>(_config.DocketCollectionName);
+            _legacyDockets = registryDatabase.GetCollection<DocketHeader>(_config.DocketCollectionName);
         }
 
         // Index creation is deferred to the first async operation via EnsureIndexesCreatedAsync()
@@ -110,7 +110,7 @@ public class MongoRegisterRepository : IRegisterRepository
         _registers = database.GetCollection<RegisterEntity>(registerCollection);
         _legacyTransactions = database.GetCollection<TransactionModel>(transactionCollection);
         _legacyMongoTransactions = database.GetCollection<MongoModels.MongoTransactionDocument>(transactionCollection);
-        _legacyDockets = database.GetCollection<Docket>(docketCollection);
+        _legacyDockets = database.GetCollection<DocketHeader>(docketCollection);
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -232,7 +232,7 @@ public class MongoRegisterRepository : IRegisterRepository
     /// <summary>
     /// Gets the dockets collection for a specific register.
     /// </summary>
-    private IMongoCollection<Docket> GetDocketsCollection(string registerId)
+    private IMongoCollection<DocketHeader> GetDocketsCollection(string registerId)
     {
         if (!_config.UseDatabasePerRegister)
         {
@@ -240,7 +240,7 @@ public class MongoRegisterRepository : IRegisterRepository
         }
 
         var db = GetRegisterDatabase(registerId);
-        return db.GetCollection<Docket>(_config.DocketCollectionName);
+        return db.GetCollection<DocketHeader>(_config.DocketCollectionName);
     }
 
     /// <summary>
@@ -375,24 +375,24 @@ public class MongoRegisterRepository : IRegisterRepository
         await collection.Indexes.CreateManyAsync(transactionIndexes);
     }
 
-    private static async Task CreateDocketIndexesAsync(IMongoCollection<Docket> collection)
+    private static async Task CreateDocketIndexesAsync(IMongoCollection<DocketHeader> collection)
     {
-        var docketIndexes = new List<CreateIndexModel<Docket>>
+        var docketIndexes = new List<CreateIndexModel<DocketHeader>>
         {
             // Compound index on (RegisterId, Id) for efficient per-register docket queries (SEC-AUDIT 4.3).
-            // Docket.Id maps to MongoDB _id (docket height). The _id is globally unique, but this
+            // DocketHeader.Id maps to MongoDB _id (docket height). The _id is globally unique, but this
             // compound index enables fast per-register lookups and provides defense-in-depth against
             // duplicate docket numbers if _id generation strategy changes.
-            new(Builders<Docket>.IndexKeys
+            new(Builders<DocketHeader>.IndexKeys
                     .Ascending(d => d.RegisterId)
                     .Ascending(d => d.Id),
                 new CreateIndexOptions { Unique = true }),
 
             // Index for hash lookups
-            new(Builders<Docket>.IndexKeys.Ascending(d => d.Hash)),
+            new(Builders<DocketHeader>.IndexKeys.Ascending(d => d.Hash)),
 
             // Index for state queries
-            new(Builders<Docket>.IndexKeys.Ascending(d => d.State))
+            new(Builders<DocketHeader>.IndexKeys.Ascending(d => d.State))
         };
         await collection.Indexes.CreateManyAsync(docketIndexes);
     }
@@ -483,7 +483,7 @@ public class MongoRegisterRepository : IRegisterRepository
             var txFilter = Builders<TransactionModel>.Filter.Eq(t => t.RegisterId, registerId);
             await _legacyTransactions!.DeleteManyAsync(txFilter, cancellationToken);
 
-            var docketFilter = Builders<Docket>.Filter.Eq(d => d.RegisterId, registerId);
+            var docketFilter = Builders<DocketHeader>.Filter.Eq(d => d.RegisterId, registerId);
             await _legacyDockets!.DeleteManyAsync(docketFilter, cancellationToken);
         }
 
@@ -503,28 +503,28 @@ public class MongoRegisterRepository : IRegisterRepository
     }
 
     // ===========================
-    // Docket Operations
+    // DocketHeader Operations
     // ===========================
 
     /// <inheritdoc/>
-    public async Task<IEnumerable<Docket>> GetDocketsAsync(string registerId, CancellationToken cancellationToken = default)
+    public async Task<IEnumerable<DocketHeader>> GetDocketsAsync(string registerId, CancellationToken cancellationToken = default)
     {
         var dockets = GetDocketsCollection(registerId);
-        return await dockets.Find(FilterDefinition<Docket>.Empty)
+        return await dockets.Find(FilterDefinition<DocketHeader>.Empty)
             .SortBy(d => d.Id)
             .ToListAsync(cancellationToken);
     }
 
     /// <inheritdoc/>
-    public async Task<Docket?> GetDocketAsync(string registerId, ulong docketId, CancellationToken cancellationToken = default)
+    public async Task<DocketHeader?> GetDocketAsync(string registerId, ulong docketId, CancellationToken cancellationToken = default)
     {
         var dockets = GetDocketsCollection(registerId);
-        var filter = Builders<Docket>.Filter.Eq(d => d.Id, docketId);
+        var filter = Builders<DocketHeader>.Filter.Eq(d => d.Id, docketId);
         return await dockets.Find(filter).FirstOrDefaultAsync(cancellationToken);
     }
 
     /// <inheritdoc/>
-    public async Task<Docket> InsertDocketAsync(Docket docket, CancellationToken cancellationToken = default)
+    public async Task<DocketHeader> InsertDocketAsync(DocketHeader docket, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(docket);
 

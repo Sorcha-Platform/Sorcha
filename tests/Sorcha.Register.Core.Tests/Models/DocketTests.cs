@@ -15,7 +15,7 @@ public class DocketTests
     public void Docket_DefaultConstructor_ShouldSetDefaultValues()
     {
         // Act
-        var docket = new Docket();
+        var docket = new DocketHeader();
 
         // Assert
         docket.Id.Should().Be(0ul);
@@ -26,7 +26,11 @@ public class DocketTests
         docket.TimeStamp.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(1));
         docket.State.Should().Be(DocketState.Init);
         docket.MetaData.Should().BeNull();
-        docket.Votes.Should().BeNull();
+        // Feature 187 (#1371): Votes is a real List<ConsensusVote>, empty by default. It used to be a
+        // string? documented "implementation TBD" that actually carried ProposerValidatorId.
+        docket.Votes.Should().BeEmpty();
+        docket.ProposerValidatorId.Should().BeEmpty();
+        docket.MerkleRoot.Should().BeEmpty();
     }
 
     [Fact]
@@ -40,7 +44,7 @@ public class DocketTests
         var timestamp = DateTime.UtcNow.AddHours(-1);
 
         // Act
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             Id = 5,
             RegisterId = registerId,
@@ -49,7 +53,27 @@ public class DocketTests
             TransactionIds = txIds,
             TimeStamp = timestamp,
             State = DocketState.Sealed,
-            Votes = "vote-data"
+            ProposerValidatorId = "validator-1",
+            MerkleRoot = "merkle-root",
+            Votes =
+            [
+                new ConsensusVote
+                {
+                    VoteId = "vote-1",
+                    DocketId = "docket-5",
+                    ValidatorId = "validator-1",
+                    Decision = VoteDecision.Approve,
+                    VotedAt = timestamp,
+                    DocketHash = hash,
+                    ValidatorSignature = new RegisterSignature
+                    {
+                        PublicKey = [1, 2, 3],
+                        SignatureValue = [4, 5, 6],
+                        Algorithm = "ED25519",
+                        SignedAt = timestamp
+                    }
+                }
+            ]
         };
 
         // Assert
@@ -61,7 +85,10 @@ public class DocketTests
         docket.TransactionIds.Should().ContainInOrder("tx1", "tx2", "tx3");
         docket.TimeStamp.Should().Be(timestamp);
         docket.State.Should().Be(DocketState.Sealed);
-        docket.Votes.Should().Be("vote-data");
+        docket.ProposerValidatorId.Should().Be("validator-1");
+        docket.MerkleRoot.Should().Be("merkle-root");
+        docket.Votes.Should().ContainSingle()
+            .Which.Decision.Should().Be(VoteDecision.Approve);
     }
 
     [Theory]
@@ -70,7 +97,7 @@ public class DocketTests
     public void Docket_WithInvalidRegisterId_ShouldFailValidation(string? invalidRegisterId)
     {
         // Arrange
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             RegisterId = invalidRegisterId!,
             Hash = "some-hash"
@@ -89,7 +116,7 @@ public class DocketTests
     public void Docket_WithInvalidHash_ShouldFailValidation(string? invalidHash)
     {
         // Arrange
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             RegisterId = Guid.NewGuid().ToString("N"),
             Hash = invalidHash!
@@ -111,7 +138,7 @@ public class DocketTests
     public void Docket_WithAllStateValues_ShouldBeValid(DocketState state)
     {
         // Arrange
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             RegisterId = Guid.NewGuid().ToString("N"),
             Hash = "valid-hash",
@@ -129,7 +156,7 @@ public class DocketTests
     public void Docket_TransactionIds_ShouldBeModifiable()
     {
         // Arrange
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             RegisterId = Guid.NewGuid().ToString("N"),
             Hash = "hash123"
@@ -157,7 +184,7 @@ public class DocketTests
             BlueprintId = "blueprint456"
         };
 
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             RegisterId = Guid.NewGuid().ToString("N"),
             Hash = "hash123",
@@ -174,7 +201,7 @@ public class DocketTests
     public void Docket_IdProperty_ShouldAcceptUInt64Values()
     {
         // Arrange
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             RegisterId = Guid.NewGuid().ToString("N"),
             Hash = "hash123"
@@ -195,7 +222,7 @@ public class DocketTests
     public void Docket_EmptyPreviousHash_ShouldBeValidForGenesisBlock()
     {
         // Arrange - Genesis block should have empty previous hash
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             Id = 1,
             RegisterId = Guid.NewGuid().ToString("N"),
@@ -216,7 +243,7 @@ public class DocketTests
     public void Docket_WithManyTransactions_ShouldHandleCorrectly()
     {
         // Arrange
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             RegisterId = Guid.NewGuid().ToString("N"),
             Hash = "hash123"
@@ -239,7 +266,7 @@ public class DocketTests
     public void Docket_FullyPopulated_ShouldPassValidation()
     {
         // Arrange
-        var docket = new Docket
+        var docket = new DocketHeader
         {
             Id = 42,
             RegisterId = Guid.NewGuid().ToString("N"),
@@ -249,7 +276,7 @@ public class DocketTests
             TimeStamp = DateTime.UtcNow.AddMinutes(-5),
             State = DocketState.Sealed,
             MetaData = new TransactionMetaData { RegisterId = "reg123" },
-            Votes = "{\"vote\": \"data\"}"
+            Votes = []
         };
 
         // Act

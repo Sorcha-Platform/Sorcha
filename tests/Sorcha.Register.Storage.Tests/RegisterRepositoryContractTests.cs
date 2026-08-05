@@ -138,7 +138,7 @@ public abstract class RegisterRepositoryContractTests
     }
 
     // ===========================
-    // Docket Operations
+    // DocketHeader Operations
     // ===========================
 
     [Fact]
@@ -384,7 +384,7 @@ public abstract class RegisterRepositoryContractTests
         UpdatedAt = DateTime.UtcNow
     };
 
-    protected static Docket CreateDocket(ulong id, string registerId) => new()
+    protected static DocketHeader CreateDocket(ulong id, string registerId) => new()
     {
         Id = id,
         RegisterId = registerId,

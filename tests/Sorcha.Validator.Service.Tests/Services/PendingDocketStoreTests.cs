@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
@@ -609,9 +610,9 @@ public class PendingDocketStoreTests
         };
     }
 
-    private static Signature CreateSignature()
+    private static RegisterSignature CreateSignature()
     {
-        return new Signature
+        return new RegisterSignature
         {
             PublicKey = "test-key"u8.ToArray(),
             SignatureValue = "test-sig"u8.ToArray(),

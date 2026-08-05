@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Register.Models;
 using Sorcha.Validator.Core.Models;
 
 namespace Sorcha.Validator.Core.Validators;
@@ -85,23 +86,3 @@ public record ConsensusVoteData
     public string? RejectionReason { get; init; }
 }
 
-/// <summary>
-/// Vote decision enumeration
-/// </summary>
-public enum VoteDecision
-{
-    /// <summary>
-    /// Vote to approve the docket
-    /// </summary>
-    Approve = 1,
-
-    /// <summary>
-    /// Vote to reject the docket
-    /// </summary>
-    Reject = 2,
-
-    /// <summary>
-    /// Abstain from voting
-    /// </summary>
-    Abstain = 3
-}

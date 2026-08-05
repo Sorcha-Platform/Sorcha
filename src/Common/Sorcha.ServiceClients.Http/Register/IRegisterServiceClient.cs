@@ -810,6 +810,15 @@ public class DocketModel
     public required string ProposerValidatorId { get; init; }
     /// <summary>The merkle root.</summary>
     public required string MerkleRoot { get; init; }
+    /// <summary>
+    /// Validator votes that carried this docket to consensus. Empty in single-validator mode (no
+    /// consensus engine), which is valid — see <see cref="Sorcha.Register.Models.DocketHeader.Votes"/>.
+    /// </summary>
+    /// <remarks>
+    /// Added by Feature 187 (#1371). The contract previously carried no votes at all, so quorum
+    /// evidence could not reach the ledger even though the validator held it.
+    /// </remarks>
+    public List<Sorcha.Register.Models.ConsensusVote> Votes { get; init; } = new();
 }
 
 /// <summary>

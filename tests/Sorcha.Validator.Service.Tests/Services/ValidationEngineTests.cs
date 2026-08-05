@@ -16,6 +16,7 @@ using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Service.Services.Interfaces;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 using ActionModel = Sorcha.Blueprint.Models.Action;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
@@ -306,7 +307,7 @@ public class ValidationEngineTests
         // Arrange
         var tx = CreateValidTransaction(signatures:
         [
-            new Signature
+            new RegisterSignature
             {
                 PublicKey = [],
                 SignatureValue = new byte[64],
@@ -329,7 +330,7 @@ public class ValidationEngineTests
         // Arrange
         var tx = CreateValidTransaction(signatures:
         [
-            new Signature
+            new RegisterSignature
             {
                 PublicKey = new byte[32],
                 SignatureValue = [],
@@ -352,7 +353,7 @@ public class ValidationEngineTests
         // Arrange
         var tx = CreateValidTransaction(signatures:
         [
-            new Signature
+            new RegisterSignature
             {
                 PublicKey = new byte[32],
                 SignatureValue = new byte[64],
@@ -630,7 +631,7 @@ public class ValidationEngineTests
         // Arrange
         var tx = CreateValidTransaction(signatures:
         [
-            new Signature
+            new RegisterSignature
             {
                 PublicKey = new byte[32],
                 SignatureValue = new byte[64],
@@ -2378,7 +2379,7 @@ public class ValidationEngineTests
         string? payloadHash = null,
         DateTimeOffset? createdAt = null,
         DateTimeOffset? expiresAt = null,
-        List<Signature>? signatures = null,
+        List<RegisterSignature>? signatures = null,
         string? previousTransactionId = null,
         string? payloadJson = null)
     {
@@ -2398,7 +2399,7 @@ public class ValidationEngineTests
             PreviousTransactionId = previousTransactionId,
             Signatures = signatures ??
             [
-                new Signature
+                new RegisterSignature
                 {
                     PublicKey = new byte[32],
                     SignatureValue = new byte[64],

@@ -15,6 +15,7 @@ using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Service.Services.Interfaces;
 using RegisterModels = Sorcha.Register.Models;
 using ValidatorInfo = Sorcha.ServiceClients.Peer.ValidatorInfo;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
@@ -388,7 +389,7 @@ public class ConsensusEngineTests
 
         // Assert
         vote.Should().NotBeNull();
-        vote.Decision.Should().Be(Models.VoteDecision.Approve);
+        vote.Decision.Should().Be(VoteDecision.Approve);
         vote.ValidatorId.Should().Be(_validatorConfig.ValidatorId);
         vote.DocketId.Should().Be(docket.DocketId);
         vote.DocketHash.Should().Be(docket.DocketHash);
@@ -409,7 +410,7 @@ public class ConsensusEngineTests
         var vote = await _engine.ValidateAndVoteAsync(docket);
 
         // Assert
-        vote.Decision.Should().Be(Models.VoteDecision.Reject);
+        vote.Decision.Should().Be(VoteDecision.Reject);
         vote.RejectionReason.Should().Contain("Missing docket hash");
     }
 
@@ -464,7 +465,7 @@ public class ConsensusEngineTests
         var vote = await _engine.ValidateAndVoteAsync(docket);
 
         // Assert
-        vote.Decision.Should().Be(Models.VoteDecision.Reject);
+        vote.Decision.Should().Be(VoteDecision.Reject);
         vote.RejectionReason.Should().Contain("Missing previous hash");
     }
 
@@ -495,7 +496,7 @@ public class ConsensusEngineTests
         var vote = await _engine.ValidateAndVoteAsync(docket);
 
         // Assert
-        vote.Decision.Should().Be(Models.VoteDecision.Reject);
+        vote.Decision.Should().Be(VoteDecision.Reject);
         vote.RejectionReason.Should().Contain("Invalid proposer signature");
     }
 
@@ -519,7 +520,7 @@ public class ConsensusEngineTests
         var vote = await _engine.ValidateAndVoteAsync(docket);
 
         // Assert
-        vote.Decision.Should().Be(Models.VoteDecision.Reject);
+        vote.Decision.Should().Be(VoteDecision.Reject);
         vote.RejectionReason.Should().Contain("Previous docket not found");
     }
 
@@ -555,7 +556,7 @@ public class ConsensusEngineTests
         var vote = await _engine.ValidateAndVoteAsync(docket);
 
         // Assert
-        vote.Decision.Should().Be(Models.VoteDecision.Reject);
+        vote.Decision.Should().Be(VoteDecision.Reject);
         vote.RejectionReason.Should().Contain("Previous hash mismatch");
     }
 
@@ -609,7 +610,7 @@ public class ConsensusEngineTests
         var vote = await _engine.ValidateAndVoteAsync(docket);
 
         // Assert
-        vote.Decision.Should().Be(Models.VoteDecision.Reject);
+        vote.Decision.Should().Be(VoteDecision.Reject);
         vote.RejectionReason.Should().Contain("Transaction").And.Contain("validation failed");
     }
 
@@ -629,7 +630,7 @@ public class ConsensusEngineTests
         var vote = await _engine.ValidateAndVoteAsync(docket);
 
         // Assert
-        vote.Decision.Should().Be(Models.VoteDecision.Reject);
+        vote.Decision.Should().Be(VoteDecision.Reject);
         vote.RejectionReason.Should().Contain("Validation error");
     }
 
@@ -652,9 +653,9 @@ public class ConsensusEngineTests
                 ActionId = "action-1",
                 Payload = JsonDocument.Parse("{\"data\":\"test\"}").RootElement,
                 PayloadHash = "payload-hash-1",
-                Signatures = new List<Signature>
+                Signatures = new List<RegisterSignature>
                 {
-                    new Signature
+                    new RegisterSignature
                     {
                         PublicKey = System.Text.Encoding.UTF8.GetBytes("tx-signer-key"),
                         SignatureValue = System.Text.Encoding.UTF8.GetBytes("tx-signature"),
@@ -678,7 +679,7 @@ public class ConsensusEngineTests
             Transactions = transactions,
             Status = DocketStatus.Proposed,
             ProposerValidatorId = "validator-proposer",
-            ProposerSignature = new Signature
+            ProposerSignature = new RegisterSignature
             {
                 PublicKey = System.Text.Encoding.UTF8.GetBytes("proposer-key"),
                 SignatureValue = System.Text.Encoding.UTF8.GetBytes("proposer-sig"),

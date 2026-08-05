@@ -8,6 +8,7 @@ using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
 using StackExchange.Redis;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
@@ -825,9 +826,9 @@ public class MemPoolManagerTests
             ActionId = "action-1",
             Payload = JsonDocument.Parse("{\"data\":\"test\"}").RootElement,
             PayloadHash = "abc123def456",
-            Signatures = new List<Signature>
+            Signatures = new List<RegisterSignature>
             {
-                new Signature
+                new RegisterSignature
                 {
                     PublicKey = System.Text.Encoding.UTF8.GetBytes("public-key-1"),
                     SignatureValue = System.Text.Encoding.UTF8.GetBytes("signature-value-1"),

@@ -7,6 +7,7 @@ using Sorcha.Validator.Service.Models;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.ServiceClients.Register;
 using Sorcha.Cryptography.Utilities;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Services;
 
@@ -109,7 +110,7 @@ public class GenesisManager : IGenesisManager
                 Transactions = transactions,
                 Status = DocketStatus.Proposed,
                 ProposerValidatorId = _config.ValidatorId,
-                ProposerSignature = new Signature
+                ProposerSignature = new RegisterSignature
                 {
                     PublicKey = signResult.PublicKey,
                     SignatureValue = signResult.Signature,

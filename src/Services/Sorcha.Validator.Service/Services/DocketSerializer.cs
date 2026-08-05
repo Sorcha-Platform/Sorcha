@@ -4,13 +4,24 @@
 using System.Buffers.Text;
 using System.Text.Json;
 using Sorcha.Validator.Service.Models;
-using Sorcha.ServiceClients.Register;
+using Sorcha.Register.Models;
+// The gRPC contract also declares a VoteDecision (Sorcha.Validator.Grpc.V1). Bare
+// VoteDecision means the canonical ledger enum; the proto one stays Grpc.V1.VoteDecision.
+using VoteDecision = Sorcha.Register.Models.VoteDecision;
 
 namespace Sorcha.Validator.Service.Services;
 
 /// <summary>
-/// Serializes and deserializes dockets for network transmission and service integration.
+/// Serializes and deserializes dockets for network transmission.
 /// </summary>
+/// <remarks>
+/// This type is <b>only</b> a wire-format serializer. The docket→register projection that used to
+/// live here as <c>ToRegisterModel</c> was a second, drifted copy of the one in
+/// <see cref="DocketRegisterProjection"/> — it dropped <c>InstanceId</c> and <c>RoutingDecision</c>
+/// and collapsed five <c>TransactionType</c> members onto <c>Action</c>, so which write path sealed a
+/// docket silently changed what landed on the ledger. It was deleted by Feature 187 (#1370). Project
+/// to the ledger model via <see cref="DocketRegisterProjection"/>; do not add a mapping here.
+/// </remarks>
 public static class DocketSerializer
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -44,119 +55,6 @@ public static class DocketSerializer
 
         var dto = JsonSerializer.Deserialize<DocketDto>(data, JsonOptions);
         return dto != null ? FromSerializableDto(dto) : null;
-    }
-
-    /// <summary>
-    /// Converts a Validator Docket to Register Service DocketModel.
-    /// </summary>
-    /// <param name="docket">Validator docket</param>
-    /// <returns>Register service docket model</returns>
-    public static DocketModel ToRegisterModel(Docket docket)
-    {
-        ArgumentNullException.ThrowIfNull(docket);
-
-        return new DocketModel
-        {
-            DocketId = docket.DocketId,
-            RegisterId = docket.RegisterId,
-            DocketNumber = docket.DocketNumber,
-            PreviousHash = docket.PreviousHash,
-            DocketHash = docket.DocketHash,
-            CreatedAt = docket.CreatedAt,
-            MerkleRoot = docket.MerkleRoot,
-            ProposerValidatorId = docket.ProposerValidatorId,
-            Transactions = docket.Transactions.Select(tx =>
-            {
-                // Determine TransactionType from metadata
-                var transactionType = Sorcha.Register.Models.Enums.TransactionType.Action;
-                if (tx.Metadata.TryGetValue("Type", out var typeStr))
-                {
-                    transactionType = typeStr.ToLowerInvariant() switch
-                    {
-                        "participant" => Sorcha.Register.Models.Enums.TransactionType.Participant,
-                        "control" => Sorcha.Register.Models.Enums.TransactionType.Control,
-                        "blueprintpublish" => Sorcha.Register.Models.Enums.TransactionType.BlueprintPublish,
-                        _ => Sorcha.Register.Models.Enums.TransactionType.Action
-                    };
-                }
-
-                // Build payload model from transaction data
-                var payloadData = tx.PayloadJson != null
-                    ? Base64Url.EncodeToString(System.Text.Encoding.UTF8.GetBytes(tx.PayloadJson))
-                    : string.Empty;
-
-                return new Sorcha.Register.Models.TransactionModel
-                {
-                    TxId = tx.TransactionId,
-                    RegisterId = tx.RegisterId,
-                    TimeStamp = tx.CreatedAt.UtcDateTime,
-                    SenderWallet = GetSenderWallet(tx),
-                    Signature = tx.Signatures.FirstOrDefault() != null
-                        ? Base64Url.EncodeToString(tx.Signatures.First().SignatureValue)
-                        : string.Empty,
-                    PayloadCount = string.IsNullOrEmpty(payloadData) ? 0UL : 1UL,
-                    Payloads = string.IsNullOrEmpty(payloadData)
-                        ? Array.Empty<Sorcha.Register.Models.PayloadModel>()
-                        : [new Sorcha.Register.Models.PayloadModel
-                        {
-                            Data = payloadData,
-                            Hash = tx.PayloadHash,
-                            PayloadSize = (ulong)(tx.PayloadJson?.Length ?? 0),
-                            ContentEncoding = "base64url"
-                        }],
-                    RecipientsWallets = tx.RecipientsWallets ?? [],
-                    MetaData = new Sorcha.Register.Models.TransactionMetaData
-                    {
-                        RegisterId = tx.RegisterId,
-                        TransactionType = transactionType,
-                        BlueprintId = tx.BlueprintId,
-                        ActionId = uint.TryParse(tx.ActionId, out var actionId) ? actionId : null,
-                        TrackingData = tx.Metadata.Count > 0
-                            ? new Dictionary<string, string>(tx.Metadata)
-                            : null
-                    }
-                };
-            }).ToList()
-        };
-    }
-
-    /// <summary>
-    /// Extracts the sender wallet address (bech32) from a transaction.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The Wallet Service populates <see cref="Signature.SignedBy"/> with the
-    /// canonical bech32 wallet address (e.g. <c>ws11qpgd645h...</c>) when it
-    /// signs a transaction. Blueprint Service plumbs that field through the
-    /// gRPC submission contract, and ValidationEndpoints copies it onto the
-    /// validator's <see cref="Signature"/> model. Use it directly so the
-    /// persisted <c>TransactionModel.SenderWallet</c> stays in the same
-    /// address format that <c>GET /api/register/query/wallets/{address}/transactions</c>
-    /// queries against.
-    /// </para>
-    /// <para>
-    /// Falling back to <c>Base64Url.EncodeToString(PublicKey)</c> here was
-    /// the wave 11 audit bug: the resulting string is the raw public key
-    /// bytes in base64url, which never matches a bech32 wallet address, so
-    /// every "My Transactions" lookup returned empty. We keep the raw-key
-    /// fallback as a last resort for edge cases where SignedBy is missing
-    /// (e.g. legacy genesis transactions) but it should never be hit on a
-    /// healthy submission path.
-    /// </para>
-    /// </remarks>
-    private static string GetSenderWallet(Transaction tx)
-    {
-        if (tx.Signatures.Count > 0)
-        {
-            var first = tx.Signatures[0];
-            if (!string.IsNullOrWhiteSpace(first.SignedBy))
-            {
-                return first.SignedBy;
-            }
-            // Fallback: raw-key encoding. Will not match bech32 lookups.
-            return Base64Url.EncodeToString(first.PublicKey);
-        }
-        return string.Empty;
     }
 
     /// <summary>
@@ -203,7 +101,7 @@ public static class DocketSerializer
         };
     }
 
-    private static SignatureDto ToSignatureDto(Signature sig) => new()
+    private static SignatureDto ToSignatureDto(RegisterSignature sig) => new()
     {
         PublicKey = Base64Url.EncodeToString(sig.PublicKey),
         SignatureValue = Base64Url.EncodeToString(sig.SignatureValue),
@@ -211,7 +109,7 @@ public static class DocketSerializer
         SignedAt = sig.SignedAt
     };
 
-    private static Signature FromSignatureDto(SignatureDto dto) => new()
+    private static RegisterSignature FromSignatureDto(SignatureDto dto) => new()
     {
         PublicKey = Base64Url.DecodeFromChars(dto.PublicKey),
         SignatureValue = Base64Url.DecodeFromChars(dto.SignatureValue),

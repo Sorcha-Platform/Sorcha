@@ -61,7 +61,7 @@ public static class VerificationEndpoints
             var docket = await repository.GetDocketAsync(registerId, transaction.DocketNumber.Value, cancellationToken);
             if (docket is null)
             {
-                return Results.NotFound(new { error = $"Docket {transaction.DocketNumber} not found" });
+                return Results.NotFound(new { error = $"DocketHeader {transaction.DocketNumber} not found" });
             }
 
             // Fetch all transactions in the docket to compute proper Merkle leaf hashes
@@ -72,7 +72,7 @@ public static class VerificationEndpoints
             {
                 return Results.Problem(
                     title: "Data integrity error",
-                    detail: "Docket has no transactions",
+                    detail: "DocketHeader has no transactions",
                     statusCode: 500);
             }
 
@@ -611,7 +611,7 @@ public static class VerificationEndpoints
                 registerId, transaction.DocketNumber.Value, cancellationToken);
             if (docket is null)
             {
-                return Results.NotFound(new { error = $"Docket {transaction.DocketNumber} not found" });
+                return Results.NotFound(new { error = $"DocketHeader {transaction.DocketNumber} not found" });
             }
 
             var txId = transaction.TxId ?? transaction.Id ?? string.Empty;
@@ -670,7 +670,7 @@ public static class VerificationEndpoints
         IRegisterRepository repository,
         IHashProvider hashProvider,
         string registerId,
-        Docket docket,
+        DocketHeader docket,
         string txId,
         CancellationToken cancellationToken)
     {

@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services.Interfaces;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Services;
 
@@ -36,7 +37,7 @@ public class PendingDocketStore : IPendingDocketStore, IDisposable
         {
             Docket = docket,
             AddedAt = DateTimeOffset.UtcNow,
-            Signatures = new ConcurrentDictionary<string, Signature>()
+            Signatures = new ConcurrentDictionary<string, RegisterSignature>()
         };
 
         // Add proposer's signature if present
@@ -130,7 +131,7 @@ public class PendingDocketStore : IPendingDocketStore, IDisposable
     /// <inheritdoc/>
     public async Task<Docket?> AddSignatureAsync(
         string docketId,
-        Signature signature,
+        RegisterSignature signature,
         string validatorId,
         CancellationToken ct = default)
     {
@@ -280,7 +281,7 @@ public class PendingDocketStore : IPendingDocketStore, IDisposable
     {
         public required Docket Docket { get; init; }
         public required DateTimeOffset AddedAt { get; init; }
-        public required ConcurrentDictionary<string, Signature> Signatures { get; init; }
+        public required ConcurrentDictionary<string, RegisterSignature> Signatures { get; init; }
     }
 
     /// <inheritdoc />

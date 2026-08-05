@@ -36,7 +36,7 @@ internal static class DocketWriteReconciliation
     /// Reconciles a duplicate docket-number collision. A match requires the persisted docket to
     /// exist and carry the same hash as the incoming docket.
     /// </summary>
-    internal static Verdict ReconcileDocket(Docket? existing, Docket incoming)
+    internal static Verdict ReconcileDocket(DocketHeader? existing, DocketHeader incoming)
     {
         ArgumentNullException.ThrowIfNull(incoming);
 

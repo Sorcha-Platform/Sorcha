@@ -11,6 +11,7 @@ using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Service.Services.Interfaces;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
@@ -478,9 +479,9 @@ public class DocketConfirmerTests
         };
     }
 
-    private static Signature CreateValidSignature()
+    private static RegisterSignature CreateValidSignature()
     {
-        return new Signature
+        return new RegisterSignature
         {
             PublicKey = new byte[32],
             SignatureValue = new byte[64],

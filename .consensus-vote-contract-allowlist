@@ -1,0 +1,3 @@
+# Consensus-vote contract allowlist — RATCHET: may only SHRINK.
+# Empty. Every VoteDecision declaration in src/ is the canonical one.
+# Never add an entry to make a build pass; fix the declaration instead.

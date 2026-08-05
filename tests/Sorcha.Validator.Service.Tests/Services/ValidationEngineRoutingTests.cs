@@ -118,7 +118,7 @@ public class ValidationEngineRoutingTests
             },
             Signatures =
             [
-                new Signature
+                new RegisterSignature
                 {
                     PublicKey = new byte[32],
                     SignatureValue = new byte[64],

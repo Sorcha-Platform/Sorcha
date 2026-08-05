@@ -140,7 +140,7 @@ public class RegisterRecoveryServiceTests
     {
         _mockRepository
             .Setup(r => r.GetDocketAsync(RegisterId, docketId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Docket
+            .ReturnsAsync(new DocketHeader
             {
                 Id = docketId,
                 RegisterId = RegisterId,
@@ -291,7 +291,7 @@ public class RegisterRecoveryServiceTests
         SetupNetworkHead(latestDocket: 5);
         SetupLocalDocket(docketId: 3, hash: "hash-003");
 
-        // Docket entry has wrong previous hash — chain integrity violation
+        // DocketHeader entry has wrong previous hash — chain integrity violation
         var docketEntries = new List<SyncDocketEntry>
         {
             CreateDocketEntry(4, "hash-004", "WRONG-PREVIOUS-HASH")

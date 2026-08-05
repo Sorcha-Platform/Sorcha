@@ -16,7 +16,7 @@ public class InMemoryRegisterRepository : IRegisterRepository
 {
     private readonly ConcurrentDictionary<string, Models.Register> _registers = new();
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, TransactionModel>> _transactions = new();
-    private readonly ConcurrentDictionary<string, ConcurrentDictionary<ulong, Docket>> _dockets = new();
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<ulong, DocketHeader>> _dockets = new();
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, TransactionReceipt>> _receipts = new();
 
     // ===========================
@@ -55,7 +55,7 @@ public class InMemoryRegisterRepository : IRegisterRepository
 
         // Initialize transaction and docket storage for this register
         _transactions.TryAdd(newRegister.Id, new ConcurrentDictionary<string, TransactionModel>());
-        _dockets.TryAdd(newRegister.Id, new ConcurrentDictionary<ulong, Docket>());
+        _dockets.TryAdd(newRegister.Id, new ConcurrentDictionary<ulong, DocketHeader>());
 
         return Task.FromResult(newRegister);
     }
@@ -90,46 +90,46 @@ public class InMemoryRegisterRepository : IRegisterRepository
     }
 
     // ===========================
-    // Docket Operations
+    // DocketHeader Operations
     // ===========================
 
-    public Task<IEnumerable<Docket>> GetDocketsAsync(
+    public Task<IEnumerable<DocketHeader>> GetDocketsAsync(
         string registerId,
         CancellationToken cancellationToken = default)
     {
         if (!_dockets.TryGetValue(registerId, out var registerDockets))
         {
-            return Task.FromResult(Enumerable.Empty<Docket>());
+            return Task.FromResult(Enumerable.Empty<DocketHeader>());
         }
 
-        return Task.FromResult<IEnumerable<Docket>>(registerDockets.Values.OrderBy(d => d.Id).ToList());
+        return Task.FromResult<IEnumerable<DocketHeader>>(registerDockets.Values.OrderBy(d => d.Id).ToList());
     }
 
-    public Task<Docket?> GetDocketAsync(
+    public Task<DocketHeader?> GetDocketAsync(
         string registerId,
         ulong docketId,
         CancellationToken cancellationToken = default)
     {
         if (!_dockets.TryGetValue(registerId, out var registerDockets))
         {
-            return Task.FromResult<Docket?>(null);
+            return Task.FromResult<DocketHeader?>(null);
         }
 
         registerDockets.TryGetValue(docketId, out var docket);
         return Task.FromResult(docket);
     }
 
-    public Task<Docket> InsertDocketAsync(Docket docket, CancellationToken cancellationToken = default)
+    public Task<DocketHeader> InsertDocketAsync(DocketHeader docket, CancellationToken cancellationToken = default)
     {
         if (!_dockets.TryGetValue(docket.RegisterId, out var registerDockets))
         {
-            registerDockets = new ConcurrentDictionary<ulong, Docket>();
+            registerDockets = new ConcurrentDictionary<ulong, DocketHeader>();
             _dockets.TryAdd(docket.RegisterId, registerDockets);
         }
 
         if (!registerDockets.TryAdd(docket.Id, docket))
         {
-            throw new InvalidOperationException($"Docket {docket.Id} already exists in register {docket.RegisterId}");
+            throw new InvalidOperationException($"DocketHeader {docket.Id} already exists in register {docket.RegisterId}");
         }
 
         return Task.FromResult(docket);

@@ -5,6 +5,7 @@ using FluentAssertions;
 using Sorcha.Validator.Core.Models;
 using Sorcha.Validator.Core.Validators;
 using Xunit;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Core.Tests.Validators;
 

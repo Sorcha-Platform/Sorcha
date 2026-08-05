@@ -123,7 +123,8 @@ public class RegisterServiceClient : IRegisterServiceClient
                 TransactionIds = docket.Transactions.Select(t => t.TxId ?? t.Id ?? string.Empty).ToList(),
                 ProposerValidatorId = docket.ProposerValidatorId,
                 MerkleRoot = docket.MerkleRoot,
-                Transactions = docket.Transactions
+                Transactions = docket.Transactions,
+                Votes = docket.Votes
             };
 
             var response = await _httpClient.PostAsJsonAsync(
@@ -345,8 +346,13 @@ public class RegisterServiceClient : IRegisterServiceClient
             DocketHash = docket.Hash,
             CreatedAt = docket.TimeStamp,
             Transactions = txStubs,
-            ProposerValidatorId = docket.Votes ?? string.Empty,
-            MerkleRoot = string.Empty // Not stored in Register.Models.Docket
+            // Feature 187 (#1371/#1372): read each from its own field. This used to read
+            // ProposerValidatorId out of `Votes` (where the write side had smuggled it) and
+            // hard-code MerkleRoot to empty because it was not persisted at all. A mapper having to
+            // invent values is the tell that the persistence model is under-specified.
+            ProposerValidatorId = docket.ProposerValidatorId,
+            MerkleRoot = docket.MerkleRoot,
+            Votes = docket.Votes
         };
     }
 
@@ -1522,6 +1528,12 @@ public class RegisterServiceClient : IRegisterServiceClient
         public required string MerkleRoot { get; init; }
         /// <summary>Collection of transactions associated with this resource.</summary>
         public List<Sorcha.Register.Models.TransactionModel>? Transactions { get; init; }
+        /// <summary>
+        /// Validator votes that carried the docket to consensus (Feature 187 / #1371). Empty in
+        /// single-validator mode, which is valid. Must mirror the server's WriteDocketRequest — a
+        /// field present here but absent there (or vice versa) is dropped silently on the wire.
+        /// </summary>
+        public List<Sorcha.Register.Models.ConsensusVote>? Votes { get; init; }
     }
 
     private record CreateRegisterRequest
@@ -1708,8 +1720,12 @@ public class RegisterServiceClient : IRegisterServiceClient
         public List<string> TransactionIds { get; init; } = [];
         /// <summary>Timestamp associated with this record (UTC).</summary>
         public DateTimeOffset TimeStamp { get; init; }
-        /// <summary>The votes.</summary>
-        public string? Votes { get; init; }
+        /// <summary>Identifier of the validator that proposed the docket.</summary>
+        public string ProposerValidatorId { get; init; } = string.Empty;
+        /// <summary>Merkle root over the docket's transaction set, as sealed.</summary>
+        public string MerkleRoot { get; init; } = string.Empty;
+        /// <summary>Validator votes that carried the docket to consensus. Empty is valid.</summary>
+        public List<Sorcha.Register.Models.ConsensusVote> Votes { get; init; } = [];
     }
 
     // =========================================================================

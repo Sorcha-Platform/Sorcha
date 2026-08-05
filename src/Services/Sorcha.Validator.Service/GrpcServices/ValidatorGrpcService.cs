@@ -11,6 +11,13 @@ using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Service.Services.Interfaces;
 using Sorcha.Validator.Service.Models;
+using Sorcha.Register.Models;
+// The gRPC contract also declares a ConsensusVote (Sorcha.Validator.Grpc.V1). Bare
+// ConsensusVote means the canonical ledger type; the proto one stays Grpc.V1.ConsensusVote.
+using ConsensusVote = Sorcha.Register.Models.ConsensusVote;
+// The gRPC contract has its own VoteDecision (Sorcha.Validator.Grpc.V1). Bare VoteDecision
+// means the canonical ledger enum; the proto one is always written Grpc.V1.VoteDecision.
+using VoteDecision = Sorcha.Register.Models.VoteDecision;
 
 namespace Sorcha.Validator.Service.GrpcServices;
 
@@ -88,7 +95,7 @@ public class ValidatorGrpcService : Sorcha.Validator.Grpc.V1.ValidatorService.Va
             var response = new VoteResponse
             {
                 VoteId = vote.VoteId,
-                Decision = vote.Decision == Models.VoteDecision.Approve
+                Decision = vote.Decision == VoteDecision.Approve
                     ? Grpc.V1.VoteDecision.Approve
                     : Grpc.V1.VoteDecision.Reject,
                 RejectionReason = vote.RejectionReason ?? string.Empty,
@@ -142,7 +149,7 @@ public class ValidatorGrpcService : Sorcha.Validator.Grpc.V1.ValidatorService.Va
             var vote = await _consensusEngine.ValidateAndVoteAsync(docket, context.CancellationToken);
 
             // Determine if docket should be persisted
-            var shouldPersist = vote.Decision == Models.VoteDecision.Approve;
+            var shouldPersist = vote.Decision == VoteDecision.Approve;
 
             var response = new DocketValidationResponse
             {
@@ -408,7 +415,7 @@ public class ValidatorGrpcService : Sorcha.Validator.Grpc.V1.ValidatorService.Va
             Transactions = transactions,
             Status = Models.DocketStatus.Proposed,
             ProposerValidatorId = request.ProposerValidatorId,
-            ProposerSignature = new Models.Signature
+            ProposerSignature = new RegisterSignature
             {
                 PublicKey = Base64Url.DecodeFromChars(request.ProposerSignature.PublicKey),
                 SignatureValue = Base64Url.DecodeFromChars(request.ProposerSignature.SignatureValue),
@@ -438,7 +445,7 @@ public class ValidatorGrpcService : Sorcha.Validator.Grpc.V1.ValidatorService.Va
             Transactions = transactions,
             Status = Models.DocketStatus.Confirmed,
             ProposerValidatorId = request.ProposerValidatorId,
-            ProposerSignature = new Models.Signature
+            ProposerSignature = new RegisterSignature
             {
                 PublicKey = Base64Url.DecodeFromChars(request.ProposerSignature.PublicKey),
                 SignatureValue = Base64Url.DecodeFromChars(request.ProposerSignature.SignatureValue),
@@ -458,7 +465,7 @@ public class ValidatorGrpcService : Sorcha.Validator.Grpc.V1.ValidatorService.Va
         var payload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(
             protoTx.PayloadJson);
 
-        var signatures = protoTx.Signatures.Select(s => new Models.Signature
+        var signatures = protoTx.Signatures.Select(s => new RegisterSignature
         {
             PublicKey = Base64Url.DecodeFromChars(s.PublicKey),
             SignatureValue = Base64Url.DecodeFromChars(s.SignatureValue),
@@ -497,19 +504,19 @@ public class ValidatorGrpcService : Sorcha.Validator.Grpc.V1.ValidatorService.Va
     /// <summary>
     /// Maps gRPC ConsensusVote to domain ConsensusVote model
     /// </summary>
-    private static Models.ConsensusVote MapProtoToConsensusVote(Grpc.V1.ConsensusVote protoVote)
+    private static ConsensusVote MapProtoToConsensusVote(Grpc.V1.ConsensusVote protoVote)
     {
-        return new Models.ConsensusVote
+        return new ConsensusVote
         {
             VoteId = protoVote.VoteId,
             DocketId = protoVote.DocketId,
             ValidatorId = protoVote.ValidatorId,
             Decision = protoVote.Decision == Grpc.V1.VoteDecision.Approve
-                ? Models.VoteDecision.Approve
-                : Models.VoteDecision.Reject,
+                ? VoteDecision.Approve
+                : VoteDecision.Reject,
             RejectionReason = string.IsNullOrEmpty(protoVote.RejectionReason) ? null : protoVote.RejectionReason,
             VotedAt = protoVote.VotedAt.ToDateTimeOffset(),
-            ValidatorSignature = new Models.Signature
+            ValidatorSignature = new RegisterSignature
             {
                 PublicKey = Base64Url.DecodeFromChars(protoVote.ValidatorSignature.PublicKey),
                 SignatureValue = Base64Url.DecodeFromChars(protoVote.ValidatorSignature.SignatureValue),
@@ -523,14 +530,14 @@ public class ValidatorGrpcService : Sorcha.Validator.Grpc.V1.ValidatorService.Va
     /// <summary>
     /// Maps domain ConsensusVote to gRPC ConsensusVote
     /// </summary>
-    private static Grpc.V1.ConsensusVote MapConsensusVoteToProto(Models.ConsensusVote vote)
+    private static Grpc.V1.ConsensusVote MapConsensusVoteToProto(ConsensusVote vote)
     {
         return new Grpc.V1.ConsensusVote
         {
             VoteId = vote.VoteId,
             DocketId = vote.DocketId,
             ValidatorId = vote.ValidatorId,
-            Decision = vote.Decision == Models.VoteDecision.Approve
+            Decision = vote.Decision == VoteDecision.Approve
                 ? Grpc.V1.VoteDecision.Approve
                 : Grpc.V1.VoteDecision.Reject,
             RejectionReason = vote.RejectionReason ?? string.Empty,
@@ -564,7 +571,7 @@ public class ValidatorGrpcService : Sorcha.Validator.Grpc.V1.ValidatorService.Va
             Transactions = transactions,
             Status = Models.DocketStatus.Confirmed,
             ProposerValidatorId = request.ProposerValidatorId,
-            ProposerSignature = new Models.Signature
+            ProposerSignature = new RegisterSignature
             {
                 PublicKey = Base64Url.DecodeFromChars(request.ProposerSignature.PublicKey),
                 SignatureValue = Base64Url.DecodeFromChars(request.ProposerSignature.SignatureValue),

@@ -142,7 +142,7 @@ public class ReceiptValidatorTests
         var leafHash = ComputeHash("tx-leaf");
         var receipt = CreateValidReceipt(leafHash, leafHash) with
         {
-            Signatures = Array.Empty<ValidatorSignature>()
+            Signatures = Array.Empty<ReceiptSignature>()
         };
 
         SignatureVerifyFunc verifyFunc = (_, _, _, _) => true;
@@ -300,7 +300,7 @@ public class ReceiptValidatorTests
             DocketNumber = 1,
             MerkleRoot = merkleRoot,
             InclusionProof = CreateSingleLeafProof(leafHash, merkleRoot),
-            Signatures = new List<ValidatorSignature>
+            Signatures = new List<ReceiptSignature>
             {
                 new()
                 {

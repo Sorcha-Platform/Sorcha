@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.Validator.Service.Models;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Services.Interfaces;
 
@@ -61,7 +62,7 @@ public interface IPendingDocketStore
     /// <returns>Updated docket or null if not found</returns>
     Task<Docket?> AddSignatureAsync(
         string docketId,
-        Signature signature,
+        RegisterSignature signature,
         string validatorId,
         CancellationToken ct = default);
 

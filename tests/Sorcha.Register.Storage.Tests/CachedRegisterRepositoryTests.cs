@@ -24,15 +24,15 @@ public class CachedRegisterRepositoryTests
 {
     private readonly InMemoryRegisterRepository _innerRepository;
     private readonly InMemoryCacheStore _cacheStore;
-    private readonly InMemoryWormStore<Docket, ulong> _wormStore;
-    private readonly IVerifiedCache<Docket, ulong> _docketCache;
+    private readonly InMemoryWormStore<DocketHeader, ulong> _wormStore;
+    private readonly IVerifiedCache<DocketHeader, ulong> _docketCache;
     private readonly CachedRegisterRepository _sut;
 
     public CachedRegisterRepositoryTests()
     {
         _innerRepository = new InMemoryRegisterRepository();
         _cacheStore = new InMemoryCacheStore();
-        _wormStore = new InMemoryWormStore<Docket, ulong>(d => d.Id);
+        _wormStore = new InMemoryWormStore<DocketHeader, ulong>(d => d.Id);
 
         var cacheConfig = Options.Create(new VerifiedCacheConfiguration
         {
@@ -41,7 +41,7 @@ public class CachedRegisterRepositoryTests
             EnableHashVerification = true
         });
 
-        _docketCache = new VerifiedCache<Docket, ulong>(
+        _docketCache = new VerifiedCache<DocketHeader, ulong>(
             _cacheStore,
             _wormStore,
             d => d.Id,
@@ -132,7 +132,7 @@ public class CachedRegisterRepositoryTests
     }
 
     // ===========================
-    // Docket Tests (Verified Cache)
+    // DocketHeader Tests (Verified Cache)
     // ===========================
 
     [Fact]
@@ -410,9 +410,9 @@ public class CachedRegisterRepositoryTests
         };
     }
 
-    private static Docket CreateTestDocket(ulong id, string registerId)
+    private static DocketHeader CreateTestDocket(ulong id, string registerId)
     {
-        return new Docket
+        return new DocketHeader
         {
             Id = id,
             RegisterId = registerId,

@@ -87,7 +87,7 @@ public class RightsEnforcementServiceTests
             CreatedAt = DateTimeOffset.UtcNow,
             Signatures =
             [
-                new Signature
+                new RegisterSignature
                 {
                     PublicKey = signerPublicKey,
                     SignatureValue = new byte[64],
@@ -112,7 +112,7 @@ public class RightsEnforcementServiceTests
             CreatedAt = DateTimeOffset.UtcNow,
             Signatures =
             [
-                new Signature
+                new RegisterSignature
                 {
                     PublicKey = new byte[32],
                     SignatureValue = new byte[64],
@@ -260,7 +260,7 @@ public class RightsEnforcementServiceTests
             CreatedAt = DateTimeOffset.UtcNow,
             Signatures =
             [
-                new Signature
+                new RegisterSignature
                 {
                     PublicKey = UnknownPublicKey, // system blueprint-publish key — not a roster member
                     SignatureValue = new byte[64],
@@ -303,7 +303,7 @@ public class RightsEnforcementServiceTests
             CreatedAt = DateTimeOffset.UtcNow,
             Signatures =
             [
-                new Signature
+                new RegisterSignature
                 {
                     PublicKey = OwnerPublicKey,
                     SignatureValue = new byte[64],

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Register.Models;
 using Sorcha.Validator.Core.Models;
 
 namespace Sorcha.Validator.Core.Validators;
@@ -47,8 +48,12 @@ public class ConsensusValidator : IConsensusValidator
             });
         }
 
-        // Validate Decision is a valid enum value
-        if (!Enum.IsDefined(typeof(VoteDecision), vote.Decision))
+        // Validate Decision is a valid enum value.
+        // Unspecified is a DEFINED member (the deliberate zero sentinel — see VoteDecision's remarks)
+        // but is never a valid vote, so Enum.IsDefined alone is not sufficient: it would accept an
+        // uninitialised or malformed vote as though a real decision had been cast.
+        if (!Enum.IsDefined(typeof(VoteDecision), vote.Decision)
+            || vote.Decision == VoteDecision.Unspecified)
         {
             errors.Add(new ValidationError
             {

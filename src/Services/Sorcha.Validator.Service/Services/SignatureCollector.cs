@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services.Interfaces;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Services;
 
@@ -65,7 +66,7 @@ public class SignatureCollector : ISignatureCollector
             "Collecting signatures for docket {DocketId} from {ValidatorCount} validators (threshold: {Min}-{Max})",
             docket.DocketId, validators.Count, config.SignatureThresholdMin, config.SignatureThresholdMax);
 
-        var signatures = new ConcurrentBag<ValidatorSignature>();
+        var signatures = new ConcurrentBag<CollectedSignature>();
         var rejectionDetails = new ConcurrentDictionary<string, string>();
         var nonResponders = new ConcurrentBag<string>();
         var responses = 0;
@@ -75,7 +76,7 @@ public class SignatureCollector : ISignatureCollector
         // Add initiator's signature first
         if (docket.ProposerSignature != null)
         {
-            signatures.Add(new ValidatorSignature
+            signatures.Add(new CollectedSignature
             {
                 ValidatorId = docket.ProposerValidatorId,
                 Signature = docket.ProposerSignature,
@@ -133,7 +134,7 @@ public class SignatureCollector : ISignatureCollector
 
                     if (response.Approved && response.Signature != null)
                     {
-                        signatures.Add(new ValidatorSignature
+                        signatures.Add(new CollectedSignature
                         {
                             ValidatorId = response.ValidatorId,
                             Signature = response.Signature,
@@ -268,7 +269,7 @@ public class SignatureCollector : ISignatureCollector
                 ValidatorId = response.ValidatorId,
                 Approved = approved,
                 Signature = approved && response.ValidatorSignature != null
-                    ? new Signature
+                    ? new RegisterSignature
                     {
                         PublicKey = Base64Url.DecodeFromChars(response.ValidatorSignature.PublicKey),
                         SignatureValue = Base64Url.DecodeFromChars(response.ValidatorSignature.SignatureValue),
@@ -406,7 +407,7 @@ public class SignatureCollector : ISignatureCollector
     }
 
     private static SignatureCollectionResult CreateResult(
-        IReadOnlyList<ValidatorSignature> signatures,
+        IReadOnlyList<CollectedSignature> signatures,
         ConsensusConfig config,
         int totalValidators,
         int responsesReceived,

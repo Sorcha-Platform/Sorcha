@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Consensus-vote contract CI gate. Fails when VoteDecision is declared anywhere outside its
+# canonical home, Sorcha.Register.Models.
+#
+# Consensus votes are persisted to the register, so the enum's numeric values are a wire contract.
+# It was previously declared twice, with INCOMPATIBLE values (Reject=2 in Validator.Core versus
+# Reject=0 in Validator.Service), in two assemblies that reference each other — told apart only by
+# namespace qualification. A value crossing between them numerically turned a Reject into something
+# else, silently, on the path that decides whether a docket seals.
+#
+# See scripts/check-consensus-vote-contract.ps1 and .consensus-vote-contract-allowlist.
+
+name: consensus-vote-contract-gate
+
+on:
+  pull_request:
+    paths:
+      - "src/**/*.cs"
+      - "scripts/check-consensus-vote-contract.ps1"
+      - ".consensus-vote-contract-allowlist"
+      - ".github/workflows/consensus-vote-contract-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  consensus-vote-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run consensus-vote contract gate
+        shell: pwsh
+        run: ./scripts/check-consensus-vote-contract.ps1

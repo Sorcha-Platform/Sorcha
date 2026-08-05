@@ -4,9 +4,16 @@
 namespace Sorcha.Register.Models;
 
 /// <summary>
-/// A validator's cryptographic signature on a receipt.
+/// A validator's cryptographic signature on a transaction receipt (Feature 079).
 /// </summary>
-public record ValidatorSignature
+/// <remarks>
+/// Named <c>ReceiptSignature</c>, not <c>ValidatorSignature</c> (Feature 187 / #1371): the latter
+/// collided with <c>Sorcha.Validator.Service.Services.Interfaces.CollectedSignature</c>, which is a
+/// different concept (a signature gathered during consensus collection, keyed by validator id and
+/// carrying an initiator flag). Same name, different things — the collision forced disambiguating
+/// aliases and invited exactly the conflation this feature is unpicking.
+/// </remarks>
+public record ReceiptSignature
 {
     /// <summary>Bech32 wallet address of the signing validator.</summary>
     public required string ValidatorAddress { get; init; }
@@ -64,7 +71,7 @@ public record TransactionReceipt
     /// Validator signature(s) over receipt content.
     /// Array format to accommodate future multi-validator consensus (TRUST-6).
     /// </summary>
-    public required IReadOnlyList<ValidatorSignature> Signatures { get; init; }
+    public required IReadOnlyList<ReceiptSignature> Signatures { get; init; }
 
     /// <summary>When the docket was confirmed/sealed.</summary>
     public required DateTimeOffset SealedAt { get; init; }

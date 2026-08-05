@@ -10,6 +10,7 @@ using Sorcha.Cryptography.Models;
 using Sorcha.Validator.Service.Models;
 using Xunit;
 using WalletAlgorithm = Sorcha.Validator.Service.Models.WalletAlgorithm;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
@@ -86,7 +87,7 @@ public class WalletIntegrationServiceTests
         var signatureValue = new byte[64];
 
         // Act
-        var signature = new Signature
+        var signature = new RegisterSignature
         {
             PublicKey = publicKey,
             SignatureValue = signatureValue,

@@ -124,13 +124,13 @@ public interface IRegisterServiceClient
     /// Lists all dockets in a register.
     /// </summary>
     [Get("/api/registers/{registerId}/dockets")]
-    Task<List<Docket>> ListDocketsAsync(string registerId, [Header("Authorization")] string authorization);
+    Task<List<DocketHeader>> ListDocketsAsync(string registerId, [Header("Authorization")] string authorization);
 
     /// <summary>
     /// Gets a docket by ID.
     /// </summary>
     [Get("/api/registers/{registerId}/dockets/{docketId}")]
-    Task<Docket> GetDocketAsync(string registerId, ulong docketId, [Header("Authorization")] string authorization);
+    Task<DocketHeader> GetDocketAsync(string registerId, ulong docketId, [Header("Authorization")] string authorization);
 
     /// <summary>
     /// Gets transactions in a docket.

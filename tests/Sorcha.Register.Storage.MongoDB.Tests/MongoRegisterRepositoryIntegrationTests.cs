@@ -303,7 +303,7 @@ public class MongoRegisterRepositoryIntegrationTests : IAsyncLifetime
     }
 
     // ===========================
-    // Docket Tests
+    // DocketHeader Tests
     // ===========================
 
     [Fact]
@@ -538,9 +538,9 @@ public class MongoRegisterRepositoryIntegrationTests : IAsyncLifetime
         };
     }
 
-    private static Docket CreateTestDocket(ulong id, string registerId)
+    private static DocketHeader CreateTestDocket(ulong id, string registerId)
     {
-        return new Docket
+        return new DocketHeader
         {
             Id = id,
             RegisterId = registerId,

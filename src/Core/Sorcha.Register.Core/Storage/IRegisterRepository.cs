@@ -32,13 +32,13 @@ public interface IRegisterRepository : IReadOnlyRegisterRepository
     Task DeleteRegisterAsync(string registerId, CancellationToken cancellationToken = default);
 
     // ===========================
-    // Docket Writes
+    // DocketHeader Writes
     // ===========================
 
     /// <summary>
     /// Inserts a new docket
     /// </summary>
-    Task<Docket> InsertDocketAsync(Docket docket, CancellationToken cancellationToken = default);
+    Task<DocketHeader> InsertDocketAsync(DocketHeader docket, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates the register height atomically

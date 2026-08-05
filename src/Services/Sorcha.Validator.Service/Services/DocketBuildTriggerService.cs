@@ -357,6 +357,14 @@ public class DocketBuildTriggerService : BackgroundService
                     _logger.LogInformation("Consensus achieved for docket {DocketNumber}, writing to Register Service",
                         docket.DocketNumber);
 
+                    // Feature 187 (#1371): carry the quorum evidence onto the docket so the
+                    // projection can persist it. This path HELD consensusResult and dropped its
+                    // votes on the floor — the register recorded that a docket sealed but never
+                    // which validators agreed, or their signatures. Mirrors ValidatorOrchestrator,
+                    // which already did this.
+                    docket.Votes.Clear();
+                    docket.Votes.AddRange(consensusResult.Votes);
+
                     try
                     {
                         await WriteDocketAndTransactionsAsync(scope, docket, cancellationToken);
@@ -631,117 +639,11 @@ public class DocketBuildTriggerService : BackgroundService
 
         try
         {
-            // Convert docket to DocketModel  (Sorcha.ServiceClients.Register.DocketModel)
-            var docketModel = new DocketModel
-            {
-                DocketId = docket.DocketId,
-                RegisterId = docket.RegisterId,
-                DocketNumber = docket.DocketNumber,
-                PreviousHash = docket.PreviousHash,
-                DocketHash = docket.DocketHash,
-                CreatedAt = docket.CreatedAt,
-                Transactions = docket.Transactions.Select(t =>
-                {
-                    var firstSig = t.Signatures.FirstOrDefault();
-                    var payloadData = t.Payload.ValueKind != System.Text.Json.JsonValueKind.Undefined
-                        ? Base64Url.EncodeToString(System.Text.Encoding.UTF8.GetBytes(t.Payload.GetRawText()))
-                        : string.Empty;
-
-                    // Extract transaction type from metadata.
-                    // "Genesis" is used by RegisterCreationOrchestrator but isn't an enum member —
-                    // it maps to Control (genesis is a control record that bootstraps the register).
-                    var txType = Sorcha.Register.Models.Enums.TransactionType.Action;
-                    if (t.Metadata.TryGetValue("Type", out var typeStr))
-                    {
-                        if (typeStr.Equals("Genesis", StringComparison.OrdinalIgnoreCase))
-                            txType = Sorcha.Register.Models.Enums.TransactionType.Control;
-                        else if (Enum.TryParse<Sorcha.Register.Models.Enums.TransactionType>(typeStr, ignoreCase: true, out var parsed))
-                            txType = parsed;
-                    }
-
-                    return new Sorcha.Register.Models.TransactionModel
-                    {
-                        TxId = t.TransactionId,
-                        RegisterId = t.RegisterId,
-                        PrevTxId = t.PreviousTransactionId ?? string.Empty,
-                        TimeStamp = t.CreatedAt.UtcDateTime,
-                        // Wave 12: prefer Signature.SignedBy (bech32 wallet
-                        // address from the Wallet Service) so the persisted
-                        // SenderWallet field stays in the same format that
-                        // /api/register/query/wallets/{address}/transactions
-                        // queries against. Falling back to base64url(PublicKey)
-                        // produced strings that never matched a wallet lookup
-                        // — see wave 11 audit for the empty-tx-list bug. Use
-                        // IsNullOrWhiteSpace (not Length > 0) to align with
-                        // DocketSerializer.GetSenderWallet's whitespace guard.
-                        SenderWallet = firstSig != null
-                            ? (!string.IsNullOrWhiteSpace(firstSig.SignedBy)
-                                ? firstSig.SignedBy
-                                : Base64Url.EncodeToString(firstSig.PublicKey))
-                            : "system",
-                        Signature = firstSig != null
-                            ? Base64Url.EncodeToString(firstSig.SignatureValue)
-                            : string.Empty,
-                        PayloadCount = 1,
-                        Payloads = new[]
-                        {
-                            new Sorcha.Register.Models.PayloadModel
-                            {
-                                Data = payloadData,
-                                Hash = t.PayloadHash,
-                                PayloadSize = (ulong)System.Text.Encoding.UTF8.GetByteCount(
-                                    t.Payload.ValueKind != System.Text.Json.JsonValueKind.Undefined
-                                        ? t.Payload.GetRawText()
-                                        : string.Empty),
-                                ContentEncoding = "base64url"
-                            }
-                        },
-                        RecipientsWallets = t.RecipientsWallets ?? new List<string>(),
-                        // AUTHORITATIVE WRITE-PATH PROJECTION (post-Feature 119 note):
-                        // This block is the single source of truth for what TransactionMetaData
-                        // gets persisted to MongoDB. Blueprint Service's BuiltTransaction does
-                        // NOT have an equivalent ToTransactionModel() method any more — three
-                        // Feature 119 attempts modified that dead method and confirmed it was
-                        // never on the write path. ALL persisted-metadata changes go here.
-                        MetaData = new Sorcha.Register.Models.TransactionMetaData
-                        {
-                            RegisterId = t.RegisterId,
-                            BlueprintId = t.BlueprintId,
-                            ActionId = uint.TryParse(t.ActionId, out var actionId) ? actionId : null,
-                            TransactionType = txType,
-                            // Carry InstanceId through from the in-memory submission so the
-                            // Validator's Tier 3 chain-derived participant binding can walk
-                            // in-instance transactions on the register. Prior to this, sealed
-                            // txs were persisted with InstanceId=null and every Tier 3 lookup
-                            // returned an empty list.
-                            InstanceId = t.Metadata.TryGetValue("instanceId", out var iid)
-                                         && !string.IsNullOrWhiteSpace(iid)
-                                ? iid
-                                : null,
-                            // Feature 145 (T024): carry the VALIDATED routing decision through the
-                            // seal as the typed field. The validator (VAL_ROUTING_*) has already
-                            // confirmed the carried decision is a structural successor set and that
-                            // its attestation verifies, so every node folds RoutingDecision.nextActions
-                            // (full set → parallel branches preserved) without re-running routing or
-                            // decrypting the payload. Supersedes the singular NextActionId hint, which
-                            // is no longer persisted onto the sealed metadata.
-                            RoutingDecision = ResolveRoutingDecision(t.Metadata),
-                            // Carry the submission metadata through to the persisted tx. This is the
-                            // authoritative write path, so omitting it left TrackingData null on EVERY
-                            // sealed transaction — dropping the F138 US4 blueprint `contentHash`
-                            // (publish-time sealed digest), `publishedBy`, and the legacy
-                            // `transactionType` discriminator. A node recovering a replicated register
-                            // then rejected every blueprint with `no_provenance`. Mirrors the parallel
-                            // DocketSerializer.ToRegisterModel projection.
-                            TrackingData = t.Metadata is { Count: > 0 }
-                                ? new Dictionary<string, string>(t.Metadata)
-                                : null,
-                        }
-                    };
-                }).ToList(),
-                ProposerValidatorId = docket.ProposerValidatorId,
-                MerkleRoot = docket.MerkleRoot
-            };
+            // THE docket→register projection lives in DocketRegisterProjection and is shared by every
+            // write path (this one, ValidatorOrchestrator, DocketDistributor). It used to be inlined
+            // here with a second, drifted copy in DocketSerializer.ToRegisterModel — see #1370.
+            // Do NOT reintroduce a local copy; add fields to the projection and its completeness test.
+            var docketModel = DocketRegisterProjection.ToDocketModel(docket);
 
             // Write docket to Register Service
             var written = await registerClient.WriteDocketAsync(docketModel, cancellationToken);

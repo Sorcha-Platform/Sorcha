@@ -14,6 +14,13 @@ using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services.Interfaces;
 using System.Diagnostics;
+using Sorcha.Register.Models;
+// The gRPC contract also declares a ConsensusVote (Sorcha.Validator.Grpc.V1). Bare
+// ConsensusVote means the canonical ledger type; the proto one stays Grpc.V1.ConsensusVote.
+using ConsensusVote = Sorcha.Register.Models.ConsensusVote;
+// The gRPC contract also declares a VoteDecision (Sorcha.Validator.Grpc.V1). Bare
+// VoteDecision means the canonical ledger enum; the proto one stays Grpc.V1.VoteDecision.
+using VoteDecision = Sorcha.Register.Models.VoteDecision;
 
 namespace Sorcha.Validator.Service.Services;
 
@@ -103,7 +110,7 @@ public class ConsensusEngine : IConsensusEngine
                     {
                         Achieved = true,
                         Docket = docket,
-                        Votes = Array.Empty<Models.ConsensusVote>(),
+                        Votes = Array.Empty<ConsensusVote>(),
                         TotalValidators = 1,
                         Duration = stopwatch.Elapsed,
                         CompletedAt = DateTimeOffset.UtcNow
@@ -115,7 +122,7 @@ public class ConsensusEngine : IConsensusEngine
                 {
                     Achieved = false,
                     Docket = docket,
-                    Votes = Array.Empty<Models.ConsensusVote>(),
+                    Votes = Array.Empty<ConsensusVote>(),
                     TotalValidators = 0,
                     FailureReason = "No validators found for register",
                     Duration = stopwatch.Elapsed,
@@ -133,7 +140,7 @@ public class ConsensusEngine : IConsensusEngine
             using var timeoutCts = new CancellationTokenSource((int)_consensusConfig.VoteTimeout.TotalMilliseconds);
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
-            List<Models.ConsensusVote?> collectedVotes;
+            List<ConsensusVote?> collectedVotes;
             try
             {
                 var voteResults = await Task.WhenAll(voteCollectionTasks);
@@ -158,7 +165,7 @@ public class ConsensusEngine : IConsensusEngine
             // Step 4: Validate votes and check for consensus
             var validVotes = await ValidateVotesAsync(collectedVotes!, docket, cancellationToken);
 
-            var approvalCount = validVotes.Count(v => v.Decision == Models.VoteDecision.Approve);
+            var approvalCount = validVotes.Count(v => v.Decision == VoteDecision.Approve);
             var totalValidators = validators.Count;
             var approvalPercentage = (double)approvalCount / totalValidators;
 
@@ -174,7 +181,7 @@ public class ConsensusEngine : IConsensusEngine
                 _consensusConfig.ApprovalThreshold);
 
             // Step 5: Report any invalid proposer behavior
-            var rejectedVotes = validVotes.Where(v => v.Decision == Models.VoteDecision.Reject).ToList();
+            var rejectedVotes = validVotes.Where(v => v.Decision == VoteDecision.Reject).ToList();
             if (rejectedVotes.Count > totalValidators / 2)
             {
                 // Majority rejected - report proposer as potentially malicious
@@ -209,7 +216,7 @@ public class ConsensusEngine : IConsensusEngine
             {
                 Achieved = false,
                 Docket = docket,
-                Votes = Array.Empty<Models.ConsensusVote>(),
+                Votes = Array.Empty<ConsensusVote>(),
                 TotalValidators = 0,
                 FailureReason = $"Consensus error: {ex.Message}",
                 Duration = stopwatch.Elapsed,
@@ -219,7 +226,7 @@ public class ConsensusEngine : IConsensusEngine
     }
 
     /// <inheritdoc/>
-    public async Task<Models.ConsensusVote> ValidateAndVoteAsync(
+    public async Task<ConsensusVote> ValidateAndVoteAsync(
         Docket docket,
         CancellationToken cancellationToken = default)
     {
@@ -343,7 +350,7 @@ public class ConsensusEngine : IConsensusEngine
     /// <summary>
     /// Collects a vote from a single validator
     /// </summary>
-    private async Task<Models.ConsensusVote?> CollectVoteFromValidatorAsync(
+    private async Task<ConsensusVote?> CollectVoteFromValidatorAsync(
         Sorcha.ServiceClients.Peer.ValidatorInfo validator,
         Docket docket,
         CancellationToken cancellationToken)
@@ -409,20 +416,20 @@ public class ConsensusEngine : IConsensusEngine
             }
 
             // Map response to ConsensusVote
-            var vote = new Models.ConsensusVote
+            var vote = new ConsensusVote
             {
                 VoteId = response.VoteId,
                 DocketId = docket.DocketId,
                 ValidatorId = response.ValidatorId,
                 Decision = response.Decision switch
                 {
-                    Sorcha.Validator.Grpc.V1.VoteDecision.Approve => Models.VoteDecision.Approve,
-                    Sorcha.Validator.Grpc.V1.VoteDecision.Reject => Models.VoteDecision.Reject,
-                    _ => Models.VoteDecision.Reject
+                    Sorcha.Validator.Grpc.V1.VoteDecision.Approve => VoteDecision.Approve,
+                    Sorcha.Validator.Grpc.V1.VoteDecision.Reject => VoteDecision.Reject,
+                    _ => VoteDecision.Reject
                 },
                 RejectionReason = response.Decision == Sorcha.Validator.Grpc.V1.VoteDecision.Reject ? response.RejectionReason : null,
                 VotedAt = response.VotedAt.ToDateTimeOffset(),
-                ValidatorSignature = new Models.Signature
+                ValidatorSignature = new RegisterSignature
                 {
                     PublicKey = Base64Url.DecodeFromChars(response.ValidatorSignature.PublicKey),
                     SignatureValue = Base64Url.DecodeFromChars(response.ValidatorSignature.SignatureValue),
@@ -448,12 +455,12 @@ public class ConsensusEngine : IConsensusEngine
     /// <summary>
     /// Validates collected votes (signature verification, double-vote detection)
     /// </summary>
-    private async Task<List<Models.ConsensusVote>> ValidateVotesAsync(
-        List<Models.ConsensusVote> votes,
+    private async Task<List<ConsensusVote>> ValidateVotesAsync(
+        List<ConsensusVote> votes,
         Docket docket,
         CancellationToken cancellationToken)
     {
-        var validVotes = new List<Models.ConsensusVote>();
+        var validVotes = new List<ConsensusVote>();
         var seenValidators = new HashSet<string>();
 
         foreach (var vote in votes)
@@ -539,7 +546,7 @@ public class ConsensusEngine : IConsensusEngine
     /// <summary>
     /// Creates an approval vote
     /// </summary>
-    private async Task<Models.ConsensusVote> CreateApprovalVoteAsync(
+    private async Task<ConsensusVote> CreateApprovalVoteAsync(
         string voteId,
         Docket docket,
         DateTimeOffset votedAt,
@@ -554,14 +561,14 @@ public class ConsensusEngine : IConsensusEngine
             docket.DocketHash,
             cancellationToken);
 
-        return new Models.ConsensusVote
+        return new ConsensusVote
         {
             VoteId = voteId,
             DocketId = docket.DocketId,
             ValidatorId = _validatorConfig.ValidatorId,
-            Decision = Models.VoteDecision.Approve,
+            Decision = VoteDecision.Approve,
             VotedAt = votedAt,
-            ValidatorSignature = new Models.Signature
+            ValidatorSignature = new RegisterSignature
             {
                 PublicKey = signResult.PublicKey,
                 SignatureValue = signResult.Signature,
@@ -575,7 +582,7 @@ public class ConsensusEngine : IConsensusEngine
     /// <summary>
     /// Creates a rejection vote
     /// </summary>
-    private async Task<Models.ConsensusVote> CreateRejectionVoteAsync(
+    private async Task<ConsensusVote> CreateRejectionVoteAsync(
         string voteId,
         Docket docket,
         string reason,
@@ -591,15 +598,15 @@ public class ConsensusEngine : IConsensusEngine
             docket.DocketHash,
             cancellationToken);
 
-        return new Models.ConsensusVote
+        return new ConsensusVote
         {
             VoteId = voteId,
             DocketId = docket.DocketId,
             ValidatorId = _validatorConfig.ValidatorId,
-            Decision = Models.VoteDecision.Reject,
+            Decision = VoteDecision.Reject,
             RejectionReason = reason,
             VotedAt = votedAt,
-            ValidatorSignature = new Models.Signature
+            ValidatorSignature = new RegisterSignature
             {
                 PublicKey = signResult.PublicKey,
                 SignatureValue = signResult.Signature,

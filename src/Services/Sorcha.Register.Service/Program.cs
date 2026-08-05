@@ -73,7 +73,7 @@ builder.Services.AddSorchaHub<RegisterHub, IRegisterHubClient>(
 var modelBuilder = new ODataConventionModelBuilder();
 modelBuilder.EntitySet<Sorcha.Register.Models.Register>("Registers");
 modelBuilder.EntitySet<TransactionModel>("Transactions");
-modelBuilder.EntitySet<Docket>("Dockets");
+modelBuilder.EntitySet<DocketHeader>("Dockets");
 
 builder.Services.AddControllers()
     .AddOData(options => options
@@ -1402,7 +1402,7 @@ queryGroup.MapGet("/instance/{instanceId}/transactions/{registerId}", async (
 .Produces(StatusCodes.Status401Unauthorized);
 
 // ===========================
-// Docket Management API
+// DocketHeader Management API
 // ===========================
 
 var docketsGroup = app.MapGroup("/api/registers/{registerId}/dockets")
@@ -1467,7 +1467,7 @@ docketsGroup.MapGet("/{docketId}", async (
 .WithDescription("Retrieves a specific docket by its ID (docket height). Anonymous when the register is public (advertised); a non-public register requires authentication (403 to anonymous).")
 .AllowAnonymous()
 .RequireRateLimiting(RateLimitPolicies.Relaxed)
-.Produces<Docket>(StatusCodes.Status200OK)
+.Produces<DocketHeader>(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status403Forbidden)
 .Produces(StatusCodes.Status404NotFound);
 
@@ -1503,7 +1503,7 @@ docketsGroup.MapGet("/latest", async (
 
     if (register.Height == 0)
     {
-        return Results.Ok<Docket?>(null);
+        return Results.Ok<DocketHeader?>(null);
     }
 
     // Height is count-based (1 = genesis docket written, 2 = two dockets, etc.)
@@ -1514,7 +1514,7 @@ docketsGroup.MapGet("/latest", async (
 .WithName("GetLatestDocket")
 .WithSummary("Get latest docket")
 .WithDescription("Retrieves the most recent docket (block) for a register.")
-.Produces<Docket>(StatusCodes.Status200OK)
+.Produces<DocketHeader>(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status404NotFound)
 .Produces(StatusCodes.Status401Unauthorized);
 
@@ -1634,7 +1634,7 @@ docketsGroup.MapPost("/", async (
     }
 
     // Create docket from request
-    var docket = new Docket
+    var docket = new DocketHeader
     {
         Id = (ulong)request.DocketNumber,
         RegisterId = registerId,
@@ -1647,7 +1647,12 @@ docketsGroup.MapPost("/", async (
         {
             RegisterId = registerId
         },
-        Votes = request.ProposerValidatorId
+        // Feature 187 (#1371): each of these lands in its OWN field. ProposerValidatorId used to be
+        // smuggled through `Votes` (a string? documented "Consensus votes (implementation TBD)"),
+        // MerkleRoot was not persisted at all, and real consensus votes never reached the ledger.
+        ProposerValidatorId = request.ProposerValidatorId,
+        MerkleRoot = request.MerkleRoot,
+        Votes = request.Votes ?? new List<Sorcha.Register.Models.ConsensusVote>()
     };
 
     // Insert transaction documents if provided
@@ -1722,7 +1727,7 @@ docketsGroup.MapPost("/", async (
     }
 
     // Insert docket (handle idempotent retries)
-    Docket inserted;
+    DocketHeader inserted;
     try
     {
         inserted = await repository.InsertDocketAsync(docket);
@@ -1739,7 +1744,7 @@ docketsGroup.MapPost("/", async (
             == DocketWriteReconciliation.Verdict.IdempotentMatch)
         {
             logger.LogInformation(
-                "Docket {DocketNumber} for register {RegisterId} already written with matching hash — idempotent retry, treating as success",
+                "DocketHeader {DocketNumber} for register {RegisterId} already written with matching hash — idempotent retry, treating as success",
                 request.DocketNumber, registerId);
             inserted = existingDocket!;
         }
@@ -1753,7 +1758,7 @@ docketsGroup.MapPost("/", async (
                 existingDocket?.Hash ?? "<missing>", docket.Hash);
             return Results.Conflict(new
             {
-                error = "Docket integrity divergence",
+                error = "DocketHeader integrity divergence",
                 registerId,
                 docketNumber = request.DocketNumber,
             });
@@ -1807,7 +1812,7 @@ docketsGroup.MapPost("/", async (
                         if (matchCount > 0)
                         {
                             logger.LogInformation(
-                                "Docket {DocketNumber} tx {TxId}: routed to {MatchCount} local wallet(s)",
+                                "DocketHeader {DocketNumber} tx {TxId}: routed to {MatchCount} local wallet(s)",
                                 request.DocketNumber, tx.TxId, matchCount);
                         }
                     }
@@ -1914,7 +1919,7 @@ docketsGroup.MapPost("/", async (
 .WithSummary("Write a confirmed docket")
 .WithDescription("Writes a consensus-confirmed docket to the register. Used by Validator Service.")
 .RequireAuthorization("CanWriteDockets")
-.Produces<Docket>(StatusCodes.Status201Created)
+.Produces<DocketHeader>(StatusCodes.Status201Created)
 .Produces(StatusCodes.Status404NotFound)
 .ProducesValidationProblem()
 .Produces(StatusCodes.Status401Unauthorized);
@@ -2964,7 +2969,7 @@ proofsGroup.MapPost("/inclusion", async (
     var dockets = await repository.GetDocketsAsync(registerId);
     var docket = dockets.FirstOrDefault(d => d.Id.ToString() == request.DocketId);
     if (docket == null)
-        return Results.NotFound(new { error = $"Docket {request.DocketId} not found" });
+        return Results.NotFound(new { error = $"DocketHeader {request.DocketId} not found" });
 
     // Verify the transaction is in the docket
     var txIds = docket.TransactionIds?.ToList() ?? [];
@@ -3538,7 +3543,9 @@ record WriteDocketRequest(
     List<string> TransactionIds,
     string ProposerValidatorId,
     string MerkleRoot,
-    List<TransactionModel>? Transactions = null);
+    List<TransactionModel>? Transactions = null,
+    // Feature 187 (#1371): quorum evidence. Empty in single-validator mode, which is valid.
+    List<Sorcha.Register.Models.ConsensusVote>? Votes = null);
 
 // ZK Proof request models
 record InclusionProofRequest(

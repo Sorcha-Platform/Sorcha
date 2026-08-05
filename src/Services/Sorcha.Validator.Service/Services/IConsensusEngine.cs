@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.Validator.Service.Models;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Services;
 
@@ -80,7 +81,7 @@ public interface IConsensusEngine
     ///   <item>Timestamp monotonicity</item>
     /// </list>
     /// </remarks>
-    Task<Models.ConsensusVote> ValidateAndVoteAsync(
+    Task<ConsensusVote> ValidateAndVoteAsync(
         Docket docket,
         CancellationToken cancellationToken = default);
 }
