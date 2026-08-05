@@ -228,7 +228,7 @@ public class ValidatorOrchestrator : IValidatorOrchestrator
                 "Writing confirmed docket {DocketNumber} to Register Service",
                 docket.DocketNumber);
 
-            var docketModel = DocketSerializer.ToRegisterModel(docket);
+            var docketModel = DocketRegisterProjection.ToDocketModel(docket);
             foreach (var dtx in docketModel.Transactions)
             {
                 _logger.LogInformation(

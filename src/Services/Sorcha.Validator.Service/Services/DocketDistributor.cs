@@ -178,8 +178,9 @@ public class DocketDistributor : IDocketDistributor
                 "Submitting confirmed docket {DocketNumber} to Register Service for register {RegisterId}",
                 docket.DocketNumber, docket.RegisterId);
 
-            // Convert to Register Service model
-            var registerDocket = DocketSerializer.ToRegisterModel(docket);
+            // Convert to Register Service model via THE shared projection (#1370) — this path used to
+            // use a second, drifted copy that dropped InstanceId and RoutingDecision.
+            var registerDocket = DocketRegisterProjection.ToDocketModel(docket);
 
             // Submit to Register Service
             var success = await _registerClient.WriteDocketAsync(registerDocket, ct);

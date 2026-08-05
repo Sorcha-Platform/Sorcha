@@ -1,6 +1,6 @@
 # Feature 187 — Tasks
 
-**Status:** 📋 NOT STARTED — scaffolded 2026-08-04, awaiting go-ahead
+**Status:** 🚧 IN PROGRESS — US1 code complete (T001-T007 ✅); T008 (live n1) outstanding
 **Branch:** `feature/187-docket-projection-contract`
 
 Legend: 📋 pending · 🚧 in progress · ✅ done · ⛔ blocked on a gate
@@ -11,14 +11,14 @@ Legend: 📋 pending · 🚧 in progress · ✅ done · ⛔ blocked on a gate
 
 TDD order. T002 must be RED before T003.
 
-- 📋 **T001** Read `DocketBuildTriggerService.cs` ~640-745 and `DocketSerializer.ToRegisterModel` (54-146) side by side; confirm the delta table in spec.md still matches source before changing anything.
-- 📋 **T002** Write `DocketProjectionCompletenessTests` in `tests/Sorcha.Validator.Service.Tests/Services/`. Reflect over `TransactionMetaData`'s public properties; for a representative transaction carrying instanceId + routingDecision + a lifecycle `Type`, assert every property is populated. **Point it at `ToRegisterModel` first and verify RED** — it must name `InstanceId` and `RoutingDecision`. Record the RED output in the PR body.
+- ✅ **T001** Read `DocketBuildTriggerService.cs` ~640-745 and `DocketSerializer.ToRegisterModel` (54-146) side by side; confirm the delta table in spec.md still matches source before changing anything.
+- ✅ **T002** Write `DocketProjectionCompletenessTests` in `tests/Sorcha.Validator.Service.Tests/Services/`. Reflect over `TransactionMetaData`'s public properties; for a representative transaction carrying instanceId + routingDecision + a lifecycle `Type`, assert every property is populated. **Point it at `ToRegisterModel` first and verify RED** — it must name `InstanceId` and `RoutingDecision`. Record the RED output in the PR body.
   - *Per the verification-discipline rule: a guard written after the feature never ran RED. This one must.*
-- 📋 **T003** Extract `DocketBuildTriggerService`'s inline `TransactionModel` construction into an `internal static` mapper (suggested: `Services/DocketRegisterProjection.cs`). No behaviour change on the A path — pure extraction.
-- 📋 **T004** Repoint `DocketBuildTriggerService:~700` at the extracted mapper. Blueprint + Validator suites green.
-- 📋 **T005** Repoint `ValidatorOrchestrator:231` and `DocketDistributor:182` at the extracted mapper.
-- 📋 **T006** Delete `DocketSerializer.ToRegisterModel`. Update/retire `DocketSerializerTests` `ToRegisterModel` region (7 tests) and `DocketSerializerSenderWalletTests` (3 tests) — **the `GetSenderWallet` bech32-vs-base64url behaviour they pin is load-bearing (wave-11 audit bug); carry those assertions onto the extracted mapper, do not just delete them.**
-- 📋 **T007** Re-point T002 at the extracted mapper; verify GREEN.
+- ✅ **T003** Extract `DocketBuildTriggerService`'s inline `TransactionModel` construction into an `internal static` mapper (suggested: `Services/DocketRegisterProjection.cs`). No behaviour change on the A path — pure extraction.
+- ✅ **T004** Repoint `DocketBuildTriggerService:~700` at the extracted mapper. Blueprint + Validator suites green.
+- ✅ **T005** Repoint `ValidatorOrchestrator:231` and `DocketDistributor:182` at the extracted mapper.
+- ✅ **T006** Delete `DocketSerializer.ToRegisterModel`. Update/retire `DocketSerializerTests` `ToRegisterModel` region (7 tests) and `DocketSerializerSenderWalletTests` (3 tests) — **the `GetSenderWallet` bech32-vs-base64url behaviour they pin is load-bearing (wave-11 audit bug); carry those assertions onto the extracted mapper, do not just delete them.**
+- ✅ **T007** Re-point T002 at the extracted mapper; verify GREEN.
 - 📋 **T008** Live check on n1: seal a docket via the normal path, confirm `RoutingDecision` + `InstanceId` present in Mongo, and an instance advances. *(F145's dormant-routing trap — a green suite does not prove the fold.)*
 
 ## US2 — Honest persistence record (#1371) — ✅ **Gate A RESOLVED = A1 (persist votes)**
