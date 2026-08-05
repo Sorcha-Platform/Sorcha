@@ -198,6 +198,26 @@ public static class ServiceCollectionExtensions
             return new MyApplicationsService(httpClient, logger);
         });
 
+        // Feature 188 — provenance (read-only evidence views). Named provenance, not audit:
+        // IAuditService in the same folder WRITES a log of administrative actions, this READS
+        // evidence and reports what can be proven about it (research R-007).
+        // Authenticated handler, like every other typed client here — an ambient HttpClient sends no
+        // bearer token, and the 401 would render as "no provenance available", which an operator
+        // cannot tell apart from a register with no history.
+        services.AddScoped<IProvenanceService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+
+            var httpClient = new HttpClient(handler)
+            {
+                BaseAddress = new Uri(baseAddress)
+            };
+
+            var logger = sp.GetRequiredService<ILogger<ProvenanceService>>();
+            return new ProvenanceService(httpClient, logger);
+        });
+
         // Blueprint API Service
         services.AddScoped<IBlueprintApiService>(sp =>
         {

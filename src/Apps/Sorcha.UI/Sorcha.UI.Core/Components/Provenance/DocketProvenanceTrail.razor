@@ -1,0 +1,65 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    A docket's evidence trail (Feature 188) — one row per layer, broadest first.
+
+    There is deliberately no overall verdict banner. Collapsing five differently-grounded results
+    into a single tick is exactly how an "unverified" row gets read as success, and the trail is not
+    itself a signed object making any overall claim.
+*@
+@namespace Sorcha.UI.Core.Components.Provenance
+@using Sorcha.UI.Core.Models.Provenance
+@using Sorcha.UI.Core.Services
+@inject IProvenanceService Provenance
+
+<div class="prov-trail" data-testid="provenance-trail">
+    @if (_loading)
+    {
+        <p class="state" data-testid="provenance-trail-loading">Verifying docket @DocketNumber…</p>
+    }
+    else if (_trail is null)
+    {
+        @* FR-020: say what could not be reached, rather than rendering nothing. *@
+        <p class="state err" data-testid="provenance-trail-unavailable">
+            Could not load the evidence for docket @DocketNumber on this node.
+        </p>
+    }
+    else
+    {
+        <header class="hd">
+            <h3>Evidence for docket @_trail.DocketNumber</h3>
+            <p class="sub">
+                Each check states what it was compared against. <strong>Not verifiable</strong> means
+                the check could not run — it is not a failure.
+            </p>
+        </header>
+
+        <div class="checks">
+            @foreach (var check in _trail.Checks)
+            {
+                <ProvenanceCheckRow Check="@check" />
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>The register the docket belongs to.</summary>
+    [Parameter, EditorRequired] public string RegisterId { get; set; } = default!;
+
+    /// <summary>The docket to verify.</summary>
+    [Parameter, EditorRequired] public ulong DocketNumber { get; set; }
+
+    private ProvenanceTrailView? _trail;
+    private bool _loading = true;
+
+    // Verification runs per selected docket, never per listed docket (plan D6). Re-fetching on a
+    // parameter change is what keeps that true when the user picks a different docket on the spine.
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _trail = await Provenance.GetTrailAsync(RegisterId, DocketNumber);
+        _loading = false;
+    }
+}

@@ -4,6 +4,7 @@
 @page "/registers/{RegisterId}"
 @using Sorcha.UI.Core.Components.Registers
 @using Sorcha.UI.Core.Components.Explorer
+@using Sorcha.UI.Core.Components.Provenance
 @using Sorcha.UI.Core.Components.Shared
 @using Sorcha.UI.Core.Models.Registers
 @using Sorcha.UI.Core.Models.Explorer
@@ -199,6 +200,15 @@
 
             <MudTabPanel Text="Governance" Icon="@Icons.Material.Filled.Policy">
                 <RegisterPolicyTab RegisterId="@RegisterId" />
+            </MudTabPanel>
+
+            @* Feature 188 — provenance. Reached from the register the administrator is already
+               looking at, deliberately NOT a new top-level nav item: "who signed this off" is a
+               question about a register, not a separate destination. *@
+            <MudTabPanel Text="Provenance" Icon="@Icons.Material.Filled.Verified">
+                <div class="pa-3">
+                    <RegisterLineage RegisterId="@RegisterId" />
+                </div>
             </MudTabPanel>
 
             <MudTabPanel Text="Register Map" Icon="@Icons.Material.Filled.Map">

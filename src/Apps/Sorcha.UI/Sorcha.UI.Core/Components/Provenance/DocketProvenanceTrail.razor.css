@@ -1,0 +1,34 @@
+/* SPDX-License-Identifier: MIT
+   Copyright (c) 2026 Sorcha Contributors
+
+   Isolated styles for a docket's evidence trail (Feature 188). */
+
+.prov-trail {
+    padding: .3rem .4rem .8rem 1.2rem;
+}
+
+.prov-trail .hd h3 {
+    margin: .2rem 0 .1rem;
+    font-size: .92rem;
+}
+
+.prov-trail .sub {
+    margin: 0 0 .55rem;
+    font-size: .76rem;
+    opacity: .7;
+}
+
+.prov-trail .state {
+    font-size: .82rem;
+    opacity: .8;
+}
+
+.prov-trail .state.err {
+    color: #c5221f;
+}
+
+@media (prefers-color-scheme: dark) {
+    .prov-trail .state.err {
+        color: #f28b82;
+    }
+}
