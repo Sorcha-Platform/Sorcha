@@ -12,6 +12,7 @@
     <ProjectReference Include="..\..\Common\Sorcha.ServiceDefaults\Sorcha.ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.TransactionHandler\Sorcha.TransactionHandler.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Register.Models\Sorcha.Register.Models.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.Provenance.Engine\Sorcha.Provenance.Engine.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Cryptography\Sorcha.Cryptography.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Wallet.Contracts\Sorcha.Wallet.Contracts.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Validator.Core\Sorcha.Validator.Core.csproj" />

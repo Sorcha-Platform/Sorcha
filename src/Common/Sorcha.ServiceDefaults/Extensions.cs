@@ -116,6 +116,12 @@ public static class Extensions
                 metrics.AddMeter("Sorcha.Blueprint.Designer");
                 metrics.AddMeter("Sorcha.Blueprint.Instances");
                 metrics.AddMeter("Sorcha.Blueprint.Reactions");
+
+                // Feature 188 — provenance check outcomes by layer and status, plus trail latency.
+                // A rising failed count is an integrity signal worth alerting on; a rising unverified
+                // count usually means missing evidence rather than tampering, and the two must stay
+                // distinguishable. No subject data on any dimension.
+                metrics.AddMeter("Sorcha.Provenance");
             })
             .WithTracing(tracing =>
             {
