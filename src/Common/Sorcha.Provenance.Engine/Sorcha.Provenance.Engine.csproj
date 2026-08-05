@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Sorcha.Provenance.Engine</PackageId>
+    <Description>Dependency-free provenance verification: takes assembled evidence about a sealed docket and returns a trail of checks, each stating what it was compared against. No HTTP, no storage, no cryptography P/Invoke — so it can run where the service cannot (portable evidence export, browser-wasm).</Description>
+    <PackageTags>sorcha;provenance;verification;engine</PackageTags>
+    <RootNamespace>Sorcha.Provenance.Engine</RootNamespace>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+  <!--
+    The ONLY ProjectReference this project may ever carry. Feature 188 plan D1: the engine exists to
+    run where the service cannot, so a reference to Sorcha.Cryptography (libsodium P/Invoke, not
+    loadable under browser-wasm) or Sorcha.ServiceClients.* forecloses the Phase-3 export path.
+    Guarded at runtime by EngineIsPortableTests.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Sorcha.Verification.Abstractions\Sorcha.Verification.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

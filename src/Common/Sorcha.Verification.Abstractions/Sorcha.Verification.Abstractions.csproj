@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Sorcha.Verification.Abstractions</PackageId>
+    <Description>The tri-state verification status shared by every Sorcha verification engine. A zero-dependency leaf, deliberately: a near-duplicate status enum in two engines is the drift Feature 187 spent its length removing.</Description>
+    <PackageTags>sorcha;verification;abstractions</PackageTags>
+    <RootNamespace>Sorcha.Verification.Abstractions</RootNamespace>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+</Project>
