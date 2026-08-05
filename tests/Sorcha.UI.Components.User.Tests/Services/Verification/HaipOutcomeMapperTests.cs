@@ -8,6 +8,7 @@ using FluentAssertions;
 using Sorcha.UI.Components.User.Services.Verification;
 using Sorcha.Verifier.Engine.Models;
 using Xunit;
+using Sorcha.Verification.Abstractions;
 
 namespace Sorcha.UI.Components.User.Tests.Services.Verification;
 
@@ -28,7 +29,7 @@ public class HaipOutcomeMapperTests
         outcome.DisclosedClaims.Should().ContainKey("fullName");
         outcome.IssuerSignature.Should().Be(IssuerSignatureStatus.Verified);
         outcome.Layers.Should().HaveCount(3);
-        outcome.Layers.Should().OnlyContain(l => l.Status == LayerStatus.Pass);
+        outcome.Layers.Should().OnlyContain(l => l.Status == VerificationStatus.Verified);
         outcome.Layers.Select(l => l.Layer).Should().BeEquivalentTo(new[]
         {
             ValidationLayer.LivePresentation, ValidationLayer.IssuerSignature, ValidationLayer.Revocation
@@ -45,7 +46,7 @@ public class HaipOutcomeMapperTests
         outcome.Accepted.Should().BeFalse();
         outcome.Errors.Should().Contain("nonce mismatch");
         outcome.Layers.First(l => l.Layer == ValidationLayer.LivePresentation).Status
-            .Should().Be(LayerStatus.Fail);
+            .Should().Be(VerificationStatus.Failed);
     }
 
     [Fact]

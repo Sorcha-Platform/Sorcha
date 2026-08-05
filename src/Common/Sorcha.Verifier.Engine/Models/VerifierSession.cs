@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Verification.Abstractions;
+
 namespace Sorcha.Verifier.Engine.Models;
 
 /// <summary>
@@ -81,24 +83,6 @@ public enum ValidationLayer
 }
 
 /// <summary>
-/// Per-layer status. <see cref="Fail"/> (actively failed) is deliberately distinct from
-/// <see cref="Unverified"/> (could not determine) so the UI and the overall verdict rule can treat
-/// them differently — an <see cref="Unverified"/> layer never vetoes an otherwise-passing verdict,
-/// whereas a <see cref="Fail"/> layer does (Feature 155, FR-013).
-/// </summary>
-public enum LayerStatus
-{
-    /// <summary>The check ran and passed.</summary>
-    Pass,
-
-    /// <summary>The check ran and failed (e.g. revoked, signature mismatch).</summary>
-    Fail,
-
-    /// <summary>The check could not be completed (e.g. issuer key unresolved, anchor not found, list unfetchable).</summary>
-    Unverified,
-}
-
-/// <summary>
 /// One step in the verdict's validation trail (Feature 155). Carries a short headline plus a
 /// dictionary of raw key→value detail lines shown when the operator expands the step.
 /// </summary>
@@ -107,8 +91,8 @@ public sealed record ValidationLayerResult
     /// <summary>Which validation layer this result describes.</summary>
     public required ValidationLayer Layer { get; init; }
 
-    /// <summary>Pass / Fail / Unverified for this layer.</summary>
-    public required LayerStatus Status { get; init; }
+    /// <summary>Verified / Failed / Unverified for this layer.</summary>
+    public required VerificationStatus Status { get; init; }
 
     /// <summary>Short human-readable label, e.g. "Not revoked".</summary>
     public required string Headline { get; init; }

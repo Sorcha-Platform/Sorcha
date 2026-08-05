@@ -13,6 +13,7 @@ using Moq;
 using Sorcha.Verifier.Engine;
 using Sorcha.Verifier.Engine.Models;
 using Xunit;
+using Sorcha.Verification.Abstractions;
 
 namespace Sorcha.Verifier.Tests.Services;
 
@@ -81,8 +82,8 @@ public sealed class VerifiablePresentationValidatorLayersTests
         var outcome = await validator.ValidateAsync(Session(), bundle.VpToken, bundle.Delegation);
 
         outcome.Accepted.Should().BeTrue(string.Join(", ", outcome.Errors));
-        Layer(outcome, ValidationLayer.LivePresentation).Status.Should().Be(LayerStatus.Pass);
-        Layer(outcome, ValidationLayer.Revocation).Status.Should().Be(LayerStatus.Pass);
+        Layer(outcome, ValidationLayer.LivePresentation).Status.Should().Be(VerificationStatus.Verified);
+        Layer(outcome, ValidationLayer.Revocation).Status.Should().Be(VerificationStatus.Verified);
         // The engine never appends RegisterAnchor — that is the verifier app's job.
         outcome.Layers.Should().NotContain(l => l.Layer == ValidationLayer.RegisterAnchor);
     }
@@ -117,7 +118,7 @@ public sealed class VerifiablePresentationValidatorLayersTests
 
         outcome.Accepted.Should().BeTrue(string.Join(", ", outcome.Errors));
         var issuer = Layer(outcome, ValidationLayer.IssuerSignature);
-        issuer.Status.Should().Be(LayerStatus.Pass);
+        issuer.Status.Should().Be(VerificationStatus.Verified);
         issuer.Detail.Should().ContainKey("iss").WhoseValue.Should().Be("did:sorcha:org:test");
         issuer.Detail.Should().ContainKey("alg");
     }
@@ -132,7 +133,7 @@ public sealed class VerifiablePresentationValidatorLayersTests
         var outcome = await validator.ValidateAsync(Session(), bundle.VpToken, bundle.Delegation);
 
         outcome.Accepted.Should().BeTrue(string.Join(", ", outcome.Errors));
-        Layer(outcome, ValidationLayer.IssuerSignature).Status.Should().Be(LayerStatus.Unverified);
+        Layer(outcome, ValidationLayer.IssuerSignature).Status.Should().Be(VerificationStatus.Unverified);
     }
 
     [Fact]
@@ -151,7 +152,7 @@ public sealed class VerifiablePresentationValidatorLayersTests
         var outcome = await validator.ValidateAsync(Session(), bundle.VpToken, bundle.Delegation);
 
         outcome.Accepted.Should().BeFalse();
-        Layer(outcome, ValidationLayer.IssuerSignature).Status.Should().Be(LayerStatus.Fail);
+        Layer(outcome, ValidationLayer.IssuerSignature).Status.Should().Be(VerificationStatus.Failed);
     }
 
     [Fact]
@@ -164,7 +165,7 @@ public sealed class VerifiablePresentationValidatorLayersTests
 
         outcome.Accepted.Should().BeFalse();
         var revocation = Layer(outcome, ValidationLayer.Revocation);
-        revocation.Status.Should().Be(LayerStatus.Fail);
+        revocation.Status.Should().Be(VerificationStatus.Failed);
         revocation.Detail.Should().ContainKey("result").WhoseValue.Should().Be("Revoked");
         revocation.Detail.Should().ContainKey("statusList");
         revocation.Detail.Should().ContainKey("idx");
@@ -181,6 +182,6 @@ public sealed class VerifiablePresentationValidatorLayersTests
         // Fail-closed: an unverifiable status list rejects the presentation overall (F138),
         // but the Revocation LAYER status is Unverified (could-not-determine), not Fail.
         outcome.Accepted.Should().BeFalse();
-        Layer(outcome, ValidationLayer.Revocation).Status.Should().Be(LayerStatus.Unverified);
+        Layer(outcome, ValidationLayer.Revocation).Status.Should().Be(VerificationStatus.Unverified);
     }
 }

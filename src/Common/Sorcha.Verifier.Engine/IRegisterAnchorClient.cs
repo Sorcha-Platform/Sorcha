@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Sorcha.Verification.Abstractions;
 using Sorcha.Verifier.Engine.Models;
 
 namespace Sorcha.Verifier.Engine;
@@ -29,8 +30,8 @@ public sealed record RegisterAnchorResult
     /// <summary>True when the issuance tx was found AND its inclusion proof verified.</summary>
     public required bool Anchored { get; init; }
 
-    /// <summary>Pass (anchored), Fail (proof invalid), or Unverified (not found / unreachable).</summary>
-    public required LayerStatus Status { get; init; }
+    /// <summary>Verified (anchored), Failed (proof invalid), or Unverified (not found / unreachable).</summary>
+    public required VerificationStatus Status { get; init; }
 
     /// <summary>Issuance transaction id, when found.</summary>
     public string? TxId { get; init; }
@@ -114,7 +115,7 @@ public sealed class RegisterAnchorClient(
                 return new RegisterAnchorResult
                 {
                     Anchored = false,
-                    Status = LayerStatus.Fail,
+                    Status = VerificationStatus.Failed,
                     TxId = anchor.TxId,
                     DocketNumber = anchor.DocketNumber,
                     SealedAt = anchor.SealedAt,
@@ -126,7 +127,7 @@ public sealed class RegisterAnchorClient(
             return new RegisterAnchorResult
             {
                 Anchored = true,
-                Status = LayerStatus.Pass,
+                Status = VerificationStatus.Verified,
                 TxId = anchor.TxId,
                 DocketNumber = anchor.DocketNumber,
                 SealedAt = anchor.SealedAt,
@@ -144,7 +145,7 @@ public sealed class RegisterAnchorClient(
     private static RegisterAnchorResult Unverified(string note) => new()
     {
         Anchored = false,
-        Status = LayerStatus.Unverified,
+        Status = VerificationStatus.Unverified,
         Note = note,
     };
 

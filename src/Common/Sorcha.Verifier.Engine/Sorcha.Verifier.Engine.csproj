@@ -14,6 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Sorcha.Verification.Abstractions\Sorcha.Verification.Abstractions.csproj" />
     <ProjectReference Include="..\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />
     <ProjectReference Include="..\Sorcha.Cryptography.Secp256k1\Sorcha.Cryptography.Secp256k1.csproj" />
   </ItemGroup>

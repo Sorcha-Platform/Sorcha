@@ -11,6 +11,7 @@ using Moq;
 using Sorcha.Verifier.Engine;
 using Sorcha.Verifier.Engine.Models;
 using Xunit;
+using Sorcha.Verification.Abstractions;
 
 namespace Sorcha.Verifier.Tests.Services;
 
@@ -88,7 +89,7 @@ public sealed class Ed25519HolderDelegationTests
 
         outcome.Accepted.Should().BeTrue(string.Join(", ", outcome.Errors));
         var live = outcome.Layers.Should().ContainSingle(l => l.Layer == ValidationLayer.LivePresentation).Subject;
-        live.Status.Should().Be(LayerStatus.Pass);
+        live.Status.Should().Be(VerificationStatus.Verified);
         live.Detail.Should().ContainKey("holder-key").WhoseValue.Should().Be("OKP / Ed25519");
         live.Detail.Should().ContainKey("delegation").WhoseValue.Should().Contain("EdDSA");
         live.Detail["delegation"].Should().Contain("EC / P-256"); // device key stays P-256

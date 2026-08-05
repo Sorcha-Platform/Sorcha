@@ -14,6 +14,7 @@ using Sorcha.Verifier.Engine;
 using Sorcha.Verifier.Engine.Models;
 using Sorcha.UI.Core.Components.Verify;
 using Xunit;
+using Sorcha.Verification.Abstractions;
 
 namespace Sorcha.UI.Core.Tests.Verification;
 
@@ -68,9 +69,9 @@ public class VerdictTrailPanelTests : BunitContext
             IssuerSignature = IssuerSignatureStatus.Verified,
             Layers =
             [
-                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = LayerStatus.Pass, Headline = "Valid KB-JWT" },
-                new ValidationLayerResult { Layer = ValidationLayer.IssuerSignature, Status = LayerStatus.Pass, Headline = "Verified" },
-                new ValidationLayerResult { Layer = ValidationLayer.Revocation, Status = LayerStatus.Pass, Headline = "Not revoked" },
+                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = VerificationStatus.Verified, Headline = "Valid KB-JWT" },
+                new ValidationLayerResult { Layer = ValidationLayer.IssuerSignature, Status = VerificationStatus.Verified, Headline = "Verified" },
+                new ValidationLayerResult { Layer = ValidationLayer.Revocation, Status = VerificationStatus.Verified, Headline = "Not revoked" },
             ],
         };
     }
@@ -127,9 +128,9 @@ public class VerdictTrailPanelTests : BunitContext
             CompletedAt = DateTimeOffset.UtcNow,
             Layers =
             [
-                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = LayerStatus.Pass, Headline = "Valid KB-JWT" },
-                new ValidationLayerResult { Layer = ValidationLayer.IssuerSignature, Status = LayerStatus.Pass, Headline = "Verified" },
-                new ValidationLayerResult { Layer = ValidationLayer.Revocation, Status = LayerStatus.Pass, Headline = "Not revoked" },
+                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = VerificationStatus.Verified, Headline = "Valid KB-JWT" },
+                new ValidationLayerResult { Layer = ValidationLayer.IssuerSignature, Status = VerificationStatus.Verified, Headline = "Verified" },
+                new ValidationLayerResult { Layer = ValidationLayer.Revocation, Status = VerificationStatus.Verified, Headline = "Not revoked" },
             ],
         };
     }
@@ -149,9 +150,9 @@ public class VerdictTrailPanelTests : BunitContext
             IssuerSignature = IssuerSignatureStatus.Verified,
             Layers =
             [
-                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = LayerStatus.Pass, Headline = "Valid KB-JWT" },
-                new ValidationLayerResult { Layer = ValidationLayer.IssuerSignature, Status = LayerStatus.Pass, Headline = "Verified" },
-                new ValidationLayerResult { Layer = ValidationLayer.Revocation, Status = LayerStatus.Pass, Headline = "Not revoked" },
+                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = VerificationStatus.Verified, Headline = "Valid KB-JWT" },
+                new ValidationLayerResult { Layer = ValidationLayer.IssuerSignature, Status = VerificationStatus.Verified, Headline = "Verified" },
+                new ValidationLayerResult { Layer = ValidationLayer.Revocation, Status = VerificationStatus.Verified, Headline = "Not revoked" },
             ],
         };
     }
@@ -173,7 +174,7 @@ public class VerdictTrailPanelTests : BunitContext
             IssuerSignature = IssuerSignatureStatus.NotVerified,
             Layers =
             [
-                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = LayerStatus.Fail, Headline = "nonce mismatch" },
+                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = VerificationStatus.Failed, Headline = "nonce mismatch" },
             ],
         };
     }
@@ -192,9 +193,9 @@ public class VerdictTrailPanelTests : BunitContext
             IssuerSignature = IssuerSignatureStatus.NotVerified,
             Layers =
             [
-                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = LayerStatus.Pass, Headline = "Valid KB-JWT" },
-                new ValidationLayerResult { Layer = ValidationLayer.IssuerSignature, Status = LayerStatus.Unverified, Headline = "Issuer key unresolved" },
-                new ValidationLayerResult { Layer = ValidationLayer.Revocation, Status = LayerStatus.Pass, Headline = "Not revoked" },
+                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = VerificationStatus.Verified, Headline = "Valid KB-JWT" },
+                new ValidationLayerResult { Layer = ValidationLayer.IssuerSignature, Status = VerificationStatus.Unverified, Headline = "Issuer key unresolved" },
+                new ValidationLayerResult { Layer = ValidationLayer.Revocation, Status = VerificationStatus.Verified, Headline = "Not revoked" },
             ],
         };
     }
@@ -216,7 +217,7 @@ public class VerdictTrailPanelTests : BunitContext
             IssuerSignature = IssuerSignatureStatus.NotVerified,
             Layers =
             [
-                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = LayerStatus.Fail, Headline = "nonce mismatch" },
+                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = VerificationStatus.Failed, Headline = "nonce mismatch" },
             ],
         };
     }
@@ -238,9 +239,9 @@ public class VerdictTrailPanelTests : BunitContext
             IssuerSignature = IssuerSignatureStatus.NotVerified,
             Layers =
             [
-                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = LayerStatus.Pass, Headline = "Valid KB-JWT" },
-                new ValidationLayerResult { Layer = ValidationLayer.IssuerSignature, Status = LayerStatus.Unverified, Headline = "Issuer key unresolved" },
-                new ValidationLayerResult { Layer = ValidationLayer.Revocation, Status = LayerStatus.Pass, Headline = "Not revoked" },
+                new ValidationLayerResult { Layer = ValidationLayer.LivePresentation, Status = VerificationStatus.Verified, Headline = "Valid KB-JWT" },
+                new ValidationLayerResult { Layer = ValidationLayer.IssuerSignature, Status = VerificationStatus.Unverified, Headline = "Issuer key unresolved" },
+                new ValidationLayerResult { Layer = ValidationLayer.Revocation, Status = VerificationStatus.Verified, Headline = "Not revoked" },
             ],
         };
     }
@@ -252,7 +253,7 @@ public class VerdictTrailPanelTests : BunitContext
             .ReturnsAsync(new RegisterAnchorResult
             {
                 Anchored = true,
-                Status = LayerStatus.Pass,
+                Status = VerificationStatus.Verified,
                 Note = "Anchored in docket #42.",
             });
 
