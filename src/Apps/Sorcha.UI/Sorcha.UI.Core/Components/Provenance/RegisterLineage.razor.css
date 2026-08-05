@@ -1,0 +1,146 @@
+/* SPDX-License-Identifier: MIT
+   Copyright (c) 2026 Sorcha Contributors
+
+   Isolated styles for the docket spine (Feature 188).
+
+   The roster-change marker is styled as an EVENT on the spine rather than a row attribute, because
+   FR-007 asks for validator-set changes to be visible at the point in history where they occurred —
+   an administrator should see the network grow by scanning, not by reading every row. */
+
+.prov-lineage .hd h2 {
+    margin: 0 0 .15rem;
+    font-size: 1.1rem;
+}
+
+.prov-lineage .sub {
+    margin: 0 0 .9rem;
+    font-size: .82rem;
+    opacity: .75;
+}
+
+.state {
+    font-size: .85rem;
+    opacity: .8;
+    padding: .6rem 0;
+}
+
+.state.err {
+    color: #c5221f;
+}
+
+.spine {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 0 .2rem;
+    border-left: 2px solid var(--mud-palette-lines-default, #e0e0e0);
+}
+
+.docket {
+    position: relative;
+    padding-left: .8rem;
+}
+
+.docket .row {
+    display: flex;
+    align-items: baseline;
+    gap: .7rem;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: 0;
+    padding: .5rem .4rem;
+    cursor: pointer;
+    border-radius: 5px;
+    font: inherit;
+    color: inherit;
+}
+
+.docket .row:hover,
+.docket.sel .row {
+    background: var(--mud-palette-action-default-hover, rgba(0, 0, 0, .04));
+}
+
+.num {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    flex: 0 0 auto;
+}
+
+.meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.when {
+    font-size: .78rem;
+    opacity: .7;
+}
+
+.who {
+    font-size: .82rem;
+    word-break: break-all;
+}
+
+/* "no quorum evidence" is a plain statement of fact, not a warning. It is the normal case on a
+   single-validator deployment, and styling it as a problem would train operators to expect one. */
+.signers {
+    flex: 0 0 auto;
+    font-size: .76rem;
+    opacity: .7;
+}
+
+.roster-change {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin: .35rem 0 .35rem -.9rem;
+    padding: .3rem .55rem;
+    font-size: .78rem;
+    font-weight: 600;
+    color: #8a6116;
+    background: #fef7e0;
+    border-radius: 999px;
+    width: fit-content;
+}
+
+.roster-change .marker {
+    font-size: .7rem;
+}
+
+.more {
+    margin-top: .7rem;
+    padding: .45rem .9rem;
+    font: inherit;
+    font-size: .82rem;
+    cursor: pointer;
+    border-radius: 5px;
+    border: 1px solid var(--mud-palette-lines-default, #e0e0e0);
+    background: none;
+    color: inherit;
+}
+
+@media (prefers-color-scheme: dark) {
+    .spine {
+        border-left-color: rgba(255, 255, 255, .12);
+    }
+
+    .docket .row:hover,
+    .docket.sel .row {
+        background: rgba(255, 255, 255, .06);
+    }
+
+    .roster-change {
+        color: #fdd663;
+        background: rgba(138, 97, 22, .25);
+    }
+
+    .more {
+        border-color: rgba(255, 255, 255, .18);
+    }
+
+    .state.err {
+        color: #f28b82;
+    }
+}

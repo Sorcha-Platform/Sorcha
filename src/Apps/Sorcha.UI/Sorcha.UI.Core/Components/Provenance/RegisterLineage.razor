@@ -1,0 +1,147 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    A register's docket spine (Feature 188) — chronological from genesis, with validator-set changes
+    rendered as events ON the spine so network growth reads as history rather than being inferred
+    from a config file (FR-007).
+
+    THE SPINE RUNS NO VERIFICATION. Selecting a docket loads its trail; listing does not. That is a
+    design constraint, not an optimisation deferred to later — verification is O(n) hashing per
+    docket, so verifying on list would be O(n·m) and SC-007 requires 5,000 dockets to stay usable
+    (plan D6). Do not add a status column here.
+*@
+@namespace Sorcha.UI.Core.Components.Provenance
+@using Sorcha.UI.Core.Models.Provenance
+@using Sorcha.UI.Core.Services
+@inject IProvenanceService Provenance
+
+<div class="prov-lineage" data-testid="register-lineage">
+    <header class="hd">
+        <h2>Provenance</h2>
+        <p class="sub">
+            Every docket from genesis, with who proposed it and how many validators signed.
+            Select a docket to see what can be proven about it.
+        </p>
+    </header>
+
+    @if (_loading && _dockets.Count == 0)
+    {
+        <p class="state" data-testid="lineage-loading">Loading history…</p>
+    }
+    else if (_failed)
+    {
+        <p class="state err" data-testid="lineage-unavailable">
+            Could not load this register's history on this node.
+        </p>
+    }
+    else if (_dockets.Count == 0)
+    {
+        <p class="state" data-testid="lineage-empty">This register has no sealed dockets yet.</p>
+    }
+    else
+    {
+        <ol class="spine" data-testid="lineage-spine">
+            @foreach (var docket in _dockets)
+            {
+                @if (docket.RosterChanged)
+                {
+                    @* The event that makes network growth visible as history. Rendered ON the spine,
+                       between dockets, rather than as a column — an administrator should be able to
+                       see the validator set change without reading every row. *@
+                    <li class="roster-change" data-testid="@($"roster-change-{docket.DocketNumber}")">
+                        <span class="marker" aria-hidden="true">◆</span>
+                        <span class="label">Validator set changed at docket @docket.DocketNumber</span>
+                    </li>
+                }
+
+                <li class="docket @(_selected == docket.DocketNumber ? "sel" : null)"
+                    data-testid="@($"spine-docket-{docket.DocketNumber}")">
+                    <button type="button" class="row" @onclick="() => Select(docket.DocketNumber)">
+                        <span class="num">#@docket.DocketNumber</span>
+                        <span class="meta">
+                            <span class="when">@docket.SealedAt.ToString("u")</span>
+                            <span class="who">
+                                @(string.IsNullOrWhiteSpace(docket.ProposerValidatorId)
+                                    ? "no proposer recorded"
+                                    : $"proposed by {docket.ProposerValidatorId}")
+                            </span>
+                        </span>
+                        @* Zero signers is valid and expected on a single-validator deployment. It is
+                           rendered as a plain statement, NOT as a warning — it means no quorum
+                           evidence was recorded, not that signatures are missing. *@
+                        <span class="signers" data-testid="@($"spine-signers-{docket.DocketNumber}")">
+                            @(docket.SignerCount == 0
+                                ? "no quorum evidence"
+                                : $"{docket.SignerCount} signer{(docket.SignerCount == 1 ? "" : "s")}")
+                        </span>
+                    </button>
+
+                    @if (_selected == docket.DocketNumber)
+                    {
+                        <DocketProvenanceTrail RegisterId="@RegisterId" DocketNumber="@docket.DocketNumber" />
+                    }
+                </li>
+            }
+        </ol>
+
+        @if (_hasMore)
+        {
+            <button type="button" class="more" data-testid="lineage-more"
+                    disabled="@_loading" @onclick="LoadMoreAsync">
+                @(_loading ? "Loading…" : "Load more dockets")
+            </button>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>The register whose history to show.</summary>
+    [Parameter, EditorRequired] public string RegisterId { get; set; } = default!;
+
+    /// <summary>Dockets fetched per page.</summary>
+    [Parameter] public int PageSize { get; set; } = 50;
+
+    private readonly List<DocketSpineView> _dockets = [];
+    private ulong? _next;
+    private bool _hasMore;
+    private bool _loading = true;
+    private bool _failed;
+    private ulong? _selected;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _dockets.Clear();
+        _next = null;
+        _selected = null;
+        _failed = false;
+        await LoadMoreAsync();
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        _loading = true;
+
+        var page = await Provenance.GetSpineAsync(RegisterId, _next, PageSize);
+
+        if (page is null)
+        {
+            // Only a total failure with nothing already shown is a dead end; a failed "load more"
+            // leaves what was already established on screen (FR-020).
+            _failed = _dockets.Count == 0;
+            _hasMore = false;
+        }
+        else
+        {
+            _dockets.AddRange(page.Dockets);
+            _hasMore = page.HasMore;
+            _next = page.NextFromDocket;
+        }
+
+        _loading = false;
+    }
+
+    /// <summary>Selecting a docket is what triggers verification — listing never does.</summary>
+    private void Select(ulong docketNumber) =>
+        _selected = _selected == docketNumber ? null : docketNumber;
+}

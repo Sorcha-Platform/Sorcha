@@ -1,0 +1,119 @@
+/* SPDX-License-Identifier: MIT
+   Copyright (c) 2026 Sorcha Contributors
+
+   Isolated styles for one evidence row (Feature 188).
+
+   THE PALETTE IS THE POINT. `unv` (not verifiable) must never share a colour with `bad` (failed):
+   amber-neutral versus red. A partial replica, a single-validator node and a pre-Feature-187 docket
+   all produce `unv` rows, and an administrator who reads those as failures will conclude their
+   ledger has been tampered with. */
+
+.prov-check {
+    border: 1px solid var(--mud-palette-lines-default, #e0e0e0);
+    border-radius: 6px;
+    margin-bottom: .4rem;
+    background: var(--mud-palette-surface, #fff);
+}
+
+.prov-check > summary {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .55rem .7rem;
+    cursor: pointer;
+    list-style: none;
+}
+
+.prov-check > summary::-webkit-details-marker {
+    display: none;
+}
+
+.ic {
+    flex: 0 0 1.35rem;
+    height: 1.35rem;
+    line-height: 1.35rem;
+    text-align: center;
+    border-radius: 50%;
+    font-size: .8rem;
+    font-weight: 700;
+}
+
+.lx {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.lt {
+    font-weight: 600;
+    font-size: .9rem;
+}
+
+.ld {
+    font-size: .8rem;
+    opacity: .75;
+}
+
+.st {
+    flex: 0 0 auto;
+    font-size: .75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+}
+
+/* Verified — green. */
+.ic.ok { background: #e6f4ea; color: #137333; }
+.st.ok { color: #137333; }
+
+/* Failed — red. The check ran and did not pass. */
+.ic.bad { background: #fce8e6; color: #c5221f; }
+.st.bad { color: #c5221f; }
+
+/* Not verifiable — amber-neutral, deliberately NOT red. The check could not run. */
+.ic.unv { background: #fef7e0; color: #8a6116; }
+.st.unv { color: #8a6116; }
+
+.body {
+    padding: 0 .7rem .65rem 2.65rem;
+    font-size: .82rem;
+}
+
+.body p {
+    margin: .25rem 0;
+    display: flex;
+    gap: .4rem;
+    flex-wrap: wrap;
+}
+
+.body .k {
+    opacity: .6;
+    flex: 0 0 auto;
+}
+
+.body .v {
+    word-break: break-word;
+}
+
+.body .reason .v {
+    color: #8a6116;
+}
+
+@media (prefers-color-scheme: dark) {
+    .prov-check {
+        border-color: rgba(255, 255, 255, .12);
+        background: transparent;
+    }
+
+    .ic.ok { background: rgba(19, 115, 51, .22); color: #81c995; }
+    .st.ok { color: #81c995; }
+
+    .ic.bad { background: rgba(197, 34, 31, .22); color: #f28b82; }
+    .st.bad { color: #f28b82; }
+
+    .ic.unv { background: rgba(138, 97, 22, .25); color: #fdd663; }
+    .st.unv { color: #fdd663; }
+
+    .body .reason .v { color: #fdd663; }
+}

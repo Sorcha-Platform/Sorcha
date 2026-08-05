@@ -1,0 +1,95 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    One row of a docket's evidence trail (Feature 188).
+
+    Deliberately the same stacked-expandable idiom as F155's VerdictTrailPanel — a collapsed row
+    showing status, title and headline, expanding to the values behind the verdict. Two idioms for
+    "here is a layered verification trail" would be one too many.
+
+    THE ONE THING THIS COMPONENT MUST GET RIGHT: Unverified is visually distinct from Failed.
+    Amber-neutral versus red, different glyph, different word. Conflating them is the core misreading
+    of the whole feature — a partial replica, a single-validator node and a pre-Feature-187 docket all
+    produce Unverified rows, and rendering those as failures would tell an administrator their ledger
+    had been tampered with.
+*@
+@namespace Sorcha.UI.Core.Components.Provenance
+@using Sorcha.UI.Core.Models.Provenance
+
+<details class="prov-check @StatusClass" data-testid="@($"provenance-check-{Check.Layer}")">
+    <summary>
+        <span class="ic @StatusClass" aria-hidden="true">@StatusGlyph</span>
+        <span class="lx">
+            <span class="lt">@LayerTitle</span>
+            <span class="ld">@Check.Headline</span>
+        </span>
+        <span class="st @StatusClass" data-testid="@($"provenance-status-{Check.Layer}")">@StatusWord</span>
+    </summary>
+
+    <div class="body">
+        @* FR-002: what the comparison was made against, always shown. A result whose basis the
+           reader cannot restate is an assertion, not evidence — SC-006 is measured on this. *@
+        <p class="against" data-testid="@($"provenance-against-{Check.Layer}")">
+            <span class="k">Checked against</span>
+            <span class="v">@Check.CheckedAgainst</span>
+        </p>
+
+        @if (!string.IsNullOrWhiteSpace(Check.Reason))
+        {
+            @* FR-003 / SC-009: which link could not be established. *@
+            <p class="reason" data-testid="@($"provenance-reason-{Check.Layer}")">
+                <span class="k">Could not be established because</span>
+                <span class="v">@Check.Reason</span>
+            </p>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(Check.Detail))
+        {
+            <p class="detail" data-testid="@($"provenance-detail-{Check.Layer}")">
+                <span class="k">Values</span>
+                <span class="v">@Check.Detail</span>
+            </p>
+        }
+    </div>
+</details>
+
+@code {
+    /// <summary>The check to render.</summary>
+    [Parameter, EditorRequired] public ProvenanceCheckView Check { get; set; } = default!;
+
+    private string StatusClass => Check.Status switch
+    {
+        ProvenanceStatus.Verified => "ok",
+        ProvenanceStatus.Failed => "bad",
+        _ => "unv",
+    };
+
+    private string StatusGlyph => Check.Status switch
+    {
+        ProvenanceStatus.Verified => "✓",
+        ProvenanceStatus.Failed => "✗",
+        _ => "?",
+    };
+
+    /// <summary>
+    /// "Not verifiable" rather than "Unverified" — it reads as a property of the evidence rather
+    /// than as a soft failure of the check.
+    /// </summary>
+    private string StatusWord => Check.Status switch
+    {
+        ProvenanceStatus.Verified => "Verified",
+        ProvenanceStatus.Failed => "Failed",
+        _ => "Not verifiable",
+    };
+
+    private string LayerTitle => Check.Layer switch
+    {
+        "anchor" => "Trust anchor",
+        "chain" => "Links to predecessor",
+        "seal" => "Contents match the seal",
+        "signers" => "Signers held authority",
+        "proposer" => "Proposer held authority",
+        _ => Check.Layer,
+    };
+}
