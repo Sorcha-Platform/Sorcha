@@ -14,6 +14,13 @@ using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services.Interfaces;
 using System.Diagnostics;
+using Sorcha.Register.Models;
+// Sorcha.Register.Models and Sorcha.Validator.Service.Models BOTH declare a Docket (#1371).
+// The alias is required, not stylistic, in any file importing both namespaces.
+using Docket = Sorcha.Validator.Service.Models.Docket;
+// The gRPC contract also declares a VoteDecision (Sorcha.Validator.Grpc.V1). Bare
+// VoteDecision means the canonical ledger enum; the proto one stays Grpc.V1.VoteDecision.
+using VoteDecision = Sorcha.Register.Models.VoteDecision;
 
 namespace Sorcha.Validator.Service.Services;
 
@@ -158,7 +165,7 @@ public class ConsensusEngine : IConsensusEngine
             // Step 4: Validate votes and check for consensus
             var validVotes = await ValidateVotesAsync(collectedVotes!, docket, cancellationToken);
 
-            var approvalCount = validVotes.Count(v => v.Decision == Models.VoteDecision.Approve);
+            var approvalCount = validVotes.Count(v => v.Decision == VoteDecision.Approve);
             var totalValidators = validators.Count;
             var approvalPercentage = (double)approvalCount / totalValidators;
 
@@ -174,7 +181,7 @@ public class ConsensusEngine : IConsensusEngine
                 _consensusConfig.ApprovalThreshold);
 
             // Step 5: Report any invalid proposer behavior
-            var rejectedVotes = validVotes.Where(v => v.Decision == Models.VoteDecision.Reject).ToList();
+            var rejectedVotes = validVotes.Where(v => v.Decision == VoteDecision.Reject).ToList();
             if (rejectedVotes.Count > totalValidators / 2)
             {
                 // Majority rejected - report proposer as potentially malicious
@@ -416,9 +423,9 @@ public class ConsensusEngine : IConsensusEngine
                 ValidatorId = response.ValidatorId,
                 Decision = response.Decision switch
                 {
-                    Sorcha.Validator.Grpc.V1.VoteDecision.Approve => Models.VoteDecision.Approve,
-                    Sorcha.Validator.Grpc.V1.VoteDecision.Reject => Models.VoteDecision.Reject,
-                    _ => Models.VoteDecision.Reject
+                    Sorcha.Validator.Grpc.V1.VoteDecision.Approve => VoteDecision.Approve,
+                    Sorcha.Validator.Grpc.V1.VoteDecision.Reject => VoteDecision.Reject,
+                    _ => VoteDecision.Reject
                 },
                 RejectionReason = response.Decision == Sorcha.Validator.Grpc.V1.VoteDecision.Reject ? response.RejectionReason : null,
                 VotedAt = response.VotedAt.ToDateTimeOffset(),
@@ -559,7 +566,7 @@ public class ConsensusEngine : IConsensusEngine
             VoteId = voteId,
             DocketId = docket.DocketId,
             ValidatorId = _validatorConfig.ValidatorId,
-            Decision = Models.VoteDecision.Approve,
+            Decision = VoteDecision.Approve,
             VotedAt = votedAt,
             ValidatorSignature = new Models.Signature
             {
@@ -596,7 +603,7 @@ public class ConsensusEngine : IConsensusEngine
             VoteId = voteId,
             DocketId = docket.DocketId,
             ValidatorId = _validatorConfig.ValidatorId,
-            Decision = Models.VoteDecision.Reject,
+            Decision = VoteDecision.Reject,
             RejectionReason = reason,
             VotedAt = votedAt,
             ValidatorSignature = new Models.Signature

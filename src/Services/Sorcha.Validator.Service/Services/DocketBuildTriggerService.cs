@@ -9,6 +9,9 @@ using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services.Interfaces;
 using Sorcha.ServiceClients.Register;
 using Sorcha.Register.Models;
+// Sorcha.Register.Models and Sorcha.Validator.Service.Models BOTH declare a Docket (#1371).
+// The alias is required, not stylistic, in any file importing both namespaces.
+using Docket = Sorcha.Validator.Service.Models.Docket;
 
 namespace Sorcha.Validator.Service.Services;
 

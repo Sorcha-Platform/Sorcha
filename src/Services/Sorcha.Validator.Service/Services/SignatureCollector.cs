@@ -9,6 +9,14 @@ using Microsoft.Extensions.Options;
 using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services.Interfaces;
+using Sorcha.Register.Models;
+// Sorcha.Register.Models and Sorcha.Validator.Service.Models BOTH declare a Docket (#1371).
+// The alias is required, not stylistic, in any file importing both namespaces.
+using Docket = Sorcha.Validator.Service.Models.Docket;
+// Sorcha.Register.Models.ValidatorSignature (a receipt signature, F079) and
+// Sorcha.Validator.Service.Services.Interfaces.ValidatorSignature (a signature-collection
+// record) are DIFFERENT concepts that share a name. Alias to the local one.
+using ValidatorSignature = Sorcha.Validator.Service.Services.Interfaces.ValidatorSignature;
 
 namespace Sorcha.Validator.Service.Services;
 

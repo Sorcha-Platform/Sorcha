@@ -11,6 +11,13 @@ using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Service.Services.Interfaces;
 using Sorcha.Validator.Service.Models;
+using Sorcha.Register.Models;
+// Sorcha.Register.Models and Sorcha.Validator.Service.Models BOTH declare a Docket (#1371).
+// The alias is required, not stylistic, in any file importing both namespaces.
+using Docket = Sorcha.Validator.Service.Models.Docket;
+// The gRPC contract has its own VoteDecision (Sorcha.Validator.Grpc.V1). Bare VoteDecision
+// means the canonical ledger enum; the proto one is always written Grpc.V1.VoteDecision.
+using VoteDecision = Sorcha.Register.Models.VoteDecision;
 
 namespace Sorcha.Validator.Service.GrpcServices;
 
@@ -88,7 +95,7 @@ public class ValidatorGrpcService : Sorcha.Validator.Grpc.V1.ValidatorService.Va
             var response = new VoteResponse
             {
                 VoteId = vote.VoteId,
-                Decision = vote.Decision == Models.VoteDecision.Approve
+                Decision = vote.Decision == VoteDecision.Approve
                     ? Grpc.V1.VoteDecision.Approve
                     : Grpc.V1.VoteDecision.Reject,
                 RejectionReason = vote.RejectionReason ?? string.Empty,
@@ -142,7 +149,7 @@ public class ValidatorGrpcService : Sorcha.Validator.Grpc.V1.ValidatorService.Va
             var vote = await _consensusEngine.ValidateAndVoteAsync(docket, context.CancellationToken);
 
             // Determine if docket should be persisted
-            var shouldPersist = vote.Decision == Models.VoteDecision.Approve;
+            var shouldPersist = vote.Decision == VoteDecision.Approve;
 
             var response = new DocketValidationResponse
             {
@@ -505,8 +512,8 @@ public class ValidatorGrpcService : Sorcha.Validator.Grpc.V1.ValidatorService.Va
             DocketId = protoVote.DocketId,
             ValidatorId = protoVote.ValidatorId,
             Decision = protoVote.Decision == Grpc.V1.VoteDecision.Approve
-                ? Models.VoteDecision.Approve
-                : Models.VoteDecision.Reject,
+                ? VoteDecision.Approve
+                : VoteDecision.Reject,
             RejectionReason = string.IsNullOrEmpty(protoVote.RejectionReason) ? null : protoVote.RejectionReason,
             VotedAt = protoVote.VotedAt.ToDateTimeOffset(),
             ValidatorSignature = new Models.Signature
@@ -530,7 +537,7 @@ public class ValidatorGrpcService : Sorcha.Validator.Grpc.V1.ValidatorService.Va
             VoteId = vote.VoteId,
             DocketId = vote.DocketId,
             ValidatorId = vote.ValidatorId,
-            Decision = vote.Decision == Models.VoteDecision.Approve
+            Decision = vote.Decision == VoteDecision.Approve
                 ? Grpc.V1.VoteDecision.Approve
                 : Grpc.V1.VoteDecision.Reject,
             RejectionReason = vote.RejectionReason ?? string.Empty,

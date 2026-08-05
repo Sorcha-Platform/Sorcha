@@ -15,6 +15,9 @@ using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Service.Services.Interfaces;
 using RegisterModels = Sorcha.Register.Models;
 using ValidatorInfo = Sorcha.ServiceClients.Peer.ValidatorInfo;
+using Sorcha.Register.Models;
+// Both namespaces declare a Docket (#1371); the alias is required, not stylistic.
+using Docket = Sorcha.Validator.Service.Models.Docket;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
@@ -388,7 +391,7 @@ public class ConsensusEngineTests
 
         // Assert
         vote.Should().NotBeNull();
-        vote.Decision.Should().Be(Models.VoteDecision.Approve);
+        vote.Decision.Should().Be(VoteDecision.Approve);
         vote.ValidatorId.Should().Be(_validatorConfig.ValidatorId);
         vote.DocketId.Should().Be(docket.DocketId);
         vote.DocketHash.Should().Be(docket.DocketHash);
@@ -409,7 +412,7 @@ public class ConsensusEngineTests
         var vote = await _engine.ValidateAndVoteAsync(docket);
 
         // Assert
-        vote.Decision.Should().Be(Models.VoteDecision.Reject);
+        vote.Decision.Should().Be(VoteDecision.Reject);
         vote.RejectionReason.Should().Contain("Missing docket hash");
     }
 
@@ -464,7 +467,7 @@ public class ConsensusEngineTests
         var vote = await _engine.ValidateAndVoteAsync(docket);
 
         // Assert
-        vote.Decision.Should().Be(Models.VoteDecision.Reject);
+        vote.Decision.Should().Be(VoteDecision.Reject);
         vote.RejectionReason.Should().Contain("Missing previous hash");
     }
 
@@ -495,7 +498,7 @@ public class ConsensusEngineTests
         var vote = await _engine.ValidateAndVoteAsync(docket);
 
         // Assert
-        vote.Decision.Should().Be(Models.VoteDecision.Reject);
+        vote.Decision.Should().Be(VoteDecision.Reject);
         vote.RejectionReason.Should().Contain("Invalid proposer signature");
     }
 
@@ -519,7 +522,7 @@ public class ConsensusEngineTests
         var vote = await _engine.ValidateAndVoteAsync(docket);
 
         // Assert
-        vote.Decision.Should().Be(Models.VoteDecision.Reject);
+        vote.Decision.Should().Be(VoteDecision.Reject);
         vote.RejectionReason.Should().Contain("Previous docket not found");
     }
 
@@ -555,7 +558,7 @@ public class ConsensusEngineTests
         var vote = await _engine.ValidateAndVoteAsync(docket);
 
         // Assert
-        vote.Decision.Should().Be(Models.VoteDecision.Reject);
+        vote.Decision.Should().Be(VoteDecision.Reject);
         vote.RejectionReason.Should().Contain("Previous hash mismatch");
     }
 
@@ -609,7 +612,7 @@ public class ConsensusEngineTests
         var vote = await _engine.ValidateAndVoteAsync(docket);
 
         // Assert
-        vote.Decision.Should().Be(Models.VoteDecision.Reject);
+        vote.Decision.Should().Be(VoteDecision.Reject);
         vote.RejectionReason.Should().Contain("Transaction").And.Contain("validation failed");
     }
 
@@ -629,7 +632,7 @@ public class ConsensusEngineTests
         var vote = await _engine.ValidateAndVoteAsync(docket);
 
         // Assert
-        vote.Decision.Should().Be(Models.VoteDecision.Reject);
+        vote.Decision.Should().Be(VoteDecision.Reject);
         vote.RejectionReason.Should().Contain("Validation error");
     }
 

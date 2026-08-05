@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Register.Models;
+// The gRPC contract also declares a VoteDecision (Sorcha.Validator.Grpc.V1). Bare
+// VoteDecision means the canonical ledger enum; the proto one stays Grpc.V1.VoteDecision.
+using VoteDecision = Sorcha.Register.Models.VoteDecision;
+
 namespace Sorcha.Validator.Service.Models;
 
 /// <summary>
