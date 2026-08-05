@@ -1,0 +1,170 @@
+openapi: 3.1.0
+info:
+  title: Sorcha Provenance API
+  version: "1.0.0"
+  description: >
+    Read-only provenance surfaces: register lineage and per-docket verification.
+
+    Two endpoints rather than one, deliberately. The spine runs NO checks; the trail verifies a
+    single docket. Verification is O(n) hashing per docket, so a spine that verified eagerly would
+    be O(n*m) on a list view. Separate routes make the expensive path impossible to enter by
+    accident.
+
+    Phase 1 covers register lineage only. The instance surface is Phase 2 and is documented here as
+    reserved so the route shape is settled, not implemented.
+
+servers:
+  - url: /api
+
+paths:
+  /provenance/registers/{registerId}:
+    get:
+      operationId: getRegisterSpine
+      summary: List a register's dockets from genesis
+      description: >
+        Returns docket summaries in order, each with its proposer, signer count, and whether the
+        validator set changed at that point. Runs NO verification — see the per-docket trail
+        endpoint for that.
+      tags: [Provenance]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: registerId, in: path, required: true, schema: { type: string } }
+        - { name: fromDocket, in: query, schema: { type: integer, format: int64, minimum: 0 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        "200":
+          description: Ordered docket summaries
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RegisterSpine" }
+        "401": { description: Not authenticated }
+        "403": { description: Not an administrator of the owning organisation }
+        "404": { description: No such register on this node }
+
+  /provenance/registers/{registerId}/dockets/{docketNumber}:
+    get:
+      operationId: getDocketTrail
+      summary: Verify one docket and return its evidence trail
+      description: >
+        Runs the provenance checks for a single docket and returns one result per layer, each
+        stating what it was compared against.
+
+        Returns 200 even when evidence is missing: affected checks report `unverified` with a
+        reason. An auditor needs to know WHICH link could not be established, and a 5xx tells them
+        nothing. Genuine faults (unknown register, unknown docket) keep their normal status codes.
+      tags: [Provenance]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: registerId, in: path, required: true, schema: { type: string } }
+        - { name: docketNumber, in: path, required: true, schema: { type: integer, format: int64, minimum: 0 } }
+      responses:
+        "200":
+          description: The docket's provenance trail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProvenanceTrail" }
+        "401": { description: Not authenticated }
+        "403": { description: Not an administrator of the owning organisation }
+        "404": { description: No such register or docket on this node }
+
+  /provenance/instances/{instanceId}:
+    get:
+      operationId: getInstanceLineage
+      summary: "Application lineage (Phase 2 — reserved, not implemented)"
+      description: >
+        Reserved so the route shape is settled. Phase 1 does not implement it; it returns 501.
+      tags: [Provenance]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: instanceId, in: path, required: true, schema: { type: string } }
+      responses:
+        "501": { description: Not implemented in Phase 1 }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Requires an administrator role AND the platform-tier audience — the tier gate is composed
+        on the role gate, not instead of it (CLAUDE.md pattern #13).
+
+  schemas:
+    VerificationStatus:
+      type: string
+      enum: [verified, failed, unverified]
+      description: >
+        `unverified` means the check COULD NOT RUN. It is a first-class result, not an error and
+        not a failure, and it never vetoes an otherwise-passing trail. A check that did not run
+        must never report `verified`.
+
+    ProvenanceLayer:
+      type: string
+      enum: [anchor, chain, seal, signers, proposer]
+
+    ProvenanceCheck:
+      type: object
+      required: [layer, status, headline, checkedAgainst]
+      properties:
+        layer: { $ref: "#/components/schemas/ProvenanceLayer" }
+        status: { $ref: "#/components/schemas/VerificationStatus" }
+        headline:
+          type: string
+          description: One line a reader can act on.
+        detail:
+          type: string
+          nullable: true
+          description: The values behind the verdict.
+        checkedAgainst:
+          type: string
+          description: >
+            REQUIRED. What the comparison was made against. For `seal` this must read as
+            "recomputed from the docket's stored transaction ids" rather than implying independent
+            validation — recomputing with the same algorithm that sealed proves the stored data is
+            unchanged, not that the algorithm is correct.
+        reason:
+          type: string
+          nullable: true
+          description: Why the check could not run. Present when status is `unverified`.
+
+    ProvenanceTrail:
+      type: object
+      required: [registerId, docketNumber, checks]
+      properties:
+        registerId: { type: string }
+        docketNumber: { type: integer, format: int64 }
+        checks:
+          type: array
+          items: { $ref: "#/components/schemas/ProvenanceCheck" }
+          description: Ordered broadest-first — anchor, chain, seal, signers, proposer.
+
+    DocketSpineEntry:
+      type: object
+      required: [docketNumber, sealedAt, proposerValidatorId, signerCount, rosterChanged]
+      properties:
+        docketNumber: { type: integer, format: int64 }
+        sealedAt: { type: string, format: date-time }
+        proposerValidatorId: { type: string }
+        signerCount:
+          type: integer
+          description: >
+            Zero is valid and expected on single-validator deployments — it means no quorum
+            evidence was recorded, not that signatures are missing or invalid.
+        rosterChanged:
+          type: boolean
+          description: The validator set changed at this docket. This is what makes network growth visible as history.
+      description: >
+        Carries NO check results, deliberately. Verification belongs to the trail endpoint; a
+        status field here would invite population and reintroduce the list-path cost.
+
+    RegisterSpine:
+      type: object
+      required: [registerId, dockets, hasMore]
+      properties:
+        registerId: { type: string }
+        dockets:
+          type: array
+          items: { $ref: "#/components/schemas/DocketSpineEntry" }
+        hasMore: { type: boolean }
+        nextFromDocket: { type: integer, format: int64, nullable: true }
