@@ -14,6 +14,7 @@ using Moq;
 using Sorcha.Verifier.Engine;
 using Sorcha.Verifier.Engine.Models;
 using Xunit;
+using Sorcha.Verification.Abstractions;
 
 namespace Sorcha.Verifier.Tests.Services;
 
@@ -74,7 +75,7 @@ public sealed class ServerCustodyPresentationTests
         // records server-custody honestly (no fabricated delegation). This layer Pass IS the
         // "HolderKeyVerified == true" signal (VerificationOutcome exposes no separate flag).
         var live = outcome.Layers.Should().ContainSingle(l => l.Layer == ValidationLayer.LivePresentation).Subject;
-        live.Status.Should().Be(LayerStatus.Pass);
+        live.Status.Should().Be(VerificationStatus.Verified);
         live.Detail.Should().ContainKey("delegation")
             .WhoseValue.Should().Contain("server-custody (none)");
     }
@@ -201,7 +202,7 @@ public sealed class ServerCustodyPresentationTests
         outcome.Accepted.Should().BeTrue(string.Join(", ", outcome.Errors));
         outcome.IssuerSignature.Should().Be(IssuerSignatureStatus.Verified);
         outcome.Layers.Should().Contain(l =>
-            l.Layer == ValidationLayer.IssuerSignature && l.Status == LayerStatus.Pass);
+            l.Layer == ValidationLayer.IssuerSignature && l.Status == VerificationStatus.Verified);
     }
 
     [Fact]
@@ -220,6 +221,6 @@ public sealed class ServerCustodyPresentationTests
         outcome.Errors.Should().Contain(e => e.Contains("RequireIssuerSignature", StringComparison.Ordinal),
             "an unresolved issuer key under RequireIssuerSignature must name the requirement it failed");
         outcome.Layers.Should().Contain(l =>
-            l.Layer == ValidationLayer.IssuerSignature && l.Status == LayerStatus.Fail);
+            l.Layer == ValidationLayer.IssuerSignature && l.Status == VerificationStatus.Failed);
     }
 }

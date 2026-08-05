@@ -3,6 +3,7 @@
 
 using Sorcha.UI.Components.User.Models.Verification;
 using Sorcha.UI.Core.Services.Credentials;
+using Sorcha.Verification.Abstractions;
 using Sorcha.Verifier.Engine.Models;
 
 namespace Sorcha.UI.Components.User.Models.Verification;
@@ -125,7 +126,7 @@ public sealed class VerdictViewModel
             null => outcome.Accepted ? "Verified" : "Not verified",
         };
 
-        var overallPass = outcome.Accepted && outcome.Layers.All(l => l.Status != LayerStatus.Fail);
+        var overallPass = outcome.Accepted && outcome.Layers.All(l => l.Status != VerificationStatus.Failed);
 
         // The treatment follows the ASKED question, not what happened to be disclosed: an age-threshold
         // preset requires age_over_18 and does NOT ask for the name.

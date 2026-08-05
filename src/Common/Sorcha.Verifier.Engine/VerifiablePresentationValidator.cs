@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto.Signers;
 using Sorcha.Cryptography.Secp256k1;
+using Sorcha.Verification.Abstractions;
 using Sorcha.Verifier.Engine.Models;
 
 namespace Sorcha.Verifier.Engine;
@@ -992,7 +993,7 @@ internal sealed class LayerState
             layers.Add(new ValidationLayerResult
             {
                 Layer = ValidationLayer.LivePresentation,
-                Status = live ? LayerStatus.Pass : LayerStatus.Fail,
+                Status = live ? VerificationStatus.Verified : VerificationStatus.Failed,
                 Headline = live ? "Live holder presentation verified" : "Live presentation check failed",
                 Detail = detail,
             });
@@ -1004,16 +1005,16 @@ internal sealed class LayerState
             var (status, headline, note) = IssuerSignature switch
             {
                 IssuerLayer.ResolvedVerified =>
-                    (LayerStatus.Pass, "Issuer signature verified", "issuer key resolved; JWS verified"),
+                    (VerificationStatus.Verified, "Issuer signature verified", "issuer key resolved; JWS verified"),
                 IssuerLayer.ResolvedFailed =>
-                    (LayerStatus.Fail, "Issuer signature invalid", "issuer key resolved; JWS verification failed"),
+                    (VerificationStatus.Failed, "Issuer signature invalid", "issuer key resolved; JWS verification failed"),
                 IssuerLayer.UnresolvedRequired =>
-                    (LayerStatus.Fail, "Issuer key could not be resolved",
+                    (VerificationStatus.Failed, "Issuer key could not be resolved",
                         "issuer key unresolved and RequireIssuerSignature is enabled"),
                 IssuerLayer.UnresolvedNotRequired =>
-                    (LayerStatus.Unverified, "Issuer signature not verified",
+                    (VerificationStatus.Unverified, "Issuer signature not verified",
                         "issuer key unresolved; accepted on holder→device chain (RequireIssuerSignature off)"),
-                _ => (LayerStatus.Unverified, "Issuer signature not verified", "not checked"),
+                _ => (VerificationStatus.Unverified, "Issuer signature not verified", "not checked"),
             };
 
             var detail = new Dictionary<string, string>
@@ -1035,16 +1036,16 @@ internal sealed class LayerState
         }
 
         // ── Revocation ───────────────────────────────────────────────────────────
-        //   Only surfaced when the credential/delegation carried a status reference. Active→Pass,
-        //   Revoked→Fail, Unverifiable→Unverified.
+        //   Only surfaced when the credential/delegation carried a status reference. Active→Verified,
+        //   Revoked→Failed, Unverifiable→Unverified.
         if (Revocation is { } verdict)
         {
             var (status, headline) = verdict switch
             {
-                StatusListVerdict.Active => (LayerStatus.Pass, "Not revoked"),
-                StatusListVerdict.Revoked => (LayerStatus.Fail, "Credential revoked"),
-                StatusListVerdict.Unverifiable => (LayerStatus.Unverified, "Revocation status unverifiable"),
-                _ => (LayerStatus.Unverified, "Revocation status unverifiable"),
+                StatusListVerdict.Active => (VerificationStatus.Verified, "Not revoked"),
+                StatusListVerdict.Revoked => (VerificationStatus.Failed, "Credential revoked"),
+                StatusListVerdict.Unverifiable => (VerificationStatus.Unverified, "Revocation status unverifiable"),
+                _ => (VerificationStatus.Unverified, "Revocation status unverifiable"),
             };
 
             var detail = new Dictionary<string, string>

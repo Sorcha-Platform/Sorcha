@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json;
+using Sorcha.Verification.Abstractions;
 using Sorcha.Verifier.Engine.Models;
 
 namespace Sorcha.UI.Components.User.Services.Verification;
@@ -25,9 +26,9 @@ public static class HaipOutcomeMapper
         string? vpToken,
         DateTimeOffset completedAt)
     {
-        var live = accepted && holderKeyVerified ? LayerStatus.Pass : LayerStatus.Fail;
-        var issuer = accepted ? LayerStatus.Pass : LayerStatus.Fail;
-        var revocation = accepted ? LayerStatus.Pass : LayerStatus.Fail;
+        var live = accepted && holderKeyVerified ? VerificationStatus.Verified : VerificationStatus.Failed;
+        var issuer = accepted ? VerificationStatus.Verified : VerificationStatus.Failed;
+        var revocation = accepted ? VerificationStatus.Verified : VerificationStatus.Failed;
 
         var (iss, jti) = ExtractIssuerAndJti(vpToken);
 
@@ -41,20 +42,20 @@ public static class HaipOutcomeMapper
             {
                 Layer = ValidationLayer.LivePresentation,
                 Status = live,
-                Headline = live == LayerStatus.Pass ? "Proved on the holder's own device" : "Live presentation failed",
+                Headline = live == VerificationStatus.Verified ? "Proved on the holder's own device" : "Live presentation failed",
             },
             new()
             {
                 Layer = ValidationLayer.IssuerSignature,
                 Status = issuer,
-                Headline = issuer == LayerStatus.Pass ? "Signed by the issuer" : "Issuer signature not verified",
+                Headline = issuer == VerificationStatus.Verified ? "Signed by the issuer" : "Issuer signature not verified",
                 Detail = issuerDetail,
             },
             new()
             {
                 Layer = ValidationLayer.Revocation,
                 Status = revocation,
-                Headline = revocation == LayerStatus.Pass ? "Checked against the issuer's status list" : "Revocation check failed",
+                Headline = revocation == VerificationStatus.Verified ? "Checked against the issuer's status list" : "Revocation check failed",
             },
         };
 

@@ -9,6 +9,7 @@
 *@
 @namespace Sorcha.UI.Core.Components.Verify
 @using Sorcha.UI.Components.User.Models.Verification
+@using Sorcha.Verification.Abstractions
 @using Sorcha.Verifier.Engine
 @using Sorcha.Verifier.Engine.Models
 @inject IRegisterAnchorClient AnchorClient
@@ -178,8 +179,8 @@
                 Status = result.Status,
                 Headline = result.Status switch
                 {
-                    LayerStatus.Pass => "anchored",
-                    LayerStatus.Fail => "proof invalid",
+                    VerificationStatus.Verified => "anchored",
+                    VerificationStatus.Failed => "proof invalid",
                     _ => "unverified",
                 },
                 Detail = detail,
@@ -253,17 +254,17 @@
         _ => layer.ToString(),
     };
 
-    private static string StatusGlyph(LayerStatus s) => s switch
+    private static string StatusGlyph(VerificationStatus s) => s switch
     {
-        LayerStatus.Pass => "✓", LayerStatus.Fail => "✗", _ => "?",
+        VerificationStatus.Verified => "✓", VerificationStatus.Failed => "✗", _ => "?",
     };
-    private static string StatusWord(LayerStatus s) => s switch
+    private static string StatusWord(VerificationStatus s) => s switch
     {
-        LayerStatus.Pass => "Pass", LayerStatus.Fail => "Fail", _ => "Unverified",
+        VerificationStatus.Verified => "Pass", VerificationStatus.Failed => "Fail", _ => "Unverified",
     };
-    private static string StatusClass(LayerStatus s) => s switch
+    private static string StatusClass(VerificationStatus s) => s switch
     {
-        LayerStatus.Pass => "ok", LayerStatus.Fail => "bad", _ => "q",
+        VerificationStatus.Verified => "ok", VerificationStatus.Failed => "bad", _ => "q",
     };
 
     private static string PortraitSrc(string token) =>

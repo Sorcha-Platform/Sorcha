@@ -7,6 +7,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Sorcha.Verifier.Engine.Models;
 using Xunit;
+using Sorcha.Verification.Abstractions;
 
 namespace Sorcha.Verifier.Tests.Models;
 
@@ -47,14 +48,14 @@ public sealed class VerificationOutcomeLayersTests
                 new ValidationLayerResult
                 {
                     Layer = ValidationLayer.Revocation,
-                    Status = LayerStatus.Pass,
+                    Status = VerificationStatus.Verified,
                     Headline = "Not revoked",
                     Detail = new Dictionary<string, string> { ["idx"] = "1842", ["status"] = "0 (valid)" },
                 },
                 new ValidationLayerResult
                 {
                     Layer = ValidationLayer.RegisterAnchor,
-                    Status = LayerStatus.Unverified,
+                    Status = VerificationStatus.Unverified,
                     Headline = "Anchor not found",
                 },
             ],
@@ -66,10 +67,10 @@ public sealed class VerificationOutcomeLayersTests
         round.Should().NotBeNull();
         round!.Layers.Should().HaveCount(2);
         round.Layers[0].Layer.Should().Be(ValidationLayer.Revocation);
-        round.Layers[0].Status.Should().Be(LayerStatus.Pass);
+        round.Layers[0].Status.Should().Be(VerificationStatus.Verified);
         round.Layers[0].Detail["idx"].Should().Be("1842");
         round.Layers[1].Layer.Should().Be(ValidationLayer.RegisterAnchor);
-        round.Layers[1].Status.Should().Be(LayerStatus.Unverified);
+        round.Layers[1].Status.Should().Be(VerificationStatus.Unverified);
         round.Layers[1].Detail.Should().BeEmpty();
     }
 }
