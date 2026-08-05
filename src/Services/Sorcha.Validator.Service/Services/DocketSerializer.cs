@@ -101,7 +101,7 @@ public static class DocketSerializer
         };
     }
 
-    private static SignatureDto ToSignatureDto(Signature sig) => new()
+    private static SignatureDto ToSignatureDto(RegisterSignature sig) => new()
     {
         PublicKey = Base64Url.EncodeToString(sig.PublicKey),
         SignatureValue = Base64Url.EncodeToString(sig.SignatureValue),
@@ -109,7 +109,7 @@ public static class DocketSerializer
         SignedAt = sig.SignedAt
     };
 
-    private static Signature FromSignatureDto(SignatureDto dto) => new()
+    private static RegisterSignature FromSignatureDto(SignatureDto dto) => new()
     {
         PublicKey = Base64Url.DecodeFromChars(dto.PublicKey),
         SignatureValue = Base64Url.DecodeFromChars(dto.SignatureValue),

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.Validator.Service.Models;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Services;
 
@@ -114,7 +115,7 @@ public interface IWalletIntegrationService
     /// <exception cref="CryptographicException">
     /// Thrown if signing fails or derived key retrieval fails.
     /// </exception>
-    Task<Signature> SignDocketAsync(byte[] docketHash, CancellationToken ct = default);
+    Task<RegisterSignature> SignDocketAsync(byte[] docketHash, CancellationToken ct = default);
 
     /// <summary>
     /// Signs a consensus vote hash using the validator's wallet.
@@ -140,7 +141,7 @@ public interface IWalletIntegrationService
     /// <exception cref="CryptographicException">
     /// Thrown if signing fails or derived key retrieval fails.
     /// </exception>
-    Task<Signature> SignVoteAsync(byte[] voteHash, CancellationToken ct = default);
+    Task<RegisterSignature> SignVoteAsync(byte[] voteHash, CancellationToken ct = default);
 
     /// <summary>
     /// Verifies a signature against a hash and public key.

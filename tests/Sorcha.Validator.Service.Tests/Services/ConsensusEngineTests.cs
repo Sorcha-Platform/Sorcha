@@ -653,9 +653,9 @@ public class ConsensusEngineTests
                 ActionId = "action-1",
                 Payload = JsonDocument.Parse("{\"data\":\"test\"}").RootElement,
                 PayloadHash = "payload-hash-1",
-                Signatures = new List<Signature>
+                Signatures = new List<RegisterSignature>
                 {
-                    new Signature
+                    new RegisterSignature
                     {
                         PublicKey = System.Text.Encoding.UTF8.GetBytes("tx-signer-key"),
                         SignatureValue = System.Text.Encoding.UTF8.GetBytes("tx-signature"),
@@ -679,7 +679,7 @@ public class ConsensusEngineTests
             Transactions = transactions,
             Status = DocketStatus.Proposed,
             ProposerValidatorId = "validator-proposer",
-            ProposerSignature = new Signature
+            ProposerSignature = new RegisterSignature
             {
                 PublicKey = System.Text.Encoding.UTF8.GetBytes("proposer-key"),
                 SignatureValue = System.Text.Encoding.UTF8.GetBytes("proposer-sig"),

@@ -9,6 +9,7 @@ using Sorcha.Cryptography.Utilities;
 using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services.Interfaces;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Services;
 
@@ -60,7 +61,7 @@ public class DocketConfirmer : IDocketConfirmer
     /// <inheritdoc/>
     public async Task<DocketConfirmationResult> ConfirmDocketAsync(
         Docket docket,
-        Signature initiatorSignature,
+        RegisterSignature initiatorSignature,
         long term,
         CancellationToken ct = default)
     {
@@ -332,7 +333,7 @@ public class DocketConfirmer : IDocketConfirmer
 
     private async Task<DocketConfirmationResult?> VerifyInitiatorSignatureAsync(
         Docket docket,
-        Signature initiatorSignature,
+        RegisterSignature initiatorSignature,
         CancellationToken ct)
     {
         try
@@ -546,7 +547,7 @@ public class DocketConfirmer : IDocketConfirmer
         return null;
     }
 
-    private async Task<Signature> SignDocketAsync(Docket docket, CancellationToken ct)
+    private async Task<RegisterSignature> SignDocketAsync(Docket docket, CancellationToken ct)
     {
         var docketHashBytes = Encoding.UTF8.GetBytes(docket.DocketHash);
         return await _walletService.SignDocketAsync(docketHashBytes, ct);

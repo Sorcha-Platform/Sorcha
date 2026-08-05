@@ -25,6 +25,7 @@ using IBlueprintCache = Sorcha.Validator.Service.Services.Interfaces.IBlueprintC
 using ITransactionPoolPoller = Sorcha.Validator.Service.Services.Interfaces.ITransactionPoolPoller;
 using IValidationEngine = Sorcha.Validator.Service.Services.Interfaces.IValidationEngine;
 using IVerifiedTransactionQueue = Sorcha.Validator.Service.Services.Interfaces.IVerifiedTransactionQueue;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Tests.Endpoints;
 
@@ -409,7 +410,7 @@ public class AdminEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
                 CreatedAt = DateTimeOffset.UtcNow,
                 MerkleRoot = "merkle-root",
                 ProposerValidatorId = "validator-1",
-                ProposerSignature = new Signature
+                ProposerSignature = new RegisterSignature
                 {
                     PublicKey = System.Text.Encoding.UTF8.GetBytes("pub-key"),
                     SignatureValue = System.Text.Encoding.UTF8.GetBytes("sig-value"),
@@ -487,7 +488,7 @@ public class AdminEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
                 CreatedAt = DateTimeOffset.UtcNow,
                 MerkleRoot = "merkle-root",
                 ProposerValidatorId = "validator-1",
-                ProposerSignature = new Signature
+                ProposerSignature = new RegisterSignature
                 {
                     PublicKey = System.Text.Encoding.UTF8.GetBytes("pub-key"),
                     SignatureValue = System.Text.Encoding.UTF8.GetBytes("sig-value"),
@@ -537,9 +538,9 @@ public class AdminEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
             ActionId = "action-1",
             Payload = JsonDocument.Parse("{\"data\":\"test\"}").RootElement,
             PayloadHash = "abc123",
-            Signatures = new List<Signature>
+            Signatures = new List<RegisterSignature>
             {
-                new Signature
+                new RegisterSignature
                 {
                     PublicKey = System.Text.Encoding.UTF8.GetBytes("pub-key"),
                     SignatureValue = System.Text.Encoding.UTF8.GetBytes("sig-value"),

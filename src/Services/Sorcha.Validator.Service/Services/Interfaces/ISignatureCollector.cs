@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.Validator.Service.Models;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Services.Interfaces;
 
@@ -121,7 +122,7 @@ public record CollectedSignature
     public required string ValidatorId { get; init; }
 
     /// <summary>The signature</summary>
-    public required Signature Signature { get; init; }
+    public required RegisterSignature Signature { get; init; }
 
     /// <summary>When the signature was provided</summary>
     public required DateTimeOffset SignedAt { get; init; }
@@ -142,7 +143,7 @@ public record ValidatorSignatureResponse
     public required bool Approved { get; init; }
 
     /// <summary>Signature if approved</summary>
-    public Signature? Signature { get; init; }
+    public RegisterSignature? Signature { get; init; }
 
     /// <summary>Rejection reason if not approved</summary>
     public DocketRejectionReason? RejectionReason { get; init; }

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Register.Models;
+
 namespace Sorcha.Validator.Service.Models;
 
 /// <summary>
@@ -71,7 +73,7 @@ public class Docket
     /// <summary>
     /// Proposer's signature on the docket
     /// </summary>
-    public required Signature ProposerSignature { get; init; }
+    public required RegisterSignature ProposerSignature { get; init; }
 
     /// <summary>
     /// Validator votes on this docket (empty for proposed, populated for confirmed)

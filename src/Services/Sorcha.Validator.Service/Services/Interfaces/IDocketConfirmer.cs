@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.Validator.Service.Models;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Services.Interfaces;
 
@@ -21,7 +22,7 @@ public interface IDocketConfirmer
     /// <returns>Confirmation result with signature or rejection reason</returns>
     Task<DocketConfirmationResult> ConfirmDocketAsync(
         Docket docket,
-        Signature initiatorSignature,
+        RegisterSignature initiatorSignature,
         long term,
         CancellationToken ct = default);
 
@@ -45,7 +46,7 @@ public record DocketConfirmationResult
     public required bool Confirmed { get; init; }
 
     /// <summary>Validator's signature (only if confirmed)</summary>
-    public Signature? Signature { get; init; }
+    public RegisterSignature? Signature { get; init; }
 
     /// <summary>Rejection reason (only if not confirmed)</summary>
     public DocketRejectionReason? RejectionReason { get; init; }
@@ -61,7 +62,7 @@ public record DocketConfirmationResult
 
     /// <summary>Creates a confirmed result</summary>
     public static DocketConfirmationResult CreateConfirmed(
-        Signature signature,
+        RegisterSignature signature,
         TimeSpan duration,
         int transactionCount) => new()
     {

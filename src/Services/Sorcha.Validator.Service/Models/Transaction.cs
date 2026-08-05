@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Models;
 
@@ -62,7 +63,7 @@ public class Transaction
     /// <summary>
     /// One or more signatures authorizing this transaction
     /// </summary>
-    public required List<Signature> Signatures { get; init; }
+    public required List<RegisterSignature> Signatures { get; init; }
 
     /// <summary>
     /// SHA256 hash of the payload

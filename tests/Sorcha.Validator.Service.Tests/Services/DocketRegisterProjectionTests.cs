@@ -4,8 +4,8 @@
 using FluentAssertions;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
-using Signature = Sorcha.Validator.Service.Models.Signature;
 using Transaction = Sorcha.Validator.Service.Models.Transaction;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
@@ -146,7 +146,7 @@ public class DocketRegisterProjectionTests
         CreatedAt = DateTimeOffset.UtcNow,
         ProposerValidatorId = "validator-1",
         Status = DocketStatus.Proposed,
-        ProposerSignature = new Signature
+        ProposerSignature = new RegisterSignature
         {
             PublicKey = [1, 2, 3],
             SignatureValue = [4, 5, 6],
@@ -180,7 +180,7 @@ public class DocketRegisterProjectionTests
         Priority = TransactionPriority.Normal,
         Signatures =
         [
-            new Signature
+            new RegisterSignature
             {
                 PublicKey = [1, 2, 3],
                 SignatureValue = [4, 5, 6],

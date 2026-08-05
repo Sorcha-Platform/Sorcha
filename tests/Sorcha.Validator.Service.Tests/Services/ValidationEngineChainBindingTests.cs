@@ -312,7 +312,7 @@ public class ValidationEngineChainBindingTests
             Metadata = metadata,
             Signatures =
             [
-                new Signature
+                new RegisterSignature
                 {
                     PublicKey = new byte[32],
                     SignatureValue = new byte[64],

@@ -11,6 +11,7 @@ using Sorcha.Cryptography.Interfaces;
 using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Wallet.Service.Protos;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Services;
 
@@ -163,7 +164,7 @@ public class WalletIntegrationService : IWalletIntegrationService, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task<Signature> SignDocketAsync(byte[] docketHash, CancellationToken ct = default)
+    public async Task<RegisterSignature> SignDocketAsync(byte[] docketHash, CancellationToken ct = default)
     {
         if (docketHash == null || docketHash.Length != 32)
             throw new ArgumentException("Docket hash must be 32 bytes (SHA-256)", nameof(docketHash));
@@ -193,7 +194,7 @@ public class WalletIntegrationService : IWalletIntegrationService, IDisposable
             throw new CryptographicException($"Docket signing failed: {signResult.ErrorMessage}");
         }
 
-        var signature = new Signature
+        var signature = new RegisterSignature
         {
             PublicKey = wallet.PublicKey,
             SignatureValue = signResult.Value,
@@ -211,7 +212,7 @@ public class WalletIntegrationService : IWalletIntegrationService, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task<Signature> SignVoteAsync(byte[] voteHash, CancellationToken ct = default)
+    public async Task<RegisterSignature> SignVoteAsync(byte[] voteHash, CancellationToken ct = default)
     {
         if (voteHash == null || voteHash.Length != 32)
             throw new ArgumentException("Vote hash must be 32 bytes (SHA-256)", nameof(voteHash));
@@ -241,7 +242,7 @@ public class WalletIntegrationService : IWalletIntegrationService, IDisposable
             throw new CryptographicException($"Vote signing failed: {signResult.ErrorMessage}");
         }
 
-        var signature = new Signature
+        var signature = new RegisterSignature
         {
             PublicKey = wallet.PublicKey,
             SignatureValue = signResult.Value,

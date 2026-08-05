@@ -4,9 +4,11 @@
 #
 # Consensus-vote contract CI gate.
 #
-# VoteDecision has exactly one home: Sorcha.Register.Models (src/Common/Sorcha.Register.Models/
-# Consensus/VoteDecision.cs). Consensus votes are persisted to the register, so the enum's numeric
-# values are a wire contract shared by the validator, the ledger, and every node that folds a docket.
+# The consensus ledger types have exactly one home: Sorcha.Register.Models (under Consensus/).
+# Consensus votes are persisted to the register, so their shape and VoteDecision's numeric values
+# are a wire contract shared by the validator, the ledger, and every node that folds a docket.
+#
+# Guarded types: VoteDecision, ConsensusVote, RegisterSignature.
 #
 # Why this is gated rather than left to review:
 #
@@ -34,13 +36,21 @@ param([switch]$Quiet)
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$canonical = Join-Path $repoRoot 'src/Common/Sorcha.Register.Models/Consensus/VoteDecision.cs'
+$canonicalDir = Join-Path $repoRoot 'src/Common/Sorcha.Register.Models/Consensus'
+$guarded = @{
+    'VoteDecision'      = 'enum'
+    'ConsensusVote'     = 'class'
+    'RegisterSignature' = 'class'
+}
 $allowlistPath = Join-Path $repoRoot '.consensus-vote-contract-allowlist'
 
-if (-not (Test-Path $canonical)) {
-    Write-Host "[FAIL] Canonical VoteDecision declaration is missing: $canonical" -ForegroundColor Red
-    Write-Host "       It is the single home for the enum; it must not be moved without updating this gate."
-    exit 1
+foreach ($name in $guarded.Keys) {
+    $file = Join-Path $canonicalDir "$name.cs"
+    if (-not (Test-Path $file)) {
+        Write-Host "[FAIL] Canonical $name declaration is missing: $file" -ForegroundColor Red
+        Write-Host "       It is the single home for the type; it must not be moved without updating this gate."
+        exit 1
+    }
 }
 
 $allowlist = @()
@@ -50,35 +60,46 @@ if (Test-Path $allowlistPath) {
         ForEach-Object { $_.Trim() }
 }
 
-# Any *declaration* of VoteDecision outside the canonical file is a violation. Usages are fine —
-# that is the whole point of having one home.
-$pattern = '^\s*(public|internal)\s+enum\s+VoteDecision\b'
+# Any *declaration* of a guarded type outside its canonical file is a violation. Usages are fine —
+# that is the whole point of having one home. Both `class`/`enum` and `record` forms count, so a
+# re-declaration cannot slip through by changing the kind.
+$canonicalPaths = @{}
+foreach ($name in $guarded.Keys) {
+    $canonicalPaths[$name] = (Resolve-Path (Join-Path $canonicalDir "$name.cs")).Path
+}
 
 $violations = @()
 Get-ChildItem -Path (Join-Path $repoRoot 'src') -Recurse -Filter *.cs -File |
     Where-Object { $_.FullName -notmatch '[\\/](obj|bin)[\\/]' } |
-    Where-Object { $_.FullName -ne (Resolve-Path $canonical).Path } |
     ForEach-Object {
-        $rel = $_.FullName.Substring($repoRoot.Length + 1).Replace('\', '/')
-        # The gRPC-generated VoteDecision is a separate protocol contract, not a re-declaration of
-        # the ledger enum; generated files live under obj/ and are already excluded above.
+        $file = $_
+        $rel = $file.FullName.Substring($repoRoot.Length + 1).Replace('\', '/')
+        # The gRPC-generated ConsensusVote / VoteDecision are a separate protocol contract, not a
+        # re-declaration of the ledger types; generated files live under obj/ and are excluded above.
         if ($allowlist -contains $rel) { return }
-        $hit = Select-String -Path $_.FullName -Pattern $pattern -Encoding utf8 -Quiet
-        if ($hit) { $violations += $rel }
+        foreach ($name in $guarded.Keys) {
+            if ($file.FullName -eq $canonicalPaths[$name]) { continue }
+            $kind = $guarded[$name]
+            $pattern = "^\s*(public|internal)\s+(sealed\s+)?($kind|record)\s+$name\b"
+            if (Select-String -Path $file.FullName -Pattern $pattern -Encoding utf8 -Quiet) {
+                $violations += "$rel  (declares $name)"
+            }
+        }
     }
+$violations = @($violations | Sort-Object -Unique)
 
 if ($violations.Count -gt 0) {
-    Write-Host "[FAIL] VoteDecision is declared outside its canonical home:" -ForegroundColor Red
+    Write-Host "[FAIL] A consensus ledger type is declared outside its canonical home:" -ForegroundColor Red
     $violations | ForEach-Object { Write-Host "         $_" -ForegroundColor Red }
     Write-Host ''
-    Write-Host '  VoteDecision has ONE home: src/Common/Sorcha.Register.Models/Consensus/VoteDecision.cs'
-    Write-Host '  Its values are a persisted ledger contract. A second declaration is how a Reject'
-    Write-Host '  silently became a different value once already — see the header of this script.'
-    Write-Host '  Reference the canonical enum instead of re-declaring it.'
+    Write-Host '  VoteDecision, ConsensusVote and RegisterSignature each have ONE home, under'
+    Write-Host '  src/Common/Sorcha.Register.Models/Consensus/. They are persisted ledger contracts.'
+    Write-Host '  A second declaration is how a Reject silently became a different value once'
+    Write-Host '  already — see the header of this script. Reference the canonical type instead.'
     exit 1
 }
 
 if (-not $Quiet) {
-    Write-Host '[OK] VoteDecision has exactly one declaration (Sorcha.Register.Models).' -ForegroundColor Green
+    Write-Host '[OK] VoteDecision, ConsensusVote and RegisterSignature each have exactly one declaration (Sorcha.Register.Models).' -ForegroundColor Green
 }
 exit 0

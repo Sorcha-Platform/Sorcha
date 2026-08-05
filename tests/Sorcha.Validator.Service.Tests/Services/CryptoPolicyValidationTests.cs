@@ -5,6 +5,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services.Interfaces;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
@@ -115,7 +116,7 @@ public class CryptoPolicyValidationTests
     public void Transaction_WithNoSignatures_ShouldFailPolicyValidation()
     {
         // Transactions with zero signatures should fail crypto policy validation
-        var signatures = new List<Signature>();
+        var signatures = new List<RegisterSignature>();
         signatures.Should().BeEmpty();
         // The validation engine would add VAL_POLICY_002 error
     }

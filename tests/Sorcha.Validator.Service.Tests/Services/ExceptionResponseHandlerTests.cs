@@ -11,6 +11,7 @@ using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Service.Services.Interfaces;
 using Xunit;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
@@ -562,7 +563,7 @@ public class ExceptionResponseHandlerTests
             CreatedAt = DateTimeOffset.UtcNow,
             Signatures =
             [
-                new Signature
+                new RegisterSignature
                 {
                     PublicKey = new byte[] { 1, 2, 3 },
                     SignatureValue = new byte[] { 4, 5, 6 },

@@ -9,6 +9,7 @@ using Sorcha.ServiceClients.Wallet;
 using Sorcha.ServiceClients.Register;
 using Sorcha.Cryptography.Utilities;
 using Sorcha.Wallet.Contracts.Constants;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Services;
 
@@ -205,7 +206,7 @@ public class DocketBuilder : IDocketBuilder
                 Transactions = pendingTransactions,
                 Status = DocketStatus.Proposed,
                 ProposerValidatorId = _validatorConfig.ValidatorId,
-                ProposerSignature = new Signature
+                ProposerSignature = new RegisterSignature
                 {
                     PublicKey = signResult.PublicKey,
                     SignatureValue = signResult.Signature,

@@ -7,6 +7,7 @@ using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Service.Services.Interfaces;
 using ValidatorStatus = Sorcha.Validator.Service.Services.Interfaces.ValidatorStatus;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
@@ -284,7 +285,7 @@ public class ControlDocketProcessorTests
             CreatedAt = DateTimeOffset.UtcNow,
             Signatures =
             [
-                new Signature
+                new RegisterSignature
                 {
                     PublicKey = System.Text.Encoding.UTF8.GetBytes("test-pubkey"),
                     SignatureValue = System.Text.Encoding.UTF8.GetBytes("test-signature"),
@@ -479,7 +480,7 @@ public class ControlDocketProcessorTests
             CreatedAt = DateTimeOffset.UtcNow,
             Signatures =
             [
-                new Signature
+                new RegisterSignature
                 {
                     PublicKey = System.Text.Encoding.UTF8.GetBytes("test-pubkey"),
                     SignatureValue = System.Text.Encoding.UTF8.GetBytes("test-signature"),
@@ -1993,7 +1994,7 @@ public class ControlDocketProcessorTests
             CreatedAt = DateTimeOffset.UtcNow,
             Signatures =
             [
-                new Signature
+                new RegisterSignature
                 {
                     PublicKey = System.Text.Encoding.UTF8.GetBytes("test-pubkey"),
                     SignatureValue = System.Text.Encoding.UTF8.GetBytes("test-signature"),
@@ -2100,7 +2101,7 @@ public class ControlDocketProcessorTests
             CreatedAt = DateTimeOffset.UtcNow,
             Signatures =
             [
-                new Signature
+                new RegisterSignature
                 {
                     PublicKey = System.Text.Encoding.UTF8.GetBytes("test-pubkey"),
                     SignatureValue = System.Text.Encoding.UTF8.GetBytes("test-signature"),
@@ -2122,7 +2123,7 @@ public class ControlDocketProcessorTests
             CreatedAt = DateTimeOffset.UtcNow,
             Transactions = transactions,
             ProposerValidatorId = "validator-001",
-            ProposerSignature = new Signature
+            ProposerSignature = new RegisterSignature
             {
                 PublicKey = System.Text.Encoding.UTF8.GetBytes("proposer-pubkey"),
                 SignatureValue = System.Text.Encoding.UTF8.GetBytes("proposer-signature"),

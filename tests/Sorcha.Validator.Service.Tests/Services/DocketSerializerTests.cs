@@ -167,7 +167,7 @@ public class DocketSerializerTests
             CreatedAt = DateTimeOffset.UtcNow,
             ProposerValidatorId = "validator-1",
             Status = DocketStatus.Proposed,
-            ProposerSignature = new Signature
+            ProposerSignature = new RegisterSignature
             {
                 PublicKey = new byte[] { 1, 2, 3 },
                 SignatureValue = new byte[] { 4, 5, 6 },
@@ -198,7 +198,7 @@ public class DocketSerializerTests
             PayloadHash = $"hash-{transactionId}",
             CreatedAt = DateTimeOffset.UtcNow,
             Priority = TransactionPriority.Normal,
-            Signatures = new List<Signature>
+            Signatures = new List<RegisterSignature>
             {
                 new()
                 {
@@ -238,7 +238,7 @@ public class DocketSerializerTests
                     Decision = VoteDecision.Approve,
                     VotedAt = DateTimeOffset.UtcNow,
                     DocketHash = docket.DocketHash,
-                    ValidatorSignature = new Signature
+                    ValidatorSignature = new RegisterSignature
                     {
                         PublicKey = new byte[] { 1, 2, 3 },
                         SignatureValue = new byte[] { 4, 5, 6 },
@@ -254,7 +254,7 @@ public class DocketSerializerTests
                     Decision = VoteDecision.Approve,
                     VotedAt = DateTimeOffset.UtcNow,
                     DocketHash = docket.DocketHash,
-                    ValidatorSignature = new Signature
+                    ValidatorSignature = new RegisterSignature
                     {
                         PublicKey = new byte[] { 7, 8, 9 },
                         SignatureValue = new byte[] { 10, 11, 12 },

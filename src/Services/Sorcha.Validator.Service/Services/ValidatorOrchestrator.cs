@@ -7,6 +7,7 @@ using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Peer;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services.Interfaces;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Services;
 
@@ -299,7 +300,7 @@ public class ValidatorOrchestrator : IValidatorOrchestrator
                     Transactions = new List<Transaction>(),
                     Status = DocketStatus.Rejected,
                     ProposerValidatorId = "unknown",
-                    ProposerSignature = new Signature
+                    ProposerSignature = new RegisterSignature
                     {
                         PublicKey = System.Text.Encoding.UTF8.GetBytes("error"),
                         SignatureValue = System.Text.Encoding.UTF8.GetBytes("error"),

@@ -11,6 +11,7 @@ using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Service.Services.Interfaces;
 using ValidatorStatusEnum = Sorcha.Validator.Service.Services.Interfaces.ValidatorStatus;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
@@ -373,7 +374,7 @@ public class SignatureCollectorTests
             DocketNumber = 1,
             DocketHash = "test-hash",
             ProposerValidatorId = "validator-1",
-            ProposerSignature = new Signature
+            ProposerSignature = new RegisterSignature
             {
                 PublicKey = "test-key"u8.ToArray(),
                 SignatureValue = "test-sig"u8.ToArray(),

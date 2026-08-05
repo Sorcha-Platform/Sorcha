@@ -7,6 +7,7 @@ using Sorcha.Register.Models.Constants;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
 using Xunit;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
@@ -36,7 +37,7 @@ public class TransactionTypeClassifierTests
             Payload = JsonDocument.Parse(payloadJson).RootElement,
             PayloadHash = "hash",
             CreatedAt = DateTimeOffset.UtcNow,
-            Signatures = new List<Signature>(),
+            Signatures = new List<RegisterSignature>(),
             Metadata = meta,
         };
     }

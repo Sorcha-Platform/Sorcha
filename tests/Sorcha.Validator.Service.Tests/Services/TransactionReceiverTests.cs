@@ -11,6 +11,7 @@ using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Service.Services.Interfaces;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
@@ -388,7 +389,7 @@ public class TransactionReceiverTests
             PayloadHash = payloadHash ?? $"hash-{transactionId}",
             CreatedAt = DateTimeOffset.UtcNow,
             Priority = TransactionPriority.Normal,
-            Signatures = new List<Signature>
+            Signatures = new List<RegisterSignature>
             {
                 new()
                 {

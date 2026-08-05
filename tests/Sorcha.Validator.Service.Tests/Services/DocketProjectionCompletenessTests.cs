@@ -8,7 +8,6 @@ using Sorcha.Register.Models.Enums;
 using Sorcha.ServiceClients.Register;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
-using Signature = Sorcha.Validator.Service.Models.Signature;
 using Transaction = Sorcha.Validator.Service.Models.Transaction;
 
 namespace Sorcha.Validator.Service.Tests.Services;
@@ -138,7 +137,7 @@ public class DocketProjectionCompletenessTests
             Priority = TransactionPriority.Normal,
             Signatures =
             [
-                new Signature
+                new RegisterSignature
                 {
                     PublicKey = [1, 2, 3],
                     SignatureValue = [4, 5, 6],
@@ -167,7 +166,7 @@ public class DocketProjectionCompletenessTests
             CreatedAt = DateTimeOffset.UtcNow,
             ProposerValidatorId = "validator-1",
             Status = DocketStatus.Proposed,
-            ProposerSignature = new Signature
+            ProposerSignature = new RegisterSignature
             {
                 PublicKey = [1, 2, 3],
                 SignatureValue = [4, 5, 6],

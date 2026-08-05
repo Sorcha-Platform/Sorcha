@@ -19,6 +19,7 @@ using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 using ActionModel = Sorcha.Blueprint.Models.Action;
 using ParticipantModel = Sorcha.Blueprint.Models.Participant;
 using RouteModel = Sorcha.Blueprint.Models.Route;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
@@ -277,7 +278,7 @@ public class ValidationEngineParticipantResolutionTests
             PreviousTransactionId = "tx-prev-0000",
             Signatures =
             [
-                new Signature
+                new RegisterSignature
                 {
                     PublicKey = new byte[32],
                     SignatureValue = new byte[64],

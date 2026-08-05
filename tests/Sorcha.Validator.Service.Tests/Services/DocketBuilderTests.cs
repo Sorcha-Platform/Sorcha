@@ -14,6 +14,7 @@ using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Service.Services.Interfaces;
 using RegisterModels = Sorcha.Register.Models;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
@@ -630,9 +631,9 @@ public class DocketBuilderTests
             ActionId = "action-1",
             Payload = JsonDocument.Parse("{\"data\":\"test\"}").RootElement,
             PayloadHash = $"payload-hash-{transactionId}",
-            Signatures = new List<Signature>
+            Signatures = new List<RegisterSignature>
             {
-                new Signature
+                new RegisterSignature
                 {
                     PublicKey = System.Text.Encoding.UTF8.GetBytes("public-key"),
                     SignatureValue = System.Text.Encoding.UTF8.GetBytes("signature-value"),
@@ -661,7 +662,7 @@ public class DocketBuilderTests
             Transactions = new List<Transaction>(),
             Status = DocketStatus.Confirmed,
             ProposerValidatorId = "validator-1",
-            ProposerSignature = new Signature
+            ProposerSignature = new RegisterSignature
             {
                 PublicKey = System.Text.Encoding.UTF8.GetBytes("system-wallet"),
                 SignatureValue = System.Text.Encoding.UTF8.GetBytes("signature"),

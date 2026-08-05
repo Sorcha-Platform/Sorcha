@@ -269,7 +269,7 @@ public class SignatureCollector : ISignatureCollector
                 ValidatorId = response.ValidatorId,
                 Approved = approved,
                 Signature = approved && response.ValidatorSignature != null
-                    ? new Signature
+                    ? new RegisterSignature
                     {
                         PublicKey = Base64Url.DecodeFromChars(response.ValidatorSignature.PublicKey),
                         SignatureValue = Base64Url.DecodeFromChars(response.ValidatorSignature.SignatureValue),
