@@ -213,9 +213,26 @@ public class DocketGetCommand : Command
                 Console.WriteLine($"  Transaction Count: {docket.TransactionIds.Count}");
                 Console.WriteLine($"  Timestamp:       {docket.TimeStamp:yyyy-MM-dd HH:mm:ss}");
 
-                if (!string.IsNullOrEmpty(docket.Votes))
+                // Before Feature 187 (#1371) this printed docket.Votes — which actually held the
+                // PROPOSER ID, smuggled through a string field named "Votes". So the CLI displayed a
+                // validator id under a "Votes" label, and real consensus votes were never persisted
+                // at all. Both are now their own fields.
+                if (!string.IsNullOrEmpty(docket.ProposerValidatorId))
                 {
-                    Console.WriteLine($"  Votes:           {docket.Votes}");
+                    Console.WriteLine($"  Proposer:        {docket.ProposerValidatorId}");
+                }
+
+                if (!string.IsNullOrEmpty(docket.MerkleRoot))
+                {
+                    Console.WriteLine($"  Merkle Root:     {docket.MerkleRoot}");
+                }
+
+                // An empty vote list is valid — single-validator mode records no votes.
+                Console.WriteLine($"  Consensus Votes: {docket.Votes.Count}");
+                foreach (var vote in docket.Votes)
+                {
+                    Console.WriteLine($"    - {vote.ValidatorId}: {vote.Decision}"
+                        + (string.IsNullOrEmpty(vote.RejectionReason) ? "" : $" ({vote.RejectionReason})"));
                 }
 
                 if (docket.MetaData != null)

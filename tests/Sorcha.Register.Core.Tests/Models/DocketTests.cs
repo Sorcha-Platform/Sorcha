@@ -26,7 +26,11 @@ public class DocketTests
         docket.TimeStamp.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(1));
         docket.State.Should().Be(DocketState.Init);
         docket.MetaData.Should().BeNull();
-        docket.Votes.Should().BeNull();
+        // Feature 187 (#1371): Votes is a real List<ConsensusVote>, empty by default. It used to be a
+        // string? documented "implementation TBD" that actually carried ProposerValidatorId.
+        docket.Votes.Should().BeEmpty();
+        docket.ProposerValidatorId.Should().BeEmpty();
+        docket.MerkleRoot.Should().BeEmpty();
     }
 
     [Fact]
@@ -49,7 +53,27 @@ public class DocketTests
             TransactionIds = txIds,
             TimeStamp = timestamp,
             State = DocketState.Sealed,
-            Votes = "vote-data"
+            ProposerValidatorId = "validator-1",
+            MerkleRoot = "merkle-root",
+            Votes =
+            [
+                new ConsensusVote
+                {
+                    VoteId = "vote-1",
+                    DocketId = "docket-5",
+                    ValidatorId = "validator-1",
+                    Decision = VoteDecision.Approve,
+                    VotedAt = timestamp,
+                    DocketHash = hash,
+                    ValidatorSignature = new RegisterSignature
+                    {
+                        PublicKey = [1, 2, 3],
+                        SignatureValue = [4, 5, 6],
+                        Algorithm = "ED25519",
+                        SignedAt = timestamp
+                    }
+                }
+            ]
         };
 
         // Assert
@@ -61,7 +85,10 @@ public class DocketTests
         docket.TransactionIds.Should().ContainInOrder("tx1", "tx2", "tx3");
         docket.TimeStamp.Should().Be(timestamp);
         docket.State.Should().Be(DocketState.Sealed);
-        docket.Votes.Should().Be("vote-data");
+        docket.ProposerValidatorId.Should().Be("validator-1");
+        docket.MerkleRoot.Should().Be("merkle-root");
+        docket.Votes.Should().ContainSingle()
+            .Which.Decision.Should().Be(VoteDecision.Approve);
     }
 
     [Theory]
@@ -249,7 +276,7 @@ public class DocketTests
             TimeStamp = DateTime.UtcNow.AddMinutes(-5),
             State = DocketState.Sealed,
             MetaData = new TransactionMetaData { RegisterId = "reg123" },
-            Votes = "{\"vote\": \"data\"}"
+            Votes = []
         };
 
         // Act

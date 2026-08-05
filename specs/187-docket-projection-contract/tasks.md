@@ -1,6 +1,6 @@
 # Feature 187 — Tasks
 
-**Status:** 🚧 IN PROGRESS — US1 code complete (T001-T007 ✅); T008 (live n1) outstanding
+**Status:** 🚧 IN PROGRESS — US1 DONE (T001-T008 ✅, live-verified on n1); US2 DONE (T009-T018 ✅, pending live re-genesis); US3 next
 **Branch:** `feature/187-docket-projection-contract`
 
 Legend: 📋 pending · 🚧 in progress · ✅ done · ⛔ blocked on a gate
@@ -29,15 +29,15 @@ Ordered so the wire contract exists before anything tries to fill it.
 - ✅ **T009** **MOVE, not mirror.** Investigation showed the validator's `ConsensusVote` is neither a superset nor a working model — every member is immutable evidence, with none of the transient state its sibling types carry (`Transaction.Priority`/`AddedToPoolAt`/`RetryCount`, `Docket.Status`). It was ledger evidence in the wrong assembly, so it MOVED to `Sorcha.Register.Models` rather than being duplicated as a parallel wire type. `Signature` moved with it (its own docs already said it is "persisted to the Register Service as part of the blockchain ledger") and was renamed **`RegisterSignature`** — a bare `Signature` in a broadly-imported namespace is the generic name that let this family of collisions accumulate.
   - Also renamed for clarity, same commit: `Register.Models.Docket`→`DocketHeader`, `Register.Models.ValidatorSignature`→`ReceiptSignature`, `Validator.Service…Interfaces.ValidatorSignature`→`CollectedSignature`.
   - Gate `scripts/check-consensus-vote-contract.ps1` extended to all three canonical types (`VoteDecision`, `ConsensusVote`, `RegisterSignature`), matching both `class`/`enum` and `record` forms. Mutation-tested: FAIL naming all three when re-declared, PASS when removed.
-- 📋 **T010** Add `ProposerValidatorId`, `MerkleRoot` and `List<ConsensusVote> Votes` to `Register.Models.Docket`. **Remove the old `string? Votes`** and its false doc-comment.
-- 📋 **T011** Add `Votes` to `DocketModel` and `WriteDocketRequest` — neither carries votes today, so the contract must gain the field before either projection can populate it.
-- 📋 **T012** `DocketBuildTriggerService:~354` — copy `consensusResult.Votes` onto the docket before the write. **Currently discarded**; path A has the result in hand and drops it. Mirrors `ValidatorOrchestrator:223-224`.
+- ✅ **T010** Add `ProposerValidatorId`, `MerkleRoot` and `List<ConsensusVote> Votes` to `Register.Models.Docket`. **Remove the old `string? Votes`** and its false doc-comment.
+- ✅ **T011** Add `Votes` to `DocketModel` and `WriteDocketRequest` — neither carries votes today, so the contract must gain the field before either projection can populate it.
+- ✅ **T012** `DocketBuildTriggerService:~354` — copy `consensusResult.Votes` onto the docket before the write. **Currently discarded**; path A has the result in hand and drops it. Mirrors `ValidatorOrchestrator:223-224`.
 - 📋 **T013** Extend the unified mapper (from T003) to carry `Votes`, `ProposerValidatorId`, `MerkleRoot`. T002's completeness test should now cover them.
-- 📋 **T014** `Register.Service/Program.cs:1637-1650` — write `ProposerValidatorId`, `MerkleRoot`, `Votes` to their own fields; **stop the `Votes = request.ProposerValidatorId` smuggle**.
-- 📋 **T015** `RegisterServiceClient.cs:344-351` — read each from its own field; delete the `docket.Votes` read and the `MerkleRoot = string.Empty` stub.
-- 📋 **T016** Round-trip test: `DocketModel` → persist → read → `DocketModel` preserves every contract-declared field. Reflection-based, same shape as T002.
-- 📋 **T017** **Single-validator mode must stay valid.** `DocketBuildTriggerService:~392` writes directly with no consensus engine (this is what n1 and local dev run) — assert an **empty vote list persists cleanly and is not an error**. Do NOT add a guard rejecting empty votes.
-- 📋 **T018** Confirm no environment needs a read-side shim for dockets already carrying the proposer id in the old `string? Votes`; if re-genesis is the remedy, state that explicitly in the PR body.
+- ✅ **T014** `Register.Service/Program.cs:1637-1650` — write `ProposerValidatorId`, `MerkleRoot`, `Votes` to their own fields; **stop the `Votes = request.ProposerValidatorId` smuggle**.
+- ✅ **T015** `RegisterServiceClient.cs:344-351` — read each from its own field; delete the `docket.Votes` read and the `MerkleRoot = string.Empty` stub.
+- ✅ **T016** Round-trip test: `DocketModel` → persist → read → `DocketModel` preserves every contract-declared field. Reflection-based, same shape as T002.
+- ✅ **T017** **Single-validator mode must stay valid.** `DocketBuildTriggerService:~392` writes directly with no consensus engine (this is what n1 and local dev run) — assert an **empty vote list persists cleanly and is not an error**. Do NOT add a guard rejecting empty votes.
+- ✅ **T018** *(Stuart: "I'm fine with a wipe and regenesis", 2026-08-05.)* No read-side shim. Existing dockets carry the proposer id in the old `string? Votes`; the remedy is **re-genesis**, not a compatibility path. Confirm no environment needs a read-side shim for dockets already carrying the proposer id in the old `string? Votes`; if re-genesis is the remedy, state that explicitly in the PR body.
 
 ## US3 — Docket self-verification (#1372) — ✅ **Gate B RESOLVED = both, scoped**
 

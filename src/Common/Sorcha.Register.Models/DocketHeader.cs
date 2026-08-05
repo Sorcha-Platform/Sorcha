@@ -69,7 +69,46 @@ public class DocketHeader
     public TransactionMetaData? MetaData { get; set; }
 
     /// <summary>
-    /// Consensus votes (implementation TBD)
+    /// Identifier of the validator that proposed this docket.
     /// </summary>
-    public string? Votes { get; set; }
+    /// <remarks>
+    /// A first-class field since Feature 187 (#1371). It used to be smuggled through a property named
+    /// <c>Votes</c> — <c>Register.Service</c> wrote <c>Votes = request.ProposerValidatorId</c> and
+    /// <c>RegisterServiceClient</c> read it straight back out as the proposer id. It round-tripped
+    /// correctly <i>by accident</i>, through a field whose name, type and documentation all disagreed
+    /// with its contents.
+    /// </remarks>
+    public string ProposerValidatorId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Merkle root over this docket's transaction set, as sealed by the proposing validator.
+    /// </summary>
+    /// <remarks>
+    /// Persisted since Feature 187 (#1372). Previously the sealed value was discarded at write time
+    /// and the Register Service recomputed a root on demand from the stored
+    /// <see cref="TransactionIds"/> — so a docket could not verify itself: recomputation over altered
+    /// data yields a different but internally self-consistent root that inclusion proofs then verify
+    /// against. Keeping the sealed commitment is what makes a recomputed-versus-sealed cross-check
+    /// possible at the points where integrity is actually asserted.
+    /// </remarks>
+    public string MerkleRoot { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The validator votes that carried this docket to consensus.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Real, persisted quorum evidence since Feature 187 (#1371). This property previously existed as
+    /// a <c>string?</c> documented "Consensus votes (implementation TBD)"; it was neither — it
+    /// carried <see cref="ProposerValidatorId"/> (above), and actual <c>ConsensusVote</c> instances
+    /// were never written to the register at all. "This docket achieved quorum, and here are the
+    /// signed votes" was therefore not recoverable from the ledger.
+    /// </para>
+    /// <para>
+    /// <b>Empty is valid, not an error.</b> A node running without a consensus engine
+    /// (single-validator mode — what local dev and single-node deployments use) seals dockets with no
+    /// votes to record. Do not add a guard that rejects an empty list.
+    /// </para>
+    /// </remarks>
+    public List<ConsensusVote> Votes { get; set; } = new();
 }

@@ -1647,7 +1647,12 @@ docketsGroup.MapPost("/", async (
         {
             RegisterId = registerId
         },
-        Votes = request.ProposerValidatorId
+        // Feature 187 (#1371): each of these lands in its OWN field. ProposerValidatorId used to be
+        // smuggled through `Votes` (a string? documented "Consensus votes (implementation TBD)"),
+        // MerkleRoot was not persisted at all, and real consensus votes never reached the ledger.
+        ProposerValidatorId = request.ProposerValidatorId,
+        MerkleRoot = request.MerkleRoot,
+        Votes = request.Votes ?? new List<Sorcha.Register.Models.ConsensusVote>()
     };
 
     // Insert transaction documents if provided
@@ -3538,7 +3543,9 @@ record WriteDocketRequest(
     List<string> TransactionIds,
     string ProposerValidatorId,
     string MerkleRoot,
-    List<TransactionModel>? Transactions = null);
+    List<TransactionModel>? Transactions = null,
+    // Feature 187 (#1371): quorum evidence. Empty in single-validator mode, which is valid.
+    List<Sorcha.Register.Models.ConsensusVote>? Votes = null);
 
 // ZK Proof request models
 record InclusionProofRequest(

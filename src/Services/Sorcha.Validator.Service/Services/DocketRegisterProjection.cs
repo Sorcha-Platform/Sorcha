@@ -60,7 +60,11 @@ internal static class DocketRegisterProjection
             CreatedAt = docket.CreatedAt,
             Transactions = docket.Transactions.Select(ToTransactionModel).ToList(),
             ProposerValidatorId = docket.ProposerValidatorId,
-            MerkleRoot = docket.MerkleRoot
+            MerkleRoot = docket.MerkleRoot,
+            // Feature 187 (#1371): quorum evidence reaches the ledger. An empty list is valid and
+            // expected in single-validator mode (no IConsensusEngine registered) — do not treat it
+            // as an error, and do not omit the field when empty.
+            Votes = docket.Votes.ToList()
         };
     }
 

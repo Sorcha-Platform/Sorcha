@@ -357,6 +357,14 @@ public class DocketBuildTriggerService : BackgroundService
                     _logger.LogInformation("Consensus achieved for docket {DocketNumber}, writing to Register Service",
                         docket.DocketNumber);
 
+                    // Feature 187 (#1371): carry the quorum evidence onto the docket so the
+                    // projection can persist it. This path HELD consensusResult and dropped its
+                    // votes on the floor — the register recorded that a docket sealed but never
+                    // which validators agreed, or their signatures. Mirrors ValidatorOrchestrator,
+                    // which already did this.
+                    docket.Votes.Clear();
+                    docket.Votes.AddRange(consensusResult.Votes);
+
                     try
                     {
                         await WriteDocketAndTransactionsAsync(scope, docket, cancellationToken);
