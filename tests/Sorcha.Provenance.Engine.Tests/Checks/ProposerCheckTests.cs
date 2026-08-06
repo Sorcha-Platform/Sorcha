@@ -39,13 +39,52 @@ public class ProposerCheckTests
         check.CheckedAgainst.Should().Contain("2", "the roster version applied must be stated");
     }
 
+    /// <summary>
+    /// A proposer absent from the roster is <b>Unverified, not Failed</b>, and this is the most
+    /// important behaviour in this file.
+    /// </summary>
+    /// <remarks>
+    /// A docket names its proposer by the validator's <i>configured</i> identifier
+    /// (<c>DocketBuilder</c> sets <c>ProposerValidatorId = _validatorConfig.ValidatorId</c>, e.g.
+    /// <c>local-validator</c>), while a roster names validators by <i>wallet address</i>. The two are
+    /// different identifier spaces, and a docket header carries no public key to compare instead — so
+    /// a non-match genuinely cannot be resolved from the register. Reporting Failed would accuse
+    /// every healthy register on every single-validator deployment of an unauthorised proposer. See
+    /// <see cref="RealNodeShape_ConfigIdProposerAgainstWalletAddressRoster_IsUnverified"/>.
+    /// </remarks>
     [Fact]
-    public void ProposerAbsentFromTheRosterAsOf_IsFailed()
+    public void ProposerAbsentFromTheRosterAsOf_IsUnverified_NotFailed()
     {
         var check = Proposer(TestEvidence.HealthyDocket(proposer: "stranger"), Roster());
 
-        check.Status.Should().Be(VerificationStatus.Failed);
+        check.Status.Should().Be(VerificationStatus.Unverified);
+        check.Status.Should().NotBe(VerificationStatus.Failed,
+            "a name that does not appear in the roster cannot be distinguished from a name recorded " +
+            "in a different identifier space, and a false accusation is the worst output this " +
+            "feature can produce");
         check.Detail.Should().Contain("stranger");
+        check.Reason.Should().NotBeNullOrWhiteSpace();
+    }
+
+    /// <summary>
+    /// The exact shape observed on n1: every docket names <c>local-validator</c>, every roster entry
+    /// is a <c>ws1…</c> wallet address. This must not read as tampering.
+    /// </summary>
+    [Fact]
+    public void RealNodeShape_ConfigIdProposerAgainstWalletAddressRoster_IsUnverified()
+    {
+        var roster = TestEvidence.Roster(
+            1,
+            TestEvidence.Validator(
+                "ws11qq5dj49wcpjsjs8w9fs3pwahrxwxpa89fchnffq7h3r4zqxgutwt5sf56qv",
+                "DdM/2pb1oBdY//Jp9Gem"));
+
+        var check = Proposer(TestEvidence.HealthyDocket(proposer: "local-validator"), roster);
+
+        check.Status.Should().Be(VerificationStatus.Unverified);
+        check.Reason.Should().Contain("local-validator");
+        check.Detail.Should().Contain("ws11qq5dj49",
+            "the reader must see both identifiers to recognise this as a naming mismatch at a glance");
     }
 
     [Fact]

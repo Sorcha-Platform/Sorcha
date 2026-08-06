@@ -373,9 +373,21 @@ public sealed class DocketProvenanceVerifier
                 continue;
             }
 
+            // Matched on the PUBLIC KEY, deliberately, and not on the validator id.
+            //
+            // The two identifiers are not in the same space. A docket records its proposer/signers
+            // using the validator's CONFIGURED id (DocketBuilder sets ProposerValidatorId =
+            // _validatorConfig.ValidatorId — e.g. "local-validator"), while a roster entry
+            // identifies a validator by WALLET ADDRESS (e.g. "ws11qq5dj49…"). Requiring both to
+            // match reports a false failure on every real register — confirmed against n1's live
+            // AIAS registers.
+            //
+            // The public key is cryptographic material recorded identically on both sides, so it is
+            // the only comparison immune to naming conventions. It is also the stronger claim: what
+            // matters is whether the KEY was authorised to sign this docket, not what the signer
+            // chose to call itself.
             var entitled = rosterAsOf.Entries.Any(entry =>
                 entry.HeldAuthority &&
-                string.Equals(entry.ValidatorId, vote.ValidatorId, StringComparison.Ordinal) &&
                 string.Equals(entry.PublicKey, vote.PublicKey, StringComparison.Ordinal));
 
             if (!entitled)
@@ -478,21 +490,56 @@ public sealed class DocketProvenanceVerifier
             };
         }
 
-        var entitled = rosterAsOf.Entries.Any(entry =>
-            entry.HeldAuthority &&
-            string.Equals(entry.ValidatorId, docket.ProposerValidatorId, StringComparison.Ordinal));
+        var held = string.Join(", ", rosterAsOf.Entries.Where(e => e.HeldAuthority).Select(e => e.ValidatorId));
+        var detail = $"Proposer: {docket.ProposerValidatorId} · roster version {rosterAsOf.RosterVersion} held: {held}";
 
+        var entry = rosterAsOf.Entries.FirstOrDefault(e =>
+            string.Equals(e.ValidatorId, docket.ProposerValidatorId, StringComparison.Ordinal));
+
+        if (entry is not null)
+        {
+            // Found by name: a definite answer either way. An entry that did not hold authority at
+            // this docket is a genuine contradiction between two things the register records.
+            return new ProvenanceCheck
+            {
+                Layer = ProvenanceLayer.Proposer,
+                Status = entry.HeldAuthority ? VerificationStatus.Verified : VerificationStatus.Failed,
+                Headline = entry.HeldAuthority
+                    ? "The proposer held authority at this docket"
+                    : "The proposer did NOT hold authority at this docket",
+                CheckedAgainst = against,
+                Detail = detail,
+            };
+        }
+
+        // Not found by name — and this is NOT enough to report a failure.
+        //
+        // The docket header records its proposer using the validator's CONFIGURED id
+        // (DocketBuilder sets ProposerValidatorId = _validatorConfig.ValidatorId, e.g.
+        // "local-validator"), while a roster entry identifies a validator by WALLET ADDRESS
+        // (e.g. "ws11qq5dj49…"). The two are different identifier spaces, and unlike the Signers
+        // check there is no public key on a docket header to compare instead — the register simply
+        // does not record enough to relate them.
+        //
+        // So a non-match means "cannot be determined", not "impostor". Reporting Failed here fires
+        // on every healthy register on every single-validator deployment — confirmed against n1's
+        // live AIAS registers, where every docket names "local-validator" and every roster names a
+        // wallet address. A verification surface that accuses a healthy ledger of tampering is worse
+        // than no surface at all, so this reports Unverified and shows the reader both values.
         return new ProvenanceCheck
         {
             Layer = ProvenanceLayer.Proposer,
-            Status = entitled ? VerificationStatus.Verified : VerificationStatus.Failed,
-            Headline = entitled
-                ? "The proposer held authority at this docket"
-                : "The proposer did NOT hold authority at this docket",
+            Status = VerificationStatus.Unverified,
+            Headline = "Proposer could not be matched to the validator set",
             CheckedAgainst = against,
-            Detail =
-                $"Proposer: {docket.ProposerValidatorId} · roster version {rosterAsOf.RosterVersion} held: " +
-                $"{string.Join(", ", rosterAsOf.Entries.Where(e => e.HeldAuthority).Select(e => e.ValidatorId))}",
+            Detail = detail,
+            Reason =
+                $"the docket records its proposer as '{docket.ProposerValidatorId}', which does not " +
+                $"appear in the roster applying at this docket. A docket names its proposer by the " +
+                $"validator's configured identifier while a roster names validators by wallet " +
+                $"address, so this is usually the two being recorded in different identifier spaces " +
+                $"rather than an unauthorised proposer — but the register does not record enough to " +
+                $"tell them apart",
         };
     }
 }

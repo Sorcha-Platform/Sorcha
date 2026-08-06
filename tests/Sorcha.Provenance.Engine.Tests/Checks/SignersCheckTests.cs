@@ -74,6 +74,26 @@ public class SignersCheckTests
             "a single-validator deployment is a supported configuration, not a broken register");
     }
 
+    /// <summary>
+    /// Attribution is on the PUBLIC KEY, not the validator id. A vote naming itself differently from
+    /// the roster — the ordinary case, since dockets record configured ids and rosters record wallet
+    /// addresses — must still verify when its key was authorised.
+    /// </summary>
+    [Fact]
+    public void SignerNamedDifferentlyFromTheRosterButUsingAnAuthorisedKey_IsVerified()
+    {
+        var docket = TestEvidence.HealthyDocket() with
+        {
+            Votes = [TestEvidence.Vote("local-validator", "key-a")],
+        };
+
+        var check = Signers(docket, TwoValidators());
+
+        check.Status.Should().Be(VerificationStatus.Verified,
+            "the key was authorised at this docket; what the signer called itself is a label, and " +
+            "requiring the id to match too reports a false failure on every real register");
+    }
+
     [Fact]
     public void SignerAbsentFromTheRosterAsOf_IsFailed()
     {
