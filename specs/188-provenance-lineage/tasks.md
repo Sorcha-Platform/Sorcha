@@ -109,11 +109,11 @@ Legend: 📋 pending · 🚧 in progress · ✅ done · `[P]` parallelisable (di
 
 ## Phase 4: Polish & close-out
 
-- [ ] T038 [P] Update `.claude/skills/sorcha-architecture/SKILL.md` with a Provenance section: the two surfaces, the tri-state, and the three traps (roster-as-of, empty votes, tamper-evidence-not-correctness).
-- [ ] T039 [P] Update `docs/reference/API-DOCUMENTATION.md` with the two endpoints.
-- [ ] T040 [P] Update `.specify/MASTER-TASKS.md` with the shipped entry.
-- [ ] T041 **Narrow issue #1372** per plan decision D4: F188's Seal check is that cross-check for the docket surface; #1372's remaining scope is the proof-generation and chain-integrity endpoints calling the same `IMerkleRootCalculator` seam. Left as-is, both features implement one comparison and drift starts immediately.
-- [ ] T042 Add `Sorcha.Provenance.Engine` to the WASM-safety gate (`scripts/check-wasm-safe.ps1`) if that gate enumerates projects, so the Phase-3 property is defended by CI rather than by T005 alone.
+- [X] T038 [P] Update `.claude/skills/sorcha-architecture/SKILL.md` with a Provenance section: the two surfaces, the tri-state, and the three traps (roster-as-of, empty votes, tamper-evidence-not-correctness).
+- [X] T039 [P] Update `docs/reference/API-DOCUMENTATION.md` with the two endpoints.
+- [X] T040 [P] Update `.specify/MASTER-TASKS.md` with the shipped entry.
+- [X] T041 **Narrow issue #1372** per plan decision D4: F188's Seal check is that cross-check for the docket surface; #1372's remaining scope is the proof-generation and chain-integrity endpoints calling the same `IMerkleRootCalculator` seam. Left as-is, both features implement one comparison and drift starts immediately.
+- [X] T042 Add `Sorcha.Provenance.Engine` to the WASM-safety gate (`scripts/check-wasm-safe.ps1`) if that gate enumerates projects, so the Phase-3 property is defended by CI rather than by T005 alone.
 
 ---
 

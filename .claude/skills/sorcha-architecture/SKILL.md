@@ -2309,3 +2309,102 @@ learned nothing. `ProximityReaderSession` fails that closed.
   `ECDiffieHellman` and `AesGcm` — those are what the gate bans. New `Sorcha.Mdoc` code prefers BouncyCastle
   throughout anyway (one provider is easier to reason about than two), but that is a preference, not a
   portability requirement, and the gate does not pretend otherwise.
+
+---
+
+## Provenance — trust-anchor and proof lineage (Feature 188, Phase 1)
+
+Two **read-only** admin surfaces that answer "who signed off on what, and can you prove it?" from a
+fact back to the trust anchor. Phase 1 = the verification engine + register lineage. Spec:
+`specs/188-provenance-lineage/`.
+
+**Named provenance, NOT audit, and the split is load-bearing.** `IAuditService`
+(`Sorcha.UI.Core/Services/Admin/`) *writes* a log of administrative actions. Provenance *reads*
+evidence and reports what can be proven about it. One word covering both is the collision class
+Feature 187 spent its length untangling (`Docket` ×2, `ValidatorSignature` ×2, `VoteDecision` ×2 with
+*incompatible* values).
+
+### The tri-state — `Unverified` is a first-class result, never a failure
+
+`VerificationStatus` (`Verified` / `Failed` / `Unverified`) lives in the zero-dependency leaf
+**`Sorcha.Verification.Abstractions`**, hoisted there from `Sorcha.Verifier.Engine.Models.LayerStatus`
+(whose members were `Pass`/`Fail`/`Unverified`) so both engines share one declaration. **Member order
+is load-bearing** — `VerificationOutcome` round-trips through `System.Text.Json` with no string-enum
+converter, so these are integers on the wire.
+
+- **`Unverified` = the check could not run.** It never vetoes an otherwise-passing trail.
+- **A check that did not run MUST NOT report `Verified`.** A surface that manufactures confidence is
+  worse than no surface.
+- **Absence of evidence is never evidence of tampering.** A partial replica, a single-validator
+  deployment, and a record predating the evidence a check needs are all ordinary healthy states.
+
+### API surface (Register Service — it owns the evidence)
+
+| Method | Route | Verifies? |
+|---|---|---|
+| GET | `/api/provenance/registers/{registerId}` | **No** — paged docket spine |
+| GET | `/api/provenance/registers/{registerId}/dockets/{docketNumber}` | Yes — one docket's trail |
+| GET | `/api/provenance/instances/{instanceId}` | Phase 2 — reserved, returns 501 |
+
+`RequireAdministrator` **composed with** `RequirePlatformAudience` (pattern #13 — the tier gate sits
+*on* the role gate; an Administrator role on a consumer-tier token is refused). Missing evidence
+returns **200 with `unverified` rows carrying reasons, never a 5xx** — an auditor needs to know
+*which* link failed.
+
+**Two endpoints, deliberately.** Verification is O(n) hashing per docket, so a spine that verified
+eagerly would be O(n·m) on a list view. `DocketSpineEntry` has **no status field**, and a test
+enforces its absence.
+
+⚠ **`/api/provenance/**` needs its own API-Gateway route** (`provenance-api` → `register-cluster`).
+Without one it falls through to the `ui-static` `/{**catch-all}` and the whole surface is silently
+unreachable — a **bodiless 404, no content-type**. Identical to F111/#1309.
+
+### The five checks (`Sorcha.Provenance.Engine`, dependency-free)
+
+`ProvenanceLayer` = `Anchor` | `Chain` | `Seal` | `Signers` | `Proposer`, emitted broadest-first. Every
+check carries a **required `CheckedAgainst`** stating its basis, and a `Reason` when unverified.
+
+The engine takes assembled evidence and returns a verdict trail. **It may never reference
+`Sorcha.Cryptography` (libsodium P/Invoke, not WASM-loadable) or `Sorcha.ServiceClients.*`** — that
+forecloses the Phase-3 portable export it exists for. Guarded at runtime by `EngineIsPortableTests`
+(transitive closure) and statically by `scripts/check-wasm-safe.ps1`.
+
+### THE FIVE TRAPS — every one produced a FALSE FAILURE on healthy live data
+
+Four were found only by running against real n1 dockets, after a 2,500-test green suite.
+
+1. **Roster-as-of, not roster-now.** A signature valid when made must stay valid. Evidence assembly
+   resolves the roster version applying **at that docket**; the engine is never handed the current
+   roster (there is no parameter for it). The boundary is **exclusive**: a change sealed in docket 12
+   does not govern docket 12 — that docket was signed under the set in force at the time. Inclusive
+   would accuse the sealing validators of *every governance docket*.
+2. **A docket does not commit to its transaction ids.** `DocketBuilder.cs:159` builds the Merkle tree
+   from `DocketHasher.ComputeTransactionHash(TxId, PayloadHash, Timestamp)` **leaves**. Recomputing
+   over raw `TransactionIds` mismatches **100% of the time**. Leaves must follow `TransactionIds`
+   *in order*, or tamper-detection becomes vacuous. ⚠ `Register.Service/Program.cs:3000`
+   (`POST /proofs/inclusion`) still recomputes over raw ids and disagrees with
+   `VerificationEndpoints.cs:82`, which does it correctly — see #1372.
+3. **Identifier spaces differ.** `DocketHeader.ProposerValidatorId` is the validator's *configured*
+   id (`local-validator`); `ValidatorRosterEntry.ValidatorId` is a *wallet address* (`ws11q…`).
+   **Signers matches on PUBLIC KEY** (recorded identically on both sides, and the stronger claim).
+   **Proposer cannot** — a docket header carries no proposer key — so a non-match is `Unverified`.
+4. **A mismatched trust anchor is `Unverified`, not `Failed`.** From one node, "my anchor is not this
+   network's" and "this register is forged" are indistinguishable; cross-node reconciliation is out of
+   scope. Consequence: **Anchor has no `Failed` path on a single node in Phase 1.** Issue #1374.
+5. **Empty votes is the common case.** Single-validator nodes record none. `signers` ⇒ `Unverified`.
+   **A green tick there is the most serious defect this feature can have.**
+
+### Runtime source
+
+`src/Common/Sorcha.Verification.Abstractions/`, `src/Common/Sorcha.Provenance.Engine/`
+(`DocketProvenanceVerifier`, `Evidence/`, `Seams/IMerkleRootCalculator`),
+`src/Services/Sorcha.Register.Service/Provenance/` (`RosterAsOfResolver`, `DocketEvidenceAssembler`,
+`MerkleRootCalculator` — a **delegation** to the platform's one `MerkleTree`, never a reimplementation
+— `NodeTrustAnchor`, `ProvenanceMetrics`), `Endpoints/ProvenanceEndpoints.cs`,
+`src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Provenance/` (admin-facing — **not**
+`Components.User`, which reaches the wallet PWA).
+
+Metrics: `sorcha_provenance_check_total{layer,status}` and
+`sorcha_provenance_trail_duration_seconds{surface}` on the `Sorcha.Provenance` meter. No subject data.
+`failed` and `unverified` must stay distinguishable — the first is an integrity signal worth alerting
+on, the second usually means missing evidence.
