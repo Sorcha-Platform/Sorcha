@@ -56,6 +56,8 @@ Several organisations jointly own a register. Any one of them can propose a gove
 4. **Given** an organisation that has already approved a proposal, **When** it approves the same proposal again, **Then** the requirement is not advanced by the repeat.
 5. **Given** a register under a simple-majority rule, **When** a majority approves, **Then** the change is enacted without waiting for the remainder.
 6. **Given** a proposal to transfer ownership, **When** the current owner is the proposer, **Then** the proposal still requires approval — ownership can never be transferred unilaterally.
+7. **Given** an open proposal, **When** the register's roster is changed by a separate enacted decision, **Then** the open proposal is invalidated with a recorded reason and cannot subsequently be enacted.
+8. **Given** an open proposal under a unanimous rule with one stakeholder yet to approve, **When** that stakeholder is removed from the roster, **Then** the proposal does **not** become enactable — it is invalidated.
 
 ---
 
@@ -92,9 +94,10 @@ The network's own system register — created by an offline ceremony rather than
 
 ### Edge Cases
 
-- **The roster changes while a proposal is open.** An organisation is removed from (or added to) the roster after a proposal is raised but before it reaches its approval requirement. See the clarification below — this determines whether approvals are counted against the roster as it stood when the proposal was raised, or as it stands when the count is taken.
+- **The roster changes while a proposal is open.** Resolved: the proposal is invalidated (FR-011b). A removed organisation's approval can therefore never carry weight, and a change cannot become enactable merely because the pool shrank. Removing a dissenting stakeholder does not pass their objection — it cancels the vote.
 - **A proposal never reaches its requirement.** It must not remain open indefinitely, and an expired proposal must not later be enactable by a late approval.
-- **An approver leaves the roster after approving.** Their earlier approval must not silently continue to count toward a requirement evaluated later.
+- **An approver leaves the roster after approving.** Resolved by the same rule: their departure is itself a roster change, so the proposal is invalidated rather than carrying a stale approval forward.
+- **Two roster changes are proposed at once.** Enacting the first invalidates the second, which must be re-raised against the new roster rather than applying to a roster that no longer exists.
 - **Two proposals for conflicting changes are open at once.** Enacting one must not silently enact or invalidate the other without a recorded outcome.
 - **The last remaining owner is removed.** A register must never be left with no organisation able to govern it.
 - **A register created before this feature.** Its roster records the organisation's general-purpose identity rather than a distinct governance authority; such registers cannot be governed and must be identifiable as such rather than failing obscurely.
@@ -120,7 +123,10 @@ The network's own system register — created by an offline ceremony rather than
 - **FR-008**: The system MUST support requiring a simple majority, a supermajority, or unanimity of the roster.
 - **FR-009**: A register owned by a single organisation MUST complete a governance change on that organisation's authority alone, with no additional approval step.
 - **FR-010**: A transfer of ownership MUST require approval under the register's approval rule and MUST NOT be completed on the proposing owner's authority alone.
-- **FR-011**: Only approvals from current roster members MUST count toward an approval requirement, and repeat approvals by the same organisation MUST count once.
+- **FR-011**: Only approvals from organisations on the roster MUST count toward an approval requirement, and repeat approvals by the same organisation MUST count once.
+- **FR-011a**: A proposal MUST be evaluated against the roster and approval rule as they stood **when the proposal was raised**, so that neither the set of eligible approvers nor the number of approvals required can change while the proposal is open.
+- **FR-011b**: Any enacted change to a register's roster MUST invalidate every proposal open on that register at that moment.
+- **FR-011c**: An invalidated proposal MUST record its invalidation, and the reason, as a discoverable outcome — it MUST NOT be silently discarded, and MUST NOT be enactable thereafter.
 - **FR-012**: A proposal MUST expire if it has not met its approval requirement within its validity period, and an expired proposal MUST NOT be enactable thereafter.
 
 **Enactment and propagation**
@@ -167,6 +173,7 @@ The network's own system register — created by an offline ceremony rather than
 - **SC-007**: A single-owner register requires no more steps to govern than it does today.
 - **SC-008**: A governance change that is refused, or a proposal that expires, reports a reason a register administrator can act on without inspecting system internals.
 - **SC-009**: Every acceptance scenario above is demonstrated by live execution against a running multi-node network, not by automated tests alone.
+- **SC-010**: No change to a register's roster can cause an open proposal to be enacted — demonstrated by removing the sole outstanding approver from a unanimous proposal and confirming the change is invalidated rather than enacted.
 
 ## Assumptions
 
@@ -179,6 +186,27 @@ The network's own system register — created by an offline ceremony rather than
 - **Scope includes register creation as a governed process.** Creating a register is treated as the first governance act on it, following the same published definition as later changes, so that there is one way registers come into being and one way they change.
 - **Out of scope.** Delegating an organisation's governance authority to another party; rotating a governance authority after creation; governance across registers (a decision on one register affecting another); and any user interface beyond what is needed to demonstrate the acceptance scenarios.
 
-## Clarifications Needed
+## Clarifications
 
-- **Roster snapshot semantics for an open proposal** [NEEDS CLARIFICATION: When the governance roster changes while a proposal is open, are approvals counted against the roster as it stood when the proposal was raised, or against the roster as it stands when the count is taken? The first makes a proposal's outcome predictable at the moment it is raised but lets a removed organisation still influence a decision; the second reflects current authority but means an in-flight proposal's requirement can shift beneath it, and a proposal could become enactable purely because the roster shrank. This materially affects the security properties of consortium governance and has no safe default.]
+### Session 2026-08-06
+
+**Q: When the governance roster changes while a proposal is open, are approvals counted against
+the roster as it stood when the proposal was raised, or as it stands when the count is taken?**
+
+**A: Snapshot at proposal time, and any change to the roster invalidates every open proposal on
+that register.** (Resolved by the maintainer; see FR-011a–FR-011c.)
+
+Rationale for the record. Two alternatives were rejected:
+
+- *Counting against the live roster* would let a proposal become enactable purely because the
+  roster shrank — under unanimity, removing a dissenting organisation would convert a blocked
+  change into an enacted one. That makes roster removal an attack on any open proposal.
+- *Counting against the snapshot but leaving the proposal open* avoids that, but lets an
+  organisation that has since lost its authority still determine the outcome — awkward precisely
+  when it was removed *because* it should no longer be deciding things.
+
+Invalidation avoids both: no departed member's approval can carry weight, and no change in the
+size of the pool can flip an outcome. The cost is accepted — a roster change cancels open
+proposals on that register and they must be raised again — because "the roster changed, so the
+proposal was cancelled and re-raised" is a sequence an auditor can follow, whereas either
+alternative produces an outcome that is hard to explain after the fact.

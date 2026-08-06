@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,9 +31,12 @@
 
 ## Notes
 
-**One open clarification (Q1): roster snapshot semantics for an open proposal.**
-Everything else passes. The open item is genuinely security-significant and has no safe
-default, so it is deliberately not guessed — see the Clarifications Needed section of the spec.
+**All items pass.** The single open clarification (roster snapshot semantics for an open
+proposal) was resolved by the maintainer on 2026-08-06: snapshot at proposal time, with any
+roster change invalidating open proposals. Recorded in the spec's Clarifications section with
+the rationale and the two rejected alternatives, and propagated into FR-011a–FR-011c, two
+acceptance scenarios, the edge cases, and SC-010 — so the decision is enforced by requirements
+rather than stranded in a note.
 
 **Deliberate framing choices worth recording:**
 
