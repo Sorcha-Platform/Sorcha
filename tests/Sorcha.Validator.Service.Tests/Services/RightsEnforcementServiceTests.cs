@@ -661,6 +661,37 @@ public class RightsEnforcementServiceTests
         result.Errors.Should().Contain(e => e.Code == "VAL_PERM_007");
     }
 
+    [Fact] // T027 — a sole Owner keeps working: the override means one signature suffices.
+    public async Task SingleOwnerRegister_OneSignature_StillAuthorises()
+    {
+        var orgKey = PlusBearingKey();
+        _rosterServiceMock.Setup(x => x.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateRosterWithStandardBase64((orgKey, RegisterRole.Owner, "did:sorcha:w:ws11qOwner")));
+
+        var result = await _service.ValidateGovernanceRightsAsync(CreateGovernanceTransaction(orgKey));
+
+        // The required-signer threshold must never regress User Story 1's single-organisation case.
+        result.IsValid.Should().BeTrue();
+        result.Errors.Should().NotContain(e => e.Code == "VAL_PERM_008");
+    }
+
+    [Fact] // T027 — a refusal must tell an administrator what to do about it (SC-008).
+    public async Task Refusal_CarriesAnActionableReason()
+    {
+        var orgKey = PlusBearingKey();
+        _rosterServiceMock.Setup(x => x.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateRosterWithStandardBase64((orgKey, RegisterRole.Owner, "did:sorcha:w:ws11qOwner")));
+
+        var result = await _service.ValidateGovernanceRightsAsync(
+            CreateGovernanceTransaction(UnknownPublicKey));
+
+        result.IsValid.Should().BeFalse();
+        var error = result.Errors.Single(e => e.Code == "VAL_PERM_002");
+        // "does not match any member" states the actual condition, not an internal code.
+        error.Message.Should().Contain("roster");
+        error.Message.Should().NotBeNullOrWhiteSpace();
+    }
+
     [Fact] // T018b — but genesis must still be able to create the roster.
     public async Task NoRoster_GenesisTx_IsStillAdmitted()
     {

@@ -24,16 +24,24 @@ public class RightsEnforcementService : IRightsEnforcementService
     private readonly ILogger<RightsEnforcementService> _logger;
 
     /// <summary>
+    /// Optional so existing construction sites (and tests) are unaffected. Metrics are
+    /// observability, never a precondition for an authorisation decision.
+    /// </summary>
+    private readonly GovernanceMetrics? _metrics;
+
+    /// <summary>
     /// The governance blueprint ID used to identify Control transactions
     /// </summary>
     public const string GovernanceBlueprintId = "register-governance-v1";
 
     public RightsEnforcementService(
         IGovernanceRosterService rosterService,
-        ILogger<RightsEnforcementService> logger)
+        ILogger<RightsEnforcementService> logger,
+        GovernanceMetrics? metrics = null)
     {
         _rosterService = rosterService ?? throw new ArgumentNullException(nameof(rosterService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _metrics = metrics;
     }
 
     /// <inheritdoc/>
@@ -46,6 +54,7 @@ public class RightsEnforcementService : IRightsEnforcementService
         using var _section = RuleTelemetry.TimeSection("GovernanceRights");
         var sw = Stopwatch.StartNew();
         var errors = new List<ValidationEngineError>();
+        var authorisedSignerCount = 0;
 
         // Only enforce governance on Control transactions (identified by governance blueprint)
         if (!IsGovernanceTransaction(transaction))
@@ -91,6 +100,7 @@ public class RightsEnforcementService : IRightsEnforcementService
                 _logger.LogWarning(
                     "Transaction {TransactionId} on register {RegisterId}: no governance roster exists and this is not the genesis transaction — refusing",
                     transaction.TransactionId, transaction.RegisterId);
+                _metrics?.RecordRefused(transaction.RegisterId, "no-roster");
                 errors.Add(CreateError("VAL_PERM_007",
                     "The register has no governance roster and this is not its genesis transaction, so there is no authority to authorise it against.",
                     "RegisterId", true));
@@ -100,6 +110,7 @@ public class RightsEnforcementService : IRightsEnforcementService
             // Extract the submitter's public key from the first signature
             if (transaction.Signatures.Count == 0)
             {
+                _metrics?.RecordRefused(transaction.RegisterId, "no-signature");
                 errors.Add(CreateError("VAL_PERM_001",
                     "Control transaction must have at least one signature",
                     "Signatures", true));
@@ -141,6 +152,7 @@ public class RightsEnforcementService : IRightsEnforcementService
                 _logger.LogWarning(
                     "Transaction {TransactionId} on register {RegisterId}: none of {SignatureCount} signature(s) match a roster member",
                     transaction.TransactionId, transaction.RegisterId, transaction.Signatures.Count);
+                _metrics?.RecordRefused(transaction.RegisterId, "no-roster-match");
                 errors.Add(CreateError("VAL_PERM_002",
                     "No signature on this transaction matches a member of the register's admin roster",
                     "Signatures"));
@@ -159,6 +171,7 @@ public class RightsEnforcementService : IRightsEnforcementService
                 _logger.LogWarning(
                     "Transaction {TransactionId} on register {RegisterId}: matched roster member(s) hold role(s) {Roles}, requires Owner or Admin",
                     transaction.TransactionId, transaction.RegisterId, roles);
+                _metrics?.RecordRefused(transaction.RegisterId, "no-governance-role");
                 errors.Add(CreateError("VAL_PERM_003",
                     $"Signing roster member(s) hold role(s) '{roles}', which cannot execute governance operations. Requires Owner or Admin.",
                     "Signatures"));
@@ -170,6 +183,28 @@ public class RightsEnforcementService : IRightsEnforcementService
             var submitterAttestation =
                 governanceSigners.FirstOrDefault(a => a.Role == RegisterRole.Owner)
                 ?? governanceSigners[0];
+
+            // Feature 189 (T027 / FR-005): how many DISTINCT roster organisations must have signed.
+            // For everything that takes the Owner override this is 1, so single-organisation
+            // registers behave exactly as they do today. It rises only where the override does not
+            // apply — notably Transfer, which must never be completed on the proposing owner's
+            // authority alone (FR-010).
+            authorisedSignerCount = governanceSigners.Count;
+            var parsedOperation = TryParseGovernanceOperation(transaction);
+            var requiredSigners = ResolveRequiredDistinctSigners(roster, parsedOperation);
+
+            if (governanceSigners.Count < requiredSigners)
+            {
+                _logger.LogWarning(
+                    "Transaction {TransactionId} on register {RegisterId}: {Actual} distinct roster signature(s), requires {Required}",
+                    transaction.TransactionId, transaction.RegisterId, governanceSigners.Count, requiredSigners);
+                _metrics?.RecordRefused(transaction.RegisterId, "insufficient-signers");
+                errors.Add(CreateError("VAL_PERM_008",
+                    $"This governance operation requires {requiredSigners} distinct roster organisation(s) to sign, " +
+                    $"but only {governanceSigners.Count} did. Collect the remaining approval(s) and resubmit.",
+                    "Signatures"));
+                return CreateFailureResult(transaction, sw.Elapsed, errors);
+            }
 
             // Try to parse the governance operation from the payload for deeper validation
             var operation = TryParseGovernanceOperation(transaction);
@@ -227,8 +262,12 @@ public class RightsEnforcementService : IRightsEnforcementService
 
         if (errors.Count > 0)
         {
+            // Late failures (invalid proposal / quorum) land here rather than returning early.
+            _metrics?.RecordRefused(transaction.RegisterId, "proposal-invalid");
             return CreateFailureResult(transaction, sw.Elapsed, errors);
         }
+
+        _metrics?.RecordAuthorised(transaction.RegisterId, authorisedSignerCount);
 
         return ValidationEngineResult.Success(
             transaction.TransactionId,
@@ -240,6 +279,53 @@ public class RightsEnforcementService : IRightsEnforcementService
     /// Determines if a transaction is a governance (Control) transaction by checking
     /// the blueprint ID or transaction metadata.
     /// </summary>
+    /// <summary>
+    /// Resolves how many distinct roster organisations must sign a governance transaction.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Returns <c>1</c> for every operation that takes the Owner override, which is the
+    /// overwhelming majority and covers every single-organisation register — so this cannot change
+    /// the behaviour User Story 1 depends on.
+    /// </para>
+    /// <para>
+    /// It rises above 1 only for <see cref="GovernanceOperationType.Transfer"/>, which
+    /// <c>GovernanceRosterService.ValidateQuorumAsync</c> deliberately excludes from the override:
+    /// ownership must never move on the proposing owner's say-so alone (FR-010). The threshold then
+    /// comes from the register's own configured rule, so a consortium demanding unanimity gets
+    /// unanimity.
+    /// </para>
+    /// </remarks>
+    private static int ResolveRequiredDistinctSigners(
+        AdminRoster roster,
+        GovernanceOperation? operation)
+    {
+        // Scoped deliberately to Transfer, and to nothing else.
+        //
+        // Add/Remove already have their own quorum path, where approvals ride in the PAYLOAD as
+        // operation.ApprovalSignatures and are checked against VAL_PERM_005 / VAL_PERM_006. Applying
+        // a transaction-level signature threshold to those would pre-empt that check, change a
+        // long-established refusal code out from under any operator tooling keyed on it, and impose
+        // a multi-signature model the platform does not yet use. Approvals become ledger
+        // transactions in User Story 2; the threshold generalises there, not here.
+        //
+        // Transfer is the one case that needs it now: ValidateQuorumAsync explicitly excludes it
+        // from the Owner override, because ownership must never move on the proposing owner's own
+        // say-so (FR-010).
+        if (operation is null || operation.OperationType != GovernanceOperationType.Transfer)
+        {
+            return 1;
+        }
+
+        // Fall back to the platform default rather than inventing a stricter one when a register
+        // carries no explicit policy — tightening silently would break existing registers.
+        var formula = roster.ControlRecord.RegisterPolicy?.Governance?.QuorumFormula
+                      ?? QuorumFormula.StrictMajority;
+
+        var threshold = roster.ControlRecord.GetQuorumThreshold(formula: formula);
+        return Math.Max(1, threshold);
+    }
+
     private static bool IsGovernanceTransaction(Transaction transaction)
     {
         // A blueprint PUBLISH (transactionType "BlueprintPublish") is a system seed, never a

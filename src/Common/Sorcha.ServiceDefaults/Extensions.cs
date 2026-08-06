@@ -94,6 +94,14 @@ public static class Extensions
                 // Feature 113 — Validator mempool depth + lease expiry
                 metrics.AddMeter("Sorcha.Validator.Mempool");
 
+                // Feature 189 — governance authorisation decisions (outcome / coarse reason).
+                // A sustained "refused" rate with reason no-roster-match across many registers is
+                // the signature of a signing-key regression — the class of failure that previously
+                // took a live investigation to find because it was silent.
+                // Literal, not the GovernanceMetrics.MeterName constant: ServiceDefaults is a
+                // downward dependency of every service and must never reference one back.
+                metrics.AddMeter("Sorcha.Governance");
+
                 // Feature 115 — Tenant Service social-login refusal counter
                 metrics.AddMeter("Sorcha.Tenant");
 
