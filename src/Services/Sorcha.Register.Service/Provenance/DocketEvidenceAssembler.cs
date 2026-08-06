@@ -2,6 +2,8 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Security.Cryptography;
+using Sorcha.Cryptography.Interfaces;
+using Sorcha.Cryptography.Utilities;
 using Sorcha.Provenance.Engine.Evidence;
 using Sorcha.Register.Core.Storage;
 using Sorcha.Register.Models;
@@ -32,16 +34,19 @@ public sealed class DocketEvidenceAssembler : IDocketEvidenceAssembler
 {
     private readonly IReadOnlyRegisterRepository _repository;
     private readonly INodeTrustAnchor _anchor;
+    private readonly DocketHasher _docketHasher;
     private readonly ILogger<DocketEvidenceAssembler> _logger;
 
     /// <summary>Creates an assembler over the register's read-only store and the node's anchor.</summary>
     public DocketEvidenceAssembler(
         IReadOnlyRegisterRepository repository,
         INodeTrustAnchor anchor,
+        IHashProvider hashProvider,
         ILogger<DocketEvidenceAssembler> logger)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _anchor = anchor ?? throw new ArgumentNullException(nameof(anchor));
+        _docketHasher = new DocketHasher(hashProvider);
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -59,6 +64,7 @@ public sealed class DocketEvidenceAssembler : IDocketEvidenceAssembler
 
         var predecessorHash = await ReadPredecessorHashAsync(registerId, docketNumber, cancellationToken);
         var anchor = await AssembleAnchorAsync(registerId, cancellationToken);
+        var leafHashes = await ComputeLeafHashesAsync(registerId, docket, cancellationToken);
 
         var evidence = new DocketEvidence
         {
@@ -67,6 +73,7 @@ public sealed class DocketEvidenceAssembler : IDocketEvidenceAssembler
             ClaimedPreviousHash = Blank(docket.PreviousHash),
             PredecessorHash = predecessorHash,
             TransactionIds = docket.TransactionIds ?? [],
+            LeafHashes = leafHashes,
             SealedMerkleRoot = Blank(docket.MerkleRoot),
             ProposerValidatorId = Blank(docket.ProposerValidatorId),
             Votes = (docket.Votes ?? [])
@@ -82,6 +89,89 @@ public sealed class DocketEvidenceAssembler : IDocketEvidenceAssembler
         };
 
         return new DocketEvidenceBundle(evidence, anchor);
+    }
+
+    /// <summary>
+    /// Rebuilds the Merkle leaves this docket's commitment was computed over.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A docket does not commit to its transaction ids.</b> <c>DocketBuilder</c> builds the tree
+    /// from per-transaction composite hashes of <c>(TransactionId, PayloadHash, Timestamp)</c> via
+    /// <see cref="DocketHasher.ComputeTransactionHash"/>. Recomputing over raw ids never matches —
+    /// a false tamper report on every docket of every register, which is how this was found: by
+    /// running the check against real n1 dockets and getting <c>seal: failed</c> on a healthy ledger.
+    /// </para>
+    /// <para>
+    /// This delegates to the same <see cref="DocketHasher"/> the sealing path uses, and mirrors the
+    /// projection this service's own inclusion-proof endpoint already relies on
+    /// (<c>VerificationEndpoints</c>) — the one confirmed during the Feature 187 deploy to return a
+    /// root byte-identical to the persisted <c>DocketHeader.MerkleRoot</c>. Do not re-derive it here.
+    /// </para>
+    /// <para>
+    /// <b>Leaves follow the docket's own <c>TransactionIds</c>, in order.</b> That is what makes
+    /// tampering with the stored id list detectable (SC-003): alter, remove or reorder an id and the
+    /// leaf sequence changes, so the recomputed root changes. Building from whatever the store
+    /// returns would leave the id list uncommitted and the tamper check vacuous.
+    /// </para>
+    /// <para>
+    /// Returns null when any listed transaction is not held here — the engine renders that
+    /// Unverified, never Failed.
+    /// </para>
+    /// </remarks>
+    private async Task<IReadOnlyList<string>?> ComputeLeafHashesAsync(
+        string registerId,
+        DocketHeader docket,
+        CancellationToken cancellationToken)
+    {
+        var ids = docket.TransactionIds;
+        if (ids is null || ids.Count == 0)
+        {
+            return [];
+        }
+
+        try
+        {
+            var transactions = (await _repository.GetTransactionsByDocketAsync(
+                registerId, docket.Id, cancellationToken)).ToList();
+
+            var byId = new Dictionary<string, TransactionModel>(StringComparer.OrdinalIgnoreCase);
+            foreach (var tx in transactions)
+            {
+                var key = tx.TxId ?? tx.Id;
+                if (!string.IsNullOrWhiteSpace(key))
+                {
+                    byId[key] = tx;
+                }
+            }
+
+            var leaves = new List<string>(ids.Count);
+
+            foreach (var id in ids)
+            {
+                if (!byId.TryGetValue(id, out var tx))
+                {
+                    _logger.LogDebug(
+                        "Docket {Docket} of register {RegisterId} lists transaction {TxId}, which this node does not hold; the seal check cannot recompute",
+                        docket.Id, registerId, id);
+                    return null;
+                }
+
+                leaves.Add(_docketHasher.ComputeTransactionHash(
+                    tx.TxId ?? tx.Id ?? string.Empty,
+                    tx.Payloads?.FirstOrDefault()?.Hash ?? string.Empty,
+                    new DateTimeOffset(tx.TimeStamp, TimeSpan.Zero)));
+            }
+
+            return leaves;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "Could not assemble the Merkle leaves for docket {Docket} of register {RegisterId}",
+                docket.Id, registerId);
+            return null;
+        }
     }
 
     /// <summary>

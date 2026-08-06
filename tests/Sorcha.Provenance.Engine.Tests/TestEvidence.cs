@@ -58,10 +58,19 @@ internal static class TestEvidence
         ClaimedPreviousHash = $"hash-{number - 1}",
         PredecessorHash = $"hash-{number - 1}",
         TransactionIds = ["tx-1", "tx-2", "tx-3"],
-        SealedMerkleRoot = StubMerkle.RootOf(["tx-1", "tx-2", "tx-3"]),
+        LeafHashes = LeavesFor(["tx-1", "tx-2", "tx-3"]),
+        SealedMerkleRoot = StubMerkle.RootOf(LeavesFor(["tx-1", "tx-2", "tx-3"])),
         ProposerValidatorId = proposer,
         Votes = [Vote(proposer, proposerKey)],
     };
+
+    /// <summary>
+    /// The Merkle leaves a docket actually commits to — a per-transaction composite hash, NOT the
+    /// raw id. Stands in for <c>DocketHasher.ComputeTransactionHash</c>, whose real inputs are
+    /// (TransactionId, PayloadHash, Timestamp).
+    /// </summary>
+    internal static IReadOnlyList<string> LeavesFor(IReadOnlyList<string> transactionIds) =>
+        transactionIds.Select(id => $"leaf({id})").ToList();
 
     /// <summary>An anchor this node holds, with the register's origin tracing to it.</summary>
     internal static AnchorEvidence TraceableAnchor() => new()

@@ -262,7 +262,23 @@ public sealed class DocketProvenanceVerifier
     private ProvenanceCheck CheckSeal(DocketEvidence docket)
     {
         const string against =
-            "the sealed Merkle root, compared with a root recomputed from the docket's stored transaction ids";
+            "the sealed Merkle root, compared with a root recomputed from the docket's stored transactions " +
+            "(one leaf per transaction id, in stored order)";
+
+        if (docket.SealedMerkleRoot is not null && docket.LeafHashes is null)
+        {
+            return new ProvenanceCheck
+            {
+                Layer = ProvenanceLayer.Seal,
+                Status = VerificationStatus.Unverified,
+                Headline = "The docket's contents could not be assembled",
+                CheckedAgainst = against,
+                Detail = $"Transactions sealed: {docket.TransactionIds.Count}",
+                Reason =
+                    "this node does not hold every transaction this docket lists, so the commitment " +
+                    "cannot be recomputed to compare against",
+            };
+        }
 
         if (string.IsNullOrWhiteSpace(docket.SealedMerkleRoot))
         {
@@ -279,7 +295,9 @@ public sealed class DocketProvenanceVerifier
             };
         }
 
-        var recomputed = _merkle.ComputeRoot(docket.TransactionIds);
+        // Over the LEAVES, not the ids — a docket commits to a tree of per-transaction composite
+        // hashes, so recomputing over raw ids never matches. See DocketEvidence.LeafHashes.
+        var recomputed = _merkle.ComputeRoot(docket.LeafHashes ?? []);
         var matches = string.Equals(recomputed, docket.SealedMerkleRoot, StringComparison.OrdinalIgnoreCase);
 
         return new ProvenanceCheck
