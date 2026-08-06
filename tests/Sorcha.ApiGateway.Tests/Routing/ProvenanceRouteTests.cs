@@ -75,4 +75,60 @@ public class ProvenanceRouteTests
             "authorization for these endpoints is the tier gate composed on the role gate, declared " +
             "at the endpoints (CLAUDE.md pattern #13), not duplicated at the edge");
     }
+
+    /// <summary>
+    /// <b>Every</b> key under <c>Routes</c> must be a route YARP can load.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// YARP treats every key under <c>Routes</c> as a route, with no notion of a comment. A
+    /// documentation key added there — the obvious way to leave a note next to a route — makes the
+    /// whole proxy configuration invalid, and the gateway does not degrade: it throws at startup
+    /// (<c>Route 'x' requires Hosts or Path specified</c>) and crash-loops, taking the entire edge
+    /// down. Every service behind it becomes unreachable.
+    /// </para>
+    /// <para>
+    /// This happened during the Feature 188 deploy and cost an outage. The route-specific tests above
+    /// all still passed, because they only checked the route they cared about — which is exactly why
+    /// this whole-file check exists. Notes belong in a route's <c>Metadata</c>, which YARP carries
+    /// without interpreting.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void EveryRoute_HasAMatchWithPathOrHosts_SoTheProxyConfigLoads()
+    {
+        var invalid = new List<string>();
+
+        foreach (var route in Routes().EnumerateObject())
+        {
+            if (route.Value.ValueKind != JsonValueKind.Object)
+            {
+                invalid.Add($"{route.Name} (not an object — a comment or stray value?)");
+                continue;
+            }
+
+            if (!route.Value.TryGetProperty("Match", out var match))
+            {
+                invalid.Add($"{route.Name} (no Match)");
+                continue;
+            }
+
+            var hasPath = match.TryGetProperty("Path", out var path)
+                          && !string.IsNullOrWhiteSpace(path.GetString());
+            var hasHosts = match.TryGetProperty("Hosts", out var hosts)
+                           && hosts.ValueKind == JsonValueKind.Array
+                           && hosts.GetArrayLength() > 0;
+
+            if (!hasPath && !hasHosts)
+            {
+                invalid.Add($"{route.Name} (Match has neither Path nor Hosts)");
+            }
+        }
+
+        invalid.Should().BeEmpty(
+            "YARP rejects the ENTIRE proxy configuration if any route lacks Hosts or Path, and the " +
+            "gateway then crash-loops at startup and takes the whole edge down with it. Offending " +
+            "keys: {0}. If you wanted to leave a note, put it in that route's Metadata.",
+            string.Join(", ", invalid));
+    }
 }
