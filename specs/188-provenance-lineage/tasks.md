@@ -83,10 +83,25 @@ Legend: 📋 pending · 🚧 in progress · ✅ done · `[P]` parallelisable (di
 
 ### Live verification
 
-- [ ] T037 [US1] Verify on n1 against the real AIAS registers (identity `b388e51816e34d4ea7ce275ca7e8219c`, cyber `06658347d724454e89a6655d8852d6ac`) — both hold sealed dockets from the 2026-08-05 re-genesis.
+- [X] T037 [US1] Verify on n1 against the real AIAS registers (identity `b388e51816e34d4ea7ce275ca7e8219c`, cyber `06658347d724454e89a6655d8852d6ac`) — both hold sealed dockets from the 2026-08-05 re-genesis.
   - **Expected**: `anchor`, `chain`, `seal`, `proposer` ⇒ `Verified`; **`signers` ⇒ `Unverified`**, because n1 runs single-validator mode. A green tick on `signers` is a defect, not good news.
   - Confirm the spine loads and pages; record timings against SC-007.
   - A green suite does not prove the fold — Feature 187's whole history says so.
+  - **DONE 2026-08-06, and it earned its place: the live run found FOUR defects a green suite had not.**
+    (1) no API-Gateway route for `/api/provenance/**` — the surface was a bodiless 404, F111's trap
+    verbatim; (2) `Signers`/`Proposer` compared a docket's *configured* validator id against a
+    roster's *wallet address* — false failure on every docket; (3) `Seal` recomputed over transaction
+    **ids** when a docket commits to per-transaction **leaf hashes** — false failure 100% of the time;
+    (4) a mismatched trust anchor reported `Failed` where #1374 requires `Unverified`.
+    Also cost a ~5-minute edge outage: a JSON comment key under `ReverseProxy:Routes` is read by YARP
+    as a route and crash-loops the gateway.
+  - **Observed result** (identity `b388e518…`, cyber `06658347…`): `chain` + `seal` **Verified**;
+    `signers` **Unverified** (no quorum evidence — correct for single-validator); `anchor` and
+    `proposer` **Unverified** with reasons. SC-003 demonstrated live: reordering a docket's stored
+    transaction ids flipped `seal` to **Failed**, restoring flipped it back to **Verified**, and the
+    register was confirmed byte-identical to its saved original afterwards.
+  - Timings: spine ≤15 ms, trail ≤7 ms. **SC-007 is NOT yet evidenced** — the largest register here
+    holds 16 dockets, not 5,000.
 
 **Checkpoint**: User Story 1 complete and independently demonstrable.
 
