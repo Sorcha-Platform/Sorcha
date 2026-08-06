@@ -2403,7 +2403,14 @@ governanceGroup.MapPost("/propose", async (
     {
         TransactionId = txId,
         RegisterId = registerId,
-        BlueprintId = string.Empty,
+        // Feature 189 (R-005): an EMPTY BlueprintId is rejected by TransactionValidator with
+        // TX_003 "Blueprint ID is required" before any governance handling runs — so this endpoint
+        // could never have worked. "genesis" would be worse: TransactionTypeClassifier
+        // .IsGenesisTransaction matches that exact value and would judge a routine governance
+        // operation against the short GenesisMaxAge freshness window. The governance control
+        // blueprint is the correct value, and it also opts the transaction into the roster
+        // enforcement it should always have had.
+        BlueprintId = Sorcha.Register.Service.Services.CryptoPolicyService.GovernanceBlueprintId,
         ActionId = $"governance-{opType}",
         Payload = payloadElement,
         PayloadHash = payloadHashHex,

@@ -147,11 +147,20 @@ public class RightsEnforcementServiceTests
             .Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
             .ReturnsAsync((AdminRoster?)null);
 
+        // Feature 189 (R-002): this test is named for a GENESIS control transaction but used to
+        // build an ordinary governance one — so what it actually asserted was the far broader
+        // "any control transaction is allowed when no roster exists". That allowance is the
+        // pre-genesis window in which every governance operation was admitted unchecked, and a
+        // live DevMode promotion slipped through it and was mistaken for the feature working.
+        //
+        // The transaction is now genuinely a genesis transaction, which is what the name always
+        // claimed. The narrowed behaviour is covered by NoRoster_NonGenesisGovernanceTx_IsRefused.
         var tx = CreateGovernanceTransaction(OwnerPublicKey);
+        tx.Metadata["Type"] = "Genesis";
 
         var result = await _service.ValidateGovernanceRightsAsync(tx);
 
-        result.IsValid.Should().BeTrue();
+        result.IsValid.Should().BeTrue("genesis creates the roster, so it cannot require one");
     }
 
     // --- Admin accepted ---
@@ -460,5 +469,209 @@ public class RightsEnforcementServiceTests
 
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Code == "VAL_PERM_002");
+    }
+
+    // ==================================================================================
+    // Feature 189 — organisation-signed governance.
+    //
+    // Note on the fixture above: CreateRoster encodes attestation keys with
+    // Base64Url.EncodeToString, which is the SAME encoding the old implementation compared
+    // against — so the suite agreed with the code and neither noticed that real registers store
+    // standard base64. The tests below deliberately build rosters the way genesis actually does.
+    // ==================================================================================
+
+    /// <summary>Builds a roster whose keys are encoded the way genesis really stores them.</summary>
+    private static AdminRoster CreateRosterWithStandardBase64(
+        params (byte[] publicKey, RegisterRole role, string did)[] members)
+    {
+        return new AdminRoster
+        {
+            RegisterId = "test-register",
+            ControlRecord = new RegisterControlRecord
+            {
+                RegisterId = "test-register",
+                Name = "Test",
+                CreatedAt = DateTimeOffset.UtcNow,
+                Attestations = members.Select(m => new RegisterAttestation
+                {
+                    Role = m.role,
+                    Subject = m.did,
+                    // Standard base64 — padded, "+/" alphabet. This is what RegisterAttestation
+                    // documents and what a live register carries.
+                    PublicKey = Convert.ToBase64String(m.publicKey),
+                    Signature = Convert.ToBase64String(new byte[64]),
+                    Algorithm = SignatureAlgorithm.ED25519,
+                    GrantedAt = DateTimeOffset.UtcNow
+                }).ToList()
+            },
+            ControlTransactionCount = 1
+        };
+    }
+
+    /// <summary>
+    /// A key whose base64 encoding contains '+' and requires padding — the shape that makes a
+    /// base64-vs-base64url string comparison fail. Modelled on a real n1 roster key
+    /// (fFE+9QNpjWLk9+hPDXbfIFctbmex6ONxaOnMVUAkjWA=).
+    /// </summary>
+    private static byte[] PlusBearingKey()
+    {
+        var key = Convert.FromBase64String("fFE+9QNpjWLk9+hPDXbfIFctbmex6ONxaOnMVUAkjWA=");
+        Convert.ToBase64String(key).Should().Contain("+");
+        return key;
+    }
+
+    [Fact] // T014 — R-003 regression. Fails against master.
+    public async Task GovernanceTx_RosterKeyStoredAsPaddedBase64_StillMatches()
+    {
+        var orgKey = PlusBearingKey();
+        var roster = CreateRosterWithStandardBase64((orgKey, RegisterRole.Owner, "did:sorcha:w:ws11qOwner"));
+        _rosterServiceMock.Setup(x => x.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+
+        var tx = CreateGovernanceTransaction(orgKey);
+        var result = await _service.ValidateGovernanceRightsAsync(tx);
+
+        // The key IS on the roster. Comparing encoded strings would reject it purely because the
+        // roster wrote base64 and the validator wrote base64url.
+        result.IsValid.Should().BeTrue(
+            "a roster key stored as padded base64 must match the same key supplied as raw bytes");
+    }
+
+    [Fact] // T013 — an organisation on the roster is authorised.
+    public async Task GovernanceTx_SignedByOrganisationOnRoster_IsAccepted()
+    {
+        var orgKey = PlusBearingKey();
+        _rosterServiceMock.Setup(x => x.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateRosterWithStandardBase64((orgKey, RegisterRole.Owner, "did:sorcha:w:ws11qOwner")));
+
+        var result = await _service.ValidateGovernanceRightsAsync(CreateGovernanceTransaction(orgKey));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact] // T012 — the node's own wallet is never a governance authority.
+    public async Task GovernanceTx_SignedByNodeSystemWallet_IsRefused()
+    {
+        var orgKey = PlusBearingKey();
+        var nodeSystemWalletKey = UnknownPublicKey;   // never appears on any roster
+        _rosterServiceMock.Setup(x => x.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateRosterWithStandardBase64((orgKey, RegisterRole.Owner, "did:sorcha:w:ws11qOwner")));
+
+        var result = await _service.ValidateGovernanceRightsAsync(
+            CreateGovernanceTransaction(nodeSystemWalletKey));
+
+        result.IsValid.Should().BeFalse("the node is not an organisation and is never on a roster");
+        result.Errors.Should().Contain(e => e.Code == "VAL_PERM_002");
+    }
+
+    [Fact] // T016 — every signature is examined, not just the first.
+    public async Task GovernanceTx_RosterMemberSignsSecond_IsStillAuthorised()
+    {
+        var orgKey = PlusBearingKey();
+        _rosterServiceMock.Setup(x => x.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateRosterWithStandardBase64((orgKey, RegisterRole.Owner, "did:sorcha:w:ws11qOwner")));
+
+        var tx = CreateGovernanceTransaction(UnknownPublicKey);
+        tx.Signatures.Add(new RegisterSignature
+        {
+            PublicKey = orgKey,
+            SignatureValue = new byte[64],
+            Algorithm = "ED25519",
+            SignedAt = DateTimeOffset.UtcNow
+        });
+
+        var result = await _service.ValidateGovernanceRightsAsync(tx);
+
+        // Only Signatures[0] used to be considered, so a genuine authority signing in any other
+        // position was invisible — which is what made multi-party governance unenforceable.
+        result.IsValid.Should().BeTrue("a roster member's signature authorises wherever it appears");
+    }
+
+    [Fact] // T016b — a non-roster co-signer confers nothing.
+    public async Task GovernanceTx_NonRosterCoSigner_DoesNotAuthorise()
+    {
+        var orgKey = PlusBearingKey();
+        _rosterServiceMock.Setup(x => x.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateRosterWithStandardBase64((orgKey, RegisterRole.Owner, "did:sorcha:w:ws11qOwner")));
+
+        var tx = CreateGovernanceTransaction(UnknownPublicKey);
+        tx.Signatures.Add(new RegisterSignature
+        {
+            PublicKey = AdminPublicKey,   // also not on the roster
+            SignatureValue = new byte[64],
+            Algorithm = "ED25519",
+            SignedAt = DateTimeOffset.UtcNow
+        });
+
+        var result = await _service.ValidateGovernanceRightsAsync(tx);
+
+        result.IsValid.Should().BeFalse("piling on signatures from non-members must not authorise");
+        result.Errors.Should().Contain(e => e.Code == "VAL_PERM_002");
+    }
+
+    [Fact] // T015 — R-004. Fails against master, where this shape bypassed enforcement entirely.
+    public async Task ProposeShapedTx_IsDetectedAsGovernance_AndRosterEnforced()
+    {
+        var orgKey = PlusBearingKey();
+        _rosterServiceMock.Setup(x => x.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateRosterWithStandardBase64((orgKey, RegisterRole.Owner, "did:sorcha:w:ws11qOwner")));
+
+        // The /propose shape: governance discriminator on Metadata["Type"], and a transactionType
+        // that is NOT "Control". Under the old detection this matched no arm and was waved through.
+        var tx = CreateGovernanceTransaction(UnknownPublicKey, blueprintId: "not-the-governance-blueprint");
+        tx.Metadata["Type"] = "Control";
+        tx.Metadata["transactionType"] = "GovernanceOperation";
+
+        var result = await _service.ValidateGovernanceRightsAsync(tx);
+
+        result.IsValid.Should().BeFalse(
+            "a governance proposal must be roster-enforced, not skipped because of a metadata key mix-up");
+        result.Errors.Should().Contain(e => e.Code == "VAL_PERM_002");
+    }
+
+    [Fact] // T015b — the #917 bootstrap carve-out must survive the detection change.
+    public async Task BlueprintPublishTx_RemainsExemptFromGovernanceEnforcement()
+    {
+        _rosterServiceMock.Setup(x => x.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateRosterWithStandardBase64((PlusBearingKey(), RegisterRole.Owner, "did:sorcha:w:ws11qOwner")));
+
+        var tx = CreateGovernanceTransaction(UnknownPublicKey);
+        tx.Metadata["Type"] = "Control";
+        tx.Metadata["transactionType"] = "BlueprintPublish";
+
+        var result = await _service.ValidateGovernanceRightsAsync(tx);
+
+        // Publishing the governance blueprint during bootstrap is a system seed signed by the
+        // blueprint-publish key, not a roster operation (#917).
+        result.IsValid.Should().BeTrue("blueprint publishes are system seeds, not governance operations");
+    }
+
+    [Fact] // T018 — R-002. Fails against master, where ANY control tx was admitted with no roster.
+    public async Task NoRoster_NonGenesisGovernanceTx_IsRefused()
+    {
+        _rosterServiceMock.Setup(x => x.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((AdminRoster?)null);
+
+        var result = await _service.ValidateGovernanceRightsAsync(
+            CreateGovernanceTransaction(UnknownPublicKey));
+
+        // The pre-genesis window used to admit everything. A live DevMode promotion "passed"
+        // through exactly this gap and was mistaken for the feature working.
+        result.IsValid.Should().BeFalse("with no roster there is no authority to authorise against");
+        result.Errors.Should().Contain(e => e.Code == "VAL_PERM_007");
+    }
+
+    [Fact] // T018b — but genesis must still be able to create the roster.
+    public async Task NoRoster_GenesisTx_IsStillAdmitted()
+    {
+        _rosterServiceMock.Setup(x => x.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((AdminRoster?)null);
+
+        var tx = CreateGovernanceTransaction(UnknownPublicKey);
+        tx.Metadata["Type"] = "Genesis";
+
+        var result = await _service.ValidateGovernanceRightsAsync(tx);
+
+        result.IsValid.Should().BeTrue("genesis is what creates the roster, so it cannot require one");
     }
 }

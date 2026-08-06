@@ -56,13 +56,13 @@ confirm sealed-in-docket and observable on tiny.
 
 ### Tests for US1
 
-- [ ] T012 [P] [US1] Contract test: a governance tx signed by the **node system wallet** is refused — the node is never on a roster — in `tests/Sorcha.Validator.Service.Tests/Services/`
-- [ ] T013 [P] [US1] Contract test: a governance tx signed by an **organisation's slot-100 key** is accepted, in `tests/Sorcha.Validator.Service.Tests/Services/`
-- [ ] T014 [P] [US1] Regression test for R-003: roster key stored as **padded base64**, signature key supplied as bytes → matches (fails on master), in `tests/Sorcha.Validator.Service.Tests/Services/`
-- [ ] T015 [P] [US1] Contract test: `/propose`-shaped tx (`Metadata["Type"]=="Control"`) **is** detected as governance and roster-enforced (fails on master — currently bypasses), in `tests/Sorcha.Validator.Service.Tests/Services/`
-- [ ] T016 [P] [US1] Contract test: two signatures where one is not on the roster → only the roster member counts toward the requirement
-- [ ] T017 [P] [US1] Contract test: a governance tx carrying `BlueprintId == "genesis"` is rejected (R-005 guard against genesis misclassification)
-- [ ] T018 [P] [US1] Test that the `roster == null` allowance admits **only** a roster-creating transaction (R-002), in `tests/Sorcha.Validator.Service.Tests/Services/`
+- [X] T012 [P] [US1] Contract test: a governance tx signed by the **node system wallet** is refused — the node is never on a roster — in `tests/Sorcha.Validator.Service.Tests/Services/`
+- [X] T013 [P] [US1] Contract test: a governance tx signed by an **organisation's slot-100 key** is accepted, in `tests/Sorcha.Validator.Service.Tests/Services/`
+- [X] T014 [P] [US1] Regression test for R-003: roster key stored as **padded base64**, signature key supplied as bytes → matches (fails on master), in `tests/Sorcha.Validator.Service.Tests/Services/`
+- [X] T015 [P] [US1] Contract test: `/propose`-shaped tx (`Metadata["Type"]=="Control"`) **is** detected as governance and roster-enforced (fails on master — currently bypasses), in `tests/Sorcha.Validator.Service.Tests/Services/`
+- [X] T016 [P] [US1] Contract test: two signatures where one is not on the roster → only the roster member counts toward the requirement
+- [X] T017 [P] [US1] Contract test: a governance tx carrying `BlueprintId == "genesis"` is rejected (R-005 guard against genesis misclassification)
+- [X] T018 [P] [US1] Test that the `roster == null` allowance admits **only** a roster-creating transaction (R-002), in `tests/Sorcha.Validator.Service.Tests/Services/`
 
 ### Implementation for US1
 
@@ -70,13 +70,13 @@ confirm sealed-in-docket and observable on tiny.
 - [ ] T020 [US1] Unit-test `GovernanceSigningService`: correct derivation path, correct wallet resolved from `Subject`, and a clear failure when the caller's organisation is not on the roster
 - [ ] T021 [US1] Switch `CryptoPolicyService.SubmitPolicyUpdateAsync` from `ISystemWalletSigningService` to `GovernanceSigningService` in `src/Services/Sorcha.Register.Service/Services/CryptoPolicyService.cs`; leave the node system wallet in place for genesis/docket duties
 - [ ] T022 [US1] Update `tests/Sorcha.Register.Service.Tests/Unit/CryptoPolicyServiceTests.cs` for the new signer, keeping the existing mutation-verified assertions (ActionId, metadata keys, payload hash, base64url, one-way guard, non-genesis BlueprintId)
-- [ ] T023 [US1] `RightsEnforcementService`: replace the `Signatures[0]` string comparison with the T004 byte helper over **every** signature, counting **distinct** roster members satisfied, in `src/Services/Sorcha.Validator.Service/Services/RightsEnforcementService.cs`
-- [ ] T024 [US1] `RightsEnforcementService.IsGovernanceTransaction`: key on `Metadata["Type"] == "Control"` plus the governance `BlueprintId`, preserving the `BlueprintPublish` carve-out (#917); remove the `Metadata["transactionType"] == "Control"` arm that never matched
-- [ ] T025 [US1] Narrow the `roster == null` allowance to roster-creating transactions only (R-002)
-- [ ] T026 [US1] Give `/propose` a non-empty `BlueprintId` (`register-governance-v1`) in `src/Services/Sorcha.Register.Service/Program.cs` — **must land with T024**, since fixing TX_003 alone opens the bypass
+- [X] T023 [US1] `RightsEnforcementService`: replace the `Signatures[0]` string comparison with the T004 byte helper over **every** signature, counting **distinct** roster members satisfied, in `src/Services/Sorcha.Validator.Service/Services/RightsEnforcementService.cs`
+- [X] T024 [US1] `RightsEnforcementService.IsGovernanceTransaction`: key on `Metadata["Type"] == "Control"` plus the governance `BlueprintId`, preserving the `BlueprintPublish` carve-out (#917); remove the `Metadata["transactionType"] == "Control"` arm that never matched
+- [X] T025 [US1] Narrow the `roster == null` allowance to roster-creating transactions only (R-002)
+- [X] T026 [US1] Give `/propose` a non-empty `BlueprintId` (`register-governance-v1`) in `src/Services/Sorcha.Register.Service/Program.cs` — **must land with T024**, since fixing TX_003 alone opens the bypass
 - [ ] T027 [US1] Add a refusal code for "insufficient distinct roster signatures" and ensure every refusal carries an administrator-actionable reason (SC-008)
 - [ ] T028 [US1] Add governance metrics (proposal/approval/refusal counters, quorum outcome) on the existing meter, no subject data
-- [ ] T029 [US1] Mutation-verify T012–T018: reinstate each defect in turn and confirm the matching test goes red. A guard written after the fix has never run red.
+- [X] T029 [US1] Mutation-verify T012–T018: reinstate each defect in turn and confirm the matching test goes red. A guard written after the fix has never run red.
 - [ ] T030 [US1] 🔴 **LIVE GATE** On n1, against a register with `height >= 1`: promote DevMode→Normal, confirm the tx id appears in a sealed docket's `TransactionIds` (`State: 4`), and confirm `devMode == false`
 - [ ] T031 [US1] 🔴 **LIVE GATE** Confirm the promotion replicated to tiny (`_id`, not `Id` — see quickstart trap)
 - [ ] T032 [US1] 🔴 **LIVE GATE** Negative: attempt the same change as a non-roster organisation → refused, and **nothing** written to the ledger

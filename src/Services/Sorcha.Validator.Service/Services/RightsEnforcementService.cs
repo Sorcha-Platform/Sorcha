@@ -68,15 +68,33 @@ public class RightsEnforcementService : IRightsEnforcementService
 
             if (roster == null)
             {
-                // No roster means this could be a genesis Control TX (first roster creation)
-                // Allow genesis if this is the register's first Control transaction
-                _logger.LogInformation(
-                    "No existing roster for register {RegisterId} — allowing genesis Control TX {TransactionId}",
-                    transaction.RegisterId, transaction.TransactionId);
-                return ValidationEngineResult.Success(
-                    transaction.TransactionId,
-                    transaction.RegisterId,
-                    sw.Elapsed);
+                // Feature 189 (R-002): a register genuinely has no roster until its genesis creates
+                // one, so the genesis transaction must be admitted here. But this allowance used to
+                // apply to ANY control transaction, which meant every governance operation was
+                // admitted unchecked during the window between register creation and the genesis
+                // docket sealing. That is not theoretical: a live DevMode promotion "passed" through
+                // exactly this window and was mistaken for the feature working.
+                //
+                // Narrowed to the transaction that CREATES the roster. Anything else with no roster
+                // fails closed — there is no authority to check it against.
+                if (TransactionTypeClassifier.IsGenesisTransaction(transaction))
+                {
+                    _logger.LogInformation(
+                        "No existing roster for register {RegisterId} — allowing genesis Control TX {TransactionId}",
+                        transaction.RegisterId, transaction.TransactionId);
+                    return ValidationEngineResult.Success(
+                        transaction.TransactionId,
+                        transaction.RegisterId,
+                        sw.Elapsed);
+                }
+
+                _logger.LogWarning(
+                    "Transaction {TransactionId} on register {RegisterId}: no governance roster exists and this is not the genesis transaction — refusing",
+                    transaction.TransactionId, transaction.RegisterId);
+                errors.Add(CreateError("VAL_PERM_007",
+                    "The register has no governance roster and this is not its genesis transaction, so there is no authority to authorise it against.",
+                    "RegisterId", true));
+                return CreateFailureResult(transaction, sw.Elapsed, errors);
             }
 
             // Extract the submitter's public key from the first signature
@@ -88,34 +106,70 @@ public class RightsEnforcementService : IRightsEnforcementService
                 return CreateFailureResult(transaction, sw.Elapsed, errors);
             }
 
-            var submitterPublicKey = Base64Url.EncodeToString(transaction.Signatures[0].PublicKey);
+            // Feature 189 (R-003 + FR-005): match EVERY signature against the roster, by decoded key
+            // BYTES.
+            //
+            // Two defects are corrected here at once, and they matter independently:
+            //
+            //  * Only Signatures[0] was examined, so a multi-signature governance transaction could
+            //    never be authorised by anyone but its first signer — multi-party governance was
+            //    unenforceable even though the wire carries a signature list.
+            //  * The comparison was a STRING equality between the roster's standard base64
+            //    (padded, "+/" alphabet) and Base64Url.EncodeToString (unpadded, "-_"). Those cannot
+            //    be equal for any key requiring padding or containing '+' or '/', so a correct key
+            //    failed to match. Observed live: a roster key of
+            //    fFE+9QNpjWLk9+hPDXbfIFctbmex6ONxaOnMVUAkjWA= contains '+'.
+            //
+            // Both surfaced identically as "submitter not found in roster", so fixing either alone
+            // leaves the same symptom and reads as an unfixed bug.
+            var matchedAttestations = new List<RegisterAttestation>();
+            foreach (var signature in transaction.Signatures)
+            {
+                var match = roster.ControlRecord.Attestations.FirstOrDefault(
+                    a => GovernanceKeyMatcher.Matches(a.PublicKey, signature.PublicKey));
 
-            // Find the submitter in the roster by matching public key
-            var submitterAttestation = roster.ControlRecord.Attestations
-                .FirstOrDefault(a => a.PublicKey == submitterPublicKey);
+                // Distinct roster members only — one member signing twice is one authority, not two.
+                if (match is not null && !matchedAttestations.Any(
+                        m => string.Equals(m.Subject, match.Subject, StringComparison.Ordinal)))
+                {
+                    matchedAttestations.Add(match);
+                }
+            }
 
-            if (submitterAttestation == null)
+            if (matchedAttestations.Count == 0)
             {
                 _logger.LogWarning(
-                    "Transaction {TransactionId} on register {RegisterId}: submitter not found in roster",
-                    transaction.TransactionId, transaction.RegisterId);
+                    "Transaction {TransactionId} on register {RegisterId}: none of {SignatureCount} signature(s) match a roster member",
+                    transaction.TransactionId, transaction.RegisterId, transaction.Signatures.Count);
                 errors.Add(CreateError("VAL_PERM_002",
-                    "Submitter's public key does not match any member in the register's admin roster",
-                    "Signatures[0].PublicKey"));
+                    "No signature on this transaction matches a member of the register's admin roster",
+                    "Signatures"));
                 return CreateFailureResult(transaction, sw.Elapsed, errors);
             }
 
-            // Verify submitter has a governance role (Owner or Admin)
-            if (submitterAttestation.Role is not (RegisterRole.Owner or RegisterRole.Admin))
+            // At least one matched member must hold a governance role. A matched member without one
+            // is not an authorisation — it is a bystander's signature.
+            var governanceSigners = matchedAttestations
+                .Where(a => a.Role is RegisterRole.Owner or RegisterRole.Admin)
+                .ToList();
+
+            if (governanceSigners.Count == 0)
             {
+                var roles = string.Join(", ", matchedAttestations.Select(a => a.Role));
                 _logger.LogWarning(
-                    "Transaction {TransactionId} on register {RegisterId}: submitter has role {Role}, requires Owner or Admin",
-                    transaction.TransactionId, transaction.RegisterId, submitterAttestation.Role);
+                    "Transaction {TransactionId} on register {RegisterId}: matched roster member(s) hold role(s) {Roles}, requires Owner or Admin",
+                    transaction.TransactionId, transaction.RegisterId, roles);
                 errors.Add(CreateError("VAL_PERM_003",
-                    $"Submitter has role '{submitterAttestation.Role}' which cannot execute governance operations. Requires Owner or Admin.",
-                    "Signatures[0].PublicKey"));
+                    $"Signing roster member(s) hold role(s) '{roles}', which cannot execute governance operations. Requires Owner or Admin.",
+                    "Signatures"));
                 return CreateFailureResult(transaction, sw.Elapsed, errors);
             }
+
+            // Prefer an Owner as the nominal submitter so downstream owner-override logic behaves as
+            // it did when only the first signature was considered.
+            var submitterAttestation =
+                governanceSigners.FirstOrDefault(a => a.Role == RegisterRole.Owner)
+                ?? governanceSigners[0];
 
             // Try to parse the governance operation from the payload for deeper validation
             var operation = TryParseGovernanceOperation(transaction);
@@ -205,9 +259,17 @@ public class RightsEnforcementService : IRightsEnforcementService
         if (string.Equals(transaction.BlueprintId, GovernanceBlueprintId, StringComparison.OrdinalIgnoreCase))
             return true;
 
-        // Check metadata for transaction type
-        if (transaction.Metadata.TryGetValue("transactionType", out var txType) &&
-            string.Equals(txType, "Control", StringComparison.OrdinalIgnoreCase))
+        // Feature 189 (R-004): the discriminator carrying "Control" is Metadata["Type"] — the same key
+        // DocketRegisterProjection.ResolveTransactionType reads. This previously keyed on
+        // Metadata["transactionType"], which across the platform carries values like
+        // "GovernanceOperation" / "CryptoPolicyUpdate" / "BlueprintPublish" and therefore NEVER equals
+        // "Control". The practical effect was that a governance proposal (empty BlueprintId +
+        // transactionType="GovernanceOperation") matched no arm at all and skipped roster enforcement
+        // entirely — a bypass in the opposite direction to the rejection everyone was seeing. It was
+        // masked only because the same transaction carried an empty BlueprintId and died earlier on
+        // TX_003; fixing that alone would have opened the hole.
+        if (transaction.Metadata.TryGetValue("Type", out var typeDiscriminator) &&
+            string.Equals(typeDiscriminator, "Control", StringComparison.OrdinalIgnoreCase))
             return true;
 
         return false;
