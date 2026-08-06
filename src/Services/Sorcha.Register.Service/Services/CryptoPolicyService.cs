@@ -34,6 +34,27 @@ public class CryptoPolicyService
     /// </summary>
     public const string CryptoPolicyUpdateTrackingType = "CryptoPolicyUpdate";
 
+    /// <summary>
+    /// Blueprint id carried by a crypto-policy control transaction — the governance control
+    /// blueprint (the same value <c>RegisterPolicy.GovernancePolicy.BlueprintVersion</c> defaults to
+    /// for every register).
+    /// </summary>
+    /// <remarks>
+    /// Two constraints pin this value, and both were found the hard way:
+    /// <list type="bullet">
+    /// <item><b>It must be non-empty.</b> <c>TransactionValidator</c> rejects a blank blueprint id
+    /// with <c>TX_003 "Blueprint ID is required"</c> before any control-specific handling runs.</item>
+    /// <item><b>It must NOT be <c>GenesisConstants.BlueprintId</c> ("genesis").</b>
+    /// <c>TransactionTypeClassifier.IsGenesisTransaction</c> keys off exactly that value, so using it
+    /// would classify a routine policy update as the network's pre-signed genesis transaction and
+    /// subject it to the short <c>GenesisMaxAge</c> freshness window.</item>
+    /// </list>
+    /// The <c>Metadata["Type"]="Control"</c> entry is what earns the control-transaction exemptions
+    /// (<c>IsGenesisOrControlTransaction</c>), so this id does not need to be "genesis" to skip
+    /// blueprint/routing validation.
+    /// </remarks>
+    public const string GovernanceBlueprintId = "register-governance-v1";
+
     // Must match the Validator's ValidationEngine.CanonicalJsonOptions — it re-canonicalises the
     // payload and recomputes the hash, so a divergence here is a silent VAL_HASH_001 rejection.
     private static readonly JsonSerializerOptions CanonicalJsonOptions = new()
@@ -167,6 +188,8 @@ public class CryptoPolicyService
         {
             TransactionId = txId,
             RegisterId = registerId,
+            // Non-empty (TX_003) and deliberately not "genesis" — see GovernanceBlueprintId.
+            BlueprintId = GovernanceBlueprintId,
             // ActionId is load-bearing: ControlDocketProcessor.GetControlActionType matches on it to
             // recognise this as a crypto-policy update. Anything else and the policy is never applied.
             ActionId = CryptoPolicyUpdateActionId,

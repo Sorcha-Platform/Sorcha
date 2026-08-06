@@ -345,6 +345,23 @@ public class CryptoPolicyServiceTests
     }
 
     [Fact]
+    public async Task SubmitPolicyUpdateAsync_CarriesANonEmptyNonGenesisBlueprintId()
+    {
+        NoExistingTransactions(ProbeRegisterId);
+
+        await _sut.SubmitPolicyUpdateAsync(ProbeRegisterId, PromotionPolicy());
+
+        // Both halves were found by live execution, not by this suite's mock validator.
+        // Empty  => TransactionValidator rejects with TX_003 "Blueprint ID is required".
+        // "genesis" => TransactionTypeClassifier.IsGenesisTransaction matches on exactly that
+        // value, so a routine policy update would be treated as the network's pre-signed genesis
+        // transaction and judged against the short GenesisMaxAge freshness window.
+        _captured!.BlueprintId.Should().NotBeNullOrWhiteSpace();
+        _captured.BlueprintId.Should().NotBe("genesis");
+        _captured.BlueprintId.Should().Be("register-governance-v1");
+    }
+
+    [Fact]
     public async Task SubmitPolicyUpdateAsync_CarriesTheMetadataTheDevModeProjectionRequires()
     {
         NoExistingTransactions(ProbeRegisterId);
