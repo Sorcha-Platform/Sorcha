@@ -43,11 +43,40 @@ public static class SorchaDerivationPaths
     public const string SystemPrefix = "sorcha:";
 
     /// <summary>
-    /// Derivation path for register attestation signing
+    /// Derivation path for register attestation signing — an organisation's <b>governance key</b>.
     /// </summary>
     /// <remarks>
-    /// Used when owners/admins sign attestations to approve register creation.
-    /// Maps to: m/44'/0'/0'/0/100
+    /// <para>
+    /// Used when owners/admins sign attestations to approve register creation, and thereafter
+    /// whenever that organisation signs a <b>governance control transaction</b> on that register
+    /// (crypto-policy updates, roster proposals, approvals). Maps to: m/44'/0'/0'/0/100
+    /// </para>
+    /// <para>
+    /// <b>The roster records the key derived here, so governance MUST sign with it.</b> A register's
+    /// governance roster is the set of attestation public keys captured in its genesis control
+    /// record; the Validator's <c>RightsEnforcementService</c> authorises a control transaction by
+    /// matching the transaction's signing key against that set. Sign with anything else — the
+    /// wallet's primary key, or the node's system wallet at <see cref="RegisterControl"/>
+    /// (slot 101) — and the transaction is rejected "submitter not found in roster".
+    /// </para>
+    /// <para>
+    /// <b>History (Feature 189, clean break).</b> Only ONE of the four register-creation paths used
+    /// this constant — the admin UI's <c>CreateRegisterWizard</c>. The CLI, the F142 sandbox
+    /// provider and the walkthrough module all passed <b>no derivation path at all</b>, so their
+    /// attestations were signed with the wallet's <i>primary</i> key. A register was therefore
+    /// governable or not depending on which tool created it, and nothing detected the difference:
+    /// both produce a valid signature and a well-formed roster, and the divergence only surfaces
+    /// later as "submitter not found in roster" on the first governance operation. All four paths
+    /// now sign here.
+    /// </para>
+    /// <para>
+    /// Separating the governance key from the wallet's general-purpose key lets an organisation
+    /// rotate or delegate governance authority without disturbing its identity key. Because the
+    /// roster is baked into the immutable genesis, the correction applies only to registers created
+    /// after it — registers created by the CLI, sandbox or walkthrough before it carry primary-key
+    /// rosters and must be recreated (and the network re-genesised for the system register) to be
+    /// governable.
+    /// </para>
     /// </remarks>
     public const string RegisterAttestation = "sorcha:register-attestation";
 

@@ -230,6 +230,18 @@ deterministic on every node — which R-009 requires.
 
 **Decision (maintainer).** Attestation signing moves to slot 100 with no compatibility window.
 
+**⚠ Correction (found during implementation, T010).** An earlier statement in this document and in
+the plan — that `SorchaDerivationPaths.RegisterAttestation` was referenced nowhere in `src/` — was
+**wrong**. The original grep omitted `.razor` files. The admin UI's `CreateRegisterWizard.razor`
+*already* signed attestations at slot 100. The real defect was narrower and worse than "an unused
+constant": **three of the four creation paths disagreed with the fourth**. CLI `RegisterCommands`,
+`SandboxRegisterProvider` and the walkthrough module passed no derivation path and signed with the
+wallet's primary key, so whether a register was governable depended on which tool created it —
+with nothing to detect the difference, because both produce a valid signature and a well-formed
+roster. This strengthens rather than weakens the decision: slot 100 was always the intended
+design, implemented in one path and missed in three. It also means registers created through the
+admin UI may already carry slot-100 rosters and be governable once the enforcement fixes land.
+
 **Consequence.** A register's roster is immutable, so this applies only to registers created after
 the change. Existing registers — the AIAS demo registers and the system register minted 2026-08-06 —
 carry primary-key rosters and become permanently ungovernable. They must be recreated; the network

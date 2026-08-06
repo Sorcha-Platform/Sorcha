@@ -8,6 +8,7 @@ using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Wallet;
+using Sorcha.Wallet.Contracts.Constants;
 
 namespace Sorcha.Blueprint.Service.Services.Implementation;
 
@@ -226,7 +227,10 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
             var signResult = await walletClient.SignTransactionAsync(
                 walletAddress: attestation.WalletId,
                 transactionData: hashBytes,
-                derivationPath: null,
+                // Slot 100 — the organisation's governance key. The roster records whatever key
+                // signs here, and the Validator authorises later governance control transactions by
+                // matching against it, so this MUST NOT be the wallet's primary key.
+                derivationPath: SorchaDerivationPaths.RegisterAttestation,
                 isPreHashed: true,
                 cancellationToken);
 

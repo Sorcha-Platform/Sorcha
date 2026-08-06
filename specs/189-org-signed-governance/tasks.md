@@ -22,8 +22,8 @@ Tests are **required** for this feature (SC-009 plus the ten contract tests in c
 
 ## Phase 1: Setup
 
-- [ ] T001 Confirm the branch builds clean and the two prerequisite DevMode commits are present (`git log --oneline master..HEAD`) — commits `55fbc7dd` and `58af4f8b` must be in the branch before any governance work
-- [ ] T002 Run the full baseline so later failures are attributable: `dotnet build Sorcha.sln`, then Register.Service, Register.Core, Validator.Service and ApiGateway test projects; record the pass counts in the PR description
+- [X] T001 Confirm the branch builds clean and the two prerequisite DevMode commits are present (`git log --oneline master..HEAD`) — commits `55fbc7dd` and `58af4f8b` must be in the branch before any governance work
+- [X] T002 Run the full baseline so later failures are attributable: `dotnet build Sorcha.sln`, then Register.Service, Register.Core, Validator.Service and ApiGateway test projects; record the pass counts in the PR description
 
 ---
 
@@ -32,15 +32,15 @@ Tests are **required** for this feature (SC-009 plus the ten contract tests in c
 **These are blocking because they change the meaning of a roster key. Landing any of them alone
 produces registers whose rosters disagree about which key is authoritative.**
 
-- [ ] T003 Document slot 100 in `src/Common/Sorcha.Wallet.Contracts/Constants/SorchaDerivationPaths.cs` as the organisation **governance key** — record that it was previously declared-but-unreferenced, that the roster records whatever key signs the attestation, and that signing with any other key is refused "submitter not found in roster"
-- [ ] T004 Add a canonical public-key comparison helper (decode padded/unpadded base64 and base64url to bytes, fixed-time compare) in `src/Common/Sorcha.Register.Models/` — this is the R-003 fix and is used by every roster match
-- [ ] T005 [P] Unit-test the key helper across all four encodings and a non-match, in `tests/Sorcha.Register.Models.Tests/`
-- [ ] T006 Move attestation signing to slot 100 in `src/Apps/Sorcha.Cli/Commands/RegisterCommands.cs`
-- [ ] T007 Move attestation signing to slot 100 in `src/Apps/Sorcha.Cli/Commands/SystemRegisterCommands.cs` (the offline genesis ceremony — this is what makes US4 possible later)
-- [ ] T008 Move attestation signing to slot 100 in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/SandboxRegisterProvider.cs` (replace the explicit `derivationPath: null`)
-- [ ] T009 Move attestation signing to slot 100 in `walkthroughs/modules/SorchaWalkthrough/SorchaWalkthrough.psm1` (`New-SorchaRegister` — the `/sign` call currently passes no derivation path at all)
-- [ ] T010 Verify T006–T009 are exhaustive: grep for attestation signing call sites and confirm none still signs with the primary key
-- [ ] T011 🔴 **LIVE GATE** Create a register on n1 with the updated code and confirm its roster records a **slot-100** key (compare against the wallet's primary public key — they must differ). Everything downstream is meaningless if this is wrong.
+- [X] T003 Document slot 100 in `src/Common/Sorcha.Wallet.Contracts/Constants/SorchaDerivationPaths.cs` as the organisation **governance key** — record that only the admin UI wizard already used it while three other creation paths did not, that the roster records whatever key signs the attestation, and that signing with any other key is refused "submitter not found in roster"
+- [X] T004 Add a canonical public-key comparison helper (decode padded/unpadded base64 and base64url to bytes, fixed-time compare) in `src/Common/Sorcha.Register.Models/` — this is the R-003 fix and is used by every roster match
+- [X] T005 [P] Unit-test the key helper across all four encodings and a non-match, in `tests/Sorcha.Register.Models.Tests/`
+- [X] T006 Move attestation signing to slot 100 in `src/Apps/Sorcha.Cli/Commands/RegisterCommands.cs`
+- [ ] T007 **[RE-SCOPED — DEFERRED TO US4/T059, NOT MECHANICAL]** The system-register genesis ceremony in `src/Apps/Sorcha.Cli/Commands/SystemRegisterCommands.cs` does **not** sign attestations through the wallet service, so this is not a derivation-path parameter. `BuildControlRecord` mints a *self-referential* Owner attestation whose `Subject` is `did:sorcha:genesis:{fingerprint}` — **not** a `did:sorcha:w:{address}` wallet DID — carrying `Signature = ""` and the **slot-101 control key** as its `PublicKey`. That same key signs the genesis transaction AND defines the network trust anchor (`genesisPublicKeyFingerprint`), and is reused as the validator roster entry. Moving the attestation to slot 100 therefore decouples the roster key from the genesis-signing key and changes what the trust anchor attests. Two consequences to design in US4: (a) `GovernanceSigningService` resolves a signer by parsing a wallet address out of `Subject`, which a `did:sorcha:genesis:` subject cannot satisfy — the SSR is unreachable by that path as it stands; (b) any change here alters the compiled-in anchor and forces a coordinated re-genesis of both nodes.
+- [X] T008 Move attestation signing to slot 100 in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/SandboxRegisterProvider.cs` (replace the explicit `derivationPath: null`)
+- [X] T009 Move attestation signing to slot 100 in `walkthroughs/modules/SorchaWalkthrough/SorchaWalkthrough.psm1` (`New-SorchaRegister` — the `/sign` call currently passes no derivation path at all)
+- [X] T010 Verify T006–T009 are exhaustive: grep for attestation signing call sites and confirm none still signs with the primary key — **found a FIFTH site the original list missed**: `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/CreateRegisterWizard.razor`, which was **already** signing at slot 100. So three paths (CLI, sandbox, walkthrough) disagreed with the UI, and a register was governable or not depending on which tool created it. No change needed to the wizard; the earlier "slot 100 is referenced nowhere" claim was a grep that omitted `.razor` and is corrected in research.md R-011.
+- [X] T011 🔴 **LIVE GATE** Create a register on n1 with the updated code and confirm its roster records a **slot-100** key — **PASSED 2026-08-06** on register `3794f873976c4ad1a21c6f1dce1102d4`: wallet primary `uS780HTirYET…=` vs roster `fFE+9QNpjWLk9+hPDXbfIFctbmex6ONxaOnMVUAkjWA=`. Note the roster key contains `+` — exactly the character that makes the R-003 base64/base64url string comparison fail, so T004 is load-bearing for this very register.
 
 **Checkpoint**: rosters now carry a dedicated governance key. User stories may begin.
 

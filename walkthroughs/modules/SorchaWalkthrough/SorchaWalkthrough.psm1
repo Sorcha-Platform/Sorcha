@@ -1321,8 +1321,14 @@ function New-SorchaRegister {
     foreach ($att in $attestations) {
         $dataToSignBase64 = ConvertFrom-HexToBase64 -HexString $att.dataToSign
 
+        # derivationPath is load-bearing: slot 100 is the organisation's GOVERNANCE key. The
+        # register's roster records whatever key signs the attestation, and the Validator
+        # authorises later governance control transactions (crypto-policy updates, roster
+        # proposals, approvals) by matching against it. Omitting it signs with the wallet's
+        # primary key and the register becomes ungovernable — silently, at creation time.
         $signBody = @{
             transactionData = $dataToSignBase64
+            derivationPath  = "sorcha:register-attestation"
             isPreHashed     = $true
         }
 
