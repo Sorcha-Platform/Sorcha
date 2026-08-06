@@ -77,9 +77,9 @@ confirm sealed-in-docket and observable on tiny.
 - [ ] T027 [US1] Add a refusal code for "insufficient distinct roster signatures" and ensure every refusal carries an administrator-actionable reason (SC-008)
 - [ ] T028 [US1] Add governance metrics (proposal/approval/refusal counters, quorum outcome) on the existing meter, no subject data
 - [X] T029 [US1] Mutation-verify T012–T018: reinstate each defect in turn and confirm the matching test goes red. A guard written after the fix has never run red.
-- [ ] T030 [US1] 🔴 **LIVE GATE** On n1, against a register with `height >= 1`: promote DevMode→Normal, confirm the tx id appears in a sealed docket's `TransactionIds` (`State: 4`), and confirm `devMode == false`
-- [ ] T031 [US1] 🔴 **LIVE GATE** Confirm the promotion replicated to tiny (`_id`, not `Id` — see quickstart trap)
-- [ ] T032 [US1] 🔴 **LIVE GATE** Negative: attempt the same change as a non-roster organisation → refused, and **nothing** written to the ledger
+- [X] T030 [US1] 🔴 **LIVE GATE** **PASSED 2026-08-06** — register `c62126210a2b4966823ee0b54ca735cf`, promoted only after genesis had SEALED (height 1→2, so roster enforcement was live). Docket 0 = genesis `260b53c8…`, **docket 1 = the CryptoPolicyUpdate `31c3f0d3…`**, both `State: 4`. Contrast the pre-fix run, where the same transaction sat in NO docket.
+- [X] T031 [US1] 🔴 **LIVE GATE** **PASSED 2026-08-06** — register `b58ec4066d7d4b458f80b6646c7f5dcc`, subscribed cross-installation by tiny. tiny first replicated the true genesis posture (`DevMode=true Height=1 CaughtUp`) — necessary, because the subscribe-time stub defaults to `DevMode=false` and would otherwise have confounded the result — then after promotion on n1 reached `DevMode=false Height=2 CaughtUp`, with tiny's docket 1 carrying the **same tx id** n1 produced (`90850e9c…`).
+- [X] T032 [US1] 🔴 **LIVE GATE** **PASSED 2026-08-06** — register `6b0760aa…`, created before the slot-100 change so its roster holds primary keys. A slot-100 signature was refused with the new message *"none of 1 signature(s) match a roster member"*, and the ledger shows **1 docket (genesis only) and 0 stored CryptoPolicyUpdate transactions** — the refusal left no trace (SC-002). This doubles as live confirmation of the R-011 clean break: pre-change registers are ungovernable by design.
 
 **Checkpoint**: US1 is independently shippable. DevMode promotion works; the original cross-node encryption task is unblocked.
 
