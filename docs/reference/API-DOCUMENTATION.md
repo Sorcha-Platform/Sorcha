@@ -20,13 +20,14 @@
 10. [Blueprint Service API](#blueprint-service-api)
 11. [Wallet Service API](#wallet-service-api)
 12. [Register Service API](#register-service-api)
-13. [HAIP Service API](#haip-service-api)
-14. [Action Workflow API](#action-workflow-api)
-15. [Execution Helper API](#execution-helper-api)
-16. [Real-time Notifications (SignalR)](#real-time-notifications-signalr)
-17. [Error Handling](#error-handling)
-18. [Rate Limiting](#rate-limiting)
-19. [Code Examples](#code-examples)
+13. [Provenance API](#provenance-api)
+14. [HAIP Service API](#haip-service-api)
+15. [Action Workflow API](#action-workflow-api)
+16. [Execution Helper API](#execution-helper-api)
+17. [Real-time Notifications (SignalR)](#real-time-notifications-signalr)
+18. [Error Handling](#error-handling)
+19. [Rate Limiting](#rate-limiting)
+20. [Code Examples](#code-examples)
 
 ---
 
@@ -2098,6 +2099,113 @@ GET /health/sync
 **Top-level `status`** reflects the aggregate: `synced` if all registers are synced, `stalled` if any are stalled, otherwise `recovering`.
 
 **Staleness detection:** A register in `recovering` status is flagged as `isStale: true` if no progress has been made in the last 10 seconds.
+
+---
+
+## Provenance API
+
+**Read-only** evidence surfaces (Feature 188, Phase 1): a register's docket lineage, and per-docket
+verification. Owned by the **Register Service**, which holds the evidence. Nothing is written.
+
+**Authorization:** `RequireAdministrator` **composed with** `RequirePlatformAudience` — the tier gate
+sits *on* the role gate (CLAUDE.md pattern #13). An Administrator role presented on a *consumer-tier*
+token is refused `403`.
+
+### Base Path: `/api/provenance`
+
+Two endpoints rather than one, deliberately. Verification is O(n) hashing per docket, so a spine that
+verified eagerly would be O(n·m) on a list view. **The spine runs no checks**; the trail verifies
+exactly one docket.
+
+#### 1. Register spine — list dockets from genesis
+
+```http
+GET /api/provenance/registers/{registerId}?fromDocket={n}&pageSize={1..200}
+```
+
+Returns docket summaries in order. **Runs no verification.**
+
+**Response:** `200 OK`
+```json
+{
+  "registerId": "b388e51816e34d4ea7ce275ca7e8219c",
+  "dockets": [
+    {
+      "docketNumber": 0,
+      "sealedAt": "2026-08-05T17:25:11Z",
+      "proposerValidatorId": "local-validator",
+      "signerCount": 0,
+      "rosterChanged": false
+    }
+  ],
+  "hasMore": true,
+  "nextFromDocket": 6
+}
+```
+
+- `signerCount: 0` **is valid and expected** on single-validator deployments. It means no quorum
+  evidence was recorded — not that signatures are missing or invalid.
+- `rosterChanged` marks a docket where the validator set changed. This is what makes network growth
+  visible as history rather than inferred from a config file.
+- A spine entry deliberately carries **no check result**. Verification belongs to the trail endpoint.
+
+`404` when the register is not held on this node.
+
+#### 2. Docket trail — verify one docket
+
+```http
+GET /api/provenance/registers/{registerId}/dockets/{docketNumber}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "registerId": "b388e51816e34d4ea7ce275ca7e8219c",
+  "docketNumber": 5,
+  "checks": [
+    { "layer": "anchor",   "status": "unverified", "headline": "Origin does not trace to this node's trust anchor",
+      "checkedAgainst": "the trust anchor this node holds, compared with the fingerprint recorded for the register's origin",
+      "reason": "this node's trust anchor describes the 'sorcha-dev' network, whose genesis payload hash does not match the system register this node actually holds ... see issue #1374" },
+    { "layer": "chain",    "status": "verified",   "headline": "Links to docket 4",
+      "checkedAgainst": "the hash of the predecessor docket as held by this node" },
+    { "layer": "seal",     "status": "verified",   "headline": "Contents are unchanged since sealing",
+      "checkedAgainst": "the sealed Merkle root, compared with a root recomputed from the docket's stored transactions (one leaf per transaction id, in stored order)" },
+    { "layer": "signers",  "status": "unverified", "headline": "No quorum evidence was recorded for this docket",
+      "checkedAgainst": "the validator roster as it stood at this docket — version 1, established by control transaction ctrl-genesis (sealed in docket 0)",
+      "reason": "this docket carries no consensus votes ... expected on a single-validator deployment" },
+    { "layer": "proposer", "status": "unverified", "headline": "Proposer could not be matched to the validator set",
+      "checkedAgainst": "the validator roster as it stood at this docket — version 1, ...",
+      "reason": "the docket records its proposer as 'local-validator', which does not appear in the roster ..." }
+  ]
+}
+```
+
+Checks are ordered broadest-first: `anchor`, `chain`, `seal`, `signers`, `proposer`.
+
+**`status` is one of `verified` / `failed` / `unverified`.**
+
+> **`unverified` means the check COULD NOT RUN.** It is a first-class result — not an error, not a
+> failure — and it never vetoes an otherwise-passing trail. A check that did not run must never report
+> `verified`. A partial replica, a single-validator node, and a docket predating the evidence a check
+> needs all produce `unverified` rows; rendering those as failures would tell an operator their ledger
+> had been tampered with.
+
+**`checkedAgainst` is required on every check**, including ones that could not run: a result whose
+basis the reader cannot restate is an assertion, not evidence. For `seal` it says the root was
+*recomputed* from stored data — which proves the contents are unchanged since sealing, **not** that
+they are independently correct.
+
+**Missing evidence returns `200`, never a `5xx`** — affected rows report `unverified` with a reason,
+because an auditor needs to know *which* link could not be established. `404` is reserved for an
+unknown register or docket.
+
+#### 3. Application lineage (Phase 2 — reserved)
+
+```http
+GET /api/provenance/instances/{instanceId}
+```
+
+Reserved so the route shape is settled. Returns `501 Not Implemented` in Phase 1.
 
 ---
 

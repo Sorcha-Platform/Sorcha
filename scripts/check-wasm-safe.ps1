@@ -6,6 +6,14 @@
     Fails the build if a WASM-consumed project takes a dependency that cannot load in Blazor WebAssembly.
 
 .DESCRIPTION
+    Sorcha.Provenance.Engine and Sorcha.Verification.Abstractions (feature 188) are guarded for a
+    different reason from the rest: no WASM host consumes them TODAY. They are guarded because the
+    provenance engine exists to run where the Register Service cannot — the Phase-3 portable evidence
+    export an external auditor checks with their own tools — and that property is invisible until
+    someone tries to build the export, by which point the offending dependency is load-bearing.
+    Sorcha.Provenance.Engine.Tests asserts the same rule at runtime over its assembly closure; this
+    gate is the static half, so a reference is caught before it is ever exercised.
+
     Three projects are consumed by Blazor WASM hosts (the citizen wallet PWA, and — from feature 185 — the
     offline reader app):
 
@@ -58,9 +66,11 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 
 $guardedProjects = @(
     'src/Common/Sorcha.Mdoc',
+    'src/Common/Sorcha.Provenance.Engine',
     'src/Common/Sorcha.Proximity.Abstractions',
     'src/Common/Sorcha.Proximity.Capacitor',
     'src/Common/Sorcha.Reader',
+    'src/Common/Sorcha.Verification.Abstractions',
     'src/Common/Sorcha.Verifier.Engine'
 )
 
