@@ -46,7 +46,12 @@ public class SealCheckTests
     {
         var healthy = TestEvidence.HealthyDocket();
 
-        var check = Seal(healthy with { TransactionIds = ["tx-1", "tampered", "tx-3"] });
+        var tamperedIds = new[] { "tx-1", "tampered", "tx-3" };
+        var check = Seal(healthy with
+        {
+            TransactionIds = tamperedIds,
+            LeafHashes = TestEvidence.LeavesFor(tamperedIds),
+        });
 
         check.Status.Should().Be(VerificationStatus.Failed);
         check.Detail.Should().Contain(healthy.SealedMerkleRoot!,
@@ -60,9 +65,11 @@ public class SealCheckTests
     [Fact]
     public void ReorderedTransactionIds_IsFailed()
     {
+        var reordered = new[] { "tx-3", "tx-2", "tx-1" };
         var check = Seal(TestEvidence.HealthyDocket() with
         {
-            TransactionIds = ["tx-3", "tx-2", "tx-1"],
+            TransactionIds = reordered,
+            LeafHashes = TestEvidence.LeavesFor(reordered),
         });
 
         check.Status.Should().Be(VerificationStatus.Failed);
@@ -71,7 +78,12 @@ public class SealCheckTests
     [Fact]
     public void RemovedTransactionId_IsFailed()
     {
-        var check = Seal(TestEvidence.HealthyDocket() with { TransactionIds = ["tx-1", "tx-2"] });
+        var removed = new[] { "tx-1", "tx-2" };
+        var check = Seal(TestEvidence.HealthyDocket() with
+        {
+            TransactionIds = removed,
+            LeafHashes = TestEvidence.LeavesFor(removed),
+        });
 
         check.Status.Should().Be(VerificationStatus.Failed);
     }
@@ -105,6 +117,20 @@ public class SealCheckTests
         check.Reason.Should().NotBeNullOrWhiteSpace();
     }
 
+    /// <summary>
+    /// A node holding the docket header but not every transaction it lists cannot recompute the
+    /// commitment. Missing contents are Unverified, not tampering.
+    /// </summary>
+    [Fact]
+    public void LeavesThatCannotBeAssembled_IsUnverified_NotFailed()
+    {
+        var check = Seal(TestEvidence.HealthyDocket() with { LeafHashes = null });
+
+        check.Status.Should().Be(VerificationStatus.Unverified);
+        check.Status.Should().NotBe(VerificationStatus.Failed);
+        check.Reason.Should().NotBeNullOrWhiteSpace();
+    }
+
     /// <summary>FR-005 — the check must not claim more than recomputation establishes.</summary>
     [Fact]
     public void CheckedAgainst_SaysRecomputedFromStoredIds_AndDoesNotImplyIndependentValidation()
@@ -112,7 +138,7 @@ public class SealCheckTests
         var check = Seal(TestEvidence.HealthyDocket());
 
         check.CheckedAgainst.Should().Contain("recomputed");
-        check.CheckedAgainst.Should().Contain("stored transaction ids");
+        check.CheckedAgainst.Should().Contain("stored transactions");
         check.CheckedAgainst.Should().NotContain("independent",
             "recomputing with the algorithm that sealed proves the stored data is unchanged, " +
             "not that it is independently correct (FR-005)");
@@ -128,6 +154,7 @@ public class SealCheckTests
         var verified = Seal(TestEvidence.HealthyDocket() with
         {
             TransactionIds = [],
+            LeafHashes = [],
             SealedMerkleRoot = StubMerkle.RootOf([]),
         });
         verified.Status.Should().Be(VerificationStatus.Verified);
@@ -135,6 +162,7 @@ public class SealCheckTests
         var failed = Seal(TestEvidence.HealthyDocket() with
         {
             TransactionIds = [],
+            LeafHashes = [],
             SealedMerkleRoot = "some-other-root",
         });
         failed.Status.Should().Be(VerificationStatus.Failed);

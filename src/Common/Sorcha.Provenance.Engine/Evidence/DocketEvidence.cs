@@ -55,6 +55,39 @@ public sealed record DocketEvidence
     public required IReadOnlyList<string> TransactionIds { get; init; }
 
     /// <summary>
+    /// The Merkle leaves this docket's commitment was computed over — one per entry in
+    /// <see cref="TransactionIds"/>, in the same order.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A docket does not commit to its transaction ids.</b> It commits to a tree whose leaves are
+    /// per-transaction composite hashes of <c>(TransactionId, PayloadHash, Timestamp)</c> — see
+    /// <c>Validator.Service/DocketBuilder.cs</c>, which builds them via
+    /// <c>DocketHasher.ComputeTransactionHash</c>. Recomputing a root over the raw ids therefore
+    /// never matches the sealed root, on any docket, on any register: it is a false tamper report
+    /// 100% of the time. This was found by running the check against real dockets on n1.
+    /// </para>
+    /// <para>
+    /// So the leaves are assembled by the service, which reads the docket's transactions and
+    /// delegates to the same <c>DocketHasher</c> the sealing path uses — the same projection the
+    /// Register Service's own inclusion-proof endpoint already relies on. The engine's job stays
+    /// what it was: compare a recomputation against the sealed commitment.
+    /// </para>
+    /// <para>
+    /// <b>Order and membership follow <see cref="TransactionIds"/>, deliberately.</b> That is what
+    /// makes tampering with the stored id list detectable (SC-003): altering, removing or reordering
+    /// an id changes the leaf sequence and therefore the recomputed root. Building the leaves from
+    /// whatever the store happens to return instead would leave the id list uncommitted and the
+    /// tamper test vacuous.
+    /// </para>
+    /// <para>
+    /// Null when the leaves could not be assembled — a transaction the docket lists is not held on
+    /// this node, for instance. That is <see cref="Sorcha.Verification.Abstractions.VerificationStatus.Unverified"/>,
+    /// never <see cref="Sorcha.Verification.Abstractions.VerificationStatus.Failed"/>.
+    /// </remarks>
+    public IReadOnlyList<string>? LeafHashes { get; init; }
+
+    /// <summary>
     /// The Merkle root the proposing validator committed over this docket's transaction set.
     /// </summary>
     /// <remarks>
