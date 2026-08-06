@@ -4,6 +4,9 @@
 using System.Buffers.Text;
 using System.Diagnostics;
 using System.Text.Json;
+using Sorcha.Cryptography;
+using Sorcha.Cryptography.Enums;
+using Sorcha.Cryptography.Interfaces;
 using Sorcha.Register.Core.Services;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
@@ -21,6 +24,7 @@ namespace Sorcha.Validator.Service.Services;
 public class RightsEnforcementService : IRightsEnforcementService
 {
     private readonly IGovernanceRosterService _rosterService;
+    private readonly ICryptoModule _cryptoModule;
     private readonly ILogger<RightsEnforcementService> _logger;
 
     /// <summary>
@@ -36,10 +40,12 @@ public class RightsEnforcementService : IRightsEnforcementService
 
     public RightsEnforcementService(
         IGovernanceRosterService rosterService,
+        ICryptoModule cryptoModule,
         ILogger<RightsEnforcementService> logger,
         GovernanceMetrics? metrics = null)
     {
         _rosterService = rosterService ?? throw new ArgumentNullException(nameof(rosterService));
+        _cryptoModule = cryptoModule ?? throw new ArgumentNullException(nameof(cryptoModule));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _metrics = metrics;
     }
@@ -233,8 +239,31 @@ public class RightsEnforcementService : IRightsEnforcementService
                     else
                     {
                         using var _quorumScope = RuleTelemetry.TimeRule("VAL_PERM_006");
+
+                        // Feature 189 US2-A: count only CRYPTOGRAPHICALLY VERIFIED approvals.
+                        //
+                        // ApprovalSignature has always carried a Signature field, and nothing ever
+                        // checked it: ValidateQuorumAsync counted an approval whose ApproverDid
+                        // merely appeared in the roster. Quorum was therefore satisfied by ASSERTING
+                        // approvals — whoever composed the payload could claim every other member's
+                        // vote, with no cryptography involved anywhere. Verification happens here
+                        // rather than in the roster service because Sorcha.Register.Core is
+                        // deliberately crypto-free; only verified approvals are passed down.
+                        var verifiedApprovals = await VerifyApprovalsAsync(
+                            transaction.RegisterId, roster, operation, ct);
+
+                        var forged = operation.ApprovalSignatures.Count - verifiedApprovals.Count;
+                        if (forged > 0)
+                        {
+                            _logger.LogWarning(
+                                "Transaction {TransactionId} on register {RegisterId}: {Forged} of {Total} approval signature(s) failed verification and were discarded",
+                                transaction.TransactionId, transaction.RegisterId,
+                                forged, operation.ApprovalSignatures.Count);
+                            _metrics?.RecordRefused(transaction.RegisterId, "approval-signature-invalid");
+                        }
+
                         var quorumResult = await _rosterService.ValidateQuorumAsync(
-                            transaction.RegisterId, operation, operation.ApprovalSignatures, ct);
+                            transaction.RegisterId, operation, verifiedApprovals, ct);
 
                         if (!quorumResult.IsQuorumMet)
                         {
@@ -279,6 +308,75 @@ public class RightsEnforcementService : IRightsEnforcementService
     /// Determines if a transaction is a governance (Control) transaction by checking
     /// the blueprint ID or transaction metadata.
     /// </summary>
+    /// <summary>
+    /// Returns only those approvals whose signature verifies against the approving organisation's
+    /// roster key, over the canonical approval statement.
+    /// </summary>
+    /// <remarks>
+    /// Fails closed on every uncertainty — an unknown approver, an unparseable algorithm, an
+    /// undecodable key or signature, or a verification error all discard the approval rather than
+    /// counting it. A vote that cannot be proven is not a vote.
+    /// </remarks>
+    private async Task<List<ApprovalSignature>> VerifyApprovalsAsync(
+        string registerId,
+        AdminRoster roster,
+        GovernanceOperation operation,
+        CancellationToken ct)
+    {
+        var verified = new List<ApprovalSignature>();
+        if (operation.ApprovalSignatures is null)
+        {
+            return verified;
+        }
+
+        foreach (var approval in operation.ApprovalSignatures)
+        {
+            // The approver must be on the roster, and we verify against THAT member's key — never
+            // against a key supplied alongside the approval, which would let an approval carry its
+            // own forged authority.
+            var attestation = roster.ControlRecord.Attestations.FirstOrDefault(
+                a => string.Equals(a.Subject, approval.ApproverDid, StringComparison.Ordinal));
+
+            if (attestation is null)
+            {
+                continue;
+            }
+
+            if (!GovernanceKeyMatcher.TryDecode(attestation.PublicKey, out var publicKey) ||
+                !GovernanceKeyMatcher.TryDecode(approval.Signature, out var signatureBytes))
+            {
+                continue;
+            }
+
+            if (!Enum.TryParse<WalletNetworks>(attestation.Algorithm.ToString(), ignoreCase: true, out var network))
+            {
+                continue;
+            }
+
+            var digest = GovernanceApprovalStatement.ComputeDigest(
+                registerId, operation, approval.ApproverDid, approval.IsApproval);
+
+            try
+            {
+                var status = await _cryptoModule.VerifyAsync(
+                    signatureBytes, digest, (byte)network, publicKey, ct);
+
+                if (status == CryptoStatus.Success)
+                {
+                    verified.Add(approval);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Approval from {ApproverDid} on register {RegisterId} could not be verified — discarding",
+                    approval.ApproverDid, registerId);
+            }
+        }
+
+        return verified;
+    }
+
     /// <summary>
     /// Resolves how many distinct roster organisations must sign a governance transaction.
     /// </summary>

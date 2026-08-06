@@ -6,6 +6,8 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Sorcha.Cryptography.Enums;
+using Sorcha.Cryptography.Interfaces;
 using Sorcha.Register.Core.Services;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
@@ -18,6 +20,7 @@ namespace Sorcha.Validator.Service.Tests.Services;
 public class RightsEnforcementServiceTests
 {
     private readonly Mock<IGovernanceRosterService> _rosterServiceMock;
+    private readonly Mock<ICryptoModule> _cryptoMock = new();
     private readonly RightsEnforcementService _service;
 
     private static readonly byte[] OwnerPublicKey = new byte[32];
@@ -28,7 +31,16 @@ public class RightsEnforcementServiceTests
     {
         _rosterServiceMock = new Mock<IGovernanceRosterService>();
         var logger = new Mock<ILogger<RightsEnforcementService>>();
-        _service = new RightsEnforcementService(_rosterServiceMock.Object, logger.Object);
+        // Feature 189 US2-A: approvals are now cryptographically verified. Default the crypto
+        // module to REJECT — a test that wants an approval counted must opt in explicitly, so a
+        // forged approval can never pass by accident.
+        _cryptoMock
+            .Setup(x => x.VerifyAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<byte>(),
+                It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CryptoStatus.InvalidSignature);
+
+        _service = new RightsEnforcementService(
+            _rosterServiceMock.Object, _cryptoMock.Object, logger.Object);
     }
 
     private static AdminRoster CreateRoster(params (byte[] publicKey, RegisterRole role, string did)[] members)
@@ -690,6 +702,116 @@ public class RightsEnforcementServiceTests
         // "does not match any member" states the actual condition, not an internal code.
         error.Message.Should().Contain("roster");
         error.Message.Should().NotBeNullOrWhiteSpace();
+    }
+
+    // ------------------------------------------------------------------
+    // Feature 189 US2-A — approvals must be cryptographically verified.
+    //
+    // Before this, ValidateQuorumAsync counted an approval whose ApproverDid merely appeared in
+    // the roster; ApprovalSignature.Signature was never checked anywhere in src/. Quorum was
+    // therefore satisfiable by ASSERTING approvals — whoever composed the payload could claim
+    // every other member's vote, with no cryptography involved at any point.
+    // ------------------------------------------------------------------
+
+    private static GovernanceOperation AddOperationWithApprovals(params (string did, bool approve)[] votes)
+        => new()
+        {
+            OperationType = GovernanceOperationType.Add,
+            ProposerDid = "did:sorcha:w:admin1",
+            TargetDid = "did:sorcha:w:newadmin",
+            TargetRole = RegisterRole.Admin,
+            ProposedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(7),
+            ApprovalSignatures = votes.Select(v => new ApprovalSignature
+            {
+                ApproverDid = v.did,
+                Signature = Convert.ToBase64String(new byte[64]),
+                IsApproval = v.approve,
+                VotedAt = DateTimeOffset.UtcNow
+            }).ToList()
+        };
+
+    [Fact]
+    public async Task ForgedApprovals_AreNotCounted_SoQuorumIsNotMet()
+    {
+        var roster = CreateRoster(
+            (OwnerPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"),
+            (AdminPublicKey, RegisterRole.Admin, "did:sorcha:w:admin1"));
+        _rosterServiceMock.Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+        _rosterServiceMock.Setup(r => r.ValidateProposal(roster, It.IsAny<GovernanceOperation>()))
+            .Returns(GovernanceValidationResult.Success());
+
+        // The admin claims the owner's approval. The crypto mock rejects (fixture default).
+        var operation = AddOperationWithApprovals(("did:sorcha:w:owner1", true));
+        var tx = CreateGovernanceTransaction(AdminPublicKey, operation);
+
+        await _service.ValidateGovernanceRightsAsync(tx);
+
+        // The forged approval must never reach the quorum count.
+        _rosterServiceMock.Verify(r => r.ValidateQuorumAsync(
+            It.IsAny<string>(), It.IsAny<GovernanceOperation>(),
+            It.Is<List<ApprovalSignature>>(l => l.Count == 0),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GenuinelySignedApprovals_AreCounted()
+    {
+        var roster = CreateRoster(
+            (OwnerPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"),
+            (AdminPublicKey, RegisterRole.Admin, "did:sorcha:w:admin1"));
+        _rosterServiceMock.Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+        _rosterServiceMock.Setup(r => r.ValidateProposal(roster, It.IsAny<GovernanceOperation>()))
+            .Returns(GovernanceValidationResult.Success());
+        _rosterServiceMock.Setup(r => r.ValidateQuorumAsync(
+                It.IsAny<string>(), It.IsAny<GovernanceOperation>(),
+                It.IsAny<List<ApprovalSignature>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new QuorumResult { IsQuorumMet = true, VotesRequired = 1, VotesReceived = 1, VotingPool = 2 });
+
+        // This approval verifies.
+        _cryptoMock.Setup(x => x.VerifyAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<byte>(),
+                It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CryptoStatus.Success);
+
+        var operation = AddOperationWithApprovals(("did:sorcha:w:owner1", true));
+        var result = await _service.ValidateGovernanceRightsAsync(
+            CreateGovernanceTransaction(AdminPublicKey, operation));
+
+        // Verification must not become a blanket refusal — a real approval still counts.
+        _rosterServiceMock.Verify(r => r.ValidateQuorumAsync(
+            It.IsAny<string>(), It.IsAny<GovernanceOperation>(),
+            It.Is<List<ApprovalSignature>>(l => l.Count == 1),
+            It.IsAny<CancellationToken>()), Times.Once);
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ApprovalFromNonRosterMember_IsDiscardedWithoutVerifying()
+    {
+        var roster = CreateRoster(
+            (OwnerPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"),
+            (AdminPublicKey, RegisterRole.Admin, "did:sorcha:w:admin1"));
+        _rosterServiceMock.Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+        _rosterServiceMock.Setup(r => r.ValidateProposal(roster, It.IsAny<GovernanceOperation>()))
+            .Returns(GovernanceValidationResult.Success());
+        _cryptoMock.Setup(x => x.VerifyAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<byte>(),
+                It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CryptoStatus.Success);
+
+        // An outsider's approval, even perfectly signed, is not a roster vote. It must be dropped
+        // before verification — we never verify against a key the approval brought with it.
+        var operation = AddOperationWithApprovals(("did:sorcha:w:outsider", true));
+
+        await _service.ValidateGovernanceRightsAsync(
+            CreateGovernanceTransaction(AdminPublicKey, operation));
+
+        _rosterServiceMock.Verify(r => r.ValidateQuorumAsync(
+            It.IsAny<string>(), It.IsAny<GovernanceOperation>(),
+            It.Is<List<ApprovalSignature>>(l => l.Count == 0),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact] // T018b — but genesis must still be able to create the roster.
