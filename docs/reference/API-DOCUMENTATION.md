@@ -2002,7 +2002,8 @@ Content-Type: application/json
 
 #### 8. Disable Dev Mode (Feature 078)
 
-Irreversibly disables dev mode on a register. Once disabled, field-level encryption becomes mandatory for all new transactions. This operation cannot be undone.
+Promotes a register from DevMode (plaintext payloads) to Normal (mandatory field-level encryption).
+The transition is **one-way** and **asynchronous**.
 
 ```http
 POST /api/registers/{registerId}/disable-dev-mode
@@ -2010,48 +2011,39 @@ POST /api/registers/{registerId}/disable-dev-mode
 
 **Authorization:** Requires `CanManageRegisters` policy.
 
-**Response:** `200 OK`
+The endpoint does not flip a local flag. It submits a `CryptoPolicyUpdate` **control transaction**
+(action id `control.crypto.update`) through the Validator, so the promotion seals into a docket and
+replicates to every node holding the register. `Register.DevMode` flips on each node as it writes
+that docket — **not when this call returns**. Poll `GET /api/registers/{registerId}` until `devMode`
+reads `false`; on a healthy single-validator node that is typically a few seconds.
+
+**Response:** `200 OK` — the update was accepted for sealing, not yet applied.
 ```json
 {
   "registerId": "register-101",
-  "devMode": false,
-  "message": "Dev mode disabled. Field-level encryption is now required for new transactions."
+  "txId": "959f3d8c…",
+  "policyVersion": 2,
+  "status": "submitted",
+  "message": "Dev mode disable submitted as a crypto-policy update. Field-level encryption becomes mandatory once the control transaction seals; the change replicates to all nodes."
 }
 ```
 
-**Error:** `409 Conflict` — Dev mode is already disabled on this register.
+**Errors:**
+- `409 Conflict` — Dev mode is already disabled on this register.
+- `422 Unprocessable Entity` — the Validator rejected the policy update.
 
-#### 9. Toggle Dev Mode
+**Already-sealed transactions are not retrospectively encrypted.** Promotion changes the posture for
+*new* payloads only; everything written while the register was in DevMode stays plaintext forever.
+That is immutability, not a defect — but it means a promoted register is not a wholly encrypted
+register, and any assessment of it must say so.
 
-Enables or disables dev mode on a register. When enabled, payloads are stored as plaintext with disclosure filtering at read time. When disabled, new payloads use envelope encryption.
+> **Removed:** `PUT /api/registers/{registerId}/devmode` no longer exists. It wrote `Register.DevMode`
+> directly, which made it a bidirectional local flag flip: it could re-enable DevMode on a Normal
+> register, reverting new submissions to plaintext, and it never replicated. Because it emitted no
+> control transaction, the Validator's one-way guard never ran. A register's DevMode posture is set
+> once at genesis and may only ever be promoted DevMode→Normal, via the endpoint above.
 
-> **Security Warning:** This endpoint allows re-enabling dev mode, bypassing the one-way constraint. It is intended for development and testing only. For production registers, use the irreversible `POST /{registerId}/disable-dev-mode` endpoint above. Consider restricting this endpoint via API Gateway routing rules in production deployments.
-
-```http
-PUT /api/registers/{registerId}/devmode
-```
-
-**Authorization:** Requires `CanManageRegisters` policy.
-
-**Request Body:**
-```json
-{
-  "enabled": false
-}
-```
-
-**Response:** `200 OK`
-```json
-{
-  "registerId": "register-101",
-  "devMode": false,
-  "effectiveFrom": "2026-03-16T12:00:00Z"
-}
-```
-
-**Error:** `404 Not Found` — Register not found.
-
-#### 10. Recovery Sync Status (Feature 078)
+#### 9. Recovery Sync Status (Feature 078)
 
 Returns the current recovery/sync status for all local registers. Used for health monitoring of register replication.
 
