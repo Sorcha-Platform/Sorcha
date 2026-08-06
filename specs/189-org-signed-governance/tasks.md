@@ -66,10 +66,10 @@ confirm sealed-in-docket and observable on tiny.
 
 ### Implementation for US1
 
-- [ ] T019 [US1] Create `GovernanceSigningService` in `src/Services/Sorcha.Register.Service/Services/` — resolve the register's roster, select the caller's organisation attestation, parse the wallet address from `Subject` (`did:sorcha:w:{address}`), and sign via `IWalletServiceClient.SignTransactionAsync(address, hash, SorchaDerivationPaths.RegisterAttestation, isPreHashed: true)`
-- [ ] T020 [US1] Unit-test `GovernanceSigningService`: correct derivation path, correct wallet resolved from `Subject`, and a clear failure when the caller's organisation is not on the roster
-- [ ] T021 [US1] Switch `CryptoPolicyService.SubmitPolicyUpdateAsync` from `ISystemWalletSigningService` to `GovernanceSigningService` in `src/Services/Sorcha.Register.Service/Services/CryptoPolicyService.cs`; leave the node system wallet in place for genesis/docket duties
-- [ ] T022 [US1] Update `tests/Sorcha.Register.Service.Tests/Unit/CryptoPolicyServiceTests.cs` for the new signer, keeping the existing mutation-verified assertions (ActionId, metadata keys, payload hash, base64url, one-way guard, non-genesis BlueprintId)
+- [X] T019 [US1] Create `GovernanceSigningService` in `src/Services/Sorcha.Register.Service/Services/` — resolve the register's roster, select the caller's organisation attestation, parse the wallet address from `Subject` (`did:sorcha:w:{address}`), and sign via `IWalletServiceClient.SignTransactionAsync(address, hash, SorchaDerivationPaths.RegisterAttestation, isPreHashed: true)`
+- [X] T020 [US1] Unit-test `GovernanceSigningService`: correct derivation path, correct wallet resolved from `Subject`, and a clear failure when the caller's organisation is not on the roster
+- [X] T021 [US1] Switch `CryptoPolicyService.SubmitPolicyUpdateAsync` from `ISystemWalletSigningService` to `GovernanceSigningService` in `src/Services/Sorcha.Register.Service/Services/CryptoPolicyService.cs`; leave the node system wallet in place for genesis/docket duties
+- [X] T022 [US1] Update `tests/Sorcha.Register.Service.Tests/Unit/CryptoPolicyServiceTests.cs` for the new signer, keeping the existing mutation-verified assertions (ActionId, metadata keys, payload hash, base64url, one-way guard, non-genesis BlueprintId)
 - [X] T023 [US1] `RightsEnforcementService`: replace the `Signatures[0]` string comparison with the T004 byte helper over **every** signature, counting **distinct** roster members satisfied, in `src/Services/Sorcha.Validator.Service/Services/RightsEnforcementService.cs`
 - [X] T024 [US1] `RightsEnforcementService.IsGovernanceTransaction`: key on `Metadata["Type"] == "Control"` plus the governance `BlueprintId`, preserving the `BlueprintPublish` carve-out (#917); remove the `Metadata["transactionType"] == "Control"` arm that never matched
 - [X] T025 [US1] Narrow the `roster == null` allowance to roster-creating transactions only (R-002)

@@ -225,6 +225,12 @@ builder.Services.AddScoped<Sorcha.Register.Service.Services.CryptoPolicyService>
 builder.Services.AddScoped<Sorcha.Register.Core.Services.IGovernanceRosterService,
     Sorcha.Register.Core.Services.GovernanceRosterService>();
 
+// Feature 189: signs governance control transactions as an ORGANISATION on the register's roster
+// (slot 100), not as the node. The node's system wallet is on no roster, so a node-signed
+// governance transaction is refused by the Validator on any register whose genesis has sealed.
+builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceSigningService,
+    Sorcha.Register.Service.Services.GovernanceSigningService>();
+
 // Feature 048: Register policy service (reads policy from control chain via direct repository access)
 builder.Services.AddScoped<Sorcha.Register.Core.Services.ISystemBlueprintValidator,
     Sorcha.Register.Service.Services.SystemBlueprintValidator>();

@@ -64,13 +64,13 @@ public class CryptoPolicyService
     };
 
     private readonly TransactionManager _transactionManager;
-    private readonly ISystemWalletSigningService _signingService;
+    private readonly IGovernanceSigningService _signingService;
     private readonly IValidatorServiceClient _validatorClient;
     private readonly ILogger<CryptoPolicyService> _logger;
 
     public CryptoPolicyService(
         TransactionManager transactionManager,
-        ISystemWalletSigningService signingService,
+        IGovernanceSigningService signingService,
         IValidatorServiceClient validatorClient,
         ILogger<CryptoPolicyService> logger)
     {
@@ -176,12 +176,14 @@ public class CryptoPolicyService
 
         var chainHead = await _transactionManager.GetLatestTransactionAsync(registerId, cancellationToken);
 
+        // Feature 189 (R-001): signed by an ORGANISATION on the register's roster, at slot 100 —
+        // not by the node's system wallet at slot 101, which is on no roster and whose signature
+        // the Validator therefore refuses on any register whose genesis has sealed.
         var signResult = await _signingService.SignAsync(
             registerId: registerId,
             txId: txId,
             payloadHash: payloadHash,
-            derivationPath: SorchaDerivationPaths.RegisterControl,
-            transactionType: "Control",
+            preferredSubject: null,   // Owner signs; consortium selection is Feature 189 US2
             cancellationToken: cancellationToken);
 
         var submission = new TransactionSubmission

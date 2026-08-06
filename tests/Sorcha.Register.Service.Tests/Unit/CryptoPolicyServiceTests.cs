@@ -12,7 +12,6 @@ using Sorcha.Register.Core.Storage;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
 using Sorcha.Register.Service.Services;
-using Sorcha.ServiceClients.SystemWallet;
 using Sorcha.ServiceClients.Validator;
 using Xunit;
 
@@ -21,7 +20,7 @@ namespace Sorcha.Register.Service.Tests.Unit;
 public class CryptoPolicyServiceTests
 {
     private readonly Mock<IRegisterRepository> _repositoryMock;
-    private readonly Mock<ISystemWalletSigningService> _signingMock = new();
+    private readonly Mock<IGovernanceSigningService> _signingMock = new();
     private readonly Mock<IValidatorServiceClient> _validatorMock = new();
     private readonly TransactionManager _transactionManager;
     private readonly CryptoPolicyService _sut;
@@ -33,16 +32,19 @@ public class CryptoPolicyServiceTests
     {
         _repositoryMock = new Mock<IRegisterRepository>();
 
+        // Feature 189: signed by an ORGANISATION on the roster (slot 100), not the node's system
+        // wallet. The node is on no roster, so a node-signed governance transaction is refused.
         _signingMock
             .Setup(x => x.SignAsync(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SystemSignResult
+                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GovernanceSignResult
             {
                 Signature = [1, 2, 3, 4],
                 PublicKey = [5, 6, 7, 8],
                 Algorithm = "ED25519",
-                WalletAddress = "ws11qtestsystemwallet"
+                WalletAddress = "ws11qtestorgwallet",
+                Subject = "did:sorcha:w:ws11qtestorgwallet"
             });
 
         _validatorMock
