@@ -266,19 +266,67 @@ public sealed class DocketEvidenceAssembler : IDocketEvidenceAssembler
         }
 
         var storedPayloadHash = await ReadStoredGenesisPayloadHashAsync(registerId, cancellationToken);
+        var description =
+            $"the payload of this node's stored system-register genesis transaction, compared with the " +
+            $"genesis its {_anchor.NetworkId ?? "network"} trust anchor describes " +
+            $"(anchor key fingerprint {_anchor.GenesisPublicKeyFingerprint})";
 
+        if (storedPayloadHash is null)
+        {
+            return new AnchorEvidence
+            {
+                IsAnchorKnown = true,
+                AnchorFingerprint = _anchor.GenesisPayloadHash,
+                OriginFingerprint = null,
+                OriginDescription = description,
+                UntraceableReason =
+                    "this node holds no readable system-register genesis transaction to compare against its anchor",
+            };
+        }
+
+        var traces = string.Equals(
+            storedPayloadHash, _anchor.GenesisPayloadHash, StringComparison.OrdinalIgnoreCase);
+
+        if (traces)
+        {
+            return new AnchorEvidence
+            {
+                IsAnchorKnown = true,
+                AnchorFingerprint = _anchor.GenesisPayloadHash,
+                OriginFingerprint = storedPayloadHash,
+                OriginDescription = description,
+            };
+        }
+
+        // A DIFFERENCE HERE IS NOT EVIDENCE OF FORGERY, and must not be reported as one.
+        //
+        // From a single node there is no way to tell "this system register is not the one my anchor
+        // covers" from "my anchor is not this network's". Both produce two known, differing hashes.
+        // Reconciling across nodes is explicitly out of scope (spec: "One node's view"), so the
+        // second reading cannot be ruled out — and it is by far the more likely: a node deployed
+        // with a mounted genesis while its image carries the embedded one lands here immediately.
+        //
+        // That is precisely the state issue #1374 describes, and the spec is explicit that it "will
+        // correctly report its origin check as unverifiable". Observed on n1: the node holds the
+        // embedded sorcha-dev anchor while running the mounted n1-dev network, and reporting Failed
+        // told an operator their healthy system register did not match its origin.
+        //
+        // So: Unverified, with BOTH hashes in the detail so the operator can see at a glance that
+        // the networks differ. The engine keeps its Failed branch for when anchors are independently
+        // configurable (#1374) and a mismatch becomes interpretable.
         return new AnchorEvidence
         {
             IsAnchorKnown = true,
             AnchorFingerprint = _anchor.GenesisPayloadHash,
-            OriginFingerprint = storedPayloadHash,
+            OriginFingerprint = null,
             OriginDescription =
-                $"the payload of this node's stored system-register genesis transaction, compared with the " +
-                $"genesis its {_anchor.NetworkId ?? "network"} trust anchor describes " +
-                $"(anchor key fingerprint {_anchor.GenesisPublicKeyFingerprint})",
-            UntraceableReason = storedPayloadHash is null
-                ? "this node holds no readable system-register genesis transaction to compare against its anchor"
-                : null,
+                $"{description} · stored genesis payload hash {storedPayloadHash} · anchor expects " +
+                $"{_anchor.GenesisPayloadHash}",
+            UntraceableReason =
+                $"this node's trust anchor describes the '{_anchor.NetworkId ?? "unknown"}' network, whose " +
+                $"genesis payload hash does not match the system register this node actually holds. From " +
+                $"one node this cannot be told apart from the node simply being configured with another " +
+                $"network's anchor, which is the far more likely cause — see issue #1374",
         };
     }
 
