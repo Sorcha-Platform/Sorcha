@@ -264,3 +264,12 @@ indistinguishable symptom — which is exactly what happened on 2026-08-06.
 - [ ] T086 🔴 **LIVE GATE** Single-owner register completes governance unattended, with no pairing, device or human interaction (FR-031) — the no-regression gate.
 
 **Checkpoint**: the server cannot produce a multi-party approval on its own, and a signature binds exactly what the approver saw.
+
+
+---
+
+## Phase 9: Defects found by live verification (2026-08-07)
+
+- [ ] T092 🔴 Route `/governance/propose` through `IGovernanceSigningService` (slot 100, proposing ORG) instead of `ISystemWalletSigningService` (slot 101, NODE). R-020 — the original F189 defect, left unfixed on this path when US1 moved crypto-policy across. Roster changes are the operations this feature is named after and none of them can complete on a sealed register today.
+- [ ] T093 🔴 **LIVE GATE** Raise a roster-change proposal on a SEALED register and confirm it lands in a docket. US1 should have had this gate; its absence is why R-020 survived a live verification.
+- [ ] T094 Decide and implement individual key provisioning (R-018) — no path currently gives an administrator a personal key, so neither authorisation form is usable by one. Must not reintroduce server-side signing (R-014).

@@ -444,6 +444,13 @@ harder failure than the one this feature set out to fix.
 server's. Whichever is chosen, it must not reintroduce server-side signing (R-014), which rules out
 "the server holds an admin key on their behalf".
 
+**CONFIRMED 2026-08-07 — not a seeded-data artefact.** All three `CreateWalletAsync` call sites in
+the Tenant Service create **organisation** wallets (`org-{subdomain}-signing`) —
+`OrganizationService`, `OrgWalletReconciliationService` and `BootstrapEndpoints`. **No path
+provisions a wallet for a platform user.** The user wallets present on n1 all belong to citizen
+accounts minted by the application journey (`aias-rehearse-*@example.test`). So an administrator
+having no key is the norm, not an anomaly of the seeded account.
+
 **Status.** Blocks the live happy-path verification of T076 and everything downstream that needs a
 real approval. The endpoint itself is deployed and correct (see below).
 
@@ -469,3 +476,42 @@ Container healthy.
 blocked by R-018. So the operation-reconstruction path — `Payloads[0].Data` →
 `ControlTransactionPayload.Operation` → `GovernanceSigningRequest` — is **unexercised against real
 data**, which is exactly the join this project's history says to distrust until executed.
+
+
+---
+
+## R-020: `/propose` still signs with the NODE's system wallet — US1 is incomplete
+
+**Proven by code trace, 2026-08-07.** The `/governance/propose` handler takes
+`ISystemWalletSigningService` and signs with:
+
+```csharp
+// 11. Sign with system wallet
+var signResult = await signingService.SignAsync(
+    registerId: registerId, txId: txId, payloadHash: payloadHashHex,
+    derivationPath: SorchaDerivationPaths.RegisterControl,   // slot 101 — the NODE's key
+    transactionType: "Control");
+```
+
+…and submits `Signatures = [systemSignature]`.
+
+`SorchaDerivationPaths.RegisterControl` is slot 101, the node system wallet. A register's governance
+roster is built from its genesis attestations, which record the **organisation's** key at slot 100.
+
+**This is the original Feature 189 defect, unfixed on this path.** US1 moved `/disable-dev-mode` and
+`/governance/crypto-policy` onto `IGovernanceSigningService` (slot 100) and left `/propose` behind. So
+every roster-change proposal — `Add`, `Remove`, `Transfer`, and all validator operations — is still
+node-signed and will be rejected by `RightsEnforcementService` as *"submitter not found in roster"* on
+any register whose genesis has sealed.
+
+**Consequences.**
+
+- US1's checkpoint ("governance operations complete on a sealed register") holds only for
+  crypto-policy, not for the roster changes the feature is named after.
+- It plausibly explains the zero proposals on n1: the path may not be completable at all.
+- It compounds R-018 — even once individuals have keys, the proposal itself is signed by the wrong
+  party.
+
+**Fix.** Route `/propose` through `IGovernanceSigningService` exactly as the crypto-policy path was,
+signing as the proposing organisation at slot 100. Then the live gate that US1 should have had:
+raise a roster-change proposal on a **sealed** register and confirm it lands in a docket.
