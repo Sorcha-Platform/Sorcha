@@ -218,11 +218,21 @@ indistinguishable symptom — which is exactly what happened on 2026-08-06.
 
 ### Statement v2 — do this first; everything after it is unsafe without it
 
-- [ ] T071 🔴 Test FIRST: reflection-driven digest coverage — enumerate `GovernanceOperation`'s properties and assert that mutating any non-excluded one (`ApprovalSignatures`, `Status` excluded) changes the digest. **MUST go RED today** for `ValidatorEntry`, `RosterSnapshotId`, `QuorumFormulaAtRaise`, `ExpiresAt`. A hand-listed test is not acceptable — it rots exactly as the hand-listed field list did (R-013). Pattern precedent: the derivation-context reflection tests in `Sorcha.Wallet.Contracts.Tests`.
-- [ ] T072 Implement `GovernanceApprovalStatement` **v2**: bind domain tag `sorcha:governance-approval:v2`, `registerId`, `proposalId`, `approverDid`, approve/reject, plus a hash of the operation's canonical JSON minus derived members. v1 signatures MUST NOT verify under v2 (clean break, R-011).
-- [ ] T073 [P] Test: a v1 signature is rejected under v2.
+- [X] T071 🔴 Test FIRST: reflection-driven digest coverage — enumerate `GovernanceOperation`'s properties and assert that mutating any non-excluded one (`ApprovalSignatures`, `Status` excluded) changes the digest. **MUST go RED today** for `ValidatorEntry`, `RosterSnapshotId`, `QuorumFormulaAtRaise`, `ExpiresAt`. A hand-listed test is not acceptable — it rots exactly as the hand-listed field list did (R-013). Pattern precedent: the derivation-context reflection tests in `Sorcha.Wallet.Contracts.Tests`.
+- [X] T072 Implement `GovernanceApprovalStatement` **v2**: bind domain tag `sorcha:governance-approval:v2`, `registerId`, `proposalId`, `approverDid`, approve/reject, plus a hash of the operation's canonical JSON minus derived members. v1 signatures MUST NOT verify under v2 (clean break, R-011).
+- [X] T073 [P] Test: a v1 signature is rejected under v2.
 
 ### Blueprint, then approvals as its actions (the absorbed T041/T054)
+
+> **T071 run, 2026-08-07:** went RED for **five** fields, not the four the design predicted —
+> `Justification` was also unbound. A hand-listed test would have covered exactly the four I thought
+> of and passed. `Justification` is bound rather than excluded: it is the reason an approver read
+> when deciding, so a substituted one attributes a justification to an approval that never saw it.
+>
+> **`proposalId` binding deferred:** `GovernanceOperation` has no proposal identifier — none exists
+> anywhere in the model, though the contract URL assumes one. v2 binds the whole operation (the
+> actual vulnerability); binding `proposalId` lands with the proposal-lifecycle work that introduces
+> it (T045/T046).
 
 - [ ] T074 T053 first — the approval's `BlueprintId`, `ActionId` and payload schema come from the revised `register-governance-v1`. Confirm T053 is complete before starting T075.
 - [ ] T075 Implement an approval as an **action submission** of the governance blueprint, signed externally, carried to the ledger **through the validator** — never written straight to storage (that was the original US1 defect).
