@@ -243,11 +243,11 @@ indistinguishable symptom — which is exactly what happened on 2026-08-06.
 - [ ] T077 [P] Test: the signing request carries the full operation and no digest; a client-derived digest matches what the server verifies against.
 - [ ] T078 Implement submission verification: signature checked against the v2 statement rebuilt from the **stored** operation, not from anything the client sent.
 - [ ] T079 `authorisation` handling (R-017, supersedes the co-signature framing): verify it, bind it to the approving organisation, and treat it in the validator as **attestation metadata, not a roster claim** — otherwise it is rejected as "not on roster". Refuse the whole submission when invalid; never accept while discarding it (FR-032).
-- [ ] T087 Delegation record: signed by the **empowering individual's** key (never server-asserted — the server mints tokens, so a claim it can assert is one it can forge). Carries approver public key, organisation, scope over `GovernanceOperationType`, expiry. FR-033.
-- [ ] T088 Delegation validity determinable from **sealed ledger content** so every node folds identically (FR-034 / R-009) — delegation and revocation are ledger records, not service state.
-- [ ] T089 [P] Test: a delegated approval outside its scope is refused (e.g. a bot empowered for `CryptoPolicyUpdate` cannot approve `Transfer`).
-- [ ] T090 [P] Test: an expired or revoked delegation refuses the approval, and the refusal is recorded with a reason rather than dropped.
-- [ ] T091 [P] Test: **every** accepted approval resolves to a named individual — directly or through a delegation. No approval reaches the ledger without one (FR-029).
+- [X] T087 Delegation record: signed by the **empowering individual's** key (never server-asserted — the server mints tokens, so a claim it can assert is one it can forge). Carries approver public key, organisation, scope over `GovernanceOperationType`, expiry. FR-033.
+- [ ] T088 (structural half done — the validator takes an injected `isRevoked` predicate so the answer comes from sealed content, not service state; the ledger-side revocation record itself is outstanding) Delegation validity determinable from **sealed ledger content** so every node folds identically (FR-034 / R-009) — delegation and revocation are ledger records, not service state.
+- [X] T089 [P] Test: a delegated approval outside its scope is refused (e.g. a bot empowered for `CryptoPolicyUpdate` cannot approve `Transfer`).
+- [X] T090 [P] Test: an expired or revoked delegation refuses the approval, and the refusal is recorded with a reason rather than dropped.
+- [X] T091 [P] Test: **every** accepted approval resolves to a named individual — directly or through a delegation. No approval reaches the ledger without one (FR-029).
 - [ ] T080 [P] Test: a co-signature alone does not satisfy the roster; an organisation signature is still required.
 - [ ] T081 Record `authMethod` on the ledger record (R-016) so a register can require a minimum standard per operation.
 

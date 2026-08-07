@@ -151,7 +151,7 @@ public static class GovernanceApprovalStatement
             node.Remove(excluded);
         }
 
-        return Canonicalise(node).ToJsonString();
+        return Canonicalise(node)!.ToJsonString();
     }
 
     /// <summary>Recursively rewrites an object graph with its keys in ordinal order.</summary>
