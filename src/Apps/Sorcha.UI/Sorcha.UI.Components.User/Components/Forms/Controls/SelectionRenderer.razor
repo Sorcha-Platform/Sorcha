@@ -20,7 +20,7 @@
            Margin="Margin.Dense">
     @foreach (var option in _options)
     {
-        <MudSelectItem Value="@option">@option</MudSelectItem>
+        <MudSelectItem Value="@option.Value">@option.Label</MudSelectItem>
     }
 </MudSelect>
 
@@ -57,13 +57,13 @@
     private string _value = string.Empty;
     private string _errorText = string.Empty;
     private bool _isRequired;
-    private List<string> _options = [];
+    private List<SelectionOption> _options = [];
 
     protected override void OnParametersSet()
     {
         _value = FormContext?.GetValue<string>(Control.Scope) ?? string.Empty;
         _isRequired = SchemaService.IsRequired(FormContext?.DataSchema, Control.Scope);
-        _options = SchemaService.GetEnumValues(FormContext?.DataSchema, Control.Scope);
+        _options = SchemaService.GetEnumOptions(FormContext?.DataSchema, Control.Scope);
         UpdateErrors();
     }
 

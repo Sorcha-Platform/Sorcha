@@ -4,6 +4,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Sorcha.Blueprint.Models;
+using Sorcha.UI.Core.Models.Forms;
 
 namespace Sorcha.UI.Core.Services.Forms;
 
@@ -225,6 +226,10 @@ public class FormSchemaService : IFormSchemaService
 
         return errors;
     }
+
+    /// <inheritdoc />
+    public List<SelectionOption> GetEnumOptions(JsonDocument? schema, string scope)
+        => SelectionOption.FromSchema(GetSchemaForScope(schema, scope));
 
     public List<string> GetEnumValues(JsonDocument? schema, string scope)
     {

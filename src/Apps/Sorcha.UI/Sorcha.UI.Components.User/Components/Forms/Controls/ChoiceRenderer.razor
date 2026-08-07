@@ -14,9 +14,9 @@
                    ValueChanged="OnValueChanged">
         @foreach (var option in _options)
         {
-            <MudRadio Value="@option"
+            <MudRadio Value="@option.Value"
                       Disabled="@(IsDisabled || FormContext?.IsReadOnly == true)"
-                      Color="Color.Primary">@option</MudRadio>
+                      Color="Color.Primary">@option.Label</MudRadio>
         }
     </MudRadioGroup>
 </MudField>
@@ -58,12 +58,12 @@
 
     private string _value = string.Empty;
     private string _errorText = string.Empty;
-    private List<string> _options = [];
+    private List<SelectionOption> _options = [];
 
     protected override void OnParametersSet()
     {
         _value = FormContext?.GetValue<string>(Control.Scope) ?? string.Empty;
-        _options = SchemaService.GetEnumValues(FormContext?.DataSchema, Control.Scope);
+        _options = SchemaService.GetEnumOptions(FormContext?.DataSchema, Control.Scope);
         UpdateErrors();
     }
 
