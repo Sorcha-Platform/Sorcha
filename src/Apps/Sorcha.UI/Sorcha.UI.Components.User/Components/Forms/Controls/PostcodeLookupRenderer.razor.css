@@ -1,0 +1,25 @@
+/* SPDX-License-Identifier: MIT */
+/* Copyright (c) 2026 Sorcha Contributors */
+
+/*
+   A postcode is displayed uppercase because that is its canonical written form, and because this
+   field is checked against a real gazetteer — "eh1 1yz" and "EH1 1YZ" are the same postcode and
+   should not look like two different answers.
+
+   This has to target the <input> itself. Putting `text-transform: uppercase` on MudTextField's
+   `Style` parameter lands it on MudBlazor's wrapper div, where it computes correctly and then does
+   nothing: browsers' UA stylesheet sets `text-transform: none` on form controls, so the property is
+   NOT inherited into the input the way it is into ordinary text. The wrapper reads "uppercase" in
+   DevTools while the input reads "none", which is exactly why the first attempt looked right in the
+   markup and wrong on screen.
+
+   ::deep is required because the input is rendered by MudTextField, a child component, so the
+   scope attribute is not on it — only on this component's own .postcode-lookup wrapper.
+
+   Display only. The value is normalised on the write path (PostalValueNormaliser) before validation,
+   and that is what governs what gets signed; this makes the field LOOK like what will be stored
+   rather than pretending to change it.
+*/
+.postcode-lookup ::deep input {
+    text-transform: uppercase;
+}
