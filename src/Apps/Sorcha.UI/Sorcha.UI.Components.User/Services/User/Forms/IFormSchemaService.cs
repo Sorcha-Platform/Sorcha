@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json;
+using Sorcha.UI.Core.Models.Forms;
 using Sorcha.Blueprint.Models;
 
 namespace Sorcha.UI.Core.Services.Forms;
@@ -42,6 +43,18 @@ public interface IFormSchemaService
     /// Gets enum values from a schema property
     /// </summary>
     List<string> GetEnumValues(JsonDocument? schema, string scope);
+
+    /// <summary>
+    /// Gets the selection options for a field: <c>enum</c> values paired with optional
+    /// <c>x-enumNames</c> labels.
+    /// </summary>
+    /// <remarks>
+    /// Prefer this over <see cref="GetEnumValues"/> for anything a citizen reads. A reference-data
+    /// field needs a stable stored identifier AND readable text, and they are rarely the same
+    /// string — <c>GB</c> is not what anyone wants to see, and "United Kingdom" is not what should
+    /// be signed.
+    /// </remarks>
+    List<SelectionOption> GetEnumOptions(JsonDocument? schema, string scope);
 
     /// <summary>
     /// Checks if a field is required

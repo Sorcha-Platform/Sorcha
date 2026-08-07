@@ -17,10 +17,11 @@
            ErrorText="@_errorText"
            Error="@(!string.IsNullOrEmpty(_errorText))"
            Variant="Variant.Outlined"
-           Margin="Margin.Dense">
+           Margin="Margin.Dense"
+           ToStringFunc="@LabelFor">
     @foreach (var option in _options)
     {
-        <MudSelectItem Value="@option">@option</MudSelectItem>
+        <MudSelectItem Value="@option.Value">@option.Label</MudSelectItem>
     }
 </MudSelect>
 
@@ -57,13 +58,32 @@
     private string _value = string.Empty;
     private string _errorText = string.Empty;
     private bool _isRequired;
-    private List<string> _options = [];
+    private List<SelectionOption> _options = [];
+
+    /// <summary>
+    /// Maps a stored value back to its display label for the CLOSED field.
+    /// </summary>
+    /// <remarks>
+    /// MudSelect derives the text of the collapsed input from the bound value via its converter — the
+    /// MudSelectItem child content is only rendered inside the open popover. Without this the citizen
+    /// would open the list, see "United Kingdom", pick it, and watch the field collapse back to "GB":
+    /// the labels would be visible for exactly as long as the dropdown was open. MudRadio has no
+    /// equivalent problem because it always renders its child content, so ChoiceRenderer needs nothing.
+    ///
+    /// Falling back to the value keeps an unrecognised stored value visible rather than blanking the
+    /// field — if a payload carries a code no longer in the schema, showing "XK" is honest and
+    /// showing nothing is not.
+    /// </remarks>
+    private string LabelFor(string? value)
+        => _options.FirstOrDefault(o => string.Equals(o.Value, value, StringComparison.Ordinal))?.Label
+           ?? value
+           ?? string.Empty;
 
     protected override void OnParametersSet()
     {
         _value = FormContext?.GetValue<string>(Control.Scope) ?? string.Empty;
         _isRequired = SchemaService.IsRequired(FormContext?.DataSchema, Control.Scope);
-        _options = SchemaService.GetEnumValues(FormContext?.DataSchema, Control.Scope);
+        _options = SchemaService.GetEnumOptions(FormContext?.DataSchema, Control.Scope);
         UpdateErrors();
     }
 
