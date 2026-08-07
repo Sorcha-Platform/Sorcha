@@ -357,3 +357,105 @@ Use one of three replacement surfaces:
 **Dialog content** rule: dialog success closes with `MudDialog.Close(DialogResult.Ok(...))` so the parent renders inline feedback; dialog errors render an inline `<MudAlert Severity="Severity.Error" Dense="true" Class="mb-2">` at the top of `DialogContent`.
 
 Full architecture and migration history: `specs/118-notifications-architecture/MIGRATION.md` and Critical Pattern #12 in `CLAUDE.md`.
+
+## Rendering traps: where MudBlazor and Blazor silently disagree
+
+Four bugs in one session, all shipped through review, all invisible to a green unit suite, all found
+only by opening a real browser. They share one shape — **each side of a boundary is individually
+correct and nothing verifies the join** — so treat this list as a pre-flight check, not trivia.
+
+### 1. Splatting a `Dictionary<string, object>` can hit a typed component parameter
+
+Blazor attribute splatting matches component parameters **case-insensitively**. So an entry meant as
+an HTML attribute can bind to a component parameter of a different type:
+
+```csharp
+attrs["inputmode"] = "email";       // a string, because that is what an HTML attribute is
+// splatted onto MudTextField → binds MudBlazor's InputMode parameter, typed MudBlazor.InputMode
+// → cast throws at RENDER time → the render batch aborts → "An unhandled error has occurred."
+```
+
+Parse to the component's type before splatting:
+
+```csharp
+if (Enum.TryParse<MudBlazor.InputMode>(InputMode, ignoreCase: true, out var typed))
+    attrs["inputmode"] = typed;
+```
+
+Note the blast radius is hard to read from the code. Only the email hint set `inputmode`, so it looked
+like "email fields" and meant "every application form on the platform". The sibling keys
+(`autocapitalize`, `autocorrect`, `spellcheck`) have no matching MudBlazor parameter, passed through
+as plain HTML, and worked — which is exactly why the mechanism was never suspected.
+
+**Check:** for any splatted dictionary, list the keys and ask whether the target component has a
+parameter of that name in ANY casing.
+
+### 2. A Razor comment inside an attribute list becomes an attribute NAME
+
+```razor
+<MudTextField Value="@x"
+              @* explaining the next line *@   ← NOT stripped here
+              Label="Postcode" />
+```
+
+The browser throws `InvalidCharacterError: Failed to execute 'setAttribute'` and the render batch
+dies, taking neighbouring fields down with it — they render as bare labels with no input. Put the
+comment **above the element**. There is a CI gate for this (`razor-comment-placement`, added after it
+happened).
+
+### 3. `MudSelect`'s closed field ignores `MudSelectItem` child content
+
+The collapsed input's text comes from the bound value through the converter; the child content is
+only rendered inside the open popover. Bind `Value` and display a different `Label` and the citizen
+opens the list, sees "United Kingdom", picks it, and the field collapses back to `GB`.
+
+```razor
+<MudSelect T="string" Value="@_value" ToStringFunc="@LabelFor"> ... </MudSelect>
+```
+
+`MudRadio` has no equivalent problem — it always renders its child content — so `ChoiceRenderer`
+needs nothing.
+
+### 4. `text-transform` does not inherit into form controls
+
+Putting `Style="text-transform: uppercase;"` on a `MudTextField` lands it on MudBlazor's **wrapper
+div**. That div computes `uppercase` — correctly, and visibly so in DevTools — while the `<input>`
+inside computes `none`, because the UA stylesheet sets `text-transform: none` on form controls. The
+fix looks right in the markup, right on the element it was written to, and does nothing on screen.
+
+Target the input from CSS isolation instead. `::deep` is required because the input is rendered by a
+child component, so the scope attribute is on your wrapper, not on it:
+
+```css
+/* PostcodeLookupRenderer.razor.css */
+.postcode-lookup ::deep input { text-transform: uppercase; }
+```
+
+Existing precedents for reaching MudBlazor internals this way: `PresentationRequestCard.razor.css`,
+`IdCardLayout.razor.css`, `LinkExistingAccountPrompt.razor.css`.
+
+### Testing these
+
+Unit tests cannot see any of the four. Use bUnit render tests:
+
+```csharp
+public sealed class FooTests : BunitContext
+{
+    public FooTests()
+    {
+        // MudSelect builds a popover and throws without a MudPopoverProvider in the tree — a layout
+        // concern the real app meets in MainLayout and a control rendered alone does not.
+        Services.AddMudServices(o => o.PopoverOptions.CheckForPopoverProvider = false);
+        JSInterop.Mode = JSRuntimeMode.Loose;
+    }
+}
+```
+
+bUnit has **no style engine**, so trap 4 is not assertable — verify that half live. What IS assertable
+is the join CSS depends on: the stylesheet addresses markup by a class name and nothing relates the
+two, so assert the wrapper class renders and the input sits inside it. Renaming the wrapper otherwise
+breaks the styling with no build error, no warning and no failing test.
+
+Always mutation-check a new guard here: revert the fix, confirm the test goes RED, restore. (When
+restoring from a backup file, `mv` carries the OLD mtime and MSBuild will skip the rebuild — the test
+stays red and looks like a failed fix. `touch` the file.)
