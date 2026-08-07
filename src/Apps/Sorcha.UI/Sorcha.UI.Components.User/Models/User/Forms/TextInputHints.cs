@@ -110,7 +110,27 @@ public sealed record TextInputHints(
         if (AutoCapitalize is not null) attrs["autocapitalize"] = AutoCapitalize;
         if (AutoCorrect is not null) attrs["autocorrect"] = AutoCorrect;
         if (SpellCheck is not null) attrs["spellcheck"] = SpellCheck;
-        if (InputMode is not null) attrs["inputmode"] = InputMode;
+
+        // `inputmode` MUST be supplied as MudBlazor's typed InputMode, never as a string.
+        //
+        // These attributes are SPLATTED onto a MudTextField, and Blazor matches splatted attribute
+        // names to component parameters CASE-INSENSITIVELY. MudTextField has a parameter named
+        // InputMode of type MudBlazor.InputMode, so "inputmode" binds to it rather than passing
+        // through as a plain HTML attribute — and a string value then throws
+        //   InvalidOperationException: Unable to set property 'inputmode' ... Arg_InvalidCastException
+        // which the Blazor ErrorBoundary turns into "Something went wrong".
+        //
+        // Email is the only preset that sets InputMode, so the practical effect was that EVERY form
+        // containing an email field crashed the moment that field rendered. It survived because the
+        // rehearsal and walkthroughs submit through the API; only the human path renders the field.
+        // The other three hints are plain HTML attributes with no MudTextField parameter of the same
+        // name, so they splat through untouched and stay strings.
+        if (InputMode is not null
+            && Enum.TryParse<MudBlazor.InputMode>(InputMode, ignoreCase: true, out var typedInputMode))
+        {
+            attrs["inputmode"] = typedInputMode;
+        }
+
         return attrs;
     }
 }
