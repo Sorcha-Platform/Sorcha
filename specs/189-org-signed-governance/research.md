@@ -508,10 +508,18 @@ any register whose genesis has sealed.
 
 - US1's checkpoint ("governance operations complete on a sealed register") holds only for
   crypto-policy, not for the roster changes the feature is named after.
-- It plausibly explains the zero proposals on n1: the path may not be completable at all.
+- **Withdrawn inference (maintainer, 2026-08-07).** I offered "zero proposals on n1" as
+  corroboration. It is not: the SSR is the *only* register on the node and is deliberately unique —
+  its genesis is pre-signed offline and making it governable by this path is explicitly deferred
+  (T007 → US4). Zero proposals there says nothing about the general path. **R-020 stands on the code
+  trace alone, which is where its evidence actually is.**
 - It compounds R-018 — even once individuals have keys, the proposal itself is signed by the wrong
   party.
 
 **Fix.** Route `/propose` through `IGovernanceSigningService` exactly as the crypto-policy path was,
-signing as the proposing organisation at slot 100. Then the live gate that US1 should have had:
-raise a roster-change proposal on a **sealed** register and confirm it lands in a docket.
+signing as the proposing organisation at slot 100.
+
+**How to test it, and how NOT to.** The gate must run against an **ordinary register**, not the SSR.
+The system register is unique by design — pre-signed offline genesis, deliberately outside this path
+until US4 — so it can neither confirm nor refute the general behaviour. Create a normal register,
+seal its genesis, then raise a roster-change proposal against it.
