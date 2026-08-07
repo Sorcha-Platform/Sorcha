@@ -1208,7 +1208,12 @@ function New-SorchaRegister {
         plaintext with disclosure filtering applied at read time. Use for flows
         that have anonymous/late-bound recipients whose keys cannot be published
         (e.g. the HaipVerifiedCitizen walkthrough). Dev mode is a one-way switch —
-        it can be disabled via the DisableDevMode endpoint but never re-enabled.
+        it can be disabled via POST /api/registers/{id}/disable-dev-mode but never
+        re-enabled. That promotion is ASYNCHRONOUS: it submits a crypto-policy control
+        transaction through the Validator, and the register's devMode flag flips on each
+        node only once that transaction seals into a docket. Poll GET /api/registers/{id}
+        rather than assuming the 200 response means it has taken effect. Payloads already
+        sealed in DevMode remain plaintext permanently — promotion is not retrospective.
     .RETURNS
         Hashtable with RegisterId, GenesisTransactionId.
     #>
@@ -1316,8 +1321,14 @@ function New-SorchaRegister {
     foreach ($att in $attestations) {
         $dataToSignBase64 = ConvertFrom-HexToBase64 -HexString $att.dataToSign
 
+        # derivationPath is load-bearing: slot 100 is the organisation's GOVERNANCE key. The
+        # register's roster records whatever key signs the attestation, and the Validator
+        # authorises later governance control transactions (crypto-policy updates, roster
+        # proposals, approvals) by matching against it. Omitting it signs with the wallet's
+        # primary key and the register becomes ungovernable — silently, at creation time.
         $signBody = @{
             transactionData = $dataToSignBase64
+            derivationPath  = "sorcha:register-attestation"
             isPreHashed     = $true
         }
 

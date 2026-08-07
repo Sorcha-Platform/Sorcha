@@ -12,6 +12,7 @@ using Sorcha.Cli.Models;
 using Sorcha.Cli.Services;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
+using Sorcha.Wallet.Contracts.Constants;
 
 namespace Sorcha.Cli.Commands;
 
@@ -613,6 +614,10 @@ public class RegisterCreateCommand : Command
                     var signRequest = new SignTransactionRequest
                     {
                         TransactionData = base64Hash,
+                        // Slot 100 — the organisation's governance key. The roster records whatever
+                        // key signs here, and the Validator authorises later governance control
+                        // transactions by matching against it, so this MUST NOT be the primary key.
+                        DerivationPath = SorchaDerivationPaths.RegisterAttestation,
                         IsPreHashed = true
                     };
 

@@ -225,6 +225,17 @@ builder.Services.AddScoped<Sorcha.Register.Service.Services.CryptoPolicyService>
 builder.Services.AddScoped<Sorcha.Register.Core.Services.IGovernanceRosterService,
     Sorcha.Register.Core.Services.GovernanceRosterService>();
 
+// Feature 189: signs governance control transactions as an ORGANISATION on the register's roster
+// (slot 100), not as the node. The node's system wallet is on no roster, so a node-signed
+// governance transaction is refused by the Validator on any register whose genesis has sealed.
+builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceSigningService,
+    Sorcha.Register.Service.Services.GovernanceSigningService>();
+
+// Feature 189 US2: produces cryptographically signed approvals. Without a producer, US2-A's
+// mandatory verification would leave every quorum-requiring operation unsatisfiable.
+builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceApprovalService,
+    Sorcha.Register.Service.Services.GovernanceApprovalService>();
+
 // Feature 048: Register policy service (reads policy from control chain via direct repository access)
 builder.Services.AddScoped<Sorcha.Register.Core.Services.ISystemBlueprintValidator,
     Sorcha.Register.Service.Services.SystemBlueprintValidator>();
@@ -596,8 +607,6 @@ registersGroup.MapPost("/{registerId}/disable-dev-mode", async (
     string registerId,
     RegisterManager manager,
     Sorcha.Register.Service.Services.CryptoPolicyService cryptoPolicyService,
-    Sorcha.Register.Core.Managers.TransactionManager transactionManager,
-    Sorcha.ServiceClients.SystemWallet.ISystemWalletSigningService systemSigning,
     CancellationToken ct) =>
 {
     var register = await manager.GetRegisterAsync(registerId, ct);
@@ -616,71 +625,28 @@ registersGroup.MapPost("/{registerId}/disable-dev-mode", async (
     activePolicy.Version += 1;
     activePolicy.EffectiveFrom = DateTime.UtcNow;
 
-    var policyJson = System.Text.Json.JsonSerializer.Serialize(activePolicy);
-    var policyBytes = System.Text.Encoding.UTF8.GetBytes(policyJson);
-    var payloadData = Convert.ToBase64String(policyBytes);
-    var payloadHash = Convert.ToHexString(
-        System.Security.Cryptography.SHA256.HashData(policyBytes)).ToLowerInvariant();
-
-    var txIdSource = $"crypto-policy-update-{registerId}-v{activePolicy.Version}-devmode-off";
-    var txId = Convert.ToHexString(
-        System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(txIdSource)))
-        .ToLowerInvariant();
-
-    var chainHead = await transactionManager.GetLatestTransactionAsync(registerId, ct);
-
-    var tx = new Sorcha.Register.Models.TransactionModel
+    try
     {
-        TxId = txId,
-        RegisterId = registerId,
-        SenderWallet = "system",
-        PrevTxId = chainHead?.TxId ?? string.Empty,
-        PayloadCount = 1,
-        Payloads = new[]
+        var submitted = await cryptoPolicyService.SubmitPolicyUpdateAsync(
+            registerId, activePolicy, updatedBy: "disable-dev-mode", ct);
+
+        return Results.Ok(new
         {
-            new Sorcha.Register.Models.PayloadModel
-            {
-                Data = payloadData,
-                Hash = payloadHash,
-                WalletAccess = Array.Empty<string>(),
-                ContentType = "application/json",
-                ContentEncoding = "base64"
-            }
-        },
-        TimeStamp = DateTime.UtcNow,
-        Signature = string.Empty,
-        MetaData = new Sorcha.Register.Models.TransactionMetaData
-        {
-            RegisterId = registerId,
-            TransactionType = TransactionType.Control,
-            TrackingData = new Dictionary<string, string>
-            {
-                ["transactionType"] = "CryptoPolicyUpdate",
-                ["policyVersion"] = activePolicy.Version.ToString()
-            }
-        }
-    };
-
-    var signResult = await systemSigning.SignAsync(
-        registerId: registerId,
-        txId: txId,
-        payloadHash: payloadHash,
-        derivationPath: SorchaDerivationPaths.RegisterControl,
-        transactionType: "CryptoPolicyUpdate",
-        cancellationToken: ct);
-    tx.Signature = Convert.ToBase64String(signResult.Signature);
-
-    await transactionManager.StoreTransactionAsync(tx, ct);
-
-    return Results.Ok(new
+            registerId,
+            txId = submitted.TransactionId,
+            policyVersion = submitted.PolicyVersion,
+            status = "submitted",
+            message = "Dev mode disable submitted as a crypto-policy update. Field-level encryption " +
+                      "becomes mandatory once the control transaction seals; the change replicates to all nodes."
+        });
+    }
+    catch (InvalidOperationException ex)
     {
-        registerId,
-        txId,
-        policyVersion = activePolicy.Version,
-        status = "submitted",
-        message = "Dev mode disable submitted as a crypto-policy update. Field-level encryption " +
-                  "becomes mandatory once the control transaction seals; the change replicates to all nodes."
-    });
+        return Results.Problem(
+            title: "Crypto policy update rejected",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status422UnprocessableEntity);
+    }
 })
 .WithName("DisableDevMode")
 .WithSummary("Disable dev mode (one-way)")
@@ -2299,7 +2265,15 @@ governanceGroup.MapPost("/propose", async (
         ProposedAt = DateTimeOffset.UtcNow,
         ExpiresAt = DateTimeOffset.UtcNow.AddDays(7),
         Status = ProposalStatus.Pending,
-        Justification = request.Justification
+        Justification = request.Justification,
+        // Feature 189 (FR-011a): freeze the roster and the rule this proposal is judged against, so
+        // neither the eligible approvers nor the number required can shift while it is open. The
+        // validator refuses the proposal outright if the roster has moved on (FR-011b) rather than
+        // re-counting against a changed pool — otherwise removing a dissenter would turn a blocked
+        // change into an enacted one.
+        RosterSnapshotId = roster.LastControlTxId,
+        QuorumFormulaAtRaise = roster.ControlRecord.RegisterPolicy?.Governance?.QuorumFormula
+                               ?? QuorumFormula.StrictMajority
     };
 
     // 4. Validate proposal against current roster
@@ -2448,7 +2422,14 @@ governanceGroup.MapPost("/propose", async (
     {
         TransactionId = txId,
         RegisterId = registerId,
-        BlueprintId = string.Empty,
+        // Feature 189 (R-005): an EMPTY BlueprintId is rejected by TransactionValidator with
+        // TX_003 "Blueprint ID is required" before any governance handling runs — so this endpoint
+        // could never have worked. "genesis" would be worse: TransactionTypeClassifier
+        // .IsGenesisTransaction matches that exact value and would judge a routine governance
+        // operation against the short GenesisMaxAge freshness window. The governance control
+        // blueprint is the correct value, and it also opts the transaction into the roster
+        // enforcement it should always have had.
+        BlueprintId = Sorcha.Register.Service.Services.CryptoPolicyService.GovernanceBlueprintId,
         ActionId = $"governance-{opType}",
         Payload = payloadElement,
         PayloadHash = payloadHashHex,
@@ -2608,8 +2589,6 @@ cryptoPolicyGroup.MapGet("/history", async (
 // </summary>
 governanceGroup.MapPost("/crypto-policy", async (
     Sorcha.Register.Service.Services.CryptoPolicyService cryptoPolicyService,
-    Sorcha.Register.Core.Managers.TransactionManager transactionManager,
-    Sorcha.ServiceClients.SystemWallet.ISystemWalletSigningService systemSigning,
     string registerId,
     Sorcha.Register.Models.CryptoPolicy policyUpdate,
     CancellationToken ct) =>
@@ -2620,114 +2599,48 @@ governanceGroup.MapPost("/crypto-policy", async (
         return Results.BadRequest(new { Error = "Invalid crypto policy: RequiredSignatureAlgorithms must be a subset of AcceptedSignatureAlgorithms, and all algorithm arrays must be non-empty." });
     }
 
-    // Serialize policy as payload
-    var policyJson = System.Text.Json.JsonSerializer.Serialize(policyUpdate);
-    var policyBytes = System.Text.Encoding.UTF8.GetBytes(policyJson);
-    var payloadData = Convert.ToBase64String(policyBytes);
-    var payloadHash = Convert.ToHexString(
-        System.Security.Cryptography.SHA256.HashData(policyBytes)).ToLowerInvariant();
-
-    // Generate TX ID
-    var txIdSource = $"crypto-policy-update-{registerId}-v{policyUpdate.Version}";
-    var txIdBytes = System.Security.Cryptography.SHA256.HashData(
-        System.Text.Encoding.UTF8.GetBytes(txIdSource));
-    var txId = Convert.ToHexString(txIdBytes).ToLowerInvariant();
-
-    // Find chain head
-    var chainHead = await transactionManager.GetLatestTransactionAsync(registerId, ct);
-
-    // Build control transaction
-    var tx = new Sorcha.Register.Models.TransactionModel
+    try
     {
-        TxId = txId,
-        RegisterId = registerId,
-        SenderWallet = "system",
-        PrevTxId = chainHead?.TxId ?? string.Empty,
-        PayloadCount = 1,
-        Payloads = new[]
+        var submitted = await cryptoPolicyService.SubmitPolicyUpdateAsync(
+            registerId, policyUpdate, updatedBy: "governance", ct);
+
+        return Results.Ok(new
         {
-            new Sorcha.Register.Models.PayloadModel
-            {
-                Data = payloadData,
-                Hash = payloadHash,
-                WalletAccess = Array.Empty<string>(),
-                ContentType = "application/json",
-                ContentEncoding = "base64"
-            }
-        },
-        TimeStamp = DateTime.UtcNow,
-        Signature = string.Empty,
-        MetaData = new Sorcha.Register.Models.TransactionMetaData
-        {
-            RegisterId = registerId,
-            TransactionType = Sorcha.Register.Models.Enums.TransactionType.Control,
-            TrackingData = new Dictionary<string, string>
-            {
-                ["transactionType"] = "CryptoPolicyUpdate",
-                ["policyVersion"] = policyUpdate.Version.ToString()
-            }
-        }
-    };
-
-    // Sign with system wallet (follows same pattern as RegisterCreationOrchestrator)
-    var signResult = await systemSigning.SignAsync(
-        registerId: registerId,
-        txId: txId,
-        payloadHash: payloadHash,
-        derivationPath: SorchaDerivationPaths.RegisterControl,
-        transactionType: "CryptoPolicyUpdate",
-        cancellationToken: ct);
-    tx.Signature = Convert.ToBase64String(signResult.Signature);
-
-    // Submit
-    await transactionManager.StoreTransactionAsync(tx, ct);
-
-    return Results.Ok(new { TxId = txId, PolicyVersion = policyUpdate.Version, Status = "submitted" });
+            TxId = submitted.TransactionId,
+            PolicyVersion = submitted.PolicyVersion,
+            Status = "submitted"
+        });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Problem(
+            title: "Crypto policy update rejected",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status422UnprocessableEntity);
+    }
 })
 .WithName("UpdateCryptoPolicy")
 .WithSummary("Update register crypto policy")
-.WithDescription("Submits a crypto policy update as a control transaction. The new policy takes effect immediately for subsequent transactions.")
+.WithDescription("Submits a crypto policy update as a control transaction via the Validator. The new policy takes effect on every node once the control transaction seals into a docket. A policy re-enabling DevMode is refused (422) — the DevMode→Normal transition is one-way.")
 .Produces<object>(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status400BadRequest)
+.ProducesProblem(StatusCodes.Status422UnprocessableEntity)
 .ProducesValidationProblem()
 .Produces(StatusCodes.Status401Unauthorized);
 
-// ===========================
-// DevMode Toggle API
-// ===========================
-
-// <summary>
-// Toggle DevMode on a register
-// </summary>
-app.MapPut("/api/registers/{registerId}/devmode", async (
-    IRegisterRepository repository,
-    string registerId,
-    DevModeToggleRequest request,
-    CancellationToken cancellationToken) =>
-{
-    var register = await repository.GetRegisterAsync(registerId, cancellationToken);
-    if (register == null)
-        return Results.NotFound(new { error = "Register not found" });
-
-    register.DevMode = request.Enabled;
-    register.UpdatedAt = DateTime.UtcNow;
-    await repository.UpdateRegisterAsync(register, cancellationToken);
-
-    return Results.Ok(new
-    {
-        registerId = register.Id,
-        devMode = register.DevMode,
-        effectiveFrom = register.UpdatedAt
-    });
-})
-.WithName("ToggleDevMode")
-.WithTags("Registers")
-.WithSummary("Toggle DevMode on a register")
-.WithDescription("Enables or disables DevMode. When enabled, payloads are stored as plaintext with disclosure filtering at read time. When disabled, new payloads use envelope encryption.")
-.RequireAuthorization("CanManageRegisters")
-.Produces<object>(StatusCodes.Status200OK)
-.Produces(StatusCodes.Status404NotFound)
-.Produces(StatusCodes.Status401Unauthorized);
+// NOTE: `PUT /api/registers/{registerId}/devmode` has been REMOVED (deliberately, no replacement).
+//
+// It wrote `Register.DevMode` straight to the repository, which made it a bidirectional local flag
+// flip: it could re-enable DevMode on a Normal register, reverting new submissions to plaintext.
+// That defeated the consensus-level one-way guarantee in
+// ControlDocketProcessor.ValidateCryptoPolicyUpdate, because emitting no control transaction meant
+// that guard never ran. It also never replicated, so it desynced the owner from its replicas.
+//
+// A register is born into its DevMode posture at genesis (RegisterCreationOrchestrator, from the
+// creation request) and may only ever be promoted DevMode→Normal, via
+// `POST /api/registers/{registerId}/disable-dev-mode`, which submits a crypto-policy control
+// transaction through the Validator so the change seals into a docket and replicates.
+// Do NOT reintroduce a direct-write toggle.
 
 // ===========================
 // Participant Query API
@@ -3536,8 +3449,6 @@ record UpdateRegisterRequest(
     [property: StringLength(200)] string? Name = null,
     RegisterStatus? Status = null,
     bool? Advertise = null);
-
-record DevModeToggleRequest(bool Enabled);
 
 record PublishBlueprintToRegisterRequest(
     [property: Required(AllowEmptyStrings = false), StringLength(200)] string BlueprintId,

@@ -42,6 +42,8 @@ public static class ValidationEngineExtensions
 
         // Register governance services (scoped to match IRegisterServiceClient lifetime)
         services.AddScoped<IGovernanceRosterService, GovernanceRosterService>();
+        // Feature 189 — governance decision counters. Singleton: it owns a Meter.
+        services.AddSingleton<GovernanceMetrics>();
         services.AddScoped<IRightsEnforcementService, RightsEnforcementService>();
 
         // Register the validation engine as scoped (matches IRegisterServiceClient lifetime)

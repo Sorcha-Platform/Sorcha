@@ -12,6 +12,7 @@ using Sorcha.Register.Core.Storage;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
 using Sorcha.Register.Service.Services;
+using Sorcha.ServiceClients.Validator;
 using Xunit;
 
 namespace Sorcha.Register.Service.Tests.Unit;
@@ -19,12 +20,37 @@ namespace Sorcha.Register.Service.Tests.Unit;
 public class CryptoPolicyServiceTests
 {
     private readonly Mock<IRegisterRepository> _repositoryMock;
+    private readonly Mock<IGovernanceSigningService> _signingMock = new();
+    private readonly Mock<IValidatorServiceClient> _validatorMock = new();
     private readonly TransactionManager _transactionManager;
     private readonly CryptoPolicyService _sut;
+
+    /// <summary>Captures the submission the service handed to the Validator, for assertion.</summary>
+    private TransactionSubmission? _captured;
 
     public CryptoPolicyServiceTests()
     {
         _repositoryMock = new Mock<IRegisterRepository>();
+
+        // Feature 189: signed by an ORGANISATION on the roster (slot 100), not the node's system
+        // wallet. The node is on no roster, so a node-signed governance transaction is refused.
+        _signingMock
+            .Setup(x => x.SignAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GovernanceSignResult
+            {
+                Signature = [1, 2, 3, 4],
+                PublicKey = [5, 6, 7, 8],
+                Algorithm = "ED25519",
+                WalletAddress = "ws11qtestorgwallet",
+                Subject = "did:sorcha:w:ws11qtestorgwallet"
+            });
+
+        _validatorMock
+            .Setup(x => x.SubmitTransactionAsync(It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()))
+            .Callback((TransactionSubmission s, CancellationToken _) => _captured = s)
+            .ReturnsAsync(() => new TransactionSubmissionResult { Success = true });
 
         // The service now reads control transactions via the pushed-down GetTransactionsByTypeAsync.
         // Each test stubs the mock via GetTransactionsAsync, so derive the by-type result from that same
@@ -50,6 +76,8 @@ public class CryptoPolicyServiceTests
             Mock.Of<IEventPublisher>());
         _sut = new CryptoPolicyService(
             _transactionManager,
+            _signingMock.Object,
+            _validatorMock.Object,
             Mock.Of<ILogger<CryptoPolicyService>>());
     }
 
@@ -259,5 +287,185 @@ public class CryptoPolicyServiceTests
                 }
             }
         };
+    }
+
+    // ------------------------------------------------------------------
+    // SubmitPolicyUpdateAsync — the DevMode→Normal promotion path.
+    //
+    // These guard a defect that shipped green: the endpoint wrote the control transaction
+    // straight to the register store, so it never entered the Validator's verified queue,
+    // never sealed into a docket, and the register's DevMode flag never flipped. The endpoint
+    // still returned 200. Nothing asserted the join, so nothing failed.
+    // ------------------------------------------------------------------
+
+    private const string ProbeRegisterId = "c794c86cfb82428994c95668d19107f7";
+
+    private static readonly JsonSerializerOptions ValidatorCanonicalOptions = new()
+    {
+        WriteIndented = false,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
+    private static CryptoPolicy PromotionPolicy()
+    {
+        var policy = CryptoPolicy.CreateDefault();
+        policy.Version = 2;
+        policy.DevMode = false;
+        return policy;
+    }
+
+    private void NoExistingTransactions(string registerId) =>
+        _repositoryMock
+            .Setup(x => x.GetTransactionsAsync(registerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<TransactionModel>().AsQueryable());
+
+    [Fact]
+    public async Task SubmitPolicyUpdateAsync_SubmitsThroughValidator_SoItCanSeal()
+    {
+        NoExistingTransactions(ProbeRegisterId);
+
+        await _sut.SubmitPolicyUpdateAsync(ProbeRegisterId, PromotionPolicy());
+
+        // The whole point. A direct store write is invisible to DocketBuilder, which claims
+        // only from IVerifiedTransactionQueue — so it never seals and the promotion never happens.
+        _validatorMock.Verify(
+            x => x.SubmitTransactionAsync(It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task SubmitPolicyUpdateAsync_CarriesTheActionIdTheValidatorMatchesOn()
+    {
+        NoExistingTransactions(ProbeRegisterId);
+
+        await _sut.SubmitPolicyUpdateAsync(ProbeRegisterId, PromotionPolicy());
+
+        // ControlDocketProcessor.GetControlActionType matches this exact string to recognise the
+        // transaction as a crypto-policy update. Any other value and the transaction still seals,
+        // but as an ordinary action — the policy is silently never applied.
+        _captured!.ActionId.Should().Be("control.crypto.update");
+    }
+
+    [Fact]
+    public async Task SubmitPolicyUpdateAsync_CarriesANonEmptyNonGenesisBlueprintId()
+    {
+        NoExistingTransactions(ProbeRegisterId);
+
+        await _sut.SubmitPolicyUpdateAsync(ProbeRegisterId, PromotionPolicy());
+
+        // Both halves were found by live execution, not by this suite's mock validator.
+        // Empty  => TransactionValidator rejects with TX_003 "Blueprint ID is required".
+        // "genesis" => TransactionTypeClassifier.IsGenesisTransaction matches on exactly that
+        // value, so a routine policy update would be treated as the network's pre-signed genesis
+        // transaction and judged against the short GenesisMaxAge freshness window.
+        _captured!.BlueprintId.Should().NotBeNullOrWhiteSpace();
+        _captured.BlueprintId.Should().NotBe("genesis");
+        _captured.BlueprintId.Should().Be("register-governance-v1");
+    }
+
+    [Fact]
+    public async Task SubmitPolicyUpdateAsync_CarriesTheMetadataTheDevModeProjectionRequires()
+    {
+        NoExistingTransactions(ProbeRegisterId);
+
+        await _sut.SubmitPolicyUpdateAsync(ProbeRegisterId, PromotionPolicy());
+
+        // Register Service's docket-write path flips Register.DevMode only when BOTH hold:
+        // MetaData.TransactionType == Control (resolved from Metadata["Type"]) and
+        // TrackingData["transactionType"] == "CryptoPolicyUpdate" (copied wholesale from Metadata).
+        // Drop either and the promotion seals but never takes effect.
+        _captured!.Metadata.Should().ContainKey("Type").WhoseValue.Should().Be("Control");
+        _captured.Metadata.Should().ContainKey("transactionType")
+            .WhoseValue.Should().Be("CryptoPolicyUpdate");
+    }
+
+    [Fact]
+    public async Task SubmitPolicyUpdateAsync_PayloadHashMatchesWhatTheValidatorRecomputes()
+    {
+        NoExistingTransactions(ProbeRegisterId);
+
+        await _sut.SubmitPolicyUpdateAsync(ProbeRegisterId, PromotionPolicy());
+
+        // ValidationEngine.ValidatePayloadHash re-canonicalises the payload and recomputes the
+        // hash. A divergence is a fatal VAL_HASH_001 rejection that surfaces nowhere near here.
+        var canonical = JsonSerializer.Serialize(_captured!.Payload, ValidatorCanonicalOptions);
+        var expected = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(canonical)))
+            .ToLowerInvariant();
+
+        _captured.PayloadHash.Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task SubmitPolicyUpdateAsync_PayloadDeserialisesAsTheValidatorsPolicyShape()
+    {
+        NoExistingTransactions(ProbeRegisterId);
+
+        await _sut.SubmitPolicyUpdateAsync(ProbeRegisterId, PromotionPolicy());
+
+        // The Validator parses this as CryptoPolicyUpdatePayload with camelCase naming.
+        // devMode above all — that is the field the one-way guard reads.
+        var payload = _captured!.Payload;
+        payload.GetProperty("version").GetInt32().Should().Be(2);
+        payload.GetProperty("devMode").GetBoolean().Should().BeFalse();
+        payload.GetProperty("acceptedSignatureAlgorithms").GetArrayLength().Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task SubmitPolicyUpdateAsync_SignsWithBase64Url_NotPlainBase64()
+    {
+        NoExistingTransactions(ProbeRegisterId);
+
+        await _sut.SubmitPolicyUpdateAsync(ProbeRegisterId, PromotionPolicy());
+
+        // Every sibling control-transaction producer encodes base64url and the Validator decodes
+        // base64url. Plain base64 differs only for some byte values, so getting this wrong fails
+        // intermittently and reads as a signature bug rather than an encoding one.
+        var signature = _captured!.Signatures.Single();
+        signature.SignatureValue.Should().NotContain("+").And.NotContain("/").And.NotContain("=");
+        signature.Algorithm.Should().Be("ED25519");
+    }
+
+    [Fact]
+    public async Task SubmitPolicyUpdateAsync_RefusesToReEnableDevMode()
+    {
+        NoExistingTransactions(ProbeRegisterId);
+        var downgrade = CryptoPolicy.CreateDefault();
+        downgrade.Version = 3;
+        downgrade.DevMode = true;
+
+        var act = () => _sut.SubmitPolicyUpdateAsync(ProbeRegisterId, downgrade);
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*one-way*");
+        _validatorMock.Verify(
+            x => x.SubmitTransactionAsync(It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task SubmitPolicyUpdateAsync_ValidatorRejection_ThrowsRatherThanReportingSuccess()
+    {
+        NoExistingTransactions(ProbeRegisterId);
+        _validatorMock
+            .Setup(x => x.SubmitTransactionAsync(It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionSubmissionResult { Success = false, ErrorMessage = "VAL_CHAIN_001" });
+
+        var act = () => _sut.SubmitPolicyUpdateAsync(ProbeRegisterId, PromotionPolicy());
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*VAL_CHAIN_001*");
+    }
+
+    [Fact]
+    public async Task SubmitPolicyUpdateAsync_TransactionIdIsDeterministic_SoRetryIsIdempotent()
+    {
+        NoExistingTransactions(ProbeRegisterId);
+
+        var first = await _sut.SubmitPolicyUpdateAsync(ProbeRegisterId, PromotionPolicy());
+        var second = await _sut.SubmitPolicyUpdateAsync(ProbeRegisterId, PromotionPolicy());
+
+        // A retry must re-submit the same transaction id rather than forking the chain with a
+        // second, competing policy update at the same version.
+        second.TransactionId.Should().Be(first.TransactionId);
+        first.PolicyVersion.Should().Be(2u);
     }
 }

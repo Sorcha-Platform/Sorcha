@@ -932,6 +932,67 @@ Recovery runs as a `BackgroundService` and reports status via the `/health/sync`
 
 ---
 
+## DevMode posture and crypto-policy updates
+
+A register's DevMode posture (plaintext payloads vs mandatory field-level encryption) is **set once at
+genesis** and may only ever be promoted **DevMode → Normal**, never the reverse.
+
+### Every control transaction must be submitted through the Validator
+
+`CryptoPolicyService.SubmitPolicyUpdateAsync` is the single producer of `CryptoPolicyUpdate` control
+transactions, used by both `POST /api/registers/{id}/disable-dev-mode` and
+`POST /api/registers/{id}/governance/crypto-policy`. It submits via
+`IValidatorServiceClient.SubmitTransactionAsync`, exactly like genesis ingestion, register creation
+and system-register publish.
+
+**Never write a control transaction with `TransactionManager.StoreTransactionAsync`.** That is a
+direct store write, and it is the shape of a bug that shipped and stayed invisible:
+
+- `DocketBuilder.BuildDocketAsync` builds dockets **solely** from `IVerifiedTransactionQueue`, which
+  only Validator submission populates. A directly-stored transaction is therefore never sealed.
+- Because it never seals, the docket-write projection in `Program.cs` that flips `Register.DevMode`
+  never fires, and the Validator's one-way `DevMode` guard
+  (`ControlDocketProcessor.ValidateCryptoPolicyUpdate`) never runs.
+- The row still appears in Mongo and the endpoint still returns `200 {"status":"submitted"}`. The
+  admin UI reported success. Unit tests were green, because they covered a `RegisterManager` helper
+  that no shipped code path called. Nothing asserted the join between the two sides.
+
+The failure is visible only by checking whether the transaction landed in a **docket**:
+
+```javascript
+// mongosh — the control tx must appear in a docket's TransactionIds, not just in `transactions`
+db = db.getSiblingDB("sorcha_register_<registerId>");
+db.transactions.find({"MetaData.TrackingData.transactionType": "CryptoPolicyUpdate"}, {TxId: 1});
+db.dockets.find({}, {DocketNumber: 1, State: 1, TransactionIds: 1});
+```
+
+### Three details that silently break the submission
+
+| Detail | Why it matters |
+|---|---|
+| `ActionId` = `control.crypto.update` | `ControlDocketProcessor.GetControlActionType` matches this exact string. Anything else seals as an ordinary action and the policy is never applied. |
+| `Metadata["Type"]="Control"` **and** `Metadata["transactionType"]="CryptoPolicyUpdate"` | The docket-write DevMode projection requires **both** (the first resolves `MetaData.TransactionType`; the whole dictionary is copied onto `TrackingData`). Drop either and the promotion seals but does nothing. |
+| Signatures encoded **base64url** | The Validator decodes base64url. Plain base64 differs only for some byte values, so it fails intermittently and reads as a signature bug. |
+
+The payload hash must be computed over the canonical JSON form (`WriteIndented=false`,
+`UnsafeRelaxedJsonEscaping`) that `ValidationEngine.ValidatePayloadHash` recomputes — a divergence is
+a fatal `VAL_HASH_001` rejection far from its cause.
+
+### Promotion is asynchronous, and not retrospective
+
+`POST /disable-dev-mode` returns `200 … "status":"submitted"`. `Register.DevMode` flips on each node
+as it writes the sealed docket, not when the call returns — poll `GET /api/registers/{id}`.
+
+Transactions sealed while the register was in DevMode **stay plaintext forever**; promotion changes
+the posture for new payloads only. And on an encrypted register, disclosure-group **field names**
+(`disclosedFields`) remain in the clear by design — only values are ciphertext.
+
+`PUT /api/registers/{id}/devmode` **has been removed.** It flipped the flag directly, in both
+directions, with no control transaction — so it could revert a Normal register to plaintext, it never
+replicated, and the one-way guard never saw it. Do not reintroduce a direct-write toggle.
+
+---
+
 ## Resources
 
 - **Specification**: [.specify/specs/sorcha-register-service.md](https://github.com/Sorcha-Platform/Sorcha/blob/master/.specify/specs/sorcha-register-service.md)

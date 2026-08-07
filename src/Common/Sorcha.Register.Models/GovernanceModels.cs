@@ -42,6 +42,23 @@ public enum GovernanceOperationType
     RotateValidatorKey = 5,
 
     /// <summary>
+    /// Change the register's cryptographic policy — notably promoting it from DevMode
+    /// (plaintext payloads) to Normal (mandatory field-level encryption).
+    /// </summary>
+    /// <remarks>
+    /// Feature 189 (FR-021). The promotion is one-way: validators refuse a crypto-policy update
+    /// that re-enables DevMode, so this operation can tighten a register's posture but never
+    /// loosen it.
+    /// </remarks>
+    /// <remarks>
+    /// Value 8, not 6: <c>RevokeIssuanceKey</c> (6) and <c>RotateIssuanceKey</c> (7) were added by
+    /// Feature 120 after <c>RotateValidatorKey</c> (5). C# permits duplicate enum values silently,
+    /// so a collision here would make two distinct operations compare equal and switch to the same
+    /// arm — with no compiler warning. <c>GovernanceOperationTypeTests</c> guards it.
+    /// </remarks>
+    CryptoPolicyUpdate = 8,
+
+    /// <summary>
     /// Feature 120 US6 (VAL_CRED_GOV_001) — revoke an organisation's issuance key.
     /// After quorum approval, the wallet service marks the named rotation as
     /// <c>Revoked</c>, the published DID document drops it from
@@ -165,6 +182,39 @@ public class GovernanceOperation
     [JsonPropertyName("validatorEntry")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ValidatorRosterEntry? ValidatorEntry { get; set; }
+
+    /// <summary>
+    /// Identifier of the control transaction that established the roster this proposal was raised
+    /// against (Feature 189, FR-011a).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A proposal is evaluated against the roster and quorum rule <b>as they stood when it was
+    /// raised</b>, so neither the set of eligible approvers nor the number of approvals required can
+    /// shift while it is open. Any enacted roster change makes the register's current
+    /// roster-establishing transaction differ from this value, which <b>invalidates</b> the proposal
+    /// (FR-011b).
+    /// </para>
+    /// <para>
+    /// The alternative — counting against the live roster — would let a proposal become enactable
+    /// purely because the pool shrank: under unanimity, removing a dissenting organisation would
+    /// convert a blocked change into an enacted one, making roster removal an attack on every open
+    /// proposal. Invalidation is a comparison, needing no timer and no sweeper, and it is
+    /// deterministic on every node — which the Feature 145 projection requires.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("rosterSnapshotId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? RosterSnapshotId { get; set; }
+
+    /// <summary>
+    /// The quorum rule in force when this proposal was raised, frozen so the requirement cannot
+    /// change beneath it (Feature 189, FR-011a).
+    /// </summary>
+    [JsonPropertyName("quorumFormulaAtRaise")]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public QuorumFormula? QuorumFormulaAtRaise { get; set; }
 }
 
 /// <summary>
@@ -198,6 +248,27 @@ public class ApprovalSignature
     [Required]
     [JsonPropertyName("votedAt")]
     public DateTimeOffset VotedAt { get; set; }
+
+    /// <summary>
+    /// How the person casting this vote authenticated — e.g. <c>passkey</c>, <c>totp</c>,
+    /// <c>password</c>, <c>re-oauth</c> (Feature 189 US2-C).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Records the METHOD only, never the proof. A governance approval should be attributable to a
+    /// person who deliberately authorised it, not merely to a service that was asked to use an
+    /// organisation's key — and an auditor reading the ledger years later can tell the difference
+    /// between an approval behind a phishing-resistant passkey and one behind a password.
+    /// </para>
+    /// <para>
+    /// Deliberately coarse. The challenge, its response and any device identifiers stay off the
+    /// ledger: this record is immutable, replicated to every node, and readable by every future
+    /// auditor, so it carries the fact of authentication and not the evidence.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("authMethod")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? AuthMethod { get; set; }
 
     /// <summary>
     /// Optional comment with the vote
