@@ -402,3 +402,70 @@ so the delegation and its revocation are ledger records, not service state.
 **Consequence.** `coSignature` is replaced by `authorisation`. FR-032's rule still holds in the
 stronger form: an approval whose authorisation is invalid, out of scope, expired or revoked is
 **refused outright**, never accepted with the authorisation quietly dropped.
+
+---
+
+## R-018: Individuals do not reliably have a key (found live on n1, 2026-08-07)
+
+**R-015 claimed "no new provisioning".** It reasoned that a platform-tier token carries
+`wallet_address` (`TokenService`, `Tier.Platform` branch calls `AddWalletAddressClaimAsync`), so org
+admins already hold a key the Direct authorisation form can use. That is **wrong as a general claim**,
+and live execution shows why.
+
+**Evidence.** The seeded admin's token on n1 (`sub 00000000-0000-0001-0000-000000000001`, aud
+`n1.sorcha.dev:platform`) carries claims `sub, email, jti, name, token_type, platform_user_id,
+email_verified, org_id, org_name, role, nbf, exp, iat, iss, aud` — and **no `wallet_address`**.
+`wallet."Wallets"` on n1 holds org signing wallets (`org-sorcha-local-signing`,
+`org-public-signing`, `org-aias-signing`) and wallets for real end users, but **none for the seeded
+admin**.
+
+`AddWalletAddressClaimAsync` resolves a wallet and logs a warning on failure — it does not create
+one. So the claim appears only when the individual already has a wallet, which an administrator may
+never have: admins arrive through org provisioning, not the citizen wallet journey that mints one.
+
+**Why it matters.** FR-029 requires every approval to resolve to a named individual, and both
+authorisation forms need that individual to hold a key:
+
+- **Direct** — the individual signs. No key, no approval.
+- **Delegated** — the *empowering* individual signs the grant. No key, no delegation can be issued.
+
+So an organisation whose admins have no wallets cannot govern at all under this design. That is a
+harder failure than the one this feature set out to fix.
+
+**Decision needed (not settled here).** Options, in rough order of preference:
+
+1. **Provision a governance key for an admin on demand**, derived like any other, at the point they
+   first approve or grant. Keeps one key per person and no new concept.
+2. **Derive the individual's governance key from their platform identity** so it exists implicitly.
+3. **Let the organisation nominate approver identities explicitly**, decoupling "who may approve"
+   from "who happens to have a wallet".
+
+(1) is the smallest change and preserves the property that matters — the key is the person's, not the
+server's. Whichever is chosen, it must not reintroduce server-side signing (R-014), which rules out
+"the server holds an admin key on their behalf".
+
+**Status.** Blocks the live happy-path verification of T076 and everything downstream that needs a
+real approval. The endpoint itself is deployed and correct (see below).
+
+---
+
+## R-019: T076 live verification, n1, 2026-08-07
+
+**Deployed** `sorchadev/register-service:f189-t076` (local build of branch
+`189-governance-approval-surface`, loaded via save/scp/load — never `compose pull` after loading).
+Container healthy.
+
+**Proven live:**
+
+- The endpoint is reachable and correctly routed. A request for a non-existent proposal returns
+  `HTTP 404` with `content-type: application/json` and the handler's own message. That specifically
+  rules out F188's gateway trap, where a new `/api/` prefix with no YARP route falls through to the
+  `ui-static` catch-all and returns a **bodiless 404** — the whole surface silently unreachable.
+  `register-catchall` (`/api/registers/{**catch-all}`) covers this path.
+- The handler runs, reaches the repository and reports accurately.
+
+**NOT proven:** the happy path. No governance proposal exists on n1 (`/governance/proposals` returns
+`total: 0` on the system register, the only register on the node after re-genesis), and raising one is
+blocked by R-018. So the operation-reconstruction path — `Payloads[0].Data` →
+`ControlTransactionPayload.Operation` → `GovernanceSigningRequest` — is **unexercised against real
+data**, which is exactly the join this project's history says to distrust until executed.
