@@ -56,6 +56,20 @@ public interface IGovernanceSigningService
         string payloadHash,
         string? preferredSubject = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Signs an already-computed digest as a roster organisation, at slot 100.
+    /// </summary>
+    /// <remarks>
+    /// Used where the signed bytes are not a transaction digest — notably a governance
+    /// <b>approval</b>, which commits to
+    /// <see cref="GovernanceApprovalStatement"/> rather than to a transaction id and payload hash.
+    /// </remarks>
+    Task<GovernanceSignResult> SignDigestAsync(
+        string registerId,
+        byte[] digest,
+        string? preferredSubject = null,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>Outcome of signing as a roster organisation.</summary>
@@ -109,6 +123,21 @@ public class GovernanceSigningService : IGovernanceSigningService
         ArgumentException.ThrowIfNullOrWhiteSpace(txId);
         ArgumentException.ThrowIfNullOrWhiteSpace(payloadHash);
 
+        // Byte-for-byte what the Validator recomputes when verifying a transaction signature.
+        var digest = SHA256.HashData(Encoding.UTF8.GetBytes($"{txId}:{payloadHash}"));
+        return await SignDigestAsync(registerId, digest, preferredSubject, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<GovernanceSignResult> SignDigestAsync(
+        string registerId,
+        byte[] digest,
+        string? preferredSubject = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        ArgumentNullException.ThrowIfNull(digest);
+
         var roster = await _rosterService.GetCurrentRosterAsync(registerId, cancellationToken)
             ?? throw new InvalidOperationException(
                 $"Register {registerId} has no governance roster, so no organisation can authorise a " +
@@ -127,13 +156,9 @@ public class GovernanceSigningService : IGovernanceSigningService
                 "The system register's ceremony-minted subject has this shape and is not governable " +
                 "by this path.");
 
-        // Byte-for-byte what the Validator recomputes when verifying.
-        var dataToSign = $"{txId}:{payloadHash}";
-        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(dataToSign));
-
         var signResult = await _walletClient.SignTransactionAsync(
             walletAddress,
-            hashBytes,
+            digest,
             // Slot 100 — the organisation's governance key, and the key its roster attestation
             // records. Signing with the wallet's primary key here reproduces the original defect.
             SorchaDerivationPaths.RegisterAttestation,
@@ -141,8 +166,8 @@ public class GovernanceSigningService : IGovernanceSigningService
             cancellationToken);
 
         _logger.LogInformation(
-            "Governance transaction {TxId} on register {RegisterId} signed as {Subject} (role {Role}) using wallet {Wallet} at {Path}",
-            txId, registerId, attestation.Subject, attestation.Role, walletAddress,
+            "Governance digest on register {RegisterId} signed as {Subject} (role {Role}) using wallet {Wallet} at {Path}",
+            registerId, attestation.Subject, attestation.Role, walletAddress,
             SorchaDerivationPaths.RegisterAttestation);
 
         return new GovernanceSignResult

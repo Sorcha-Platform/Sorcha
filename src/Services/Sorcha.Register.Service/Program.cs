@@ -231,6 +231,11 @@ builder.Services.AddScoped<Sorcha.Register.Core.Services.IGovernanceRosterServic
 builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceSigningService,
     Sorcha.Register.Service.Services.GovernanceSigningService>();
 
+// Feature 189 US2: produces cryptographically signed approvals. Without a producer, US2-A's
+// mandatory verification would leave every quorum-requiring operation unsatisfiable.
+builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceApprovalService,
+    Sorcha.Register.Service.Services.GovernanceApprovalService>();
+
 // Feature 048: Register policy service (reads policy from control chain via direct repository access)
 builder.Services.AddScoped<Sorcha.Register.Core.Services.ISystemBlueprintValidator,
     Sorcha.Register.Service.Services.SystemBlueprintValidator>();
