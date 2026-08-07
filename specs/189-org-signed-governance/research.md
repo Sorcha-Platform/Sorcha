@@ -595,6 +595,12 @@ observed in passing.
 
 ### Three API defects found by driving it by hand
 
+**All three are filed as #1384.** The enum fix was attempted and **reverted**: annotating the request
+properties made numeric input on the *nullable* `RegisterRole?` deserialise to `null`, so existing
+callers would have silently lost the value on a 200 — a worse failure than the one being fixed. The
+generic converter did not resolve it either. Reverted rather than shipped unproven; the tests that
+caught it are not in the PR because they pin behaviour that does not exist yet.
+
 1. **`/propose` requires numeric enums.** `"operationType": "Add"` returns `400` with a raw
    `System.Text.Json` / `BadHttpRequestException` stack trace in the response body. Any client
    hand-writing this JSON hits it, and the error leaks internals to the caller. The endpoint should
