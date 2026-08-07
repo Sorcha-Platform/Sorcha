@@ -2260,7 +2260,15 @@ governanceGroup.MapPost("/propose", async (
         ProposedAt = DateTimeOffset.UtcNow,
         ExpiresAt = DateTimeOffset.UtcNow.AddDays(7),
         Status = ProposalStatus.Pending,
-        Justification = request.Justification
+        Justification = request.Justification,
+        // Feature 189 (FR-011a): freeze the roster and the rule this proposal is judged against, so
+        // neither the eligible approvers nor the number required can shift while it is open. The
+        // validator refuses the proposal outright if the roster has moved on (FR-011b) rather than
+        // re-counting against a changed pool — otherwise removing a dissenter would turn a blocked
+        // change into an enacted one.
+        RosterSnapshotId = roster.LastControlTxId,
+        QuorumFormulaAtRaise = roster.ControlRecord.RegisterPolicy?.Governance?.QuorumFormula
+                               ?? QuorumFormula.StrictMajority
     };
 
     // 4. Validate proposal against current roster

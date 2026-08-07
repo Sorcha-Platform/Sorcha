@@ -216,6 +216,48 @@ public class RightsEnforcementService : IRightsEnforcementService
             var operation = TryParseGovernanceOperation(transaction);
             if (operation != null)
             {
+                // Feature 189 (FR-011b): a proposal is judged against the roster it was RAISED
+                // against. If the register's roster-establishing transaction has moved on, the
+                // proposal is invalidated rather than re-counted.
+                //
+                // Re-counting against the current roster is the dangerous alternative: under
+                // unanimity, removing the one organisation yet to approve would take the requirement
+                // below the approvals already collected and ENACT the very change it was blocking.
+                // Roster removal would become an attack on every open proposal. Invalidation makes
+                // that impossible, and it is a comparison — no timer, no sweeper, and identical on
+                // every node, which the Feature 145 projection requires.
+                if (!string.IsNullOrEmpty(operation.RosterSnapshotId) &&
+                    !string.Equals(operation.RosterSnapshotId, roster.LastControlTxId, StringComparison.Ordinal))
+                {
+                    _logger.LogWarning(
+                        "Transaction {TransactionId} on register {RegisterId}: proposal was raised against roster {Raised} but the register is now on {Current} — invalidated",
+                        transaction.TransactionId, transaction.RegisterId,
+                        operation.RosterSnapshotId, roster.LastControlTxId);
+                    _metrics?.RecordRefused(transaction.RegisterId, "roster-changed");
+                    errors.Add(CreateError("VAL_PERM_009",
+                        "The register's governance roster changed after this proposal was raised, so the " +
+                        "proposal is no longer valid. Raise it again against the current roster.",
+                        "Payload.Operation.RosterSnapshotId"));
+                    return CreateFailureResult(transaction, sw.Elapsed, errors);
+                }
+
+                // Feature 189 (FR-024): never let a governance change strand a register with nobody
+                // able to govern it. A register with no Owner or Admin cannot be recovered by any
+                // later governance operation, because every such operation needs one to authorise it.
+                if (operation.OperationType == GovernanceOperationType.Remove &&
+                    WouldLeaveRegisterUngovernable(roster, operation.TargetDid))
+                {
+                    _logger.LogWarning(
+                        "Transaction {TransactionId} on register {RegisterId}: removing {Target} would leave no governing member",
+                        transaction.TransactionId, transaction.RegisterId, operation.TargetDid);
+                    _metrics?.RecordRefused(transaction.RegisterId, "would-strand-register");
+                    errors.Add(CreateError("VAL_PERM_010",
+                        "This removal would leave the register with no Owner or Admin, making it permanently " +
+                        "ungovernable. Add a replacement governing member first.",
+                        "Payload.Operation.TargetDid"));
+                    return CreateFailureResult(transaction, sw.Elapsed, errors);
+                }
+
                 // Validate proposal rules using the roster service
                 var proposalResult = _rosterService.ValidateProposal(roster, operation);
                 if (!proposalResult.IsValid)
@@ -308,6 +350,29 @@ public class RightsEnforcementService : IRightsEnforcementService
     /// Determines if a transaction is a governance (Control) transaction by checking
     /// the blueprint ID or transaction metadata.
     /// </summary>
+    /// <summary>
+    /// True when removing <paramref name="targetDid"/> would leave the register with no member
+    /// holding a governing role (FR-024).
+    /// </summary>
+    /// <remarks>
+    /// This is unrecoverable rather than merely inconvenient: every governance operation requires an
+    /// Owner or Admin to authorise it, so a register with none can never be given one back. It is
+    /// the one governance outcome with no remedy, which is why it is refused rather than warned about.
+    /// </remarks>
+    private static bool WouldLeaveRegisterUngovernable(AdminRoster roster, string? targetDid)
+    {
+        if (string.IsNullOrWhiteSpace(targetDid))
+        {
+            return false;
+        }
+
+        var remaining = roster.ControlRecord.Attestations
+            .Where(a => a.Role is RegisterRole.Owner or RegisterRole.Admin)
+            .Count(a => !string.Equals(a.Subject, targetDid, StringComparison.Ordinal));
+
+        return remaining == 0;
+    }
+
     /// <summary>
     /// Returns only those approvals whose signature verifies against the approving organisation's
     /// roster key, over the canonical approval statement.

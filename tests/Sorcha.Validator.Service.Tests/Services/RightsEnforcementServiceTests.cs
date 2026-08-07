@@ -814,6 +814,138 @@ public class RightsEnforcementServiceTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    // ------------------------------------------------------------------
+    // Feature 189 US2-B — roster-snapshot invalidation (FR-011a/b) and the
+    // never-strand-the-register guard (FR-024).
+    // ------------------------------------------------------------------
+
+    private static AdminRoster RosterWithControlTx(
+        string lastControlTxId,
+        params (byte[] publicKey, RegisterRole role, string did)[] members)
+    {
+        var roster = CreateRoster(members);
+        return new AdminRoster
+        {
+            RegisterId = roster.RegisterId,
+            ControlRecord = roster.ControlRecord,
+            ControlTransactionCount = roster.ControlTransactionCount,
+            LastControlTxId = lastControlTxId
+        };
+    }
+
+    [Fact]
+    public async Task ProposalRaisedAgainstAnOlderRoster_IsInvalidated()
+    {
+        var roster = RosterWithControlTx("control-tx-2",
+            (OwnerPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"),
+            (AdminPublicKey, RegisterRole.Admin, "did:sorcha:w:admin1"));
+        _rosterServiceMock.Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+
+        var operation = AddOperationWithApprovals();
+        operation.RosterSnapshotId = "control-tx-1";   // the roster has moved on since
+
+        var result = await _service.ValidateGovernanceRightsAsync(
+            CreateGovernanceTransaction(OwnerPublicKey, operation));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Code == "VAL_PERM_009");
+    }
+
+    [Fact]
+    public async Task ProposalRaisedAgainstTheCurrentRoster_IsNotInvalidated()
+    {
+        var roster = RosterWithControlTx("control-tx-2",
+            (OwnerPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"));
+        _rosterServiceMock.Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+        _rosterServiceMock.Setup(r => r.ValidateProposal(roster, It.IsAny<GovernanceOperation>()))
+            .Returns(GovernanceValidationResult.Success());
+
+        var operation = AddOperationWithApprovals();
+        operation.RosterSnapshotId = "control-tx-2";   // matches
+
+        var result = await _service.ValidateGovernanceRightsAsync(
+            CreateGovernanceTransaction(OwnerPublicKey, operation));
+
+        // Invalidation must not become a blanket refusal of every proposal.
+        result.Errors.Should().NotContain(e => e.Code == "VAL_PERM_009");
+    }
+
+    [Fact] // SC-010 — the sharpest property in the feature.
+    public async Task RemovingTheLastOutstandingApprover_InvalidatesRatherThanEnacts()
+    {
+        // A unanimous proposal is one approval short. The roster is then changed to remove exactly
+        // the organisation that had not yet approved — which, if the proposal were re-counted
+        // against the NEW roster, would drop the requirement to the approvals already collected and
+        // enact the very change that organisation was blocking.
+        var rosterAfterRemoval = RosterWithControlTx("control-tx-AFTER-removal",
+            (OwnerPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"));
+        _rosterServiceMock.Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(rosterAfterRemoval);
+
+        var operation = AddOperationWithApprovals(("did:sorcha:w:owner1", true));
+        operation.RosterSnapshotId = "control-tx-BEFORE-removal";
+        operation.QuorumFormulaAtRaise = QuorumFormula.Unanimous;
+
+        var result = await _service.ValidateGovernanceRightsAsync(
+            CreateGovernanceTransaction(OwnerPublicKey, operation));
+
+        result.IsValid.Should().BeFalse(
+            "removing the dissenting organisation must cancel the vote, never win it");
+        result.Errors.Should().Contain(e => e.Code == "VAL_PERM_009");
+
+        // And it must never have reached the quorum count at all.
+        _rosterServiceMock.Verify(r => r.ValidateQuorumAsync(
+            It.IsAny<string>(), It.IsAny<GovernanceOperation>(),
+            It.IsAny<List<ApprovalSignature>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact] // FR-024
+    public async Task RemovingTheLastGoverningMember_IsRefused()
+    {
+        var roster = RosterWithControlTx("control-tx-1",
+            (OwnerPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"));
+        _rosterServiceMock.Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+
+        var operation = AddOperationWithApprovals();
+        operation.OperationType = GovernanceOperationType.Remove;
+        operation.TargetDid = "did:sorcha:w:owner1";   // the only governing member
+        operation.RosterSnapshotId = "control-tx-1";
+
+        var result = await _service.ValidateGovernanceRightsAsync(
+            CreateGovernanceTransaction(OwnerPublicKey, operation));
+
+        // Unrecoverable: every governance operation needs an Owner or Admin to authorise it, so a
+        // register with none can never be given one back.
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Code == "VAL_PERM_010");
+    }
+
+    [Fact]
+    public async Task RemovingAMemberWhenOthersRemain_IsAllowed()
+    {
+        var roster = RosterWithControlTx("control-tx-1",
+            (OwnerPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"),
+            (AdminPublicKey, RegisterRole.Admin, "did:sorcha:w:admin1"));
+        _rosterServiceMock.Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+        _rosterServiceMock.Setup(r => r.ValidateProposal(roster, It.IsAny<GovernanceOperation>()))
+            .Returns(GovernanceValidationResult.Success());
+
+        var operation = AddOperationWithApprovals();
+        operation.OperationType = GovernanceOperationType.Remove;
+        operation.TargetDid = "did:sorcha:w:admin1";   // owner1 still governs
+        operation.RosterSnapshotId = "control-tx-1";
+
+        var result = await _service.ValidateGovernanceRightsAsync(
+            CreateGovernanceTransaction(OwnerPublicKey, operation));
+
+        // The guard must block only the stranding case, not ordinary roster maintenance.
+        result.Errors.Should().NotContain(e => e.Code == "VAL_PERM_010");
+    }
+
     [Fact] // T018b — but genesis must still be able to create the roster.
     public async Task NoRoster_GenesisTx_IsStillAdmitted()
     {

@@ -102,15 +102,15 @@ confirm sealed-in-docket and observable on tiny.
 
 ### Implementation for US2
 
-- [ ] T039 [US2] Add `CryptoPolicyUpdate` to `GovernanceOperationType` in `src/Common/Sorcha.Register.Models/GovernanceModels.cs` (FR-021)
-- [ ] T040 [US2] Add `RosterSnapshotId` and `QuorumFormulaAtRaise` to the proposal shape, captured at raise time from `GovernanceRoster.LastControlTxId` and the register's configured rule (FR-011a)
+- [X] T039 [US2] Add `CryptoPolicyUpdate` to `GovernanceOperationType` in `src/Common/Sorcha.Register.Models/GovernanceModels.cs` (FR-021)
+- [X] T040 [US2] Add `RosterSnapshotId` and `QuorumFormulaAtRaise` to the proposal shape, captured at raise time from `GovernanceRoster.LastControlTxId` and the register's configured rule (FR-011a)
 - [ ] T041 [US2] Implement approvals as **ledger transactions** signed with the approving organisation's slot-100 key (R-009 — not a service-side table; a store, if any, is a rebuildable index)
-- [ ] T042 [US2] Implement invalidation as a comparison at count time — current `LastControlTxId` ≠ proposal's `RosterSnapshotId` ⇒ invalid. No timer, no sweeper, deterministic on every node
+- [X] T042 [US2] Implement invalidation as a comparison at count time — current `LastControlTxId` ≠ proposal's `RosterSnapshotId` ⇒ invalid. No timer, no sweeper, deterministic on every node
 - [ ] T043 [US2] Record every terminal outcome with a reason (`quorum-met` / `expired` / `roster-changed` / `withdrawn` / `refused-not-on-roster`) — never a silent drop (FR-011c)
 - [ ] T044 [US2] Wire quorum evaluation to the existing `GovernanceRosterService.ValidateQuorumAsync` over sealed approval transactions — do **not** reimplement the arithmetic (R-007)
 - [ ] T045 [US2] Implement `POST /governance/proposals/{proposalId}/approve` per contracts — `202` submitted, `403` not on snapshot, `409` not open, idempotent repeat
 - [ ] T046 [US2] Implement `GET /governance/proposals` (status filter) and `GET /governance/proposals/{proposalId}` (full audit detail)
-- [ ] T047 [US2] Enforce FR-024 — a governance change may never leave a register with no organisation able to govern it
+- [X] T047 [US2] Enforce FR-024 — a governance change may never leave a register with no organisation able to govern it
 - [ ] T048 [US2] 🔴 **LIVE GATE** Three-organisation register under `Unanimous` on n1: not enacted at 2 of 3; enacted and sealed at 3 of 3; replicated to tiny
 - [ ] T049 [US2] 🔴 **LIVE GATE** SC-010 live: remove the sole outstanding approver → proposal `Invalidated`, **not** enacted
 
