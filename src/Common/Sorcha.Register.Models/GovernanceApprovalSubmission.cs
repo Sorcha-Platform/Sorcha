@@ -54,6 +54,15 @@ public sealed class ApprovalAuthorisation
     /// <summary>How that key was held.</summary>
     public ApprovalAuthMethod AuthMethod { get; set; }
 
+    /// <summary>
+    /// Algorithm of <see cref="PublicKey"/>. Carried because, unlike an organisation, an individual
+    /// has no roster entry recording it.
+    /// </summary>
+    public SignatureAlgorithm Algorithm { get; set; } = SignatureAlgorithm.ED25519;
+
+    /// <summary>Algorithm of <see cref="DelegationPublicKey"/>.</summary>
+    public SignatureAlgorithm DelegationAlgorithm { get; set; } = SignatureAlgorithm.ED25519;
+
     /// <summary>Present only when <see cref="Kind"/> is <see cref="AuthorisationKind.Delegated"/>.</summary>
     public GovernanceDelegation? Delegation { get; set; }
 
