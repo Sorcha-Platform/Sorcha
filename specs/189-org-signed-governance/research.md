@@ -523,3 +523,37 @@ signing as the proposing organisation at slot 100.
 The system register is unique by design — pre-signed offline genesis, deliberately outside this path
 until US4 — so it can neither confirm nor refute the general behaviour. Create a normal register,
 seal its genesis, then raise a roster-change proposal against it.
+
+---
+
+## R-021: T093 live gate is blocked by the access model, not by the fix
+
+**Attempted on n1, 2026-08-07,** against an ordinary register (not the SSR — see R-020).
+
+| Step | Result |
+|---|---|
+| `POST /api/registers/initiate` | **200.** Register `161de0d636a54109905abd9b8e6ab6ee`, one owner attestation to sign, 5-minute window. |
+| `POST /api/v1/wallets/{orgWallet}/sign` with `derivationPath: sorcha:register-attestation` | **403.** |
+
+The platform admin (`admin@sorcha.local`, `SystemAdmin` + `Administrator`, aud
+`n1.sorcha.dev:platform`) **cannot exercise the organisation's signing wallet**. That wallet
+(`org-sorcha-local-signing`) is owned by `00000000-0000-0000-0002-000000000006`, not by the admin.
+
+**This is R-018's sibling, and together they are the real blocker.** An administrator:
+
+- has **no personal wallet** — no provisioning path creates one (R-018, confirmed); and
+- **cannot use the organisation's** wallet either (this finding).
+
+So there is currently no identity through which a human administrator can sign anything: not a
+governance approval, not a delegation grant, and not even the owner attestation that creates a
+register. The feature's premise — that signing moves outside the server to a party that holds a key —
+has no such party available today for an administrator.
+
+**What this does NOT show.** It says nothing about whether T092's fix is correct; that path was never
+reached. T092 remains code-verified only, and T093 remains genuinely outstanding.
+
+**Why this matters more than a test blockage.** The demo and walkthrough scripts create registers, so
+*something* can sign these attestations — but it is not a human administrator acting through the API
+with their own credentials. Whatever that something is, it is the de facto answer to "who holds
+governance authority", and it was never a deliberate decision. T094 should settle it explicitly
+rather than inherit it.
