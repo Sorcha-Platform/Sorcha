@@ -126,13 +126,13 @@ confirm sealed-in-docket and observable on tiny.
 
 ### Tests for US3
 
-- [ ] T050 [P] [US3] Test: the revised `register-governance-v1` expresses quorum from the register's configured rule, not a hardcoded percentage
-- [ ] T051 [P] [US3] Test: proposal and approval payloads validate against the blueprint's new `dataSchemas`
-- [ ] T052 [P] [US3] Test: the recorded action sequence matches the published definition (FR-018)
+- [X] T050 [P] [US3] Test: the revised `register-governance-v1` expresses quorum from the register's configured rule, not a hardcoded percentage
+- [X] T051 [P] [US3] Test: proposal and approval payloads validate against the blueprint's new `dataSchemas`
+- [X] T052 [P] [US3] Test: the recorded action sequence matches the published definition (FR-018)
 
 ### Implementation for US3
 
-- [ ] T053 [US3] Revise `blueprints/templates/register-governance-v1.json`: replace the hardcoded `approvalPercentage >= 50.01` with the register's configured rule; add the crypto-policy operation; add `dataSchemas` for proposal and approval payloads; make "Accept Role" conditional on operation type (R-008)
+- [X] T053 [US3] Revise `blueprints/templates/register-governance-v1.json`: replace the hardcoded `approvalPercentage >= 50.01` with the register's configured rule; add the crypto-policy operation; add `dataSchemas` for proposal and approval payloads; make "Accept Role" conditional on operation type (R-008)
 - [ ] T054 [US3] Execute the governance blueprint as a real workflow instance, with each organisation's approval submitted as an action
 - [ ] T055 [US3] Ensure the governance instance folds correctly under F145's `InstanceProjector` — quorum must be a pure function of sealed content so every node agrees (R-009)
 - [ ] T056 [US3] Ensure each proposal, approval and enactment is individually attributable to its organisation in the ledger record (FR-019)
