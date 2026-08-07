@@ -193,11 +193,20 @@ The client MUST render the operation (FR-027). Signing an opaque value is not ap
   "signature":   "base64",      // organisation slot-100 key — AUTHORITY
   "publicKey":   "base64",      // travels so the roster match needs no lookup
   "authMethod":  "hardware-backed" | "software" | "service",
-  "coSignature": {              // individual's own key — ACCOUNTABILITY. Required when a
-    "adminDid":   "...",        // human authorises; absent for autonomous approvers (R-015).
-    "signature":  "base64",
+  "authorisation": {            // ACCOUNTABILITY — required on EVERY approval (FR-029, R-017).
+    "kind": "direct",           // "direct" | "delegated"
+    "individualDid": "...",     // the human who stands behind this approval
+    "signature":  "base64",     // direct: the individual's own key signs the same v2 statement
     "publicKey":  "base64",
-    "authMethod": "..."
+    "authMethod": "...",
+    "delegation": {             // delegated ONLY: how a machine came to be empowered
+      "delegationId": "...",    // ledger record; validity is checkable from sealed content
+      "approverPublicKey": "base64",             // the machine key this empowers
+      "scope": ["CryptoPolicyUpdate"],           // which operations — Transfer can be withheld
+      "expiresAt": "...",
+      "signature": "base64",    // signed by the EMPOWERING INDIVIDUAL's key, not the server's
+      "publicKey": "base64"
+    }
   },
   "comment": "optional, for the audit trail"
 }
@@ -209,4 +218,9 @@ The client MUST render the operation (FR-027). Signing an opaque value is not ap
 | `400` | Signature does not verify against the v2 statement derived from the stored operation. |
 | `403` | Approver is not on the proposal's roster snapshot (FR-011). |
 | `409` | Proposal not open, or the signing request has expired. |
-| `422` | Co-signature invalid, or from an individual outside the approving organisation. **Refused outright — never accepted with the co-signature discarded (FR-032).** |
+| `422` | Authorisation invalid, from an individual outside the approving organisation, or — for a delegated approver — out of scope, expired or revoked. **Refused outright — never accepted with the authorisation quietly dropped (FR-032).** |
+
+> **Why the delegation is signed rather than claimed.** `RequireDelegatedAuthority` already carries a
+> `delegated_user_id` claim, but the **server mints the token**. A delegation the server can assert is
+> one it can forge, which defeats moving signing outside it (R-014/R-017). The delegation must be
+> signed by the empowering individual's own key.

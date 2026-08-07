@@ -343,9 +343,10 @@ US1 already iterates every entry, so no new transport.
 roster, and only organisations are on the roster. A co-signature must be treated as attestation
 metadata, not a roster claim, or it is rejected as "not on roster".
 
-**Asymmetry, deliberate.** A bot has no individual behind it, so the co-signature is required for
-human-authorised approvals and absent for autonomous ones. Bot approvals therefore carry less
-accountability evidence than human ones; requiring one would block the autonomous path outright.
+**Superseded 2026-08-07 — there is no asymmetry.** The claim above was that a bot "has no individual
+behind it". That is wrong: a machine external to the platform was **empowered by a human to act**, so
+accountability is not absent, it is *delegated*. See R-017 — every approval links to a named
+individual, directly or through a signed delegation.
 
 ---
 
@@ -360,3 +361,44 @@ and signing on the same machine also collapses the isolation the split exists to
 **Decision.** Do not mandate a device. Record `authMethod` on the ledger so a register can set its own
 bar (e.g. `Unanimous` requires hardware-backed), making it enforceable and auditable rather than
 assumed, and leaving admins without phones unblocked.
+
+
+---
+
+## R-017: An autonomous approver is delegated, not unaccountable
+
+**Correction.** R-015 first proposed that a co-signature be required for human approvals and absent
+for autonomous ones, accepting that bot approvals would carry weaker evidence. The maintainer's
+objection is decisive: *if a bot is external to the system it has to have been empowered by a human
+to enact.* Accountability is therefore deferred, never missing, and the asymmetry was an artefact of
+the model rather than a property of the problem.
+
+**Finding.** The platform already models this. `RequireDelegatedAuthority`
+(`AuthorizationPolicyExtensions`) requires `token_type=service` **and** a `delegated_user_id` claim —
+described in source as "service token acting on behalf of a user". Structurally a bot is the same
+thing as a citizen's paired device (F114): it holds its own key, acts for a principal, and derives
+authority from a delegation that can be scoped and revoked.
+
+**Why the existing claim is not sufficient on its own.** `delegated_user_id` is a JWT claim, and the
+**server mints the token**. A delegation the server can assert is one it can forge — which defeats the
+point of moving signing outside the server (R-014). The delegation must be signed by the empowering
+individual's own key and carried as evidence.
+
+**Decision.** Every approval carries an `authorisation` in one of two forms:
+
+| Form | Who signs | Accountability |
+|---|---|---|
+| **Direct** | the individual's own key, alongside the organisation's | that individual |
+| **Delegated** | the autonomous approver's key, plus a delegation record signed by the empowering individual | the individual named in the delegation |
+
+The delegation names the approver's public key, the organisation, a **scope** (which
+`GovernanceOperationType` values it may approve) and an **expiry**, and is revocable. Scope matters
+in practice: a bot can be empowered to approve routine crypto-policy updates while `Transfer` still
+requires a human.
+
+Validity must be determinable from sealed ledger content so every node folds identically (R-009) —
+so the delegation and its revocation are ledger records, not service state.
+
+**Consequence.** `coSignature` is replaced by `authorisation`. FR-032's rule still holds in the
+stronger form: an approval whose authorisation is invalid, out of scope, expired or revoked is
+**refused outright**, never accepted with the authorisation quietly dropped.

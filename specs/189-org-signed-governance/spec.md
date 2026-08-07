@@ -156,7 +156,9 @@ The network's own system register — created by an offline ceremony rather than
 - **FR-026**: The value an approver signs MUST bind the **entire** operation being authorised, such that any subsequent change to that operation invalidates the signature. Binding a hand-selected subset of fields is insufficient.
 - **FR-027**: An approver MUST be shown everything their signature binds. Signing an opaque value is not approval.
 - **FR-028**: A signing request MUST NOT carry a precomputed digest; the signing client MUST derive it from the operation it displayed, so the two cannot disagree.
-- **FR-029**: Where a human authorises an approval, the record MUST identify that individual distinctly from the organisation, so the ledger can answer *which person* authorised a change.
+- **FR-029**: **Every** approval MUST carry an accountability link to a named individual, distinct from the organisation, so the ledger can answer *which person* stands behind a change. An autonomous approver is not an exception: a machine external to the platform was empowered by a human, so the link is delegated rather than absent.
+- **FR-033**: A delegation empowering an autonomous approver MUST be signed by the empowering individual's own key. A server-asserted claim is insufficient — the server mints tokens, so a delegation it can assert is one it can forge, which defeats the purpose of moving signing outside it.
+- **FR-034**: A delegation MUST carry a scope and an expiry, and MUST be revocable. Its validity MUST be determinable from sealed ledger content, so every node reaches the same answer (R-009).
 - **FR-030**: The record MUST carry how the signing key was held, so a register may require a minimum standard for a given operation.
 - **FR-031**: A single-owner register MUST continue to complete governance unattended, without pairing, device or human interaction.
 - **FR-032**: An approval submission carrying an invalid or mismatched individual co-signature MUST be refused outright. It MUST NOT be accepted with the co-signature silently discarded.
