@@ -444,10 +444,19 @@ harder failure than the one this feature set out to fix.
 server's. Whichever is chosen, it must not reintroduce server-side signing (R-014), which rules out
 "the server holds an admin key on their behalf".
 
-**CONFIRMED 2026-08-07 — not a seeded-data artefact.** All three `CreateWalletAsync` call sites in
-the Tenant Service create **organisation** wallets (`org-{subdomain}-signing`) —
-`OrganizationService`, `OrgWalletReconciliationService` and `BootstrapEndpoints`. **No path
-provisions a wallet for a platform user.** The user wallets present on n1 all belong to citizen
+**WITHDRAWN 2026-08-07 — this was my error.** The claim "no path provisions a wallet for a platform
+user" came from searching only the Tenant Service. It is wrong. Users create wallets through
+`POST /api/v1/wallets` — the first-login flow the UI drives (`Pages/Wallets/CreateWallet.razor` →
+`IWalletApiService.CreateWalletAsync`). The seeded admin simply had never been through it, having been
+created by `DatabaseInitializer` rather than by logging in.
+
+Proven by doing it: creating a wallet for the admin that way made the 403 in R-021 disappear
+immediately — they signed the owner attestation at slot 100 and the register was created. There was
+never a missing capability, only an account that had skipped the flow. **T094 is closed: the answer is
+the existing first-login wallet creation, whether reached through the UI or the API.**
+
+The original observation still holds narrowly and is worth keeping: all three `CreateWalletAsync` call
+sites in the Tenant Service create **organisation** wallets (`org-{subdomain}-signing`), and The user wallets present on n1 all belong to citizen
 accounts minted by the application journey (`aias-rehearse-*@example.test`). So an administrator
 having no key is the norm, not an anomaly of the seeded account.
 
@@ -557,3 +566,42 @@ reached. T092 remains code-verified only, and T093 remains genuinely outstanding
 with their own credentials. Whatever that something is, it is the de facto answer to "who holds
 governance authority", and it was never a deliberate decision. T094 should settle it explicitly
 rather than inherit it.
+
+
+---
+
+## R-022: T093 PASSES — proven live on n1, 2026-08-07
+
+**Fixture** (the point of R-020: the SSR cannot stand in). Ordinary register
+`cbb1fa4c1bc942b7a1f86eabcfb96ea6`, DevMode, owner = the admin's own wallet
+`ws11qq269…`, attestation signed at slot 100. Genesis `73fb4c4e…` confirmed **sealed into docket 0
+before proposing** — the precondition whose absence produced this feature's earlier false PASS.
+
+**Result.** `POST /governance/propose` (operation `Add`) → `200`, and:
+
+```
+docket 1 → TransactionIds: ['360bf52a115dd84fa1366c3838523c6d6e04b9673c04994dab04f4a845e6b152']
+Register cbb1fa4c…: validated 1 transactions, rejected 0
+```
+
+The proposal **landed in a sealed docket** on a register whose genesis had already sealed — precisely
+where R-020 predicted `"submitter not found in roster"`. T092's fix is now live-proven, not merely
+code-verified.
+
+**Owner override observed, not assumed.** The response reported
+`quorum: { isQuorumMet: true, votesRequired: 1, votesReceived: 1, isOwnerOverride: true }`, so the
+single-organisation degenerate path still completes unattended. That is T086's no-regression property,
+observed in passing.
+
+### Three API defects found by driving it by hand
+
+1. **`/propose` requires numeric enums.** `"operationType": "Add"` returns `400` with a raw
+   `System.Text.Json` / `BadHttpRequestException` stack trace in the response body. Any client
+   hand-writing this JSON hits it, and the error leaks internals to the caller. The endpoint should
+   accept the string names its own responses emit (it *returns* `"operationType":"add"`), or reject
+   with a clean message.
+2. **`/finalize` needs the whole `attestationData` object returned**, not the flattened
+   `userId`/`walletId`/`role`. The flat shape yields `"Unknown attestation:  (Owner)"` — with an empty
+   name, which reads like missing data rather than a wrong shape.
+3. **Attestation windows are 5 minutes**, which is tight for any interactive flow where a human signs
+   on a separate device. Worth revisiting before the PWA signing surface (T083) is built against it.
