@@ -269,3 +269,94 @@ replica. The minimum evidence for a governance change is the **transaction id pr
 docket's `TransactionIds`** (not merely present in the transactions collection) *and* the resulting
 state observed on the second node. Mock-validator unit tests cannot establish either — the mock
 accepts anything, which is exactly how the missing `BlueprintId` (R-005) reached a live run.
+
+---
+
+## R-013: The approval digest does not bind what it authorises
+
+**Finding.** `GovernanceApprovalStatement` (v1, US1) binds a hand-picked field list: domain tag,
+`registerId`, `OperationType`, `ProposerDid`, `TargetDid`, `TargetRole`, `ProposedAt`, `approverDid`,
+approve/reject. `GovernanceOperation` carries more: `ValidatorEntry`, `RosterSnapshotId`,
+`QuorumFormulaAtRaise`, `ExpiresAt`. None of those are bound.
+
+The sharp case is `AddValidator`. An approval binds "add a validator" and **not which one** — the
+validator's public key and endpoint sit outside the digest entirely.
+
+**Why it was survivable until now.** Under server-side signing the server both builds and signs the
+operation, so there is no separate party to mislead. The gap is close to inert.
+
+**Why it stops being survivable.** R-014 makes signing external. The premise becomes that an outside
+party reviews something and signs it — so any unbound field is a way to display one thing and enact
+another, leaving a cryptographically valid signature on the ledger and no record anywhere of the
+substitution.
+
+**Decision.** Statement **v2** binds the canonical serialisation of the whole operation — domain tag
+`sorcha:governance-approval:v2`, `registerId`, `proposalId`, `approverDid`, approve/reject, plus a
+hash of the operation's canonical JSON excluding derived/mutable members (`ApprovalSignatures`,
+`Status`). Clean break: v1 signatures MUST NOT verify under v2.
+
+**Alternative considered and rejected.** Extend the v1 field list to cover the four missing fields.
+It closes today's gap and reopens it the next time a property is added to `GovernanceOperation` —
+silently, with no compiler error and no failing test. A hand-maintained field list is the same smell
+as a hand-maintained type↔serialisation mapping, which this codebase has repeatedly been caught by.
+
+**Guard.** A reflection-driven test enumerates `GovernanceOperation`'s properties and asserts that
+mutating any non-excluded one changes the digest, so a property added later is covered automatically.
+It must go RED today for the four fields above.
+
+---
+
+## R-014: Who holds the slot-100 key
+
+**Finding.** `GovernanceApprovalService` signs server-side, and the drafted contract states it
+outright. Any service-tier token can name any organisation (issue #1380), so under `Unanimous` — the
+setting where protection should be strongest — one principal can satisfy an entire consortium.
+
+**Decision.** Approvals for multi-party registers are produced by **detached signature over a
+canonical digest**: the server publishes a signing request, something external signs it, the server
+assembles the result onto the ledger. The human UI and an autonomous bot become two clients of one
+protocol rather than two features — which is what makes "human or privileged bot, the platform does
+not care which" satisfiable by a single mechanism.
+
+**Carve-out.** Single-owner registers keep the existing Owner override, unattended (FR-031). Without
+it this is a regression for every register that exists. #1380 therefore narrows rather than closes.
+
+**Alternative considered and rejected.** Keep server-side signing but require an authenticated org
+admin session. It closes the "any principal, any org" hole and is far smaller — but the server still
+holds the key and still decides, and the ledger reads identically either way, so it improves
+authorisation without improving evidence. Its good idea survives as R-015.
+
+---
+
+## R-015: Organisation authority, individual accountability
+
+**Finding.** An org-key signature records "org X approved". It cannot record which human authorised
+it, which is precisely what US3 exists to provide.
+
+**Decision.** An approval may carry a **co-signature** from the authorising individual's own key
+alongside the organisation's. The org key carries authority; the individual's key carries
+accountability. Platform-tier tokens already carry `wallet_address` (`TokenService`, `Tier.Platform`
+branch), so org admins already hold a key — no new provisioning. `Signatures` is already a `List` and
+US1 already iterates every entry, so no new transport.
+
+**Consequence that fails silently if missed.** The validator matches every signature against the
+roster, and only organisations are on the roster. A co-signature must be treated as attestation
+metadata, not a roster claim, or it is rejected as "not on roster".
+
+**Asymmetry, deliberate.** A bot has no individual behind it, so the co-signature is required for
+human-authorised approvals and absent for autonomous ones. Bot approvals therefore carry less
+accountability evidence than human ones; requiring one would block the autonomous path outright.
+
+---
+
+## R-016: Web and mobile are the same client, not the same assurance
+
+**Finding.** The signing client is device-agnostic — same envelope, same digest, same validation — so
+it is built once. Assurance is not equivalent: `WebCryptoDeviceKeyService` yields non-extractable keys
+either way, but a phone is typically secure-enclave backed with biometric unlock, whereas a desktop
+browser profile is a file on disk reachable by anything running as that user. Reviewing in the console
+and signing on the same machine also collapses the isolation the split exists to create.
+
+**Decision.** Do not mandate a device. Record `authMethod` on the ledger so a register can set its own
+bar (e.g. `Unanimous` requires hardware-backed), making it enforceable and auditable rather than
+assumed, and leaving admins without phones unblocked.
