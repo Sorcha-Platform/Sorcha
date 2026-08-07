@@ -2235,7 +2235,7 @@ governanceGroup.MapPost("/propose", async (
     Sorcha.Register.Core.Services.IGovernanceRosterService rosterService,
     IHashProvider hashProvider,
     Sorcha.ServiceClients.Validator.IValidatorServiceClient validatorClient,
-    ISystemWalletSigningService signingService) =>
+    IGovernanceSigningService signingService) =>
 {
     // 1. Verify register exists
     var register = await repository.GetRegisterAsync(registerId);
@@ -2402,15 +2402,21 @@ governanceGroup.MapPost("/propose", async (
     // 10. Chain linking from latest Control TX
     string? previousControlTxId = roster.LastControlTxId;
 
-    // 11. Sign with system wallet
+    // 11. Sign as the proposing ORGANISATION at slot 100 (R-020).
+    //
+    // This previously signed with SorchaDerivationPaths.RegisterControl — slot 101, the NODE's system
+    // wallet. A register's governance roster is built from its genesis attestations, which record the
+    // ORGANISATION's slot-100 key, so a node-signed proposal is refused by RightsEnforcementService as
+    // "submitter not found in roster" on any register whose genesis has sealed. US1 moved
+    // /disable-dev-mode and /governance/crypto-policy across and left this path behind, which meant
+    // every roster change — Add, Remove, Transfer and all validator operations — could not complete.
     var signResult = await signingService.SignAsync(
         registerId: registerId,
         txId: txId,
         payloadHash: payloadHashHex,
-        derivationPath: SorchaDerivationPaths.RegisterControl,
-        transactionType: "Control");
+        preferredSubject: null);   // Owner signs; consortium selection is US2
 
-    var systemSignature = new Sorcha.ServiceClients.Validator.SignatureInfo
+    var organisationSignature = new Sorcha.ServiceClients.Validator.SignatureInfo
     {
         PublicKey = Base64Url.EncodeToString(signResult.PublicKey),
         SignatureValue = Base64Url.EncodeToString(signResult.Signature),
@@ -2434,7 +2440,7 @@ governanceGroup.MapPost("/propose", async (
         Payload = payloadElement,
         PayloadHash = payloadHashHex,
         PreviousTransactionId = previousControlTxId,
-        Signatures = new List<Sorcha.ServiceClients.Validator.SignatureInfo> { systemSignature },
+        Signatures = new List<Sorcha.ServiceClients.Validator.SignatureInfo> { organisationSignature },
         CreatedAt = DateTimeOffset.UtcNow,
         Metadata = new Dictionary<string, string>
         {
