@@ -239,7 +239,7 @@ indistinguishable symptom — which is exactly what happened on 2026-08-06.
 
 ### The signing protocol
 
-- [ ] T076 [P] Implement `GET .../proposals/{proposalId}/signing-request` per contracts. **No digest field** (FR-028) — the client derives it.
+- [X] T076 [P] Implement `GET .../proposals/{proposalId}/signing-request` per contracts. **No digest field** (FR-028) — the client derives it.
 - [ ] T077 [P] Test: the signing request carries the full operation and no digest; a client-derived digest matches what the server verifies against.
 - [X] T078 Implement submission verification: signature checked against the v2 statement rebuilt from the **stored** operation, not from anything the client sent.
 > **T078 found a gap the spec had not named.** Structural validation confirmed an authorisation named an individual and that a signature verified against the key it *supplied* — but nothing bound that key to the claimed `IndividualDid`. Anyone could have signed with their own key while naming a colleague as accountable: valid signature, false audit record, self-declared accountability. `did:sorcha:w:{address}` encodes the wallet address and an address derives from its public key, so the binding is checkable — `DetachedApprovalVerifier.VerifyKeyBelongsToDid` re-derives and compares, and no approval is accepted without it. Added as **FR-035**.

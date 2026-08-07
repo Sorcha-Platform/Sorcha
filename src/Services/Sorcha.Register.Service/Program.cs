@@ -2488,6 +2488,85 @@ governanceGroup.MapPost("/propose", async (
 // <summary>
 // List governance proposals from Control TX history
 // </summary>
+// <summary>
+// Feature 189 T076 — what an approver must sign.
+// </summary>
+// The proposal IS a ledger transaction, so its TxId is the proposal id.
+//
+// This deliberately returns NO DIGEST (FR-028). A server-supplied digest could fail to match the
+// operation the client displayed, reinstating at the transport layer exactly the substitution that
+// statement v2 closes inside the digest. The client derives the digest from the operation it
+// rendered, so the two cannot disagree — and it must render it, because signing an opaque value is
+// not approval (FR-027).
+governanceGroup.MapGet("/proposals/{proposalId}/signing-request", async (
+    IReadOnlyRegisterRepository repository,
+    string registerId,
+    string proposalId,
+    string approverDid,
+    CancellationToken ct) =>
+{
+    var tx = await repository.GetTransactionAsync(registerId, proposalId, ct);
+    if (tx is null)
+    {
+        return Results.NotFound(new { error = $"No proposal '{proposalId}' on register '{registerId}'" });
+    }
+
+    var trackingType = tx.MetaData?.TrackingData?.GetValueOrDefault("transactionType");
+    if (!string.Equals(trackingType, "GovernanceOperation", StringComparison.Ordinal))
+    {
+        return Results.BadRequest(new { error = $"Transaction '{proposalId}' is not a governance proposal" });
+    }
+
+    // Same decode path the genesis-attestation reader uses: Data is base64 or base64url.
+    GovernanceOperation? operation = null;
+    try
+    {
+        var payloadData = tx.Payloads.Length > 0 ? tx.Payloads[0].Data : null;
+        if (!string.IsNullOrWhiteSpace(payloadData))
+        {
+            var payloadBytes = payloadData.Contains('+') || payloadData.Contains('/') || payloadData.Contains('=')
+                ? Convert.FromBase64String(payloadData)
+                : System.Buffers.Text.Base64Url.DecodeFromChars(payloadData);
+
+            operation = System.Text.Json.JsonSerializer
+                .Deserialize<ControlTransactionPayload>(
+                    payloadBytes,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                ?.Operation;
+        }
+    }
+    catch (Exception ex) when (ex is System.Text.Json.JsonException or FormatException)
+    {
+        // A payload that will not decode is reported, never approximated (see below).
+        operation = null;
+    }
+
+    if (operation is null)
+    {
+        // Refused rather than approximated: an approver must see exactly what their signature binds,
+        // and a partially-reconstructed operation is the substitution risk in another form.
+        return Results.Problem(
+            detail: $"The proposal payload for '{proposalId}' could not be read as a governance operation.",
+            statusCode: StatusCodes.Status422UnprocessableEntity);
+    }
+
+    return Results.Ok(new GovernanceSigningRequest
+    {
+        RequestId = proposalId,
+        RegisterId = registerId,
+        Operation = operation,
+        StatementVersion = GovernanceApprovalStatement.StatementVersion,
+        ApproverDid = approverDid,
+        ExpiresAt = operation.ExpiresAt
+    });
+})
+.WithName("GetGovernanceSigningRequest")
+.WithSummary("Get what an approver must sign for a governance proposal")
+.WithDescription(
+    "Returns the full governance operation an approving organisation is being asked to authorise. "
+    + "Carries no digest by design — the client derives it from the operation it rendered, so a "
+    + "server-supplied digest cannot disagree with what the approver actually saw.");
+
 governanceGroup.MapGet("/proposals", async (
     IRegisterRepository repository,
     Sorcha.Register.Core.Services.IGovernanceRosterService rosterService,
