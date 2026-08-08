@@ -113,11 +113,47 @@ public static class GovernanceAuthorisationValidator
         DateTimeOffset now,
         Func<string, bool>? isRevoked = null)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
-        ArgumentNullException.ThrowIfNull(operation);
         ArgumentNullException.ThrowIfNull(submission);
 
-        var auth = submission.Authorisation;
+        return Validate(
+            registerId, operation, submission.ApproverDid, submission.IsApproval,
+            submission.Authorisation, now, isRevoked);
+    }
+
+    /// <summary>
+    /// Validates the structure of an approval's authorisation, from the fields the check needs.
+    /// </summary>
+    /// <remarks>
+    /// The same rules as the submission overload, reachable from an approval read back off the
+    /// ledger. It takes the three fields rather than a record so that a
+    /// <see cref="GovernanceApprovalSubmission"/> and a <c>GovernanceApprovalActionPayload</c> can be
+    /// validated by <b>one</b> implementation with no conversion between them: a hand-maintained
+    /// mapping is precisely what dropped <c>ValidatorEntry</c> on the propose path and made
+    /// <c>AddValidator</c> unusable without anything failing.
+    /// </remarks>
+    /// <param name="registerId">Register the operation applies to.</param>
+    /// <param name="operation">The proposal being approved.</param>
+    /// <param name="approverDid">Approving organisation.</param>
+    /// <param name="isApproval">Approve or reject. Bound by the digest the signatures cover.</param>
+    /// <param name="authorisation">Who stands behind the approval. <c>null</c> is refused (FR-029).</param>
+    /// <param name="now">Evaluation time. Passed in so the result is deterministic across nodes (R-009).</param>
+    /// <param name="isRevoked">
+    /// Whether a delegation id has been revoked. Supplied by the caller because revocation lives on
+    /// the ledger — the answer must come from sealed content so every node folds identically.
+    /// </param>
+    public static AuthorisationValidationResult Validate(
+        string registerId,
+        GovernanceOperation operation,
+        string approverDid,
+        bool isApproval,
+        ApprovalAuthorisation? authorisation,
+        DateTimeOffset now,
+        Func<string, bool>? isRevoked = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        ArgumentNullException.ThrowIfNull(operation);
+
+        var auth = authorisation;
         if (auth is null)
         {
             return AuthorisationValidationResult.Refuse(AuthorisationRefusalReason.Missing);
@@ -134,7 +170,7 @@ public static class GovernanceAuthorisationValidator
         // machine they empowered) commits to exactly what the organisation committed to, not to a
         // summary of it.
         var approvalDigest = GovernanceApprovalStatement.ComputeDigest(
-            registerId, operation, submission.ApproverDid, submission.IsApproval);
+            registerId, operation, approverDid, isApproval);
 
         var checks = new List<RequiredSignatureCheck>
         {
@@ -156,7 +192,7 @@ public static class GovernanceAuthorisationValidator
             return AuthorisationValidationResult.Refuse(AuthorisationRefusalReason.KindMismatch);
         }
 
-        if (!string.Equals(delegation.OrganisationDid, submission.ApproverDid, StringComparison.Ordinal))
+        if (!string.Equals(delegation.OrganisationDid, approverDid, StringComparison.Ordinal))
         {
             return AuthorisationValidationResult.Refuse(AuthorisationRefusalReason.WrongOrganisation);
         }

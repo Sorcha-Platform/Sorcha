@@ -2495,3 +2495,57 @@ list silently stops covering a property added later: v1 left `ValidatorEntry` un
 sat outside the digest. Harmless while the server both built and signed; a substitution vector the
 moment signing moves outside it. Guard binding with a **reflection-driven** test over the type's
 properties, never a hand-written list.
+
+### Accountability is verified per node, by one implementation (T079)
+
+Every approval carries an `authorisation` naming the individual behind it — directly, or through a
+delegation they signed. **Both signatures are checked before a vote counts**: the organisation's
+carries *authority*, the authorisation carries *responsibility*, and an approval that resolves to
+nobody is one the register can never attribute to a decision (FR-029). An authorisation that fails
+refuses the approval outright rather than counting it with the accountability discarded (FR-032) — a
+record that looks complete and is not is worse than a refusal.
+
+**The verifier lives in `Sorcha.Validator.Core`, not in either service.** Two sides need the identical
+answer: the Register Service admitting a submission over HTTP, and `RightsEnforcementService`
+recounting the approvals sealed against a proposal on **every** node — including nodes that never saw
+the submission. Until T079 only the first ran the check, so an approval whose authorisation was absent
+or forged counted everywhere except its point of entry. Two implementations of one rule is how the two
+would come to disagree about whether a governance change is authorised.
+
+**The authorisation is attestation metadata, never a roster claim.** It is deliberately not matched
+against the roster — the individual behind an organisation's approval is not a member of the
+register's governance. Matching it would either reject every valid approval as "not on roster" or,
+worse, let an individual's signature stand in for their organisation's.
+
+**Uncheckable fails closed.** A validator with no `IDetachedApprovalVerifier` counts no approval
+carrying an authorisation, matching how the same class treats an unreadable proposal. Every refusal is
+logged with a reason: an approval that stops counting silently looks to an operator exactly like one
+that was never submitted — the shape that let a swallowed deserialisation count zero approvals for a
+whole live run.
+
+**One code path, no conversion.** `GovernanceAuthorisationValidator.Validate` and
+`IDetachedApprovalVerifier` each take `(approverDid, isApproval, authorisation)` as well as a whole
+submission, so a `GovernanceApprovalSubmission` and a sealed `GovernanceApprovalActionPayload` are
+validated by the same code with **no** mapping between them. A hand-maintained mapping is exactly what
+dropped `ValidatorEntry` on `/propose` and made `AddValidator` unusable without anything failing.
+
+### `authMethod` is recorded, never enforced — and it means key custody
+
+`ApprovalAuthMethod` (`software` / `hardware-backed` / `service` / `unknown`) records **how the
+approving key was held**, so a register *can* later require a minimum standard per operation.
+Enforcing one before organisations have hardware-backed governance keys provisioned would lock them
+out of their own registers (R-016).
+
+The fact is already sealed, on each approval transaction's payload. It is **not** added to the
+enactment: `ControlTransactionPayload` carries only `version` / `roster` / `operation` /
+`enactsProposalId`, and duplicating evidence already on the ledger buys nothing. What T081 added is
+carrying it onto the counted vote — `ApprovalTallyCheck` → `ApprovalSignature.AuthMethod` — where a
+future policy gate would sit. `ApprovalTallyCheck` carries the `Authorisation` too, so the caller
+never has to keep a second list aligned with it by approver.
+
+**`ApprovalSignature.AuthMethod` used to mean something else.** It carried `passkey` / `totp` /
+`password` / `re-oauth` — how a *person authenticated* — written by the in-platform approval path that
+R-014 replaced with external signing. That path had no callers left, and `GovernanceApprovalService`
+is now deleted rather than left registered: one field carrying two vocabularies is a fact no consumer
+can interpret. `ToVotes` derives the token from the payload converter's own naming policy, so the vote
+and the transaction it came from cannot drift to two spellings of one fact.

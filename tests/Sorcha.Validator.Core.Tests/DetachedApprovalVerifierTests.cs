@@ -5,17 +5,17 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
+
 using Sorcha.Cryptography;
 using Sorcha.Cryptography.Core;
 using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
 using Sorcha.Cryptography.Utilities;
 using Sorcha.Register.Models;
-using Sorcha.Register.Service.Services;
+using Sorcha.Validator.Core.Validators;
 using Xunit;
 
-namespace Sorcha.Register.Service.Tests.Unit;
+namespace Sorcha.Validator.Core.Tests;
 
 /// <summary>
 /// Verification of a detached approval, using REAL keys and REAL signatures.
@@ -34,7 +34,7 @@ public sealed class DetachedApprovalVerifierTests
     private readonly IWalletUtilities _wallets = new WalletUtilities();
 
     private DetachedApprovalVerifier Verifier() =>
-        new(_crypto, _wallets, NullLogger<DetachedApprovalVerifier>.Instance);
+        new(_crypto, _wallets);
 
     private sealed record Identity(byte[] PrivateKey, string PublicKeyB64, string Did);
 
