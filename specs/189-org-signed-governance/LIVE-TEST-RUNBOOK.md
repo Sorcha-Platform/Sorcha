@@ -157,6 +157,51 @@ before the split (FR-031).
 
 ---
 
+## 9. 🔴 Per-node accountability verification (T079) — RUN 2026-08-08, ALL PASS
+
+The Validator now re-verifies each approval's `authorisation` before counting it, so the gate that
+matters is the **false-negative** one: if that check is wrong, valid approvals silently stop counting,
+quorum is never met, and governance quietly stops working. The unit tests prove the refusals; only a
+live run proves the acceptances.
+
+Deployed to n1 as **both** `register-service` and `validator-service` (unmerged branch: build → save →
+scp → load → `up -d --force-recreate --no-deps`). Confirmed both containers were on images built
+minutes earlier before testing anything.
+
+Run on two independent ordinary registers — `812dd9230c3a…` and `9ce0eb8874a6…`, never the SSR — each
+raised by the **non-Owner admin** so the Owner override could not apply and quorum had to be collected.
+
+| Evidence | Result |
+|---|---|
+| Proposal `202`, `roster: null`, head still the genesis | PASS |
+| Both organisations approve with a real `authorisation`, `202` at intake | PASS |
+| **`Quorum check for Add … 2/2 (pool=2, met=True)`** — the approvals COUNTED at the Validator | PASS |
+| Enactment raised by nothing but the `docket:confirmed` reaction; roster 2 → 3, head moved | PASS |
+| `validated 1 transactions, rejected 0` | PASS |
+| An authorisation naming one individual but signed with another's key → `422 IndividualMismatch` | PASS |
+
+Sealed chain on `812dd9230c3a…`, which is the shape the design predicts:
+
+```
+docket 0   control              roster=PRESENT                       genesis
+docket 1   control              roster=null   status=Pending         proposal
+docket 2   governance-approval  authMethod=service                   owner
+docket 2   governance-approval  authMethod=service                   admin
+docket 3   control              roster=PRESENT status=Recorded       enacts=7d6b5ae1983f
+```
+
+**Why `2/2` is the load-bearing line.** `VerifyAccountabilityAsync` is called for every approval whose
+organisation signature verifies, and it returns false when no verifier is available. So `2/2` is only
+reachable if the verifier resolved from DI *and* accepted both — the check cannot be silently skipped.
+The `422` proves the same shared class refusing in the deployed image, and the Register Service's new
+refusal log line (`Sorcha.Register.Service.Governance … refused: IndividualMismatch`) proves the
+logging moved out of the verifier is reaching an operator rather than being lost.
+
+Add to the falsification table below: **`Quorum check … 0/2` with approvals sealed** would mean the
+accountability check is refusing valid approvals — governance broken in the quiet direction.
+
+---
+
 ## What would falsify the design
 
 Worth naming in advance, so a failure is recognised rather than explained away:
