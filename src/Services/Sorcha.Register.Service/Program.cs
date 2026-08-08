@@ -257,6 +257,12 @@ builder.Services.AddScoped<Sorcha.Validator.Core.Validators.IDetachedApprovalVer
 builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceProposalReader,
     Sorcha.Register.Service.Services.GovernanceProposalReader>();
 
+// Feature 189 T043/T046: the governance audit surface. Every field it reports is derived from sealed
+// content — status from GovernanceProposalStatus.Derive, counting from GovernanceApprovalTally,
+// arithmetic from ValidateQuorumAsync. Nothing stored, nothing reimplemented.
+builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceProposalViewService,
+    Sorcha.Register.Service.Services.GovernanceProposalViewService>();
+
 // Feature 189 T044b: raises the enactment once a proposal's approvals reach quorum. It decides
 // whether to TRY; the Validator decides whether the change is authorised.
 builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceEnactmentService,
@@ -2837,10 +2843,24 @@ governanceGroup.MapPost("/proposals/{proposalId}/approve", async (
 .Produces(StatusCodes.Status422UnprocessableEntity)
 .Produces(StatusCodes.Status401Unauthorized);
 
+// <summary>
+// Feature 189 T046 — list governance proposals with their DERIVED status.
+// </summary>
+// This replaced a version that reported operationType / proposerDid / targetDid out of
+// MetaData.TrackingData. That sits outside the signature, outside the payload hash and outside the
+// docket's merkle leaf, so anyone able to submit can rewrite it with nothing detecting the change —
+// an audit surface sourced from forgeable fields is worse than none, because it looks authoritative.
+// Everything below is read from the signed payload.
+//
+// `status` is DERIVED on every read, never stored: a status column would be a second source of truth
+// about a fact the ledger already carries, and it would drift the moment one node folds a docket the
+// writer never saw.
 governanceGroup.MapGet("/proposals", async (
     IRegisterRepository repository,
-    Sorcha.Register.Core.Services.IGovernanceRosterService rosterService,
+    Sorcha.Register.Service.Services.IGovernanceProposalViewService views,
     string registerId,
+    CancellationToken ct,
+    string? status = null,
     int page = 1,
     int pageSize = 20) =>
 {
@@ -2850,43 +2870,72 @@ governanceGroup.MapGet("/proposals", async (
         return Results.NotFound(new { error = "Register not found" });
     }
 
-    // Pushed down: Control transactions, docket descending (index-backed) — then filter/page in memory.
-    var controlTxs = await repository.GetTransactionsByTypeAsync(
-        registerId, TransactionType.Control, TransactionSort.DocketNumberDescending);
-
-    // Filter to Control TXs that have governance operation metadata
-    var governanceProposals = controlTxs
-        .Where(t => t.MetaData?.TrackingData != null
-            && t.MetaData.TrackingData.ContainsKey("transactionType")
-            && t.MetaData.TrackingData["transactionType"] == "GovernanceOperation")
-        .ToList();
-
-    var total = governanceProposals.Count;
-    var pagedTxs = governanceProposals
-        .Skip((page - 1) * pageSize)
-        .Take(pageSize)
-        .Select(t => new
+    // `int page` (non-nullable) would be a REQUIRED query parameter to the model binder, so a bare
+    // GET would 400 while the contract says "default 1". Defaults on the parameter keep it optional.
+    GovernanceProposalState? filter = null;
+    if (!string.IsNullOrWhiteSpace(status) && !string.Equals(status, "All", StringComparison.OrdinalIgnoreCase))
+    {
+        if (!Enum.TryParse<GovernanceProposalState>(status, ignoreCase: true, out var parsed))
         {
-            t.TxId,
-            t.DocketNumber,
-            t.TimeStamp,
-            OperationType = t.MetaData?.TrackingData?.GetValueOrDefault("operationType"),
-            ProposerDid = t.MetaData?.TrackingData?.GetValueOrDefault("proposerDid"),
-            TargetDid = t.MetaData?.TrackingData?.GetValueOrDefault("targetDid")
-        })
-        .ToList();
+            return Results.BadRequest(new
+            {
+                error = "Unknown proposal status filter",
+                status,
+                // Withdrawn is deliberately absent: nothing on the platform can withdraw a proposal,
+                // so offering the filter would imply a state no register can ever reach.
+                accepted = new[] { "Open", "Enacted", "Invalidated", "Expired", "All" }
+            });
+        }
+
+        filter = parsed;
+    }
+
+    var all = await views.ListAsync(registerId, filter, ct);
 
     return Results.Ok(new
     {
         Page = page,
         PageSize = pageSize,
-        Total = total,
-        Proposals = pagedTxs
+        Total = all.Count,
+        Proposals = all.Skip((page - 1) * pageSize).Take(pageSize).ToList()
     });
 })
 .WithName("GetGovernanceProposals")
 .WithSummary("List governance proposals")
-.WithDescription("Returns paginated governance operations from Control transaction history.")
+.WithDescription(
+    "Lists the register's governance proposals with a status derived from sealed content — Open, "
+    + "Enacted, Invalidated or Expired — each with the reason it reached that state. Filter with "
+    + "?status=; omit it or pass All for every proposal.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status400BadRequest)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status401Unauthorized);
+
+// <summary>
+// Feature 189 T046/T043 — full audit detail for one proposal.
+// </summary>
+// Each approval is attributed to the organisation that made it, with its own transaction id so an
+// auditor can read the evidence rather than this summary of it. Approvals that CANNOT count are
+// listed too, with the reason — an approval that vanishes from a report looks exactly like one that
+// was never submitted (FR-011c).
+governanceGroup.MapGet("/proposals/{proposalId}", async (
+    Sorcha.Register.Service.Services.IGovernanceProposalViewService views,
+    string registerId,
+    string proposalId,
+    CancellationToken ct) =>
+{
+    var view = await views.GetAsync(registerId, proposalId, ct);
+
+    return view is null
+        ? Results.NotFound(new { error = $"No governance proposal '{proposalId}' on register '{registerId}'" })
+        : Results.Ok(view);
+})
+.WithName("GetGovernanceProposal")
+.WithSummary("Get one governance proposal in full")
+.WithDescription(
+    "Returns the proposal, the roster snapshot it was raised against, the quorum rule captured at "
+    + "raise time, each approval individually attributed, the approvals that cannot count and why, "
+    + "and the terminal outcome with its reason. Status is derived from sealed content on every read.")
 .Produces<object>(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status404NotFound)
 .Produces(StatusCodes.Status401Unauthorized);

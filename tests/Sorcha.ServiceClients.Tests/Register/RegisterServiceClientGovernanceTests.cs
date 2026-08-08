@@ -194,21 +194,28 @@ public class RegisterServiceClientGovernanceTests
             Total = 2,
             Proposals =
             [
+                // Feature 189 T046: the endpoint reports the SIGNED PAYLOAD (proposalId / proposedBy)
+                // with a status derived from sealed content, not the tracking metadata it used to
+                // read. This test builds its own body, so it proves the client can read this shape —
+                // never that the server sends it. GovernanceProposalWireContractTests is what pins
+                // the two together, by reflection over both types.
                 new GovernanceProposalSummary
                 {
-                    TxId = "tx-1",
-                    DocketNumber = 2,
-                    OperationType = "add",
-                    ProposerDid = "did:sorcha:w:owner",
-                    TargetDid = "did:sorcha:w:admin1"
+                    ProposalId = "tx-1",
+                    OperationType = "Add",
+                    ProposedBy = "did:sorcha:w:owner",
+                    TargetDid = "did:sorcha:w:admin1",
+                    Status = "Open",
+                    StatusReason = "None"
                 },
                 new GovernanceProposalSummary
                 {
-                    TxId = "tx-2",
-                    DocketNumber = 3,
-                    OperationType = "remove",
-                    ProposerDid = "did:sorcha:w:owner",
-                    TargetDid = "did:sorcha:w:admin1"
+                    ProposalId = "tx-2",
+                    OperationType = "Remove",
+                    ProposedBy = "did:sorcha:w:owner",
+                    TargetDid = "did:sorcha:w:admin1",
+                    Status = "Enacted",
+                    StatusReason = "QuorumMet"
                 }
             ]
         };
@@ -222,8 +229,10 @@ public class RegisterServiceClientGovernanceTests
         Assert.Equal(1, result.Page);
         Assert.Equal(2, result.Total);
         Assert.Equal(2, result.Proposals.Count);
-        Assert.Equal("tx-1", result.Proposals[0].TxId);
-        Assert.Equal("add", result.Proposals[0].OperationType);
+        Assert.Equal("tx-1", result.Proposals[0].ProposalId);
+        Assert.Equal("Add", result.Proposals[0].OperationType);
+        Assert.Equal("Open", result.Proposals[0].Status);
+        Assert.Equal("Enacted", result.Proposals[1].Status);
     }
 
     [Fact]

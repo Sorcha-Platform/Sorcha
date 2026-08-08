@@ -114,8 +114,24 @@ attributed** to the approving organisation with its timestamp, and the terminal 
 }
 ```
 
-`statusReason` values: `quorum-met` · `expired` · `roster-changed` · `withdrawn` ·
-`refused-not-on-roster`. Every terminal state carries one — nothing is silently dropped (FR-011c).
+`status` values: `Open` · `Enacted` · `Invalidated` · `Expired`. `statusReason` values: `QuorumMet` ·
+`RosterChanged` · `Expired`, and `None` while Open. Every terminal state carries one — nothing is
+silently dropped (FR-011c).
+
+**As built, two of the originally-drafted reasons are absent, deliberately.** `withdrawn` has no
+producer anywhere on the platform — no endpoint, no transaction type — so offering it would name a
+state no register can reach. `refused-not-on-roster` is why an individual **approval** did not count,
+not what happened to the proposal (one whose every approval was refused is still `Open`); it is
+reported per-approval in `excludedApprovals[]`, alongside the other `ApprovalTallyRefusal` reasons.
+
+`status` is **derived from sealed content on every read**, never stored — a status column would be a
+second source of truth about a fact the ledger already carries, and it would drift the moment one node
+folds a docket the writer never saw. `Enacted` outranks every other state: an enactment *is* a roster
+change, so ordering invalidation first would report every enacted proposal as `Invalidated`.
+
+The detail response also carries `excludedApprovals[]` — approvals on the ledger that cannot count,
+each with its reason and its own transaction id. An approval missing from a report looks exactly like
+one that was never submitted.
 
 ---
 
