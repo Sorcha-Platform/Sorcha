@@ -41,13 +41,20 @@ public readonly record struct ExcludedApproval(string ApproverDid, ApprovalTally
 /// <param name="SignatureBase64">Signature as it was recorded on the ledger.</param>
 /// <param name="PublicKeyBase64">Key as the ROSTER records it, not as the payload offered it.</param>
 /// <param name="Algorithm">Algorithm the roster records for that organisation.</param>
+/// <param name="Authorisation">
+/// Who stands behind the approval, carried verbatim from the payload. The caller must verify it
+/// before counting the vote (FR-029/FR-032) — a <c>null</c> here is a refusal, not a pass.
+/// </param>
+/// <param name="AuthMethod">How the organisation's key was held. Recorded, never enforced (R-016).</param>
 public readonly record struct ApprovalTallyCheck(
     string ApproverDid,
     bool IsApproval,
     byte[] Digest,
     string SignatureBase64,
     string PublicKeyBase64,
-    SignatureAlgorithm Algorithm);
+    SignatureAlgorithm Algorithm,
+    ApprovalAuthorisation? Authorisation = null,
+    ApprovalAuthMethod AuthMethod = ApprovalAuthMethod.Unknown);
 
 /// <summary>What the caller must verify, and what was excluded before it got that far.</summary>
 /// <param name="Checks">Signatures to verify. Only verified ones may be counted.</param>
@@ -160,7 +167,12 @@ public static class GovernanceApprovalTally
                 SignatureBase64: approval.Signature,
                 // The roster's key, deliberately — see the remarks on this type.
                 PublicKeyBase64: attestation.PublicKey,
-                Algorithm: attestation.Algorithm));
+                Algorithm: attestation.Algorithm,
+                // Carried on the check rather than left for the caller to look up alongside it: a
+                // second list the caller must keep aligned with this one, by approver, is exactly
+                // the hand-maintained correspondence this feature has already been bitten by.
+                Authorisation: approval.Authorisation,
+                AuthMethod: approval.AuthMethod));
         }
 
         return new ApprovalTallyPlan(checks, excluded);
@@ -187,7 +199,27 @@ public static class GovernanceApprovalTally
                 ApproverDid = c.ApproverDid,
                 Signature = c.SignatureBase64,
                 IsApproval = c.IsApproval,
+                AuthMethod = WireValueOf(c.AuthMethod),
             })
             .ToList();
     }
+
+    /// <summary>
+    /// The token the sealed approval payload carries for a given key-custody value (T081 / R-016).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Derived from the naming policy the payload's own converter uses rather than written out as a
+    /// switch, so the vote and the transaction it came from cannot end up spelling one fact two ways.
+    /// A policy gate written against either spelling would otherwise stop matching silently — the
+    /// shape that has already cost this feature two live defects.
+    /// </para>
+    /// <para>
+    /// <see cref="ApprovalAuthMethod.Unknown"/> is recorded explicitly as <c>unknown</c> rather than
+    /// left null. "The approval stated nothing" and "nothing populated this field" are different
+    /// facts, and a register setting a minimum standard should be able to tell them apart.
+    /// </para>
+    /// </remarks>
+    private static string WireValueOf(ApprovalAuthMethod authMethod)
+        => System.Text.Json.JsonNamingPolicy.KebabCaseLower.ConvertName(authMethod.ToString());
 }

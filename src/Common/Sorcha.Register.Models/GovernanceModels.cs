@@ -250,20 +250,28 @@ public class ApprovalSignature
     public DateTimeOffset VotedAt { get; set; }
 
     /// <summary>
-    /// How the person casting this vote authenticated — e.g. <c>passkey</c>, <c>totp</c>,
-    /// <c>password</c>, <c>re-oauth</c> (Feature 189 US2-C).
+    /// How the approving organisation's key was held — <c>software</c>, <c>hardware-backed</c>,
+    /// <c>service</c> or <c>unknown</c> (Feature 189 T081 / R-016).
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Records the METHOD only, never the proof. A governance approval should be attributable to a
-    /// person who deliberately authorised it, not merely to a service that was asked to use an
-    /// organisation's key — and an auditor reading the ledger years later can tell the difference
-    /// between an approval behind a phishing-resistant passkey and one behind a password.
+    /// Populated by <see cref="GovernanceApprovalTally.ToVotes"/> from the sealed approval's own
+    /// <see cref="ApprovalAuthMethod"/>, in the same spelling that payload carries. Recorded so a
+    /// register <i>can</i> later require a minimum standard per operation — never enforced here.
+    /// Enforcing one before organisations have hardware-backed governance keys provisioned would
+    /// lock them out of their own registers.
+    /// </para>
+    /// <para>
+    /// <b>This field means key custody, not how a person authenticated.</b> It previously carried
+    /// <c>passkey</c> / <c>totp</c> / <c>password</c> / <c>re-oauth</c>, written by the in-platform
+    /// approval path that R-014 replaced with external signing — a path that had no callers left.
+    /// That service is deleted rather than left registered, because one field carrying two
+    /// vocabularies is a fact no consumer can interpret.
     /// </para>
     /// <para>
     /// Deliberately coarse. The challenge, its response and any device identifiers stay off the
-    /// ledger: this record is immutable, replicated to every node, and readable by every future
-    /// auditor, so it carries the fact of authentication and not the evidence.
+    /// ledger: this record is replicated to every node and readable by every future auditor, so it
+    /// carries the fact and not the evidence.
     /// </para>
     /// </remarks>
     [JsonPropertyName("authMethod")]

@@ -11,6 +11,7 @@ using Sorcha.Register.Core.Services;
 using Sorcha.Register.Core.Storage;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
+using Sorcha.Validator.Core.Validators;
 using Sorcha.Validator.Service.Diagnostics;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services.Interfaces;
@@ -45,6 +46,23 @@ public class RightsEnforcementService : IRightsEnforcementService
     private readonly IReadOnlyRegisterRepository? _repository;
 
     /// <summary>
+    /// Re-verifies the accountability block of every approval this node counts (T079).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Optional for the same reason <see cref="_repository"/> is. Absent, an approval carrying an
+    /// authorisation <b>cannot be counted</b> — the same direction of failure the rest of this class
+    /// takes, because a node that cannot check accountability has not checked it.
+    /// </para>
+    /// <para>
+    /// This is the <i>same</i> implementation the Register Service runs when an approval arrives over
+    /// HTTP. Verifying it once, on whichever node happened to receive the submission, is not the same
+    /// as verifying it on every node that acts on the sealed result.
+    /// </para>
+    /// </remarks>
+    private readonly IDetachedApprovalVerifier? _approvalVerifier;
+
+    /// <summary>
     /// The governance blueprint ID used to identify Control transactions
     /// </summary>
     public const string GovernanceBlueprintId = GovernanceBlueprint.BlueprintId;
@@ -54,13 +72,15 @@ public class RightsEnforcementService : IRightsEnforcementService
         ICryptoModule cryptoModule,
         ILogger<RightsEnforcementService> logger,
         GovernanceMetrics? metrics = null,
-        IReadOnlyRegisterRepository? repository = null)
+        IReadOnlyRegisterRepository? repository = null,
+        IDetachedApprovalVerifier? approvalVerifier = null)
     {
         _rosterService = rosterService ?? throw new ArgumentNullException(nameof(rosterService));
         _cryptoModule = cryptoModule ?? throw new ArgumentNullException(nameof(cryptoModule));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _metrics = metrics;
         _repository = repository;
+        _approvalVerifier = approvalVerifier;
     }
 
     /// <inheritdoc/>
@@ -688,20 +708,93 @@ public class RightsEnforcementService : IRightsEnforcementService
         var verified = new HashSet<string>(StringComparer.Ordinal);
         foreach (var check in plan.Checks)
         {
-            if (await VerifyTallyCheckAsync(check, ct))
-            {
-                verified.Add(check.ApproverDid);
-            }
-            else
+            if (!await VerifyTallyCheckAsync(check, ct))
             {
                 _logger.LogWarning(
                     "Approval from {ApproverDid} on proposal {ProposalId} did not verify and does not count",
                     check.ApproverDid, proposalId);
                 _metrics?.RecordRefused(registerId, "approval-signature-invalid");
+                continue;
             }
+
+            if (!await VerifyAccountabilityAsync(registerId, proposalId, proposedOperation, check, ct))
+            {
+                continue;
+            }
+
+            verified.Add(check.ApproverDid);
         }
 
         return GovernanceApprovalTally.ToVotes(plan, verified);
+    }
+
+    /// <summary>
+    /// Re-verifies the accountability block of one approval, on this node (T079).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The organisation's signature carries <i>authority</i>; the authorisation carries
+    /// <i>responsibility</i>. Both are checked before a vote counts, because an approval that
+    /// resolves to nobody is one the register can never attribute to a decision (FR-029) — and one
+    /// whose authorisation does not verify is refused outright rather than counted with the
+    /// accountability quietly discarded, which would leave a record that looks complete and is not
+    /// (FR-032).
+    /// </para>
+    /// <para>
+    /// <b>The authorisation is attestation metadata, never a roster claim.</b> It is deliberately not
+    /// matched against the roster: the individual behind an organisation's approval is not themselves
+    /// a member of the register's governance, and treating them as one would either reject every
+    /// valid approval or — worse — let an individual's signature stand in for their organisation's.
+    /// </para>
+    /// <para>
+    /// Every refusal is logged. An approval that stops counting without a trace looks to an operator
+    /// exactly like one that was never submitted, which is the shape that let a silent
+    /// deserialisation failure count zero approvals for a whole live run.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> VerifyAccountabilityAsync(
+        string registerId,
+        string proposalId,
+        GovernanceOperation proposedOperation,
+        ApprovalTallyCheck check,
+        CancellationToken ct)
+    {
+        if (_approvalVerifier is null)
+        {
+            // Fails closed, like every other "cannot check" path here. A node without the verifier
+            // has not verified accountability, and counting the vote anyway would silently restore
+            // exactly the gap this closes.
+            _logger.LogWarning(
+                "Approval from {ApproverDid} on proposal {ProposalId} does not count — this validator "
+                + "has no approval verifier, so its accountability cannot be checked",
+                check.ApproverDid, proposalId);
+            _metrics?.RecordRefused(registerId, "approval-authorisation-uncheckable");
+            return false;
+        }
+
+        // Revocation is a ledger record, so the answer must come from sealed content. Reading it back
+        // is a separate piece of work (T088's service-side half); until it lands, a delegation that
+        // has been revoked on the ledger is not yet detected HERE — it is still caught at intake by
+        // the Register Service, which passes the same predicate.
+        var verification = await _approvalVerifier.VerifyAuthorisationAsync(
+            registerId, proposedOperation, check.ApproverDid, check.IsApproval,
+            check.Authorisation, DateTimeOffset.UtcNow, isRevoked: null, ct);
+
+        if (verification.Accepted)
+        {
+            _logger.LogDebug(
+                "Approval from {ApproverDid} on proposal {ProposalId} is accountable to {Individual}",
+                check.ApproverDid, proposalId, verification.AccountableIndividualDid);
+            return true;
+        }
+
+        _logger.LogWarning(
+            "Approval from {ApproverDid} on proposal {ProposalId} does not count — its authorisation "
+            + "was refused: {Reason} — {Detail}",
+            check.ApproverDid, proposalId, verification.Reason, verification.Detail);
+        _metrics?.RecordRefused(registerId, "approval-authorisation-invalid");
+
+        return false;
     }
 
     private async Task<bool> VerifyTallyCheckAsync(ApprovalTallyCheck check, CancellationToken ct)

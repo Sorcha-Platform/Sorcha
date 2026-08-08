@@ -237,15 +237,20 @@ builder.Services.AddScoped<Sorcha.Register.Core.Services.IGovernanceRosterServic
 builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceSigningService,
     Sorcha.Register.Service.Services.GovernanceSigningService>();
 
-// Feature 189 US2: produces cryptographically signed approvals. Without a producer, US2-A's
-// mandatory verification would leave every quorum-requiring operation unsatisfiable.
-builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceApprovalService,
-    Sorcha.Register.Service.Services.GovernanceApprovalService>();
+// GovernanceApprovalService was registered here: the in-platform approval path, where the server
+// signed on an organisation's behalf and recorded how the person had authenticated. R-014 replaced
+// it with external signing — the server must not hold a multi-party register's key — and nothing has
+// called it since. It is deleted rather than left registered because its `authMethod` vocabulary
+// (passkey / totp / password) is not the one the ledger now records in that field (T081): one field
+// with two vocabularies is a fact no consumer can interpret.
 
 // Feature 189 T078: verifies an approval produced outside the platform's trust boundary — every
 // signature, and that the key naming an accountable individual actually belongs to them (FR-035).
-builder.Services.AddScoped<Sorcha.Register.Service.Services.IDetachedApprovalVerifier,
-    Sorcha.Register.Service.Services.DetachedApprovalVerifier>();
+// It lives in Sorcha.Validator.Core because the Validator runs the identical check on every node
+// when it recounts sealed approvals (T079); two implementations of one rule is how the two would
+// come to disagree about whether a governance change is authorised.
+builder.Services.AddScoped<Sorcha.Validator.Core.Validators.IDetachedApprovalVerifier,
+    Sorcha.Validator.Core.Validators.DetachedApprovalVerifier>();
 
 // Feature 189: one way to read a proposal off the ledger, shared by the signing-request and approve
 // endpoints. The proposal IS its transaction, so there is no proposal table to drift from it.
@@ -2662,8 +2667,9 @@ governanceGroup.MapGet("/proposals/{proposalId}/signing-request", async (
 governanceGroup.MapPost("/proposals/{proposalId}/approve", async (
     Sorcha.Register.Service.Services.IGovernanceProposalReader proposalReader,
     Sorcha.Register.Core.Services.IGovernanceRosterService rosterService,
-    Sorcha.Register.Service.Services.IDetachedApprovalVerifier verifier,
+    Sorcha.Validator.Core.Validators.IDetachedApprovalVerifier verifier,
     Sorcha.Register.Service.Services.IGovernanceApprovalActionSubmitter submitter,
+    ILoggerFactory loggerFactory,
     string registerId,
     string proposalId,
     GovernanceApprovalSubmission submission,
@@ -2760,6 +2766,13 @@ governanceGroup.MapPost("/proposals/{proposalId}/approve", async (
 
     if (!verification.Accepted)
     {
+        // The verifier itself logs nothing — it is shared with the Validator, which reports the same
+        // refusal as "excluded from a tally" rather than "submission rejected". Each caller says it
+        // in its own terms; neither drops it silently (FR-011c).
+        loggerFactory.CreateLogger("Sorcha.Register.Service.Governance").LogWarning(
+            "Detached approval from {ApproverDid} on proposal {ProposalId} refused: {Reason} — {Detail}",
+            submission.ApproverDid, proposalId, verification.Reason, verification.Detail);
+
         var statusCode = verification.Reason switch
         {
             // A signature that does not verify is a bad request, not a malformed one.

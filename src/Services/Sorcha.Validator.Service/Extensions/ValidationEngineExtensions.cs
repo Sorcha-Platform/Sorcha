@@ -44,6 +44,16 @@ public static class ValidationEngineExtensions
         services.AddScoped<IGovernanceRosterService, GovernanceRosterService>();
         // Feature 189 — governance decision counters. Singleton: it owns a Meter.
         services.AddSingleton<GovernanceMetrics>();
+
+        // Feature 189 T079 — re-verifies the accountability block of every approval this node counts.
+        // The SAME implementation the Register Service runs at intake: without it here, a replicated
+        // approval would be counted on the organisation's signature alone, so accountability would be
+        // verified once (on whichever node received the submission) rather than by every node that
+        // acts on the sealed result. RightsEnforcementService fails an approval closed when this is
+        // absent, so a missing registration costs quorum rather than silently skipping the check.
+        services.AddScoped<Sorcha.Validator.Core.Validators.IDetachedApprovalVerifier,
+            Sorcha.Validator.Core.Validators.DetachedApprovalVerifier>();
+
         services.AddScoped<IRightsEnforcementService, RightsEnforcementService>();
 
         // Register the validation engine as scoped (matches IRegisterServiceClient lifetime)

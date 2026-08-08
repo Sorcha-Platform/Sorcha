@@ -223,4 +223,52 @@ public sealed class GovernanceApprovalTallyTests
         plan.Excluded.Should().ContainSingle()
             .Which.Refusal.Should().Be(ApprovalTallyRefusal.NoApprover);
     }
+
+    /// <summary>
+    /// T081 / R-016: how the approving key was held travels with the vote, so a register that sets
+    /// its own minimum standard has the fact to gate on.
+    /// </summary>
+    /// <remarks>
+    /// The value is the same token the sealed approval payload carries, deliberately: an operator
+    /// comparing the vote against the transaction it came from should not have to translate between
+    /// two spellings of one fact.
+    /// </remarks>
+    [Theory]
+    [InlineData(ApprovalAuthMethod.HardwareBacked, "hardware-backed")]
+    [InlineData(ApprovalAuthMethod.Software, "software")]
+    [InlineData(ApprovalAuthMethod.Service, "service")]
+    [InlineData(ApprovalAuthMethod.Unknown, "unknown")]
+    public void ToVotes_CarriesHowTheKeyWasHeld(ApprovalAuthMethod held, string expected)
+    {
+        var approval = Approval(AdminDid, Key(2));
+        approval.AuthMethod = held;
+
+        var plan = Prepare(approval);
+
+        var votes = GovernanceApprovalTally.ToVotes(
+            plan, new HashSet<string>(StringComparer.Ordinal) { AdminDid });
+
+        votes.Should().ContainSingle().Which.AuthMethod.Should().Be(expected);
+    }
+
+    /// <summary>
+    /// The value must match what the payload serialises, or the two records of one fact drift and a
+    /// policy written against either spelling silently stops matching.
+    /// </summary>
+    [Fact]
+    public void TheRecordedAuthMethod_IsTheSameTokenTheSealedPayloadCarries()
+    {
+        var approval = Approval(AdminDid, Key(2));
+        approval.AuthMethod = ApprovalAuthMethod.HardwareBacked;
+
+        var vote = GovernanceApprovalTally.ToVotes(
+            Prepare(approval), new HashSet<string>(StringComparer.Ordinal) { AdminDid }).Single();
+
+        // Derived from the payload's own serialisation rather than written out here, so a change to
+        // the payload's converter cannot leave this assertion pinning a stale spelling.
+        var sealedJson = System.Text.Json.JsonSerializer.Serialize(
+            approval, GovernanceApprovalActionPayload.CanonicalJsonOptions);
+
+        sealedJson.Should().Contain($"\"authMethod\":\"{vote.AuthMethod}\"");
+    }
 }
