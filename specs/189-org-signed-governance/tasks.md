@@ -105,10 +105,26 @@ confirm sealed-in-docket and observable on tiny.
 - [X] T039 [US2] Add `CryptoPolicyUpdate` to `GovernanceOperationType` in `src/Common/Sorcha.Register.Models/GovernanceModels.cs` (FR-021)
 - [X] T040 [US2] Add `RosterSnapshotId` and `QuorumFormulaAtRaise` to the proposal shape, captured at raise time from `GovernanceRoster.LastControlTxId` and the register's configured rule (FR-011a)
 - [ ] T041 [US2] ~~Implement approvals as ledger transactions signed with the org's slot-100 key~~ **ABSORBED into T071-T073 (2026-08-07).** R-009 equates "ledger transaction" and "action submission", so this is the same object as T054; and the approval's `BlueprintId`/`ActionId`/payload schema are defined by the blueprint (T053). Building it standalone means inventing a shape and changing it in US3 — the "bespoke code beside a decorative blueprint" the brief rejects. Do NOT start here.
-- [X] T042 [US2] Implement invalidation as a comparison at count time — current `LastControlTxId` ≠ proposal's `RosterSnapshotId` ⇒ invalid. No timer, no sweeper, deterministic on every node
+- [X] T042 [US2] Implement invalidation as a comparison at count time — current `LastControlTxId` ≠ proposal's `RosterSnapshotId` ⇒ invalid. No timer, no sweeper, deterministic on every node. **Now actually reachable:** a proposal is recorded rather than refused, and carries no roster so it does not invalidate itself (see the lifecycle design).
 - [ ] T043 [US2] Record every terminal outcome with a reason (`quorum-met` / `expired` / `roster-changed` / `withdrawn` / `refused-not-on-roster`) — never a silent drop (FR-011c)
-- [ ] T044 [US2] Wire quorum evaluation to the existing `GovernanceRosterService.ValidateQuorumAsync` over sealed approval transactions — do **not** reimplement the arithmetic (R-007)
-- [ ] T045 [US2] Implement `POST /governance/proposals/{proposalId}/approve` per contracts — now accepts a **detached** `GovernanceApprovalSubmission` (R-014); server-side signing for multi-party registers is withdrawn. `202` submitted, `400` signature fails v2 verification, `403` not on snapshot, `409` not open/expired, `422` bad co-signature, idempotent repeat
+
+> 🔴 **FINDING, open — decide before wiring the Validator's enactment gate (T044) or building the
+> enactment reaction.** The Owner override is gated on **who signed the transaction**
+> (`submitterAttestation.Role != RegisterRole.Owner` in `RightsEnforcementService`), while
+> `ValidateQuorumAsync` gates it on **who raised the operation** (`ownerDid == operation.ProposerDid`).
+> Those coincide today only because the proposer signs its own enacting transaction.
+>
+> Once enactment is a separate transaction carried by a reaction, they come apart: an enactment
+> carried by the **Owner** would take the override and skip the quorum check entirely — so a
+> never-approved proposal raised by anyone could be enacted simply by being carried on an
+> Owner-signed transaction. That launders a proposal through the carry, which is precisely what the
+> T075 carry/authority separation exists to prevent.
+>
+> The gate must key on the **operation's proposer**, not on the transaction's signer. Worth deciding
+> deliberately rather than patching, because it also constrains the reaction: whichever organisation's
+> key a node holds, the carry must not be able to confer authority.
+- [~] T044 [US2] Wire quorum evaluation to the existing `GovernanceRosterService.ValidateQuorumAsync` over sealed approval transactions — do **not** reimplement the arithmetic (R-007). **PART DONE:** `GovernanceApprovalTally` (zero-dependency, plan-then-verify) selects which sealed approvals may count and builds the signature checks; the arithmetic still goes through `ValidateQuorumAsync`. The key comes from the **roster**, never from the approval payload — trusting the offered key would make every signature self-certifying. **Remaining:** wire it into the Validator so an enactment is authorised by verified sealed approvals instead of `operation.ApprovalSignatures`. See the Owner-carrier finding under T043 below — it changes the shape of that gate.
+- [X] T045 [US2] Implement `POST /governance/proposals/{proposalId}/approve` per contracts — now accepts a **detached** `GovernanceApprovalSubmission` (R-014); server-side signing for multi-party registers is withdrawn. `202` submitted, `400` signature fails v2 verification, `403` not on snapshot, `409` not open/expired, `422` bad co-signature, idempotent repeat
 - [ ] T046 [US2] Implement `GET /governance/proposals` (status filter) and `GET /governance/proposals/{proposalId}` (full audit detail)
 - [X] T047 [US2] Enforce FR-024 — a governance change may never leave a register with no organisation able to govern it
 - [ ] T048 [US2] 🔴 **LIVE GATE** Three-organisation register under `Unanimous` on n1: not enacted at 2 of 3; enacted and sealed at 3 of 3; replicated to tiny
