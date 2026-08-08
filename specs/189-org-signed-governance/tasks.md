@@ -195,7 +195,7 @@ confirm sealed-in-docket and observable on tiny.
 - [ ] T067 [P] Update `.specify/MASTER-TASKS.md` and `docs/reference/development-status.md`
 - [ ] T068 Record the R-006 limitation prominently (service principals can sign as any organisation, so approvals prove "the node was asked to use the key", not "the organisation approved") — this must not be described as solved
 - [ ] T069 Delete the throwaway probe registers on n1 (`c794c86c…`, `96c421c0…`, `6b0760aa…`) once no longer needed as evidence
-- [ ] T070 Confirm n1 is running a CI-built image rather than the locally-built `register-service:latest` currently deployed
+- [X] T070 **DONE 2026-08-08.** PR #1383 merged (`60d3e990`); `docker compose pull` + recreate put n1 back on CI-built `register-service` and `validator-service` images. SSR untouched (2 dockets before and after), zero errors, and both live gates re-pass on the CI build.
 
 ---
 
