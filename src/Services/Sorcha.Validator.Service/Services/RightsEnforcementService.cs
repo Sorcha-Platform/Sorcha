@@ -746,8 +746,14 @@ public class RightsEnforcementService : IRightsEnforcementService
                 ? Convert.FromBase64String(data)
                 : Base64Url.DecodeFromChars(data);
 
-            return JsonSerializer.Deserialize<T>(
-                bytes, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            // An approval payload MUST be read with the options it was written with: its enums are
+            // kebab-case on the wire, and ad-hoc options throw on them — which the catch below would
+            // swallow as "not an approval", so every approval silently stops counting.
+            var options = typeof(T) == typeof(GovernanceApprovalActionPayload)
+                ? GovernanceApprovalActionPayload.CanonicalJsonOptions
+                : new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+            return JsonSerializer.Deserialize<T>(bytes, options);
         }
         catch (Exception ex) when (ex is JsonException or FormatException)
         {

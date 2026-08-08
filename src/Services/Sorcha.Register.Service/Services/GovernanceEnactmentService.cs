@@ -439,8 +439,11 @@ public sealed class GovernanceEnactmentService : IGovernanceEnactmentService
                 ? Convert.FromBase64String(data)
                 : Base64Url.DecodeFromChars(data);
 
+            // The SAME options the payload was written with. Reading it back with ad-hoc options
+            // throws on the kebab-case enums and the catch below swallows it as "not an approval",
+            // so every approval silently stops counting and nothing is ever enacted.
             return JsonSerializer.Deserialize<GovernanceApprovalActionPayload>(
-                bytes, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                bytes, GovernanceApprovalActionPayload.CanonicalJsonOptions);
         }
         catch (Exception ex) when (ex is JsonException or FormatException)
         {

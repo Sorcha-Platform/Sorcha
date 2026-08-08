@@ -134,8 +134,23 @@ public sealed class GovernanceApprovalActionPayload
     public static readonly JsonSerializerOptions CanonicalJsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+
+        // These options are used for READING as well as writing. A reader with ad-hoc options throws
+        // on the kebab-case enums below, and every caller wraps the decode in a try/catch that treats
+        // a throw as "not an approval" — so the failure is total and silent.
+        PropertyNameCaseInsensitive = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         WriteIndented = false,
+
+        // Load-bearing, and its absence is INTERMITTENT. The Validator re-serialises the payload and
+        // recomputes the hash using this encoder; the default one escapes '+' as +. A base64
+        // signature or public key containing '+' therefore hashed differently on the two sides and the
+        // approval was refused TX_012 "Payload hash mismatch" — while an approval whose bytes happened
+        // to contain no '+' sealed normally. Found live on n1: the first of two approvals passed and
+        // the second did not, on the same code path.
+        //
+        // Third time a '+' in base64 has broken this feature (see GovernanceKeyMatcher / R-003).
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         Converters =
         {
             new JsonStringEnumConverter<ApprovalAuthMethod>(JsonNamingPolicy.KebabCaseLower),
