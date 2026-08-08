@@ -130,3 +130,83 @@ public static class GovernanceDelegationStatement
         }
     }
 }
+
+
+/// <summary>
+/// Withdrawal of a <see cref="GovernanceDelegation"/>, signed by the individual who granted it.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Deliberately not quorum-gated (R-023).</b> Granting authority is the act that deserves
+/// ceremony; withdrawing it is not. Routing revocation through the proposal path would leave a
+/// compromised autonomous approver <b>live while votes are collected</b>, which inverts the point of
+/// having revocation at all.
+/// </para>
+/// <para>
+/// It is a ledger record rather than service state so validity is derivable from sealed content and
+/// every node folds the same answer (R-009) - the same reason approvals are transactions, not rows.
+/// </para>
+/// </remarks>
+public sealed class GovernanceDelegationRevocation
+{
+    /// <summary>The grant being withdrawn.</summary>
+    public string DelegationId { get; set; } = string.Empty;
+
+    /// <summary>Organisation whose delegation this was.</summary>
+    public string OrganisationDid { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The individual withdrawing it. Must be the individual who granted it - a revocation naming
+    /// someone else is a claim about another person's decision.
+    /// </summary>
+    public string IndividualDid { get; set; } = string.Empty;
+
+    /// <summary>When it was withdrawn.</summary>
+    public DateTimeOffset RevokedAt { get; set; }
+
+    /// <summary>Optional operator-facing reason, for the audit trail.</summary>
+    public string? Reason { get; set; }
+}
+
+/// <summary>
+/// Canonical bytes the granting individual signs to withdraw a delegation.
+/// </summary>
+/// <remarks>
+/// A distinct domain tag from <see cref="GovernanceDelegationStatement"/> so a grant signature can
+/// never be replayed as a revocation, or the reverse. Binds the whole record for the same reason the
+/// other statements do.
+/// </remarks>
+public static class GovernanceDelegationRevocationStatement
+{
+    /// <summary>Field separator - a control character that cannot occur in a DID.</summary>
+    private const char UnitSeparator = '';
+
+    /// <summary>Domain tag, distinct from the grant statement.</summary>
+    public const string StatementVersion = "sorcha:governance-delegation-revocation:v1";
+
+    private static readonly JsonSerializerOptions CanonicalOptions = new()
+    {
+        Converters = { new JsonStringEnumConverter() },
+        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+        WriteIndented = false,
+    };
+
+    /// <summary>SHA-256 digest the granting individual signs.</summary>
+    public static byte[] ComputeDigest(GovernanceDelegationRevocation revocation)
+        => SHA256.HashData(Encoding.UTF8.GetBytes(BuildStatement(revocation)));
+
+    /// <summary>The canonical statement, so a grantor is shown exactly what they are withdrawing.</summary>
+    public static string BuildStatement(GovernanceDelegationRevocation revocation)
+    {
+        ArgumentNullException.ThrowIfNull(revocation);
+
+        var node = JsonSerializer.SerializeToNode(revocation, CanonicalOptions)!.AsObject();
+        var ordered = new JsonObject();
+        foreach (var pair in node.OrderBy(p => p.Key, StringComparer.Ordinal))
+        {
+            ordered[pair.Key] = pair.Value?.DeepClone();
+        }
+
+        return string.Join(UnitSeparator, StatementVersion, ordered.ToJsonString());
+    }
+}

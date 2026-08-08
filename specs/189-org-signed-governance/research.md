@@ -611,3 +611,40 @@ caught it are not in the PR because they pin behaviour that does not exist yet.
    name, which reads like missing data rather than a wrong shape.
 3. **Attestation windows are 5 minutes**, which is tight for any interactive flow where a human signs
    on a separate device. Worth revisiting before the PWA signing surface (T083) is built against it.
+
+---
+
+## R-023: Delegation policy (decided by the maintainer, 2026-08-08)
+
+**Revocation is unilateral, not quorum-gated.** Revoking a delegation you granted is recorded as a
+lighter ledger record signed by the granting individual — it does not go through the proposal path.
+Requiring quorum to revoke would leave a compromised autonomous approver **live while votes are
+collected**, which inverts the point of having revocation at all. Granting authority is the thing that
+deserves ceremony; withdrawing it is not.
+
+Validity stays ledger-derived so every node folds identically (R-009) — the validator's injected
+`isRevoked` predicate reads sealed content.
+
+**Only an Owner may grant a delegation.** A delegation is a standing key carrying the organisation's
+governance authority. If any administrator can mint one, the weakest admin account sets the
+organisation's governance blast radius. Owner-only is narrower than may eventually be wanted, and
+narrow is reversible in a way that wide is not.
+
+*Implementation note:* `Sorcha.Register.Models` is a zero-dependency leaf and knows nothing of
+organisational roles, so this check cannot live with the structural validation. It belongs in the
+service layer where the roster and org membership are resolvable — tracked as T095.
+
+**`authMethod` is recorded, not enforced.** The field captures whether a key was hardware-backed so a
+register *can* later require a minimum standard. Enforcing one now, before anyone has hardware-backed
+governance keys provisioned, would lock organisations out of their own registers. Per-register
+enforcement is a later policy decision, not a default.
+
+**Interactive signing windows are 15 minutes; scripted flows keep 5.** The observed 5-minute
+attestation window (R-022) is adequate for a script and not for a human signing on a separate device —
+find the phone, unlock it, read the operation, approve. A window that expires mid-review trains people
+to approve without reading, which defeats FR-027.
+
+**#1380 stays narrowed, not closed.** External signing closes it for multi-party registers.
+Single-owner registers keep the unattended Owner override by earlier decision, so the server still
+signs there. Closing it fully means retiring that override, which is what makes single-owner registers
+work headlessly — a separate decision deserving its own consideration.
