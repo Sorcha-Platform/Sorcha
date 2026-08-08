@@ -327,3 +327,4 @@ src/Services/**/*.xml
 # Per-launch agent logs written by demos/AIAS Start-AiasAgent. (state.json and the rendered
 # agent config are already covered by demos/AIAS/.gitignore.)
 demos/**/logs/
+.governance-livetest/
