@@ -1,8 +1,20 @@
 # Feature 189 — live test runbook
 
-The propose → approve → enact chain is complete in code and **none of it has executed against a
-deployment**. This is how to run it. Nothing here has been performed yet; every step is written to be
-falsifiable, so a step that does not produce the stated evidence is a finding, not a hiccup.
+> **RUN 2026-08-08 — PASSED.** Register `254ac2e04ede439885c03b94c949237f` on n1. Four dockets:
+> genesis (roster 2) → proposal (`roster: null`, `status: Pending`) → two approvals sealed together →
+> enactment (roster 3, `enactsProposalId` set) raised by nothing but the `docket:confirmed` reaction.
+> Validator reported `validated 1 transactions, rejected 0` throughout.
+>
+> **It found two defects first (both fixed, commit `1c4d9440`).** An intermittent payload-hash
+> mismatch — an approval whose base64 signature contained a `+` was refused while one whose bytes did
+> not sealed, because the submitter's JSON encoder escaped it and the Validator's did not. And a
+> total, silent one: the payload was read back with options carrying no enum converters, so the
+> deserialise threw and every reader treats a throw as "not an approval" — both the enactment service
+> and the Validator counted **zero** approvals, and nothing logged an error. Steps 7 and 8 below
+> (substitution, no-regression) are still **not run**.
+
+The propose → approve → enact chain is complete in code. This is how to run it; every step is written
+to be falsifiable, so a step that does not produce the stated evidence is a finding, not a hiccup.
 
 > **Why this document exists.** Eight of this feature's known defects were found by the first live
 > run after a green suite, and two confident claims of mine were disproved by execution. A green
