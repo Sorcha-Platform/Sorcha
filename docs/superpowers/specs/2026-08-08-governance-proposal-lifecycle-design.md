@@ -1,7 +1,8 @@
 # Governance proposal lifecycle — separating propose from enact
 
 **Feature**: 189 (org-signed governance)
-**Status**: proposed, for review — nothing built
+**Status**: approved 2026-08-08 — Owner override keeps its single transaction, enactment fires from
+`docket:confirmed`. Steps 1 and 2 of the sequencing are built.
 **Depends on**: T075 (approvals as action submissions, landed `45b91707`)
 **Blocks**: T043, T044, T045, T046, T048, T049, T082, T085, and any live proof of T075
 
@@ -113,7 +114,7 @@ concurrently, which is precisely the class of defect this feature keeps producin
 
 ### Who submits the enactment
 
-Three options; the recommendation is **(b)**.
+**Decided: (b), a reaction on `docket:confirmed`.**
 
 - **(a) The approving client's own request.** Simplest, but quorum is only knowable once the approval
   *seals*, so the request would have to wait for a seal it does not control. Rejected.
@@ -127,16 +128,16 @@ Three options; the recommendation is **(b)**.
   quorum-met-but-not-enacted limbo until somebody calls it — the "quorum met, enactment fails →
   never limbo" row of the design's failure table, reintroduced as a design feature.
 
-### The Owner override — two options, recommendation is **(1)**
+### The Owner override — **decided: keep today's single transaction**
 
-1. **Keep today's single transaction.** An Owner-override change stays exactly one control
-   transaction: propose-and-enact, unchanged bytes, unchanged behaviour. The split applies only where
-   quorum is genuinely required. **This preserves the only live-proven path in the feature (T093) and
-   FR-031's unattended single-owner property, at the cost of two enactment shapes in the code.**
-2. **Always propose then enact.** One model everywhere; an Owner-override change becomes two control
-   transactions submitted from one request. Cleaner conceptually, but it doubles the seal latency of
-   the most-used governance operation, changes what every single-owner register's ledger looks like,
-   and puts the no-regression gate (T086) at risk for a tidiness gain.
+An Owner-override change stays exactly one control transaction: propose-and-enact together, unchanged
+behaviour. The split applies only where quorum is genuinely required. This preserves the only
+live-proven path in the feature (T093) and FR-031's unattended single-owner property, at the cost of
+two enactment shapes in the code.
+
+The rejected alternative was always propose-then-enact: one model everywhere, but it doubles the seal
+latency of the most-used governance operation, changes what every single-owner register's ledger looks
+like, and puts the no-regression gate (T086) at risk for a tidiness gain.
 
 ### API surface
 
@@ -155,10 +156,17 @@ of truth that drifts from the ledger — the thing R-009 exists to prevent.
 ### The validator carve-out a pending proposal needs
 
 `VAL_PERM_005` refuses a non-Owner `Add`/`Remove` carrying no approval signatures — which is exactly
-what a pending proposal *is*. The carve-out keys on `Operation.Status == Pending`: a proposal enacts
-nothing, so there is nothing for quorum to authorise. `Status` is inside the signed payload and is
-already excluded from the approval digest (it is lifecycle, not content), so this is safe: a
-submitter who sets `Pending` to dodge the check gets a transaction that changes no roster.
+what a pending proposal *is*. `VAL_PERM_008`'s distinct-signer threshold for `Transfer` has the same
+problem: a proposal is raised by one organisation and the signatures are collected afterwards.
+
+> **The discriminator is the absence of a roster, NOT `Operation.Status`.** Status was the obvious
+> choice and it is wrong: `ProposalStatus.Pending` is `0`, so a payload that simply omits the field
+> reads as pending — and keying the exemption on it lets a transaction that *does* carry a roster skip
+> quorum by saying nothing at all. That was implemented, and
+> `ValidateGovernanceRightsAsync_NonOwnerWithoutQuorum_Rejected` (whose operation never sets `Status`)
+> caught it immediately. Absence of a roster cannot be faked into a change: carry no roster, move no
+> roster. Guarded going forward by
+> `NonOwnerChange_CarryingARoster_StillRequiresQuorum_EvenWithStatusUnset`.
 
 ---
 

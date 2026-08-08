@@ -196,8 +196,27 @@ public class RightsEnforcementService : IRightsEnforcementService
             // apply — notably Transfer, which must never be completed on the proposing owner's
             // authority alone (FR-010).
             authorisedSignerCount = governanceSigners.Count;
-            var parsedOperation = TryParseGovernanceOperation(transaction);
-            var requiredSigners = ResolveRequiredDistinctSigners(roster, parsedOperation);
+
+            // Parsed once. The whole payload is needed, not just the operation: whether this
+            // transaction ENACTS anything is decided by the presence of a roster, and that governs
+            // both the signer threshold below and the quorum check further down.
+            var controlPayload = TryParseControlPayload(transaction);
+
+            // Feature 189: a transaction carrying NO roster changes no roster, so it is a proposal
+            // being RAISED, not a change being made. It cannot carry the approvals it exists to
+            // collect, and demanding them refuses every multi-party proposal at birth.
+            //
+            // The discriminator is the absence of a roster, NOT Operation.Status. Status was the
+            // obvious choice and is wrong: ProposalStatus.Pending is 0, so a payload that simply
+            // omits the field reads as Pending and would skip quorum on a transaction that DOES
+            // carry a roster. Caught by ValidateGovernanceRightsAsync_NonOwnerWithoutQuorum_Rejected,
+            // whose operation never sets Status. Absence of a roster cannot be faked into a change:
+            // carry no roster, move no roster.
+            var enactsNothing = controlPayload is not null && controlPayload.Roster is null;
+
+            var requiredSigners = enactsNothing
+                ? 1
+                : ResolveRequiredDistinctSigners(roster, controlPayload?.Operation);
 
             if (governanceSigners.Count < requiredSigners)
             {
@@ -212,8 +231,8 @@ public class RightsEnforcementService : IRightsEnforcementService
                 return CreateFailureResult(transaction, sw.Elapsed, errors);
             }
 
-            // Try to parse the governance operation from the payload for deeper validation
-            var operation = TryParseGovernanceOperation(transaction);
+            // Deeper validation against the parsed operation.
+            var operation = controlPayload?.Operation;
             if (operation != null)
             {
                 // Feature 189 (FR-011b): a proposal is judged against the roster it was RAISED
@@ -268,8 +287,18 @@ public class RightsEnforcementService : IRightsEnforcementService
                     }
                 }
 
-                // For non-Owner Add/Remove: verify quorum is included
-                if (submitterAttestation.Role != RegisterRole.Owner &&
+                // For non-Owner Add/Remove: verify quorum is included.
+                //
+                // Feature 189: a transaction that enacts nothing is exempt, and must be. A proposal
+                // is raised so approvals have something to attach to; it carries no roster and
+                // changes nothing, so there is nothing for quorum to authorise. Applying this check
+                // to one refuses every multi-party proposal at birth — the same dead end that was in
+                // the endpoint, moved into the validator.
+                //
+                // See `enactsNothing` above for why this keys on the absence of a roster rather than
+                // on Operation.Status.
+                if (!enactsNothing &&
+                    submitterAttestation.Role != RegisterRole.Owner &&
                     operation.OperationType is GovernanceOperationType.Add or GovernanceOperationType.Remove)
                 {
                     if (operation.ApprovalSignatures == null || operation.ApprovalSignatures.Count == 0)
@@ -525,18 +554,16 @@ public class RightsEnforcementService : IRightsEnforcementService
     }
 
     /// <summary>
-    /// Attempts to parse a GovernanceOperation from the transaction payload.
-    /// Returns null if the payload is not a governance operation (e.g., genesis).
+    /// Attempts to parse the control payload from the transaction.
+    /// Returns null if the payload is not a control envelope (e.g., an approval or an action).
     /// </summary>
-    private GovernanceOperation? TryParseGovernanceOperation(Transaction transaction)
+    private ControlTransactionPayload? TryParseControlPayload(Transaction transaction)
     {
         try
         {
             var payloadText = transaction.Payload.GetRawText();
-            var payload = JsonSerializer.Deserialize<ControlTransactionPayload>(payloadText,
+            return JsonSerializer.Deserialize<ControlTransactionPayload>(payloadText,
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-            return payload?.Operation;
         }
         catch (JsonException ex)
         {

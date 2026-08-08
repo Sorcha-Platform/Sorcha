@@ -128,7 +128,7 @@ public sealed class DetachedApprovalVerifier : IDetachedApprovalVerifier
             if (!await VerifySignatureAsync(check, algorithm, ct))
             {
                 return Refuse(
-                    AuthorisationRefusalReason.Incomplete,
+                    AuthorisationRefusalReason.SignatureInvalid,
                     $"The {check.Purpose} signature did not verify.",
                     submission);
             }

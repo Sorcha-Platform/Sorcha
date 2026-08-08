@@ -291,11 +291,26 @@ public class ControlTransactionPayload
     public int Version { get; set; } = 1;
 
     /// <summary>
-    /// Full current roster snapshot at the time of this Control transaction
+    /// Full roster snapshot as of this Control transaction, or <c>null</c> when the transaction
+    /// changes no roster.
     /// </summary>
-    [Required]
+    /// <remarks>
+    /// <para>
+    /// <b>Null is load-bearing (Feature 189).</b> A <i>pending</i> governance proposal enacts
+    /// nothing — it is raised so approvals have something to attach to — so it must not appear to
+    /// roster reconstruction as a roster change. <c>GovernanceRosterService.GetCurrentRosterAsync</c>
+    /// walks control transactions newest-first and skips any whose payload carries no populated
+    /// roster, so a null here keeps <c>LastControlTxId</c> on the last <i>real</i> roster commit.
+    /// </para>
+    /// <para>
+    /// That matters because FR-011b invalidates a proposal whose <c>RosterSnapshotId</c> no longer
+    /// matches <c>LastControlTxId</c>. A proposal that wrote a roster would move that value and
+    /// invalidate <b>itself</b> the moment it sealed — which is exactly what the pre-split
+    /// propose-and-enact transaction did, and why no approval could ever attach to one.
+    /// </para>
+    /// </remarks>
     [JsonPropertyName("roster")]
-    public RegisterControlRecord Roster { get; set; } = new();
+    public RegisterControlRecord? Roster { get; set; }
 
     /// <summary>
     /// The governance operation that produced this roster state.

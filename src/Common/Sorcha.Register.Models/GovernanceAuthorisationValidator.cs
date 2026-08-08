@@ -35,6 +35,18 @@ public enum AuthorisationRefusalReason
 
     /// <summary>The delegation has been revoked.</summary>
     Revoked,
+
+    /// <summary>
+    /// A signature was present and well-formed but did not verify against the key offered with it.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="Incomplete"/> on purpose. A structurally incomplete authorisation is
+    /// a caller that has not finished assembling one; a signature that fails to verify is a caller
+    /// presenting something that is not what it claims to be. Folding them together made the two
+    /// indistinguishable to anything reading the reason, so an endpoint could only tell them apart by
+    /// matching on English text in the detail string.
+    /// </remarks>
+    SignatureInvalid,
 }
 
 /// <summary>A signature the caller must verify cryptographically before accepting the approval.</summary>

@@ -247,6 +247,11 @@ builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceApprovalS
 builder.Services.AddScoped<Sorcha.Register.Service.Services.IDetachedApprovalVerifier,
     Sorcha.Register.Service.Services.DetachedApprovalVerifier>();
 
+// Feature 189: one way to read a proposal off the ledger, shared by the signing-request and approve
+// endpoints. The proposal IS its transaction, so there is no proposal table to drift from it.
+builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceProposalReader,
+    Sorcha.Register.Service.Services.GovernanceProposalReader>();
+
 // Feature 189 T075: carries a verified approval to the ledger as an action submission of the
 // governance blueprint — through the Validator, never straight to storage.
 builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceApprovalActionSubmitter,
@@ -2303,18 +2308,156 @@ governanceGroup.MapPost("/propose", async (
         });
     }
 
-    // 5. Validate quorum (owner override for Add/Remove, quorum required for Transfer)
+    // Canonical JSON is what the Validator re-serialises and hashes; both the pending and the
+    // enacting path MUST use the same options or one of them produces a hash the Validator will not
+    // reproduce, and the rejection names neither cause.
+    var canonicalJsonOptions = new System.Text.Json.JsonSerializerOptions
+    {
+        WriteIndented = false,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
+    // Chain linking from the latest Control TX. Read once so both paths chain identically.
+    string? previousControlTxId = roster.LastControlTxId;
+
+    // One canonicalisation, one signing site, one submission — used by both the pending-proposal and
+    // the enacting path. Keeping them separate is how the two would drift into producing different
+    // bytes for the same logical operation.
+    async Task<(bool Ok, string TxId, string? Error)> SubmitGovernanceControlAsync(
+        ControlTransactionPayload controlPayload,
+        GovernanceOperation op)
+    {
+        var payloadJson = System.Text.Json.JsonSerializer.Serialize(controlPayload, canonicalJsonOptions);
+        var payloadElement = System.Text.Json.JsonDocument.Parse(payloadJson).RootElement;
+        var canonicalJson = System.Text.Json.JsonSerializer.Serialize(payloadElement, canonicalJsonOptions);
+        var payloadBytes = System.Text.Encoding.UTF8.GetBytes(canonicalJson);
+        var payloadHashHex = Convert.ToHexString(
+            hashProvider.ComputeHash(payloadBytes, Sorcha.Cryptography.Enums.HashType.SHA256))
+            .ToLowerInvariant();
+
+        // Deterministic TxId for idempotency.
+        var opTypeName = op.OperationType.ToString().ToLowerInvariant();
+        var txIdSource = System.Text.Encoding.UTF8.GetBytes(
+            $"governance-{opTypeName}-{registerId}-{op.ProposerDid}-{op.TargetDid}-{op.ProposedAt:O}");
+        var generatedTxId = Convert.ToHexString(
+            hashProvider.ComputeHash(txIdSource, Sorcha.Cryptography.Enums.HashType.SHA256))
+            .ToLowerInvariant();
+
+        // Signed as the proposing ORGANISATION at slot 100 (R-020).
+        //
+        // This previously signed with SorchaDerivationPaths.RegisterControl — slot 101, the NODE's
+        // system wallet. A register's governance roster is built from its genesis attestations, which
+        // record the ORGANISATION's slot-100 key, so a node-signed proposal is refused by
+        // RightsEnforcementService as "submitter not found in roster" on any register whose genesis
+        // has sealed. US1 moved /disable-dev-mode and /governance/crypto-policy across and left this
+        // path behind, which meant every roster change could not complete.
+        var signed = await signingService.SignAsync(
+            registerId: registerId,
+            txId: generatedTxId,
+            payloadHash: payloadHashHex,
+            preferredSubject: null);   // Owner signs; consortium approval is the /approve path
+
+        var submission = new Sorcha.ServiceClients.Validator.TransactionSubmission
+        {
+            TransactionId = generatedTxId,
+            RegisterId = registerId,
+            // Feature 189 (R-005): an EMPTY BlueprintId is rejected by TransactionValidator with
+            // TX_003 "Blueprint ID is required" before any governance handling runs — so this
+            // endpoint could never have worked. "genesis" would be worse: TransactionTypeClassifier
+            // .IsGenesisTransaction matches that exact value and would judge a routine governance
+            // operation against the short GenesisMaxAge freshness window. The governance control
+            // blueprint is the correct value, and it also opts the transaction into the roster
+            // enforcement it should always have had.
+            BlueprintId = GovernanceBlueprint.BlueprintId,
+            ActionId = GovernanceBlueprint.ProposeChangeActionId.ToString(),
+            Payload = payloadElement,
+            PayloadHash = payloadHashHex,
+            PreviousTransactionId = previousControlTxId,
+            Signatures = new List<Sorcha.ServiceClients.Validator.SignatureInfo>
+            {
+                new()
+                {
+                    PublicKey = Base64Url.EncodeToString(signed.PublicKey),
+                    SignatureValue = Base64Url.EncodeToString(signed.Signature),
+                    Algorithm = signed.Algorithm
+                }
+            },
+            CreatedAt = DateTimeOffset.UtcNow,
+            Metadata = new Dictionary<string, string>
+            {
+                ["Type"] = "Control",
+                ["transactionType"] = "GovernanceOperation",
+                ["operationType"] = opTypeName,
+                ["proposerDid"] = op.ProposerDid,
+                ["targetDid"] = op.TargetDid,
+                // Operator aid only. The authoritative status is op.Status inside the signed
+                // payload; metadata sits outside the signature and the payload hash.
+                ["proposalStatus"] = op.Status.ToString(),
+                ["SystemWalletAddress"] = signed.WalletAddress
+            }
+        };
+
+        var outcome = await validatorClient.SubmitTransactionAsync(submission);
+        return (outcome.Success, generatedTxId, outcome.ErrorMessage);
+    }
+
+    // 5. Quorum — or a pending proposal.
+    //
+    // Feature 189: quorum not being met is NOT an error. It is the ordinary state of a multi-party
+    // proposal at the moment it is raised. Refusing it, as this did, meant the only way past here was
+    // to already hold every signature — the all-at-once server-side model R-014 withdrew — so nothing
+    // could ever be raised for an external approver to sign, and the whole approval surface was
+    // unreachable.
     var quorumResult = await rosterService.ValidateQuorumAsync(
         registerId, operation, operation.ApprovalSignatures);
+
     if (!quorumResult.IsQuorumMet)
     {
-        return Results.BadRequest(new
+        // Guard the operand a later enactment will need, so a proposal that could never enact is
+        // refused now rather than after an organisation has reviewed and signed it.
+        if (operation.OperationType is GovernanceOperationType.AddValidator
+                or GovernanceOperationType.RotateValidatorKey
+            && operation.ValidatorEntry is null)
         {
-            error = "Quorum not met",
-            votesRequired = quorumResult.VotesRequired,
-            votesReceived = quorumResult.VotesReceived,
-            votingPool = quorumResult.VotingPool,
-            isOwnerOverride = quorumResult.IsOwnerOverride
+            return Results.BadRequest(new
+            {
+                error = $"ValidatorEntry is required for {operation.OperationType} operation"
+            });
+        }
+
+        operation.Status = ProposalStatus.Pending;
+
+        // A pending proposal carries NO roster — see ControlTransactionPayload.Roster. Writing one
+        // here would make this the newest roster-bearing control transaction, moving
+        // LastControlTxId, so the proposal's own RosterSnapshotId would stop matching and FR-011b
+        // would invalidate it the instant it sealed. That is exactly what the pre-split
+        // propose-and-enact transaction did, and why no approval could ever attach to one.
+        var pending = await SubmitGovernanceControlAsync(
+            new ControlTransactionPayload { Version = 1, Roster = null, Operation = operation },
+            operation);
+
+        if (!pending.Ok)
+        {
+            return Results.Problem(
+                title: "Validator submission failed",
+                detail: pending.Error ?? "The validator rejected the governance proposal.",
+                statusCode: 502);
+        }
+
+        return Results.Accepted($"/api/registers/{registerId}/governance/proposals/{pending.TxId}", new
+        {
+            proposalId = pending.TxId,
+            registerId,
+            operationType = operation.OperationType.ToString().ToLowerInvariant(),
+            status = ProposalStatus.Pending.ToString(),
+            quorum = new
+            {
+                quorumResult.IsQuorumMet,
+                quorumResult.VotesRequired,
+                quorumResult.VotesReceived,
+                quorumResult.VotingPool
+            },
+            submitted = true
         });
     }
 
@@ -2387,96 +2530,26 @@ governanceGroup.MapPost("/propose", async (
     var updatedRoster = rosterService.ApplyOperation(
         roster.ControlRecord, operation, newAttestation);
 
-    // 7. Build ControlTransactionPayload
-    var payload = new ControlTransactionPayload
-    {
-        Version = 1,
-        Roster = updatedRoster,
-        Operation = operation
-    };
-
-    // 8. Canonical JSON serialization for deterministic hashing
-    var canonicalJsonOptions = new System.Text.Json.JsonSerializerOptions
-    {
-        WriteIndented = false,
-        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-    };
-    var payloadJson = System.Text.Json.JsonSerializer.Serialize(payload, canonicalJsonOptions);
-    var payloadElement = System.Text.Json.JsonDocument.Parse(payloadJson).RootElement;
-    var canonicalJson = System.Text.Json.JsonSerializer.Serialize(payloadElement, canonicalJsonOptions);
-    var payloadBytes = System.Text.Encoding.UTF8.GetBytes(canonicalJson);
-    var payloadHash = hashProvider.ComputeHash(payloadBytes, Sorcha.Cryptography.Enums.HashType.SHA256);
-    var payloadHashHex = Convert.ToHexString(payloadHash).ToLowerInvariant();
-
-    // 9. Deterministic TxId for idempotency
-    var opType = operation.OperationType.ToString().ToLowerInvariant();
-    var txIdSource = System.Text.Encoding.UTF8.GetBytes(
-        $"governance-{opType}-{registerId}-{operation.ProposerDid}-{operation.TargetDid}-{operation.ProposedAt:O}");
-    var txIdHash = hashProvider.ComputeHash(txIdSource, Sorcha.Cryptography.Enums.HashType.SHA256);
-    var txId = Convert.ToHexString(txIdHash).ToLowerInvariant();
-
-    // 10. Chain linking from latest Control TX
-    string? previousControlTxId = roster.LastControlTxId;
-
-    // 11. Sign as the proposing ORGANISATION at slot 100 (R-020).
+    // 7. Enact — the shape that carries the updated roster, and the only one that moves it.
     //
-    // This previously signed with SorchaDerivationPaths.RegisterControl — slot 101, the NODE's system
-    // wallet. A register's governance roster is built from its genesis attestations, which record the
-    // ORGANISATION's slot-100 key, so a node-signed proposal is refused by RightsEnforcementService as
-    // "submitter not found in roster" on any register whose genesis has sealed. US1 moved
-    // /disable-dev-mode and /governance/crypto-policy across and left this path behind, which meant
-    // every roster change — Add, Remove, Transfer and all validator operations — could not complete.
-    var signResult = await signingService.SignAsync(
-        registerId: registerId,
-        txId: txId,
-        payloadHash: payloadHashHex,
-        preferredSubject: null);   // Owner signs; consortium selection is US2
+    // The Owner-override case deliberately stays a SINGLE transaction: propose and enact together,
+    // exactly as before the split. Splitting it too would double the seal latency of the most-used
+    // governance operation and put FR-031's unattended single-owner property (the T086 no-regression
+    // gate) at risk for no security gain — the override has no approvals to collect.
+    var opType = operation.OperationType.ToString().ToLowerInvariant();
+    var enacted = await SubmitGovernanceControlAsync(
+        new ControlTransactionPayload { Version = 1, Roster = updatedRoster, Operation = operation },
+        operation);
 
-    var organisationSignature = new Sorcha.ServiceClients.Validator.SignatureInfo
-    {
-        PublicKey = Base64Url.EncodeToString(signResult.PublicKey),
-        SignatureValue = Base64Url.EncodeToString(signResult.Signature),
-        Algorithm = signResult.Algorithm
-    };
-
-    // 12. Submit as Control TX via validator
-    var submission = new Sorcha.ServiceClients.Validator.TransactionSubmission
-    {
-        TransactionId = txId,
-        RegisterId = registerId,
-        // Feature 189 (R-005): an EMPTY BlueprintId is rejected by TransactionValidator with
-        // TX_003 "Blueprint ID is required" before any governance handling runs — so this endpoint
-        // could never have worked. "genesis" would be worse: TransactionTypeClassifier
-        // .IsGenesisTransaction matches that exact value and would judge a routine governance
-        // operation against the short GenesisMaxAge freshness window. The governance control
-        // blueprint is the correct value, and it also opts the transaction into the roster
-        // enforcement it should always have had.
-        BlueprintId = Sorcha.Register.Service.Services.CryptoPolicyService.GovernanceBlueprintId,
-        ActionId = $"governance-{opType}",
-        Payload = payloadElement,
-        PayloadHash = payloadHashHex,
-        PreviousTransactionId = previousControlTxId,
-        Signatures = new List<Sorcha.ServiceClients.Validator.SignatureInfo> { organisationSignature },
-        CreatedAt = DateTimeOffset.UtcNow,
-        Metadata = new Dictionary<string, string>
-        {
-            ["Type"] = "Control",
-            ["transactionType"] = "GovernanceOperation",
-            ["operationType"] = opType,
-            ["proposerDid"] = operation.ProposerDid,
-            ["targetDid"] = operation.TargetDid,
-            ["SystemWalletAddress"] = signResult.WalletAddress
-        }
-    };
-
-    var submissionResult = await validatorClient.SubmitTransactionAsync(submission);
-    if (!submissionResult.Success)
+    if (!enacted.Ok)
     {
         return Results.Problem(
             title: "Validator submission failed",
-            detail: submissionResult.ErrorMessage ?? "The validator rejected the governance transaction.",
+            detail: enacted.Error ?? "The validator rejected the governance transaction.",
             statusCode: 502);
     }
+
+    var txId = enacted.TxId;
 
     return Results.Ok(new
     {
@@ -2521,56 +2594,29 @@ governanceGroup.MapPost("/propose", async (
 // rendered, so the two cannot disagree — and it must render it, because signing an opaque value is
 // not approval (FR-027).
 governanceGroup.MapGet("/proposals/{proposalId}/signing-request", async (
-    IReadOnlyRegisterRepository repository,
+    Sorcha.Register.Service.Services.IGovernanceProposalReader proposalReader,
     string registerId,
     string proposalId,
     string approverDid,
     CancellationToken ct) =>
 {
-    var tx = await repository.GetTransactionAsync(registerId, proposalId, ct);
-    if (tx is null)
+    var read = await proposalReader.ReadAsync(registerId, proposalId, ct);
+
+    switch (read.Outcome)
     {
-        return Results.NotFound(new { error = $"No proposal '{proposalId}' on register '{registerId}'" });
+        case Sorcha.Register.Service.Services.ProposalReadOutcome.NotFound:
+            return Results.NotFound(new { error = $"No proposal '{proposalId}' on register '{registerId}'" });
+
+        case Sorcha.Register.Service.Services.ProposalReadOutcome.NotAProposal:
+            return Results.BadRequest(new { error = $"Transaction '{proposalId}' is not a governance proposal" });
+
+        case Sorcha.Register.Service.Services.ProposalReadOutcome.Unreadable:
+            return Results.Problem(
+                detail: $"The proposal payload for '{proposalId}' could not be read as a governance operation.",
+                statusCode: StatusCodes.Status422UnprocessableEntity);
     }
 
-    var trackingType = tx.MetaData?.TrackingData?.GetValueOrDefault("transactionType");
-    if (!string.Equals(trackingType, "GovernanceOperation", StringComparison.Ordinal))
-    {
-        return Results.BadRequest(new { error = $"Transaction '{proposalId}' is not a governance proposal" });
-    }
-
-    // Same decode path the genesis-attestation reader uses: Data is base64 or base64url.
-    GovernanceOperation? operation = null;
-    try
-    {
-        var payloadData = tx.Payloads.Length > 0 ? tx.Payloads[0].Data : null;
-        if (!string.IsNullOrWhiteSpace(payloadData))
-        {
-            var payloadBytes = payloadData.Contains('+') || payloadData.Contains('/') || payloadData.Contains('=')
-                ? Convert.FromBase64String(payloadData)
-                : System.Buffers.Text.Base64Url.DecodeFromChars(payloadData);
-
-            operation = System.Text.Json.JsonSerializer
-                .Deserialize<ControlTransactionPayload>(
-                    payloadBytes,
-                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                ?.Operation;
-        }
-    }
-    catch (Exception ex) when (ex is System.Text.Json.JsonException or FormatException)
-    {
-        // A payload that will not decode is reported, never approximated (see below).
-        operation = null;
-    }
-
-    if (operation is null)
-    {
-        // Refused rather than approximated: an approver must see exactly what their signature binds,
-        // and a partially-reconstructed operation is the substitution risk in another form.
-        return Results.Problem(
-            detail: $"The proposal payload for '{proposalId}' could not be read as a governance operation.",
-            statusCode: StatusCodes.Status422UnprocessableEntity);
-    }
+    var operation = read.Operation!;
 
     return Results.Ok(new GovernanceSigningRequest
     {
@@ -2588,6 +2634,178 @@ governanceGroup.MapGet("/proposals/{proposalId}/signing-request", async (
     "Returns the full governance operation an approving organisation is being asked to authorise. "
     + "Carries no digest by design — the client derives it from the operation it rendered, so a "
     + "server-supplied digest cannot disagree with what the approver actually saw.");
+
+// <summary>
+// Feature 189 T045 — submit a detached approval of a governance proposal.
+// </summary>
+// The approval is produced OUTSIDE the platform's trust boundary (R-014): the server never holds a
+// multi-party register's slot-100 key, so it cannot manufacture one. This endpoint verifies what
+// arrives and carries it to the ledger as an action submission of the governance blueprint — through
+// the Validator, never straight to storage.
+governanceGroup.MapPost("/proposals/{proposalId}/approve", async (
+    Sorcha.Register.Service.Services.IGovernanceProposalReader proposalReader,
+    Sorcha.Register.Core.Services.IGovernanceRosterService rosterService,
+    Sorcha.Register.Service.Services.IDetachedApprovalVerifier verifier,
+    Sorcha.Register.Service.Services.IGovernanceApprovalActionSubmitter submitter,
+    string registerId,
+    string proposalId,
+    GovernanceApprovalSubmission submission,
+    CancellationToken ct) =>
+{
+    var read = await proposalReader.ReadAsync(registerId, proposalId, ct);
+
+    switch (read.Outcome)
+    {
+        case Sorcha.Register.Service.Services.ProposalReadOutcome.NotFound:
+            return Results.NotFound(new { error = $"No proposal '{proposalId}' on register '{registerId}'" });
+
+        case Sorcha.Register.Service.Services.ProposalReadOutcome.NotAProposal:
+            return Results.BadRequest(new { error = $"Transaction '{proposalId}' is not a governance proposal" });
+
+        case Sorcha.Register.Service.Services.ProposalReadOutcome.Unreadable:
+            return Results.Problem(
+                detail: $"The proposal payload for '{proposalId}' could not be read as a governance operation.",
+                statusCode: StatusCodes.Status422UnprocessableEntity);
+    }
+
+    var operation = read.Operation!;
+
+    var roster = await rosterService.GetCurrentRosterAsync(registerId, ct);
+    if (roster is null)
+    {
+        return Results.Problem(
+            title: "No governance roster",
+            detail: $"Register '{registerId}' has no governance roster, so there is no authority to "
+                    + "approve against.",
+            statusCode: 422);
+    }
+
+    // Every refusal below is reported with a reason and never dropped silently (FR-011c). An approval
+    // that vanishes looks to an operator exactly like one that was never sent.
+    var now = DateTimeOffset.UtcNow;
+
+    if (operation.Status != ProposalStatus.Pending)
+    {
+        return Results.Conflict(new
+        {
+            error = "Proposal is not open for approval",
+            reason = "not-open",
+            status = operation.Status.ToString(),
+            detail = "It has already been decided, so an approval would change nothing."
+        });
+    }
+
+    if (operation.ExpiresAt != default && operation.ExpiresAt < now)
+    {
+        return Results.Conflict(new
+        {
+            error = "Proposal has expired",
+            reason = "expired",
+            expiresAt = operation.ExpiresAt
+        });
+    }
+
+    // FR-011b. Deliberately a comparison, not a sweeper: no timer, no background job, and identical
+    // on every node. Re-counting against a changed roster is the dangerous alternative — under
+    // unanimity, removing the one organisation yet to approve would take the requirement below the
+    // approvals already collected and ENACT the very change it was blocking.
+    if (!string.IsNullOrEmpty(operation.RosterSnapshotId) &&
+        !string.Equals(operation.RosterSnapshotId, roster.LastControlTxId, StringComparison.Ordinal))
+    {
+        return Results.Conflict(new
+        {
+            error = "The register's governance roster changed after this proposal was raised",
+            reason = "roster-changed",
+            raisedAgainst = operation.RosterSnapshotId,
+            currentRoster = roster.LastControlTxId
+        });
+    }
+
+    // The approver must be on the roster this proposal was raised against — which, because the
+    // comparison above passed, is the current one.
+    var approver = roster.ControlRecord.Attestations.FirstOrDefault(
+        a => string.Equals(a.Subject, submission.ApproverDid, StringComparison.Ordinal));
+
+    if (approver is null || approver.Role is not (RegisterRole.Owner or RegisterRole.Admin))
+    {
+        return Results.Json(new
+        {
+            error = "Not entitled to approve on this register",
+            reason = "refused-not-on-roster",
+            approverDid = submission.ApproverDid
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    // The signature is checked against the statement rebuilt from the STORED operation, never from
+    // anything the client sent — otherwise a client could sign one operation and have another
+    // verified (T078).
+    var verification = await verifier.VerifyAsync(registerId, operation, submission, now, isRevoked: null, ct);
+
+    if (!verification.Accepted)
+    {
+        var statusCode = verification.Reason switch
+        {
+            // A signature that does not verify is a bad request, not a malformed one.
+            AuthorisationRefusalReason.SignatureInvalid => StatusCodes.Status400BadRequest,
+
+            // The approver is not entitled to authorise THIS operation.
+            AuthorisationRefusalReason.OutOfScope => StatusCodes.Status403Forbidden,
+
+            // The delegation behind an autonomous approver is no longer live.
+            AuthorisationRefusalReason.Expired or AuthorisationRefusalReason.Revoked
+                => StatusCodes.Status409Conflict,
+
+            // Everything else is an authorisation that does not hold together.
+            _ => StatusCodes.Status422UnprocessableEntity
+        };
+
+        return Results.Json(new
+        {
+            error = "Approval refused",
+            reason = verification.Reason.ToString(),
+            detail = verification.Detail
+        }, statusCode: statusCode);
+    }
+
+    var carried = await submitter.SubmitAsync(registerId, proposalId, submission, ct);
+
+    if (!carried.Submitted)
+    {
+        return Results.Problem(
+            title: "Validator submission failed",
+            detail: carried.Error ?? "The Validator rejected the approval.",
+            statusCode: 502);
+    }
+
+    // 202, not 200: the approval counts when it SEALS, not when it is accepted here.
+    return Results.Accepted($"/api/registers/{registerId}/governance/proposals/{proposalId}", new
+    {
+        approvalTxId = carried.TxId,
+        proposalId,
+        registerId,
+        approverDid = submission.ApproverDid,
+        isApproval = submission.IsApproval,
+        accountableIndividual = verification.AccountableIndividualDid,
+        carriedBy = carried.CarriedBy,
+        submitted = true
+    });
+})
+.WithRequestValidation()
+.WithName("ApproveGovernanceProposal")
+.WithSummary("Submit a detached approval of a governance proposal")
+.WithDescription(
+    "Accepts an approval produced outside the platform — by a person's own key or by an autonomous "
+    + "approver under a signed delegation — verifies it against the operation stored on the ledger, "
+    + "and carries it to the ledger through the Validator. Returns 202: the approval counts when it "
+    + "seals, not when it is accepted here.")
+.RequireAuthorization("CanSubmitTransactions")
+.Produces(StatusCodes.Status202Accepted)
+.Produces(StatusCodes.Status400BadRequest)
+.Produces(StatusCodes.Status403Forbidden)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status409Conflict)
+.Produces(StatusCodes.Status422UnprocessableEntity)
+.Produces(StatusCodes.Status401Unauthorized);
 
 governanceGroup.MapGet("/proposals", async (
     IRegisterRepository repository,
