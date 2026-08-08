@@ -170,6 +170,9 @@ internal class Program
 
         // Sprint 3: Register, Transaction & Wallet commands
         rootCommand.Subcommands.Add(new RegisterCommand(clientFactory, authService, configService));
+        // Feature 189 T082: the autonomous-approver path, and what makes the governance live gates
+        // drivable without waiting for the console UI.
+        rootCommand.Subcommands.Add(new GovernanceCommand(clientFactory, authService, configService));
         rootCommand.Subcommands.Add(new TransactionCommand(clientFactory, authService, configService));
         rootCommand.Subcommands.Add(new WalletCommand(clientFactory, authService, configService));
 
