@@ -2410,7 +2410,68 @@ Metrics: `sorcha_provenance_check_total{layer,status}` and
 on, the second usually means missing evidence.
 
 
-## Register governance: what signs what (Feature 189)
+## Register governance (Feature 189 — SHIPPED, merged `60d3e990`, live on n1)
+
+A governance change moves through **three kinds of transaction**, and only one changes the roster.
+Which one is decided by the **payload**, never by a flag.
+
+| Transaction | Payload | Roster? | Moves the head? |
+|---|---|---|---|
+| **Proposal** | `ControlTransactionPayload`, `Operation.Status = Pending` | **`roster: null`** | no |
+| **Approval** | `GovernanceApprovalActionPayload` (`type: governance-approval`) | no | no |
+| **Enactment** | `ControlTransactionPayload`, `Status = Recorded`, `EnactsProposalId` set | yes | yes |
+
+Chain shape, as sealed live: genesis → proposal → *n* sibling approvals (all chained to the proposal)
+→ enactment (chained to the **roster head**, not the proposal).
+
+**A proposal carrying no roster is the whole design.** `GovernanceRosterService` walks control
+transactions newest-first and **skips any whose payload has no populated roster**, so a pending
+proposal is invisible to roster reconstruction and `LastControlTxId` stays put. That matters because
+FR-011b invalidates a proposal whose `RosterSnapshotId` ≠ `LastControlTxId` — a proposal that wrote a
+roster would move that value and **invalidate itself the instant it sealed**, which is exactly what
+the pre-split propose-and-enact transaction did.
+
+**The Owner override keeps its single transaction.** Quorum met at raise time (single-owner register,
+the common case) ⇒ `/propose` returns **200** and writes one propose-and-enact transaction. Quorum
+required ⇒ **202** and a pending proposal. Both outcomes are correct; they are not interchangeable.
+
+**Validator exemptions key on the ABSENCE OF A ROSTER, never on `Operation.Status`.**
+`ProposalStatus.Pending` is `0`, so a payload that merely omits the field reads as pending — keying
+the quorum exemption on it lets a transaction that *does* carry a roster skip quorum by saying nothing.
+Carry no roster, move no roster; that cannot be faked.
+
+**The Owner override is gated on the operation's PROPOSER, never the transaction's signer.** They
+coincide only while the proposer signs its own enacting transaction. Once a reaction carries the
+enactment, an Owner-signed carry would take the override and skip quorum entirely — laundering a
+never-approved proposal through the carry.
+
+**Enactment fires from `docket:confirmed`.** `GovernanceEnactmentSubscriber` re-evaluates *every open
+proposal* on the register rather than reading the docket's transactions — self-healing, so a dropped
+event costs a delay until the next docket rather than a proposal stuck at quorum for ever, and that is
+why there is no sweep timer. It decides whether to **try**; the Validator recounts from sealed
+approvals and verifies every signature, so it is the authority. Enactment tx ids are deterministic so
+concurrent nodes dedupe — **which only holds while the payload bytes match, so nothing in an enactment
+payload may read the clock** (every timestamp derives from `operation.ProposedAt`).
+
+### Three defects the first live run found — all silent, all invisible to ~2,500 green tests
+
+1. **Intermittent payload-hash mismatch.** `GovernanceApprovalActionPayload.CanonicalJsonOptions` must
+   keep `UnsafeRelaxedJsonEscaping`: the default encoder escapes `+` as `+` while the Validator
+   re-serialises without it, so an approval whose base64 signature contained a `+` was refused
+   `TX_012` and one whose bytes did not sealed. **Third time a `+` in base64 has broken this feature**
+   (see `GovernanceKeyMatcher` / R-003).
+2. **Read with the options you wrote with.** The payload's enums are kebab-case; reading it back with
+   ad-hoc options **throws**, and every reader treats a throw as "not an approval" — so both the
+   enactment service and the Validator counted **zero** approvals, nothing was ever enacted, and
+   nothing logged an error.
+3. **`/propose` never copied `request.ValidatorEntry`.** Request record had it, operation had it, the
+   mapping dropped it, and the endpoint's own guard then refused every `AddValidator` — so
+   validator-roster governance had **never been usable through the API**.
+
+Runbook with the live evidence and the falsification table:
+`specs/189-org-signed-governance/LIVE-TEST-RUNBOOK.md`.
+
+### The signing keys — read this before touching any governance path
 
 Getting the signing key wrong here fails **silently at the wrong layer** — the transaction is
 accepted, stored, and then refused by the Validator with `submitter not found in roster`, on any
