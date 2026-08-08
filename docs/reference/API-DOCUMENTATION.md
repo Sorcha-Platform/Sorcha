@@ -2094,6 +2094,129 @@ GET /health/sync
 
 ---
 
+## Register Governance API (Feature 189)
+
+Changing a register's roster, validators or crypto policy. A change moves through up to three
+transactions — a **proposal**, one **approval** per organisation, and an **enactment** — and only the
+enactment changes the roster.
+
+**Base path:** `/api/registers/{registerId}/governance`
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| GET | `/roster` | `CanReadTransactions` | Current roster, reconstructed from the control chain |
+| GET | `/history` | `CanReadTransactions` | Paginated control transactions |
+| GET | `/proposals` | `CanReadTransactions` | Governance operations recorded on the register |
+| POST | `/propose` | `CanSubmitTransactions` | Raise an operation |
+| GET | `/proposals/{proposalId}/signing-request` | `CanReadTransactions` | What an approver must sign |
+| POST | `/proposals/{proposalId}/approve` | `CanSubmitTransactions` | Submit a detached approval |
+| GET/POST | `/crypto-policy` | `CanReadTransactions` / `CanSubmitTransactions` | Read or change the encryption posture |
+
+> **`200`/`202` means accepted, never enacted.** A governance change takes effect when its transaction
+> seals into a docket. Check the docket and the validator verdict, not the response body.
+
+### POST `/propose`
+
+Raises a governance operation. `operationType` is an **integer** on this endpoint
+(`0` Add, `1` Remove, `2` Transfer, `3` AddValidator, `4` RemoveValidator, `5` RotateValidatorKey,
+`6` RevokeIssuanceKey, `7` RotateIssuanceKey, `8` CryptoPolicyUpdate) — see issue #1384.
+
+```json
+{
+  "operationType": 0,
+  "proposerDid": "did:sorcha:w:ws11q…",
+  "targetDid": "did:sorcha:w:ws11q…",
+  "targetRole": 1,
+  "justification": "why",
+  "validatorEntry": { "validatorId": "…", "publicKey": "…", "algorithm": "ED25519",
+                      "derivationContext": "sorcha:docket-signing", "status": 0 }
+}
+```
+
+`validatorEntry` is **required** for `AddValidator` and `RotateValidatorKey`.
+
+Two outcomes, and they are not interchangeable:
+
+| Status | When | What was written |
+|--------|------|------------------|
+| `200` | Quorum is already met — the Owner override on a single-owner register | **One** control transaction that proposes *and* enacts, carrying the updated roster |
+| `202` | Quorum is required | A **pending proposal** carrying `roster: null`, awaiting approvals |
+
+A pending proposal deliberately carries no roster, so it does not become the roster head — otherwise
+its own `RosterSnapshotId` would stop matching and it would invalidate itself the instant it sealed.
+
+### GET `/proposals/{proposalId}/signing-request?approverDid=…`
+
+Returns the full operation the approving organisation is being asked to authorise.
+
+```json
+{
+  "requestId": "…", "registerId": "…",
+  "operation": { "…the whole GovernanceOperation…" },
+  "statementVersion": "sorcha:governance-approval:v2",
+  "approverDid": "did:sorcha:w:ws11q…",
+  "expiresAt": "2026-08-15T12:00:00Z"
+}
+```
+
+**It carries no digest, deliberately.** A server-supplied digest could fail to match the operation the
+client displayed, reinstating at the transport layer the substitution that statement v2 closes inside
+the digest. The client derives the digest from the operation it rendered, so the two cannot disagree —
+and it must render it, because signing an opaque value is not approval.
+
+Returns `404` while the proposal has been accepted but not yet sealed.
+
+### POST `/proposals/{proposalId}/approve`
+
+Accepts an approval produced **outside** the platform — the server never holds a multi-party
+register's slot-100 key, so it cannot manufacture one.
+
+```json
+{
+  "requestId": "…",
+  "approverDid": "did:sorcha:w:ws11q…",
+  "isApproval": true,
+  "signature": "…", "publicKey": "…",
+  "authMethod": 3,
+  "comment": "optional",
+  "authorisation": {
+    "kind": 0,
+    "individualDid": "did:sorcha:w:ws11q…",
+    "signature": "…", "publicKey": "…",
+    "authMethod": 3,
+    "algorithm": "ED25519"
+  }
+}
+```
+
+`signature` is over the **v2 approval statement**, produced with the organisation's slot-100 key —
+not over the transaction. `authorisation` is required on every approval: an autonomous approver is
+delegated, not unaccountable, so every approval resolves to a named individual, either directly or
+through a signed delegation. For a direct authorisation the individual signs the same statement with
+their wallet's **primary** key, because the wallet address derives from it and that is what binds the
+signature to the DID named as accountable.
+
+| Status | Meaning |
+|--------|---------|
+| `202` | Accepted and carried to the ledger. It counts when it seals |
+| `400` | A signature did not verify (`reason: "SignatureInvalid"`) |
+| `403` | Approver not on the proposal's roster, or the delegation does not cover this operation |
+| `404` | No such proposal on this register |
+| `409` | Proposal not open, expired, or invalidated by a roster change |
+| `422` | The authorisation does not hold together — missing, incomplete, or naming an individual the key does not belong to |
+
+Repeat submissions are idempotent: the approval's transaction id is derived from
+`(register, proposal, approver)`, so a resubmission dedupes rather than adding a second vote.
+
+### Enactment
+
+There is no enactment endpoint. When a proposal's approvals reach quorum, the enactment is raised by a
+reaction to the sealed docket — every node holding the register reaches the same answer from the same
+sealed content, and the transaction id is deterministic so concurrent submissions dedupe. Poll
+`GET /roster`: `lastControlTxId` moves to the enactment and the membership changes.
+
+---
+
 ## Provenance API
 
 **Read-only** evidence surfaces (Feature 188, Phase 1): a register's docket lineage, and per-docket

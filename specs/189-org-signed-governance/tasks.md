@@ -189,9 +189,9 @@ confirm sealed-in-docket and observable on tiny.
 
 ## Phase 7: Polish & cross-cutting
 
-- [ ] T064 [P] Update `src/Services/Sorcha.Register.Service/README.md` — governance signing model, the slot-100 key, and why control transactions must never be signed by the node
-- [ ] T065 [P] Update `docs/reference/API-DOCUMENTATION.md` with the approval endpoints and the corrected governance semantics
-- [ ] T066 [P] Update `.claude/skills/sorcha-architecture/SKILL.md` with the governance cross-cutting pattern
+- [X] T064 [P] Update `src/Services/Sorcha.Register.Service/README.md` — governance signing model, the slot-100 key, and why control transactions must never be signed by the node
+- [X] T065 [P] Update `docs/reference/API-DOCUMENTATION.md` with the approval endpoints and the corrected governance semantics
+- [X] T066 [P] Update `.claude/skills/sorcha-architecture/SKILL.md` with the governance cross-cutting pattern
 - [ ] T067 [P] Update `.specify/MASTER-TASKS.md` and `docs/reference/development-status.md`
 - [ ] T068 Record the R-006 limitation prominently (service principals can sign as any organisation, so approvals prove "the node was asked to use the key", not "the organisation approved") — this must not be described as solved
 - [ ] T069 Delete the throwaway probe registers on n1 (`c794c86c…`, `96c421c0…`, `6b0760aa…`) once no longer needed as evidence
@@ -336,8 +336,8 @@ indistinguishable symptom — which is exactly what happened on 2026-08-06.
 
 ### Gates
 
-- [ ] T085 🔴 **LIVE GATE** Substitution: review and sign an `AddValidator` for validator A, submit with validator B's entry. MUST be rejected on n1, and the rejection MUST appear in the validator log rather than being absorbed. This is the gate that distinguishes independent approval from something that merely looks like it.
-- [ ] T086 🔴 **LIVE GATE** Single-owner register completes governance unattended, with no pairing, device or human interaction (FR-031) — the no-regression gate.
+- [X] T085 🔴 **LIVE GATE** Substitution: review and sign an `AddValidator` for validator A, submit with validator B's entry. MUST be rejected on n1, and the rejection MUST appear in the validator log rather than being absorbed. This is the gate that distinguishes independent approval from something that merely looks like it.
+- [X] T086 🔴 **LIVE GATE** Single-owner register completes governance unattended, with no pairing, device or human interaction (FR-031) — the no-regression gate.
 
 **Checkpoint**: the server cannot produce a multi-party approval on its own, and a signature binds exactly what the approver saw.
 
