@@ -289,6 +289,10 @@ builder.Services.AddHostedService<AdvertisementResyncService>();
 // Register event bridge: subscribes to domain events and broadcasts via SignalR
 builder.Services.AddHostedService<RegisterEventBridgeService>();
 
+// Feature 189 T044b: raises the enactment when a proposal's approvals reach quorum. Its own
+// subscriber, not the bridge above — a governance failure must not stop register notifications.
+builder.Services.AddHostedService<Sorcha.Register.Service.Services.GovernanceEnactmentSubscriber>();
+
 // Feature 047: Local address bloom filter index (US1) + inbound transaction router (US2)
 builder.Services.AddGrpc();
 builder.Services.AddSingleton<Sorcha.Register.Service.Services.Interfaces.ILocalAddressIndex,

@@ -3,6 +3,7 @@
 
 using Sorcha.Register.Core.Storage;
 using Sorcha.Register.Models;
+using Sorcha.Register.Models.Enums;
 
 namespace Sorcha.Register.Service.Services;
 
@@ -37,6 +38,18 @@ public interface IGovernanceProposalReader
     /// <summary>Reads the proposal a transaction id names.</summary>
     Task<GovernanceProposalRead> ReadAsync(
         string registerId, string proposalId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists the register's proposals that are still open, oldest first.
+    /// </summary>
+    /// <remarks>
+    /// Open means <see cref="ProposalStatus.Pending"/> in the stored operation. Expiry and
+    /// roster-invalidation are <b>not</b> filtered here — they are decided against the current roster
+    /// and the clock by whoever acts on the proposal, and pre-filtering would hide from an operator
+    /// the proposals that exist but can no longer proceed.
+    /// </remarks>
+    Task<IReadOnlyList<GovernanceProposalRead>> ListOpenAsync(
+        string registerId, CancellationToken ct = default);
 }
 
 /// <inheritdoc />
@@ -93,6 +106,38 @@ public sealed class GovernanceProposalReader : IGovernanceProposalReader
             // binds, and a partially-reconstructed operation is the substitution risk in another form.
             ? new GovernanceProposalRead(ProposalReadOutcome.Unreadable, null, tx)
             : new GovernanceProposalRead(ProposalReadOutcome.Found, operation, tx);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<GovernanceProposalRead>> ListOpenAsync(
+        string registerId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+
+        // Control transactions only, which is a handful even on a busy register — governance is rare
+        // compared with workflow traffic. That is what makes scanning them per sealed docket
+        // affordable, and cheaper than loading every transaction in the docket to look for approvals.
+        var controlTxs = await _repository.GetTransactionsByTypeAsync(
+            registerId, TransactionType.Control, TransactionSort.TimeStampAscending, 0, 0, ct);
+
+        var open = new List<GovernanceProposalRead>();
+
+        foreach (var tx in controlTxs)
+        {
+            var trackingType = tx.MetaData?.TrackingData?.GetValueOrDefault("transactionType");
+            if (!string.Equals(trackingType, "GovernanceOperation", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var operation = TryDecodeOperation(tx);
+            if (operation is { Status: ProposalStatus.Pending })
+            {
+                open.Add(new GovernanceProposalRead(ProposalReadOutcome.Found, operation, tx));
+            }
+        }
+
+        return open;
     }
 
     private GovernanceOperation? TryDecodeOperation(TransactionModel tx)
