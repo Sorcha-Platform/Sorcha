@@ -150,6 +150,20 @@ The network's own system register — created by an offline ceremony rather than
 - **FR-023**: Registers created before this feature MUST be identifiable as not governable, and MUST fail any governance attempt with a clear reason rather than an obscure error.
 - **FR-024**: A governance change MUST NOT be able to leave a register with no organisation capable of governing it.
 
+### External approval (added 2026-08-07 — see `docs/superpowers/specs/2026-08-07-governance-approval-surface-design.md`)
+
+- **FR-025**: An approval for a multi-party register MUST be produced outside the platform's server-side trust boundary. The server MUST NOT be capable of producing such an approval on its own.
+- **FR-026**: The value an approver signs MUST bind the **entire** operation being authorised, such that any subsequent change to that operation invalidates the signature. Binding a hand-selected subset of fields is insufficient.
+- **FR-027**: An approver MUST be shown everything their signature binds. Signing an opaque value is not approval.
+- **FR-028**: A signing request MUST NOT carry a precomputed digest; the signing client MUST derive it from the operation it displayed, so the two cannot disagree.
+- **FR-029**: **Every** approval MUST carry an accountability link to a named individual, distinct from the organisation, so the ledger can answer *which person* stands behind a change. An autonomous approver is not an exception: a machine external to the platform was empowered by a human, so the link is delegated rather than absent.
+- **FR-033**: A delegation empowering an autonomous approver MUST be signed by the empowering individual's own key. A server-asserted claim is insufficient — the server mints tokens, so a delegation it can assert is one it can forge, which defeats the purpose of moving signing outside it.
+- **FR-034**: A delegation MUST carry a scope and an expiry, and MUST be revocable. Its validity MUST be determinable from sealed ledger content, so every node reaches the same answer (R-009).
+- **FR-035**: The public key that produces an accountability signature MUST be provably owned by the individual it names. A key that merely accompanies a claimed identity is a self-declaration, not evidence, and would let anyone sign in a colleague's name with a perfectly valid signature.
+- **FR-030**: The record MUST carry how the signing key was held, so a register may require a minimum standard for a given operation.
+- **FR-031**: A single-owner register MUST continue to complete governance unattended, without pairing, device or human interaction.
+- **FR-032**: An approval submission carrying an invalid or mismatched individual co-signature MUST be refused outright. It MUST NOT be accepted with the co-signature silently discarded.
+
 ### Key Entities
 
 - **Register**: The shared, replicated record being governed. Carries its governed settings, its governance roster and its approval rule, established when it is created and thereafter changeable only through governance.

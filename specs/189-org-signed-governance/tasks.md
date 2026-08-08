@@ -104,11 +104,41 @@ confirm sealed-in-docket and observable on tiny.
 
 - [X] T039 [US2] Add `CryptoPolicyUpdate` to `GovernanceOperationType` in `src/Common/Sorcha.Register.Models/GovernanceModels.cs` (FR-021)
 - [X] T040 [US2] Add `RosterSnapshotId` and `QuorumFormulaAtRaise` to the proposal shape, captured at raise time from `GovernanceRoster.LastControlTxId` and the register's configured rule (FR-011a)
-- [ ] T041 [US2] Implement approvals as **ledger transactions** signed with the approving organisation's slot-100 key (R-009 — not a service-side table; a store, if any, is a rebuildable index)
-- [X] T042 [US2] Implement invalidation as a comparison at count time — current `LastControlTxId` ≠ proposal's `RosterSnapshotId` ⇒ invalid. No timer, no sweeper, deterministic on every node
+- [ ] T041 [US2] ~~Implement approvals as ledger transactions signed with the org's slot-100 key~~ **ABSORBED into T071-T073 (2026-08-07).** R-009 equates "ledger transaction" and "action submission", so this is the same object as T054; and the approval's `BlueprintId`/`ActionId`/payload schema are defined by the blueprint (T053). Building it standalone means inventing a shape and changing it in US3 — the "bespoke code beside a decorative blueprint" the brief rejects. Do NOT start here.
+- [X] T042 [US2] Implement invalidation as a comparison at count time — current `LastControlTxId` ≠ proposal's `RosterSnapshotId` ⇒ invalid. No timer, no sweeper, deterministic on every node. **Now actually reachable:** a proposal is recorded rather than refused, and carries no roster so it does not invalidate itself (see the lifecycle design).
 - [ ] T043 [US2] Record every terminal outcome with a reason (`quorum-met` / `expired` / `roster-changed` / `withdrawn` / `refused-not-on-roster`) — never a silent drop (FR-011c)
-- [ ] T044 [US2] Wire quorum evaluation to the existing `GovernanceRosterService.ValidateQuorumAsync` over sealed approval transactions — do **not** reimplement the arithmetic (R-007)
-- [ ] T045 [US2] Implement `POST /governance/proposals/{proposalId}/approve` per contracts — `202` submitted, `403` not on snapshot, `409` not open, idempotent repeat
+
+> ✅ **FINDING, CLOSED by T044 (2026-08-08)** — the gate now keys on the operation's proposer via
+> `ValidateQuorumAsync` and never on `submitterAttestation.Role`. Guarded by
+> `AnEnactmentCarriedByTheOwner_WithoutQuorum_IsStillRefused`, mutation-verified. Kept here because it
+> constrains the reaction too: whichever organisation's key a node holds, the carry must confer no
+> authority. Original finding follows.
+>
+> The Owner override is gated on **who signed the transaction**
+> (`submitterAttestation.Role != RegisterRole.Owner` in `RightsEnforcementService`), while
+> `ValidateQuorumAsync` gates it on **who raised the operation** (`ownerDid == operation.ProposerDid`).
+> Those coincide today only because the proposer signs its own enacting transaction.
+>
+> Once enactment is a separate transaction carried by a reaction, they come apart: an enactment
+> carried by the **Owner** would take the override and skip the quorum check entirely — so a
+> never-approved proposal raised by anyone could be enacted simply by being carried on an
+> Owner-signed transaction. That launders a proposal through the carry, which is precisely what the
+> T075 carry/authority separation exists to prevent.
+>
+> The gate must key on the **operation's proposer**, not on the transaction's signer. Worth deciding
+> deliberately rather than patching, because it also constrains the reaction: whichever organisation's
+> key a node holds, the carry must not be able to confer authority.
+- [X] T044 [US2] Wire quorum evaluation to the existing `GovernanceRosterService.ValidateQuorumAsync` over sealed approval transactions — do **not** reimplement the arithmetic (R-007). `GovernanceApprovalTally` (zero-dependency, plan-then-verify) selects which sealed approvals may count and builds the signature checks; the arithmetic goes through `ValidateQuorumAsync`. The key comes from the **roster**, never from the approval payload — trusting the offered key would make every signature self-certifying. The Validator reads them via `ControlTransactionPayload.EnactsProposalId` and rebuilds each digest from the **proposal's** stored operation. The Owner-carrier hole below is closed: the gate no longer consults `submitterAttestation.Role` on that path.
+- [~] T044b **Enactment. Service DONE, trigger NOT built.** `IGovernanceEnactmentService.TryEnactAsync` decides and submits: refuses a decided or invalidated proposal, short-circuits on an existing enactment, counts, builds a byte-deterministic payload and submits through the Validator. **It decides whether to TRY, not whether the change is authorised** — the Validator re-counts and verifies, so this uses only the structural half of the tally and never verifies a signature itself (one crypto loop, one authority).
+  - The earlier either/or resolved as **both**: entitlement-gating is a *precondition* (a node with no governance key returns `CannotCarry` rather than failing), and the deterministic tx id is the *dedupe* among the several nodes that can carry it.
+  - Closed a gap left by the `ApplyOperation` determinism fix: the `Add` attestation is built by the **caller** and was still stamped `UtcNow` — harmless on the single-node override path, fatal for a carried enactment.
+- [X] T044b-trigger `GovernanceEnactmentSubscriber` watches `docket:confirmed` and re-evaluates every open proposal on that register. It re-scans rather than reading the docket's transactions: that would be a round trip per transaction on every docket and would make the trigger depend on never missing an event, whereas re-evaluating is **self-healing** — a dropped event costs a delay until the register's next docket, not a proposal stuck at quorum forever. **That is why no separate sweep timer is needed.** Its own subscriber, not `RegisterEventBridgeService`, so a governance failure cannot stop register notifications; nothing escapes the handler, and one proposal throwing does not stop the others.
+
+> **The propose → approve → enact chain is now complete in code.** Every step has unit and mutation
+> coverage and none of it has executed against a deployment. The next thing that matters is T082 (CLI
+> approve), because without a client that can produce a detached signature the live gates cannot be
+> driven at all — and this feature's entire history says the defects are found on the first live run.
+- [X] T045 [US2] Implement `POST /governance/proposals/{proposalId}/approve` per contracts — now accepts a **detached** `GovernanceApprovalSubmission` (R-014); server-side signing for multi-party registers is withdrawn. `202` submitted, `400` signature fails v2 verification, `403` not on snapshot, `409` not open/expired, `422` bad co-signature, idempotent repeat
 - [ ] T046 [US2] Implement `GET /governance/proposals` (status filter) and `GET /governance/proposals/{proposalId}` (full audit detail)
 - [X] T047 [US2] Enforce FR-024 — a governance change may never leave a register with no organisation able to govern it
 - [ ] T048 [US2] 🔴 **LIVE GATE** Three-organisation register under `Unanimous` on n1: not enacted at 2 of 3; enacted and sealed at 3 of 3; replicated to tiny
@@ -126,13 +156,13 @@ confirm sealed-in-docket and observable on tiny.
 
 ### Tests for US3
 
-- [ ] T050 [P] [US3] Test: the revised `register-governance-v1` expresses quorum from the register's configured rule, not a hardcoded percentage
-- [ ] T051 [P] [US3] Test: proposal and approval payloads validate against the blueprint's new `dataSchemas`
-- [ ] T052 [P] [US3] Test: the recorded action sequence matches the published definition (FR-018)
+- [X] T050 [P] [US3] Test: the revised `register-governance-v1` expresses quorum from the register's configured rule, not a hardcoded percentage
+- [X] T051 [P] [US3] Test: proposal and approval payloads validate against the blueprint's new `dataSchemas`
+- [X] T052 [P] [US3] Test: the recorded action sequence matches the published definition (FR-018)
 
 ### Implementation for US3
 
-- [ ] T053 [US3] Revise `blueprints/templates/register-governance-v1.json`: replace the hardcoded `approvalPercentage >= 50.01` with the register's configured rule; add the crypto-policy operation; add `dataSchemas` for proposal and approval payloads; make "Accept Role" conditional on operation type (R-008)
+- [X] T053 [US3] Revise `blueprints/templates/register-governance-v1.json`: replace the hardcoded `approvalPercentage >= 50.01` with the register's configured rule; add the crypto-policy operation; add `dataSchemas` for proposal and approval payloads; make "Accept Role" conditional on operation type (R-008)
 - [ ] T054 [US3] Execute the governance blueprint as a real workflow instance, with each organisation's approval submitted as an action
 - [ ] T055 [US3] Ensure the governance instance folds correctly under F145's `InstanceProjector` — quorum must be a pure function of sealed content so every node agrees (R-009)
 - [ ] T056 [US3] Ensure each proposal, approval and enactment is individually attributable to its organisation in the ledger record (FR-019)
@@ -159,9 +189,9 @@ confirm sealed-in-docket and observable on tiny.
 
 ## Phase 7: Polish & cross-cutting
 
-- [ ] T064 [P] Update `src/Services/Sorcha.Register.Service/README.md` — governance signing model, the slot-100 key, and why control transactions must never be signed by the node
-- [ ] T065 [P] Update `docs/reference/API-DOCUMENTATION.md` with the approval endpoints and the corrected governance semantics
-- [ ] T066 [P] Update `.claude/skills/sorcha-architecture/SKILL.md` with the governance cross-cutting pattern
+- [X] T064 [P] Update `src/Services/Sorcha.Register.Service/README.md` — governance signing model, the slot-100 key, and why control transactions must never be signed by the node
+- [X] T065 [P] Update `docs/reference/API-DOCUMENTATION.md` with the approval endpoints and the corrected governance semantics
+- [X] T066 [P] Update `.claude/skills/sorcha-architecture/SKILL.md` with the governance cross-cutting pattern
 - [ ] T067 [P] Update `.specify/MASTER-TASKS.md` and `docs/reference/development-status.md`
 - [ ] T068 Record the R-006 limitation prominently (service principals can sign as any organisation, so approvals prove "the node was asked to use the key", not "the organisation approved") — this must not be described as solved
 - [ ] T069 Delete the throwaway probe registers on n1 (`c794c86c…`, `96c421c0…`, `6b0760aa…`) once no longer needed as evidence
@@ -206,3 +236,119 @@ cross-node encryption investigation is waiting on. Ship it before starting US2.
 **Do not batch the live gates.** Each 🔴 is placed where a failure is still cheap to diagnose.
 Running them all at the end is how a signing defect and an encoding defect present as one
 indistinguishable symptom — which is exactly what happened on 2026-08-06.
+
+
+---
+
+## Phase 8: External approval surface (added 2026-08-07)
+
+**Design**: `docs/superpowers/specs/2026-08-07-governance-approval-surface-design.md`
+**Research**: R-013 (digest binding), R-014 (key custody), R-015 (co-signature), R-016 (device assurance)
+**Goal**: an approval is produced by something external to the platform — human or autonomous bot — and binds exactly what was reviewed.
+
+### Statement v2 — do this first; everything after it is unsafe without it
+
+- [X] T071 🔴 Test FIRST: reflection-driven digest coverage — enumerate `GovernanceOperation`'s properties and assert that mutating any non-excluded one (`ApprovalSignatures`, `Status` excluded) changes the digest. **MUST go RED today** for `ValidatorEntry`, `RosterSnapshotId`, `QuorumFormulaAtRaise`, `ExpiresAt`. A hand-listed test is not acceptable — it rots exactly as the hand-listed field list did (R-013). Pattern precedent: the derivation-context reflection tests in `Sorcha.Wallet.Contracts.Tests`.
+- [X] T072 Implement `GovernanceApprovalStatement` **v2**: bind domain tag `sorcha:governance-approval:v2`, `registerId`, `proposalId`, `approverDid`, approve/reject, plus a hash of the operation's canonical JSON minus derived members. v1 signatures MUST NOT verify under v2 (clean break, R-011).
+- [X] T073 [P] Test: a v1 signature is rejected under v2.
+
+### Blueprint, then approvals as its actions (the absorbed T041/T054)
+
+> **T071 run, 2026-08-07:** went RED for **five** fields, not the four the design predicted —
+> `Justification` was also unbound. A hand-listed test would have covered exactly the four I thought
+> of and passed. `Justification` is bound rather than excluded: it is the reason an approver read
+> when deciding, so a substituted one attributes a justification to an approval that never saw it.
+>
+> **`proposalId` binding deferred:** `GovernanceOperation` has no proposal identifier — none exists
+> anywhere in the model, though the contract URL assumes one. v2 binds the whole operation (the
+> actual vulnerability); binding `proposalId` lands with the proposal-lifecycle work that introduces
+> it (T045/T046).
+
+- [X] T074 T053 first — the approval's `BlueprintId`, `ActionId` and payload schema come from the revised `register-governance-v1`. Confirm T053 is complete before starting T075.
+- [X] T075 Implement an approval as an **action submission** of the governance blueprint, signed externally, carried to the ledger **through the validator** — never written straight to storage (that was the original US1 defect).
+
+> **T075 as built (2026-08-08).** `GovernanceApprovalActionPayload` (`Sorcha.Register.Models`) is the
+> ledger shape; `GovernanceApprovalActionSubmitter` (`Sorcha.Register.Service`) builds it and hands it
+> to `IValidatorServiceClient`. It holds no repository, so the direct-to-Mongo shape cannot return
+> through it — asserted structurally, not just by behaviour.
+>
+> **The envelope signature is not the approval signature, and conflating them is the trap.** The
+> validator verifies every entry in `Signatures` against `SHA-256("{txId}:{payloadHash}")`. An
+> approver signs `GovernanceApprovalStatement` — deliberately not a transaction digest, because they
+> sign before any transaction exists and must bind what they reviewed. Filing the detached signature
+> in `Signatures` fails `VAL_SIG_002` every time, with a message that blames the approver. So the
+> authority lives in the **payload**, and the envelope is signed by whichever roster organisation the
+> node can sign as (`preferredSubject: null`), recorded as `Metadata["carriedBy"]`. Signing the
+> envelope as the approver whenever the node happened to hold their key was rejected: it would dress a
+> carry up as an approval — the server-side signing R-014 withdrew — and only sometimes, which is
+> worse than always. A node holding no governance key for the register therefore cannot carry an
+> approval, which is correct rather than a limitation.
+>
+> `Metadata["Type"] = "Control"`, matching `/propose`. That is what earns the roster check and exempts
+> it from action-schema validation — necessary today, because `register-governance-v1` is not
+> published to ordinary registers and resolving it would fail outright. Full conformance is T054-T057.
+> `PreviousTransactionId` is the proposal, mirroring the blueprint's action 1 → 2 route; sibling
+> approvals are fine, the fork check exempts a Control predecessor.
+>
+> **The blueprint's approval `dataSchemas` and the payload model disagreed on nine fields**, in both
+> directions — the schema declared `delegation.signature`/`delegation.publicKey`, which live on the
+> authorisation and not on the grant, so **no conforming payload could ever have been produced**; and
+> it could not express `ApprovalAuthMethod.Unknown`, `algorithm`, `delegationAlgorithm`,
+> `organisationDid`, `individualDid` or `grantedAt`. Reconciled, and now held in lockstep by
+> `GovernanceApprovalPayloadContractTests` — bidirectional and derived from serialisation, not a hand
+> list. All eight of its assertions and all six submitter guards were mutation-verified (perturb, see
+> the *named* test go RED, restore).
+>
+> **`proposalId` and `statementVersion` were added to the payload.** Neither is bound by the approval
+> signature and neither needs to be: verification rebuilds the statement from the operation stored on
+> the proposal named, so re-pointing an approval changes the operation and the signature stops
+> verifying.
+>
+> **Finding that blocks T045: there is no open-proposal state.** `/propose` evaluates quorum at raise
+> time (step 5) and returns **400 "Quorum not met"** unless the Owner override fires or every approval
+> is supplied inline — then it applies the operation and writes the updated roster in the same
+> transaction. Propose and enact are one atomic step, so today there is nothing for an approval to
+> arrive against. The design's ledger flow assumes step 1 records a raised proposal; only its
+> `RosterSnapshotId`/`QuorumFormulaAtRaise` capture (T040) was actually built. T045's `409 not
+> open/expired`, T046's status filter and T044's recount all rest on that missing state. **Decide
+> whether recording an unenacted proposal belongs to T045 or to a task of its own before starting it.**
+
+### The signing protocol
+
+- [X] T076 [P] Implement `GET .../proposals/{proposalId}/signing-request` per contracts. **No digest field** (FR-028) — the client derives it.
+- [ ] T077 [P] Test: the signing request carries the full operation and no digest; a client-derived digest matches what the server verifies against.
+- [X] T078 Implement submission verification: signature checked against the v2 statement rebuilt from the **stored** operation, not from anything the client sent.
+> **T078 found a gap the spec had not named.** Structural validation confirmed an authorisation named an individual and that a signature verified against the key it *supplied* — but nothing bound that key to the claimed `IndividualDid`. Anyone could have signed with their own key while naming a colleague as accountable: valid signature, false audit record, self-declared accountability. `did:sorcha:w:{address}` encodes the wallet address and an address derives from its public key, so the binding is checkable — `DetachedApprovalVerifier.VerifyKeyBelongsToDid` re-derives and compares, and no approval is accepted without it. Added as **FR-035**.
+- [ ] T079 `authorisation` handling (R-017, supersedes the co-signature framing): verify it, bind it to the approving organisation, and treat it in the validator as **attestation metadata, not a roster claim** — otherwise it is rejected as "not on roster". Refuse the whole submission when invalid; never accept while discarding it (FR-032).
+- [X] T087 Delegation record: signed by the **empowering individual's** key (never server-asserted — the server mints tokens, so a claim it can assert is one it can forge). Carries approver public key, organisation, scope over `GovernanceOperationType`, expiry. FR-033.
+- [X] T088 (structural half done — the validator takes an injected `isRevoked` predicate so the answer comes from sealed content, not service state; the ledger-side revocation record is now in: GovernanceDelegationRevocation + its own statement, unilateral per R-023) Delegation validity determinable from **sealed ledger content** so every node folds identically (FR-034 / R-009) — delegation and revocation are ledger records, not service state.
+- [X] T089 [P] Test: a delegated approval outside its scope is refused (e.g. a bot empowered for `CryptoPolicyUpdate` cannot approve `Transfer`).
+- [X] T090 [P] Test: an expired or revoked delegation refuses the approval, and the refusal is recorded with a reason rather than dropped.
+- [X] T091 [P] Test: **every** accepted approval resolves to a named individual — directly or through a delegation. No approval reaches the ledger without one (FR-029).
+- [ ] T080 [P] Test: a co-signature alone does not satisfy the roster; an organisation signature is still required.
+- [ ] T081 Record `authMethod` on the ledger record (R-016) so a register can require a minimum standard per operation.
+
+### Clients
+
+- [X] T082 CLI `sorcha governance approve` — fetch the signing request, render the operation, sign locally, submit. Proves the ledger mechanics on n1 without waiting for UI, and is the autonomous-bot path.
+- [ ] T083 Wallet PWA signing surface — recompute the digest, display what is being authorised, sign with the organisation's slot-100 key. Same code on web and mobile (R-016).
+- [ ] T084 Org admin console review surface — render the governance **diff** (roster before/after, policy before/after), not a JSON blob. Approving what you cannot read is FR-027 defeated in the human rather than the protocol.
+
+### Gates
+
+- [X] T085 🔴 **LIVE GATE** Substitution: review and sign an `AddValidator` for validator A, submit with validator B's entry. MUST be rejected on n1, and the rejection MUST appear in the validator log rather than being absorbed. This is the gate that distinguishes independent approval from something that merely looks like it.
+- [X] T086 🔴 **LIVE GATE** Single-owner register completes governance unattended, with no pairing, device or human interaction (FR-031) — the no-regression gate.
+
+**Checkpoint**: the server cannot produce a multi-party approval on its own, and a signature binds exactly what the approver saw.
+
+
+---
+
+## Phase 9: Defects found by live verification (2026-08-07)
+
+- [X] T092 🔴 Route `/governance/propose` through `IGovernanceSigningService` (slot 100, proposing ORG) instead of `ISystemWalletSigningService` (slot 101, NODE). R-020 — the original F189 defect, left unfixed on this path when US1 moved crypto-policy across. Roster changes are the operations this feature is named after and none of them can complete on a sealed register today.
+- [X] T093 🔴 **LIVE GATE** Raise a roster-change proposal on a SEALED **ordinary** register and confirm it lands in a docket. **Not the SSR** — it is unique by design (offline pre-signed genesis, deliberately outside this path until US4), so it can neither confirm nor refute the general behaviour. US1 should have had this gate; its absence is why R-020 survived a live verification.
+- [X] T094 ~~Decide and implement individual key provisioning~~ **CLOSED — no work needed.** The mechanism already exists: `POST /api/v1/wallets`, the first-login flow the UI drives. R-018 was my error (I searched only the Tenant Service). Originally: decide individual key provisioning (R-018) — no path currently gives an administrator a personal key, so neither authorisation form is usable by one. Must not reintroduce server-side signing (R-014).
+
+- [ ] T095 Enforce **Owner-only** delegation granting (R-023) in the service layer, where the roster and org membership resolve. Cannot live in `GovernanceAuthorisationValidator` — `Sorcha.Register.Models` is a zero-dependency leaf and knows nothing of organisational roles.
+- [ ] T096 Interactive signing windows to 15 minutes, scripted flows unchanged at 5 (R-023). Needed before T083 builds the PWA signing surface against a window that expires mid-review.

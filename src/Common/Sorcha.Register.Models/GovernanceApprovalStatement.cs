@@ -3,6 +3,9 @@
 
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace Sorcha.Register.Models;
 
@@ -83,17 +86,104 @@ public static class GovernanceApprovalStatement
         ArgumentNullException.ThrowIfNull(operation);
         ArgumentException.ThrowIfNullOrWhiteSpace(approverDid);
 
-        // Round-trip ("O") on the timestamp: a culture- or precision-dependent rendering would make
-        // the producer and the verifier disagree on the bytes for the same proposal.
         return string.Join(UnitSeparator,
-            "sorcha:governance-approval:v1",
+            StatementVersion,
             registerId,
-            operation.OperationType.ToString(),
-            operation.ProposerDid ?? string.Empty,
-            operation.TargetDid ?? string.Empty,
-            operation.TargetRole.ToString(),
-            operation.ProposedAt.ToUniversalTime().ToString("O"),
             approverDid,
-            isApproval ? "approve" : "reject");
+            isApproval ? "approve" : "reject",
+            CanonicaliseOperation(operation));
+    }
+
+    /// <summary>Domain tag. v1 signatures MUST NOT verify under v2 (R-011 clean break).</summary>
+    public const string StatementVersion = "sorcha:governance-approval:v2";
+
+    /// <summary>
+    /// Members deliberately outside the digest: both are state <i>about</i> the proposal rather than
+    /// part of what is being authorised. Signatures accumulate as approvals arrive, so binding them
+    /// would make the first signature invalidate the second; status is lifecycle, not content.
+    /// </summary>
+    private static readonly string[] ExcludedMembers =
+    [
+        nameof(GovernanceOperation.ApprovalSignatures),
+        nameof(GovernanceOperation.Status),
+    ];
+
+    private static readonly JsonSerializerOptions CanonicalOptions = new()
+    {
+        // Enums by name: an approver reads "AddValidator", and a reordered enum must not silently
+        // change what a stored signature covers.
+        Converters = { new JsonStringEnumConverter() },
+        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+        WriteIndented = false,
+    };
+
+    /// <summary>
+    /// Renders the operation as canonical JSON with keys sorted at every level.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why serialisation and not a field list.</b> v1 bound a hand-picked list, and
+    /// <see cref="GovernanceOperation"/> carried more than that list — <c>ValidatorEntry</c>,
+    /// <c>RosterSnapshotId</c>, <c>QuorumFormulaAtRaise</c>, <c>ExpiresAt</c> and
+    /// <c>Justification</c> were all unbound. The sharp case was <c>AddValidator</c>: an approval
+    /// bound "add a validator" and <b>not which one</b>, the validator's public key and endpoint
+    /// sitting outside the digest entirely.
+    /// </para>
+    /// <para>
+    /// Extending the list would close today's gap and reopen it the next time a property is added —
+    /// silently, with no compiler error and no failing test. Binding the serialisation means a new
+    /// property is covered the moment it exists. <c>GovernanceApprovalStatementBindingTests</c>
+    /// enforces this by reflection, and found <c>Justification</c> that a hand-written list had
+    /// missed.
+    /// </para>
+    /// <para>
+    /// Keys are sorted rather than left in declaration order: declaration order is stable for a given
+    /// build but reordering a property is an invisible edit that would invalidate every stored
+    /// signature.
+    /// </para>
+    /// </remarks>
+    private static string CanonicaliseOperation(GovernanceOperation operation)
+    {
+        var node = JsonSerializer.SerializeToNode(operation, CanonicalOptions)!.AsObject();
+
+        foreach (var excluded in ExcludedMembers)
+        {
+            node.Remove(excluded);
+        }
+
+        return Canonicalise(node)!.ToJsonString();
+    }
+
+    /// <summary>Recursively rewrites an object graph with its keys in ordinal order.</summary>
+    private static JsonNode? Canonicalise(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+            {
+                var ordered = new JsonObject();
+                foreach (var pair in obj.OrderBy(p => p.Key, StringComparer.Ordinal))
+                {
+                    ordered[pair.Key] = Canonicalise(pair.Value?.DeepClone());
+                }
+
+                return ordered;
+            }
+
+            case JsonArray array:
+            {
+                // Order is preserved: for a governance payload the sequence is meaningful.
+                var copy = new JsonArray();
+                foreach (var item in array)
+                {
+                    copy.Add(Canonicalise(item?.DeepClone()));
+                }
+
+                return copy;
+            }
+
+            default:
+                return node;
+        }
     }
 }

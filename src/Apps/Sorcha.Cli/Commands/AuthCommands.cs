@@ -70,8 +70,13 @@ public class AuthLoginCommand : Command
 
         _interactiveOption = new Option<bool>("--interactive", "-i")
         {
-            Description = "Use interactive login (prompts for credentials securely)",
-            DefaultValueFactory = _ => true
+            // Defaulted to TRUE, which made --username/--password unusable: the prompt fired
+            // regardless and overwrote whatever was supplied, so `auth login` could not be scripted
+            // at all. That blocks the autonomous-approver path outright — a bot has no console.
+            // Absent credentials still prompt (see LoginUserAsync), so a human typing
+            // `sorcha auth login` gets the same experience as before.
+            Description = "Force prompts even when credentials are supplied",
+            DefaultValueFactory = _ => false
         };
 
         _profileOption = new Option<string?>("--profile")

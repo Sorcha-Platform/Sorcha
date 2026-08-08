@@ -70,18 +70,23 @@ public class RightsEnforcementServiceTests
     private static Transaction CreateGovernanceTransaction(
         byte[] signerPublicKey,
         GovernanceOperation? operation = null,
-        string? blueprintId = null)
+        string? blueprintId = null,
+        bool carriesRoster = true)
     {
         var payload = new ControlTransactionPayload
         {
             Version = 1,
-            Roster = new RegisterControlRecord
-            {
-                RegisterId = "test-register",
-                Name = "Test",
-                CreatedAt = DateTimeOffset.UtcNow,
-                Attestations = []
-            },
+            // Feature 189: null means "this transaction changes no roster" — a proposal being
+            // raised rather than a change being made.
+            Roster = carriesRoster
+                ? new RegisterControlRecord
+                {
+                    RegisterId = "test-register",
+                    Name = "Test",
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    Attestations = []
+                }
+                : null,
             Operation = operation
         };
 
@@ -945,6 +950,125 @@ public class RightsEnforcementServiceTests
         // The guard must block only the stranding case, not ordinary roster maintenance.
         result.Errors.Should().NotContain(e => e.Code == "VAL_PERM_010");
     }
+
+    // --- Feature 189: a proposal that enacts nothing ---
+
+    /// <summary>
+    /// A control transaction carrying no roster is a proposal being raised, not a change being
+    /// made. It cannot carry the approvals it exists to collect, so demanding them would refuse
+    /// every multi-party proposal at birth.
+    /// </summary>
+    [Fact]
+    public async Task NonOwnerProposal_CarryingNoRoster_IsNotRefusedForMissingQuorum()
+    {
+        var roster = CreateRoster(
+            (OwnerPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"),
+            (AdminPublicKey, RegisterRole.Admin, "did:sorcha:w:admin1"));
+        _rosterServiceMock
+            .Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+        _rosterServiceMock
+            .Setup(r => r.ValidateProposal(roster, It.IsAny<GovernanceOperation>()))
+            .Returns(GovernanceValidationResult.Success());
+
+        var tx = CreateRosterlessGovernanceTransaction(AdminPublicKey, new GovernanceOperation
+        {
+            OperationType = GovernanceOperationType.Add,
+            ProposerDid = "did:sorcha:w:admin1",
+            TargetDid = "did:sorcha:w:newadmin",
+            TargetRole = RegisterRole.Admin,
+            Status = ProposalStatus.Pending,
+            ProposedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(7)
+        });
+
+        var result = await _service.ValidateGovernanceRightsAsync(tx);
+
+        result.Errors.Should().NotContain(e => e.Code == "VAL_PERM_005",
+            "a transaction that changes no roster has nothing for quorum to authorise");
+    }
+
+    /// <summary>
+    /// The bypass this exemption must not open.
+    /// </summary>
+    /// <remarks>
+    /// The obvious discriminator — <c>Operation.Status == Pending</c> — is wrong, because
+    /// <see cref="ProposalStatus.Pending"/> is <c>0</c>: a payload that simply omits the field reads
+    /// as pending. Keying the exemption on it would let a transaction that DOES carry a roster skip
+    /// quorum by saying nothing at all. The exemption keys on the absence of a roster instead, which
+    /// cannot be faked into a change.
+    /// </remarks>
+    [Fact]
+    public async Task NonOwnerChange_CarryingARoster_StillRequiresQuorum_EvenWithStatusUnset()
+    {
+        var roster = CreateRoster(
+            (OwnerPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"),
+            (AdminPublicKey, RegisterRole.Admin, "did:sorcha:w:admin1"));
+        _rosterServiceMock
+            .Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+        _rosterServiceMock
+            .Setup(r => r.ValidateProposal(roster, It.IsAny<GovernanceOperation>()))
+            .Returns(GovernanceValidationResult.Success());
+
+        // Status deliberately not set — it defaults to Pending.
+        var operation = new GovernanceOperation
+        {
+            OperationType = GovernanceOperationType.Add,
+            ProposerDid = "did:sorcha:w:admin1",
+            TargetDid = "did:sorcha:w:newadmin",
+            TargetRole = RegisterRole.Admin,
+            ProposedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(7)
+        };
+        operation.Status.Should().Be(ProposalStatus.Pending, "this test is only meaningful if it is");
+
+        var result = await _service.ValidateGovernanceRightsAsync(
+            CreateGovernanceTransaction(AdminPublicKey, operation));
+
+        result.Errors.Should().Contain(e => e.Code == "VAL_PERM_005",
+            "carrying a roster is what makes a transaction a change, whatever its status says");
+    }
+
+    /// <summary>
+    /// A Transfer proposal cannot pre-satisfy the distinct-signer threshold either — only its
+    /// enactment can, from the approvals collected against it.
+    /// </summary>
+    [Fact]
+    public async Task TransferProposal_CarryingNoRoster_DoesNotRequireDistinctSigners()
+    {
+        var roster = CreateRoster(
+            (OwnerPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"),
+            (AdminPublicKey, RegisterRole.Admin, "did:sorcha:w:admin1"),
+            (UnknownPublicKey, RegisterRole.Admin, "did:sorcha:w:admin2"));
+        _rosterServiceMock
+            .Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+        _rosterServiceMock
+            .Setup(r => r.ValidateProposal(roster, It.IsAny<GovernanceOperation>()))
+            .Returns(GovernanceValidationResult.Success());
+
+        var tx = CreateRosterlessGovernanceTransaction(OwnerPublicKey, new GovernanceOperation
+        {
+            OperationType = GovernanceOperationType.Transfer,
+            ProposerDid = "did:sorcha:w:owner1",
+            TargetDid = "did:sorcha:w:admin1",
+            TargetRole = RegisterRole.Owner,
+            Status = ProposalStatus.Pending,
+            ProposedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(7)
+        });
+
+        var result = await _service.ValidateGovernanceRightsAsync(tx);
+
+        result.Errors.Should().NotContain(e => e.Code == "VAL_PERM_008",
+            "the proposal is raised by one organisation; the signatures are collected afterwards");
+    }
+
+    /// <summary>Same as <c>CreateGovernanceTransaction</c>, but carrying no roster.</summary>
+    private static Transaction CreateRosterlessGovernanceTransaction(
+        byte[] signerPublicKey, GovernanceOperation operation) =>
+        CreateGovernanceTransaction(signerPublicKey, operation, carriesRoster: false);
 
     [Fact] // T018b — but genesis must still be able to create the roster.
     public async Task NoRoster_GenesisTx_IsStillAdmitted()

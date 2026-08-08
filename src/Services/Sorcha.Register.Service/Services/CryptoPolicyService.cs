@@ -53,7 +53,7 @@ public class CryptoPolicyService
     /// (<c>IsGenesisOrControlTransaction</c>), so this id does not need to be "genesis" to skip
     /// blueprint/routing validation.
     /// </remarks>
-    public const string GovernanceBlueprintId = "register-governance-v1";
+    public const string GovernanceBlueprintId = GovernanceBlueprint.BlueprintId;
 
     // Must match the Validator's ValidationEngine.CanonicalJsonOptions — it re-canonicalises the
     // payload and recomputes the hash, so a divergence here is a silent VAL_HASH_001 rejection.

@@ -291,11 +291,26 @@ public class ControlTransactionPayload
     public int Version { get; set; } = 1;
 
     /// <summary>
-    /// Full current roster snapshot at the time of this Control transaction
+    /// Full roster snapshot as of this Control transaction, or <c>null</c> when the transaction
+    /// changes no roster.
     /// </summary>
-    [Required]
+    /// <remarks>
+    /// <para>
+    /// <b>Null is load-bearing (Feature 189).</b> A <i>pending</i> governance proposal enacts
+    /// nothing — it is raised so approvals have something to attach to — so it must not appear to
+    /// roster reconstruction as a roster change. <c>GovernanceRosterService.GetCurrentRosterAsync</c>
+    /// walks control transactions newest-first and skips any whose payload carries no populated
+    /// roster, so a null here keeps <c>LastControlTxId</c> on the last <i>real</i> roster commit.
+    /// </para>
+    /// <para>
+    /// That matters because FR-011b invalidates a proposal whose <c>RosterSnapshotId</c> no longer
+    /// matches <c>LastControlTxId</c>. A proposal that wrote a roster would move that value and
+    /// invalidate <b>itself</b> the moment it sealed — which is exactly what the pre-split
+    /// propose-and-enact transaction did, and why no approval could ever attach to one.
+    /// </para>
+    /// </remarks>
     [JsonPropertyName("roster")]
-    public RegisterControlRecord Roster { get; set; } = new();
+    public RegisterControlRecord? Roster { get; set; }
 
     /// <summary>
     /// The governance operation that produced this roster state.
@@ -303,6 +318,30 @@ public class ControlTransactionPayload
     /// </summary>
     [JsonPropertyName("operation")]
     public GovernanceOperation? Operation { get; set; }
+
+    /// <summary>
+    /// Transaction id of the proposal this transaction enacts, or <c>null</c> when it is not a
+    /// separate enactment.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Set only on an <b>enactment</b> raised after approvals were collected against a pending
+    /// proposal. It tells the Validator where to find the approvals that authorise the change, so
+    /// quorum is counted from <b>sealed content</b> rather than from a list the enacting payload
+    /// carries — which two nodes could assemble differently for the same proposal.
+    /// </para>
+    /// <para>
+    /// It lives on the envelope rather than on <see cref="GovernanceOperation"/> deliberately: the
+    /// approval digest binds the operation's whole serialisation, so adding a field there would change
+    /// what every stored approval signature covers. The envelope is outside that digest.
+    /// </para>
+    /// <para>
+    /// Null on an Owner-override propose-and-enact, which stays a single transaction carrying its own
+    /// approvals inline — so that path's validation is untouched.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("enactsProposalId")]
+    public string? EnactsProposalId { get; set; }
 }
 
 /// <summary>

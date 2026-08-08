@@ -44,7 +44,7 @@ public class SystemRegisterService
     private readonly IHashProvider _hashProvider;
 
     private const string DefaultBlueprintId = "register-creation-v1";
-    private const string GovernanceBlueprintId = "register-governance-v1";
+    private const string GovernanceBlueprintId = GovernanceBlueprint.BlueprintId;
     private const string BlueprintPublishTransactionType = "BlueprintPublish";
 
     private static readonly JsonSerializerOptions CanonicalJsonOptions = new()

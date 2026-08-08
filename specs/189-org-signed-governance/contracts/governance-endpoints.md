@@ -62,8 +62,18 @@ follow-on enactment transaction id — except for `Transfer`, which always requi
 
 ### `POST /api/registers/{registerId}/governance/proposals/{proposalId}/approve`
 
-One organisation's approval. The caller's organisation is resolved from its token; the approval is
-signed with that organisation's slot-100 key and submitted as a ledger transaction (R-009).
+One organisation's approval.
+
+> **SUPERSEDED 2026-08-07 for multi-party registers (R-014).** This previously read *"the caller's
+> organisation is resolved from its token; the approval is signed with that organisation's slot-100
+> key"* — i.e. the server signed. That is issue #1380 expressed as an API and it is withdrawn.
+>
+> The server no longer holds a multi-party register's slot-100 key. This endpoint now **accepts a
+> detached signature produced externally** (see `GovernanceApprovalSubmission` below) and assembles
+> the ledger transaction from it. A single-owner register keeps the unattended Owner override
+> (FR-031), which is the only remaining case where the server signs.
+
+The submitted approval is still a ledger transaction, not a table row (R-009).
 
 Request body: none required. Optional `{ "comment": "…" }` for the audit trail.
 
@@ -146,3 +156,71 @@ Each of these fails against current `master`:
 | Unanimous, last approver removed | **Invalidated, not enacted** (SC-010) |
 | Repeat approval | Count unchanged |
 | Any `BlueprintId == "genesis"` on a governance tx | Rejected (R-005 guard) |
+
+
+---
+
+## External signing (added 2026-08-07 — R-013/R-014/R-015)
+
+### `GET /api/registers/{registerId}/governance/proposals/{proposalId}/signing-request`
+
+What an approver must sign. Returned to the organisation being asked.
+
+```
+{
+  "requestId":        "...",
+  "registerId":       "...",
+  "proposalId":       "...",
+  "operation":        { ...the FULL GovernanceOperation, canonical form... },
+  "statementVersion": "sorcha:governance-approval:v2",
+  "approverDid":      "did:sorcha:w:ws11q...",
+  "expiresAt":        "..."
+}
+```
+
+**No digest field, deliberately (FR-028).** A server-supplied digest could fail to match the
+operation the client displayed, reinstating the substitution R-013 closes, one level up. The client
+derives the digest from the operation it rendered, so there is nothing for the two to disagree about.
+
+The client MUST render the operation (FR-027). Signing an opaque value is not approval.
+
+### `GovernanceApprovalSubmission` — the body of `POST .../approve`
+
+```
+{
+  "requestId":   "...",
+  "approverDid": "did:sorcha:w:ws11q...",
+  "signature":   "base64",      // organisation slot-100 key — AUTHORITY
+  "publicKey":   "base64",      // travels so the roster match needs no lookup
+  "authMethod":  "hardware-backed" | "software" | "service",
+  "authorisation": {            // ACCOUNTABILITY — required on EVERY approval (FR-029, R-017).
+    "kind": "direct",           // "direct" | "delegated"
+    "individualDid": "...",     // the human who stands behind this approval
+    "signature":  "base64",     // direct: the individual's own key signs the same v2 statement
+    "publicKey":  "base64",
+    "authMethod": "...",
+    "delegation": {             // delegated ONLY: how a machine came to be empowered
+      "delegationId": "...",    // ledger record; validity is checkable from sealed content
+      "approverPublicKey": "base64",             // the machine key this empowers
+      "scope": ["CryptoPolicyUpdate"],           // which operations — Transfer can be withheld
+      "expiresAt": "...",
+      "signature": "base64",    // signed by the EMPOWERING INDIVIDUAL's key, not the server's
+      "publicKey": "base64"
+    }
+  },
+  "comment": "optional, for the audit trail"
+}
+```
+
+| Status | Meaning |
+|---|---|
+| `202` | Accepted and submitted to the validator. |
+| `400` | Signature does not verify against the v2 statement derived from the stored operation. |
+| `403` | Approver is not on the proposal's roster snapshot (FR-011). |
+| `409` | Proposal not open, or the signing request has expired. |
+| `422` | Authorisation invalid, from an individual outside the approving organisation, or — for a delegated approver — out of scope, expired or revoked. **Refused outright — never accepted with the authorisation quietly dropped (FR-032).** |
+
+> **Why the delegation is signed rather than claimed.** `RequireDelegatedAuthority` already carries a
+> `delegated_user_id` claim, but the **server mints the token**. A delegation the server can assert is
+> one it can forge, which defeats moving signing outside it (R-014/R-017). The delegation must be
+> signed by the empowering individual's own key.

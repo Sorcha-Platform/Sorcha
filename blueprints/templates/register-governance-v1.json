@@ -4,7 +4,12 @@
   "description": "Manages admin roster changes for a register via multi-sig quorum workflow",
   "version": 1,
   "category": "governance",
-  "tags": ["governance", "admin", "quorum", "multi-sig"],
+  "tags": [
+    "governance",
+    "admin",
+    "quorum",
+    "multi-sig"
+  ],
   "author": "Sorcha Team",
   "published": true,
   "template": {
@@ -14,9 +19,21 @@
     "description": "Manages admin roster changes for a register via multi-sig quorum workflow",
     "version": 1,
     "participants": [
-      { "id": "proposer", "name": "Proposer", "organisation": "Register Admin" },
-      { "id": "voter", "name": "Voter", "organisation": "Register Admin" },
-      { "id": "target", "name": "Target", "organisation": "New/Departing Admin" }
+      {
+        "id": "proposer",
+        "name": "Proposer",
+        "organisation": "Register Admin"
+      },
+      {
+        "id": "voter",
+        "name": "Voter",
+        "organisation": "Register Admin"
+      },
+      {
+        "id": "target",
+        "name": "Target",
+        "organisation": "New/Departing Admin"
+      }
     ],
     "actions": [
       {
@@ -25,7 +42,13 @@
         "sender": "proposer",
         "isStartingAction": true,
         "routes": [
-          { "id": "genesis-to-propose", "nextActionIds": [1], "isDefault": true }
+          {
+            "id": "genesis-to-propose",
+            "nextActionIds": [
+              1
+            ],
+            "isDefault": true
+          }
         ]
       },
       {
@@ -33,9 +56,169 @@
         "title": "Propose Change",
         "sender": "proposer",
         "routes": [
-          { "id": "transfer-skip-quorum", "nextActionIds": [3], "condition": { "==": [{ "var": "operationType" }, "Transfer"] } },
-          { "id": "owner-override", "nextActionIds": [3], "condition": { "==": [{ "var": "ownerOverride" }, true] } },
-          { "id": "to-quorum", "nextActionIds": [2], "isDefault": true }
+          {
+            "id": "transfer-skip-quorum",
+            "nextActionIds": [
+              3
+            ],
+            "condition": {
+              "==": [
+                {
+                  "var": "operationType"
+                },
+                "Transfer"
+              ]
+            }
+          },
+          {
+            "id": "owner-override",
+            "nextActionIds": [
+              3
+            ],
+            "condition": {
+              "and": [
+                {
+                  "==": [
+                    {
+                      "var": "ownerOverride"
+                    },
+                    true
+                  ]
+                },
+                {
+                  "==": [
+                    {
+                      "var": "requiresAcceptance"
+                    },
+                    true
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "owner-override-no-acceptance",
+            "nextActionIds": [
+              4
+            ],
+            "condition": {
+              "and": [
+                {
+                  "==": [
+                    {
+                      "var": "ownerOverride"
+                    },
+                    true
+                  ]
+                },
+                {
+                  "==": [
+                    {
+                      "var": "requiresAcceptance"
+                    },
+                    false
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "to-quorum",
+            "nextActionIds": [
+              2
+            ],
+            "isDefault": true
+          }
+        ],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "title": "Governance proposal",
+            "required": [
+              "operationType",
+              "proposerDid",
+              "proposedAt",
+              "rosterSnapshotId",
+              "quorumFormulaAtRaise"
+            ],
+            "properties": {
+              "operationType": {
+                "type": "string",
+                "enum": [
+                  "Add",
+                  "Remove",
+                  "Transfer",
+                  "AddValidator",
+                  "RemoveValidator",
+                  "RotateValidatorKey",
+                  "RevokeIssuanceKey",
+                  "RotateIssuanceKey",
+                  "CryptoPolicyUpdate"
+                ],
+                "title": "Operation",
+                "x-enumNames": [
+                  "Add participant",
+                  "Remove participant",
+                  "Transfer ownership",
+                  "Add validator",
+                  "Remove validator",
+                  "Rotate validator key",
+                  "Revoke issuance key",
+                  "Rotate issuance key",
+                  "Change encryption policy"
+                ]
+              },
+              "proposerDid": {
+                "type": "string",
+                "title": "Proposed by"
+              },
+              "targetDid": {
+                "type": "string",
+                "title": "Subject of the change"
+              },
+              "targetRole": {
+                "type": "string",
+                "title": "Role"
+              },
+              "proposedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "date-time",
+                "title": "Proposal expires"
+              },
+              "justification": {
+                "type": "string",
+                "title": "Why",
+                "maxLength": 2000
+              },
+              "validatorEntry": {
+                "type": "object",
+                "title": "Validator being added or rotated",
+                "description": "Bound by the approval digest \u2014 approving 'add a validator' must not authorise adding an arbitrary one."
+              },
+              "rosterSnapshotId": {
+                "type": "string",
+                "title": "Roster at time of raise"
+              },
+              "quorumFormulaAtRaise": {
+                "type": "string",
+                "enum": [
+                  "StrictMajority",
+                  "Supermajority",
+                  "Unanimous"
+                ],
+                "title": "Approval rule in force"
+              },
+              "requiresAcceptance": {
+                "type": "boolean",
+                "title": "Subject must accept",
+                "description": "False for operations with nobody to accept (e.g. a crypto-policy change), which route past Accept Role."
+              }
+            }
+          }
         ]
       },
       {
@@ -43,9 +226,279 @@
         "title": "Collect Quorum",
         "sender": "voter",
         "routes": [
-          { "id": "quorum-met", "nextActionIds": [3], "condition": { ">=": [{ "var": "approvalPercentage" }, 50.01] } },
-          { "id": "quorum-blocked", "nextActionIds": [1], "condition": { "==": [{ "var": "quorumBlocked" }, true] } },
-          { "id": "collect-more", "nextActionIds": [2], "isDefault": true }
+          {
+            "id": "quorum-met",
+            "nextActionIds": [
+              3
+            ],
+            "condition": {
+              "and": [
+                {
+                  "==": [
+                    {
+                      "var": "quorumMet"
+                    },
+                    true
+                  ]
+                },
+                {
+                  "==": [
+                    {
+                      "var": "requiresAcceptance"
+                    },
+                    true
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "quorum-met-no-acceptance",
+            "nextActionIds": [
+              4
+            ],
+            "condition": {
+              "and": [
+                {
+                  "==": [
+                    {
+                      "var": "quorumMet"
+                    },
+                    true
+                  ]
+                },
+                {
+                  "==": [
+                    {
+                      "var": "requiresAcceptance"
+                    },
+                    false
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "quorum-blocked",
+            "nextActionIds": [
+              1
+            ],
+            "condition": {
+              "==": [
+                {
+                  "var": "quorumBlocked"
+                },
+                true
+              ]
+            }
+          },
+          {
+            "id": "collect-more",
+            "nextActionIds": [
+              2
+            ],
+            "isDefault": true
+          }
+        ],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "title": "Governance approval",
+            "description": "The payload of an approval submitted as this action. Kept in lockstep with GovernanceApprovalActionPayload by GovernanceApprovalPayloadContractTests \u2014 a field on one side and not the other fails the build.",
+            "required": [
+              "type",
+              "proposalId",
+              "approverDid",
+              "isApproval",
+              "signature",
+              "publicKey",
+              "authMethod",
+              "statementVersion",
+              "authorisation"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "governance-approval",
+                "title": "Payload discriminator",
+                "description": "Inside the signed payload rather than transaction metadata, which is outside the signature, the payload hash and the merkle leaf."
+              },
+              "proposalId": {
+                "type": "string",
+                "title": "Proposal being voted on",
+                "description": "The proposal is a ledger transaction, so this is its transaction id."
+              },
+              "approverDid": {
+                "type": "string",
+                "title": "Approving organisation"
+              },
+              "isApproval": {
+                "type": "boolean",
+                "title": "Approve or reject",
+                "description": "Bound by the digest, so a rejection cannot be counted as an approval by flipping it."
+              },
+              "signature": {
+                "type": "string",
+                "title": "Organisation signature (slot 100)"
+              },
+              "publicKey": {
+                "type": "string",
+                "title": "Organisation public key"
+              },
+              "authMethod": {
+                "type": "string",
+                "enum": [
+                  "unknown",
+                  "software",
+                  "hardware-backed",
+                  "service"
+                ],
+                "title": "How the key was held",
+                "description": "Recorded so a register may require a minimum standard for a given operation (R-016). 'unknown' is the weakest and is what an unstated method records as \u2014 a schema that could not express it would make a legitimate payload invalid."
+              },
+              "statementVersion": {
+                "type": "string",
+                "title": "Statement the signature commits to",
+                "description": "Carried so a reader rebuilds the right statement rather than inferring it. v1 signatures must not verify under v2 (R-011)."
+              },
+              "comment": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "authorisation": {
+                "type": "object",
+                "title": "Who stands behind this approval",
+                "description": "Required on EVERY approval (FR-029). An autonomous approver is delegated, not unaccountable.",
+                "required": [
+                  "kind",
+                  "individualDid",
+                  "signature",
+                  "publicKey",
+                  "authMethod",
+                  "algorithm"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "direct",
+                      "delegated"
+                    ]
+                  },
+                  "individualDid": {
+                    "type": "string",
+                    "title": "The person accountable"
+                  },
+                  "signature": {
+                    "type": "string"
+                  },
+                  "publicKey": {
+                    "type": "string",
+                    "description": "Direct: the individual's own key. Delegated: the machine's key, tied to the grant by approverPublicKey."
+                  },
+                  "authMethod": {
+                    "type": "string",
+                    "enum": [
+                      "unknown",
+                      "software",
+                      "hardware-backed",
+                      "service"
+                    ]
+                  },
+                  "algorithm": {
+                    "type": "string",
+                    "enum": [
+                      "ED25519",
+                      "NISTP256",
+                      "RSA4096",
+                      "ML_DSA_65",
+                      "SLH_DSA_128s"
+                    ],
+                    "title": "Algorithm of publicKey",
+                    "description": "Carried because, unlike an organisation, an individual has no roster entry recording it."
+                  },
+                  "delegationAlgorithm": {
+                    "type": "string",
+                    "enum": [
+                      "ED25519",
+                      "NISTP256",
+                      "RSA4096",
+                      "ML_DSA_65",
+                      "SLH_DSA_128s"
+                    ],
+                    "title": "Algorithm of delegationPublicKey"
+                  },
+                  "delegationSignature": {
+                    "type": "string",
+                    "title": "The grantor's signature over the delegation statement",
+                    "description": "Present only for a delegated authorisation. This, not the machine's signature, is what binds a named individual to the grant."
+                  },
+                  "delegationPublicKey": {
+                    "type": "string",
+                    "title": "Key that produced delegationSignature",
+                    "description": "Must derive to the wallet address inside the grant's individualDid, or the accountability record is self-declared."
+                  },
+                  "delegation": {
+                    "type": "object",
+                    "title": "How a machine came to be empowered",
+                    "description": "Signed by the empowering individual's own key \u2014 never server-asserted, because the server mints tokens (FR-033).",
+                    "required": [
+                      "delegationId",
+                      "organisationDid",
+                      "individualDid",
+                      "approverPublicKey",
+                      "scope",
+                      "expiresAt",
+                      "grantedAt"
+                    ],
+                    "properties": {
+                      "delegationId": {
+                        "type": "string"
+                      },
+                      "organisationDid": {
+                        "type": "string",
+                        "title": "Organisation whose authority is exercised"
+                      },
+                      "individualDid": {
+                        "type": "string",
+                        "title": "The individual who empowered the approver"
+                      },
+                      "approverPublicKey": {
+                        "type": "string"
+                      },
+                      "scope": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "Add",
+                            "Remove",
+                            "Transfer",
+                            "AddValidator",
+                            "RemoveValidator",
+                            "RotateValidatorKey",
+                            "RevokeIssuanceKey",
+                            "RotateIssuanceKey",
+                            "CryptoPolicyUpdate"
+                          ]
+                        },
+                        "title": "Operations this delegation permits",
+                        "description": "A bot may be empowered for routine changes while Transfer still requires a human."
+                      },
+                      "expiresAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "grantedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         ]
       },
       {
@@ -53,8 +506,27 @@
         "title": "Accept Role",
         "sender": "target",
         "routes": [
-          { "id": "accepted", "nextActionIds": [4], "condition": { "==": [{ "var": "accepted" }, true] } },
-          { "id": "declined", "nextActionIds": [1], "isDefault": true }
+          {
+            "id": "accepted",
+            "nextActionIds": [
+              4
+            ],
+            "condition": {
+              "==": [
+                {
+                  "var": "accepted"
+                },
+                true
+              ]
+            }
+          },
+          {
+            "id": "declined",
+            "nextActionIds": [
+              1
+            ],
+            "isDefault": true
+          }
         ]
       },
       {
@@ -62,7 +534,13 @@
         "title": "Record Control Transaction",
         "sender": "proposer",
         "routes": [
-          { "id": "loop-back", "nextActionIds": [1], "isDefault": true }
+          {
+            "id": "loop-back",
+            "nextActionIds": [
+              1
+            ],
+            "isDefault": true
+          }
         ]
       }
     ],

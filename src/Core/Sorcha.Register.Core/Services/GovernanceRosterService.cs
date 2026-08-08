@@ -225,6 +225,16 @@ public class GovernanceRosterService : IGovernanceRosterService
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// <b>Deterministic by construction (Feature 189).</b> Every timestamp written here derives from
+    /// <c>operation.ProposedAt</c> — sealed content, identical on every node — and never from the
+    /// clock. The Transfer arms used <c>DateTimeOffset.UtcNow</c>, which meant two nodes enacting the
+    /// same proposal produced <i>different bytes</i>, and therefore the same deterministic
+    /// transaction id with a different payload hash: a conflicting duplicate that reads as a fork
+    /// rather than as the idempotent resubmission it is. There is no symptom until two nodes enact
+    /// concurrently, so this cannot be caught by inspection —
+    /// <c>ApplyOperationDeterminismTests</c> is the guard.
+    /// </remarks>
     public RegisterControlRecord ApplyOperation(
         RegisterControlRecord currentRoster,
         GovernanceOperation operation,
@@ -265,7 +275,7 @@ public class GovernanceRosterService : IGovernanceRosterService
                     PublicKey = oldOwner.PublicKey,
                     Signature = oldOwner.Signature,
                     Algorithm = oldOwner.Algorithm,
-                    GrantedAt = DateTimeOffset.UtcNow
+                    GrantedAt = operation.ProposedAt
                 });
 
                 // Promote target to Owner
@@ -277,7 +287,7 @@ public class GovernanceRosterService : IGovernanceRosterService
                     PublicKey = targetAttestation.PublicKey,
                     Signature = targetAttestation.Signature,
                     Algorithm = targetAttestation.Algorithm,
-                    GrantedAt = DateTimeOffset.UtcNow
+                    GrantedAt = operation.ProposedAt
                 });
 
                 _logger.LogInformation("Transferred ownership from {OldOwner} to {NewOwner}",

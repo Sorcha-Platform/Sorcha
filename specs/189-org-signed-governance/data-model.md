@@ -145,3 +145,51 @@ absence of any direct-write path (the `PUT /devmode` toggle was removed earlier 
 5. **Quorum is a pure function of sealed ledger content + the roster snapshot**, so every node folds
    the same result. (R-009)
 6. **A register can never be left ungovernable by a governance change.** (FR-024)
+
+
+---
+
+## External approval (added 2026-08-07 — R-013/R-014/R-015)
+
+### `GovernanceApprovalStatement` v2
+
+Binds the **whole operation**, not a field list. v1's hand-picked list left `ValidatorEntry`,
+`RosterSnapshotId`, `QuorumFormulaAtRaise` and `ExpiresAt` unbound — so an `AddValidator` approval
+bound "add a validator" and not *which one*.
+
+| Component | Note |
+|---|---|
+| domain tag | `sorcha:governance-approval:v2` — v1 signatures must not verify |
+| `registerId` | an approval on one register must not authorise another |
+| `proposalId` | newly bound; v1 relied on `ProposedAt` precision for uniqueness |
+| `approverDid` | who is approving |
+| approve / reject | the direction |
+| operation hash | SHA-256 over the operation's canonical JSON, excluding `ApprovalSignatures` and `Status` (derived/mutable) |
+
+Excluding by *serialisation* rather than by an allow-list is the point: a property added to
+`GovernanceOperation` later is covered automatically, and a reflection test enforces it.
+
+### `GovernanceSigningRequest`
+
+| Field | Note |
+|---|---|
+| `requestId` | correlates the submission |
+| `registerId`, `proposalId` | |
+| `operation` | the **full** `GovernanceOperation`, canonical form — the client must render it (FR-027) |
+| `statementVersion` | `sorcha:governance-approval:v2` |
+| `approverDid` | which organisation is being asked |
+| `expiresAt` | |
+
+**Carries no digest (FR-028).** A server-supplied digest could disagree with the operation displayed.
+
+### `GovernanceApprovalSubmission`
+
+| Field | Note |
+|---|---|
+| `requestId`, `approverDid` | |
+| `signature`, `publicKey` | organisation slot-100 key — **authority**. The public key travels so the roster match needs no lookup. |
+| `authMethod` | `hardware-backed` \| `software` \| `service` — recorded on the ledger so a register can set its own bar (R-016) |
+| `coSignature` | the authorising individual's own key — **accountability**. Required for human approvals, absent for autonomous ones (R-015). Verified and bound to the approving org; treated by the validator as attestation metadata, **not** a roster claim. |
+| `comment` | optional, audit trail |
+
+Transport needs nothing new: `Signatures` is already a `List` and US1 already iterates every entry.

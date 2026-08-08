@@ -110,6 +110,41 @@ public interface IRegisterServiceClient
         [Header("Authorization")] string authorization);
 
     /// <summary>
+    /// Gets what an approver must sign for a governance proposal (Feature 189 T076).
+    /// </summary>
+    /// <remarks>
+    /// The response carries <b>no digest</b> by design (FR-028) — the client derives it from the
+    /// operation it rendered, so a server-supplied digest cannot disagree with what the approver
+    /// actually saw. The request and response types are the server's own
+    /// (<c>Sorcha.Register.Models</c>), not CLI copies, so there is no wire contract to drift
+    /// (CLAUDE.md #18).
+    /// </remarks>
+    [Get("/api/registers/{registerId}/governance/proposals/{proposalId}/signing-request")]
+    Task<GovernanceSigningRequest> GetGovernanceSigningRequestAsync(
+        string registerId,
+        string proposalId,
+        [Query] string approverDid,
+        [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Submits a detached approval of a governance proposal (Feature 189 T045).
+    /// </summary>
+    [Post("/api/registers/{registerId}/governance/proposals/{proposalId}/approve")]
+    Task<HttpResponseMessage> ApproveGovernanceProposalAsync(
+        string registerId,
+        string proposalId,
+        [Body] GovernanceApprovalSubmission submission,
+        [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Lists governance proposals recorded on a register.
+    /// </summary>
+    [Get("/api/registers/{registerId}/governance/proposals")]
+    Task<HttpResponseMessage> ListGovernanceProposalsAsync(
+        string registerId,
+        [Header("Authorization")] string authorization);
+
+    /// <summary>
     /// Submits a revocation for an existing transaction.
     /// </summary>
     [Post("/api/registers/{registerId}/transactions/revoke")]

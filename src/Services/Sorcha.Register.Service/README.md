@@ -993,6 +993,102 @@ replicated, and the one-way guard never saw it. Do not reintroduce a direct-writ
 
 ---
 
+## Register governance (Feature 189)
+
+A governance change moves through **three kinds of transaction**, and only one of them changes the
+roster. Which one is decided by the payload, not by a flag.
+
+| Transaction | Payload | Carries a roster? | Moves the roster head? |
+|---|---|---|---|
+| **Proposal** | `ControlTransactionPayload` with `Operation.Status = Pending` | **no** (`roster: null`) | no |
+| **Approval** | `GovernanceApprovalActionPayload` | no | no |
+| **Enactment** | `ControlTransactionPayload` with `Operation.Status = Recorded` and `EnactsProposalId` | yes | yes |
+
+A proposal carrying no roster is what makes the whole thing work. `GovernanceRosterService`
+reconstructs the roster by walking control transactions newest-first and **skipping any whose payload
+has no populated roster** — so a pending proposal is invisible to that reconstruction, and
+`LastControlTxId` stays on the last real roster commit. That matters because FR-011b invalidates a
+proposal whose `RosterSnapshotId` no longer matches `LastControlTxId`: a proposal that wrote a roster
+would move that value and **invalidate itself the instant it sealed**, which is exactly what the
+pre-split propose-and-enact transaction did.
+
+**The Owner override keeps its single transaction.** Where quorum is met at raise time — a
+single-owner register, which is the overwhelmingly common case — `/propose` still returns `200` and
+writes one propose-and-enact transaction, unchanged. The split applies only where approvals are
+genuinely required.
+
+### Which key signs what
+
+| Slot | Context | Whose key | Use for |
+|---|---|---|---|
+| 100 | `sorcha:register-attestation` | the **organisation** | genesis attestations, governance control transactions, approvals |
+| 101 | `sorcha:register-control` | the **node** | node-internal control operations only |
+| 102 | `sorcha:docket-signing` | the validator | sealing dockets |
+
+A register's roster is built from its genesis attestations, which record the **organisation's**
+slot-100 key. The node is never on a roster, so a node-signed governance transaction is refused
+`submitter not found in roster` on any register whose genesis has sealed — accepted by the endpoint,
+then rejected at the validator, which puts the error a long way from its cause. Route governance
+signing through `IGovernanceSigningService`, never `ISystemWalletSigningService`.
+
+### An approval's signature is not the transaction's signature
+
+Two signatures are in play and they cover different things:
+
+- **Authority** — the approver signs `GovernanceApprovalStatement`: the register, the whole
+  operation, who is approving, and approve-versus-reject. This lives in the **payload**.
+- **Carry** — the node signs `SHA-256("{txId}:{payloadHash}")`, which is what `Signatures` holds and
+  what the validator verifies. Recorded as `Metadata["carriedBy"]`. It confers no authority.
+
+An approver signs before any transaction exists, so they cannot sign an envelope. Filing the detached
+signature in `Signatures` fails `VAL_SIG_002` every time, with a message that blames the approver.
+
+The Owner override is gated on the **operation's proposer**, never on who signed the transaction.
+Those coincide only while the proposer signs its own enacting transaction; once a reaction carries the
+enactment, an Owner-signed carry would otherwise take the override and skip the quorum check
+entirely — laundering a never-approved proposal through the carry.
+
+### Enactment fires from a sealed docket
+
+`GovernanceEnactmentSubscriber` watches `docket:confirmed` and re-evaluates **every open proposal** on
+that register. It re-scans rather than reading the docket's own transactions because that is
+self-healing: a dropped event costs a delay until the register's next docket, not a proposal stuck at
+quorum for ever. It decides whether to *try*; the validator re-counts from the sealed approvals and
+verifies every signature, so it is the authority.
+
+Its transaction id is deterministic, so several nodes may submit and the duplicates dedupe rather than
+fork — **which only holds while the payload bytes match**. Nothing in an enactment payload may read
+the clock; every timestamp derives from `operation.ProposedAt`.
+
+### Two traps worth knowing before you touch the payload
+
+Both were found by the first live run, after a fully green suite, and both were silent.
+
+1. **Serialisation must survive re-serialisation.** The validator re-serialises the payload and
+   recomputes the hash. `GovernanceApprovalActionPayload.CanonicalJsonOptions` must keep
+   `UnsafeRelaxedJsonEscaping`: the default encoder escapes `+`, so an approval whose base64 signature
+   happened to contain one was refused `TX_012` while one whose bytes did not sealed normally.
+2. **Read with the options you wrote with.** The payload's enums are kebab-case on the wire. Reading
+   it back with ad-hoc options throws, and every reader treats a throw as "not an approval" — so both
+   the enactment service and the validator counted **zero** approvals and nothing was ever enacted,
+   with no error logged anywhere.
+
+### Endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/registers/{id}/governance/roster` | Current roster, reconstructed from the control chain |
+| GET | `/api/registers/{id}/governance/history` | Control transactions |
+| POST | `/api/registers/{id}/governance/propose` | Raise an operation. `200` when the Owner override enacts it outright, `202` when it is recorded pending approval |
+| GET | `/api/registers/{id}/governance/proposals` | List proposals |
+| GET | `/api/registers/{id}/governance/proposals/{proposalId}/signing-request` | What an approver must sign. **Carries no digest** (FR-028) — the client derives it from the operation it rendered |
+| POST | `/api/registers/{id}/governance/proposals/{proposalId}/approve` | Submit a detached approval. `202` accepted; `400` bad signature; `403` not on the roster or out of scope; `409` not open, expired or roster-changed; `422` malformed authorisation |
+
+`202` means **accepted**, never **enacted**. A governance change takes effect when its transaction
+seals into a docket — check the docket and the validator verdict, not the response body.
+
+---
+
 ## Resources
 
 - **Specification**: [.specify/specs/sorcha-register-service.md](https://github.com/Sorcha-Platform/Sorcha/blob/master/.specify/specs/sorcha-register-service.md)
