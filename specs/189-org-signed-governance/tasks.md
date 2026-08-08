@@ -330,7 +330,7 @@ indistinguishable symptom — which is exactly what happened on 2026-08-06.
 
 ### Clients
 
-- [ ] T082 CLI `sorcha governance approve` — fetch the signing request, render the operation, sign locally, submit. Proves the ledger mechanics on n1 without waiting for UI, and is the autonomous-bot path.
+- [X] T082 CLI `sorcha governance approve` — fetch the signing request, render the operation, sign locally, submit. Proves the ledger mechanics on n1 without waiting for UI, and is the autonomous-bot path.
 - [ ] T083 Wallet PWA signing surface — recompute the digest, display what is being authorised, sign with the organisation's slot-100 key. Same code on web and mobile (R-016).
 - [ ] T084 Org admin console review surface — render the governance **diff** (roster before/after, policy before/after), not a JSON blob. Approving what you cannot read is FR-027 defeated in the human rather than the protocol.
 
