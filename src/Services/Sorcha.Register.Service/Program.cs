@@ -2296,6 +2296,14 @@ governanceGroup.MapPost("/propose", async (
         ExpiresAt = DateTimeOffset.UtcNow.AddDays(7),
         Status = ProposalStatus.Pending,
         Justification = request.Justification,
+
+        // Feature 189: this was NOT copied, and nothing read request.ValidatorEntry anywhere. The
+        // request record accepted it, GovernanceOperation has the field, and the mapping between them
+        // dropped it — so every AddValidator and RotateValidatorKey proposal was refused by this
+        // endpoint's own "ValidatorEntry is required" guard, and those operations have never been
+        // usable through the API. Found by the T085 substitution gate, which exists to protect
+        // precisely this field.
+        ValidatorEntry = request.ValidatorEntry,
         // Feature 189 (FR-011a): freeze the roster and the rule this proposal is judged against, so
         // neither the eligible approvers nor the number required can shift while it is open. The
         // validator refuses the proposal outright if the roster has moved on (FR-011b) rather than
