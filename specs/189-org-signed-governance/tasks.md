@@ -234,8 +234,54 @@ indistinguishable symptom — which is exactly what happened on 2026-08-06.
 > actual vulnerability); binding `proposalId` lands with the proposal-lifecycle work that introduces
 > it (T045/T046).
 
-- [ ] T074 T053 first — the approval's `BlueprintId`, `ActionId` and payload schema come from the revised `register-governance-v1`. Confirm T053 is complete before starting T075.
-- [ ] T075 Implement an approval as an **action submission** of the governance blueprint, signed externally, carried to the ledger **through the validator** — never written straight to storage (that was the original US1 defect).
+- [X] T074 T053 first — the approval's `BlueprintId`, `ActionId` and payload schema come from the revised `register-governance-v1`. Confirm T053 is complete before starting T075.
+- [X] T075 Implement an approval as an **action submission** of the governance blueprint, signed externally, carried to the ledger **through the validator** — never written straight to storage (that was the original US1 defect).
+
+> **T075 as built (2026-08-08).** `GovernanceApprovalActionPayload` (`Sorcha.Register.Models`) is the
+> ledger shape; `GovernanceApprovalActionSubmitter` (`Sorcha.Register.Service`) builds it and hands it
+> to `IValidatorServiceClient`. It holds no repository, so the direct-to-Mongo shape cannot return
+> through it — asserted structurally, not just by behaviour.
+>
+> **The envelope signature is not the approval signature, and conflating them is the trap.** The
+> validator verifies every entry in `Signatures` against `SHA-256("{txId}:{payloadHash}")`. An
+> approver signs `GovernanceApprovalStatement` — deliberately not a transaction digest, because they
+> sign before any transaction exists and must bind what they reviewed. Filing the detached signature
+> in `Signatures` fails `VAL_SIG_002` every time, with a message that blames the approver. So the
+> authority lives in the **payload**, and the envelope is signed by whichever roster organisation the
+> node can sign as (`preferredSubject: null`), recorded as `Metadata["carriedBy"]`. Signing the
+> envelope as the approver whenever the node happened to hold their key was rejected: it would dress a
+> carry up as an approval — the server-side signing R-014 withdrew — and only sometimes, which is
+> worse than always. A node holding no governance key for the register therefore cannot carry an
+> approval, which is correct rather than a limitation.
+>
+> `Metadata["Type"] = "Control"`, matching `/propose`. That is what earns the roster check and exempts
+> it from action-schema validation — necessary today, because `register-governance-v1` is not
+> published to ordinary registers and resolving it would fail outright. Full conformance is T054-T057.
+> `PreviousTransactionId` is the proposal, mirroring the blueprint's action 1 → 2 route; sibling
+> approvals are fine, the fork check exempts a Control predecessor.
+>
+> **The blueprint's approval `dataSchemas` and the payload model disagreed on nine fields**, in both
+> directions — the schema declared `delegation.signature`/`delegation.publicKey`, which live on the
+> authorisation and not on the grant, so **no conforming payload could ever have been produced**; and
+> it could not express `ApprovalAuthMethod.Unknown`, `algorithm`, `delegationAlgorithm`,
+> `organisationDid`, `individualDid` or `grantedAt`. Reconciled, and now held in lockstep by
+> `GovernanceApprovalPayloadContractTests` — bidirectional and derived from serialisation, not a hand
+> list. All eight of its assertions and all six submitter guards were mutation-verified (perturb, see
+> the *named* test go RED, restore).
+>
+> **`proposalId` and `statementVersion` were added to the payload.** Neither is bound by the approval
+> signature and neither needs to be: verification rebuilds the statement from the operation stored on
+> the proposal named, so re-pointing an approval changes the operation and the signature stops
+> verifying.
+>
+> **Finding that blocks T045: there is no open-proposal state.** `/propose` evaluates quorum at raise
+> time (step 5) and returns **400 "Quorum not met"** unless the Owner override fires or every approval
+> is supplied inline — then it applies the operation and writes the updated roster in the same
+> transaction. Propose and enact are one atomic step, so today there is nothing for an approval to
+> arrive against. The design's ledger flow assumes step 1 records a raised proposal; only its
+> `RosterSnapshotId`/`QuorumFormulaAtRaise` capture (T040) was actually built. T045's `409 not
+> open/expired`, T046's status filter and T044's recount all rest on that missing state. **Decide
+> whether recording an unenacted proposal belongs to T045 or to a task of its own before starting it.**
 
 ### The signing protocol
 

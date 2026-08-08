@@ -2459,6 +2459,34 @@ attestation with `derivationPath: "sorcha:register-attestation"` → `POST /api/
 echoing the **whole `attestationData` object** back (the flattened shape fails with an empty name).
 The window is 5 minutes, so script it.
 
+### An approval's signature is not the transaction's signature
+
+A governance **approval** reaches the ledger as an action submission of `register-governance-v1`
+(action 2, "Collect Quorum") built by `GovernanceApprovalActionSubmitter` and put through
+`IValidatorServiceClient` — never written straight to storage, which was the original US1 defect.
+
+Two signatures are in play and they sign different things:
+
+| | Signs | Lives in | Produced by |
+|---|---|---|---|
+| **Authority** | `GovernanceApprovalStatement` — register, whole operation, approver, approve/reject | the **payload** (`GovernanceApprovalActionPayload`) | the approver, outside the platform |
+| **Carry** | `SHA-256("{txId}:{payloadHash}")` | `TransactionSubmission.Signatures` | this node, as a roster org (`Metadata["carriedBy"]`) |
+
+The validator verifies every entry in `Signatures` against the transaction digest, so filing the
+detached approval signature there fails `VAL_SIG_002` **every time** — and the message blames the
+approver rather than the code that misfiled it. The approver signs before any transaction exists, so
+they cannot sign an envelope; that is the whole reason the two are separate.
+
+The carry deliberately does **not** sign as the approver even when the node holds their key: that
+would dress a carry up as an approval — the server-side signing R-014 withdrew — and only sometimes,
+which is worse than always. A node with no governance key for the register cannot carry an approval.
+
+The payload's shape is the blueprint's action-2 `dataSchemas`, held in lockstep by
+`GovernanceApprovalPayloadContractTests` (bidirectional, derived from serialisation). Before T075 the
+two disagreed on nine fields, including two the schema declared on the delegation that actually live
+on the authorisation — so **no conforming payload could ever have been produced**. Add a field to
+either side without the other and that test fails; a hand-written list would not have caught it.
+
 ### Signatures must bind the whole operation
 
 `GovernanceApprovalStatement` v2 binds the operation's canonical serialisation, not a field list. A

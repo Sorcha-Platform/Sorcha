@@ -304,15 +304,30 @@
           {
             "type": "object",
             "title": "Governance approval",
+            "description": "The payload of an approval submitted as this action. Kept in lockstep with GovernanceApprovalActionPayload by GovernanceApprovalPayloadContractTests \u2014 a field on one side and not the other fails the build.",
             "required": [
+              "type",
+              "proposalId",
               "approverDid",
               "isApproval",
               "signature",
               "publicKey",
               "authMethod",
+              "statementVersion",
               "authorisation"
             ],
             "properties": {
+              "type": {
+                "type": "string",
+                "const": "governance-approval",
+                "title": "Payload discriminator",
+                "description": "Inside the signed payload rather than transaction metadata, which is outside the signature, the payload hash and the merkle leaf."
+              },
+              "proposalId": {
+                "type": "string",
+                "title": "Proposal being voted on",
+                "description": "The proposal is a ledger transaction, so this is its transaction id."
+              },
               "approverDid": {
                 "type": "string",
                 "title": "Approving organisation"
@@ -333,12 +348,18 @@
               "authMethod": {
                 "type": "string",
                 "enum": [
-                  "hardware-backed",
+                  "unknown",
                   "software",
+                  "hardware-backed",
                   "service"
                 ],
                 "title": "How the key was held",
-                "description": "Recorded so a register may require a minimum standard for a given operation (R-016)."
+                "description": "Recorded so a register may require a minimum standard for a given operation (R-016). 'unknown' is the weakest and is what an unstated method records as \u2014 a schema that could not express it would make a legitimate payload invalid."
+              },
+              "statementVersion": {
+                "type": "string",
+                "title": "Statement the signature commits to",
+                "description": "Carried so a reader rebuilds the right statement rather than inferring it. v1 signatures must not verify under v2 (R-011)."
               },
               "comment": {
                 "type": "string",
@@ -352,7 +373,9 @@
                   "kind",
                   "individualDid",
                   "signature",
-                  "publicKey"
+                  "publicKey",
+                  "authMethod",
+                  "algorithm"
                 ],
                 "properties": {
                   "kind": {
@@ -370,15 +393,50 @@
                     "type": "string"
                   },
                   "publicKey": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Direct: the individual's own key. Delegated: the machine's key, tied to the grant by approverPublicKey."
                   },
                   "authMethod": {
                     "type": "string",
                     "enum": [
-                      "hardware-backed",
+                      "unknown",
                       "software",
+                      "hardware-backed",
                       "service"
                     ]
+                  },
+                  "algorithm": {
+                    "type": "string",
+                    "enum": [
+                      "ED25519",
+                      "NISTP256",
+                      "RSA4096",
+                      "ML_DSA_65",
+                      "SLH_DSA_128s"
+                    ],
+                    "title": "Algorithm of publicKey",
+                    "description": "Carried because, unlike an organisation, an individual has no roster entry recording it."
+                  },
+                  "delegationAlgorithm": {
+                    "type": "string",
+                    "enum": [
+                      "ED25519",
+                      "NISTP256",
+                      "RSA4096",
+                      "ML_DSA_65",
+                      "SLH_DSA_128s"
+                    ],
+                    "title": "Algorithm of delegationPublicKey"
+                  },
+                  "delegationSignature": {
+                    "type": "string",
+                    "title": "The grantor's signature over the delegation statement",
+                    "description": "Present only for a delegated authorisation. This, not the machine's signature, is what binds a named individual to the grant."
+                  },
+                  "delegationPublicKey": {
+                    "type": "string",
+                    "title": "Key that produced delegationSignature",
+                    "description": "Must derive to the wallet address inside the grant's individualDid, or the accountability record is self-declared."
                   },
                   "delegation": {
                     "type": "object",
@@ -386,15 +444,24 @@
                     "description": "Signed by the empowering individual's own key \u2014 never server-asserted, because the server mints tokens (FR-033).",
                     "required": [
                       "delegationId",
+                      "organisationDid",
+                      "individualDid",
                       "approverPublicKey",
                       "scope",
                       "expiresAt",
-                      "signature",
-                      "publicKey"
+                      "grantedAt"
                     ],
                     "properties": {
                       "delegationId": {
                         "type": "string"
+                      },
+                      "organisationDid": {
+                        "type": "string",
+                        "title": "Organisation whose authority is exercised"
+                      },
+                      "individualDid": {
+                        "type": "string",
+                        "title": "The individual who empowered the approver"
                       },
                       "approverPublicKey": {
                         "type": "string"
@@ -422,11 +489,9 @@
                         "type": "string",
                         "format": "date-time"
                       },
-                      "signature": {
-                        "type": "string"
-                      },
-                      "publicKey": {
-                        "type": "string"
+                      "grantedAt": {
+                        "type": "string",
+                        "format": "date-time"
                       }
                     }
                   }

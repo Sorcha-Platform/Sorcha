@@ -184,6 +184,12 @@ builder.Services.AddSingleton<IPendingRegistrationStore, PendingRegistrationStor
 builder.Services.AddScoped<IHashProvider, Sorcha.Cryptography.Core.HashProvider>();
 builder.Services.AddScoped<ICryptoModule, Sorcha.Cryptography.Core.CryptoModule>();
 
+// Feature 189 (FR-035): re-derives a wallet address from an offered public key, so an approval
+// naming an accountable individual can be checked against the key that actually signed it rather
+// than taken on the signer's word. Singleton to match every other host that registers it.
+builder.Services.AddSingleton<Sorcha.Cryptography.Interfaces.IWalletUtilities,
+    Sorcha.Cryptography.Utilities.WalletUtilities>();
+
 // Feature 188: Provenance — trust-anchor and proof lineage (read-only).
 // The trust anchor is a deploy-time fact read once (singleton); the metrics meter is likewise
 // process-wide. The resolver, assembler and Merkle seam are scoped alongside the repository they
@@ -235,6 +241,16 @@ builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceSigningSe
 // mandatory verification would leave every quorum-requiring operation unsatisfiable.
 builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceApprovalService,
     Sorcha.Register.Service.Services.GovernanceApprovalService>();
+
+// Feature 189 T078: verifies an approval produced outside the platform's trust boundary — every
+// signature, and that the key naming an accountable individual actually belongs to them (FR-035).
+builder.Services.AddScoped<Sorcha.Register.Service.Services.IDetachedApprovalVerifier,
+    Sorcha.Register.Service.Services.DetachedApprovalVerifier>();
+
+// Feature 189 T075: carries a verified approval to the ledger as an action submission of the
+// governance blueprint — through the Validator, never straight to storage.
+builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceApprovalActionSubmitter,
+    Sorcha.Register.Service.Services.GovernanceApprovalActionSubmitter>();
 
 // Feature 048: Register policy service (reads policy from control chain via direct repository access)
 builder.Services.AddScoped<Sorcha.Register.Core.Services.ISystemBlueprintValidator,

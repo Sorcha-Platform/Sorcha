@@ -36,7 +36,7 @@ public class RightsEnforcementService : IRightsEnforcementService
     /// <summary>
     /// The governance blueprint ID used to identify Control transactions
     /// </summary>
-    public const string GovernanceBlueprintId = "register-governance-v1";
+    public const string GovernanceBlueprintId = GovernanceBlueprint.BlueprintId;
 
     public RightsEnforcementService(
         IGovernanceRosterService rosterService,
