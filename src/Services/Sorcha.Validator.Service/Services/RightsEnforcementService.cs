@@ -8,6 +8,7 @@ using Sorcha.Cryptography;
 using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
 using Sorcha.Register.Core.Services;
+using Sorcha.Register.Core.Storage;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
 using Sorcha.Validator.Service.Diagnostics;
@@ -34,6 +35,16 @@ public class RightsEnforcementService : IRightsEnforcementService
     private readonly GovernanceMetrics? _metrics;
 
     /// <summary>
+    /// Reads the approvals sealed against a proposal, for enactments that name one.
+    /// </summary>
+    /// <remarks>
+    /// Optional for the same reason <see cref="_metrics"/> is: existing construction sites and tests
+    /// are unaffected. An enactment that names a proposal and cannot have its approvals read is
+    /// <b>refused</b>, never admitted — see <c>CountSealedApprovalsAsync</c>.
+    /// </remarks>
+    private readonly IReadOnlyRegisterRepository? _repository;
+
+    /// <summary>
     /// The governance blueprint ID used to identify Control transactions
     /// </summary>
     public const string GovernanceBlueprintId = GovernanceBlueprint.BlueprintId;
@@ -42,12 +53,14 @@ public class RightsEnforcementService : IRightsEnforcementService
         IGovernanceRosterService rosterService,
         ICryptoModule cryptoModule,
         ILogger<RightsEnforcementService> logger,
-        GovernanceMetrics? metrics = null)
+        GovernanceMetrics? metrics = null,
+        IReadOnlyRegisterRepository? repository = null)
     {
         _rosterService = rosterService ?? throw new ArgumentNullException(nameof(rosterService));
         _cryptoModule = cryptoModule ?? throw new ArgumentNullException(nameof(cryptoModule));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _metrics = metrics;
+        _repository = repository;
     }
 
     /// <inheritdoc/>
@@ -214,7 +227,13 @@ public class RightsEnforcementService : IRightsEnforcementService
             // carry no roster, move no roster.
             var enactsNothing = controlPayload is not null && controlPayload.Roster is null;
 
-            var requiredSigners = enactsNothing
+            // A separate enactment names the proposal it enacts. Its authority is the approvals sealed
+            // against that proposal, not signatures on the enactment itself — one node carries it, so
+            // it has exactly one signature however many organisations approved.
+            var enactsProposalId = controlPayload?.EnactsProposalId;
+            var enactsAProposal = !string.IsNullOrWhiteSpace(enactsProposalId);
+
+            var requiredSigners = enactsNothing || enactsAProposal
                 ? 1
                 : ResolveRequiredDistinctSigners(roster, controlPayload?.Operation);
 
@@ -297,7 +316,49 @@ public class RightsEnforcementService : IRightsEnforcementService
                 //
                 // See `enactsNothing` above for why this keys on the absence of a roster rather than
                 // on Operation.Status.
-                if (!enactsNothing &&
+                if (enactsAProposal)
+                {
+                    // A separate enactment. Quorum is recounted from the approvals SEALED against the
+                    // proposal, and the Owner override is decided by ValidateQuorumAsync from the
+                    // OPERATION'S PROPOSER (R-007).
+                    //
+                    // Deliberately NOT gated on submitterAttestation.Role. The override used to be,
+                    // which was sound only while the proposer signed its own enacting transaction.
+                    // Once a reaction carries the enactment, an enactment carried by the Owner would
+                    // take the override and skip this check entirely — so a never-approved proposal
+                    // raised by anyone could be enacted just by riding an Owner-signed carry. That
+                    // launders a proposal through the carry, which is exactly what the carry/authority
+                    // separation exists to prevent. Who carries a transaction confers no authority.
+                    using var _sealedQuorumScope = RuleTelemetry.TimeRule("VAL_PERM_006");
+
+                    var sealedVotes = await CountSealedApprovalsAsync(
+                        transaction.RegisterId, enactsProposalId!, roster, ct);
+
+                    if (sealedVotes is null)
+                    {
+                        // Fail closed. An enactment naming approvals nobody can read is not authorised
+                        // by them.
+                        _metrics?.RecordRefused(transaction.RegisterId, "approvals-unreadable");
+                        errors.Add(CreateError("VAL_PERM_005",
+                            $"This enactment names proposal '{enactsProposalId}', but its approvals could "
+                            + "not be read from the register, so nothing authorises it.",
+                            "Payload.EnactsProposalId"));
+                        return CreateFailureResult(transaction, sw.Elapsed, errors);
+                    }
+
+                    var sealedQuorum = await _rosterService.ValidateQuorumAsync(
+                        transaction.RegisterId, operation, sealedVotes, ct);
+
+                    if (!sealedQuorum.IsQuorumMet)
+                    {
+                        _metrics?.RecordRefused(transaction.RegisterId, "sealed-quorum-not-met");
+                        errors.Add(CreateError("VAL_PERM_006",
+                            $"Quorum not met from sealed approvals: {sealedQuorum.VotesReceived}/"
+                            + $"{sealedQuorum.VotesRequired} (pool: {sealedQuorum.VotingPool})",
+                            "Payload.EnactsProposalId"));
+                    }
+                }
+                else if (!enactsNothing &&
                     submitterAttestation.Role != RegisterRole.Owner &&
                     operation.OperationType is GovernanceOperationType.Add or GovernanceOperationType.Remove)
                 {
@@ -551,6 +612,148 @@ public class RightsEnforcementService : IRightsEnforcementService
             return true;
 
         return false;
+    }
+
+    /// <summary>
+    /// Counts the approvals sealed against a proposal, verifying every signature.
+    /// </summary>
+    /// <returns>
+    /// The verified votes, or <c>null</c> when the proposal or its approvals could not be read — which
+    /// the caller must treat as "not authorised", never as "no approvals needed".
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// The digest each signature must verify against is rebuilt from the operation stored on the
+    /// <b>proposal</b>, never from the enacting payload. An enactment that could nominate what its
+    /// approvals are taken to have authorised would defeat the whole statement-binding exercise.
+    /// </para>
+    /// <para>
+    /// Selection (who may count, and against which key) is
+    /// <see cref="GovernanceApprovalTally"/>'s job so the Validator and the Register Service reach the
+    /// same answer from the same sealed content; the arithmetic stays in
+    /// <c>ValidateQuorumAsync</c> (R-007). This method only supplies the crypto.
+    /// </para>
+    /// </remarks>
+    private async Task<List<ApprovalSignature>?> CountSealedApprovalsAsync(
+        string registerId,
+        string proposalId,
+        AdminRoster roster,
+        CancellationToken ct)
+    {
+        if (_repository is null)
+        {
+            _logger.LogWarning(
+                "Cannot read the approvals for proposal {ProposalId} on register {RegisterId} — no register "
+                + "repository is available to this validator", proposalId, registerId);
+            return null;
+        }
+
+        var proposalTx = await _repository.GetTransactionAsync(registerId, proposalId, ct);
+        var proposedOperation = proposalTx is null ? null : TryParseControlPayloadModel(proposalTx)?.Operation;
+
+        if (proposedOperation is null)
+        {
+            _logger.LogWarning(
+                "Enactment names proposal {ProposalId} on register {RegisterId}, which is missing or "
+                + "unreadable", proposalId, registerId);
+            return null;
+        }
+
+        // Approvals chain off the proposal they answer, so the predecessor link finds them.
+        var successors = await _repository.GetTransactionsByPrevTxIdAsync(registerId, proposalId, ct);
+
+        var approvals = new List<GovernanceApprovalActionPayload>();
+        foreach (var candidate in successors.OrderBy(t => t.DocketNumber ?? 0))
+        {
+            var approval = TryParseApprovalPayload(candidate);
+            if (approval is not null &&
+                string.Equals(approval.Type, GovernanceApprovalActionPayload.PayloadType, StringComparison.Ordinal))
+            {
+                approvals.Add(approval);
+            }
+        }
+
+        var plan = GovernanceApprovalTally.Prepare(
+            registerId, proposedOperation, roster.ControlRecord, approvals);
+
+        foreach (var excluded in plan.Excluded)
+        {
+            // Never a silent drop (FR-011c): an approval that did not count and left no trace looks
+            // to an operator exactly like one that was never submitted.
+            _logger.LogInformation(
+                "Approval from {ApproverDid} on proposal {ProposalId} excluded from the tally: {Reason}",
+                excluded.ApproverDid, proposalId, excluded.Refusal);
+        }
+
+        var verified = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var check in plan.Checks)
+        {
+            if (await VerifyTallyCheckAsync(check, ct))
+            {
+                verified.Add(check.ApproverDid);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Approval from {ApproverDid} on proposal {ProposalId} did not verify and does not count",
+                    check.ApproverDid, proposalId);
+                _metrics?.RecordRefused(registerId, "approval-signature-invalid");
+            }
+        }
+
+        return GovernanceApprovalTally.ToVotes(plan, verified);
+    }
+
+    private async Task<bool> VerifyTallyCheckAsync(ApprovalTallyCheck check, CancellationToken ct)
+    {
+        if (!GovernanceKeyMatcher.TryDecode(check.SignatureBase64, out var signature)
+            || !GovernanceKeyMatcher.TryDecode(check.PublicKeyBase64, out var publicKey)
+            || !Enum.TryParse<WalletNetworks>(check.Algorithm.ToString(), ignoreCase: true, out var network))
+        {
+            return false;
+        }
+
+        try
+        {
+            return await _cryptoModule.VerifyAsync(signature, check.Digest, (byte)network, publicKey, ct)
+                   == CryptoStatus.Success;
+        }
+        catch (Exception ex)
+        {
+            // A verification that throws is a verification that failed. Never treat it as a pass.
+            _logger.LogWarning(ex, "Verification of an approval by {ApproverDid} threw", check.ApproverDid);
+            return false;
+        }
+    }
+
+    private ControlTransactionPayload? TryParseControlPayloadModel(TransactionModel tx) =>
+        DecodePayload<ControlTransactionPayload>(tx);
+
+    private GovernanceApprovalActionPayload? TryParseApprovalPayload(TransactionModel tx) =>
+        DecodePayload<GovernanceApprovalActionPayload>(tx);
+
+    private T? DecodePayload<T>(TransactionModel tx) where T : class
+    {
+        try
+        {
+            var data = tx.Payloads.Length > 0 ? tx.Payloads[0].Data : null;
+            if (string.IsNullOrWhiteSpace(data))
+            {
+                return null;
+            }
+
+            var bytes = data.Contains('+') || data.Contains('/') || data.Contains('=')
+                ? Convert.FromBase64String(data)
+                : Base64Url.DecodeFromChars(data);
+
+            return JsonSerializer.Deserialize<T>(
+                bytes, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (Exception ex) when (ex is JsonException or FormatException)
+        {
+            _logger.LogDebug(ex, "Could not decode payload of transaction {TxId} as {Type}", tx.TxId, typeof(T).Name);
+            return null;
+        }
     }
 
     /// <summary>

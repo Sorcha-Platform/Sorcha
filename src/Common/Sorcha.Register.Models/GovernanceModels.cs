@@ -318,6 +318,30 @@ public class ControlTransactionPayload
     /// </summary>
     [JsonPropertyName("operation")]
     public GovernanceOperation? Operation { get; set; }
+
+    /// <summary>
+    /// Transaction id of the proposal this transaction enacts, or <c>null</c> when it is not a
+    /// separate enactment.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Set only on an <b>enactment</b> raised after approvals were collected against a pending
+    /// proposal. It tells the Validator where to find the approvals that authorise the change, so
+    /// quorum is counted from <b>sealed content</b> rather than from a list the enacting payload
+    /// carries — which two nodes could assemble differently for the same proposal.
+    /// </para>
+    /// <para>
+    /// It lives on the envelope rather than on <see cref="GovernanceOperation"/> deliberately: the
+    /// approval digest binds the operation's whole serialisation, so adding a field there would change
+    /// what every stored approval signature covers. The envelope is outside that digest.
+    /// </para>
+    /// <para>
+    /// Null on an Owner-override propose-and-enact, which stays a single transaction carrying its own
+    /// approvals inline — so that path's validation is untouched.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("enactsProposalId")]
+    public string? EnactsProposalId { get; set; }
 }
 
 /// <summary>
