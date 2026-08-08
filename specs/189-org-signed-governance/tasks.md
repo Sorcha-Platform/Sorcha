@@ -108,8 +108,13 @@ confirm sealed-in-docket and observable on tiny.
 - [X] T042 [US2] Implement invalidation as a comparison at count time — current `LastControlTxId` ≠ proposal's `RosterSnapshotId` ⇒ invalid. No timer, no sweeper, deterministic on every node. **Now actually reachable:** a proposal is recorded rather than refused, and carries no roster so it does not invalidate itself (see the lifecycle design).
 - [ ] T043 [US2] Record every terminal outcome with a reason (`quorum-met` / `expired` / `roster-changed` / `withdrawn` / `refused-not-on-roster`) — never a silent drop (FR-011c)
 
-> 🔴 **FINDING, open — decide before wiring the Validator's enactment gate (T044) or building the
-> enactment reaction.** The Owner override is gated on **who signed the transaction**
+> ✅ **FINDING, CLOSED by T044 (2026-08-08)** — the gate now keys on the operation's proposer via
+> `ValidateQuorumAsync` and never on `submitterAttestation.Role`. Guarded by
+> `AnEnactmentCarriedByTheOwner_WithoutQuorum_IsStillRefused`, mutation-verified. Kept here because it
+> constrains the reaction too: whichever organisation's key a node holds, the carry must confer no
+> authority. Original finding follows.
+>
+> The Owner override is gated on **who signed the transaction**
 > (`submitterAttestation.Role != RegisterRole.Owner` in `RightsEnforcementService`), while
 > `ValidateQuorumAsync` gates it on **who raised the operation** (`ownerDid == operation.ProposerDid`).
 > Those coincide today only because the proposer signs its own enacting transaction.
@@ -123,7 +128,8 @@ confirm sealed-in-docket and observable on tiny.
 > The gate must key on the **operation's proposer**, not on the transaction's signer. Worth deciding
 > deliberately rather than patching, because it also constrains the reaction: whichever organisation's
 > key a node holds, the carry must not be able to confer authority.
-- [~] T044 [US2] Wire quorum evaluation to the existing `GovernanceRosterService.ValidateQuorumAsync` over sealed approval transactions — do **not** reimplement the arithmetic (R-007). **PART DONE:** `GovernanceApprovalTally` (zero-dependency, plan-then-verify) selects which sealed approvals may count and builds the signature checks; the arithmetic still goes through `ValidateQuorumAsync`. The key comes from the **roster**, never from the approval payload — trusting the offered key would make every signature self-certifying. **Remaining:** wire it into the Validator so an enactment is authorised by verified sealed approvals instead of `operation.ApprovalSignatures`. See the Owner-carrier finding under T043 below — it changes the shape of that gate.
+- [X] T044 [US2] Wire quorum evaluation to the existing `GovernanceRosterService.ValidateQuorumAsync` over sealed approval transactions — do **not** reimplement the arithmetic (R-007). `GovernanceApprovalTally` (zero-dependency, plan-then-verify) selects which sealed approvals may count and builds the signature checks; the arithmetic goes through `ValidateQuorumAsync`. The key comes from the **roster**, never from the approval payload — trusting the offered key would make every signature self-certifying. The Validator reads them via `ControlTransactionPayload.EnactsProposalId` and rebuilds each digest from the **proposal's** stored operation. The Owner-carrier hole below is closed: the gate no longer consults `submitterAttestation.Role` on that path.
+- [ ] T044b **The enactment reaction is NOT built.** Nothing yet submits an enactment when quorum is reached — the Validator will authorise one, and `/approve` records the votes, but no component raises the transaction. Design: a `docket:confirmed` reaction in Register Service (it already subscribes via `RegisterEventBridgeService`), deterministic tx id so concurrent nodes dedupe, every timestamp from sealed content. **Open question to settle first:** whether all nodes may submit and rely on the deterministic id, or whether it should be entitlement-gated to one node as F145's `ReactionDispatcher` does (`IWalletServiceClient.GetWalletAsync` is local-only, so only the hosting node acts).
 - [X] T045 [US2] Implement `POST /governance/proposals/{proposalId}/approve` per contracts — now accepts a **detached** `GovernanceApprovalSubmission` (R-014); server-side signing for multi-party registers is withdrawn. `202` submitted, `400` signature fails v2 verification, `403` not on snapshot, `409` not open/expired, `422` bad co-signature, idempotent repeat
 - [ ] T046 [US2] Implement `GET /governance/proposals` (status filter) and `GET /governance/proposals/{proposalId}` (full audit detail)
 - [X] T047 [US2] Enforce FR-024 — a governance change may never leave a register with no organisation able to govern it
