@@ -2408,3 +2408,62 @@ Metrics: `sorcha_provenance_check_total{layer,status}` and
 `sorcha_provenance_trail_duration_seconds{surface}` on the `Sorcha.Provenance` meter. No subject data.
 `failed` and `unverified` must stay distinguishable — the first is an integrity signal worth alerting
 on, the second usually means missing evidence.
+
+
+## Register governance: what signs what (Feature 189)
+
+Getting the signing key wrong here fails **silently at the wrong layer** — the transaction is
+accepted, stored, and then refused by the Validator with `submitter not found in roster`, on any
+register whose genesis has sealed. Before genesis seals, `roster == null` and everything is admitted,
+so the same code "works" in a fresh environment and fails in a real one. That race produced a false
+PASS during this feature's own verification.
+
+### The three keys, and which is correct where
+
+| Slot | Context | Whose key | Use for |
+|---|---|---|---|
+| 100 | `sorcha:register-attestation` | the **organisation** | genesis attestations, governance control txs, approvals |
+| 101 | `sorcha:register-control` | the **node** | node-internal control operations only |
+| 102 | `sorcha:docket-signing` | the validator | sealing dockets |
+
+**A register's governance roster is built from its genesis attestations, which record the
+ORGANISATION's slot-100 key.** So anything the Validator authorises against the roster must be signed
+at slot 100 by an organisation on it — never by the node. Route it through
+`IGovernanceSigningService` (which resolves the roster subject), not `ISystemWalletSigningService`.
+
+Both `/governance/crypto-policy` and `/governance/propose` were on the node key at different times.
+The second survived a live verification of the first because that verification only exercised
+crypto-policy. **When you fix a signing path, check its siblings** — the fix is per-endpoint and the
+defect is per-endpoint.
+
+### Verifying a governance change actually happened
+
+`200` and `submitted: true` mean **accepted**, not **enacted**. A control transaction only takes
+effect when it seals into a docket. Check the docket, not the response:
+
+```bash
+docker exec sorcha-mongodb mongosh -u sorcha -p sorcha_dev_password --authenticationDatabase admin   --quiet --eval 'db.getSiblingDB("sorcha_register_<id>").dockets.find({},{TransactionIds:1,_id:0}).forEach(printjson)'
+# and the verdict:
+docker logs --since 3m sorcha-validator-service | grep -E "validated|rejected|not found in roster"
+```
+
+**Confirm the genesis is in docket 0 BEFORE testing** any governance operation. Otherwise a pass
+proves only that enforcement had not started.
+
+### The SSR cannot stand in for an ordinary register
+
+The system register is unique by design — its genesis is pre-signed offline and it is deliberately
+outside the governance path until F189 US4. Testing governance against it can neither confirm nor
+refute general behaviour. Create an ordinary register: `POST /api/registers/initiate` → sign each
+attestation with `derivationPath: "sorcha:register-attestation"` → `POST /api/registers/finalize`
+echoing the **whole `attestationData` object** back (the flattened shape fails with an empty name).
+The window is 5 minutes, so script it.
+
+### Signatures must bind the whole operation
+
+`GovernanceApprovalStatement` v2 binds the operation's canonical serialisation, not a field list. A
+list silently stops covering a property added later: v1 left `ValidatorEntry` unbound, so an
+`AddValidator` approval bound "add a validator" and **not which one** — its public key and endpoint
+sat outside the digest. Harmless while the server both built and signed; a substitution vector the
+moment signing moves outside it. Guard binding with a **reflection-driven** test over the type's
+properties, never a hand-written list.
