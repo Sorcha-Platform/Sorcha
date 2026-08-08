@@ -252,6 +252,11 @@ builder.Services.AddScoped<Sorcha.Register.Service.Services.IDetachedApprovalVer
 builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceProposalReader,
     Sorcha.Register.Service.Services.GovernanceProposalReader>();
 
+// Feature 189 T044b: raises the enactment once a proposal's approvals reach quorum. It decides
+// whether to TRY; the Validator decides whether the change is authorised.
+builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceEnactmentService,
+    Sorcha.Register.Service.Services.GovernanceEnactmentService>();
+
 // Feature 189 T075: carries a verified approval to the ledger as an action submission of the
 // governance blueprint — through the Validator, never straight to storage.
 builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceApprovalActionSubmitter,

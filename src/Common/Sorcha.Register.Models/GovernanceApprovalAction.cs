@@ -34,6 +34,9 @@ public static class GovernanceBlueprint
 
     /// <summary>"Collect Quorum" — where each organisation's approval is submitted.</summary>
     public const int CollectQuorumActionId = 2;
+
+    /// <summary>"Record Control Transaction" — where a proposal that reached quorum is enacted.</summary>
+    public const int RecordControlTransactionActionId = 4;
 }
 
 /// <summary>
