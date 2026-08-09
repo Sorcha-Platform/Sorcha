@@ -975,6 +975,60 @@ public class RegisterServiceClient : IRegisterServiceClient
         }
     }
 
+    /// <inheritdoc />
+    public async Task<string?> GetSystemRegisterBlueprintJsonAsync(
+        string blueprintId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Fetching blueprint {BlueprintId} from the system register", blueprintId);
+
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.GetAsync(
+                $"api/system-register/blueprints/{Uri.EscapeDataString(blueprintId)}",
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                // 404 is the ordinary "not a system blueprint" answer, not a fault.
+                _logger.LogDebug(
+                    "System register has no blueprint {BlueprintId} ({StatusCode})",
+                    blueprintId, response.StatusCode);
+                return null;
+            }
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(body)) return null;
+
+            using var doc = JsonDocument.Parse(body);
+
+            // SystemRegisterEntry.Document carries the definition. The Register Service configures
+            // no JSON options, so its minimal APIs serialise with JsonSerializerOptions.Web —
+            // camelCase — but read case-insensitively here rather than depending on that.
+            foreach (var property in doc.RootElement.EnumerateObject())
+            {
+                if (!string.Equals(property.Name, "document", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                return property.Value.ValueKind == JsonValueKind.Null
+                    ? null
+                    : property.Value.GetRawText();
+            }
+
+            _logger.LogWarning(
+                "System register returned blueprint {BlueprintId} with no document body", blueprintId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to fetch blueprint {BlueprintId} from the system register", blueprintId);
+            return null;
+        }
+    }
+
     // =========================================================================
     // Register Management
     // =========================================================================

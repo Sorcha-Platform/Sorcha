@@ -345,4 +345,33 @@ public sealed class GovernanceApprovalPayloadContractTests
         payload.StatementVersion.Should().Be(GovernanceApprovalStatement.StatementVersion);
         payload.Authorisation.Should().NotBeNull();
     }
+
+    [Fact]
+    public void TheSealedApproval_PassesEvaluationAgainstTheShippedSchema()
+    {
+        // The pre-flight for enforcement. Action 2 is the OTHER governance action carrying a
+        // dataSchema, so when the schema exemption is finally withdrawn it will be checked too —
+        // and a real sealed approval failing its own published contract would break quorum on every
+        // register, exactly as the proposal shape would have. Better to learn it here.
+        var result = ValidatorSchemaEvaluation.Evaluate(ApprovalSchema(), SealedApproval());
+
+        result.IsValid.Should().BeTrue(
+            "an approval sealed on a real ledger must satisfy the contract the published blueprint "
+            + "declares for the action it is submitted against. Failures: {0}",
+            string.Join("; ", ValidatorSchemaEvaluation.Failures(result)));
+    }
+
+    [Fact]
+    public void TheConstructedApproval_AlsoPassesEvaluation_SoTheMaximalShapeIsLegalToo()
+    {
+        // The sealed vector is `direct` and carries no comment. This one is `delegated` with every
+        // optional member populated, so between them both authorisation kinds and the full property
+        // set are evaluated rather than merely compared property-by-property.
+        var result = ValidatorSchemaEvaluation.Evaluate(ApprovalSchema(), EmittedPayload());
+
+        result.IsValid.Should().BeTrue(
+            "the maximal payload the model can produce must also satisfy the published contract. "
+            + "Failures: {0}",
+            string.Join("; ", ValidatorSchemaEvaluation.Failures(result)));
+    }
 }

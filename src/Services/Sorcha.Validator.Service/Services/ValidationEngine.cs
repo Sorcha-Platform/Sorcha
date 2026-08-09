@@ -455,20 +455,25 @@ public class ValidationEngine : IValidationEngine
         {
             // Genesis/control transactions skip schema validation but MUST have valid signatures (SEC-AUDIT 4.10)
             //
-            // Feature 189 (T054) tried to withdraw this exemption from the three governance actions
-            // so they would be checked against the contract the published blueprint declares. It is
-            // reverted, and the reason is worth keeping: the Validator cannot resolve
-            // `register-governance-v1` at all. `ResolveBlueprintAsync` is global by id — cache, then
-            // Blueprint Service — but that blueprint is seeded onto the SYSTEM REGISTER by
-            // SystemRegisterBootstrapper and has never been in the Blueprint Service store. Enforcing
-            // the contract therefore fails every governance transaction on every register with
-            // VAL_SCHEMA_001 "Blueprint 'register-governance-v1' not found".
+            // Feature 189 (T054): the three governance actions are the exception to the exception.
+            // They are Control transactions, so they land here, but the governance blueprint declares
+            // a real payload contract for them and they are now checked against it like any other
+            // action. Before T054 nothing did: action 1's declared schema described a bare
+            // GovernanceOperation while the wire has always carried it nested inside a
+            // ControlTransactionPayload envelope, and the two drifted for as long as the contract
+            // went unenforced — a schema no conforming payload could satisfy, and no payload that
+            // anything checked.
             //
-            // Live-proven on n1 2026-08-09: a proposal returned 202 and then never sealed. Offline
-            // tests could not see it — they evaluate the schema directly and never resolve a
-            // blueprint. Enforcement needs a resolution path for SSR-seeded system blueprints first;
-            // the corrected contract and its guard tests ship without it.
-            if (TransactionTypeClassifier.IsGenesisOrControlTransaction(transaction))
+            // This depends on ResolveBlueprintAsync's system-register fallback below. The first
+            // attempt at this shipped without it and failed EVERY governance transaction on EVERY
+            // register with VAL_SCHEMA_001, live on n1 — register-governance-v1 is seeded to the SSR
+            // and is not in the Blueprint Service store. Do not withdraw this exemption again
+            // without confirming that fallback still resolves.
+            //
+            // It withdraws ONLY the schema exemption. The other five riding on the same
+            // discriminator stay, and two of them have to — see IsGovernanceActionTransaction.
+            if (TransactionTypeClassifier.IsGenesisOrControlTransaction(transaction)
+                && !TransactionTypeClassifier.IsGovernanceActionTransaction(transaction))
             {
                 _logger.LogDebug("Validating signatures for genesis/control transaction {TransactionId}",
                     transaction.TransactionId);
@@ -2326,8 +2331,72 @@ public class ValidationEngine : IValidationEngine
             }
         }
 
+        // Feature 189 (T054): last resort — the SYSTEM REGISTER.
+        //
+        // Blueprints the platform itself executes (register-governance-v1 and its siblings) are
+        // seeded onto the SSR by SystemRegisterBootstrapper and are deliberately absent from the
+        // Blueprint Service store, which rejects them with `no_provenance`. Resolution that stops at
+        // the fetcher therefore cannot see them AT ALL — the first attempt at T054 failed every
+        // governance transaction on every register with VAL_SCHEMA_001, live on n1, for exactly this
+        // reason.
+        //
+        // Reading the SSR ledger works on every node holding a replica, including a subscriber that
+        // seeded nothing itself, so this is not owner-only. It is tried last so it costs nothing on
+        // the ordinary path.
+        blueprint = await ResolveFromSystemRegisterAsync(blueprintId, ct);
+        if (blueprint != null)
+        {
+            await _blueprintCache.SetBlueprintAsync(blueprint, ct: ct);
+            _logger.LogInformation(
+                "Blueprint {BlueprintId} resolved from the system register and cached", blueprintId);
+            return blueprint;
+        }
+
         return null;
     }
+
+    /// <summary>
+    /// Resolves a system-seeded blueprint from the system register's ledger.
+    /// </summary>
+    /// <remarks>
+    /// Failure is always <c>null</c>, never a throw: an unreachable Register Service must leave the
+    /// caller reporting "blueprint not found" rather than turning a transient outage into a
+    /// different validation error. The caller treats null as unresolved, which fails closed.
+    /// </remarks>
+    private async Task<BlueprintModel?> ResolveFromSystemRegisterAsync(string blueprintId, CancellationToken ct)
+    {
+        try
+        {
+            var json = await _registerClient.GetSystemRegisterBlueprintJsonAsync(blueprintId, ct);
+            if (string.IsNullOrWhiteSpace(json))
+                return null;
+
+            var blueprint = JsonSerializer.Deserialize<BlueprintModel>(json, SystemBlueprintJsonOptions);
+            if (blueprint == null)
+            {
+                _logger.LogWarning(
+                    "System register returned blueprint {BlueprintId} but it did not deserialize",
+                    blueprintId);
+            }
+
+            return blueprint;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to resolve blueprint {BlueprintId} from the system register", blueprintId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Mirrors <c>BlueprintFetcher</c>'s options so a blueprint means the same thing whichever
+    /// source it arrived from.
+    /// </summary>
+    private static readonly JsonSerializerOptions SystemBlueprintJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
 
     /// <summary>Tier 3 sender-authorisation fallback — derives a late-binding from the earliest prior in-instance transaction signed for the same participant role.</summary>
     /// <remarks>

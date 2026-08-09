@@ -188,15 +188,9 @@ public sealed class GovernanceControlPayloadContractTests
         // schema that rejects every real proposal.
         //
         // JsonSchema.Net evaluates a JsonElement, never a JsonNode (CLAUDE.md pattern #4).
-        var schema = ParseAsTheValidatorDoes(ProposalSchema());
+        var result = ValidatorSchemaEvaluation.Evaluate(ProposalSchema(), EmittedProposal());
 
-        var result = schema.Evaluate(EmittedProposal(), new EvaluationOptions
-        {
-            OutputFormat = OutputFormat.List,
-            RequireFormatValidation = true,
-        });
-
-        var failures = string.Join("; ", Failures(result));
+        var failures = string.Join("; ", ValidatorSchemaEvaluation.Failures(result));
 
         result.IsValid.Should().BeTrue(
             "a governance proposal built exactly as the Register Service builds it must satisfy the "
@@ -215,70 +209,11 @@ public sealed class GovernanceControlPayloadContractTests
         var flattened = JsonDocument.Parse(JsonSerializer.Serialize(
             ProposalPayload().Operation, ControlTransactionPayload.CanonicalJsonOptions)).RootElement;
 
-        var schema = ParseAsTheValidatorDoes(ProposalSchema());
-
-        var result = schema.Evaluate(flattened, new EvaluationOptions
-        {
-            OutputFormat = OutputFormat.List,
-            RequireFormatValidation = true,
-        });
+        var result = ValidatorSchemaEvaluation.Evaluate(ProposalSchema(), flattened);
 
         result.IsValid.Should().BeFalse(
             "the operation flattened to the top level is the shape the pre-T054 schema described, "
             + "and it is not what any producer emits");
-    }
-
-    /// <summary>
-    /// Parses a shipped action schema the way the Validator does — <c>x-</c>-prefixed keywords
-    /// stripped before <see cref="JsonSchema.FromText"/>.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Not optional and not cosmetic: JsonSchema.Net refuses to parse a schema carrying an unknown
-    /// keyword at all ("Unknown keywords (x-enumNames) are disallowed for this dialect"), so a test
-    /// that skipped the strip would fail on the shipped schema for a reason production never hits,
-    /// and a schema that dropped its <c>x-enumNames</c> would make the test pass for the wrong
-    /// reason. <c>ValidationEngine.StripCustomExtensionKeywords</c> is the original.
-    /// </para>
-    /// <para>
-    /// The engine's other relaxation — dropping <c>type</c> from <c>format: "file-reference"</c>
-    /// fields — is deliberately not mirrored, and <see cref="TheGovernanceSchemaUsesNoFileReferenceFields"/>
-    /// pins that it cannot apply here rather than leaving the omission to be assumed.
-    /// </para>
-    /// </remarks>
-    private static JsonSchema ParseAsTheValidatorDoes(JsonElement schema)
-    {
-        var node = System.Text.Json.Nodes.JsonNode.Parse(schema.GetRawText());
-        StripXPrefixed(node);
-        return JsonSchema.FromText(node!.ToJsonString());
-    }
-
-    private static void StripXPrefixed(System.Text.Json.Nodes.JsonNode? node)
-    {
-        switch (node)
-        {
-            case System.Text.Json.Nodes.JsonObject obj:
-                foreach (var key in obj.Where(kvp => kvp.Key.StartsWith("x-", StringComparison.Ordinal))
-                             .Select(kvp => kvp.Key).ToList())
-                {
-                    obj.Remove(key);
-                }
-
-                foreach (var kvp in obj)
-                {
-                    StripXPrefixed(kvp.Value);
-                }
-
-                break;
-
-            case System.Text.Json.Nodes.JsonArray arr:
-                foreach (var item in arr)
-                {
-                    StripXPrefixed(item);
-                }
-
-                break;
-        }
     }
 
     [Fact]
@@ -287,27 +222,6 @@ public sealed class GovernanceControlPayloadContractTests
         ProposalSchema().GetRawText().Should().NotContain("file-reference",
             "the Validator relaxes `type` on file-reference fields, and this file does not mirror "
             + "that branch — so the schema must not depend on it");
-    }
-
-    private static IEnumerable<string> Failures(EvaluationResults results)
-    {
-        if (results.Errors is not null)
-        {
-            foreach (var error in results.Errors)
-            {
-                yield return $"{results.InstanceLocation}: {error.Key} {error.Value}";
-            }
-        }
-
-        if (results.Details is null) yield break;
-
-        foreach (var detail in results.Details)
-        {
-            foreach (var nested in Failures(detail))
-            {
-                yield return nested;
-            }
-        }
     }
 
     // ---- golden vectors: payloads captured off a sealed n1 ledger ------------------------------
@@ -352,13 +266,11 @@ public sealed class GovernanceControlPayloadContractTests
         // The strongest statement this file makes: bytes the platform actually sealed satisfy the
         // contract the published blueprint declares. Had this existed before T054, the schema/payload
         // divergence could never have survived a single live governance operation.
-        var result = ParseAsTheValidatorDoes(ProposalSchema()).Evaluate(
-            Sealed("proposal"),
-            new EvaluationOptions { OutputFormat = OutputFormat.List, RequireFormatValidation = true });
+        var result = ValidatorSchemaEvaluation.Evaluate(ProposalSchema(), Sealed("proposal"));
 
         result.IsValid.Should().BeTrue(
             "a proposal sealed on a real ledger must satisfy the published contract. Failures: {0}",
-            string.Join("; ", Failures(result)));
+            string.Join("; ", ValidatorSchemaEvaluation.Failures(result)));
     }
 
     [Fact]
