@@ -455,19 +455,20 @@ public class ValidationEngine : IValidationEngine
         {
             // Genesis/control transactions skip schema validation but MUST have valid signatures (SEC-AUDIT 4.10)
             //
-            // Feature 189 (T054): the three governance actions are the exception to the exception.
-            // They are Control transactions, so they land here, but the governance blueprint now
-            // publishes a real payload contract for them and they are checked against it like any
-            // other action. Before T054 nothing did: action 1's declared schema described a bare
-            // GovernanceOperation while the wire has always carried it nested inside a
-            // ControlTransactionPayload envelope, and the two sides drifted for as long as the
-            // contract went unenforced — a schema that no conforming payload could satisfy, and no
-            // payload that anything checked.
+            // Feature 189 (T054) tried to withdraw this exemption from the three governance actions
+            // so they would be checked against the contract the published blueprint declares. It is
+            // reverted, and the reason is worth keeping: the Validator cannot resolve
+            // `register-governance-v1` at all. `ResolveBlueprintAsync` is global by id — cache, then
+            // Blueprint Service — but that blueprint is seeded onto the SYSTEM REGISTER by
+            // SystemRegisterBootstrapper and has never been in the Blueprint Service store. Enforcing
+            // the contract therefore fails every governance transaction on every register with
+            // VAL_SCHEMA_001 "Blueprint 'register-governance-v1' not found".
             //
-            // This withdraws ONLY the schema exemption. The other five that ride on the same
-            // discriminator stay, and two of them have to — see IsGovernanceActionTransaction.
-            if (TransactionTypeClassifier.IsGenesisOrControlTransaction(transaction)
-                && !TransactionTypeClassifier.IsGovernanceActionTransaction(transaction))
+            // Live-proven on n1 2026-08-09: a proposal returned 202 and then never sealed. Offline
+            // tests could not see it — they evaluate the schema directly and never resolve a
+            // blueprint. Enforcement needs a resolution path for SSR-seeded system blueprints first;
+            // the corrected contract and its guard tests ship without it.
+            if (TransactionTypeClassifier.IsGenesisOrControlTransaction(transaction))
             {
                 _logger.LogDebug("Validating signatures for genesis/control transaction {TransactionId}",
                     transaction.TransactionId);

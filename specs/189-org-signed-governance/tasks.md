@@ -190,17 +190,40 @@ confirm sealed-in-docket and observable on tiny.
 > withdrawal. The literal reading is not attempted — relaxing fork detection and role binding for
 > every workflow on the platform is a different piece of work with its own security review.
 >
-> **Delivered under that decision:**
+> 🔴 **ENFORCEMENT REVERTED — live gate failed, 2026-08-09. The contract fix ships; turning it on does
+> not.** Deployed to n1 (both services, image ids verified against the local build) and ran the full
+> cycle: the proposal returned **202 and never sealed**. Validator verdict:
+> `VAL_SCHEMA_001: Blueprint 'register-governance-v1' not found`.
 >
-> - `TransactionTypeClassifier.IsGovernanceActionTransaction` names the three numbered governance
->   actions, and `ValidateSchemaAsync` withdraws **only** the schema exemption from them
->   (`IsGenesisOrControl && !IsGovernanceAction`). Genesis, blueprint-publish and the crypto-policy
->   update keep theirs — the last by construction, since its free-form ActionId
->   `control.crypto.update` is not one of the numbered actions.
-> - **No per-register publication is needed**, which the original scope assumed. The Validator
->   resolves blueprints **globally by id** (`ResolveBlueprintAsync` → cache → Blueprint Service), so
->   the copy seeded on the system register already resolves for a transaction on any register. That
->   removes the ordering risk of turning validation on before publication lands.
+> **The claim that killed it was mine, and it was an inference, not a measurement.** I verified that
+> `ResolveBlueprintAsync` is global by id — cache, then Blueprint Service — and concluded the copy
+> seeded on the system register would therefore resolve for a transaction on any register. The
+> mechanism is global; the blueprint is **not there**. `register-governance-v1` is seeded onto the
+> **system register** by `SystemRegisterBootstrapper` and has never been in the Blueprint Service
+> store the fetcher queries (n1 has no `blueprint."Blueprints"` table at all; the blueprint exists
+> only as a publish transaction on the SSR). So enforcement fails **every governance transaction on
+> every register**. Textbook seam: both sides correct, the join unverified, and offline tests blind to
+> it because they evaluate the schema directly and never resolve a blueprint.
+>
+> n1 was rolled back to the registry images and the full cycle re-verified green, so the node is
+> unaffected.
+>
+> **Prerequisite for enforcement, and the real remaining work:** a resolution path that lets the
+> Validator read SSR-seeded system blueprints. `ControlBlueprintVersionResolver` is not it — it
+> handles control *config* blueprints (`control.config.update` and friends) and returns
+> `ResolvedControlBlueprintVersion`, not a `BlueprintModel`. Note the boundary is deliberate:
+> `BlueprintRecoveryService` currently **rejects** these system blueprints with `no_provenance`, so
+> pushing them into the Blueprint Service store fights an existing decision rather than settling it.
+> `IsGovernanceActionTransaction` and its tests are reverted with the enforcement rather than left as
+> dead code.
+>
+> **Delivered and kept (all independently proven):**
+>
+> - The **action-1 contract rewrite** below, which stands on its own: it is now a description of the
+>   payload that is actually sealed, guarded bidirectionally and by real evaluation.
+> - `ControlTransactionPayload.CanonicalJsonOptions` — one declaration replacing three inline copies.
+> - The measurement of what the Control discriminator actually waives, and why two of the six cannot
+>   be withdrawn.
 > - **The action-1 contract was rewritten, because nothing could ever have satisfied it.** It
 >   described a bare `GovernanceOperation`; every producer emits a `ControlTransactionPayload`
 >   envelope with the operation nested under `operation`. Turning validation on without this would

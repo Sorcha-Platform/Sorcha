@@ -2642,17 +2642,29 @@ tries `BlueprintId == GovernanceBlueprint.BlueprintId` *first*, and all four pro
 the same shared constant. The `Control` arm is a redundant second path left from R-004, when a
 proposal still carried an empty `BlueprintId`.
 
-**T054 therefore withdraws exactly one exemption.** `IsGovernanceActionTransaction` names the three
-numbered actions (1 propose / 2 approve / 4 enact) and `ValidateSchemaAsync` runs
-`IsGenesisOrControl && !IsGovernanceAction`. Its basis is `BlueprintId` + `ActionId`, both unsigned —
-sound **only because it withdraws**: forging it true buys more validation, forging it false leaves
-the forger where they already were, still facing the roster check. That reasoning inverts the moment
-it is used to grant anything; move the discriminator into the signed payload first, as C-VAL did for
-the lifecycle predicates.
+**⚠ Withdrawing the schema exemption is BLOCKED, and the blocker is not the one you would guess.**
+T054 attempted exactly that — a predicate naming actions 1/2/4, and `ValidateSchemaAsync` running
+`IsGenesisOrControl && !IsGovernanceAction`. It was **reverted after failing the live gate on n1**
+(2026-08-09): every governance proposal returned 202 and then never sealed, with
+`VAL_SCHEMA_001: Blueprint 'register-governance-v1' not found`.
 
-**The Validator resolves blueprints globally by id**, not per register — so the governance blueprint
-seeded on the system register already resolves for a transaction on any register. Publishing it
-per-register is not a prerequisite for validating against it.
+**`ResolveBlueprintAsync` is global by id — cache, then Blueprint Service — but the governance
+blueprint is in neither.** It is seeded onto the **system register** by `SystemRegisterBootstrapper`
+and exists only as a publish transaction there; there is no `blueprint."Blueprints"` row for it, and
+`BlueprintRecoveryService` deliberately **rejects** these system blueprints with `no_provenance`. So
+"the resolver is global, therefore the SSR copy resolves" is an inference that does not hold — the
+mechanism is global, the blueprint is absent. Enforcing the contract fails **every governance
+transaction on every register**.
+
+Enforcement first needs a resolution path for SSR-seeded system blueprints.
+`ControlBlueprintVersionResolver` is **not** it: it handles control *config* blueprints
+(`control.config.update` …) and returns `ResolvedControlBlueprintVersion`, not a `BlueprintModel`.
+
+Note for when it is built: a predicate used to **withdraw** an exemption may safely key on unsigned
+fields (`BlueprintId`/`ActionId`/metadata) — forging it true buys more validation, forging it false
+leaves the forger facing the roster check as before. That reasoning **inverts** the moment it grants
+anything, so move the discriminator into the signed payload first, as C-VAL did for the lifecycle
+predicates.
 
 ### The action-1 contract described a payload nothing emits
 
