@@ -2642,7 +2642,7 @@ tries `BlueprintId == GovernanceBlueprint.BlueprintId` *first*, and all four pro
 the same shared constant. The `Control` arm is a redundant second path left from R-004, when a
 proposal still carried an empty `BlueprintId`.
 
-**⚠ Withdrawing the schema exemption is BLOCKED, and the blocker is not the one you would guess.**
+**⚠ Withdrawing the schema exemption needed a resolver, and the blocker was not the one you would guess.**
 T054 attempted exactly that — a predicate naming actions 1/2/4, and `ValidateSchemaAsync` running
 `IsGenesisOrControl && !IsGovernanceAction`. It was **reverted after failing the live gate on n1**
 (2026-08-09): every governance proposal returned 202 and then never sealed, with
@@ -2656,9 +2656,16 @@ and exists only as a publish transaction there; there is no `blueprint."Blueprin
 mechanism is global, the blueprint is absent. Enforcing the contract fails **every governance
 transaction on every register**.
 
-Enforcement first needs a resolution path for SSR-seeded system blueprints.
-`ControlBlueprintVersionResolver` is **not** it: it handles control *config* blueprints
-(`control.config.update` …) and returns `ResolvedControlBlueprintVersion`, not a `BlueprintModel`.
+**Fixed:** `ResolveBlueprintAsync` gained a last-resort arm reading the **system register's ledger**
+via `IRegisterServiceClient.GetSystemRegisterBlueprintJsonAsync`. It works on any node holding an SSR
+replica, is tried last, and returns null (never throws) so an unreachable Register Service fails
+closed. Enforcement is live-proven on n1. (`ControlBlueprintVersionResolver` is **not** the right
+tool — control *config* blueprints, returns `ResolvedControlBlueprintVersion`, not a `BlueprintModel`.)
+
+⚠ **A node's SSR is as old as its genesis.** n1's copy predated T053 and declared **no `dataSchemas`**,
+and FR-006 skips validation when an action declares none — so the live gate would have gone green
+while checking nothing. Publish the version under test to the SSR first
+(`POST /api/system-register/publish`; the newest by timestamp wins) and verify it landed.
 
 Note for when it is built: a predicate used to **withdraw** an exemption may safely key on unsigned
 fields (`BlueprintId`/`ActionId`/metadata) — forging it true buys more validation, forging it false

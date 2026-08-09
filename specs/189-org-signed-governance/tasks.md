@@ -190,8 +190,28 @@ confirm sealed-in-docket and observable on tiny.
 > withdrawal. The literal reading is not attempted — relaxing fork detection and role binding for
 > every workflow on the platform is a different piece of work with its own security review.
 >
-> 🔴 **ENFORCEMENT REVERTED — live gate failed, 2026-08-09. The contract fix ships; turning it on does
-> not.** Deployed to n1 (both services, image ids verified against the local build) and ran the full
+> ✅ **ENFORCEMENT NOW LIVE-PROVEN (second attempt, 2026-08-09).** `ResolveBlueprintAsync` gained a
+> last-resort arm reading the **system register's own ledger**
+> (`IRegisterServiceClient.GetSystemRegisterBlueprintJsonAsync`, over the endpoint that already
+> existed). It answers on any node holding an SSR replica — including a subscriber that seeded
+> nothing — and is tried last, so the ordinary path pays nothing. Failure returns null rather than
+> throwing, so an unreachable Register Service reads as "not found" and fails closed.
+>
+> Live on n1: propose → two approvals → enactment, all sealed, with
+> `Blueprint register-governance-v1 resolved from the system register and cached` and
+> `Quorum check … 2/2 (pool=2, met=True)` in the validator log and no `VAL_SCHEMA` errors.
+>
+> ⚠ **The gate was nearly vacuous, and the near-miss is the lesson.** n1's SSR was seeded at a genesis
+> that PREDATES T053, so its `register-governance-v1` carried **no `dataSchemas` at all** — and
+> FR-006 skips validation when an action declares none. Resolution would have succeeded, enforcement
+> would have run, and the whole thing would have gone green while checking nothing. The corrected
+> template had to be published to the SSR first (`POST /api/system-register/publish`; `GetBlueprintAsync`
+> takes the newest by timestamp). **Any future live gate on a system blueprint must first confirm the
+> SSR actually carries the version under test** — a node's SSR is as old as its genesis.
+>
+> **First attempt (reverted, kept for the record):** the enforcement shipped without the resolver and
+> failed every governance transaction on every register with
+> `VAL_SCHEMA_001: Blueprint 'register-governance-v1' not found`. Deployed to n1 (both services, image ids verified against the local build) and ran the full
 > cycle: the proposal returned **202 and never sealed**. Validator verdict:
 > `VAL_SCHEMA_001: Blueprint 'register-governance-v1' not found`.
 >
