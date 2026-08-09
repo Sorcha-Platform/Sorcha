@@ -544,4 +544,101 @@ public sealed class GovernanceControlPayloadContractTests
             "Could not locate the repository root (a directory containing both blueprints/ and src/) "
             + $"by walking up from {AppContext.BaseDirectory}.");
     }
+
+    // ---- FR-018: the definition is a contract, not an executable flow --------------------------
+
+    [Fact]
+    public void TheGovernanceDefinition_DeclaresNoRoutes()
+    {
+        // Settled 2026-08-09. Governance is many organisations acting on one step: its transactions
+        // are exempt from VAL_ROUTING_* and are not folded into an instance, so nothing evaluates a
+        // route here. The routes that used to exist read `ownerOverride`, `requiresAcceptance`,
+        // `quorumMet` and `accepted` — none of which any producer emits, and `quorumMet` cannot be
+        // known by the producer of an individual approval because it depends on how many siblings
+        // have sealed. A definition documenting behaviour the system does not have is worse than one
+        // documenting less, because a reader trusts it.
+        foreach (var action in Template().GetProperty("actions").EnumerateArray())
+        {
+            action.TryGetProperty("routes", out _).Should().BeFalse(
+                "action {0} must not declare routes — see FR-018 and the x-routing note on the "
+                + "definition's metadata", action.GetProperty("id").GetInt32());
+        }
+    }
+
+    [Fact]
+    public void AnyRouteConditionEverAdded_MustOnlyReadFieldsThePayloadContractDeclares()
+    {
+        // The durable half of the guard. If routing is ever given real meaning here, this fails the
+        // moment a condition reads a variable no declared payload carries — which is exactly the
+        // state that persisted unnoticed for as long as the routes went unevaluated.
+        foreach (var action in Template().GetProperty("actions").EnumerateArray())
+        {
+            if (!action.TryGetProperty("routes", out var routes)) continue;
+
+            var declared = DeclaredPayloadFields(action);
+
+            foreach (var variable in RouteVariables(routes))
+            {
+                declared.Should().Contain(variable,
+                    "route condition on action {0} reads '{1}', so some declared payload contract "
+                    + "must carry it", action.GetProperty("id").GetInt32(), variable);
+            }
+        }
+    }
+
+    /// <summary>Every property name any of an action's data schemas declares, at any depth.</summary>
+    private static HashSet<string> DeclaredPayloadFields(JsonElement action)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        if (!action.TryGetProperty("dataSchemas", out var schemas)) return names;
+
+        void Walk(JsonElement node)
+        {
+            if (node.ValueKind != JsonValueKind.Object) return;
+            if (node.TryGetProperty("properties", out var properties))
+            {
+                foreach (var property in properties.EnumerateObject())
+                {
+                    names.Add(property.Name);
+                    Walk(property.Value);
+                }
+            }
+        }
+
+        foreach (var schema in schemas.EnumerateArray()) Walk(schema);
+        return names;
+    }
+
+    /// <summary>Variable names read by any <c>{"var": "…"}</c> node inside a route's conditions.</summary>
+    private static IEnumerable<string> RouteVariables(JsonElement routes)
+    {
+        var found = new List<string>();
+
+        void Walk(JsonElement node)
+        {
+            switch (node.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    foreach (var property in node.EnumerateObject())
+                    {
+                        if (string.Equals(property.Name, "var", StringComparison.Ordinal)
+                            && property.Value.ValueKind == JsonValueKind.String)
+                        {
+                            found.Add(property.Value.GetString()!);
+                        }
+
+                        Walk(property.Value);
+                    }
+
+                    break;
+
+                case JsonValueKind.Array:
+                    foreach (var item in node.EnumerateArray()) Walk(item);
+                    break;
+            }
+        }
+
+        Walk(routes);
+        return found;
+    }
 }

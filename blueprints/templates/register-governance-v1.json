@@ -40,96 +40,12 @@
         "id": 0,
         "title": "Assert Ownership",
         "sender": "proposer",
-        "isStartingAction": true,
-        "routes": [
-          {
-            "id": "genesis-to-propose",
-            "nextActionIds": [
-              1
-            ],
-            "isDefault": true
-          }
-        ]
+        "isStartingAction": true
       },
       {
         "id": 1,
         "title": "Propose Change",
         "sender": "proposer",
-        "routes": [
-          {
-            "id": "transfer-skip-quorum",
-            "nextActionIds": [
-              3
-            ],
-            "condition": {
-              "==": [
-                {
-                  "var": "operationType"
-                },
-                "Transfer"
-              ]
-            }
-          },
-          {
-            "id": "owner-override",
-            "nextActionIds": [
-              3
-            ],
-            "condition": {
-              "and": [
-                {
-                  "==": [
-                    {
-                      "var": "ownerOverride"
-                    },
-                    true
-                  ]
-                },
-                {
-                  "==": [
-                    {
-                      "var": "requiresAcceptance"
-                    },
-                    true
-                  ]
-                }
-              ]
-            }
-          },
-          {
-            "id": "owner-override-no-acceptance",
-            "nextActionIds": [
-              4
-            ],
-            "condition": {
-              "and": [
-                {
-                  "==": [
-                    {
-                      "var": "ownerOverride"
-                    },
-                    true
-                  ]
-                },
-                {
-                  "==": [
-                    {
-                      "var": "requiresAcceptance"
-                    },
-                    false
-                  ]
-                }
-              ]
-            }
-          },
-          {
-            "id": "to-quorum",
-            "nextActionIds": [
-              2
-            ],
-            "isDefault": true
-          }
-        ],
         "dataSchemas": [
           {
             "type": "object",
@@ -280,81 +196,6 @@
         "id": 2,
         "title": "Collect Quorum",
         "sender": "voter",
-        "routes": [
-          {
-            "id": "quorum-met",
-            "nextActionIds": [
-              3
-            ],
-            "condition": {
-              "and": [
-                {
-                  "==": [
-                    {
-                      "var": "quorumMet"
-                    },
-                    true
-                  ]
-                },
-                {
-                  "==": [
-                    {
-                      "var": "requiresAcceptance"
-                    },
-                    true
-                  ]
-                }
-              ]
-            }
-          },
-          {
-            "id": "quorum-met-no-acceptance",
-            "nextActionIds": [
-              4
-            ],
-            "condition": {
-              "and": [
-                {
-                  "==": [
-                    {
-                      "var": "quorumMet"
-                    },
-                    true
-                  ]
-                },
-                {
-                  "==": [
-                    {
-                      "var": "requiresAcceptance"
-                    },
-                    false
-                  ]
-                }
-              ]
-            }
-          },
-          {
-            "id": "quorum-blocked",
-            "nextActionIds": [
-              1
-            ],
-            "condition": {
-              "==": [
-                {
-                  "var": "quorumBlocked"
-                },
-                true
-              ]
-            }
-          },
-          {
-            "id": "collect-more",
-            "nextActionIds": [
-              2
-            ],
-            "isDefault": true
-          }
-        ],
         "dataSchemas": [
           {
             "type": "object",
@@ -559,51 +400,20 @@
       {
         "id": 3,
         "title": "Accept Role",
-        "sender": "target",
-        "routes": [
-          {
-            "id": "accepted",
-            "nextActionIds": [
-              4
-            ],
-            "condition": {
-              "==": [
-                {
-                  "var": "accepted"
-                },
-                true
-              ]
-            }
-          },
-          {
-            "id": "declined",
-            "nextActionIds": [
-              1
-            ],
-            "isDefault": true
-          }
-        ]
+        "sender": "target"
       },
       {
         "id": 4,
         "title": "Record Control Transaction",
-        "sender": "proposer",
-        "routes": [
-          {
-            "id": "loop-back",
-            "nextActionIds": [
-              1
-            ],
-            "isDefault": true
-          }
-        ]
+        "sender": "proposer"
       }
     ],
     "metadata": {
       "category": "governance",
       "type": "register-governance",
       "isSystem": "true",
-      "hasCycles": "true"
+      "hasCycles": "true",
+      "x-routing": "Deliberately none. Governance is many organisations acting on one step, so its transactions are exempt from VAL_ROUTING_* and are not folded into a workflow instance; nothing evaluates a route here. The previous conditions read ownerOverride, requiresAcceptance, quorumMet and accepted, which no producer emits — and quorumMet is unknowable to the producer of an individual approval. The approval rule is governed by RegisterControlRecord.RegisterPolicy.Governance.QuorumFormula and frozen per proposal as quorumFormulaAtRaise (FR-011a). This definition is a contract over action identity and payload shape (FR-018), not an executable flow."
     }
   },
   "parameterSchema": null,

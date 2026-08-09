@@ -42,60 +42,44 @@ public sealed class GovernanceBlueprintDefinitionTests
         Template().GetProperty("actions").EnumerateArray()
             .Single(a => a.GetProperty("id").GetInt32() == id);
 
-    private static string RoutesJson(int actionId) =>
-        Action(actionId).GetProperty("routes").GetRawText();
 
     [Fact]
     public void QuorumComesFromTheRegistersRule_NotAHardcodedPercentage()
     {
-        // T050. The arithmetic belongs to GovernanceRosterService.ValidateQuorumAsync, which knows
-        // the register's own QuorumFormula (R-007). The blueprint consumes the verdict.
-        var routes = RoutesJson(2);
+        // T050, re-pointed 2026-08-09. It used to assert this against action 2's ROUTE conditions.
+        // Those are gone (FR-018 restated — nothing evaluated them), but the requirement is not: a
+        // percentage cannot express Unanimous, so a consortium's rule would be silently ignored.
+        //
+        // The rule now lives where it is actually enforced —
+        // RegisterControlRecord.RegisterPolicy.Governance.QuorumFormula, frozen onto each proposal as
+        // quorumFormulaAtRaise (FR-011a) — so the definition must declare that field and must not
+        // restate the arithmetic anywhere.
+        var definition = Template().GetRawText();
 
-        routes.Should().NotContain("approvalPercentage",
-            "a percentage cannot express Unanimous, so a consortium's rule would be silently ignored");
-        routes.Should().NotContain("50.01");
-        routes.Should().Contain("quorumMet", "the blueprint consumes the verdict, it does not compute it");
+        definition.Should().NotContain("approvalPercentage",
+            "a percentage cannot express Unanimous");
+        definition.Should().NotContain("50.01");
+
+        Action(1).GetProperty("dataSchemas")[0]
+            .GetProperty("properties").GetProperty("operation")
+            .GetProperty("properties").TryGetProperty("quorumFormulaAtRaise", out _)
+            .Should().BeTrue("the frozen rule is part of the proposal's published contract");
     }
 
-    [Fact]
-    public void EveryQuorumFormula_IsExpressible()
-    {
-        // The reason the percentage had to go: enumerate the formulas the code supports and assert
-        // the blueprint is not written in terms that can only carry one of them.
-        var routes = RoutesJson(2);
-
-        foreach (var formula in Enum.GetNames<QuorumFormula>())
-        {
-            routes.Should().NotContain(formula,
-                "the route must not special-case {0} — it consumes a boolean verdict that covers all "
-                + "formulas, so a formula added later needs no blueprint change", formula);
-        }
-    }
-
-    [Fact]
-    public void AcceptRoleIsSkipped_WhenNobodyHasAnythingToAccept()
-    {
-        // T052 / R-008. A crypto-policy change has no target and no role. Routing it through
-        // "Accept Role" would strand the proposal waiting for an acceptance that can never arrive —
-        // a hang, not an error, which is the worst shape of failure.
-        var routes = RoutesJson(2);
-
-        routes.Should().Contain("requiresAcceptance");
-        routes.Should().Contain("quorum-met-no-acceptance");
-
-        Action(3).GetProperty("title").GetString().Should().Be("Accept Role",
-            "the skip route is defined relative to this action");
-    }
-
-    [Fact]
-    public void OwnerOverride_AlsoSkipsAcceptance_WhenThereIsNothingToAccept()
-    {
-        // The override is a second path to enactment, so it needs the same treatment. Fixing only
-        // the quorum path would leave single-owner crypto-policy promotion hanging — and that is
-        // the single most-used governance operation on this platform.
-        RoutesJson(1).Should().Contain("owner-override-no-acceptance");
-    }
+    // RETIRED 2026-08-09 with the routes they asserted on (FR-018 restated):
+    //
+    //   EveryQuorumFormula_IsExpressible — superseded by a stronger check.
+    //     GovernanceControlPayloadContractTests.TheQuorumFormulaWireValues_AreExactlyWhatTheSchemaLists
+    //     asserts set equality both ways between the schema's declared formulas and the ones the model
+    //     can emit, so a formula added later fails the build rather than merely being un-special-cased.
+    //
+    //   AcceptRoleIsSkipped_WhenNobodyHasAnythingToAccept and
+    //   OwnerOverride_AlsoSkipsAcceptance_WhenThereIsNothingToAccept — these pinned that a
+    //     crypto-policy change would not hang waiting on an acceptance that can never arrive. The
+    //     hazard was only ever expressible in the routes, and it was never real: `requiresAcceptance`
+    //     is carried by no model, so nothing could have read it, and there is no Accept Role step in
+    //     the flow the platform actually executes. Re-pointing them would have meant asserting
+    //     behaviour that does not exist.
 
     [Fact]
     public void CryptoPolicyUpdate_IsAnOfferedOperation()
