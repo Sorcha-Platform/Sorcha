@@ -313,22 +313,7 @@ public sealed class GovernanceEnactmentService : IGovernanceEnactmentService
         // here can change what those signatures are taken to have authorised.
         var enacted = CloneWithStatus(proposed, ProposalStatus.Recorded);
 
-        RegisterAttestation? newAttestation = null;
-        if (enacted.OperationType == GovernanceOperationType.Add)
-        {
-            newAttestation = new RegisterAttestation
-            {
-                Role = enacted.TargetRole,
-                Subject = enacted.TargetDid,
-                PublicKey = string.Empty,
-                Signature = string.Empty,
-                Algorithm = SignatureAlgorithm.ED25519,
-                GrantedAt = enacted.ProposedAt,
-            };
-        }
-
-        var control = ApplyValidatorRosterChange(roster.ControlRecord, enacted);
-        var updated = _rosterService.ApplyOperation(control, enacted, newAttestation);
+        var updated = ProjectRoster(_rosterService, roster.ControlRecord, enacted);
 
         return new ControlTransactionPayload
         {
@@ -337,6 +322,51 @@ public sealed class GovernanceEnactmentService : IGovernanceEnactmentService
             Operation = enacted,
             EnactsProposalId = proposalId,
         };
+    }
+
+    /// <summary>
+    /// The roster a governance operation would produce. THE one answer to that question.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Shared with the audit surface so a console can show an approver the roster that will actually
+    /// be written, rather than one it computed for itself. A second implementation of "what does this
+    /// operation do" is worse than no preview at all: an approver reading an accurate-looking diff
+    /// that differs from what enacts is FR-027 defeated more quietly than showing them a JSON blob.
+    /// </para>
+    /// <para>
+    /// Every timestamp comes from <c>operation.ProposedAt</c> — sealed content, identical on every
+    /// node — never from the clock, or two nodes enacting the same proposal produce different bytes
+    /// under the same deterministic transaction id.
+    /// </para>
+    /// </remarks>
+    internal static RegisterControlRecord ProjectRoster(
+        IGovernanceRosterService rosterService,
+        RegisterControlRecord current,
+        GovernanceOperation operation)
+    {
+        ArgumentNullException.ThrowIfNull(rosterService);
+        ArgumentNullException.ThrowIfNull(current);
+        ArgumentNullException.ThrowIfNull(operation);
+
+        RegisterAttestation? newAttestation = null;
+        if (operation.OperationType == GovernanceOperationType.Add)
+        {
+            newAttestation = new RegisterAttestation
+            {
+                Role = operation.TargetRole,
+                Subject = operation.TargetDid,
+                // The joining organisation's key is not known at enactment — it is recorded when they
+                // first attest. An empty key here is the roster saying "entitled, not yet keyed".
+                PublicKey = string.Empty,
+                Signature = string.Empty,
+                Algorithm = SignatureAlgorithm.ED25519,
+                GrantedAt = operation.ProposedAt,
+            };
+        }
+
+        return rosterService.ApplyOperation(
+            ApplyValidatorRosterChange(current, operation), operation, newAttestation);
     }
 
     /// <summary>

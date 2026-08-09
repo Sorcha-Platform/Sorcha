@@ -2549,6 +2549,15 @@ endpoint, no transaction type — so a status for it would name a state no ledge
 `refused-not-on-roster` is why an individual *approval* did not count, not what happened to the
 proposal; it is reported per-approval in `excludedApprovals[]`.
 
+**An enactment is the OUTCOME of a proposal, not a proposal.** It carries the same
+`transactionType=GovernanceOperation` tracking value as the proposal it settles, so without an
+explicit exclusion it is listed as a proposal in its own right — the same governance change appearing
+twice, the second row showing no approvals because approvals chain off the proposal, not the
+enactment. **The discriminator is naming ANOTHER proposal (`EnactsProposalId`), not carrying a
+roster**: an Owner-override propose-and-enact is one transaction that is both and carries a roster
+too, so excluding everything with a roster would drop single-owner governance from the audit surface
+entirely. Found live on n1; no test saw it.
+
 **The endpoint this replaced read `MetaData.TrackingData`.** That sits outside the signature, outside
 the payload hash and outside the docket's merkle leaf, so anyone able to submit can rewrite it with
 nothing detecting the change. An audit surface sourced from forgeable fields is worse than none,
@@ -2560,6 +2569,26 @@ throws) and matches no filter written against `Enacted`. Pin enums with `[JsonCo
 rather than relying on host registration, and write wire-contract tests against
 `JsonSerializerOptions.Web`, not `SorchaJson.Options` — asserting against options the service does not
 use is a test that passes while the surface is broken.
+
+### The roster diff an approver reads is the one the enactment writes (T084)
+
+`GET .../proposals/{id}` carries `rosterDiff` — the roster member by member as it would be, each row
+marked `Unchanged` / `Added` / `Removed` / `RoleChanged`. A departing member stays in the list marked
+`Removed` rather than vanishing, because a row that disappears is a change the reader has to notice by
+its absence.
+
+It is computed by **`GovernanceEnactmentService.ProjectRoster`, the same call that builds the
+enactment payload**. A console deriving its own preview would eventually show an approver an
+accurate-looking change that differs from the one that happens — FR-027 defeated more quietly than by
+showing a JSON blob. That is also why the diff is computed server-side at all: `ApplyOperation` lives
+in `Sorcha.Register.Core`, which a Blazor client cannot reference, and re-implementing it client-side
+is exactly the drift to avoid.
+
+`rosterDiff` is **null** in three cases, each deliberate: an operation that changes no membership (an
+all-unchanged list says something untrue about the change); an **Invalidated** proposal (projecting it
+onto the current roster describes a change that can never happen); and an **Enacted** one (the sealed
+enactment is the record, and re-projecting would apply an applied change twice). The status carries
+the explanation instead.
 
 ### `authMethod` is recorded, never enforced — and it means key custody
 

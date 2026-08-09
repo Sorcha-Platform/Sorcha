@@ -151,6 +151,88 @@ public sealed class GovernanceProposalViewServiceTests
             ],
         };
 
+    /// <summary>The fixture with the proposed operation reshaped — Remove, Transfer, policy, …</summary>
+    private GovernanceProposalViewService ServiceForOperation(Action<GovernanceOperation> shape)
+    {
+        var operation = Operation();
+        shape(operation);
+
+        var tx = ProposalTransaction();
+        tx.Payloads[0].Data = Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(
+            new ControlTransactionPayload { Version = 1, Roster = null, Operation = operation }));
+
+        var service = Service();
+        _repository.Setup(r => r.GetTransactionAsync(RegisterId, ProposalTx, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tx);
+        _repository.Setup(r => r.GetTransactionsByTypeAsync(
+                RegisterId, TransactionType.Control, It.IsAny<TransactionSort>(),
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([tx]);
+
+        return service;
+    }
+
+    /// <summary>
+    /// A separate enactment: carries the resulting roster AND names the proposal it enacts.
+    /// </summary>
+    private static TransactionModel EnactmentTransaction(string enactsProposalId) => new()
+    {
+        TxId = "enactment-tx",
+        RegisterId = RegisterId,
+        TimeStamp = Now.AddMinutes(-5).UtcDateTime,
+        MetaData = new TransactionMetaData
+        {
+            TrackingData = new Dictionary<string, string> { ["transactionType"] = "GovernanceOperation" }
+        },
+        Payloads =
+        [
+            new PayloadModel
+            {
+                Data = Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(
+                    new ControlTransactionPayload
+                    {
+                        Version = 1,
+                        Roster = Roster().ControlRecord,
+                        Operation = Recorded(),
+                        EnactsProposalId = enactsProposalId,
+                    }))
+            }
+        ],
+    };
+
+    /// <summary>The Owner override: one propose-and-enact transaction, enacting nothing else.</summary>
+    private static TransactionModel ProposeAndEnactTransaction() => new()
+    {
+        TxId = "override-tx",
+        RegisterId = RegisterId,
+        TimeStamp = Now.AddMinutes(-5).UtcDateTime,
+        MetaData = new TransactionMetaData
+        {
+            TrackingData = new Dictionary<string, string> { ["transactionType"] = "GovernanceOperation" }
+        },
+        Payloads =
+        [
+            new PayloadModel
+            {
+                Data = Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(
+                    new ControlTransactionPayload
+                    {
+                        Version = 1,
+                        Roster = Roster().ControlRecord,
+                        Operation = Recorded(),
+                        EnactsProposalId = null,
+                    }))
+            }
+        ],
+    };
+
+    private static GovernanceOperation Recorded()
+    {
+        var o = Operation();
+        o.Status = ProposalStatus.Recorded;
+        return o;
+    }
+
     private GovernanceProposalViewService Service(params TransactionModel[] approvals)
     {
         _roster.Setup(r => r.GetCurrentRosterAsync(RegisterId, It.IsAny<CancellationToken>()))
@@ -166,6 +248,16 @@ public sealed class GovernanceProposalViewServiceTests
                     VotesReceived = votes.Count,
                     VotingPool = 2,
                 });
+
+        // ApplyOperation delegates to the REAL GovernanceRosterService. Restating the roster rules in
+        // the test would prove only that the test agrees with itself — and the whole point of T084 is
+        // that the preview is computed by the same code that writes the enactment.
+        var realRoster = new GovernanceRosterService(
+            _repository.Object, NullLogger<GovernanceRosterService>.Instance);
+        _roster.Setup(r => r.ApplyOperation(
+                It.IsAny<RegisterControlRecord>(), It.IsAny<GovernanceOperation>(), It.IsAny<RegisterAttestation?>()))
+            .Returns((RegisterControlRecord c, GovernanceOperation o, RegisterAttestation? a)
+                => realRoster.ApplyOperation(c, o, a));
 
         _repository.Setup(r => r.GetTransactionAsync(RegisterId, ProposalTx, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ProposalTransaction());
@@ -291,6 +383,176 @@ public sealed class GovernanceProposalViewServiceTests
 
         (await service.ListAsync(RegisterId, state: null))
             .Should().ContainSingle("no filter means every proposal");
+    }
+
+    // ---- an enactment is the OUTCOME of a proposal, not a proposal ----
+
+    /// <summary>
+    /// Found live on n1: the enactment transaction was listed as a proposal of its own, so one
+    /// governance change appeared twice — once as the proposal and once as its own outcome, the
+    /// second row showing 0 approvals because approvals chain off the proposal, not the enactment.
+    /// </summary>
+    [Fact]
+    public async Task AnEnactment_IsNotListedAsAProposalOfItsOwn()
+    {
+        var service = Service();
+        _repository.Setup(r => r.GetTransactionsByTypeAsync(
+                RegisterId, TransactionType.Control, It.IsAny<TransactionSort>(),
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([ProposalTransaction(), EnactmentTransaction(ProposalTx)]);
+
+        var list = await service.ListAsync(RegisterId, state: null);
+
+        list.Should().ContainSingle("the change is one proposal, whatever settled it")
+            .Which.ProposalId.Should().Be(ProposalTx);
+    }
+
+    [Fact]
+    public async Task AnEnactment_HasNoDetailPageOfItsOwn()
+    {
+        var service = Service();
+        _repository.Setup(r => r.GetTransactionAsync(RegisterId, "enactment-tx", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(EnactmentTransaction(ProposalTx));
+
+        (await service.GetAsync(RegisterId, "enactment-tx")).Should().BeNull(
+            "it is reachable as the outcomeTxId of the proposal it enacted");
+    }
+
+    /// <summary>
+    /// The Owner override writes ONE transaction that is both proposal and enactment. Excluding
+    /// everything that carries a roster would drop single-owner governance from the audit surface
+    /// entirely — so the discriminator is naming ANOTHER proposal, not carrying a roster.
+    /// </summary>
+    [Fact]
+    public async Task AnOwnerOverrideProposeAndEnact_IsStillListed()
+    {
+        var service = Service();
+        _repository.Setup(r => r.GetTransactionsByTypeAsync(
+                RegisterId, TransactionType.Control, It.IsAny<TransactionSort>(),
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([ProposeAndEnactTransaction()]);
+
+        var list = await service.ListAsync(RegisterId, state: null);
+
+        var only = list.Should().ContainSingle().Subject;
+        only.ProposalId.Should().Be("override-tx");
+        only.Status.Should().Be(GovernanceProposalState.Enacted);
+        only.OutcomeTxId.Should().Be("override-tx", "it is its own outcome");
+    }
+
+    // ---- T084: the roster diff an approver reads before approving ----
+
+    /// <summary>
+    /// An approver must be able to read what they are authorising, so the detail carries the roster
+    /// as it will be — computed by the SAME projection the enactment writes (FR-027).
+    /// </summary>
+    [Fact]
+    public async Task AnOpenAddProposal_CarriesTheRosterDiff()
+    {
+        var view = await Service().GetAsync(RegisterId, ProposalTx);
+
+        view!.RosterDiff.Should().NotBeNull();
+        view.RosterDiff!.Should().HaveCount(3, "two sitting members plus the one being added");
+
+        view.RosterDiff.Should().ContainSingle(m => m.Change == GovernanceRosterChange.Added)
+            .Which.Subject.Should().Be("did:sorcha:w:ws11qnew");
+        view.RosterDiff.Where(m => m.Change == GovernanceRosterChange.Unchanged)
+            .Select(m => m.Subject).Should().BeEquivalentTo([OwnerDid, AdminDid]);
+    }
+
+    [Fact]
+    public async Task AnOpenRemoveProposal_MarksTheDepartingMember()
+    {
+        var view = await ServiceForOperation(op =>
+        {
+            op.OperationType = GovernanceOperationType.Remove;
+            op.TargetDid = AdminDid;
+        }).GetAsync(RegisterId, ProposalTx);
+
+        view!.RosterDiff.Should().ContainSingle(m => m.Change == GovernanceRosterChange.Removed)
+            .Which.Subject.Should().Be(AdminDid);
+        view.RosterDiff!.Should().HaveCount(2, "the removed member is still shown, marked as leaving");
+    }
+
+    /// <summary>
+    /// A Transfer moves the ownership, so BOTH parties change role. Showing only the new Owner would
+    /// hide from the sitting Owner that they are the one being demoted.
+    /// </summary>
+    [Fact]
+    public async Task AnOpenTransferProposal_ShowsBothRoleChanges()
+    {
+        var view = await ServiceForOperation(op =>
+        {
+            op.OperationType = GovernanceOperationType.Transfer;
+            op.TargetDid = AdminDid;
+        }).GetAsync(RegisterId, ProposalTx);
+
+        view!.RosterDiff!.Where(m => m.Change == GovernanceRosterChange.RoleChanged)
+            .Select(m => m.Subject).Should().BeEquivalentTo([OwnerDid, AdminDid]);
+
+        view.RosterDiff.Single(m => m.Subject == AdminDid).Role.Should().Be(RegisterRole.Owner);
+        view.RosterDiff.Single(m => m.Subject == OwnerDid).Role.Should().Be(RegisterRole.Admin);
+    }
+
+    /// <summary>
+    /// An operation that changes no membership must not render an all-unchanged list — a diff shown
+    /// for a change that is not a roster change tells the reader something untrue about it.
+    /// </summary>
+    [Fact]
+    public async Task AProposalThatChangesNoMembership_CarriesNoRosterDiff()
+    {
+        var view = await ServiceForOperation(op =>
+        {
+            op.OperationType = GovernanceOperationType.CryptoPolicyUpdate;
+            op.TargetDid = string.Empty;
+        }).GetAsync(RegisterId, ProposalTx);
+
+        view!.RosterDiff.Should().BeNull();
+    }
+
+    /// <summary>
+    /// The diff is a preview of what approving would do. For a proposal that can no longer enact,
+    /// projecting the operation onto the CURRENT roster would describe a change that will never
+    /// happen — so it is withheld and the status carries the explanation instead.
+    /// </summary>
+    [Fact]
+    public async Task AnInvalidatedProposal_CarriesNoRosterDiff()
+    {
+        var service = Service();
+        _roster.Setup(r => r.GetCurrentRosterAsync(RegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Roster(head: "the-roster-moved-on"));
+
+        var view = await service.GetAsync(RegisterId, ProposalTx);
+
+        view!.Status.Should().Be(GovernanceProposalState.Invalidated);
+        view.RosterDiff.Should().BeNull();
+    }
+
+    /// <summary>
+    /// An enacted proposal's outcome is the sealed transaction, not a recomputation. Re-projecting it
+    /// onto the current roster would apply an already-applied change a second time.
+    /// </summary>
+    [Fact]
+    public async Task AnEnactedProposal_CarriesNoRosterDiff()
+    {
+        var service = Service();
+        var enactmentId = GovernanceEnactmentService.ComputeEnactmentTransactionId(RegisterId, ProposalTx);
+        _repository.Setup(r => r.GetTransactionAsync(RegisterId, enactmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionModel { TxId = enactmentId, RegisterId = RegisterId });
+
+        var view = await service.GetAsync(RegisterId, ProposalTx);
+
+        view!.Status.Should().Be(GovernanceProposalState.Enacted);
+        view.RosterDiff.Should().BeNull("the enactment transaction is the record");
+        view.OutcomeTxId.Should().Be(enactmentId);
+    }
+
+    /// <summary>The list stays a summary: a diff per proposal would be unbounded work on a page load.</summary>
+    [Fact]
+    public async Task TheList_CarriesNoRosterDiff()
+    {
+        (await Service().ListAsync(RegisterId, state: null))
+            .Single().RosterDiff.Should().BeNull();
     }
 
     /// <summary>

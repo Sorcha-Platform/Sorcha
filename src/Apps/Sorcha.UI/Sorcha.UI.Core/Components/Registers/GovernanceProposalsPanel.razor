@@ -1,0 +1,147 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models.Admin
+@using Sorcha.UI.Core.Services
+
+@inject IRegisterGovernanceService Governance
+
+@*
+    Feature 189 T046/T084 — the register's governance proposals, with the status the LEDGER says.
+
+    Nothing here is computed in the browser. Status, counts and the roster diff are all derived
+    server-side from sealed content; this renders what it is told. That matters more than it sounds:
+    a console that derived its own view of who governs a register would eventually disagree with the
+    register, and would look completely normal while doing so.
+*@
+
+<MudStack Spacing="3">
+
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+        <MudText Typo="Typo.h6">Governance proposals</MudText>
+
+        <MudSelect T="string" Value="@_filter" ValueChanged="OnFilterChanged" Dense="true"
+                   Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width: 220px;"
+                   Label="Status" data-testid="proposal-status-filter">
+            <MudSelectItem T="string" Value="@GovernanceProposalStates.Open">Open</MudSelectItem>
+            <MudSelectItem T="string" Value="@GovernanceProposalStates.Enacted">Enacted</MudSelectItem>
+            <MudSelectItem T="string" Value="@GovernanceProposalStates.Invalidated">Invalidated</MudSelectItem>
+            <MudSelectItem T="string" Value="@GovernanceProposalStates.Expired">Expired</MudSelectItem>
+            @* No "Withdrawn": nothing on the platform can withdraw a proposal, so offering the filter
+               would imply a state no register can reach. *@
+            <MudSelectItem T="string" Value="@AllFilter">All</MudSelectItem>
+        </MudSelect>
+    </MudStack>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" data-testid="proposals-loading" />
+    }
+    else if (_proposals.Count == 0)
+    {
+        <MudAlert Severity="Severity.Normal" Variant="Variant.Outlined" Dense="true"
+                  data-testid="proposals-empty">
+            No @(_filter == AllFilter ? "" : _filter.ToLowerInvariant() + " ")governance proposals on this register.
+        </MudAlert>
+    }
+    else
+    {
+        <MudExpansionPanels MultiExpansion="false" data-testid="proposals-list">
+            @foreach (var proposal in _proposals)
+            {
+                <MudExpansionPanel @key="proposal.ProposalId"
+                                   ExpandedChanged="@(expanded => OnExpandedAsync(expanded, proposal))">
+                    <TitleContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                     Color="@StatusColour(proposal.Status)">@proposal.Status</MudChip>
+                            <MudText Typo="Typo.body2">@proposal.OperationType</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @proposal.ApprovalsReceived/@proposal.ApprovalsRequired approvals
+                            </MudText>
+                        </MudStack>
+                    </TitleContent>
+                    <ChildContent>
+                        @if (_detail.TryGetValue(proposal.ProposalId, out var detail))
+                        {
+                            <GovernanceProposalReview Proposal="detail" />
+                        }
+                        else
+                        {
+                            @* The summary carries no approvals and no diff — the detail read is what
+                               fetches them, so showing the summary here would look like "none". *@
+                            <MudProgressCircular Indeterminate="true" Size="Size.Small"
+                                                 data-testid="detail-loading" />
+                        }
+                    </ChildContent>
+                </MudExpansionPanel>
+            }
+        </MudExpansionPanels>
+    }
+
+</MudStack>
+
+@code {
+    /// <summary>Register whose proposals to show.</summary>
+    [Parameter, EditorRequired] public string RegisterId { get; set; } = default!;
+
+    private const string AllFilter = "All";
+
+    private string _filter = GovernanceProposalStates.Open;
+    private bool _loading = true;
+    private List<GovernanceProposalSummaryViewModel> _proposals = [];
+    private readonly Dictionary<string, GovernanceProposalSummaryViewModel> _detail = new(StringComparer.Ordinal);
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task OnFilterChanged(string filter)
+    {
+        _filter = filter;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+
+        // Cached detail belongs to the rows that were on screen; keeping it across a filter change
+        // would show one proposal's approvals under another's heading if ids ever collided.
+        _detail.Clear();
+
+        var page = await Governance.ListProposalsAsync(
+            RegisterId, _filter == AllFilter ? null : _filter);
+
+        _proposals = page.Proposals;
+        _loading = false;
+    }
+
+    /// <summary>
+    /// The detail is fetched when a row is opened, not with the list.
+    /// </summary>
+    /// <remarks>
+    /// A diff per proposal on a page load is unbounded work in the size of the register's governance
+    /// history, and the server withholds approvals and the diff from the list surface for that reason.
+    /// </remarks>
+    private async Task OnExpandedAsync(bool expanded, GovernanceProposalSummaryViewModel proposal)
+    {
+        if (!expanded || _detail.ContainsKey(proposal.ProposalId))
+        {
+            return;
+        }
+
+        var detail = await Governance.GetProposalAsync(RegisterId, proposal.ProposalId);
+        if (detail is not null)
+        {
+            _detail[proposal.ProposalId] = detail;
+            StateHasChanged();
+        }
+    }
+
+    private static Color StatusColour(string? status) => status switch
+    {
+        GovernanceProposalStates.Open => Color.Info,
+        GovernanceProposalStates.Enacted => Color.Success,
+        GovernanceProposalStates.Invalidated => Color.Warning,
+        _ => Color.Default,
+    };
+}

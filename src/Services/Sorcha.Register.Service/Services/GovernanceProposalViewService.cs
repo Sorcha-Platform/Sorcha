@@ -8,6 +8,31 @@ using Sorcha.Register.Models;
 
 namespace Sorcha.Register.Service.Services;
 
+/// <summary>What a proposal would do to one roster member (T084).</summary>
+public enum GovernanceRosterChange
+{
+    /// <summary>Sits on the roster before and after, in the same role.</summary>
+    Unchanged = 0,
+
+    /// <summary>Joins the roster if this proposal enacts.</summary>
+    Added = 1,
+
+    /// <summary>Leaves the roster if this proposal enacts. Still listed, so the loss is visible.</summary>
+    Removed = 2,
+
+    /// <summary>Stays on the roster in a different role — a Transfer moves two members at once.</summary>
+    RoleChanged = 3,
+}
+
+/// <summary>One row of the roster diff an approver reads before approving.</summary>
+/// <param name="Subject">The organisation, as a roster subject.</param>
+/// <param name="Role">The role it holds AFTER the change — for a removal, the role it is losing.</param>
+/// <param name="Change">What this proposal does to it.</param>
+public sealed record GovernanceRosterMemberView(
+    string Subject,
+    [property: JsonConverter(typeof(JsonStringEnumConverter))] RegisterRole Role,
+    [property: JsonConverter(typeof(JsonStringEnumConverter))] GovernanceRosterChange Change);
+
 /// <summary>One organisation's approval, individually attributed (T046).</summary>
 /// <param name="ApproverDid">The organisation that approved.</param>
 /// <param name="IsApproval">Approve, or reject.</param>
@@ -93,6 +118,26 @@ public sealed record GovernanceProposalView
 
     /// <summary>Approvals on the ledger that cannot count, with reasons. Empty on the list surface.</summary>
     public IReadOnlyList<GovernanceExcludedApprovalView> ExcludedApprovals { get; init; } = [];
+
+    /// <summary>
+    /// The roster as it would be if this proposal enacted, member by member (T084 / FR-027).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Computed by the same projection the enactment writes</b>, never by the reader. A console
+    /// deriving its own preview would eventually show an approver an accurate-looking change that
+    /// differs from the one that happens — FR-027 defeated more quietly than by showing a JSON blob.
+    /// </para>
+    /// <para>
+    /// <c>null</c>, deliberately, in three cases. For an operation that changes no membership, because
+    /// an all-unchanged list tells the reader something untrue about the change. For an
+    /// <b>Invalidated</b> proposal, because projecting it onto the current roster would describe a
+    /// change that can never happen. For an <b>Enacted</b> one, because the sealed enactment is the
+    /// record and re-projecting would apply an applied change twice. In each case the status carries
+    /// the explanation instead.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<GovernanceRosterMemberView>? RosterDiff { get; init; }
 }
 
 /// <summary>Reads governance proposals for the audit surface.</summary>
@@ -263,6 +308,7 @@ public sealed class GovernanceProposalViewService : IGovernanceProposalViewServi
 
         return view with
         {
+            RosterDiff = BuildRosterDiff(operation, roster, outcome.State, _rosterService),
             Approvals =
             [
                 .. plan.Checks.Select(c => new GovernanceApprovalView(
@@ -281,6 +327,74 @@ public sealed class GovernanceProposalViewService : IGovernanceProposalViewServi
                     e.Refusal))
             ],
         };
+    }
+
+    /// <summary>
+    /// Projects the operation onto the current roster and classifies each member (T084).
+    /// </summary>
+    /// <remarks>
+    /// The projection is <c>GovernanceEnactmentService.ProjectRoster</c> — the same call that builds
+    /// the enactment payload — so what an approver reads is what will be written. A separate
+    /// implementation here would drift, and the drift would be invisible until someone compared a
+    /// preview against a sealed roster.
+    /// </remarks>
+    private static IReadOnlyList<GovernanceRosterMemberView>? BuildRosterDiff(
+        GovernanceOperation operation,
+        AdminRoster roster,
+        GovernanceProposalState state,
+        IGovernanceRosterService rosterService)
+    {
+        // Only for a proposal that can still be approved: see the remarks on RosterDiff.
+        if (state != GovernanceProposalState.Open)
+        {
+            return null;
+        }
+
+        if (operation.OperationType is not (GovernanceOperationType.Add
+            or GovernanceOperationType.Remove
+            or GovernanceOperationType.Transfer))
+        {
+            return null;
+        }
+
+        RegisterControlRecord projected;
+        try
+        {
+            projected = GovernanceEnactmentService.ProjectRoster(
+                rosterService, roster.ControlRecord, operation);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            // An operation that cannot be applied to this roster has no preview to show. The read
+            // endpoint still answers — a 500 here would take out the whole audit surface for one
+            // malformed proposal.
+            return null;
+        }
+
+        var before = roster.ControlRecord.Attestations
+            .ToDictionary(a => a.Subject, a => a.Role, StringComparer.Ordinal);
+        var after = projected.Attestations
+            .ToDictionary(a => a.Subject, a => a.Role, StringComparer.Ordinal);
+
+        var rows = new List<GovernanceRosterMemberView>();
+
+        foreach (var (subject, role) in after)
+        {
+            rows.Add(before.TryGetValue(subject, out var was)
+                ? new GovernanceRosterMemberView(
+                    subject, role,
+                    was == role ? GovernanceRosterChange.Unchanged : GovernanceRosterChange.RoleChanged)
+                : new GovernanceRosterMemberView(subject, role, GovernanceRosterChange.Added));
+        }
+
+        // Departing members stay in the list rather than simply vanishing from it: a row that
+        // disappears is a change an approver has to notice by its absence.
+        foreach (var (subject, role) in before.Where(b => !after.ContainsKey(b.Key)))
+        {
+            rows.Add(new GovernanceRosterMemberView(subject, role, GovernanceRosterChange.Removed));
+        }
+
+        return rows;
     }
 
     /// <summary>Reads the approvals sealed against a proposal and prepares the tally over them.</summary>

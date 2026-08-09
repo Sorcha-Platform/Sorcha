@@ -110,6 +110,11 @@ public sealed class GovernanceProposalReader : IGovernanceProposalReader
             return new GovernanceProposalRead(ProposalReadOutcome.NotAProposal, null, tx);
         }
 
+        if (IsEnactmentOfAnother(tx))
+        {
+            return new GovernanceProposalRead(ProposalReadOutcome.NotAProposal, null, tx);
+        }
+
         var operation = TryDecodeOperation(tx);
 
         return operation is null
@@ -150,6 +155,11 @@ public sealed class GovernanceProposalReader : IGovernanceProposalReader
                 continue;
             }
 
+            if (IsEnactmentOfAnother(tx))
+            {
+                continue;
+            }
+
             var operation = TryDecodeOperation(tx);
             if (operation is not null)
             {
@@ -158,6 +168,31 @@ public sealed class GovernanceProposalReader : IGovernanceProposalReader
         }
 
         return proposals;
+    }
+
+    /// <summary>
+    /// Whether this control transaction is the <i>enactment</i> of some other proposal.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An enactment carries the same <c>transactionType=GovernanceOperation</c> tracking value as the
+    /// proposal it settles, so without this it is picked up as a proposal in its own right — and the
+    /// same governance change appears twice, the second row showing no approvals because approvals
+    /// chain off the proposal, not the enactment. Found live on n1, not by any test.
+    /// </para>
+    /// <para>
+    /// <b>The discriminator is naming ANOTHER proposal, not carrying a roster.</b> An Owner-override
+    /// propose-and-enact is one transaction that is both, and it carries a roster too — excluding
+    /// everything with a roster would drop single-owner governance from the audit surface entirely.
+    /// It names no other proposal, so it stays.
+    /// </para>
+    /// </remarks>
+    private bool IsEnactmentOfAnother(TransactionModel tx)
+    {
+        var enacts = TryDecodePayload(tx)?.EnactsProposalId;
+
+        return !string.IsNullOrEmpty(enacts)
+               && !string.Equals(enacts, tx.TxId, StringComparison.Ordinal);
     }
 
     private GovernanceOperation? TryDecodeOperation(TransactionModel tx)
@@ -181,6 +216,34 @@ public sealed class GovernanceProposalReader : IGovernanceProposalReader
                     payloadBytes,
                     new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                 ?.Operation;
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or FormatException)
+        {
+            _logger.LogWarning(ex,
+                "Proposal {TxId} on register {RegisterId} would not decode as a governance operation",
+                tx.TxId, tx.RegisterId);
+            return null;
+        }
+    }
+
+    /// <summary>Decodes the whole control payload, for callers that need more than the operation.</summary>
+    private ControlTransactionPayload? TryDecodePayload(TransactionModel tx)
+    {
+        try
+        {
+            var payloadData = tx.Payloads.Length > 0 ? tx.Payloads[0].Data : null;
+            if (string.IsNullOrWhiteSpace(payloadData))
+            {
+                return null;
+            }
+
+            var payloadBytes = payloadData.Contains('+') || payloadData.Contains('/') || payloadData.Contains('=')
+                ? Convert.FromBase64String(payloadData)
+                : System.Buffers.Text.Base64Url.DecodeFromChars(payloadData);
+
+            return System.Text.Json.JsonSerializer.Deserialize<ControlTransactionPayload>(
+                payloadBytes,
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         }
         catch (Exception ex) when (ex is System.Text.Json.JsonException or FormatException)
         {

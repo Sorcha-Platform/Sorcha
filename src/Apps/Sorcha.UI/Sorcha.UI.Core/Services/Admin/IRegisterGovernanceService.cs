@@ -48,6 +48,30 @@ public interface IRegisterGovernanceService
     Task<PolicyHistoryViewModel> GetPolicyHistoryAsync(string registerId, int page = 1, int pageSize = 20, CancellationToken ct = default);
     Task<PolicyUpdateProposalViewModel?> ProposePolicyUpdateAsync(string registerId, RegisterPolicyFields policy, CancellationToken ct = default);
 
+    // Governance proposals (Feature 189 T046/T084). Every field is REPORTED by the Register Service —
+    // status, counts and the roster diff are all derived server-side from sealed content, never
+    // recomputed here. A console deriving its own preview of a governance change would eventually
+    // show an approver something other than what enacts.
+
+    /// <summary>
+    /// Lists the register's governance proposals with their derived status.
+    /// </summary>
+    /// <param name="registerId">Register to read.</param>
+    /// <param name="status">
+    /// <c>Open</c> / <c>Enacted</c> / <c>Invalidated</c> / <c>Expired</c>, or null for all. There is
+    /// deliberately no <c>Withdrawn</c> — nothing on the platform can withdraw a proposal.
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<GovernanceProposalPageViewModel> ListProposalsAsync(
+        string registerId, string? status = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Full audit detail for one proposal: every approval attributed, the ones that cannot count with
+    /// their reasons, and the roster as it would be. Null when the register carries no such proposal.
+    /// </summary>
+    Task<GovernanceProposalSummaryViewModel?> GetProposalAsync(
+        string registerId, string proposalId, CancellationToken ct = default);
+
     /// <summary>
     /// Irreversibly disables dev mode on a register, enabling mandatory field-level encryption.
     /// </summary>
