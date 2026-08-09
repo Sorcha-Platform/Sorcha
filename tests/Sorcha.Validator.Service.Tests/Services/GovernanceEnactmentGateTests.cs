@@ -253,6 +253,32 @@ public sealed class GovernanceEnactmentGateTests
     }
 
     /// <summary>
+    /// FR-019 / T056: metadata confers nothing. Who the ledger holds responsible must not move
+    /// because a field outside the signature was rewritten.
+    /// </summary>
+    /// <remarks>
+    /// <c>Metadata["carriedBy"]</c> records which organisation's key a node signed the envelope with.
+    /// It sits outside the signature, outside the payload hash and outside the docket's merkle leaf,
+    /// so anyone able to submit can change it with nothing detecting the change. It is written for
+    /// operators and read by nothing — this is the test that keeps it that way, because the day
+    /// something authorises on it is the day authority becomes forgeable.
+    /// </remarks>
+    [Fact]
+    public async Task RewritingCarriedByInMetadata_ChangesNothingAboutTheDecision()
+    {
+        var honest = Enactment(OwnerKey);
+        var rewritten = Enactment(OwnerKey);
+        rewritten.Metadata["carriedBy"] = "did:sorcha:w:ws11qsomebodyelseentirely";
+
+        var a = await Service().ValidateGovernanceRightsAsync(honest);
+        var b = await Service().ValidateGovernanceRightsAsync(rewritten);
+
+        b.IsValid.Should().Be(a.IsValid);
+        b.Errors.Select(e => e.Code).Should().BeEquivalentTo(a.Errors.Select(e => e.Code),
+            "the decision comes from the signature and the roster, never from a rewritable field");
+    }
+
+    /// <summary>
     /// The unchanged path: an Owner-override propose-and-enact names no proposal and keeps its
     /// existing validation exactly (FR-031 / the T086 no-regression gate).
     /// </summary>
