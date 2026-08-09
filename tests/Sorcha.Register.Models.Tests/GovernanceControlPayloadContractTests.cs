@@ -1,0 +1,516 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sorcha Contributors
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using FluentAssertions;
+using Json.Schema;
+using Sorcha.Register.Models;
+using Xunit;
+
+namespace Sorcha.Register.Models.Tests;
+
+/// <summary>
+/// The control payload the platform emits for a governance proposal, and the payload contract the
+/// published blueprint declares for the action it is submitted against, must be the same thing
+/// (T054 / FR-018).
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Why this did not exist and why its absence mattered.</b> The approval payload has had a
+/// bidirectional contract test since T075. The proposal payload never did — and the two sides had
+/// drifted into describing entirely different shapes without anything failing, because a governance
+/// transaction carries <c>Metadata["Type"] = "Control"</c> and is therefore exempt from action-schema
+/// validation. The contract was decorative: declared on one side, unenforced on the other, and
+/// unreadable by anyone who trusted it. Turning schema validation on (T054) without fixing it first
+/// would have rejected every governance proposal on every register.
+/// </para>
+/// <para>
+/// The assertions are <b>derived from serialisation</b>, never from a hand-written field list. A
+/// hand-written list rots silently and in the same direction as the bug it is supposed to catch.
+/// </para>
+/// <para>
+/// <b>Opaque schema nodes.</b> A declared object property with no <c>properties</c> of its own is
+/// treated as an intentionally unconstrained subtree and is not descended into. Two nodes rely on
+/// this: <c>validatorEntry</c>, which the shipped schema already declares that way, and
+/// <c>roster</c>, a <see cref="RegisterControlRecord"/> whose contract is declared elsewhere and
+/// would drift if restated here. The rule is explicit rather than incidental so that an opaque node
+/// is a decision someone made, not a gap that opened quietly.
+/// </para>
+/// </remarks>
+public sealed class GovernanceControlPayloadContractTests
+{
+    /// <summary>
+    /// The payload exactly as <c>SubmitGovernanceControlAsync</c> builds it for a pending proposal:
+    /// a <see cref="ControlTransactionPayload"/> envelope carrying the operation, with a null roster
+    /// (a proposal enacts nothing) and a null <c>enactsProposalId</c> (it is not an enactment).
+    /// </summary>
+    /// <remarks>
+    /// Every optional member of the operation is populated, so the emitted property set is the
+    /// maximal one. A partially populated instance would make the "schema declares nothing the model
+    /// cannot produce" direction pass vacuously.
+    /// </remarks>
+    private static ControlTransactionPayload ProposalPayload() => new()
+    {
+        Version = 1,
+        Roster = null,
+        EnactsProposalId = null,
+        Operation = new GovernanceOperation
+        {
+            OperationType = GovernanceOperationType.AddValidator,
+            ProposerDid = "did:sorcha:w:ws11qproposer",
+            TargetDid = "did:sorcha:w:ws11qtarget",
+            TargetRole = RegisterRole.Admin,
+            ApprovalSignatures = [],
+            ProposedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(7),
+            Status = ProposalStatus.Pending,
+            Justification = "Adding a second validator before the roster grows.",
+            ValidatorEntry = new ValidatorRosterEntry
+            {
+                ValidatorId = "ws11qvalidator",
+                PublicKey = "cHVibGlja2V5",
+                Algorithm = SignatureAlgorithm.ED25519,
+                DerivationContext = "sorcha:docket-signing",
+                Status = ValidatorKeyStatus.Active,
+            },
+            RosterSnapshotId = "5b1f0c0e5b1f0c0e5b1f0c0e5b1f0c0e",
+            QuorumFormulaAtRaise = QuorumFormula.StrictMajority,
+        },
+    };
+
+    private static JsonElement EmittedProposal() =>
+        JsonDocument.Parse(JsonSerializer.Serialize(
+                ProposalPayload(), ControlTransactionPayload.CanonicalJsonOptions))
+            .RootElement.Clone();
+
+    private static JsonElement ProposalSchema() =>
+        BlueprintAction(GovernanceBlueprint.ProposeChangeActionId)
+            .GetProperty("dataSchemas")[0];
+
+    [Fact]
+    public void EveryFieldTheProposalEmits_IsDeclaredByThePublishedSchema()
+    {
+        // The direction that catches "the producer emits a shape the contract never described".
+        // Before T054 this failed on the envelope itself: the schema described a bare
+        // GovernanceOperation while the wire carries it nested under `operation`.
+        AssertEmittedAreDeclared(EmittedProposal(), ProposalSchema(), "proposal");
+    }
+
+    [Fact]
+    public void EveryFieldTheProposalSchemaDeclares_IsProducibleByTheModel()
+    {
+        // The opposite direction. This is what caught `requiresAcceptance`: declared by the schema,
+        // referenced by action 1's own routing conditions, and carried by no property on any model —
+        // so no conforming payload could ever have set it and every route reading it saw absent.
+        AssertDeclaredAreEmitted(EmittedProposal(), ProposalSchema(), "proposal");
+    }
+
+    [Fact]
+    public void EveryRequiredProposalField_IsAlwaysEmitted()
+    {
+        // `rosterSnapshotId` and `quorumFormulaAtRaise` are nullable on the model and omitted when
+        // null, so "required" is only honest if the producer always populates them. It does — both
+        // are assigned unconditionally when the proposal is raised (FR-011a).
+        AssertRequiredAreEmitted(EmittedProposal(), ProposalSchema(), "proposal");
+    }
+
+    [Fact]
+    public void TheProposalOperationTypeWireValues_AreExactlyWhatTheSchemaLists()
+    {
+        AssertEnumWireValues<GovernanceOperationType>(
+            OperationSchema().GetProperty("properties").GetProperty("operationType"));
+    }
+
+    [Fact]
+    public void TheQuorumFormulaWireValues_AreExactlyWhatTheSchemaLists()
+    {
+        AssertEnumWireValues<QuorumFormula>(
+            OperationSchema().GetProperty("properties").GetProperty("quorumFormulaAtRaise"));
+    }
+
+    [Fact]
+    public void TheProposalStatusWireValues_AreExactlyWhatTheSchemaLists()
+    {
+        AssertEnumWireValues<ProposalStatus>(
+            OperationSchema().GetProperty("properties").GetProperty("status"));
+    }
+
+    [Fact]
+    public void TheTargetRoleWireValues_AreExactlyWhatTheSchemaLists()
+    {
+        AssertEnumWireValues<RegisterRole>(
+            OperationSchema().GetProperty("properties").GetProperty("targetRole"));
+    }
+
+    [Fact]
+    public void TheEmittedEnumValues_AreTheStringsTheSchemaDeclares()
+    {
+        // The join the two set-equality tests above cannot make on their own: they compare the
+        // schema against the CLR type, and this compares it against what the producer actually
+        // writes. A converter moved, dropped, or given a naming policy changes the wire value while
+        // leaving both other tests green — and the Register Service configures no JSON options, so
+        // an enum silently reverting to its integer form is a live failure mode here, not a
+        // hypothetical one.
+        var operation = EmittedProposal().GetProperty("operation");
+
+        foreach (var (property, _) in new[]
+                 {
+                     ("operationType", 0), ("targetRole", 0),
+                     ("status", 0), ("quorumFormulaAtRaise", 0),
+                 })
+        {
+            var emitted = operation.GetProperty(property);
+
+            emitted.ValueKind.Should().Be(JsonValueKind.String,
+                "'{0}' must travel as a string, not as its underlying integer", property);
+
+            var declared = OperationSchema().GetProperty("properties").GetProperty(property)
+                .GetProperty("enum").EnumerateArray().Select(e => e.GetString()!);
+
+            declared.Should().Contain(emitted.GetString()!,
+                "the value the producer emits for '{0}' must be one the published contract lists",
+                property);
+        }
+    }
+
+    [Fact]
+    public void TheEmittedProposal_PassesEvaluationAgainstTheShippedSchema()
+    {
+        // The claim the other tests in this file cannot make. They check that the two shapes agree
+        // property by property; this runs the payload through the same engine and the same
+        // EvaluationOptions the Validator uses, which is what actually decides whether a governance
+        // proposal seals. `RequireFormatValidation` is on there and on here — without it the
+        // date-time formats would be annotations rather than constraints, and this would pass over a
+        // schema that rejects every real proposal.
+        //
+        // JsonSchema.Net evaluates a JsonElement, never a JsonNode (CLAUDE.md pattern #4).
+        var schema = ParseAsTheValidatorDoes(ProposalSchema());
+
+        var result = schema.Evaluate(EmittedProposal(), new EvaluationOptions
+        {
+            OutputFormat = OutputFormat.List,
+            RequireFormatValidation = true,
+        });
+
+        var failures = string.Join("; ", Failures(result));
+
+        result.IsValid.Should().BeTrue(
+            "a governance proposal built exactly as the Register Service builds it must satisfy the "
+            + "contract the published blueprint declares for the action it is submitted against, "
+            + "otherwise every roster change on every register is refused VAL_SCHEMA_004. "
+            + "Failures: {0}", failures);
+    }
+
+    [Fact]
+    public void APayloadFlattenedToTheOldShape_IsRefusedByTheShippedSchema()
+    {
+        // The mutation proof for the test above. The schema this replaced described a bare
+        // GovernanceOperation, so a flattened payload was what it asked for and the envelope was
+        // what it got. If the contract had been left permissive enough to accept both, evaluation
+        // would pass over exactly the drift T054 exists to close — so the old shape must now fail.
+        var flattened = JsonDocument.Parse(JsonSerializer.Serialize(
+            ProposalPayload().Operation, ControlTransactionPayload.CanonicalJsonOptions)).RootElement;
+
+        var schema = ParseAsTheValidatorDoes(ProposalSchema());
+
+        var result = schema.Evaluate(flattened, new EvaluationOptions
+        {
+            OutputFormat = OutputFormat.List,
+            RequireFormatValidation = true,
+        });
+
+        result.IsValid.Should().BeFalse(
+            "the operation flattened to the top level is the shape the pre-T054 schema described, "
+            + "and it is not what any producer emits");
+    }
+
+    /// <summary>
+    /// Parses a shipped action schema the way the Validator does — <c>x-</c>-prefixed keywords
+    /// stripped before <see cref="JsonSchema.FromText"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Not optional and not cosmetic: JsonSchema.Net refuses to parse a schema carrying an unknown
+    /// keyword at all ("Unknown keywords (x-enumNames) are disallowed for this dialect"), so a test
+    /// that skipped the strip would fail on the shipped schema for a reason production never hits,
+    /// and a schema that dropped its <c>x-enumNames</c> would make the test pass for the wrong
+    /// reason. <c>ValidationEngine.StripCustomExtensionKeywords</c> is the original.
+    /// </para>
+    /// <para>
+    /// The engine's other relaxation — dropping <c>type</c> from <c>format: "file-reference"</c>
+    /// fields — is deliberately not mirrored, and <see cref="TheGovernanceSchemaUsesNoFileReferenceFields"/>
+    /// pins that it cannot apply here rather than leaving the omission to be assumed.
+    /// </para>
+    /// </remarks>
+    private static JsonSchema ParseAsTheValidatorDoes(JsonElement schema)
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(schema.GetRawText());
+        StripXPrefixed(node);
+        return JsonSchema.FromText(node!.ToJsonString());
+    }
+
+    private static void StripXPrefixed(System.Text.Json.Nodes.JsonNode? node)
+    {
+        switch (node)
+        {
+            case System.Text.Json.Nodes.JsonObject obj:
+                foreach (var key in obj.Where(kvp => kvp.Key.StartsWith("x-", StringComparison.Ordinal))
+                             .Select(kvp => kvp.Key).ToList())
+                {
+                    obj.Remove(key);
+                }
+
+                foreach (var kvp in obj)
+                {
+                    StripXPrefixed(kvp.Value);
+                }
+
+                break;
+
+            case System.Text.Json.Nodes.JsonArray arr:
+                foreach (var item in arr)
+                {
+                    StripXPrefixed(item);
+                }
+
+                break;
+        }
+    }
+
+    [Fact]
+    public void TheGovernanceSchemaUsesNoFileReferenceFields()
+    {
+        ProposalSchema().GetRawText().Should().NotContain("file-reference",
+            "the Validator relaxes `type` on file-reference fields, and this file does not mirror "
+            + "that branch — so the schema must not depend on it");
+    }
+
+    private static IEnumerable<string> Failures(EvaluationResults results)
+    {
+        if (results.Errors is not null)
+        {
+            foreach (var error in results.Errors)
+            {
+                yield return $"{results.InstanceLocation}: {error.Key} {error.Value}";
+            }
+        }
+
+        if (results.Details is null) yield break;
+
+        foreach (var detail in results.Details)
+        {
+            foreach (var nested in Failures(detail))
+            {
+                yield return nested;
+            }
+        }
+    }
+
+    [Fact]
+    public void AProposalCarriesItsOperation_AndTheContractRequiresIt()
+    {
+        // `required` alone permits a null (see AssertRequiredAreEmitted). A proposal whose operation
+        // were null would carry nothing to approve and nothing to rebuild an approval statement
+        // from, so this is asserted on its own rather than folded into the generic rule.
+        EmittedProposal().GetProperty("operation").ValueKind.Should().Be(JsonValueKind.Object);
+
+        DeclaredTypes(OperationSchema()).Should().NotContain("null",
+            "an operation-less proposal is not a proposal");
+    }
+
+    [Fact]
+    public void AProposalAndAnEnactment_RemainDistinguishableFromPayloadContentAlone()
+    {
+        // T056 recorded that `enactsProposalId` is serialised as an explicit null on a proposal
+        // rather than omitted, so a reader keying on key-presence classifies every proposal as an
+        // enactment. The schema must therefore declare it nullable rather than merely optional, or a
+        // conforming proposal would fail validation on its own discriminator.
+        var proposal = EmittedProposal();
+
+        proposal.TryGetProperty("enactsProposalId", out var enacts).Should().BeTrue(
+            "the discriminator must travel on every control payload, not only on enactments");
+        enacts.ValueKind.Should().Be(JsonValueKind.Null);
+
+        var declared = ProposalSchema().GetProperty("properties").GetProperty("enactsProposalId");
+        DeclaredTypes(declared).Should().Contain("null",
+            "an explicit null must satisfy the published contract");
+    }
+
+    [Fact]
+    public void TheRosterIsNullOnAProposal_AndTheContractPermitsIt()
+    {
+        // A pending proposal enacts nothing, so it must not appear to roster reconstruction as a
+        // roster change (ControlTransactionPayload.Roster). A schema that required an object here
+        // would make the only correct proposal payload invalid.
+        EmittedProposal().GetProperty("roster").ValueKind.Should().Be(JsonValueKind.Null);
+
+        DeclaredTypes(ProposalSchema().GetProperty("properties").GetProperty("roster"))
+            .Should().Contain("null");
+    }
+
+    // ---- assertions over the two shapes -------------------------------------------------------
+
+    private static JsonElement OperationSchema() =>
+        ProposalSchema().GetProperty("properties").GetProperty("operation");
+
+    /// <summary>
+    /// The declared <c>type</c> of a schema node as a set, tolerating both the single-string and the
+    /// array spellings JSON Schema allows.
+    /// </summary>
+    private static HashSet<string> DeclaredTypes(JsonElement schemaNode)
+    {
+        if (!schemaNode.TryGetProperty("type", out var type))
+        {
+            return [];
+        }
+
+        return type.ValueKind == JsonValueKind.Array
+            ? type.EnumerateArray().Select(e => e.GetString()!).ToHashSet(StringComparer.Ordinal)
+            : [type.GetString()!];
+    }
+
+    /// <summary>
+    /// True when a schema node declares an object but constrains none of its members — see the
+    /// opaque-node rule on the class.
+    /// </summary>
+    private static bool IsOpaque(JsonElement schemaNode) =>
+        !schemaNode.TryGetProperty("properties", out _);
+
+    private static void AssertEmittedAreDeclared(JsonElement emitted, JsonElement schema, string path)
+    {
+        var declared = DeclaredProperties(schema);
+
+        foreach (var property in emitted.EnumerateObject())
+        {
+            declared.Should().ContainKey(property.Name,
+                "the published schema at '{0}' must declare every field the payload emits", path);
+
+            if (property.Value.ValueKind == JsonValueKind.Object
+                && !IsOpaque(declared[property.Name]))
+            {
+                AssertEmittedAreDeclared(
+                    property.Value, declared[property.Name], $"{path}.{property.Name}");
+            }
+        }
+    }
+
+    private static void AssertDeclaredAreEmitted(JsonElement emitted, JsonElement schema, string path)
+    {
+        foreach (var declared in DeclaredProperties(schema))
+        {
+            emitted.TryGetProperty(declared.Key, out var value).Should().BeTrue(
+                "the model must be able to produce '{0}.{1}', which the published schema declares",
+                path, declared.Key);
+
+            if (value.ValueKind == JsonValueKind.Object && !IsOpaque(declared.Value))
+            {
+                AssertDeclaredAreEmitted(value, declared.Value, $"{path}.{declared.Key}");
+            }
+        }
+    }
+
+    private static void AssertRequiredAreEmitted(JsonElement emitted, JsonElement schema, string path)
+    {
+        if (schema.TryGetProperty("required", out var required))
+        {
+            foreach (var name in required.EnumerateArray().Select(e => e.GetString()!))
+            {
+                // Presence, not non-nullness. Under JSON Schema `required` constrains the property to
+                // be present and says nothing about its value; a null satisfies it whenever the
+                // declared type permits null. `roster` and `enactsProposalId` are required precisely
+                // so that they always travel — both are explicit nulls on a proposal, and asserting
+                // non-nullness here would have forced the contract to stop requiring the very fields
+                // whose constant presence is the point.
+                emitted.TryGetProperty(name, out _).Should().BeTrue(
+                    "'{0}.{1}' is required by the published schema", path, name);
+            }
+        }
+
+        foreach (var declared in DeclaredProperties(schema))
+        {
+            if (emitted.TryGetProperty(declared.Key, out var value)
+                && value.ValueKind == JsonValueKind.Object
+                && !IsOpaque(declared.Value))
+            {
+                AssertRequiredAreEmitted(value, declared.Value, $"{path}.{declared.Key}");
+            }
+        }
+    }
+
+    private static Dictionary<string, JsonElement> DeclaredProperties(JsonElement schema) =>
+        schema.TryGetProperty("properties", out var properties)
+            ? properties.EnumerateObject().ToDictionary(p => p.Name, p => p.Value)
+            : [];
+
+    /// <summary>
+    /// Asserts a schema node's <c>enum</c> is exactly the set of wire values the enum can produce —
+    /// set equality both ways, for the reasons given on
+    /// <c>GovernanceApprovalPayloadContractTests</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why member names rather than round-tripping a value through the payload options.</b> Every
+    /// enum on this payload is converted by a <see cref="JsonStringEnumConverter"/> carrying <b>no
+    /// naming policy</b>, so its wire value is exactly <see cref="Enum.GetName{TEnum}"/>. Most of
+    /// them are annotated on the <i>property</i> rather than the enum type, so serialising a bare
+    /// value under <see cref="ControlTransactionPayload.CanonicalJsonOptions"/> — which registers no
+    /// converters — yields the underlying <b>integer</b> instead. A helper written that way compares
+    /// "0" against "Pending" and fails for a reason that has nothing to do with the contract.
+    /// </para>
+    /// <para>
+    /// This is the same trap that put numeric enums on the governance proposal endpoints: the wire
+    /// form of an enum depends on where its converter is declared, and reading it off the type is a
+    /// guess. <see cref="TheEmittedEnumValues_AreTheStringsTheSchemaDeclares"/> closes the loop by
+    /// checking the value the producer actually emits.
+    /// </para>
+    /// </remarks>
+    private static void AssertEnumWireValues<TEnum>(JsonElement schemaNode) where TEnum : struct, Enum
+    {
+        var declared = schemaNode.GetProperty("enum").EnumerateArray()
+            .Select(e => e.GetString()!).ToHashSet(StringComparer.Ordinal);
+
+        var produced = Enum.GetNames<TEnum>().ToHashSet(StringComparer.Ordinal);
+
+        produced.Should().BeEquivalentTo(declared,
+            "every {0} the model can emit must be declared, and the schema must declare nothing the "
+            + "model cannot emit", typeof(TEnum).Name);
+    }
+
+    // ---- the shipped definition ----------------------------------------------------------------
+
+    private static JsonElement Template()
+    {
+        var path = Path.Combine(RepoRoot(), "blueprints", "templates", "register-governance-v1.json");
+        File.Exists(path).Should().BeTrue("the governance blueprint ships at {0}", path);
+
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        return doc.RootElement.GetProperty("template").Clone();
+    }
+
+    private static JsonElement BlueprintAction(int id) =>
+        Template().GetProperty("actions").EnumerateArray()
+            .Single(a => a.GetProperty("id").GetInt32() == id);
+
+    private static string RepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            if (Directory.Exists(Path.Combine(dir.FullName, "blueprints"))
+                && Directory.Exists(Path.Combine(dir.FullName, "src")))
+            {
+                return dir.FullName;
+            }
+
+            dir = dir.Parent;
+        }
+
+        throw new DirectoryNotFoundException(
+            "Could not locate the repository root (a directory containing both blueprints/ and src/) "
+            + $"by walking up from {AppContext.BaseDirectory}.");
+    }
+}

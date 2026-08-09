@@ -2339,11 +2339,12 @@ governanceGroup.MapPost("/propose", async (
     // Canonical JSON is what the Validator re-serialises and hashes; both the pending and the
     // enacting path MUST use the same options or one of them produces a hash the Validator will not
     // reproduce, and the rejection names neither cause.
-    var canonicalJsonOptions = new System.Text.Json.JsonSerializerOptions
-    {
-        WriteIndented = false,
-        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-    };
+    //
+    // T054: that agreement is now structural rather than coincidental — the options live on the
+    // payload type, so this path, GovernanceEnactmentService and the contract tests cannot drift
+    // apart. (The blueprint-publish path above keeps its own: it serialises a blueprint body, not a
+    // ControlTransactionPayload.)
+    var canonicalJsonOptions = ControlTransactionPayload.CanonicalJsonOptions;
 
     // Chain linking from the latest Control TX. Read once so both paths chain identically.
     string? previousControlTxId = roster.LastControlTxId;

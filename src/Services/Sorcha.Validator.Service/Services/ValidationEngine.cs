@@ -454,7 +454,20 @@ public class ValidationEngine : IValidationEngine
         try
         {
             // Genesis/control transactions skip schema validation but MUST have valid signatures (SEC-AUDIT 4.10)
-            if (TransactionTypeClassifier.IsGenesisOrControlTransaction(transaction))
+            //
+            // Feature 189 (T054): the three governance actions are the exception to the exception.
+            // They are Control transactions, so they land here, but the governance blueprint now
+            // publishes a real payload contract for them and they are checked against it like any
+            // other action. Before T054 nothing did: action 1's declared schema described a bare
+            // GovernanceOperation while the wire has always carried it nested inside a
+            // ControlTransactionPayload envelope, and the two sides drifted for as long as the
+            // contract went unenforced — a schema that no conforming payload could satisfy, and no
+            // payload that anything checked.
+            //
+            // This withdraws ONLY the schema exemption. The other five that ride on the same
+            // discriminator stay, and two of them have to — see IsGovernanceActionTransaction.
+            if (TransactionTypeClassifier.IsGenesisOrControlTransaction(transaction)
+                && !TransactionTypeClassifier.IsGovernanceActionTransaction(transaction))
             {
                 _logger.LogDebug("Validating signatures for genesis/control transaction {TransactionId}",
                     transaction.TransactionId);

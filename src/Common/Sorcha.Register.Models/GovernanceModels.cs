@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Sorcha.Register.Models;
@@ -350,6 +351,35 @@ public class ControlTransactionPayload
     /// </remarks>
     [JsonPropertyName("enactsProposalId")]
     public string? EnactsProposalId { get; set; }
+
+    /// <summary>
+    /// The exact options every producer of this payload serialises with.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Exposed for the same reason <see cref="GovernanceApprovalActionPayload.CanonicalJsonOptions"/>
+    /// is: the bytes are hashed and signed, and the Validator re-serialises the payload to reproduce
+    /// that hash. A producer serialising with ambient options emits a payload hash the envelope
+    /// signature does not cover, and the rejection (<c>TX_012</c>) names neither cause.
+    /// </para>
+    /// <para>
+    /// It was previously declared inline and independently by each producer. The three copies agreed,
+    /// but nothing made them agree — the same shape as the '+'-escaping divergence that made
+    /// approvals fail intermittently by content, so this is one declaration rather than three that
+    /// happen to match.
+    /// </para>
+    /// <para>
+    /// Deliberately no <c>PropertyNamingPolicy</c>: every property on this payload and on the
+    /// <see cref="GovernanceOperation"/> nested under it carries an explicit
+    /// <see cref="JsonPropertyNameAttribute"/>, and adding a policy would silently rename any future
+    /// property that did not.
+    /// </para>
+    /// </remarks>
+    public static readonly JsonSerializerOptions CanonicalJsonOptions = new()
+    {
+        WriteIndented = false,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
 }
 
 /// <summary>

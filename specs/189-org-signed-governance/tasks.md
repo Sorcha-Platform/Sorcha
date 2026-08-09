@@ -185,7 +185,48 @@ confirm sealed-in-docket and observable on tiny.
 >
 > Tier 2 of `VAL_BP_002` does offer a route for the role-binding half — `resolvedRecord.Addresses` is a **list** and is checked with `.Any(...)`, and Tier 2 is consulted before Tier 3 — so publishing a `voter` participant record carrying every roster organisation's address would authorise them all. It also mirrors the roster into a second store that must be kept in step with every enactment, which is the drift shape pattern #16 exists to prevent. The fork half has no equivalent route: a star topology is what quorum *is*.
 >
-> **Recorded as a premise mismatch pending a scope decision.** Do not start T054 from the one-line description.
+> **Scope decision (Stuart, 2026-08-09): narrow it.** Publish the contract and enforce it; keep the
+> exemptions quorum depends on, narrowed from a blanket flag to a named, governance-specific
+> withdrawal. The literal reading is not attempted — relaxing fork detection and role binding for
+> every workflow on the platform is a different piece of work with its own security review.
+>
+> **Delivered under that decision:**
+>
+> - `TransactionTypeClassifier.IsGovernanceActionTransaction` names the three numbered governance
+>   actions, and `ValidateSchemaAsync` withdraws **only** the schema exemption from them
+>   (`IsGenesisOrControl && !IsGovernanceAction`). Genesis, blueprint-publish and the crypto-policy
+>   update keep theirs — the last by construction, since its free-form ActionId
+>   `control.crypto.update` is not one of the numbered actions.
+> - **No per-register publication is needed**, which the original scope assumed. The Validator
+>   resolves blueprints **globally by id** (`ResolveBlueprintAsync` → cache → Blueprint Service), so
+>   the copy seeded on the system register already resolves for a transaction on any register. That
+>   removes the ordering risk of turning validation on before publication lands.
+> - **The action-1 contract was rewritten, because nothing could ever have satisfied it.** It
+>   described a bare `GovernanceOperation`; every producer emits a `ControlTransactionPayload`
+>   envelope with the operation nested under `operation`. Turning validation on without this would
+>   have refused every governance proposal on every register with `VAL_SCHEMA_004`. Two further
+>   drifts came out with it: the schema declared `requiresAcceptance`, which no model can produce
+>   (and which action 1's own routes read), and omitted `approvalSignatures` and `status`, which the
+>   model emits.
+> - `GovernanceControlPayloadContractTests` is the guard, mirroring the approval-payload test that
+>   already covers action 2. Bidirectional and **derived from serialisation**, plus a real
+>   JsonSchema.Net evaluation using the Validator's own strip and `RequireFormatValidation`, plus its
+>   mutation proof that the old flattened shape is refused. Structural agreement is not the same
+>   claim as passing evaluation, and the difference showed: parsing the shipped schema without the
+>   `x-` strip throws outright.
+> - `ControlTransactionPayload.CanonicalJsonOptions` now has one home instead of three inline copies
+>   that happened to agree.
+>
+> **Not delivered, and deliberately so:** action 4 (enactment) declares no `dataSchemas`, so it is
+> skipped by FR-006 rather than checked. Giving it one means describing the roster, which is
+> `RegisterControlRecord`'s contract and would drift if restated in a blueprint.
+>
+> **Open finding, not fixed here.** Action 1's routing conditions read `ownerOverride`,
+> `requiresAcceptance` and `quorumMet`; action 2's read `quorumMet`; action 3's read `accepted`. No
+> governance producer emits any of them, and governance transactions are exempt from
+> `VAL_ROUTING_*`, so the routes are inert. They are a design sketch of a workflow, not a definition
+> anything executes — which is what T057's "diff the sequence against the published blueprint" will
+> run into. Decide there whether the routes become real or are removed as decoration.
 
 - [ ] T055 [US3] Ensure the governance instance folds correctly under F145's `InstanceProjector` — quorum must be a pure function of sealed content so every node agrees (R-009)
 - [X] T056 [US3] Ensure each proposal, approval and enactment is individually attributable to its organisation in the ledger record (FR-019)

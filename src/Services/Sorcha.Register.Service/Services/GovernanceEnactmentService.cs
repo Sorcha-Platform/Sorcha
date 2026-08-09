@@ -449,11 +449,14 @@ public sealed class GovernanceEnactmentService : IGovernanceEnactmentService
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
             $"governance-enactment-{registerId}-{proposalId}"))).ToLowerInvariant();
 
-    private static readonly JsonSerializerOptions CanonicalJsonOptions = new()
-    {
-        WriteIndented = false,
-        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-    };
+    /// <summary>
+    /// The one declaration, on the payload type itself (T054). This was an inline copy — as it was
+    /// in two other producers — and the three agreed only by coincidence. The bytes are hashed and
+    /// signed, and the Validator re-serialises to reproduce that hash, so a divergence here is a
+    /// <c>TX_012</c> payload-hash mismatch whose message names neither cause.
+    /// </summary>
+    private static JsonSerializerOptions CanonicalJsonOptions
+        => ControlTransactionPayload.CanonicalJsonOptions;
 
     private GovernanceApprovalActionPayload? TryDecodeApproval(TransactionModel tx)
     {
