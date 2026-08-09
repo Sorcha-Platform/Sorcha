@@ -237,6 +237,57 @@ public class RegisterService : IRegisterReadService, IRegisterGovernanceService
     }
 
     /// <inheritdoc />
+    public async Task<GovernanceProposalPageViewModel> ListProposalsAsync(
+        string registerId, string? status = null, CancellationToken ct = default)
+    {
+        var empty = new GovernanceProposalPageViewModel();
+
+        try
+        {
+            var query = string.IsNullOrWhiteSpace(status)
+                ? string.Empty
+                : $"?status={Uri.EscapeDataString(status)}";
+
+            var response = await _httpClient.GetAsync(
+                $"/api/registers/{Uri.EscapeDataString(registerId)}/governance/proposals{query}", ct);
+
+            if (!response.IsSuccessStatusCode) return empty;
+
+            return await response.Content.ReadFromJsonAsync<GovernanceProposalPageViewModel>(
+                JsonDefaults.Api, ct) ?? empty;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error listing governance proposals for register {RegisterId}", registerId);
+            return empty;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<GovernanceProposalSummaryViewModel?> GetProposalAsync(
+        string registerId, string proposalId, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync(
+                $"/api/registers/{Uri.EscapeDataString(registerId)}/governance/proposals/{Uri.EscapeDataString(proposalId)}",
+                ct);
+
+            if (!response.IsSuccessStatusCode) return null;
+
+            return await response.Content.ReadFromJsonAsync<GovernanceProposalSummaryViewModel>(
+                JsonDefaults.Api, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Error fetching governance proposal {ProposalId} on register {RegisterId}",
+                proposalId, registerId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<PolicyUpdateProposalViewModel?> ProposePolicyUpdateAsync(string registerId, RegisterPolicyFields policy, CancellationToken ct = default)
     {
         try

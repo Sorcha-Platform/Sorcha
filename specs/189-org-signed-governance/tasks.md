@@ -339,7 +339,10 @@ indistinguishable symptom — which is exactly what happened on 2026-08-06.
 
 - [X] T082 CLI `sorcha governance approve` — fetch the signing request, render the operation, sign locally, submit. Proves the ledger mechanics on n1 without waiting for UI, and is the autonomous-bot path.
 - [ ] T083 Wallet PWA signing surface — recompute the digest, display what is being authorised, sign with the organisation's slot-100 key. Same code on web and mobile (R-016).
-- [ ] T084 Org admin console review surface — render the governance **diff** (roster before/after, policy before/after), not a JSON blob. Approving what you cannot read is FR-027 defeated in the human rather than the protocol.
+- [X] T084 Org admin console review surface — render the governance **diff** (roster before/after, policy before/after), not a JSON blob. Approving what you cannot read is FR-027 defeated in the human rather than the protocol.
+> **The diff is computed server-side, and that is the design, not a shortcut.** `ApplyOperation` lives in `Sorcha.Register.Core`, which a Blazor client cannot reference — so a client-side preview would be a second implementation of "what does this operation do" *by construction*, and it would eventually show an approver an accurate-looking change that differs from the one that enacts. `ProjectRoster` is extracted so the preview and the enactment payload are the same call. `GovernanceProposalReview` renders who joins / leaves / changes role, with a departing member shown **struck through and still listed** rather than absent: a row that disappears is a change the reader has to notice by its absence.
+> **Three no-diff cases each say why.** The server withholds the diff for an operation that changes no membership, for an Invalidated proposal and for an Enacted one — and an empty panel would read as "nothing changes" in all three, so each renders its own explanation. Mutation-verified: silencing them fails exactly those three tests.
+> Mounted in the existing Governance tab of the register detail page, above the policy panel. Policy before/after was already covered by `PolicyDiffDialog`. **Note its copy is stale** — it says "validators will vote on this proposal", but under F189 it is organisations on the roster who approve.
 
 ### Gates
 

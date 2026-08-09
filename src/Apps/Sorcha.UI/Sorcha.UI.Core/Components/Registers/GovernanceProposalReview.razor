@@ -1,0 +1,265 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models.Admin
+
+@*
+    Feature 189 T084 — what an approver reads BEFORE approving.
+
+    FR-027: signing an opaque value is not approval. So this renders the change in the terms a person
+    can judge it in — who joins, who leaves, who changes role — and never a serialised operation.
+    "Approving what you cannot read" is the failure this component exists to prevent, and a JSON blob
+    on screen is that failure wearing a review surface.
+
+    Everything shown is REPORTED by the Register Service. The roster diff in particular is computed by
+    the same projection that writes the enactment, so what is read here is what will be written. A
+    preview this component derived for itself would eventually disagree with the ledger, and would do
+    so while looking entirely correct.
+*@
+
+<MudStack Spacing="4">
+
+    @* ---- what is being proposed, in words ---- *@
+    <div>
+        <MudText Typo="Typo.overline" Color="Color.Secondary">Proposed change</MudText>
+        <MudText Typo="Typo.h6" data-testid="proposal-headline">@Headline</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
+            Raised by @Shorten(Proposal.ProposedBy)
+            @if (Proposal.ProposedAt is { } at)
+            {
+                <text> on @at.ToLocalTime().ToString("d MMM yyyy, HH:mm")</text>
+            }
+        </MudText>
+    </div>
+
+    @* ---- where it stands ---- *@
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+        <MudChip T="string" Color="@StatusColour" Variant="Variant.Filled" Size="Size.Small"
+                 data-testid="proposal-status">@Proposal.Status</MudChip>
+
+        @if (!string.IsNullOrEmpty(StatusExplanation))
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary"
+                     data-testid="proposal-status-reason">@StatusExplanation</MudText>
+        }
+    </MudStack>
+
+    @if (Proposal.ApprovalsRequired > 0)
+    {
+        <div>
+            <MudText Typo="Typo.body2" data-testid="approval-count">
+                @Proposal.ApprovalsReceived of @Proposal.ApprovalsRequired approvals
+                @if (!string.IsNullOrEmpty(Proposal.QuorumFormula))
+                {
+                    <text> (@Proposal.QuorumFormula)</text>
+                }
+            </MudText>
+            @* The count is an upper bound — signature verification is the Validator's — so it must not
+               read as "this will enact". *@
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Counted from the sealed ledger. Each signature is verified again when the change is enacted.
+            </MudText>
+        </div>
+    }
+
+    @* ---- THE DIFF ---- *@
+    @if (Proposal.RosterDiff is { Count: > 0 })
+    {
+        <div>
+            <MudText Typo="Typo.overline" Color="Color.Secondary">Who governs this register, if this is approved</MudText>
+            <MudSimpleTable Dense="true" Hover="true" Class="mt-2" data-testid="roster-diff">
+                <thead>
+                    <tr>
+                        <th style="width: 1%"></th>
+                        <th>Organisation</th>
+                        <th>Role</th>
+                        <th>Change</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var member in Ordered(Proposal.RosterDiff))
+                    {
+                        <tr data-testid="@($"roster-row-{member.Change}")">
+                            <td>
+                                <MudIcon Icon="@ChangeIcon(member.Change)"
+                                         Color="@ChangeColour(member.Change)" Size="Size.Small" />
+                            </td>
+                            <td>
+                                <MudText Typo="Typo.body2"
+                                         Style="@(IsLeaving(member) ? "text-decoration: line-through;" : null)">
+                                    @Shorten(member.Subject)
+                                </MudText>
+                            </td>
+                            <td><MudText Typo="Typo.body2">@member.Role</MudText></td>
+                            <td>
+                                <MudText Typo="Typo.body2" Color="@ChangeColour(member.Change)">
+                                    @ChangeLabel(member.Change)
+                                </MudText>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        </div>
+    }
+    else if (ShowsNoDiffReason is { Length: > 0 })
+    {
+        @* Silence would read as "nothing changes". Say why there is nothing to preview. *@
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true"
+                  data-testid="no-diff-reason">
+            @ShowsNoDiffReason
+        </MudAlert>
+    }
+
+    @* ---- who has approved, individually attributed ---- *@
+    @if (Proposal.Approvals.Count > 0)
+    {
+        <div>
+            <MudText Typo="Typo.overline" Color="Color.Secondary">Approvals</MudText>
+            <MudList T="string" Dense="true" data-testid="approval-list">
+                @foreach (var approval in Proposal.Approvals)
+                {
+                    <MudListItem T="string" Icon="@(approval.IsApproval ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                                 IconColor="@(approval.IsApproval ? Color.Success : Color.Error)">
+                        <MudText Typo="Typo.body2">@Shorten(approval.ApproverDid)</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @approval.ApprovedAt.ToLocalTime().ToString("d MMM yyyy, HH:mm")
+                            @if (!string.IsNullOrEmpty(approval.AccountableIndividualDid))
+                            {
+                                <text> · authorised by @Shorten(approval.AccountableIndividualDid)</text>
+                            }
+                        </MudText>
+                    </MudListItem>
+                }
+            </MudList>
+        </div>
+    }
+
+    @* ---- and the ones that do NOT count, with reasons (FR-011c) ---- *@
+    @if (Proposal.ExcludedApprovals.Count > 0)
+    {
+        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true"
+                  data-testid="excluded-approvals">
+            <MudText Typo="Typo.body2" Class="mb-1">
+                These approvals are on the ledger but cannot count towards this change:
+            </MudText>
+            @foreach (var excluded in Proposal.ExcludedApprovals)
+            {
+                <MudText Typo="Typo.caption">
+                    @Shorten(excluded.ApproverDid) — @ExcludedReason(excluded.Reason)
+                </MudText>
+            }
+        </MudAlert>
+    }
+
+</MudStack>
+
+@code {
+    /// <summary>The proposal to review, as the detail endpoint returned it.</summary>
+    [Parameter, EditorRequired] public GovernanceProposalSummaryViewModel Proposal { get; set; } = default!;
+
+    private string Headline => Proposal.OperationType switch
+    {
+        "Add" => $"Add {Shorten(Proposal.TargetDid)} to the governance roster",
+        "Remove" => $"Remove {Shorten(Proposal.TargetDid)} from the governance roster",
+        "Transfer" => $"Transfer ownership of this register to {Shorten(Proposal.TargetDid)}",
+        "CryptoPolicyUpdate" => "Update the register's cryptographic policy",
+        "AddValidator" => $"Authorise {Shorten(Proposal.TargetDid)} to seal dockets",
+        "RemoveValidator" => $"Withdraw {Shorten(Proposal.TargetDid)}'s authority to seal dockets",
+        "RotateValidatorKey" => $"Rotate the signing key for {Shorten(Proposal.TargetDid)}",
+        // Never render the raw operation as the headline: an unrecognised value is a reason to say so,
+        // not to show an approver something they cannot judge.
+        _ => $"Governance change ({Proposal.OperationType ?? "unrecognised"})",
+    };
+
+    private Color StatusColour => Proposal.Status switch
+    {
+        GovernanceProposalStates.Open => Color.Info,
+        GovernanceProposalStates.Enacted => Color.Success,
+        GovernanceProposalStates.Invalidated => Color.Warning,
+        GovernanceProposalStates.Expired => Color.Default,
+        _ => Color.Default,
+    };
+
+    private string StatusExplanation => Proposal.StatusReason switch
+    {
+        "QuorumMet" => "Enough organisations approved, and the change was written to the register.",
+        "RosterChanged" => "The governance roster changed after this was raised, so it can no longer be enacted.",
+        "Expired" => "The approval window closed before enough organisations approved.",
+        _ => string.Empty,
+    };
+
+    /// <summary>
+    /// Why there is no diff to show. The server withholds it in three cases and each means something
+    /// different to a reader; an empty panel would read as "nothing changes" in all of them.
+    /// </summary>
+    private string ShowsNoDiffReason => Proposal.Status switch
+    {
+        GovernanceProposalStates.Enacted =>
+            "This change has already been written to the register.",
+        GovernanceProposalStates.Invalidated =>
+            "No preview is shown because the roster has moved on — approving this would not apply it.",
+        _ when Proposal.OperationType is "Add" or "Remove" or "Transfer" => string.Empty,
+        _ => "This change does not alter who governs the register.",
+    };
+
+    private static bool IsLeaving(GovernanceRosterMemberViewModel m)
+        => m.Change == GovernanceRosterChanges.Removed;
+
+    /// <summary>Changes first — an approver should not have to hunt for what is different.</summary>
+    private static IEnumerable<GovernanceRosterMemberViewModel> Ordered(
+        IEnumerable<GovernanceRosterMemberViewModel> members)
+        => members
+            .OrderBy(m => m.Change == GovernanceRosterChanges.Unchanged ? 1 : 0)
+            .ThenBy(m => m.Subject, StringComparer.Ordinal);
+
+    private static string ChangeIcon(string? change) => change switch
+    {
+        GovernanceRosterChanges.Added => Icons.Material.Filled.PersonAdd,
+        GovernanceRosterChanges.Removed => Icons.Material.Filled.PersonRemove,
+        GovernanceRosterChanges.RoleChanged => Icons.Material.Filled.SwapHoriz,
+        _ => Icons.Material.Filled.Remove,
+    };
+
+    private static Color ChangeColour(string? change) => change switch
+    {
+        GovernanceRosterChanges.Added => Color.Success,
+        GovernanceRosterChanges.Removed => Color.Error,
+        GovernanceRosterChanges.RoleChanged => Color.Warning,
+        _ => Color.Default,
+    };
+
+    private static string ChangeLabel(string? change) => change switch
+    {
+        GovernanceRosterChanges.Added => "Joins",
+        GovernanceRosterChanges.Removed => "Leaves",
+        GovernanceRosterChanges.RoleChanged => "Role changes",
+        GovernanceRosterChanges.Unchanged => "No change",
+        _ => change ?? string.Empty,
+    };
+
+    /// <summary>
+    /// The tally's own refusal reasons, in words. An unrecognised one is shown verbatim rather than
+    /// swallowed — a reason that vanishes is the silent drop FR-011c exists to prevent.
+    /// </summary>
+    private static string ExcludedReason(string? reason) => reason switch
+    {
+        "NotOnRoster" => "not on the governance roster",
+        "NotAVotingRole" => "holds a role that cannot approve",
+        "KeyNotTheRosterKey" => "signed with a key the roster does not record for them",
+        "DuplicateApprover" => "already approved",
+        "NoApprover" => "names no approving organisation",
+        _ => reason ?? "unknown reason",
+    };
+
+    private static string Shorten(string? did)
+    {
+        if (string.IsNullOrEmpty(did)) return "(none)";
+
+        // Enough of the address to compare against another, without a wall of base32 that nobody
+        // reads. The full value is on the detail row and in the transaction.
+        var value = did.StartsWith("did:sorcha:w:", StringComparison.Ordinal) ? did[13..] : did;
+
+        return value.Length <= 20 ? value : $"{value[..10]}…{value[^6..]}";
+    }
+}

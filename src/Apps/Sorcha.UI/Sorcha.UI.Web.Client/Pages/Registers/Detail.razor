@@ -199,7 +199,13 @@
             </MudTabPanel>
 
             <MudTabPanel Text="Governance" Icon="@Icons.Material.Filled.Policy">
-                <RegisterPolicyTab RegisterId="@RegisterId" />
+                <MudStack Spacing="6">
+                    @* Feature 189 T084: the proposals sit above the policy because they are what an
+                       approver is being asked to act on. Both read the same register's governance. *@
+                    <GovernanceProposalsPanel RegisterId="@RegisterId" />
+                    <MudDivider />
+                    <RegisterPolicyTab RegisterId="@RegisterId" />
+                </MudStack>
             </MudTabPanel>
 
             @* Feature 188 — provenance. Reached from the register the administrator is already
