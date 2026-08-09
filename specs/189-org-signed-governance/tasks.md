@@ -228,7 +228,33 @@ confirm sealed-in-docket and observable on tiny.
 > anything executes — which is what T057's "diff the sequence against the published blueprint" will
 > run into. Decide there whether the routes become real or are removed as decoration.
 
-- [ ] T055 [US3] Ensure the governance instance folds correctly under F145's `InstanceProjector` — quorum must be a pure function of sealed content so every node agrees (R-009)
+- [X] T055 [US3] Ensure the governance instance folds correctly under F145's `InstanceProjector` — quorum must be a pure function of sealed content so every node agrees (R-009)
+> **Delivered as R-009, NOT as a fold — the mechanism the task names is wrong, and the reason is now
+> executable (`GovernanceIsNotInstanceScopedTests`).** The premise was that the resolver merely lacks
+> an instance id. It does; supplying one does not produce a correct instance, it produces a
+> confidently wrong one, silently.
+>
+> - Governance transactions are exempt from `VAL_ROUTING_*` and so carry **no `RoutingDecision`**, and
+>   `InstanceProjectionResolver` treats a transaction without one as contributing a **terminal**
+>   (empty) next-action set. Give a proposal an instance id and the instance reports **`Completed`
+>   the moment a governance change is raised** — before any approval, before the enactment. Nothing
+>   errors. Identical in shape to the latent defect F145 US6 found for presentation lifecycle.
+> - **`InstanceProjection.OrderByChain` cannot represent a star.** It builds a `Dictionary` keyed by
+>   predecessor id — one successor per predecessor — so sibling approvals overwrite one another and
+>   the losers fall through to the straggler path. The test folds the same set in two orders and the
+>   watermark differs, which is the determinism guarantee F145 makes for every workflow. This is the
+>   **third** independent linearity constraint, after fork detection and `VAL_BP_002` role binding.
+>
+> **R-009's actual requirement is met by the tally being pure**, which is now pinned directly rather
+> than assumed: all six orderings of three distinct approvals give an identical plan; a double vote
+> resolves first-wins by seal order (the same on every node, fixed by the docket) rather than
+> last-wins; and `Prepare`'s parameter list is asserted by reflection to take nothing but sealed
+> content — no clock, no node identity, no configuration. Mutation-verified by making selection
+> depend on input position.
+>
+> The vacuity guard on the order-independence test earned its place immediately: the first fixture
+> used the shared roster's Auditor, a **non-voting** role, so it compared two counted approvals while
+> claiming three. It now builds its own three-voter roster.
 - [X] T056 [US3] Ensure each proposal, approval and enactment is individually attributable to its organisation in the ledger record (FR-019)
 > **Done ahead of T054/T055, because attribution is a property of the records that exist today, not of a workflow instance.** The load-bearing part is what "attributable" is allowed to mean: a transaction's `Metadata` sits outside the signature, outside the payload hash and outside the docket's merkle leaf, so a DID recorded there is a hint for operators and never evidence. Verified that all three kinds carry their attribution **inside the signed payload** — the proposer on the operation, the approver on the approval payload *and* bound into the statement digest its own detached signature covers, the enactment carrying the proposed operation forward — and that the three remain distinguishable from payload content alone (note `enactsProposalId` is serialised as a null VALUE on a proposal, not omitted, so a reader keying on key-presence would classify every proposal as an enactment). `Metadata["carriedBy"]` is written twice and **read nowhere**; a validator test now pins that rewriting it changes nothing about the decision, mutation-verified by making the decision depend on it.
 - [ ] T057 [US3] 🔴 **LIVE GATE** Reconstruct a completed multi-party change from the ledger alone on both n1 and tiny, and diff the sequence against the published blueprint

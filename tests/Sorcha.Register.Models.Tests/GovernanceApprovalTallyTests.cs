@@ -271,4 +271,131 @@ public sealed class GovernanceApprovalTallyTests
 
         sealedJson.Should().Contain($"\"authMethod\":\"{vote.AuthMethod}\"");
     }
+
+    // ---- R-009 / T055: quorum is a pure function of sealed content -----------------------------
+
+    /// <summary>
+    /// Every ordering of the same three distinct approvals, so the claim is checked exhaustively
+    /// rather than on one arbitrary shuffle.
+    /// </summary>
+    private static IEnumerable<T[]> Permutations<T>(T[] items)
+    {
+        if (items.Length <= 1)
+        {
+            yield return items;
+            yield break;
+        }
+
+        for (var i = 0; i < items.Length; i++)
+        {
+            var rest = items.Take(i).Concat(items.Skip(i + 1)).ToArray();
+            foreach (var tail in Permutations(rest))
+            {
+                yield return new[] { items[i] }.Concat(tail).ToArray();
+            }
+        }
+    }
+
+    private const string SecondAdminDid = "did:sorcha:w:ws11qadmin2";
+
+    /// <summary>
+    /// Three <b>voting</b> members. The shared <see cref="Roster"/> has an Auditor, which is a
+    /// non-voting role and is excluded before any signature is considered — so building the
+    /// order-independence check on it would have compared two counted approvals while claiming to
+    /// compare three.
+    /// </summary>
+    private static RegisterControlRecord VotingRoster() => new()
+    {
+        RegisterId = RegisterId,
+        Name = "Test",
+        CreatedAt = DateTimeOffset.UnixEpoch,
+        Attestations =
+        [
+            Attestation(OwnerDid, RegisterRole.Owner, Key(1)),
+            Attestation(AdminDid, RegisterRole.Admin, Key(2)),
+            Attestation(SecondAdminDid, RegisterRole.Admin, Key(4)),
+        ]
+    };
+
+    [Fact]
+    public void TheTally_IsIdenticalUnderEveryInputOrder_WhenTheApproversAreDistinct()
+    {
+        // R-009: two nodes reaching different quorum answers for the same sealed approvals is the
+        // failure this feature cannot have, and it would not announce itself — the enactment simply
+        // seals on one node and is refused on another. Replication does not guarantee that two nodes
+        // enumerate a proposal's approvals in the same order, so the tally must not depend on it.
+        var approvals = new[]
+        {
+            Approval(OwnerDid, Key(1)),
+            Approval(AdminDid, Key(2)),
+            Approval(SecondAdminDid, Key(4)),
+        };
+
+        ApprovalTallyPlan Tally(GovernanceApprovalActionPayload[] a) =>
+            GovernanceApprovalTally.Prepare(RegisterId, Operation(), VotingRoster(), a);
+
+        var orderings = Permutations(approvals).ToList();
+        orderings.Should().HaveCount(6, "all six orderings must actually be exercised");
+
+        var expected = Tally(approvals).Checks
+            .Select(c => (c.ApproverDid, c.PublicKeyBase64, c.IsApproval, Digest: Convert.ToBase64String(c.Digest)))
+            .OrderBy(c => c.ApproverDid, StringComparer.Ordinal)
+            .ToList();
+
+        expected.Should().HaveCount(3, "the fixture must produce a non-empty tally, or this passes vacuously");
+
+        foreach (var ordering in orderings)
+        {
+            var plan = Tally(ordering);
+
+            plan.Checks
+                .Select(c => (c.ApproverDid, c.PublicKeyBase64, c.IsApproval, Digest: Convert.ToBase64String(c.Digest)))
+                .OrderBy(c => c.ApproverDid, StringComparer.Ordinal)
+                .Should().Equal(expected,
+                    "the counted approvals must not depend on the order they are read in");
+
+            plan.Excluded.Should().BeEmpty();
+        }
+    }
+
+    [Fact]
+    public void WhenAnOrganisationVotesTwice_TheFirstStands_AndTheSecondIsExcluded()
+    {
+        // The one place order is deliberately load-bearing, pinned so it cannot drift to last-wins.
+        // The order that decides is SEAL order, which is the same on every node because it is fixed
+        // by the docket — so this is determinism, not an exception to it. An organisation that
+        // approved and then rejected must not be able to change the outcome by resubmitting.
+        var plan = Prepare(
+            Approval(AdminDid, Key(2), isApproval: true),
+            Approval(AdminDid, Key(2), isApproval: false));
+
+        plan.Checks.Should().ContainSingle()
+            .Which.IsApproval.Should().BeTrue("the first vote from an organisation stands");
+
+        plan.Excluded.Should().ContainSingle()
+            .Which.Refusal.Should().Be(ApprovalTallyRefusal.DuplicateApprover);
+    }
+
+    [Fact]
+    public void TheTallyReadsNothingButSealedContent()
+    {
+        // The structural half of R-009. Prepare takes only the register id, the operation stored on
+        // the proposal, the roster it was raised against, and the sealed approval payloads — no
+        // clock, no node identity, no configuration, no ambient state. Anything else in the
+        // signature would be a way for two nodes to differ, so the shape is the guarantee and this
+        // pins it against a well-meant extra parameter.
+        var parameters = typeof(GovernanceApprovalTally)
+            .GetMethod(nameof(GovernanceApprovalTally.Prepare))!
+            .GetParameters()
+            .Select(p => p.ParameterType);
+
+        parameters.Should().Equal(
+            [
+                typeof(string),
+                typeof(GovernanceOperation),
+                typeof(RegisterControlRecord),
+                typeof(IReadOnlyList<GovernanceApprovalActionPayload>),
+            ],
+            "quorum must be a function of sealed content alone (R-009)");
+    }
 }

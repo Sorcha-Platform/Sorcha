@@ -2690,3 +2690,42 @@ restating `RegisterControlRecord`, which has its own contract.
 producer emits any of them, and governance transactions are exempt from `VAL_ROUTING_*`. The routes
 are a design sketch, not a definition anything executes — which is what T057's "diff the sequence
 against the published blueprint" has to confront.
+
+### Governance is a star; the instance model is a line (T055)
+
+**Do not give a governance transaction an `instanceId` to make it fold.** It is the obvious
+one-line change, it looks right, and it is wrong silently — `GovernanceIsNotInstanceScopedTests`
+executes the reason rather than describing it.
+
+Governance transactions are exempt from `VAL_ROUTING_*` and therefore carry **no
+`RoutingDecision`**, and `InstanceProjectionResolver` treats a transaction without one as
+contributing a **terminal (empty) next-action set**. So a proposal given an instance id folds to
+`InstanceState.Completed` **the moment the change is raised** — before any approval, before the
+enactment that changes the roster. Nothing errors. Same shape as the latent defect F145 US6 found
+for presentation lifecycle.
+
+And the projection cannot represent the shape anyway: `InstanceProjection.OrderByChain` builds a
+`Dictionary` keyed by predecessor id — **one successor per predecessor** — so sibling approvals
+overwrite one another and the losers fall out to the straggler path. Folding the same set in two
+orders yields different watermarks, which is exactly the determinism guarantee F145 makes.
+
+That is the **third** independent place the platform's instance model is linear by construction:
+
+1. Fork detection — one successor per transaction (bypassed only for Control predecessors).
+2. `VAL_BP_002` Tier 3 — one wallet per participant role per instance, bound by the earliest tx.
+3. `InstanceProjection.OrderByChain` — one successor per predecessor.
+
+Quorum is many signers on one step. Nothing short of changing all three makes it an instance, and
+all three exist to protect every other workflow.
+
+**R-009 is met by the tally being pure, not by folding.** `GovernanceApprovalTally.Prepare` takes
+only the register id, the operation stored on the proposal, the roster it was raised against, and
+the sealed approvals — pinned by reflection, so a well-meant extra parameter (a clock, node
+identity, config) fails the build. Order-independence is pinned over **all six** orderings of three
+approvals; the one deliberate order-dependence, first-vote-wins on a duplicate approver, is pinned
+separately so it cannot drift to last-wins. Seal order is the same on every node because the docket
+fixes it.
+
+⚠ **`RegisterRole.Auditor` is non-voting.** A tally fixture built on the shared roster silently
+counts two approvals while appearing to count three. Assert the expected count before comparing, or
+the test passes vacuously.
