@@ -50,6 +50,17 @@ public interface IGovernanceProposalReader
     /// </remarks>
     Task<IReadOnlyList<GovernanceProposalRead>> ListOpenAsync(
         string registerId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists every governance proposal the register carries, oldest first, whatever its state.
+    /// </summary>
+    /// <remarks>
+    /// The read side needs decided proposals too — an audit surface that only showed live ones would
+    /// hide exactly the history it exists to provide. <see cref="ListOpenAsync"/> filters this, so
+    /// there is one scan and one decode rather than two that can drift.
+    /// </remarks>
+    Task<IReadOnlyList<GovernanceProposalRead>> ListAllAsync(
+        string registerId, CancellationToken ct = default);
 }
 
 /// <inheritdoc />
@@ -112,6 +123,15 @@ public sealed class GovernanceProposalReader : IGovernanceProposalReader
     public async Task<IReadOnlyList<GovernanceProposalRead>> ListOpenAsync(
         string registerId, CancellationToken ct = default)
     {
+        var all = await ListAllAsync(registerId, ct);
+
+        return [.. all.Where(p => p.Operation is { Status: ProposalStatus.Pending })];
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<GovernanceProposalRead>> ListAllAsync(
+        string registerId, CancellationToken ct = default)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
 
         // Control transactions only, which is a handful even on a busy register — governance is rare
@@ -120,7 +140,7 @@ public sealed class GovernanceProposalReader : IGovernanceProposalReader
         var controlTxs = await _repository.GetTransactionsByTypeAsync(
             registerId, TransactionType.Control, TransactionSort.TimeStampAscending, 0, 0, ct);
 
-        var open = new List<GovernanceProposalRead>();
+        var proposals = new List<GovernanceProposalRead>();
 
         foreach (var tx in controlTxs)
         {
@@ -131,13 +151,13 @@ public sealed class GovernanceProposalReader : IGovernanceProposalReader
             }
 
             var operation = TryDecodeOperation(tx);
-            if (operation is { Status: ProposalStatus.Pending })
+            if (operation is not null)
             {
-                open.Add(new GovernanceProposalRead(ProposalReadOutcome.Found, operation, tx));
+                proposals.Add(new GovernanceProposalRead(ProposalReadOutcome.Found, operation, tx));
             }
         }
 
-        return open;
+        return proposals;
     }
 
     private GovernanceOperation? TryDecodeOperation(TransactionModel tx)

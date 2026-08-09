@@ -2529,6 +2529,38 @@ submission, so a `GovernanceApprovalSubmission` and a sealed `GovernanceApproval
 validated by the same code with **no** mapping between them. A hand-maintained mapping is exactly what
 dropped `ValidatorEntry` on `/propose` and made `AddValidator` unusable without anything failing.
 
+### A proposal's status is derived, never stored (T043/T046)
+
+`GET /api/registers/{id}/governance/proposals?status=Open|Enacted|Invalidated|Expired|All` and
+`GET .../proposals/{proposalId}` are the audit surface. Every field on them comes from sealed content:
+status from `GovernanceProposalStatus.Derive` (a pure function in `Sorcha.Register.Models`, so the
+Validator, the CLI and a console cannot each derive a different answer), counting from
+`GovernanceApprovalTally`, arithmetic from `ValidateQuorumAsync`.
+
+**Precedence is load-bearing and mutation-verified.** `Enacted` outranks everything: an enactment *is*
+a roster change, so ordering invalidation first reports every enacted proposal as `Invalidated`, and
+ordering expiry first makes one silently re-read as `Expired` once its window passes. Both orderings
+look correct for exactly as long as anyone tests inside the window. `Invalidated` is reported ahead of
+`Expired` because it refuses an approval even inside the window. An unset `ExpiresAt` must be guarded
+with `!= default` — treating it as a date at the epoch reports *every* proposal as expired.
+
+**Two drafted reasons do not exist, deliberately.** `withdrawn` has no producer anywhere — no
+endpoint, no transaction type — so a status for it would name a state no ledger can reach.
+`refused-not-on-roster` is why an individual *approval* did not count, not what happened to the
+proposal; it is reported per-approval in `excludedApprovals[]`.
+
+**The endpoint this replaced read `MetaData.TrackingData`.** That sits outside the signature, outside
+the payload hash and outside the docket's merkle leaf, so anyone able to submit can rewrite it with
+nothing detecting the change. An audit surface sourced from forgeable fields is worse than none,
+because it looks authoritative. Read the signed payload.
+
+**The Register Service configures no JSON options**, so its minimal APIs use the web defaults — under
+which an enum goes on the wire as a **number**. `"status": 1` is unreadable by a typed client (it
+throws) and matches no filter written against `Enacted`. Pin enums with `[JsonConverter]` on the type
+rather than relying on host registration, and write wire-contract tests against
+`JsonSerializerOptions.Web`, not `SorchaJson.Options` — asserting against options the service does not
+use is a test that passes while the surface is broken.
+
 ### `authMethod` is recorded, never enforced — and it means key custody
 
 `ApprovalAuthMethod` (`software` / `hardware-backed` / `service` / `unknown`) records **how the
