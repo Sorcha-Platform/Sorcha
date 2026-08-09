@@ -31,4 +31,11 @@
     <ProjectReference Include="..\..\src\Common\Sorcha.Register.Models\Sorcha.Register.Models.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Golden vectors: payloads captured verbatim off a sealed n1 ledger. See
+         GovernanceControlPayloadContractTests for why these sit alongside the constructed
+         fixtures rather than replacing them. -->
+    <None Update="Fixtures\Governance\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

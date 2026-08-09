@@ -283,4 +283,66 @@ public sealed class GovernanceApprovalPayloadContractTests
             "Could not locate the repository root (a directory containing both blueprints/ and src/) "
             + $"by walking up from {AppContext.BaseDirectory}.");
     }
+
+    // ---- golden vector: an approval captured off a sealed n1 ledger ----------------------------
+
+    /// <summary>
+    /// An approval payload taken verbatim from a sealed transaction on n1 (2026-08-09). It proves
+    /// the half the constructed fixture cannot: that the <b>producer</b> emits this shape. The
+    /// constructed fixture stays because it is maximal — this real one carries no <c>comment</c>,
+    /// and its authorisation is <c>direct</c> rather than <c>delegated</c>, so it exercises neither.
+    /// </summary>
+    private static JsonElement SealedApproval()
+    {
+        var path = Path.Combine(
+            AppContext.BaseDirectory, "Fixtures", "Governance", "approval-sealed-n1.json");
+        File.Exists(path).Should().BeTrue("the golden vector ships at {0}", path);
+
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        return doc.RootElement.Clone();
+    }
+
+    [Fact]
+    public void TheSealedApproval_IsDeclaredByThePublishedSchema()
+    {
+        AssertEmittedAreDeclared(SealedApproval(), ApprovalSchema(), "sealed-approval");
+    }
+
+    [Fact]
+    public void TheSealedApproval_SatisfiesEveryRequiredField()
+    {
+        AssertRequiredAreEmitted(SealedApproval(), ApprovalSchema(), "sealed-approval");
+    }
+
+    [Fact]
+    public void TheSealedApproval_CarriesTheDiscriminatorAndAnAccountabilityBlock()
+    {
+        var approval = SealedApproval();
+
+        approval.GetProperty("type").GetString().Should().Be(
+            GovernanceApprovalActionPayload.PayloadType);
+
+        // FR-029: an approval that resolves to nobody is one the register can never attribute.
+        approval.TryGetProperty("authorisation", out var authorisation).Should().BeTrue();
+        authorisation.ValueKind.Should().Be(JsonValueKind.Object);
+        authorisation.GetProperty("individualDid").GetString().Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public void TheSealedApproval_RoundTripsThroughTheModel()
+    {
+        // The read direction, against real bytes: every consumer decodes with these options inside a
+        // try/catch that treats a throw as "not an approval", so a decode failure is total and
+        // silent. That is how a swallowed deserialisation counted zero approvals for a whole live run.
+        var payload = JsonSerializer.Deserialize<GovernanceApprovalActionPayload>(
+            SealedApproval().GetRawText(), GovernanceApprovalActionPayload.CanonicalJsonOptions);
+
+        payload.Should().NotBeNull();
+        payload!.ProposalId.Should().NotBeNullOrWhiteSpace();
+        payload.ApproverDid.Should().NotBeNullOrWhiteSpace();
+        payload.Signature.Should().NotBeNullOrWhiteSpace();
+        payload.PublicKey.Should().NotBeNullOrWhiteSpace();
+        payload.StatementVersion.Should().Be(GovernanceApprovalStatement.StatementVersion);
+        payload.Authorisation.Should().NotBeNull();
+    }
 }

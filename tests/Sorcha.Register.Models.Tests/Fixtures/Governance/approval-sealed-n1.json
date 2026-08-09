@@ -1,0 +1,19 @@
+{
+  "type": "governance-approval",
+  "proposalId": "881069fbe994327aba1f27e32aec2310a8d3203e15342735534cceee02c39579",
+  "approverDid": "did:sorcha:w:ws11qqdy4gcqgk2xkrumzugh3j5nczamx7v0pf59x08r6p5hj07ygfjr5msqg3y",
+  "isApproval": true,
+  "signature": "6uZWByrRnjmxuK1L94Y5vOsl2XgCT3Fth786FlxkZGvSeo3XtDJ0N34mkpCh9nB+dvrmOayuY2Zg2bO8vMcVBA==",
+  "publicKey": "ekP71xMpn5+YRClF3IMvxGvomumkxWn5nJWh3oK4Ul0=",
+  "authMethod": "service",
+  "statementVersion": "sorcha:governance-approval:v2",
+  "authorisation": {
+    "kind": "direct",
+    "individualDid": "did:sorcha:w:ws11qz3fukhcn38d7djew2mya5z9pjt9wyh94a5t8fxvt572kly9eze22e4lghs",
+    "signature": "WAZE0R9Sw0TNOMg1o7ST0mDsWXnSIGjl+9kiysLtRByG40YLBfiDC96D0RB7tUZajES5m26nVxOb6xQUNDuxAw==",
+    "publicKey": "op5a+JxO3zZZcrZO0EUMllcS5a9os6TMXTyrfIXIsqU=",
+    "authMethod": "service",
+    "algorithm": "ED25519",
+    "delegationAlgorithm": "ED25519"
+  }
+}

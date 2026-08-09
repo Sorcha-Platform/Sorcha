@@ -310,6 +310,125 @@ public sealed class GovernanceControlPayloadContractTests
         }
     }
 
+    // ---- golden vectors: payloads captured off a sealed n1 ledger ------------------------------
+
+    /// <summary>
+    /// Loads a payload captured <b>verbatim</b> from a sealed transaction on n1 (register
+    /// <c>bec175b8…</c>, 2026-08-09), decoded from the stored BSON binary.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why these sit alongside the constructed fixtures rather than replacing them.</b> They prove
+    /// different things and neither subsumes the other.
+    /// </para>
+    /// <para>
+    /// The constructed fixture is <b>maximal</b> — every optional member populated — which is what
+    /// makes the "the schema declares nothing the model cannot produce" direction non-vacuous. A real
+    /// payload cannot do that job: this proposal is an <c>Add</c>, so it carries no
+    /// <c>validatorEntry</c> at all (omitted when null), and a contract checked only against it would
+    /// leave that property unexercised in exactly the direction that has already bitten this feature
+    /// once — <c>validatorEntry</c> is the field the T085 substitution gate exists to protect.
+    /// </para>
+    /// <para>
+    /// The golden vector proves the half a constructed fixture never can: that the <b>producer</b>
+    /// actually emits this shape. The constructed fixture is built from the model with the model's own
+    /// options, so a change to the real serialisation path — an option dropped at a call site, a
+    /// converter moved off a property — moves fixture and code together and the test stays green. The
+    /// sealed bytes cannot move.
+    /// </para>
+    /// </remarks>
+    private static JsonElement Sealed(string name)
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "Fixtures", "Governance", $"{name}-sealed-n1.json");
+        File.Exists(path).Should().BeTrue("the golden vector ships at {0}", path);
+
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        return doc.RootElement.Clone();
+    }
+
+    [Fact]
+    public void TheSealedProposal_PassesEvaluationAgainstTheShippedSchema()
+    {
+        // The strongest statement this file makes: bytes the platform actually sealed satisfy the
+        // contract the published blueprint declares. Had this existed before T054, the schema/payload
+        // divergence could never have survived a single live governance operation.
+        var result = ParseAsTheValidatorDoes(ProposalSchema()).Evaluate(
+            Sealed("proposal"),
+            new EvaluationOptions { OutputFormat = OutputFormat.List, RequireFormatValidation = true });
+
+        result.IsValid.Should().BeTrue(
+            "a proposal sealed on a real ledger must satisfy the published contract. Failures: {0}",
+            string.Join("; ", Failures(result)));
+    }
+
+    [Fact]
+    public void TheSealedProposal_AgreesWithTheConstructedFixtureOnEveryFieldItCarries()
+    {
+        // Ties the two fixtures together. Anything the real payload carries must also be something
+        // the model emits — so a producer that started writing a field the model does not know about
+        // (or spelled differently) fails here rather than in a deployment.
+        var constructed = EmittedProposal();
+
+        foreach (var property in Sealed("proposal").EnumerateObject())
+        {
+            constructed.TryGetProperty(property.Name, out _).Should().BeTrue(
+                "the sealed payload carries '{0}', so the model must emit it too", property.Name);
+        }
+
+        foreach (var property in Sealed("proposal").GetProperty("operation").EnumerateObject())
+        {
+            constructed.GetProperty("operation").TryGetProperty(property.Name, out _).Should().BeTrue(
+                "the sealed operation carries '{0}', so the model must emit it too", property.Name);
+        }
+    }
+
+    [Fact]
+    public void TheSealedProposal_OmitsValidatorEntry_WhichIsWhyTheConstructedFixtureIsStillNeeded()
+    {
+        // Pins the gap the golden vector leaves, so nobody deletes the constructed fixture believing
+        // the real one covers the same ground. An `Add` proposal has no validator to carry.
+        Sealed("proposal").GetProperty("operation")
+            .TryGetProperty("validatorEntry", out _).Should().BeFalse();
+
+        EmittedProposal().GetProperty("operation")
+            .TryGetProperty("validatorEntry", out _).Should().BeTrue(
+                "the constructed fixture is the one that exercises it");
+    }
+
+    [Fact]
+    public void TheSealedProposalAndEnactment_AreDistinguishableByContentAlone()
+    {
+        // T056's requirement, checked against real sealed bytes rather than reasoning. The pair is
+        // the whole discriminator: a proposal enacts nothing and names no proposal; an enactment
+        // carries the roster it wrote and names the proposal it settles.
+        var proposal = Sealed("proposal");
+        var enactment = Sealed("enactment");
+
+        proposal.GetProperty("roster").ValueKind.Should().Be(JsonValueKind.Null);
+        proposal.GetProperty("enactsProposalId").ValueKind.Should().Be(JsonValueKind.Null);
+
+        enactment.GetProperty("roster").ValueKind.Should().Be(JsonValueKind.Object,
+            "the enactment IS the roster mutation");
+        enactment.GetProperty("enactsProposalId").ValueKind.Should().Be(JsonValueKind.String,
+            "and it names the proposal whose approvals authorise it");
+
+        // Both spellings present on both — key-presence is NOT the discriminator (T056).
+        proposal.TryGetProperty("enactsProposalId", out _).Should().BeTrue();
+        enactment.TryGetProperty("enactsProposalId", out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public void TheSealedEnactment_IsTheSameEnvelopeType_SoOneContractDescribesBoth()
+    {
+        // Action 4 declares no dataSchemas today (skipped by FR-006). If one is ever added, this is
+        // the evidence that it is the same envelope with roster and enactsProposalId populated —
+        // not a different shape needing a different contract.
+        Sealed("enactment").EnumerateObject().Select(p => p.Name)
+            .Should().BeEquivalentTo(
+                Sealed("proposal").EnumerateObject().Select(p => p.Name),
+                "proposal and enactment are one payload type in two states");
+    }
+
     [Fact]
     public void AProposalCarriesItsOperation_AndTheContractRequiresIt()
     {
