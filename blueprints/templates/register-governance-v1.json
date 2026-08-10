@@ -40,182 +40,153 @@
         "id": 0,
         "title": "Assert Ownership",
         "sender": "proposer",
-        "isStartingAction": true,
-        "routes": [
-          {
-            "id": "genesis-to-propose",
-            "nextActionIds": [
-              1
-            ],
-            "isDefault": true
-          }
-        ]
+        "isStartingAction": true
       },
       {
         "id": 1,
         "title": "Propose Change",
         "sender": "proposer",
-        "routes": [
-          {
-            "id": "transfer-skip-quorum",
-            "nextActionIds": [
-              3
-            ],
-            "condition": {
-              "==": [
-                {
-                  "var": "operationType"
-                },
-                "Transfer"
-              ]
-            }
-          },
-          {
-            "id": "owner-override",
-            "nextActionIds": [
-              3
-            ],
-            "condition": {
-              "and": [
-                {
-                  "==": [
-                    {
-                      "var": "ownerOverride"
-                    },
-                    true
-                  ]
-                },
-                {
-                  "==": [
-                    {
-                      "var": "requiresAcceptance"
-                    },
-                    true
-                  ]
-                }
-              ]
-            }
-          },
-          {
-            "id": "owner-override-no-acceptance",
-            "nextActionIds": [
-              4
-            ],
-            "condition": {
-              "and": [
-                {
-                  "==": [
-                    {
-                      "var": "ownerOverride"
-                    },
-                    true
-                  ]
-                },
-                {
-                  "==": [
-                    {
-                      "var": "requiresAcceptance"
-                    },
-                    false
-                  ]
-                }
-              ]
-            }
-          },
-          {
-            "id": "to-quorum",
-            "nextActionIds": [
-              2
-            ],
-            "isDefault": true
-          }
-        ],
         "dataSchemas": [
           {
             "type": "object",
             "title": "Governance proposal",
+            "description": "The sealed ControlTransactionPayload of a Propose Change action. The envelope is the contract: the operation travels nested under `operation`, not flattened to the top level.",
             "required": [
-              "operationType",
-              "proposerDid",
-              "proposedAt",
-              "rosterSnapshotId",
-              "quorumFormulaAtRaise"
+              "version",
+              "roster",
+              "operation",
+              "enactsProposalId"
             ],
             "properties": {
-              "operationType": {
-                "type": "string",
-                "enum": [
-                  "Add",
-                  "Remove",
-                  "Transfer",
-                  "AddValidator",
-                  "RemoveValidator",
-                  "RotateValidatorKey",
-                  "RevokeIssuanceKey",
-                  "RotateIssuanceKey",
-                  "CryptoPolicyUpdate"
+              "version": {
+                "type": "integer",
+                "title": "Payload schema version"
+              },
+              "roster": {
+                "type": [
+                  "object",
+                  "null"
                 ],
-                "title": "Operation",
-                "x-enumNames": [
-                  "Add participant",
-                  "Remove participant",
-                  "Transfer ownership",
-                  "Add validator",
-                  "Remove validator",
-                  "Rotate validator key",
-                  "Revoke issuance key",
-                  "Rotate issuance key",
-                  "Change encryption policy"
-                ]
+                "title": "Roster snapshot",
+                "description": "Always null on a proposal. A proposal enacts nothing, and writing a roster here would move LastControlTxId so the proposal invalidated itself the instant it sealed (FR-011b). Left unconstrained: the roster contract is declared by RegisterControlRecord, and restating it here would give it a second home to drift from."
               },
-              "proposerDid": {
-                "type": "string",
-                "title": "Proposed by"
-              },
-              "targetDid": {
-                "type": "string",
-                "title": "Subject of the change"
-              },
-              "targetRole": {
-                "type": "string",
-                "title": "Role"
-              },
-              "proposedAt": {
-                "type": "string",
-                "format": "date-time"
-              },
-              "expiresAt": {
-                "type": "string",
-                "format": "date-time",
-                "title": "Proposal expires"
-              },
-              "justification": {
-                "type": "string",
-                "title": "Why",
-                "maxLength": 2000
-              },
-              "validatorEntry": {
+              "operation": {
                 "type": "object",
-                "title": "Validator being added or rotated",
-                "description": "Bound by the approval digest \u2014 approving 'add a validator' must not authorise adding an arbitrary one."
-              },
-              "rosterSnapshotId": {
-                "type": "string",
-                "title": "Roster at time of raise"
-              },
-              "quorumFormulaAtRaise": {
-                "type": "string",
-                "enum": [
-                  "StrictMajority",
-                  "Supermajority",
-                  "Unanimous"
+                "title": "Governance operation",
+                "description": "The change being proposed. Bound in full by every approval signature.",
+                "required": [
+                  "operationType",
+                  "proposerDid",
+                  "proposedAt",
+                  "rosterSnapshotId",
+                  "quorumFormulaAtRaise"
                 ],
-                "title": "Approval rule in force"
+                "properties": {
+                  "operationType": {
+                    "type": "string",
+                    "enum": [
+                      "Add",
+                      "Remove",
+                      "Transfer",
+                      "AddValidator",
+                      "RemoveValidator",
+                      "RotateValidatorKey",
+                      "RevokeIssuanceKey",
+                      "RotateIssuanceKey",
+                      "CryptoPolicyUpdate"
+                    ],
+                    "title": "Operation",
+                    "x-enumNames": [
+                      "Add participant",
+                      "Remove participant",
+                      "Transfer ownership",
+                      "Add validator",
+                      "Remove validator",
+                      "Rotate validator key",
+                      "Revoke issuance key",
+                      "Rotate issuance key",
+                      "Change encryption policy"
+                    ]
+                  },
+                  "proposerDid": {
+                    "type": "string",
+                    "title": "Proposed by"
+                  },
+                  "targetDid": {
+                    "type": "string",
+                    "title": "Subject of the change"
+                  },
+                  "targetRole": {
+                    "type": "string",
+                    "enum": [
+                      "Owner",
+                      "Admin",
+                      "Auditor",
+                      "Designer"
+                    ],
+                    "title": "Role"
+                  },
+                  "proposedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "expiresAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "title": "Proposal expires"
+                  },
+                  "justification": {
+                    "type": "string",
+                    "title": "Why",
+                    "maxLength": 2000
+                  },
+                  "validatorEntry": {
+                    "type": "object",
+                    "title": "Validator being added or rotated",
+                    "description": "Bound by the approval digest — approving 'add a validator' must not authorise adding an arbitrary one."
+                  },
+                  "rosterSnapshotId": {
+                    "type": "string",
+                    "title": "Roster at time of raise"
+                  },
+                  "quorumFormulaAtRaise": {
+                    "type": "string",
+                    "enum": [
+                      "StrictMajority",
+                      "Supermajority",
+                      "Unanimous"
+                    ],
+                    "title": "Approval rule in force"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "Pending",
+                      "Approved",
+                      "Rejected",
+                      "Expired",
+                      "Recorded"
+                    ],
+                    "title": "Proposal status",
+                    "description": "Advisory. The authoritative status is derived from sealed content by GovernanceProposalStatus.Derive, never read from here."
+                  },
+                  "approvalSignatures": {
+                    "type": "array",
+                    "title": "Inline approvals",
+                    "description": "Owner-override propose-and-enact carries its approvals inline. Empty on a consortium proposal, whose approvals arrive as separate Collect Quorum actions.",
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                }
               },
-              "requiresAcceptance": {
-                "type": "boolean",
-                "title": "Subject must accept",
-                "description": "False for operations with nobody to accept (e.g. a crypto-policy change), which route past Accept Role."
+              "enactsProposalId": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "title": "Enacts proposal",
+                "description": "Always null on a proposal, and present as an explicit null rather than omitted — it is the discriminator that separates a proposal from the enactment that settles it, so it must travel on both."
               }
             }
           }
@@ -225,86 +196,11 @@
         "id": 2,
         "title": "Collect Quorum",
         "sender": "voter",
-        "routes": [
-          {
-            "id": "quorum-met",
-            "nextActionIds": [
-              3
-            ],
-            "condition": {
-              "and": [
-                {
-                  "==": [
-                    {
-                      "var": "quorumMet"
-                    },
-                    true
-                  ]
-                },
-                {
-                  "==": [
-                    {
-                      "var": "requiresAcceptance"
-                    },
-                    true
-                  ]
-                }
-              ]
-            }
-          },
-          {
-            "id": "quorum-met-no-acceptance",
-            "nextActionIds": [
-              4
-            ],
-            "condition": {
-              "and": [
-                {
-                  "==": [
-                    {
-                      "var": "quorumMet"
-                    },
-                    true
-                  ]
-                },
-                {
-                  "==": [
-                    {
-                      "var": "requiresAcceptance"
-                    },
-                    false
-                  ]
-                }
-              ]
-            }
-          },
-          {
-            "id": "quorum-blocked",
-            "nextActionIds": [
-              1
-            ],
-            "condition": {
-              "==": [
-                {
-                  "var": "quorumBlocked"
-                },
-                true
-              ]
-            }
-          },
-          {
-            "id": "collect-more",
-            "nextActionIds": [
-              2
-            ],
-            "isDefault": true
-          }
-        ],
         "dataSchemas": [
           {
             "type": "object",
             "title": "Governance approval",
-            "description": "The payload of an approval submitted as this action. Kept in lockstep with GovernanceApprovalActionPayload by GovernanceApprovalPayloadContractTests \u2014 a field on one side and not the other fails the build.",
+            "description": "The payload of an approval submitted as this action. Kept in lockstep with GovernanceApprovalActionPayload by GovernanceApprovalPayloadContractTests — a field on one side and not the other fails the build.",
             "required": [
               "type",
               "proposalId",
@@ -354,7 +250,7 @@
                   "service"
                 ],
                 "title": "How the key was held",
-                "description": "Recorded so a register may require a minimum standard for a given operation (R-016). 'unknown' is the weakest and is what an unstated method records as \u2014 a schema that could not express it would make a legitimate payload invalid."
+                "description": "Recorded so a register may require a minimum standard for a given operation (R-016). 'unknown' is the weakest and is what an unstated method records as — a schema that could not express it would make a legitimate payload invalid."
               },
               "statementVersion": {
                 "type": "string",
@@ -441,7 +337,7 @@
                   "delegation": {
                     "type": "object",
                     "title": "How a machine came to be empowered",
-                    "description": "Signed by the empowering individual's own key \u2014 never server-asserted, because the server mints tokens (FR-033).",
+                    "description": "Signed by the empowering individual's own key — never server-asserted, because the server mints tokens (FR-033).",
                     "required": [
                       "delegationId",
                       "organisationDid",
@@ -504,51 +400,20 @@
       {
         "id": 3,
         "title": "Accept Role",
-        "sender": "target",
-        "routes": [
-          {
-            "id": "accepted",
-            "nextActionIds": [
-              4
-            ],
-            "condition": {
-              "==": [
-                {
-                  "var": "accepted"
-                },
-                true
-              ]
-            }
-          },
-          {
-            "id": "declined",
-            "nextActionIds": [
-              1
-            ],
-            "isDefault": true
-          }
-        ]
+        "sender": "target"
       },
       {
         "id": 4,
         "title": "Record Control Transaction",
-        "sender": "proposer",
-        "routes": [
-          {
-            "id": "loop-back",
-            "nextActionIds": [
-              1
-            ],
-            "isDefault": true
-          }
-        ]
+        "sender": "proposer"
       }
     ],
     "metadata": {
       "category": "governance",
       "type": "register-governance",
       "isSystem": "true",
-      "hasCycles": "true"
+      "hasCycles": "true",
+      "x-routing": "Deliberately none. Governance is many organisations acting on one step, so its transactions are exempt from VAL_ROUTING_* and are not folded into a workflow instance; nothing evaluates a route here. The previous conditions read ownerOverride, requiresAcceptance, quorumMet and accepted, which no producer emits — and quorumMet is unknowable to the producer of an individual approval. The approval rule is governed by RegisterControlRecord.RegisterPolicy.Governance.QuorumFormula and frozen per proposal as quorumFormulaAtRaise (FR-011a). This definition is a contract over action identity and payload shape (FR-018), not an executable flow."
     }
   },
   "parameterSchema": null,

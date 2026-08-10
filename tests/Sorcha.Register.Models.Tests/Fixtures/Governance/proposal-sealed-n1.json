@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "roster": null,
+  "operation": {
+    "operationType": "Add",
+    "proposerDid": "did:sorcha:w:ws11qprxpz3df6cll3fekgls8z6zhefaws0m9ug55skgekzk93rkw6es6v66m25",
+    "targetDid": "did:sorcha:w:ws11qq4t7gy6h9z7lznutlczktd5vdh2s6k7npy2qe6k9w50z56mdjvnkldeyj4",
+    "targetRole": "Admin",
+    "approvalSignatures": [],
+    "proposedAt": "2026-08-09T12:37:22.9407374+00:00",
+    "expiresAt": "2026-08-16T12:37:22.9407542+00:00",
+    "status": "Pending",
+    "justification": "T057 live gate — accountability verified on every node",
+    "rosterSnapshotId": "ad43a9bf6f46baf996809a06483bc4ec6b65d7ceeac5c9ff188a4711fe9316f8",
+    "quorumFormulaAtRaise": "StrictMajority"
+  },
+  "enactsProposalId": null
+}

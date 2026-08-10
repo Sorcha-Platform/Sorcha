@@ -139,7 +139,32 @@ The network's own system register — created by an offline ceremony rather than
 **Process, visibility and audit**
 
 - **FR-017**: The governance process MUST be enacted through the platform's own workflow mechanism, so that it is governed by a published definition rather than by undisclosed behaviour.
-- **FR-018**: The published governance definition MUST match what the system actually does, including the approval rules it supports.
+  > **Scope, settled 2026-08-09.** "Workflow mechanism" means the published blueprint, its action
+  > identities and its payload contracts — the things governance genuinely shares with every other
+  > workflow. It does **not** mean a workflow *instance*: quorum is many organisations acting on one
+  > step, and the instance model is linear by construction in three independent places (chain-fork
+  > detection, `VAL_BP_002` role binding, and `InstanceProjection.OrderByChain`, which keys one
+  > successor per predecessor). Forcing governance into an instance would require relaxing all three
+  > for every workflow on the platform. See T055.
+- **FR-018**: The published governance definition MUST match what the system actually does. Concretely,
+  and exhaustively: the **action identities** the platform submits against (propose, collect quorum,
+  record control transaction) MUST be the actions the definition declares, and the **payload contract**
+  declared for each of those actions MUST be the payload the platform actually seals — enforced by the
+  Validator, not merely documented.
+  > **Restated 2026-08-09, narrowing a claim the previous wording could not support.** It previously
+  > read "…including the approval rules it supports", which implied the definition's *routing* was
+  > authoritative. It is not, and cannot be. The blueprint's route conditions referenced
+  > `ownerOverride`, `requiresAcceptance`, `quorumMet` and `accepted` — variables **no producer emits
+  > and nothing evaluates**, since governance transactions are exempt from `VAL_ROUTING_*` and are not
+  > folded into an instance. `quorumMet` in particular is unknowable to the producer of an individual
+  > approval, because it depends on how many sibling approvals have sealed. Those routes have been
+  > removed rather than left as decoration: a definition that documents behaviour the system does not
+  > have is worse than one that documents less, because a reader trusts it.
+  >
+  > The approval **rule** (`StrictMajority` / `Supermajority` / `Unanimous`) remains governed and
+  > enforced — it lives in `RegisterControlRecord.RegisterPolicy.Governance.QuorumFormula` and is
+  > frozen onto each proposal as `quorumFormulaAtRaise` (FR-011a), which is where a reader should look
+  > for it. It was never expressible as a route condition.
 - **FR-019**: Each proposal, each approval and each enactment MUST be individually attributable to the organisation responsible for it.
 - **FR-020**: The proposal, its approvals and its outcome MUST be discoverable from the register itself by an entitled reader.
 - **FR-021**: The set of governable operations MUST include changes to a register's cryptographic posture, in addition to roster and validator-key changes.

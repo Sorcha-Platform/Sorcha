@@ -15,6 +15,10 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="FluentAssertions" />
+    <!-- The schema contract tests evaluate the shipped governance schema with the same engine and
+         options the Validator uses. Structural agreement between a schema and a payload is not the
+         same claim as the payload passing evaluation (CLAUDE.md pattern #4). -->
+    <PackageReference Include="JsonSchema.Net" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
@@ -25,6 +29,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Common\Sorcha.Register.Models\Sorcha.Register.Models.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Golden vectors: payloads captured verbatim off a sealed n1 ledger. See
+         GovernanceControlPayloadContractTests for why these sit alongside the constructed
+         fixtures rather than replacing them. -->
+    <None Update="Fixtures\Governance\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -2610,3 +2610,141 @@ R-014 replaced with external signing. That path had no callers left, and `Govern
 is now deleted rather than left registered: one field carrying two vocabularies is a fact no consumer
 can interpret. `ToVotes` derives the token from the payload converter's own naming policy, so the vote
 and the transaction it came from cannot drift to two spellings of one fact.
+
+### The Control discriminator buys six exemptions, and two of them hold quorum up (T054)
+
+`Metadata["Type"] = "Control"` is not one flag. It is read in six places, and reaching for it —
+or removing it — moves all six at once:
+
+| What it waives | Where |
+|---|---|
+| Per-sender sequence replay (`VAL_REPLAY_001`) | `ValidationEngine` via `IsGenesisOrControlTransaction` |
+| Action-schema validation | same |
+| Blueprint conformance in full (`VAL_BP_001/002/003`) | same |
+| Routing-decision attestation (`VAL_ROUTING_001/002`) | same |
+| Crypto policy (`VAL_POLICY_*`) | **a separate inline comparison** at `ValidationEngine.cs:831` |
+| Fork detection | indirectly — `DocketRegisterProjection.ResolveTransactionType` maps it onto the persisted `TransactionType`, and the fork bypass keys on the *predecessor's* |
+
+The crypto-policy arm does **not** route through `TransactionTypeClassifier`. A change made only in
+the classifier leaves it behind, silently and in the permissive direction.
+
+**Two of the six are load-bearing for quorum, so "make governance ordinary actions" is not
+available.** Every approval sets `PreviousTransactionId` to the proposal, so N approvals are N
+children of one parent — a star, which only the fork bypass permits. And every approval is action 2
+sent by participant `voter`, which `VAL_BP_002` Tier 3 (`ResolveChainBoundWalletAsync`) binds
+immutably to the *earliest* in-instance transaction for that role. Withdraw either and the **second**
+organisation's approval is refused, by two independent routes, and quorum can never be reached.
+These are deliberate invariants of the workflow model — one successor per transaction, one wallet per
+role per instance. Quorum is many signers on one step; an action chain is a line.
+
+**The roster check never rode on this flag.** `RightsEnforcementService.IsGovernanceTransaction`
+tries `BlueprintId == GovernanceBlueprint.BlueprintId` *first*, and all four producers set it from
+the same shared constant. The `Control` arm is a redundant second path left from R-004, when a
+proposal still carried an empty `BlueprintId`.
+
+**⚠ Withdrawing the schema exemption needed a resolver, and the blocker was not the one you would guess.**
+T054 attempted exactly that — a predicate naming actions 1/2/4, and `ValidateSchemaAsync` running
+`IsGenesisOrControl && !IsGovernanceAction`. It was **reverted after failing the live gate on n1**
+(2026-08-09): every governance proposal returned 202 and then never sealed, with
+`VAL_SCHEMA_001: Blueprint 'register-governance-v1' not found`.
+
+**`ResolveBlueprintAsync` is global by id — cache, then Blueprint Service — but the governance
+blueprint is in neither.** It is seeded onto the **system register** by `SystemRegisterBootstrapper`
+and exists only as a publish transaction there; there is no `blueprint."Blueprints"` row for it, and
+`BlueprintRecoveryService` deliberately **rejects** these system blueprints with `no_provenance`. So
+"the resolver is global, therefore the SSR copy resolves" is an inference that does not hold — the
+mechanism is global, the blueprint is absent. Enforcing the contract fails **every governance
+transaction on every register**.
+
+**Fixed:** `ResolveBlueprintAsync` gained a last-resort arm reading the **system register's ledger**
+via `IRegisterServiceClient.GetSystemRegisterBlueprintJsonAsync`. It works on any node holding an SSR
+replica, is tried last, and returns null (never throws) so an unreachable Register Service fails
+closed. Enforcement is live-proven on n1. (`ControlBlueprintVersionResolver` is **not** the right
+tool — control *config* blueprints, returns `ResolvedControlBlueprintVersion`, not a `BlueprintModel`.)
+
+⚠ **A node's SSR is as old as its genesis.** n1's copy predated T053 and declared **no `dataSchemas`**,
+and FR-006 skips validation when an action declares none — so the live gate would have gone green
+while checking nothing. Publish the version under test to the SSR first
+(`POST /api/system-register/publish`; the newest by timestamp wins) and verify it landed.
+
+Note for when it is built: a predicate used to **withdraw** an exemption may safely key on unsigned
+fields (`BlueprintId`/`ActionId`/metadata) — forging it true buys more validation, forging it false
+leaves the forger facing the roster check as before. That reasoning **inverts** the moment it grants
+anything, so move the discriminator into the signed payload first, as C-VAL did for the lifecycle
+predicates.
+
+### The action-1 contract described a payload nothing emits
+
+Action 1's `dataSchemas` declared a bare `GovernanceOperation` — `operationType`, `proposerDid`,
+`proposedAt`, `rosterSnapshotId`, `quorumFormulaAtRaise` at the top level. Every producer emits a
+`ControlTransactionPayload` envelope (`version` / `roster` / `operation` / `enactsProposalId`) with
+those fields nested under `operation`. **No conforming payload could ever have existed**, and nothing
+noticed because the contract went unenforced behind the Control exemption. It also declared
+`requiresAcceptance`, which no model can produce, and omitted `approvalSignatures` and `status`,
+which the model emits.
+
+The envelope is not negotiable — the roster travels on it, `GovernanceProposalStatus.Derive` reads
+`enactsProposalId` from it, and `RightsEnforcementService` rebuilds approval statements from the
+operation stored inside it — so the schema is what was wrong.
+
+`GovernanceControlPayloadContractTests` guards it, mirroring the action-2 test. Three things worth
+copying:
+
+- **Derived from serialisation, bidirectional.** A hand-written field list rots in the same
+  direction as the bug.
+- **Structural agreement is not evaluation.** The test also runs the payload through JsonSchema.Net
+  with the Validator's own `x-`-keyword strip and `RequireFormatValidation: true`. Without the strip
+  the shipped schema does not parse at all — *"Unknown keywords (x-enumNames) are disallowed for this
+  dialect"* — so a test that skipped it would fail for a reason production never hits.
+- **The enum wire value depends on where the converter is declared.** Most of these enums carry
+  `JsonStringEnumConverter` on the **property**, so serialising a bare value under the payload's own
+  options yields the *integer*. Compare against `Enum.GetNames` and separately assert what the
+  producer actually emits.
+
+Action 4 (enactment) declares no `dataSchemas` and is skipped by FR-006. Giving it one means
+restating `RegisterControlRecord`, which has its own contract.
+
+**Open: the governance blueprint's routes are inert.** Action 1's conditions read `ownerOverride`,
+`requiresAcceptance` and `quorumMet`; action 2's read `quorumMet`; action 3's read `accepted`. No
+producer emits any of them, and governance transactions are exempt from `VAL_ROUTING_*`. The routes
+are a design sketch, not a definition anything executes — which is what T057's "diff the sequence
+against the published blueprint" has to confront.
+
+### Governance is a star; the instance model is a line (T055)
+
+**Do not give a governance transaction an `instanceId` to make it fold.** It is the obvious
+one-line change, it looks right, and it is wrong silently — `GovernanceIsNotInstanceScopedTests`
+executes the reason rather than describing it.
+
+Governance transactions are exempt from `VAL_ROUTING_*` and therefore carry **no
+`RoutingDecision`**, and `InstanceProjectionResolver` treats a transaction without one as
+contributing a **terminal (empty) next-action set**. So a proposal given an instance id folds to
+`InstanceState.Completed` **the moment the change is raised** — before any approval, before the
+enactment that changes the roster. Nothing errors. Same shape as the latent defect F145 US6 found
+for presentation lifecycle.
+
+And the projection cannot represent the shape anyway: `InstanceProjection.OrderByChain` builds a
+`Dictionary` keyed by predecessor id — **one successor per predecessor** — so sibling approvals
+overwrite one another and the losers fall out to the straggler path. Folding the same set in two
+orders yields different watermarks, which is exactly the determinism guarantee F145 makes.
+
+That is the **third** independent place the platform's instance model is linear by construction:
+
+1. Fork detection — one successor per transaction (bypassed only for Control predecessors).
+2. `VAL_BP_002` Tier 3 — one wallet per participant role per instance, bound by the earliest tx.
+3. `InstanceProjection.OrderByChain` — one successor per predecessor.
+
+Quorum is many signers on one step. Nothing short of changing all three makes it an instance, and
+all three exist to protect every other workflow.
+
+**R-009 is met by the tally being pure, not by folding.** `GovernanceApprovalTally.Prepare` takes
+only the register id, the operation stored on the proposal, the roster it was raised against, and
+the sealed approvals — pinned by reflection, so a well-meant extra parameter (a clock, node
+identity, config) fails the build. Order-independence is pinned over **all six** orderings of three
+approvals; the one deliberate order-dependence, first-vote-wins on a duplicate approver, is pinned
+separately so it cannot drift to last-wins. Seal order is the same on every node because the docket
+fixes it.
+
+⚠ **`RegisterRole.Auditor` is non-voting.** A tally fixture built on the shared roster silently
+counts two approvals while appearing to count three. Assert the expected count before comparing, or
+the test passes vacuously.

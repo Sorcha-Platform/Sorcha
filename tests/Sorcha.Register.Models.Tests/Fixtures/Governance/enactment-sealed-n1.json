@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "roster": {
+    "registerId": "bec175b8151a459d8a16c96fb4adce22",
+    "name": "f189-t057-123713",
+    "description": "Feature 189 T057 live gate",
+    "createdAt": "2026-08-09T12:37:13.0957609+00:00",
+    "attestations": [
+      {
+        "role": "Owner",
+        "subject": "did:sorcha:w:ws11qqdy4gcqgk2xkrumzugh3j5nczamx7v0pf59x08r6p5hj07ygfjr5msqg3y",
+        "publicKey": "ekP71xMpn5+YRClF3IMvxGvomumkxWn5nJWh3oK4Ul0=",
+        "signature": "yAPPHFil3SqDp3Mh36jrZY79vBngeZEdsg957uaBlBkcx/eJAkG4VZgw3Kgyj+F9XnrGQusz0aMy7EgL+GaTAg==",
+        "algorithm": "ED25519",
+        "grantedAt": "2026-08-09T12:37:13.0957609+00:00"
+      },
+      {
+        "role": "Admin",
+        "subject": "did:sorcha:w:ws11qprxpz3df6cll3fekgls8z6zhefaws0m9ug55skgekzk93rkw6es6v66m25",
+        "publicKey": "qOGbt3QYU+XabmuSFSe5q5SGWbYLLIFaJMgG8bb5/xE=",
+        "signature": "60YgScSDSqKEVxueOmGA9qkE2SIyJhcuAozHDiPW4RxxGyLl6vyW6dTVGZvapCpaFrk/rauTNuPgm9ygFrW+Bw==",
+        "algorithm": "ED25519",
+        "grantedAt": "2026-08-09T12:37:13.0957609+00:00"
+      },
+      {
+        "role": "Admin",
+        "subject": "did:sorcha:w:ws11qq4t7gy6h9z7lznutlczktd5vdh2s6k7npy2qe6k9w50z56mdjvnkldeyj4",
+        "publicKey": "",
+        "signature": "",
+        "algorithm": "ED25519",
+        "grantedAt": "2026-08-09T12:37:22.9407374+00:00"
+      }
+    ],
+    "metadata": null
+  },
+  "operation": {
+    "operationType": "Add",
+    "proposerDid": "did:sorcha:w:ws11qprxpz3df6cll3fekgls8z6zhefaws0m9ug55skgekzk93rkw6es6v66m25",
+    "targetDid": "did:sorcha:w:ws11qq4t7gy6h9z7lznutlczktd5vdh2s6k7npy2qe6k9w50z56mdjvnkldeyj4",
+    "targetRole": "Admin",
+    "approvalSignatures": [],
+    "proposedAt": "2026-08-09T12:37:22.9407374+00:00",
+    "expiresAt": "2026-08-16T12:37:22.9407542+00:00",
+    "status": "Recorded",
+    "justification": "T057 live gate — accountability verified on every node",
+    "rosterSnapshotId": "ad43a9bf6f46baf996809a06483bc4ec6b65d7ceeac5c9ff188a4711fe9316f8",
+    "quorumFormulaAtRaise": "StrictMajority"
+  },
+  "enactsProposalId": "881069fbe994327aba1f27e32aec2310a8d3203e15342735534cceee02c39579"
+}

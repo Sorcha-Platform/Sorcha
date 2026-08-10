@@ -374,6 +374,31 @@ public interface IRegisterServiceClient
         string blueprintId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Gets a blueprint's definition JSON from the system register, or <c>null</c> when it is not
+    /// published there.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The system register is where blueprints that the platform itself executes are seeded —
+    /// <c>register-governance-v1</c> among them (<c>SystemRegisterBootstrapper</c>). They are
+    /// deliberately NOT in the Blueprint Service store: <c>BlueprintRecoveryService</c> rejects them
+    /// with <c>no_provenance</c>. So a consumer that resolves blueprints only through the Blueprint
+    /// Service cannot see them at all — which is how Feature 189 T054's first attempt failed every
+    /// governance transaction on every register with <c>VAL_SCHEMA_001</c>.
+    /// </para>
+    /// <para>
+    /// Reads the SSR ledger, so it answers on any node holding a replica — including a subscriber
+    /// that never seeded anything itself.
+    /// </para>
+    /// </remarks>
+    /// <param name="blueprintId">Blueprint identifier as published to the system register.</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The blueprint definition JSON, or null when absent or unreachable.</returns>
+    Task<string?> GetSystemRegisterBlueprintJsonAsync(
+        string blueprintId,
+        CancellationToken cancellationToken = default);
+
     // =========================================================================
     // Recovery / Internal Discovery
     // =========================================================================

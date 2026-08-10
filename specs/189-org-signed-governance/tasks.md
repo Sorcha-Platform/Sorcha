@@ -170,10 +170,165 @@ confirm sealed-in-docket and observable on tiny.
 - [X] T053 [US3] Revise `blueprints/templates/register-governance-v1.json`: replace the hardcoded `approvalPercentage >= 50.01` with the register's configured rule; add the crypto-policy operation; add `dataSchemas` for proposal and approval payloads; make "Accept Role" conditional on operation type (R-008)
 - [ ] T054 [US3] Execute the governance blueprint as a real workflow instance, with each organisation's approval submitted as an action
 > **Scope, measured 2026-08-09 before starting.** `register-governance-v1` is seeded to the **system register only** (`SystemRegisterBootstrapper`), and all three governance transaction kinds set `BlueprintId = register-governance-v1` while relying on `Metadata["Type"] = "Control"` to earn the roster check and to be *exempt from action-schema validation* — precisely because the blueprint is not published to ordinary registers. T054 therefore means publishing it to ordinary registers and making the three kinds conformant, schema-validated actions **while keeping the roster check that currently rides on the Control discriminator**. That changes the validation path of every governance transaction on every register: the highest blast radius in the feature, and the exact class where it has repeatedly produced silent defects. Budget it as its own piece with a live gate, not as a tail-end.
-- [ ] T055 [US3] Ensure the governance instance folds correctly under F145's `InstanceProjector` — quorum must be a pure function of sealed content so every node agrees (R-009)
+> **Re-measured 2026-08-09, at the source. Two corrections, one of them blocking.**
+>
+> **Correction 1 — the roster check does NOT ride on the Control discriminator.** `RightsEnforcementService.IsGovernanceTransaction` tries `BlueprintId == GovernanceBlueprint.BlueprintId` **first**, and all four producers (propose, approve, enact, crypto-policy) already set it — from the same shared constant in the zero-dependency leaf. The `Metadata["Type"] == "Control"` arm is a second, redundant path for them, added under R-004 when a proposal still carried an empty `BlueprintId`. So the two jobs are already separable at no cost: what `Control` uniquely buys governance transactions is **six exemptions**, not the roster check.
+>
+> The six, verified individually: sequence-replay (`VAL_REPLAY_001`), action-schema validation, blueprint conformance in full (`VAL_BP_001/002/003`), routing-decision attestation (`VAL_ROUTING_001/002`), crypto policy (`VAL_POLICY_*` — a **separate inline** `Metadata["Type"] is "Genesis" or "Control"` comparison at `ValidationEngine.cs:831` that does *not* route through `TransactionTypeClassifier`, so a change made only in the classifier would silently leave this one behind), and — via `DocketRegisterProjection.ResolveTransactionType` mapping `Metadata["Type"]` onto the persisted `TransactionType` — **fork detection**.
+>
+> **Correction 2 — two of those exemptions are load-bearing for quorum itself, and dropping them makes quorum structurally unreachable.** Both confirmed by reading the enforcing code, not inferred:
+>
+> - **Fork.** Every approval sets `PreviousTransactionId = proposalId`, so N approvals are N children of one parent. `ValidationEngine`'s fork check is bypassed only when the *predecessor's* persisted `TransactionType` is `Control` or `BlueprintPublish`. Make the proposal an ordinary conformant action and it persists as `Action`; the bypass stops applying and **every approval after the first is rejected `VAL_CHAIN_FORK`**. `GovernanceApprovalActionSubmitter` already documents this dependency inline.
+> - **Role binding.** Every approval is action 2, sender `voter`. `VAL_BP_002` Tier 3 (`ResolveChainBoundWalletAsync`) takes the **earliest** in-instance transaction whose action's `Sender` matches the role and treats its wallet as an immutable binding (FR-004). So the first approver binds `voter`, and **the second organisation's approval is rejected `VAL_BP_002`** as a binding violation.
+>
+> These are not oversights: they are the deliberate invariants of the workflow model — one successor per transaction, one wallet per role per instance. Governance is intrinsically *many signers, one step*, which a linear action chain does not express. T054 as literally worded ("conformant, schema-validated actions") therefore cannot be delivered without changing chain-fork and role-binding semantics **for every workflow on the platform**, which is a far larger and riskier change than this task describes.
+>
+> Tier 2 of `VAL_BP_002` does offer a route for the role-binding half — `resolvedRecord.Addresses` is a **list** and is checked with `.Any(...)`, and Tier 2 is consulted before Tier 3 — so publishing a `voter` participant record carrying every roster organisation's address would authorise them all. It also mirrors the roster into a second store that must be kept in step with every enactment, which is the drift shape pattern #16 exists to prevent. The fork half has no equivalent route: a star topology is what quorum *is*.
+>
+> **Scope decision (Stuart, 2026-08-09): narrow it.** Publish the contract and enforce it; keep the
+> exemptions quorum depends on, narrowed from a blanket flag to a named, governance-specific
+> withdrawal. The literal reading is not attempted — relaxing fork detection and role binding for
+> every workflow on the platform is a different piece of work with its own security review.
+>
+> ✅ **ENFORCEMENT NOW LIVE-PROVEN (second attempt, 2026-08-09).** `ResolveBlueprintAsync` gained a
+> last-resort arm reading the **system register's own ledger**
+> (`IRegisterServiceClient.GetSystemRegisterBlueprintJsonAsync`, over the endpoint that already
+> existed). It answers on any node holding an SSR replica — including a subscriber that seeded
+> nothing — and is tried last, so the ordinary path pays nothing. Failure returns null rather than
+> throwing, so an unreachable Register Service reads as "not found" and fails closed.
+>
+> Live on n1: propose → two approvals → enactment, all sealed, with
+> `Blueprint register-governance-v1 resolved from the system register and cached` and
+> `Quorum check … 2/2 (pool=2, met=True)` in the validator log and no `VAL_SCHEMA` errors.
+>
+> ⚠ **The gate was nearly vacuous, and the near-miss is the lesson.** n1's SSR was seeded at a genesis
+> that PREDATES T053, so its `register-governance-v1` carried **no `dataSchemas` at all** — and
+> FR-006 skips validation when an action declares none. Resolution would have succeeded, enforcement
+> would have run, and the whole thing would have gone green while checking nothing. The corrected
+> template had to be published to the SSR first (`POST /api/system-register/publish`; `GetBlueprintAsync`
+> takes the newest by timestamp). **Any future live gate on a system blueprint must first confirm the
+> SSR actually carries the version under test** — a node's SSR is as old as its genesis.
+>
+> **First attempt (reverted, kept for the record):** the enforcement shipped without the resolver and
+> failed every governance transaction on every register with
+> `VAL_SCHEMA_001: Blueprint 'register-governance-v1' not found`. Deployed to n1 (both services, image ids verified against the local build) and ran the full
+> cycle: the proposal returned **202 and never sealed**. Validator verdict:
+> `VAL_SCHEMA_001: Blueprint 'register-governance-v1' not found`.
+>
+> **The claim that killed it was mine, and it was an inference, not a measurement.** I verified that
+> `ResolveBlueprintAsync` is global by id — cache, then Blueprint Service — and concluded the copy
+> seeded on the system register would therefore resolve for a transaction on any register. The
+> mechanism is global; the blueprint is **not there**. `register-governance-v1` is seeded onto the
+> **system register** by `SystemRegisterBootstrapper` and has never been in the Blueprint Service
+> store the fetcher queries (n1 has no `blueprint."Blueprints"` table at all; the blueprint exists
+> only as a publish transaction on the SSR). So enforcement fails **every governance transaction on
+> every register**. Textbook seam: both sides correct, the join unverified, and offline tests blind to
+> it because they evaluate the schema directly and never resolve a blueprint.
+>
+> n1 was rolled back to the registry images and the full cycle re-verified green, so the node is
+> unaffected.
+>
+> **Prerequisite for enforcement, and the real remaining work:** a resolution path that lets the
+> Validator read SSR-seeded system blueprints. `ControlBlueprintVersionResolver` is not it — it
+> handles control *config* blueprints (`control.config.update` and friends) and returns
+> `ResolvedControlBlueprintVersion`, not a `BlueprintModel`. Note the boundary is deliberate:
+> `BlueprintRecoveryService` currently **rejects** these system blueprints with `no_provenance`, so
+> pushing them into the Blueprint Service store fights an existing decision rather than settling it.
+> `IsGovernanceActionTransaction` and its tests are reverted with the enforcement rather than left as
+> dead code.
+>
+> **Delivered and kept (all independently proven):**
+>
+> - The **action-1 contract rewrite** below, which stands on its own: it is now a description of the
+>   payload that is actually sealed, guarded bidirectionally and by real evaluation.
+> - `ControlTransactionPayload.CanonicalJsonOptions` — one declaration replacing three inline copies.
+> - The measurement of what the Control discriminator actually waives, and why two of the six cannot
+>   be withdrawn.
+> - **The action-1 contract was rewritten, because nothing could ever have satisfied it.** It
+>   described a bare `GovernanceOperation`; every producer emits a `ControlTransactionPayload`
+>   envelope with the operation nested under `operation`. Turning validation on without this would
+>   have refused every governance proposal on every register with `VAL_SCHEMA_004`. Two further
+>   drifts came out with it: the schema declared `requiresAcceptance`, which no model can produce
+>   (and which action 1's own routes read), and omitted `approvalSignatures` and `status`, which the
+>   model emits.
+> - `GovernanceControlPayloadContractTests` is the guard, mirroring the approval-payload test that
+>   already covers action 2. Bidirectional and **derived from serialisation**, plus a real
+>   JsonSchema.Net evaluation using the Validator's own strip and `RequireFormatValidation`, plus its
+>   mutation proof that the old flattened shape is refused. Structural agreement is not the same
+>   claim as passing evaluation, and the difference showed: parsing the shipped schema without the
+>   `x-` strip throws outright.
+> - `ControlTransactionPayload.CanonicalJsonOptions` now has one home instead of three inline copies
+>   that happened to agree.
+>
+> **Not delivered, and deliberately so:** action 4 (enactment) declares no `dataSchemas`, so it is
+> skipped by FR-006 rather than checked. Giving it one means describing the roster, which is
+> `RegisterControlRecord`'s contract and would drift if restated in a blueprint.
+>
+> **Open finding, not fixed here.** Action 1's routing conditions read `ownerOverride`,
+> `requiresAcceptance` and `quorumMet`; action 2's read `quorumMet`; action 3's read `accepted`. No
+> governance producer emits any of them, and governance transactions are exempt from
+> `VAL_ROUTING_*`, so the routes are inert. They are a design sketch of a workflow, not a definition
+> anything executes — which is what T057's "diff the sequence against the published blueprint" will
+> run into. Decide there whether the routes become real or are removed as decoration.
+
+- [X] T055 [US3] Ensure the governance instance folds correctly under F145's `InstanceProjector` — quorum must be a pure function of sealed content so every node agrees (R-009)
+> **Delivered as R-009, NOT as a fold — the mechanism the task names is wrong, and the reason is now
+> executable (`GovernanceIsNotInstanceScopedTests`).** The premise was that the resolver merely lacks
+> an instance id. It does; supplying one does not produce a correct instance, it produces a
+> confidently wrong one, silently.
+>
+> - Governance transactions are exempt from `VAL_ROUTING_*` and so carry **no `RoutingDecision`**, and
+>   `InstanceProjectionResolver` treats a transaction without one as contributing a **terminal**
+>   (empty) next-action set. Give a proposal an instance id and the instance reports **`Completed`
+>   the moment a governance change is raised** — before any approval, before the enactment. Nothing
+>   errors. Identical in shape to the latent defect F145 US6 found for presentation lifecycle.
+> - **`InstanceProjection.OrderByChain` cannot represent a star.** It builds a `Dictionary` keyed by
+>   predecessor id — one successor per predecessor — so sibling approvals overwrite one another and
+>   the losers fall through to the straggler path. The test folds the same set in two orders and the
+>   watermark differs, which is the determinism guarantee F145 makes for every workflow. This is the
+>   **third** independent linearity constraint, after fork detection and `VAL_BP_002` role binding.
+>
+> **R-009's actual requirement is met by the tally being pure**, which is now pinned directly rather
+> than assumed: all six orderings of three distinct approvals give an identical plan; a double vote
+> resolves first-wins by seal order (the same on every node, fixed by the docket) rather than
+> last-wins; and `Prepare`'s parameter list is asserted by reflection to take nothing but sealed
+> content — no clock, no node identity, no configuration. Mutation-verified by making selection
+> depend on input position.
+>
+> The vacuity guard on the order-independence test earned its place immediately: the first fixture
+> used the shared roster's Auditor, a **non-voting** role, so it compared two counted approvals while
+> claiming three. It now builds its own three-voter roster.
 - [X] T056 [US3] Ensure each proposal, approval and enactment is individually attributable to its organisation in the ledger record (FR-019)
 > **Done ahead of T054/T055, because attribution is a property of the records that exist today, not of a workflow instance.** The load-bearing part is what "attributable" is allowed to mean: a transaction's `Metadata` sits outside the signature, outside the payload hash and outside the docket's merkle leaf, so a DID recorded there is a hint for operators and never evidence. Verified that all three kinds carry their attribution **inside the signed payload** — the proposer on the operation, the approver on the approval payload *and* bound into the statement digest its own detached signature covers, the enactment carrying the proposed operation forward — and that the three remain distinguishable from payload content alone (note `enactsProposalId` is serialised as a null VALUE on a proposal, not omitted, so a reader keying on key-presence would classify every proposal as an enactment). `Metadata["carriedBy"]` is written twice and **read nowhere**; a validator test now pins that rewriting it changes nothing about the decision, mutation-verified by making the decision depend on it.
-- [ ] T057 [US3] 🔴 **LIVE GATE** Reconstruct a completed multi-party change from the ledger alone on both n1 and tiny, and diff the sequence against the published blueprint
+- [X] T057 [US3] 🔴 **LIVE GATE** Reconstruct a completed multi-party change from the ledger alone on both n1 and tiny, and diff the sequence against the published blueprint
+> **PASSED 2026-08-10.** Register `cfe0b166cbd14142b6826d95e590f79f` (advertised, two orgs) on n1;
+> tiny subscribed via the public org and replicated all five transactions within 10s. Reconstructed
+> on each node straight from Mongo — no API in the path, so nothing but the ledger could supply the
+> answer — and the two sequences are **identical** (sha256 `36d5c3876255b90d…`):
+>
+> ```
+> genesis                        blueprint=genesis                 action=-   prev=-
+> 178ffa96…  proposal            blueprint=register-governance-v1  action=1   prev=genesis
+> 83f4a6b3…  approval (org A)    blueprint=register-governance-v1  action=2   prev=proposal
+> 68294672…  approval (org B)    blueprint=register-governance-v1  action=2   prev=proposal
+> b3ff1833…  enactment           blueprint=register-governance-v1  action=4   prev=genesis
+> ```
+>
+> **Diff against the published definition, per the restated FR-018:** every action identity used
+> (1, 2, 4) is declared by the definition (0–4); both actions that carry a payload contract (1, 2)
+> are the ones enforced live by the Validator against the corrected schema; the definition declares
+> no routes, so there is no routing claim left to diff.
+>
+> **The star is now visible in the sealed chain rather than argued from source.** Two predecessors
+> have more than one child: the proposal (its two approvals) *and* the genesis — because a pending
+> proposal carries no roster, `LastControlTxId` stays on genesis, so the enactment chains off the
+> genesis rather than off the proposal it settles. A linear instance chain cannot represent either
+> branch, which is T055's finding confirmed from the ledger.
+>
+> Two things worth carrying forward: **tiny's tenant image predates n1's two-step org selection**, so
+> `POST /api/auth/login` there returns `access_token` directly — a login that "fails" against tiny is
+> probably the caller asking wrongly. And the subscribe DTO binds **`register_id`** (snake_case), not
+> `registerId`; the camelCase spelling 400s with the required-property name in the body.
 
 **Checkpoint**: governance is dogfooded — the platform governs itself with its own workflow engine.
 
