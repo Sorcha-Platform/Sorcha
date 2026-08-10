@@ -300,7 +300,35 @@ confirm sealed-in-docket and observable on tiny.
 > claiming three. It now builds its own three-voter roster.
 - [X] T056 [US3] Ensure each proposal, approval and enactment is individually attributable to its organisation in the ledger record (FR-019)
 > **Done ahead of T054/T055, because attribution is a property of the records that exist today, not of a workflow instance.** The load-bearing part is what "attributable" is allowed to mean: a transaction's `Metadata` sits outside the signature, outside the payload hash and outside the docket's merkle leaf, so a DID recorded there is a hint for operators and never evidence. Verified that all three kinds carry their attribution **inside the signed payload** — the proposer on the operation, the approver on the approval payload *and* bound into the statement digest its own detached signature covers, the enactment carrying the proposed operation forward — and that the three remain distinguishable from payload content alone (note `enactsProposalId` is serialised as a null VALUE on a proposal, not omitted, so a reader keying on key-presence would classify every proposal as an enactment). `Metadata["carriedBy"]` is written twice and **read nowhere**; a validator test now pins that rewriting it changes nothing about the decision, mutation-verified by making the decision depend on it.
-- [ ] T057 [US3] 🔴 **LIVE GATE** Reconstruct a completed multi-party change from the ledger alone on both n1 and tiny, and diff the sequence against the published blueprint
+- [X] T057 [US3] 🔴 **LIVE GATE** Reconstruct a completed multi-party change from the ledger alone on both n1 and tiny, and diff the sequence against the published blueprint
+> **PASSED 2026-08-10.** Register `cfe0b166cbd14142b6826d95e590f79f` (advertised, two orgs) on n1;
+> tiny subscribed via the public org and replicated all five transactions within 10s. Reconstructed
+> on each node straight from Mongo — no API in the path, so nothing but the ledger could supply the
+> answer — and the two sequences are **identical** (sha256 `36d5c3876255b90d…`):
+>
+> ```
+> genesis                        blueprint=genesis                 action=-   prev=-
+> 178ffa96…  proposal            blueprint=register-governance-v1  action=1   prev=genesis
+> 83f4a6b3…  approval (org A)    blueprint=register-governance-v1  action=2   prev=proposal
+> 68294672…  approval (org B)    blueprint=register-governance-v1  action=2   prev=proposal
+> b3ff1833…  enactment           blueprint=register-governance-v1  action=4   prev=genesis
+> ```
+>
+> **Diff against the published definition, per the restated FR-018:** every action identity used
+> (1, 2, 4) is declared by the definition (0–4); both actions that carry a payload contract (1, 2)
+> are the ones enforced live by the Validator against the corrected schema; the definition declares
+> no routes, so there is no routing claim left to diff.
+>
+> **The star is now visible in the sealed chain rather than argued from source.** Two predecessors
+> have more than one child: the proposal (its two approvals) *and* the genesis — because a pending
+> proposal carries no roster, `LastControlTxId` stays on genesis, so the enactment chains off the
+> genesis rather than off the proposal it settles. A linear instance chain cannot represent either
+> branch, which is T055's finding confirmed from the ledger.
+>
+> Two things worth carrying forward: **tiny's tenant image predates n1's two-step org selection**, so
+> `POST /api/auth/login` there returns `access_token` directly — a login that "fails" against tiny is
+> probably the caller asking wrongly. And the subscribe DTO binds **`register_id`** (snake_case), not
+> `registerId`; the camelCase spelling 400s with the required-property name in the body.
 
 **Checkpoint**: governance is dogfooded — the platform governs itself with its own workflow engine.
 
