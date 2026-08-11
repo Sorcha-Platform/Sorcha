@@ -150,8 +150,25 @@ confirm sealed-in-docket and observable on tiny.
 > **Found by testing against the serialiser production actually uses:** the Register Service configures no JSON options, so its minimal APIs use the web defaults and enums go on the wire as NUMBERS. The first version of the wire-contract test asserted against `SorchaJson.Options`, which this service does not use — it passed while the endpoint emitted `"status": 1`, which no typed client can read (it throws) and no status filter can match. The enums are now pinned on the type, not left to ambient host registration.
 > **The shared client DTO bound the old shape.** `GovernanceProposalSummary` still declared `txId` / `docketNumber` / `proposerDid`; System.Text.Json ignores what it cannot match, so it would have deserialised every proposal to a row of nulls — a list rendering "no proposals" against a register full of them. `GovernanceProposalWireContractTests` now derives the agreement by reflection over both types.
 - [X] T047 [US2] Enforce FR-024 — a governance change may never leave a register with no organisation able to govern it
-- [ ] T048 [US2] 🔴 **LIVE GATE** Three-organisation register under `Unanimous` on n1: not enacted at 2 of 3; enacted and sealed at 3 of 3; replicated to tiny
-- [ ] T049 [US2] 🔴 **LIVE GATE** SC-010 live: remove the sole outstanding approver → proposal `Invalidated`, **not** enacted
+- [~] T048 [US2] 🔴 **LIVE GATE** Three-organisation register under `Unanimous` on n1: not enacted at 2 of 3; enacted and sealed at 3 of 3; replicated to tiny — **governance half PASSED live on n1 2026-08-11; the replication clause is NOT verified and is not claimed.** Register `a17208cf16a2460b9f1b1d304b2e5263`, proposal `e439ae90…`. Sealed policy read back as `"quorumFormula":"Unanimous"` **before** trusting anything (under the default `StrictMajority` the threshold over three voters is 2, so 2-of-3 would enact and the whole gate would pass vacuously). Raised by an Admin so the Owner override could not apply. 2 of 3 → roster unchanged, head still genesis. 3 of 3 → roster 3→4 members, head moved, proposal reports `Enacted`. The enactment fired by itself from the `docket:confirmed` reaction — the harness submits no enactment.
+- [X] T049 [US2] 🔴 **LIVE GATE** SC-010 live: remove the sole outstanding approver → proposal `Invalidated`, **not** enacted — **PASSED live on n1 2026-08-11.** Register `6294841e0bcc46bcbbf217f1d9803b41`, victim proposal `9cf1102c…`, removal `66cbe46c…`. Victim blocked at 2 of 3; the dissenter then removed (a `Remove` excludes its target from the pool, which is why *that* proposal can reach unanimity while the victim cannot); roster fell to 2 members. **The attack was genuinely available at that moment** — 2 approvals collected, pool of 2, unanimity therefore 2 — and the victim still did not enact. It reports `Invalidated`, and a late approval is refused `409 roster-changed` rather than silently uncounted.
+
+> **Why T048's replication clause is outstanding, and what it is not.** The harness pointed at
+> `https://tiny.sorcha.dev`, **which does not exist** — tiny is the NAT'd node, SSH-only, no public
+> DNS — and polled inside a bare `catch { }`, so an unresolvable host and an unreplicated ledger
+> produced the identical verdict. The first run therefore reported a replication FAILURE having
+> observed nothing at all: the platform's own recurring seam shape, a fallback good enough to hide a
+> dead primary. Corrected to skip explicitly rather than report either way.
+>
+> The underlying claim was also wrong: **replication follows an explicit `full-replica` subscription
+> on the subscriber's Peer service** (`POST /api/registers/{id}/subscribe`), not advertisement. tiny
+> holds exactly three such subscriptions, every one reporting `FullyReplicated`, and was never
+> subscribed to a register this harness created seconds earlier — so there was nothing to observe.
+> **Nothing seen suggests replication is broken.** To finish the clause: subscribe tiny to
+> `a17208cf16a2460b9f1b1d304b2e5263` and compare roster heads. That call is service-tier and
+> `/api/service-auth/token` refused the compose-declared dev client (401), so it needs whatever
+> clients tiny's Tenant Service actually has registered — a provisioning step outside the governance
+> code path, left explicit rather than quietly dropped.
 
 **Checkpoint**: consortium governance works and cannot be subverted by roster manipulation.
 
