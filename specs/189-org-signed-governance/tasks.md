@@ -150,25 +150,28 @@ confirm sealed-in-docket and observable on tiny.
 > **Found by testing against the serialiser production actually uses:** the Register Service configures no JSON options, so its minimal APIs use the web defaults and enums go on the wire as NUMBERS. The first version of the wire-contract test asserted against `SorchaJson.Options`, which this service does not use — it passed while the endpoint emitted `"status": 1`, which no typed client can read (it throws) and no status filter can match. The enums are now pinned on the type, not left to ambient host registration.
 > **The shared client DTO bound the old shape.** `GovernanceProposalSummary` still declared `txId` / `docketNumber` / `proposerDid`; System.Text.Json ignores what it cannot match, so it would have deserialised every proposal to a row of nulls — a list rendering "no proposals" against a register full of them. `GovernanceProposalWireContractTests` now derives the agreement by reflection over both types.
 - [X] T047 [US2] Enforce FR-024 — a governance change may never leave a register with no organisation able to govern it
-- [~] T048 [US2] 🔴 **LIVE GATE** Three-organisation register under `Unanimous` on n1: not enacted at 2 of 3; enacted and sealed at 3 of 3; replicated to tiny — **governance half PASSED live on n1 2026-08-11; the replication clause is NOT verified and is not claimed.** Register `a17208cf16a2460b9f1b1d304b2e5263`, proposal `e439ae90…`. Sealed policy read back as `"quorumFormula":"Unanimous"` **before** trusting anything (under the default `StrictMajority` the threshold over three voters is 2, so 2-of-3 would enact and the whole gate would pass vacuously). Raised by an Admin so the Owner override could not apply. 2 of 3 → roster unchanged, head still genesis. 3 of 3 → roster 3→4 members, head moved, proposal reports `Enacted`. The enactment fired by itself from the `docket:confirmed` reaction — the harness submits no enactment.
+- [X] T048 [US2] 🔴 **LIVE GATE** Three-organisation register under `Unanimous` on n1: not enacted at 2 of 3; enacted and sealed at 3 of 3; replicated to tiny — **FULLY PASSED live 2026-08-11, replication included.** After subscribing tiny (`full-replica`), both nodes hold **byte-identical** ledgers for the register: 5 dockets with the same hashes in the same order, and the same 6 transaction ids — genesis `24c11ed7`, proposal `e439ae90`, all three approvals `ba6be751`/`5a14ce8e`/`4beec083`, and the enactment `f8702d6c`. Register `a17208cf16a2460b9f1b1d304b2e5263`, proposal `e439ae90…`. Sealed policy read back as `"quorumFormula":"Unanimous"` **before** trusting anything (under the default `StrictMajority` the threshold over three voters is 2, so 2-of-3 would enact and the whole gate would pass vacuously). Raised by an Admin so the Owner override could not apply. 2 of 3 → roster unchanged, head still genesis. 3 of 3 → roster 3→4 members, head moved, proposal reports `Enacted`. The enactment fired by itself from the `docket:confirmed` reaction — the harness submits no enactment.
 - [X] T049 [US2] 🔴 **LIVE GATE** SC-010 live: remove the sole outstanding approver → proposal `Invalidated`, **not** enacted — **PASSED live on n1 2026-08-11.** Register `6294841e0bcc46bcbbf217f1d9803b41`, victim proposal `9cf1102c…`, removal `66cbe46c…`. Victim blocked at 2 of 3; the dissenter then removed (a `Remove` excludes its target from the pool, which is why *that* proposal can reach unanimity while the victim cannot); roster fell to 2 members. **The attack was genuinely available at that moment** — 2 approvals collected, pool of 2, unanimity therefore 2 — and the victim still did not enact. It reports `Invalidated`, and a late approval is refused `409 roster-changed` rather than silently uncounted.
 
-> **Why T048's replication clause is outstanding, and what it is not.** The harness pointed at
-> `https://tiny.sorcha.dev`, **which does not exist** — tiny is the NAT'd node, SSH-only, no public
-> DNS — and polled inside a bare `catch { }`, so an unresolvable host and an unreplicated ledger
-> produced the identical verdict. The first run therefore reported a replication FAILURE having
-> observed nothing at all: the platform's own recurring seam shape, a fallback good enough to hide a
-> dead primary. Corrected to skip explicitly rather than report either way.
+> **The replication clause first reported a failure having observed nothing** — worth keeping,
+> because the mistake is the shape this feature keeps meeting. The harness pointed at
+> `https://tiny.sorcha.dev`, **which does not exist** (tiny is the NAT'd node, SSH-only, no public
+> DNS) and polled inside a bare `catch { }`, so an unresolvable host and an unreplicated ledger gave
+> the identical verdict: a fallback good enough to hide a dead primary.
 >
-> The underlying claim was also wrong: **replication follows an explicit `full-replica` subscription
-> on the subscriber's Peer service** (`POST /api/registers/{id}/subscribe`), not advertisement. tiny
-> holds exactly three such subscriptions, every one reporting `FullyReplicated`, and was never
-> subscribed to a register this harness created seconds earlier — so there was nothing to observe.
-> **Nothing seen suggests replication is broken.** To finish the clause: subscribe tiny to
-> `a17208cf16a2460b9f1b1d304b2e5263` and compare roster heads. That call is service-tier and
-> `/api/service-auth/token` refused the compose-declared dev client (401), so it needs whatever
-> clients tiny's Tenant Service actually has registered — a provisioning step outside the governance
-> code path, left explicit rather than quietly dropped.
+> The claim was wrong too. **Replication follows an explicit `full-replica` subscription on the
+> subscriber's Peer service** (`POST /api/registers/{id}/subscribe`, `RequireService`), not
+> advertisement — so a register created seconds earlier on n1 will never appear on tiny, and its
+> absence is not a defect. Once tiny was subscribed, replication completed within seconds and the two
+> ledgers matched exactly.
+>
+> ⚠ **The 401 that blocked this was a SCOPE mismatch, not a bad secret.** tiny's `ServicePrincipals`
+> table grants `service-blueprint` `{blueprints:read, blueprints:write, wallets:sign, register:write}`
+> — note **`register:write`, singular** — while `docker-compose.yml` asks that same principal for
+> `"wallets:sign registers:write blueprints:manage"`, **two of which no** principal holds. Requesting
+> a scope the principal lacks returns a bare 401 that reads exactly like a wrong secret. Worth an
+> issue in its own right: the compose-declared scopes and the seeded grants disagree on tiny.
+> `service-peer` + `peers:write` is a clean pairing and is what completed this gate.
 
 **Checkpoint**: consortium governance works and cannot be subverted by roster manipulation.
 
@@ -375,10 +378,10 @@ confirm sealed-in-docket and observable on tiny.
 - [X] T064 [P] Update `src/Services/Sorcha.Register.Service/README.md` — governance signing model, the slot-100 key, and why control transactions must never be signed by the node
 - [X] T065 [P] Update `docs/reference/API-DOCUMENTATION.md` with the approval endpoints and the corrected governance semantics
 - [X] T066 [P] Update `.claude/skills/sorcha-architecture/SKILL.md` with the governance cross-cutting pattern
-- [ ] T067 [P] Update `.specify/MASTER-TASKS.md` and `docs/reference/development-status.md`
-- [ ] T068 Record the R-006 limitation prominently (service principals can sign as any organisation, so approvals prove "the node was asked to use the key", not "the organisation approved") — this must not be described as solved
-- [ ] T069 Delete the throwaway probe registers on n1 (`c794c86c…`, `96c421c0…`, `6b0760aa…`) once no longer needed as evidence
-- [ ] T070 Confirm n1 is running a CI-built image rather than the locally-built `register-service:latest` currently deployed
+- [X] T067 [P] Update `.specify/MASTER-TASKS.md` and `docs/reference/development-status.md`
+- [X] T068 Record the R-006 limitation prominently (service principals can sign as any organisation, so approvals prove "the node was asked to use the key", not "the organisation approved") — this must not be described as solved. Recorded in **`docs/security-model.md` → Honest Gaps** (the published, reviewer-facing surface) and in the `sorcha-architecture` skill's F189 section, both stating plainly that it is **not solved**. **The live gates are themselves the demonstration:** T048 and T049 produced all three organisations' approvals *and their accountability blocks* from one `admin@sorcha.local` token, because that is all the platform requires. F189 narrowed the surface (R-014 external signing, FR-029 accountability, FR-032 per-node re-verification) without closing it — the named individual's key is custodied identically, so the block records who was *named*, not who consented. Issue #1380; closing it is the open key-custody question behind T083.
+- [ ] T069 Delete the throwaway probe registers on n1 (`c794c86c…`, `96c421c0…`, `6b0760aa…`) once no longer needed as evidence — **deliberately NOT done.** The task is conditional on the registers no longer being evidence, and they still are: they back gates recorded as passed, and the newer `a17208cf…` / `6294841e…` back T048/T049 including the cross-node comparison above. `DELETE /api/registers/{id}` exists and is owner-attested, so this is doable — but it is irreversible on a live node carrying the AIAS demo, and destroying the evidence for gates while the feature is still open is the wrong order. Do it as a deliberate sweep once US4 closes, and include the T048/T049/T057 registers in the same pass.
+- [X] T070 Confirm n1 is running a CI-built image rather than the locally-built `register-service:latest` currently deployed — **confirmed 2026-08-11.** Containers run `sorchadev/*:latest` (registry-pulled, not a bare local tag) and the gateway reports `info.version = 2.933.1`. The version is the decisive check, not the tag: `2.<run>.<attempt>` is CI-derived, whereas a local build stamps `2.0.0-dev` (CLAUDE.md §14).
 
 ---
 
@@ -499,7 +502,7 @@ indistinguishable symptom — which is exactly what happened on 2026-08-06.
 ### The signing protocol
 
 - [X] T076 [P] Implement `GET .../proposals/{proposalId}/signing-request` per contracts. **No digest field** (FR-028) — the client derives it.
-- [ ] T077 [P] Test: the signing request carries the full operation and no digest; a client-derived digest matches what the server verifies against.
+- [X] T077 [P] Test: the signing request carries the full operation and no digest; a client-derived digest matches what the server verifies against. `GovernanceSigningRequestContractTests` (7 tests). The load-bearing half is the **wire round trip**: the server serialises with `JsonSerializerOptions.Web` (this service configures no JSON options) and the client deserialises with Refit's web-shaped default, and a digest-bound property that does not survive that trip leaves the approver signing a subtly different operation. Nothing throws — the signature verifies against nothing and the refusal blames the approver rather than the field dropped in transit. Mutation-tested: `[JsonIgnore]` on `GovernanceSigningRequest.Operation` reds the seam test plus the carries-every-property test while the no-digest test stays green; adding a `StatementDigest` property reds **only** the no-digest test. NB a symmetric mutation proves nothing here — `[JsonIgnore]` on a `GovernanceOperation` property drops it from the canonical digest on *both* sides, so the digests still agree; the mutation has to break the wire without breaking the canonicalisation.
 - [X] T078 Implement submission verification: signature checked against the v2 statement rebuilt from the **stored** operation, not from anything the client sent.
 > **T078 found a gap the spec had not named.** Structural validation confirmed an authorisation named an individual and that a signature verified against the key it *supplied* — but nothing bound that key to the claimed `IndividualDid`. Anyone could have signed with their own key while naming a colleague as accountable: valid signature, false audit record, self-declared accountability. `did:sorcha:w:{address}` encodes the wallet address and an address derives from its public key, so the binding is checkable — `DetachedApprovalVerifier.VerifyKeyBelongsToDid` re-derives and compares, and no approval is accepted without it. Added as **FR-035**.
 - [X] T079 `authorisation` handling (R-017, supersedes the co-signature framing): verify it, bind it to the approving organisation, and treat it in the validator as **attestation metadata, not a roster claim** — otherwise it is rejected as "not on roster". Refuse the whole submission when invalid; never accept while discarding it (FR-032).
