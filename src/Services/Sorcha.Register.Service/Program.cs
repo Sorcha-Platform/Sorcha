@@ -2792,6 +2792,13 @@ governanceGroup.MapPost("/proposals/{proposalId}/approve", async (
             AuthorisationRefusalReason.Expired or AuthorisationRefusalReason.Revoked
                 => StatusCodes.Status409Conflict,
 
+            // T095: the delegated form is not available, because nothing can grant a delegation.
+            // 501 rather than the 422 default deliberately — the submission may be perfectly
+            // well-formed, and telling an integrator their payload is unprocessable would send them
+            // looking for a fault in it that isn't there.
+            AuthorisationRefusalReason.DelegationNotAvailable
+                => StatusCodes.Status501NotImplemented,
+
             // Everything else is an authorisation that does not hold together.
             _ => StatusCodes.Status422UnprocessableEntity
         };

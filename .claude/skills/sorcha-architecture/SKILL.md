@@ -2749,6 +2749,33 @@ fixes it.
 counts two approvals while appearing to count three. Assert the expected count before comparing, or
 the test passes vacuously.
 
+### Delegated approvals are refused — the grant path does not exist (T095)
+
+`AuthorisationKind.Delegated` fails closed with `AuthorisationRefusalReason.DelegationNotAvailable`
+(**501**, not 422 — the submission may be perfectly well-formed). Nothing on the platform can
+**grant** a delegation: `GovernanceDelegation` is carried by a submission and verified by the
+validator, and issued by nothing.
+
+**"No granting path" did not mean unreachable, and that gap was the hole.** A hand-crafted submission
+needs no UI. The delegated path's cryptography is sound — the grant must be signed by a key genuinely
+belonging to the individual named as granting it, it empowers exactly one approver key, and scope,
+expiry and revocation are enforced. What nothing checks is whether that individual had any
+**authority** to grant: no roster check, no Owner check, not even organisational affiliation. It does
+not escalate authority (the org signature is still required, so it is bounded by R-006 above) but it
+degrades the accountability record to a self-assertion, which is what FR-029 exists to prevent.
+
+**The verification code is kept, not deleted** — it is correct, covered, and a real granting path
+needs exactly it. The gate is a defaulted `allowDelegated` parameter on the shared
+`GovernanceAuthorisationValidator.Validate` rather than a constant, so the delegation tests keep
+running and opt in explicitly. Production reaches the validator through **one** call site
+(`DetachedApprovalVerifier`) which never passes it. **Lift the refusal in the same change that adds
+granting — flip the default, don't spread the argument through callers.**
+
+⚠ **T096 (interactive signing windows) is closed as not applicable — its premise is wrong.** Nothing
+expires mid-review. The 5 minutes is `RegisterCreationOrchestrator._pendingExpirationTime`, which
+bounds register *creation*; a signing request's `ExpiresAt` is the **proposal's** expiry, 7 days by
+default. There is no window to extend, and it never blocked T083.
+
 ### Where each quorum rule is actually enforced (T033-T038)
 
 Three of the six US2 properties are enforced somewhere other than the obvious place, and a test
