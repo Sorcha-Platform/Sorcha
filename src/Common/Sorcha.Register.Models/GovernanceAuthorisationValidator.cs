@@ -37,6 +37,37 @@ public enum AuthorisationRefusalReason
     Revoked,
 
     /// <summary>
+    /// The delegated form is refused outright: nothing on the platform can GRANT a delegation, so
+    /// no delegation presented to it can have been legitimately issued (T095 / R-023).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Verifiable is not the same as reachable, and the gap between them was the hole.</b> Every
+    /// cryptographic check below this one is sound — the delegation must be signed by a key that
+    /// genuinely belongs to the individual named as granting it, it empowers exactly one approver
+    /// key, and scope, expiry and revocation are all enforced. What nothing checks is whether that
+    /// individual had any <i>authority</i> to grant it: there is no roster check, no Owner check, not
+    /// even a test of organisational affiliation. R-023 says granting is Owner-only; no code enforces
+    /// it, because there is no granting path to enforce it in.
+    /// </para>
+    /// <para>
+    /// The absence of a granting path does <b>not</b> make the delegated form unreachable — a
+    /// hand-crafted submission needs no UI. Anyone able to produce the organisation's signature plus
+    /// a wallet key of their own could name themselves as the empowering individual and have a
+    /// machine approve in their name. That does not escalate authority (the organisation's signature
+    /// is still required, so it is bounded by the R-006 custody limitation), but it degrades the
+    /// accountability record from "a named individual consented" to "somebody asserted they were
+    /// entitled to delegate" — which is the one thing FR-029 exists to prevent.
+    /// </para>
+    /// <para>
+    /// So the form is refused until granting exists. The verification code below is kept rather than
+    /// deleted: it is correct and tested, and a real granting path needs exactly it. Remove this
+    /// refusal in the same change that adds granting — not before.
+    /// </para>
+    /// </remarks>
+    DelegationNotAvailable,
+
+    /// <summary>
     /// A signature was present and well-formed but did not verify against the key offered with it.
     /// </summary>
     /// <remarks>
@@ -111,13 +142,14 @@ public static class GovernanceAuthorisationValidator
         GovernanceOperation operation,
         GovernanceApprovalSubmission submission,
         DateTimeOffset now,
-        Func<string, bool>? isRevoked = null)
+        Func<string, bool>? isRevoked = null,
+        bool allowDelegated = false)
     {
         ArgumentNullException.ThrowIfNull(submission);
 
         return Validate(
             registerId, operation, submission.ApproverDid, submission.IsApproval,
-            submission.Authorisation, now, isRevoked);
+            submission.Authorisation, now, isRevoked, allowDelegated);
     }
 
     /// <summary>
@@ -141,6 +173,27 @@ public static class GovernanceAuthorisationValidator
     /// Whether a delegation id has been revoked. Supplied by the caller because revocation lives on
     /// the ledger — the answer must come from sealed content so every node folds identically.
     /// </param>
+    /// <param name="allowDelegated">
+    /// Whether the delegated form may be considered at all. <b>The default is the policy</b>
+    /// (T095 / R-023): there is no way to GRANT a delegation, so a delegation cannot have been
+    /// legitimately issued and is refused as
+    /// <see cref="AuthorisationRefusalReason.DelegationNotAvailable"/>.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// <b>On <paramref name="allowDelegated"/> being a parameter rather than a constant.</b> The
+    /// delegation machinery below is correct and covered by tests that must keep running, so a hard
+    /// constant would have forced either deleting that coverage or deleting the code it covers. A
+    /// defaulted parameter keeps both: production reaches this method through exactly one call site
+    /// (<c>DetachedApprovalVerifier</c>) which never passes it, so the refusal is unconditional in
+    /// practice, while the tests that pin scope, expiry, revocation and key-binding opt in
+    /// explicitly and remain honest about what they exercise.
+    /// </para>
+    /// <para>
+    /// Any production caller passing <c>true</c> is therefore a bug, and a greppable one. When
+    /// granting lands, flip the default here rather than spreading the argument through callers.
+    /// </para>
+    /// </remarks>
     public static AuthorisationValidationResult Validate(
         string registerId,
         GovernanceOperation operation,
@@ -148,7 +201,8 @@ public static class GovernanceAuthorisationValidator
         bool isApproval,
         ApprovalAuthorisation? authorisation,
         DateTimeOffset now,
-        Func<string, bool>? isRevoked = null)
+        Func<string, bool>? isRevoked = null,
+        bool allowDelegated = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
         ArgumentNullException.ThrowIfNull(operation);
@@ -182,6 +236,18 @@ public static class GovernanceAuthorisationValidator
             return auth.Delegation is not null
                 ? AuthorisationValidationResult.Refuse(AuthorisationRefusalReason.KindMismatch)
                 : new AuthorisationValidationResult(true, AuthorisationRefusalReason.None, auth.IndividualDid, checks);
+        }
+
+        // T095 / R-023 — FAIL CLOSED. Nothing on the platform can grant a delegation, so a delegation
+        // arriving here cannot have been legitimately issued, and nothing constrains who may claim to
+        // have issued it. Refused BEFORE any of the checks below, so an unreachable-but-verifiable
+        // path cannot be entered by hand-crafting a submission.
+        //
+        // Deliberately not a deletion: everything below is correct and a real granting path needs it
+        // unchanged. Lift this refusal in the same change that adds granting.
+        if (!allowDelegated)
+        {
+            return AuthorisationValidationResult.Refuse(AuthorisationRefusalReason.DelegationNotAvailable);
         }
 
         var delegation = auth.Delegation;

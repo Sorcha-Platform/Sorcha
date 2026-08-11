@@ -70,12 +70,18 @@ public sealed class GovernanceAuthorisationValidatorTests
         },
     };
 
+    /// <summary>
+    /// Opts in to the delegated form (T095). Production never does — the default refuses it, because
+    /// nothing can GRANT a delegation — but the machinery below it is correct and stays covered, so
+    /// these tests say plainly that they are exercising a form the platform will not currently accept.
+    /// <see cref="TheDelegatedForm_IsRefusedByDefault"/> pins the default itself.
+    /// </summary>
     private static AuthorisationValidationResult Validate(
         GovernanceApprovalSubmission submission,
         GovernanceOperation? operation = null,
         Func<string, bool>? isRevoked = null)
         => GovernanceAuthorisationValidator.Validate(
-            RegisterId, operation ?? Operation(), submission, Now, isRevoked);
+            RegisterId, operation ?? Operation(), submission, Now, isRevoked, allowDelegated: true);
 
     // ---- FR-029: no approval reaches the ledger without an accountable person ----
 
@@ -182,6 +188,95 @@ public sealed class GovernanceAuthorisationValidatorTests
         submission.Authorisation!.PublicKey = "T1RIRVJLRVk=";
 
         Validate(submission).Reason.Should().Be(AuthorisationRefusalReason.ApproverKeyMismatch);
+    }
+
+    // ---- T095 / R-023: the delegated form is refused until granting exists -----------------------
+
+    /// <summary>
+    /// The default refuses a delegated approval outright, however well-formed it is.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Nothing on the platform can <b>grant</b> a delegation — <c>GovernanceDelegation</c> is carried
+    /// by a submission and verified by the validator, and issued by nothing — so a delegation
+    /// arriving here cannot have been legitimately issued. Worse, nothing constrains who may claim to
+    /// have issued one: the grant is checked to be signed by a key genuinely belonging to the named
+    /// individual, but that individual is never matched against the roster, an Owner role, or even
+    /// the organisation. R-023 says granting is Owner-only; there was no granting path to enforce it
+    /// in.
+    /// </para>
+    /// <para>
+    /// "No granting path" is not the same as "unreachable" — a hand-crafted submission needs no UI.
+    /// So the form fails closed rather than being left as a self-assertable accountability record.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheDelegatedForm_IsRefusedByDefault()
+    {
+        var submission = Delegated(Delegation());
+
+        var result = GovernanceAuthorisationValidator.Validate(
+            RegisterId, Operation(), submission, Now);
+
+        result.IsAcceptable.Should().BeFalse();
+        result.Reason.Should().Be(AuthorisationRefusalReason.DelegationNotAvailable);
+        result.AccountableIndividualDid.Should().BeNull(
+            "a refused approval resolves to nobody — it must not leave a name behind it");
+    }
+
+    /// <summary>
+    /// The refusal comes BEFORE any delegation check, so nothing about the delegation's contents can
+    /// change the answer.
+    /// </summary>
+    /// <remarks>
+    /// A delegation that is expired, out of scope and revoked must be refused for the same reason as
+    /// a perfect one. If the ordering were reversed, a caller could infer which of their fields the
+    /// platform found acceptable — and, once granting lands, the more specific reason would be the
+    /// honest one, so the ordering has to be deliberate rather than incidental.
+    /// </remarks>
+    [Fact]
+    public void TheRefusal_PrecedesEveryDelegationCheck()
+    {
+        var rotten = Delegation();
+        rotten.ExpiresAt = Now.AddYears(-1);
+        rotten.Scope = [GovernanceOperationType.Transfer];      // not the operation under test
+        rotten.OrganisationDid = "did:sorcha:w:ws11qsomebodyelse";
+
+        var result = GovernanceAuthorisationValidator.Validate(
+            RegisterId, Operation(), Delegated(rotten), Now, isRevoked: _ => true);
+
+        result.Reason.Should().Be(AuthorisationRefusalReason.DelegationNotAvailable,
+            "the form is unavailable, which is decided before anything about this particular "
+            + "delegation is considered");
+    }
+
+    /// <summary>
+    /// The refusal is confined to the delegated form — direct approvals are unaffected.
+    /// </summary>
+    /// <remarks>
+    /// Without this, failing closed would be indistinguishable from having broken accountability
+    /// altogether, and every governance approval on the platform would stop counting.
+    /// </remarks>
+    [Fact]
+    public void ADirectApproval_IsUnaffectedByTheRefusal()
+    {
+        var result = GovernanceAuthorisationValidator.Validate(
+            RegisterId, Operation(), new GovernanceApprovalSubmission
+            {
+                ApproverDid = OrgDid,
+                Authorisation = new ApprovalAuthorisation
+                {
+                    Kind = AuthorisationKind.Direct,
+                    IndividualDid = PersonDid,
+                    Signature = "UEVSU0lH",
+                    PublicKey = "UEVSS0VZ",
+                    AuthMethod = ApprovalAuthMethod.HardwareBacked,
+                },
+            }, Now);
+
+        result.IsAcceptable.Should().BeTrue(
+            "the direct form is how every approval on the platform is currently made");
+        result.Reason.Should().Be(AuthorisationRefusalReason.None);
     }
 
     [Fact]

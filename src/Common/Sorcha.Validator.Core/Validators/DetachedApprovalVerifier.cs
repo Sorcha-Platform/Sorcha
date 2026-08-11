@@ -28,7 +28,8 @@ public interface IDetachedApprovalVerifier
         GovernanceApprovalSubmission submission,
         DateTimeOffset now,
         Func<string, bool>? isRevoked = null,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        bool allowDelegated = false);
 
     /// <summary>
     /// Verifies the accountability block of an approval read back from the ledger.
@@ -56,7 +57,8 @@ public interface IDetachedApprovalVerifier
         ApprovalAuthorisation? authorisation,
         DateTimeOffset now,
         Func<string, bool>? isRevoked = null,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        bool allowDelegated = false);
 }
 
 /// <summary>
@@ -114,13 +116,14 @@ public sealed class DetachedApprovalVerifier : IDetachedApprovalVerifier
         GovernanceApprovalSubmission submission,
         DateTimeOffset now,
         Func<string, bool>? isRevoked = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool allowDelegated = false)
     {
         ArgumentNullException.ThrowIfNull(submission);
 
         return VerifyAuthorisationAsync(
             registerId, operation, submission.ApproverDid, submission.IsApproval,
-            submission.Authorisation, now, isRevoked, ct);
+            submission.Authorisation, now, isRevoked, ct, allowDelegated);
     }
 
     /// <inheritdoc />
@@ -132,13 +135,16 @@ public sealed class DetachedApprovalVerifier : IDetachedApprovalVerifier
         ApprovalAuthorisation? authorisation,
         DateTimeOffset now,
         Func<string, bool>? isRevoked = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool allowDelegated = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
         ArgumentNullException.ThrowIfNull(operation);
 
+        // allowDelegated is threaded through rather than decided here so ONE place states the policy
+        // (T095). Production never passes it; see the remarks on GovernanceAuthorisationValidator.Validate.
         var structural = GovernanceAuthorisationValidator.Validate(
-            registerId, operation, approverDid, isApproval, authorisation, now, isRevoked);
+            registerId, operation, approverDid, isApproval, authorisation, now, isRevoked, allowDelegated);
 
         if (!structural.IsAcceptable)
         {
