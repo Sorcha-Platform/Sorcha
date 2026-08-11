@@ -279,6 +279,79 @@ public class GovernanceRosterServiceTests
         result.IsOwnerOverride.Should().BeFalse();
     }
 
+    /// <summary>
+    /// T037 / FR-010 — a Transfer never takes the Owner override, and the SOLE-OWNER register is
+    /// where that matters.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="ValidateQuorumAsync_TransferByOwner_NoOwnerOverride"/> uses a two-member roster,
+    /// where quorum would refuse a zero-approval Transfer anyway — so it cannot distinguish "the
+    /// override was withheld" from "there simply were not enough votes". A sole-owner register is
+    /// the one shape in which the override is the ONLY thing standing between zero approvals and a
+    /// register changing hands, because the ordinary threshold over a pool of one is one.
+    /// </para>
+    /// <para>
+    /// Handing a register to somebody else must be an explicit, recorded act. An owner who can do it
+    /// with no approval transaction at all leaves nothing on the ledger to point at afterwards.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ValidateQuorumAsync_TransferBySoleOwner_IsNotWavedThroughByTheOverride()
+    {
+        var roster = CreateRoster(("did:sorcha:w:owner1", RegisterRole.Owner));
+        SetupControlTransactions(CreateControlTransaction("tx1", roster));
+
+        var transfer = new GovernanceOperation
+        {
+            OperationType = GovernanceOperationType.Transfer,
+            ProposerDid = "did:sorcha:w:owner1",
+            TargetDid = "did:sorcha:w:admin1",
+            TargetRole = RegisterRole.Owner
+        };
+
+        var result = await _service.ValidateQuorumAsync(TestRegisterId, transfer, []);
+
+        result.IsOwnerOverride.Should().BeFalse();
+        result.IsQuorumMet.Should().BeFalse(
+            "a Transfer with no approval on the ledger must never be authorised, however few "
+            + "organisations there are to ask");
+        result.VotesRequired.Should().Be(1);
+        result.VotesReceived.Should().Be(0);
+    }
+
+    /// <summary>
+    /// The counterfactual for T037, executed: the SAME sole owner proposing an <c>Add</c> DOES take
+    /// the override with no approvals at all.
+    /// </summary>
+    /// <remarks>
+    /// Without this the test above would pass just as well if the override had been removed
+    /// altogether, or had never applied to a one-member roster — proving something about sole-owner
+    /// registers in general rather than about <c>Transfer</c> in particular. The two together are
+    /// what pin FR-010 to the operation type.
+    /// </remarks>
+    [Fact]
+    public async Task ValidateQuorumAsync_AddBySoleOwner_DoesTakeTheOverride()
+    {
+        var roster = CreateRoster(("did:sorcha:w:owner1", RegisterRole.Owner));
+        SetupControlTransactions(CreateControlTransaction("tx1", roster));
+
+        var add = new GovernanceOperation
+        {
+            OperationType = GovernanceOperationType.Add,
+            ProposerDid = "did:sorcha:w:owner1",
+            TargetDid = "did:sorcha:w:newadmin",
+            TargetRole = RegisterRole.Admin
+        };
+
+        var result = await _service.ValidateQuorumAsync(TestRegisterId, add, []);
+
+        result.IsOwnerOverride.Should().BeTrue(
+            "the override is live on this exact roster, so the Transfer refusal above is the "
+            + "operation-type carve-out and nothing else");
+        result.IsQuorumMet.Should().BeTrue();
+    }
+
     [Fact]
     public async Task ValidateQuorumAsync_RejectionsNotCounted()
     {

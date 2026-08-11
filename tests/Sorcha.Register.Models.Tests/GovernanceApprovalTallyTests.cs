@@ -94,6 +94,52 @@ public sealed class GovernanceApprovalTallyTests
             .Which.Refusal.Should().Be(ApprovalTallyRefusal.NotOnRoster);
     }
 
+    /// <summary>
+    /// T033 — the pool is the proposal's FROZEN SNAPSHOT, not the register's roster today.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="AnApprovalFromSomebodyNotOnTheRoster_IsExcluded"/> cannot make this claim: its
+    /// stranger is on neither roster, so it passes identically whichever of the two
+    /// <see cref="GovernanceApprovalTally.Prepare"/> were handed. The distinction is only observable
+    /// for an organisation that IS on the register's roster today and was NOT on the one the proposal
+    /// was raised against — which is exactly what joining a register mid-vote produces.
+    /// </para>
+    /// <para>
+    /// That parameter <i>is</i> the snapshot. Counting against the current roster instead would let a
+    /// proposal be swung by adding organisations after it was raised, with every added approval
+    /// looking perfectly legitimate.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AnApprovalFromAnOrganisationThatJoinedAfterTheProposalWasRaised_DoesNotCount()
+    {
+        const string LatecomerDid = "did:sorcha:w:ws11qlatecomer";
+
+        // The register as it stands NOW: the latecomer has since been added as an Admin.
+        var current = Roster();
+        current.Attestations.Add(Attestation(LatecomerDid, RegisterRole.Admin, Key(5)));
+
+        // Counted against the roster the proposal was RAISED against — the snapshot.
+        var againstSnapshot = GovernanceApprovalTally.Prepare(
+            RegisterId, Operation(), Roster(), [Approval(LatecomerDid, Key(5))]);
+
+        againstSnapshot.Checks.Should().BeEmpty(
+            "a proposal is judged against the pool it was raised against, or joining a register "
+            + "mid-vote would be a way to swing one");
+        againstSnapshot.Excluded.Should().ContainSingle()
+            .Which.Refusal.Should().Be(ApprovalTallyRefusal.NotOnRoster);
+
+        // The counterfactual, executed. Without it this would pass just as well against an approval
+        // that was malformed in some way excluding it from EVERY roster — and would then be
+        // asserting nothing about snapshots at all.
+        GovernanceApprovalTally
+            .Prepare(RegisterId, Operation(), current, [Approval(LatecomerDid, Key(5))])
+            .Checks.Should().ContainSingle(
+                "the very same approval counts against the roster the latecomer is actually on, so "
+                + "it is the snapshot that excluded it");
+    }
+
     [Fact]
     public void AnApprovalFromANonVotingRole_IsExcluded()
     {

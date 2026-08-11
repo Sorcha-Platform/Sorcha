@@ -2748,3 +2748,49 @@ fixes it.
 ⚠ **`RegisterRole.Auditor` is non-voting.** A tally fixture built on the shared roster silently
 counts two approvals while appearing to count three. Assert the expected count before comparing, or
 the test passes vacuously.
+
+### Where each quorum rule is actually enforced (T033-T038)
+
+Three of the six US2 properties are enforced somewhere other than the obvious place, and a test
+written against the obvious place passes while proving nothing.
+
+**`QuorumFormulaAtRaise` is recorded, never read.** `ValidateQuorumAsync` takes the formula from
+`controlRecord.RegisterPolicy?.Governance?.QuorumFormula` on the **current** roster — setting
+`operation.QuorumFormulaAtRaise = Unanimous` in a fixture is decorative and changes no arithmetic.
+That is not the drift it looks like: a policy change is itself a control transaction, so it moves the
+roster head and FR-011b invalidates every open proposal underneath it. The formula therefore cannot
+change beneath a live proposal, which is why reading it from the current roster is safe.
+
+**Expiry dies at the Validator, not at the enactment gate.** `GovernanceEnactmentService.TryEnactAsync`
+checks the roster snapshot but deliberately checks **no window**; the refusal comes from
+`GovernanceRosterService.ValidateProposal` → `VAL_PERM_004` inside `RightsEnforcementService`. The
+approve endpoint's `409 expired` only stops a late approval being *raised on that node*, and a
+transaction can reach a validator without passing through any particular node's endpoint. Test the
+Validator, and route `ValidateProposal` through the **real** rule — a mock stubbed to
+`Failure("Proposal has expired")` asserts only that the test can return its own string, and survives
+the rule being deleted.
+
+**The tally is handed the CURRENT roster, and that is correct.**
+`GovernanceEnactmentService.CollectStructurallyEligibleVotesAsync` passes
+`GetCurrentRosterAsync(...).ControlRecord` into `GovernanceApprovalTally.Prepare`, whose parameter is
+documented as "the roster the proposal was raised against". Not a bug: the FR-011b comparison earlier
+in `TryEnactAsync` returns `NotEnactable` unless snapshot == head, so by the time the tally runs the
+two are provably the same object-shape. Do not "fix" this by threading a separate snapshot through —
+the guard is what makes them identical, and a second roster parameter would create a way for them to
+differ.
+
+⚠ **SC-010's test was green and proved half of what it claimed.**
+`RemovingTheLastOutstandingApprover_InvalidatesRatherThanEnacts` asserted the guard fired
+(`VAL_PERM_009`) and that `ValidateQuorumAsync` was never reached — but stated the *attack* only in a
+comment. Nothing executed the counterfactual, so the test would have passed identically had the attack
+never been available: a green tick asserting a known attack is defended, when nothing checked it was
+ever possible. The fix is to run the arithmetic the guard prevented —
+`before.GetQuorumThreshold(formula: Unanimous)` is 2 against 1 collected approval, `after` falls to
+`<= collected` — so removal genuinely converts a blocked change into an approved one and the guard is
+demonstrably load-bearing. **Any "the check prevents X" test needs X executed, not described.**
+
+Mutation-test these specifically: flooring `Unanimous` at 2 must red **only** the counterfactual
+assertion, and removing the `Transfer` carve-out must red the sole-owner Transfer test while its
+`Add` sibling stays green. A `Transfer` test built on a two-member roster cannot separate "the
+override was withheld" from "there were not enough votes" — the sole-owner roster is the only shape
+where the override is the sole thing between zero approvals and a register changing hands.
