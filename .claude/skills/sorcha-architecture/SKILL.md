@@ -2749,6 +2749,26 @@ fixes it.
 counts two approvals while appearing to count three. Assert the expected count before comparing, or
 the test passes vacuously.
 
+### ⚠ R-006 — an approval proves custody, not organisational intent. NOT SOLVED.
+
+**Do not describe register governance as proving that an organisation approved something.** An
+organisation's governance key is its slot-100 key, derived from a wallet in the platform's own
+custody, so any principal able to call the Wallet Service's signing endpoint for that wallet can
+produce that organisation's approval. A sealed approval proves *the node was asked to use the key*.
+Worst under `Unanimous`, where one privileged principal satisfies a whole consortium.
+
+**The live gates are themselves the demonstration.** T048 and T049 produced all three organisations'
+approvals — and their accountability blocks — from a single `admin@sorcha.local` token, because that
+is all the platform requires. The governance mechanics under test are sound; what the signatures
+attest is narrower than it reads.
+
+F189 narrowed the surface without closing it: signing left the server's automatic path (R-014), every
+counted approval carries an individual accountability block (FR-029), and both signatures are
+re-verified on every node (FR-032). But the individual's key is custodied identically, so the block
+records *who was named*, not who consented. Closing it needs the organisation's governance key held
+outside the platform — the open key-custody question behind T083. Issue **#1380**; stated in
+`docs/security-model.md` → Honest Gaps.
+
 ### Where each quorum rule is actually enforced (T033-T038)
 
 Three of the six US2 properties are enforced somewhere other than the obvious place, and a test

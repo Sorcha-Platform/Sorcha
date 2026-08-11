@@ -6,7 +6,7 @@ standards:
   - HAIP 1.0
   - W3C Verifiable Credentials Data Model 2.0
   - OAuth 2.0
-last_updated: 2026-06-10
+last_updated: 2026-08-11
 ---
 
 # Sorcha Security Model
@@ -69,7 +69,8 @@ Naming what is *not* implemented, with the same precision as what is:
 - **SLH-DSA (FIPS 205)** — the stateless hash-based signature, NIST's PQC algorithm-diversity primitive. Not implemented. The case for adding it is CNSA 2.0 alignment and crypto-agility insurance against a future ML-DSA break. `STANDARDS.md` rows it as `planned`.
 - **BBS+ Signatures** — IETF draft, the zero-knowledge predicate-proof mechanism for selective disclosure. Not implemented. Today's selective disclosure is *show or hide* (a recipient sees the field or doesn't), not *prove a predicate over a hidden field* (a recipient sees that age > 18 without seeing the age). The case for adding it is HAIP-aligned ZK proofs once the standards land.
 - **mTLS at internal service hops** — the constitutional principle is in place. Wire enforcement is on the roadmap. Today, internal hops are JWT-authenticated but not mutually-TLS-authenticated. This is a defence-in-depth gap, not a cryptographic-evidence gap — the wallet signatures and docket signatures remain verifiable regardless of transport.
-- **mdoc / ISO 18013-5** — credential format used by mobile driving licences. Not implemented. Roadmap item; SD-JWT VC covers the same ground for HAIP-flow credentials today.
+- **Register governance approvals prove custody, not organisational intent** — this is the sharpest gap on this list, and it is **not solved**. An organisation's governance key is its slot-100 (`sorcha:register-attestation`) key, derived from a wallet held in the platform's own custody. Any principal authorised to call the Wallet Service's signing endpoint for that wallet can therefore produce that organisation's approval signature. A sealed approval proves *the node was asked to use the organisation's key* — it does not prove the organisation decided anything. The exposure is worst under a `Unanimous` quorum, where a single sufficiently-privileged principal can satisfy an entire consortium. Feature 189 narrowed the surface without closing it: approvals are now produced outside the server's automatic path rather than manufactured by it (R-014), every counted approval must carry an accountability block naming a responsible individual (FR-029), and both signatures are re-verified independently on every node (FR-032). But the named individual's key is custodied the same way, so the accountability block records *who was named*, not who consented. Closing this needs the organisation's governance key held outside the platform — the open key-custody question in `specs/189-org-signed-governance/` (T083), tracked as issue #1380. Until then, treat a register's governance trail as an audit record of key use, not as non-repudiable organisational consent.
+- **mdoc / ISO 18013-5** — implemented (`Sorcha.Mdoc`, Features 135 and 185): issuance and online OpenID4VP verification, plus proximity presentation over BLE with `deviceMac`/`COSE_Mac0` verified against the standard's own Annex D vectors. The remaining gap is **interoperability evidence**, not capability: the bar to date is Sorcha's own devices plus those reference vectors, not a certified third-party reader, and `MdocIssuer` still uses a flat namespace equal to the docType where a real mDL separates the two.
 - **DID method registration** — `did:sorcha:org:` and `did:sorcha:holder:` are implemented but not registered with the W3C DID method registry. Cross-platform DID resolution requires bilateral agreement; this is a network-effect gap, not a security one.
 
 ## Security Audits and Review Cycle
