@@ -904,6 +904,120 @@ public class RightsEnforcementServiceTests
         _rosterServiceMock.Verify(r => r.ValidateQuorumAsync(
             It.IsAny<string>(), It.IsAny<GovernanceOperation>(),
             It.IsAny<List<ApprovalSignature>>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // ---- T036: the counterfactual, executed ------------------------------------------------
+        //
+        // Everything above proves a check FIRED. It does not prove the check is what saves us, and
+        // that is the whole of SC-010's claim — so run the arithmetic the guard prevented, on the
+        // same two rosters, and watch the requirement fall THROUGH the approvals already collected.
+        //
+        // Without this the test passes just as well if unanimity over a shrunken pool happened to
+        // stay unreachable for some unrelated reason: a green tick asserting a known attack is
+        // defended, when nothing checked that the attack was ever available.
+        var collected = operation.ApprovalSignatures!.Count(a => a.IsApproval);
+        collected.Should().Be(1, "one organisation approved and one had not — the shape SC-010 is about");
+
+        var beforeRemoval = CreateRoster(
+            (OwnerPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"),
+            (AdminPublicKey, RegisterRole.Admin, "did:sorcha:w:dissenter")).ControlRecord;
+
+        beforeRemoval.GetQuorumThreshold(formula: QuorumFormula.Unanimous).Should().Be(2,
+            "unanimity over two organisations needs both, so the collected approval was one short");
+
+        rosterAfterRemoval.ControlRecord.GetQuorumThreshold(formula: QuorumFormula.Unanimous)
+            .Should().BeLessThanOrEqualTo(collected,
+                "removing the dissenter drops unanimity to exactly the approvals already collected — "
+                + "so a re-count against the current roster would ENACT the change that organisation "
+                + "was blocking. VAL_PERM_009 is the only thing preventing it");
+    }
+
+    /// <summary>
+    /// Routes <c>ValidateProposal</c> through the REAL rule instead of a canned verdict.
+    /// </summary>
+    /// <remarks>
+    /// Stubbing it to <c>Failure("Proposal has expired")</c> would assert only that the test can
+    /// return a string it wrote itself — the expiry verdict has to come from production code, or the
+    /// test survives the rule being deleted. <c>ValidateProposal</c> is pure over (roster, operation)
+    /// and touches no repository, so a real instance over an inert one is safe here.
+    /// </remarks>
+    private void UseTheRealProposalRules()
+    {
+        var real = new GovernanceRosterService(
+            Mock.Of<Sorcha.Register.Core.Storage.IRegisterRepository>(),
+            Mock.Of<ILogger<GovernanceRosterService>>());
+
+        _rosterServiceMock
+            .Setup(r => r.ValidateProposal(It.IsAny<AdminRoster>(), It.IsAny<GovernanceOperation>()))
+            .Returns((AdminRoster ro, GovernanceOperation op) => real.ValidateProposal(ro, op));
+    }
+
+    /// <summary>
+    /// T038 / FR-012 — a proposal past its window is refused by the Validator, so no approval
+    /// arriving late can enact it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The Validator is the load-bearing gate, not the approve endpoint. The endpoint's 409 keeps a
+    /// late approval from being <i>raised</i>, but a transaction can reach a validator without
+    /// passing through any particular node's endpoint — and every node must reach the same verdict
+    /// on a sealed enactment. <c>GovernanceEnactmentService.TryEnactAsync</c> deliberately checks no
+    /// window of its own; this is where an expired proposal actually dies.
+    /// </para>
+    /// <para>
+    /// The window is compared against the ambient clock inside <c>ValidateProposal</c>, so the
+    /// fixture uses a day-wide margin rather than a boundary value.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AProposalPastItsWindow_IsRefusedByTheValidator()
+    {
+        var roster = RosterWithControlTx("control-tx-1",
+            (OwnerPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"),
+            (AdminPublicKey, RegisterRole.Admin, "did:sorcha:w:admin1"));
+        _rosterServiceMock.Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+        UseTheRealProposalRules();
+
+        var operation = AddOperationWithApprovals(("did:sorcha:w:owner1", true));
+        operation.RosterSnapshotId = "control-tx-1";        // not invalidated — expiry is the reason
+        operation.ExpiresAt = DateTimeOffset.UtcNow.AddDays(-1);
+
+        var result = await _service.ValidateGovernanceRightsAsync(
+            CreateGovernanceTransaction(OwnerPublicKey, operation));
+
+        result.IsValid.Should().BeFalse(
+            "an approval collected after the window closed authorises nothing");
+        result.Errors.Should().Contain(
+            e => e.Code == "VAL_PERM_004" && e.Message.Contains("expired"),
+            "the refusal must name the window, not read as some unrelated permission failure");
+    }
+
+    /// <summary>
+    /// The counterfactual for T038: the same operation inside its window is not refused for expiry.
+    /// </summary>
+    /// <remarks>
+    /// Expiry that refuses everything is indistinguishable from expiry that works, right up until a
+    /// register cannot be governed at all. This is also the guard against the <c>default</c> trap —
+    /// treating an unset window as a date at the epoch would report every proposal as expired.
+    /// </remarks>
+    [Fact]
+    public async Task AProposalInsideItsWindow_IsNotRefusedForExpiry()
+    {
+        var roster = RosterWithControlTx("control-tx-1",
+            (OwnerPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"),
+            (AdminPublicKey, RegisterRole.Admin, "did:sorcha:w:admin1"));
+        _rosterServiceMock.Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+        UseTheRealProposalRules();
+
+        var operation = AddOperationWithApprovals(("did:sorcha:w:owner1", true));
+        operation.RosterSnapshotId = "control-tx-1";
+        operation.ExpiresAt = DateTimeOffset.UtcNow.AddDays(1);
+
+        var result = await _service.ValidateGovernanceRightsAsync(
+            CreateGovernanceTransaction(OwnerPublicKey, operation));
+
+        result.Errors.Should().NotContain(e => e.Message.Contains("expired"));
     }
 
     [Fact] // FR-024
