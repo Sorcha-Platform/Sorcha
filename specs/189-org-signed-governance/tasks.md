@@ -168,7 +168,7 @@ confirm sealed-in-docket and observable on tiny.
 ### Implementation for US3
 
 - [X] T053 [US3] Revise `blueprints/templates/register-governance-v1.json`: replace the hardcoded `approvalPercentage >= 50.01` with the register's configured rule; add the crypto-policy operation; add `dataSchemas` for proposal and approval payloads; make "Accept Role" conditional on operation type (R-008)
-- [ ] T054 [US3] Execute the governance blueprint as a real workflow instance, with each organisation's approval submitted as an action
+- [X] T054 [US3] Execute the governance blueprint as a real workflow instance, with each organisation's approval submitted as an action
 > **Scope, measured 2026-08-09 before starting.** `register-governance-v1` is seeded to the **system register only** (`SystemRegisterBootstrapper`), and all three governance transaction kinds set `BlueprintId = register-governance-v1` while relying on `Metadata["Type"] = "Control"` to earn the roster check and to be *exempt from action-schema validation* — precisely because the blueprint is not published to ordinary registers. T054 therefore means publishing it to ordinary registers and making the three kinds conformant, schema-validated actions **while keeping the roster check that currently rides on the Control discriminator**. That changes the validation path of every governance transaction on every register: the highest blast radius in the feature, and the exact class where it has repeatedly produced silent defects. Budget it as its own piece with a live gate, not as a tail-end.
 > **Re-measured 2026-08-09, at the source. Two corrections, one of them blocking.**
 >
