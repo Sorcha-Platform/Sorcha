@@ -361,10 +361,60 @@ confirm sealed-in-docket and observable on tiny.
 
 **Independent test**: transfer ownership of a ceremony-created system register; the former owner can no longer govern, the new owner can.
 
+> ## US4 DESIGN — settled 2026-08-11: adopt-then-transfer, **no re-genesis**
+>
+> **The SSR is not governable today, and this is verified live, not inferred.** A propose against it on
+> n1 returns the code's own message: *"Roster subject 'did:sorcha:genesis:a3dd941f…' carries no wallet
+> address (expected 'did:sorcha:w:{address}'), so there is no key to sign with. The system register's
+> ceremony-minted subject has this shape and is not governable by this path."* T007's analysis holds
+> exactly.
+>
+> **What the ceremony actually produces** (`SystemRegisterCommands.CreateAsync` / `BuildControlRecord`)
+> — worth stating precisely, because the task notes and the code disagree and three different keys are
+> in play, all derived from one BIP39 mnemonic:
+>
+> | Key | Path | Used for |
+> |---|---|---|
+> | docket-signing | `m/44'/0'/0'/0/102` | **the Owner attestation's `PublicKey`**, and the validator roster entry |
+> | register-control | `m/44'/0'/0'/0/101` | signs the genesis transaction; its fingerprint is the **network trust anchor** |
+>
+> Note the Owner attestation carries the **slot-102** key, not slot 101 as the T007 note implies, and
+> the subject's fingerprint is of slot 102 while the anchor's is of slot 101 — two different
+> fingerprints. Only the `Subject` *shape* is the obstacle; the key is fine.
+>
+> **Why no re-genesis is needed.** The genesis key file carries the **mnemonic**, and
+> `sorcha system-register import-validator-key` recovers a full HD system wallet from it
+> (`RecoverSystemWalletAsync`, tenant=`system`, owner=`validator:{validatorId}`). **The node therefore
+> already holds the key behind the Owner attestation** — it is the same wallet the validator uses to
+> seal every docket. Nothing needs re-minting; the platform simply has no path that reaches it for
+> governance.
+>
+> **The change**: `GovernanceSigningService` currently resolves subject → wallet by parsing
+> `did:sorcha:w:{address}` and signing at slot 100 (`sorcha:register-attestation`). For a
+> `did:sorcha:genesis:` subject it must instead sign through the existing
+> `ISystemWalletSigningService` at **`SorchaDerivationPaths.DocketSigning`** — already on that
+> service's default `AllowedDerivationPaths` whitelist, and already how Register Service reaches the
+> system wallet (`SystemWalletSigning:ValidatorId`). That yields a signature whose public key matches
+> the roster's recorded Owner key, so `RightsEnforcementService` accepts it with no change.
+>
+> **Then the adopt IS the acceptance test.** With signing reachable, the first governance act on the
+> SSR is an ordinary `Transfer` replacing the genesis Owner with a real `did:sorcha:w:` organisation —
+> which is precisely what US4 sets out to prove. The trust anchor (slot-101 fingerprint) is never
+> touched, so n1 and tiny are not wiped and the AIAS demo survives.
+>
+> **Consequently T059/T060/T061 fall away as written** — they assumed the ceremony had to change and a
+> coordinated re-genesis had to follow. Kept below, struck through, with the reason.
+>
+> **Design caveat to carry into implementation:** the genesis subject signing at slot 102 means one
+> roster subject uses a different derivation path from every other. Confine that to the resolver, keep
+> it keyed on the `did:sorcha:genesis:` prefix, and expect it to become dead code the moment the
+> transfer seals — the genesis subject leaves the roster and nothing reaches that branch again. Do not
+> generalise it into "governance can sign at any path".
+
 - [ ] T058 [P] [US4] Test: after transfer, the former owner's governance attempt is refused
-- [ ] T059 [US4] Mint a fresh genesis with the updated ceremony (slot-100 attestations) via `sorcha system-register create`
-- [ ] T060 [US4] Re-genesis n1 within the 1-hour `VAL_TIME_002` window; bring tiny up on the same network
-- [ ] T061 [US4] **Re-provision the AIAS demo immediately** (`run-demo.ps1 -Target n1 -Force`, then `rehearse.ps1 -Target n1`) — a re-genesis wipes it, and a broken demo discovered later is far more expensive than doing this now
+- [~] T059 [US4] ~~Mint a fresh genesis with the updated ceremony (slot-100 attestations)~~ — **not required.** The node already holds the key behind the Owner attestation (recovered from the ceremony mnemonic as a system wallet); only the signer-resolution path was missing. Revisit only if the ceremony's key layout is changed for some other reason.
+- [~] T060 [US4] ~~Re-genesis n1 within the 1-hour `VAL_TIME_002` window; bring tiny up on the same network~~ — **not required** (follows T059). The trust anchor is untouched.
+- [~] T061 [US4] ~~Re-provision the AIAS demo immediately~~ — **not required** (follows T060): with no re-genesis the demo is never wiped. Still re-run `rehearse.ps1 -Target n1` after the transfer seals, as a regression check that governing the SSR did not disturb it.
 - [ ] T062 [US4] 🔴 **LIVE GATE** Transfer system register ownership through the governance process; confirm the record replicates to tiny
 - [ ] T063 [US4] 🔴 **LIVE GATE** Confirm the former owner can no longer govern and the new owner can
 
