@@ -6,7 +6,6 @@ using System.Text;
 using Sorcha.Register.Core.Services;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
-using Microsoft.Extensions.Options;
 using Sorcha.ServiceClients.SystemWallet;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.Wallet.Contracts.Constants;
@@ -123,12 +122,17 @@ public class GovernanceSigningService : IGovernanceSigningService
     public GovernanceSigningService(
         IGovernanceRosterService rosterService,
         IWalletServiceClient walletClient,
-        IOptions<SystemWalletSigningOptions> systemWallet,
+        SystemWalletSigningOptions systemWallet,
         ILogger<GovernanceSigningService> logger)
     {
         _rosterService = rosterService ?? throw new ArgumentNullException(nameof(rosterService));
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
-        _systemWallet = (systemWallet ?? throw new ArgumentNullException(nameof(systemWallet))).Value;
+        // The CONCRETE options, not IOptions<>. AddSystemWalletSigning registers this type as a bare
+        // singleton instance (services.AddSingleton(options)), so IOptions<SystemWalletSigningOptions>
+        // silently resolves a DEFAULT-constructed one whose ValidatorId is null — and a null validator
+        // id makes the Wallet Service hand back the 'default-validator' wallet, which is a real,
+        // healthy, entirely wrong wallet. Caught live by the roster-key guard below.
+        _systemWallet = systemWallet ?? throw new ArgumentNullException(nameof(systemWallet));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 

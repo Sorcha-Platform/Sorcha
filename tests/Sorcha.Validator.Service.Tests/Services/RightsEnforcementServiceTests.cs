@@ -1020,6 +1020,66 @@ public class RightsEnforcementServiceTests
         result.Errors.Should().NotContain(e => e.Message.Contains("expired"));
     }
 
+    /// <summary>
+    /// T058 / US4 — after the system register's ownership transfers, the ceremony key is refused.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the acceptance property of US4 stated at the enforcement gate rather than at the
+    /// signing one. The signing side can only decline to *produce* a signature; the Validator is what
+    /// decides whether one already produced is authorised — and it is the side that runs on every
+    /// node, including nodes that never saw the transfer submitted.
+    /// </para>
+    /// <para>
+    /// It is deliberately the same shape as
+    /// <see cref="ValidateGovernanceRightsAsync_RemovedAdminResubmits_Rejected"/>, and that is the
+    /// point: once the transfer seals, the ceremony subject is an ordinary ex-member with no standing
+    /// left. Nothing about its origin as the genesis key survives the roster change.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AfterOwnershipTransfers_TheCeremonyKeyIsNoLongerAuthorised()
+    {
+        // The system register after the transfer: a real organisation holds it.
+        var roster = RosterWithControlTx("control-tx-after-transfer",
+            (AdminPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"));
+        _rosterServiceMock.Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+
+        // The former owner — the ceremony's slot-102 key — tries to govern anyway.
+        var result = await _service.ValidateGovernanceRightsAsync(
+            CreateGovernanceTransaction(OwnerPublicKey));
+
+        result.IsValid.Should().BeFalse(
+            "the ceremony key governed the system register only until it handed it over");
+        result.Errors.Should().Contain(e => e.Code == "VAL_PERM_002");
+    }
+
+    /// <summary>
+    /// The counterfactual: the SAME key IS authorised while it is still the owner.
+    /// </summary>
+    /// <remarks>
+    /// Without this the test above would pass just as well if the key had never been able to govern
+    /// at all — which was in fact the state before US4, and is exactly the confusion to avoid.
+    /// </remarks>
+    [Fact]
+    public async Task BeforeOwnershipTransfers_TheCeremonyKeyIsAuthorised()
+    {
+        var roster = RosterWithControlTx("control-tx-genesis",
+            (OwnerPublicKey, RegisterRole.Owner, "did:sorcha:genesis:a3dd941ff5c9cd5a7c0fe16d9b5e08ca"));
+        _rosterServiceMock.Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+        _rosterServiceMock.Setup(r => r.ValidateProposal(roster, It.IsAny<GovernanceOperation>()))
+            .Returns(GovernanceValidationResult.Success());
+
+        var result = await _service.ValidateGovernanceRightsAsync(
+            CreateGovernanceTransaction(OwnerPublicKey));
+
+        result.Errors.Should().NotContain(e => e.Code == "VAL_PERM_002",
+            "the ceremony subject is a roster member like any other while it holds the register — "
+            + "the Validator never cared about the subject's DID method, only about the key");
+    }
+
     [Fact] // FR-024
     public async Task RemovingTheLastGoverningMember_IsRefused()
     {

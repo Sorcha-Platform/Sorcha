@@ -3,7 +3,6 @@
 
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Moq;
 using Sorcha.ServiceClients.SystemWallet;
 using Sorcha.Register.Core.Services;
@@ -69,7 +68,7 @@ public class GovernanceSigningServiceTests
         _sut = new GovernanceSigningService(
             _rosterMock.Object,
             _walletMock.Object,
-            Options.Create(new SystemWalletSigningOptions { ValidatorId = ValidatorId }),
+            new SystemWalletSigningOptions { ValidatorId = ValidatorId },
             Mock.Of<ILogger<GovernanceSigningService>>());
     }
 
@@ -99,6 +98,41 @@ public class GovernanceSigningServiceTests
     }
 
     // ---- US4: the system register's ceremony-minted Owner ---------------------------------------
+
+    /// <summary>
+    /// The options must be taken as the CONCRETE type, because that is the only registration that
+    /// actually carries a validator id.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is a live defect, caught on n1, written down so it cannot come back.</b>
+    /// <c>AddSystemWalletSigning</c> registers a bare instance —
+    /// <c>services.AddSingleton(options)</c> — not <c>Configure&lt;T&gt;</c>. Asking for
+    /// <c>IOptions&lt;SystemWalletSigningOptions&gt;</c> therefore resolves a <b>default-constructed</b>
+    /// one whose <c>ValidatorId</c> is null. <c>required</c> is a compile-time promise about object
+    /// initialisers; it does not make the options system produce a configured instance.
+    /// </para>
+    /// <para>
+    /// The consequence was invisible rather than loud: a null validator id makes the Wallet Service
+    /// hand back the <c>default-validator</c> wallet, which exists, is healthy, and is entirely the
+    /// wrong key. Only the roster-key guard turned it into a diagnosable failure instead of a
+    /// signature the Validator would refuse for reasons naming neither cause.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheServiceTakesTheConcreteOptions_NotIOptions()
+    {
+        var parameter = typeof(GovernanceSigningService)
+            .GetConstructors()
+            .Single()
+            .GetParameters()
+            .Single(p => p.ParameterType.Name.Contains("SystemWalletSigningOptions"));
+
+        parameter.ParameterType.Should().Be<SystemWalletSigningOptions>(
+            "AddSystemWalletSigning registers a bare singleton, so IOptions<> resolves a "
+            + "default-constructed instance with a null ValidatorId — and a null validator id "
+            + "silently selects the wrong system wallet");
+    }
 
     /// <summary>
     /// Sets a roster whose attestation public key is the one the wallet mock actually returns, so a
@@ -212,6 +246,39 @@ public class GovernanceSigningServiceTests
         (await act.Should().ThrowAsync<InvalidOperationException>())
             .WithMessage("*SystemWalletSigning:ValidatorId*",
                 "the message must name the configuration that is actually wrong");
+    }
+
+    /// <summary>
+    /// T058 — once ownership transfers away, the ceremony subject cannot sign again.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The genesis branch is reached only for an attestation the roster actually carries, because
+    /// <c>SelectSigner</c> runs first. That ordering is the whole safety of it: a subject removed by
+    /// a transfer simply stops being selectable, and the branch never fires.
+    /// </para>
+    /// <para>
+    /// Worth pinning rather than assuming. Had the implementation matched on the subject before
+    /// consulting the roster — the obvious shortcut, since the subject is a constant — a former owner
+    /// would go on signing with the node's system wallet forever, and the transfer that US4 exists to
+    /// perform would change nothing.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task SignAsync_AfterTransfer_TheFormerGenesisOwnerCanNoLongerSign()
+    {
+        // The roster as it stands after the transfer: a real organisation, no ceremony subject.
+        SetRoster(($"did:sorcha:w:{OwnerWallet}", RegisterRole.Owner));
+
+        var act = () => _sut.SignDigestAsync(RegisterId, [1, 2, 3], preferredSubject: GenesisSubject);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*governance role*",
+                "the former owner is not on the roster, so there is no authority to sign as");
+
+        _walletMock.Verify(x => x.CreateOrRetrieveSystemWalletAsync(
+            It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never,
+            "a subject that is off the roster must never reach the system wallet");
     }
 
     [Fact]
