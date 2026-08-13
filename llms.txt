@@ -2,14 +2,15 @@
 > Cryptographic proof infrastructure for multi-party workflows. Every action is wallet-signed, every record is Merkle-chained, every disclosure is cryptographically bounded. Built for AI systems that need verified data inputs to make automated decisions.
 
 ## Capabilities
-- Verifiable credentials: SD-JWT VC issuance, presentation, and revocation per W3C Verifiable Credentials Data Model 2.0
-- HAIP-aligned exchange: OpenID4VCI issuer, OpenID4VP verifier, IETF Token Status List 2024 publishing
-- Distributed registers: append-only transaction logs with Merkle-chained dockets, peer replication, validator consensus
+- Verifiable credentials: SD-JWT VC (`dc+sd-jwt`) and ISO 18013-5 mdoc issuance, presentation, and revocation, per W3C Verifiable Credentials Data Model 2.0
+- HAIP-aligned exchange: OpenID4VCI issuer, OpenID4VP verifier with the DCQL query dialect and multi-credential presentation, IETF Token Status List 2024 + W3C Bitstring Status List publishing
+- Distributed registers: append-only transaction logs with Merkle-chained dockets, opt-in peer replication, validator consensus, and register governance changes signed by participating organisations
 - HD wallets: BIP32 / BIP39 / BIP44 with Sorcha-specific purpose derivation paths and per-slot key isolation
 - Post-quantum cryptography: ML-DSA (FIPS 204) signatures and ML-KEM (FIPS 203) key encapsulation as core; classical co-key at the HAIP wire boundary per HAIP 1.0
 - Selective disclosure: JSON Pointer paths with per-recipient symmetric key wrapping; the platform cannot read data it was not given the key for (architectural, not policy)
+- DID resolution: did:sorcha (org/holder), did:key, did:jwk, plus offline resolution for did:ethr / did:pkh
 - MCP server: 36 tools across admin, designer, and participant slices for AI-driven workflow automation
-- Multi-tenant authentication: OAuth 2.0 / JWT Bearer with role-based access control and platform-org topology
+- Multi-tenant authentication: OAuth 2.0 / JWT Bearer with tiered token audiences (consumer / platform / service), role-based access control, and platform-org topology
 
 ## Standards
 - BIP32: https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki
@@ -23,14 +24,19 @@
 - W3C Verifiable Credentials Data Model 2.0: https://www.w3.org/TR/vc-data-model-2.0/
 - IETF Token Status List 2024 (RFC 9972): https://datatracker.ietf.org/doc/html/rfc9972
 - W3C Bitstring Status List: https://www.w3.org/TR/vc-bitstring-status-list/
+- ISO 18013-5 (mdoc): https://www.iso.org/standard/69084.html
 - DID (W3C): https://www.w3.org/TR/did-core/
+- ETSI TS 119 612 (Trusted Lists): https://www.etsi.org/deliver/etsi_ts/119600_119699/119612/02.02.01_60/ts_119612v020201p.pdf
 - OAuth 2.0: https://datatracker.ietf.org/doc/html/rfc6749
 
 ## Links
 - OpenAPI: /.well-known/openapi.json
 - OpenAPI (YAML): /.well-known/openapi.yaml
 - MCP manifest: /.well-known/mcp.json
+- Agent entry point: https://github.com/Sorcha-Platform/Sorcha/blob/master/AGENTS.md
 - Quickstart: https://github.com/Sorcha-Platform/Sorcha/blob/master/docs/quickstart.md
 - Architecture: https://github.com/Sorcha-Platform/Sorcha/blob/master/docs/architecture.md
+- Security model: https://github.com/Sorcha-Platform/Sorcha/blob/master/docs/security-model.md
+- Maturity and known limitations: https://github.com/Sorcha-Platform/Sorcha/blob/master/docs/reference/maturity-and-limitations.md
 - STANDARDS.md: https://github.com/Sorcha-Platform/Sorcha/blob/master/STANDARDS.md
 - llms-full.txt: https://github.com/Sorcha-Platform/Sorcha/blob/master/docs/llms-full.txt

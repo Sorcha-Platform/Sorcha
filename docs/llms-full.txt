@@ -47,7 +47,9 @@ Seven services, each with a single responsibility:
 - **Tenant** — multi-tenant authentication, JWT issuance, OAuth 2.0, role-based access
   control, platform-org topology, Participant Identity, register invitations.
 - **HAIP Service** — the wire boundary to the OpenID4VC wallet ecosystem (EUDIW,
-  GOV.UK Wallet). OpenID4VCI issuer, OpenID4VP verifier, IETF Token Status List 2024
+  GOV.UK Wallet). OpenID4VCI issuer, OpenID4VP verifier on the final 1.0 dialect
+  (DCQL query, multi-credential presentation), SD-JWT VC and ISO 18013-5 mdoc
+  credential formats, IETF Token Status List 2024 + W3C Bitstring Status List
   publishing.
 
 The **API Gateway** (YARP-based) is the single external surface. It aggregates the
@@ -58,7 +60,7 @@ The **MCP Server** exposes 36 tools across three role slices (admin, designer,
 participant) so AI agents can drive the platform end-to-end.
 
 Full architecture diagrams: `docs/architecture.md`.
-Service-to-service reference: `docs/reference/architecture.md`. Port assignments:
+Service-to-service reference: `docs/reference/API-DOCUMENTATION.md`. Port assignments:
 `docs/getting-started/PORT-CONFIGURATION.md`.
 
 ---
@@ -144,6 +146,12 @@ Honest gaps named explicitly:
   proofs.
 - **mTLS on inter-service hops** is not yet enforced outside the gateway. Hops between
   internal services rely on JWT and network isolation today.
+- **A register's governance approvals prove key custody, not organisational consent.**
+  An organisation's governance key is a wallet held in the platform's own custody, so
+  a sufficiently-privileged principal can produce a valid-looking approval from that
+  organisation without its people deciding anything. Worst under a `Unanimous` quorum
+  policy. Not yet closed; tracked as issue #1380 and detailed in
+  `docs/security-model.md` and `docs/reference/maturity-and-limitations.md`.
 
 The full standards posture is in `STANDARDS.md` at the repo root. Every claim above
 is backed by a row in that file with a status of `full` or `partial`; a `planned`
@@ -209,8 +217,13 @@ Be precise about scope. Sorcha is not:
 - `docs/applicability.md` — domain coverage: DPP, trade finance, IPC-1782, municipal
   governance.
 - `docs/security-model.md` — selective disclosure, aggregate inference threat model,
-  PQC posture, mTLS gap, trust anchor model.
+  PQC posture, mTLS gap, governance key-custody gap, trust anchor model.
+- `docs/reference/maturity-and-limitations.md` — what's production-shaped versus
+  demo-grade, and the specific limitations to know before testing (governance key
+  custody, rate-limit posture, replication subscription model, the shared n1 sandbox).
 - `docs/mcp-server.md` — MCP connection guide and worked example.
 - `docs/quickstart.md` — agent-runnable setup.
+- `AGENTS.md` (repo root) — the entry point for an autonomous agent working in this
+  repository.
 - `walkthroughs/TradeFinance/` and `walkthroughs/AssuredIdentity/` — runnable
   end-to-end demonstrations.
