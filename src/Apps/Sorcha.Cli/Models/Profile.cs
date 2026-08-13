@@ -61,10 +61,22 @@ public class Profile
     public string? GatewayUrl { get; set; }
 
     /// <summary>
-    /// OAuth2 token endpoint for authentication.
-    /// If not specified, derived from ServiceUrl as {ServiceUrl}/api/service-auth/token.
+    /// OAuth2 token endpoint for the BROWSER/HUMAN grants (<c>password</c>, <c>refresh_token</c>) —
+    /// the public gateway route <c>/api/service-auth/token</c>. Used only for token refresh; user
+    /// login itself goes through <see cref="GetUserLoginUrl"/> instead (issue #1402). If not
+    /// specified, derived from ServiceUrl as {ServiceUrl}/api/service-auth/token.
     /// </summary>
     public string? AuthTokenUrl { get; set; }
+
+    /// <summary>
+    /// OAuth2 token endpoint for the SERVICE-PRINCIPAL (<c>client_credentials</c>) grant — the
+    /// internal-only Tenant Service route <c>/api/internal/service-auth/token</c> (#1397 / #1406).
+    /// The public API Gateway does not route <c>/api/internal/*</c>, so this only succeeds when the
+    /// CLI runs inside the Sorcha trust network (e.g. co-located in the docker-compose network) or
+    /// points directly at the Tenant Service. If not specified, derived from the effective Tenant
+    /// Service URL as {TenantServiceUrl}/api/internal/service-auth/token.
+    /// </summary>
+    public string? ServiceAuthTokenUrl { get; set; }
 
     /// <summary>
     /// Default client ID for user authentication.
@@ -122,7 +134,31 @@ public class Profile
     public string GetGatewayUrl() => GatewayUrl ?? ServiceUrl ?? string.Empty;
 
     /// <summary>
-    /// Gets the effective Auth Token URL, deriving from ServiceUrl if not explicitly set.
+    /// Gets the effective Auth Token URL (browser/human grants — password, refresh_token), deriving
+    /// from ServiceUrl if not explicitly set.
     /// </summary>
     public string GetAuthTokenUrl() => AuthTokenUrl ?? (string.IsNullOrEmpty(ServiceUrl) ? string.Empty : $"{ServiceUrl}/api/service-auth/token");
+
+    /// <summary>
+    /// Gets the effective service-principal (client_credentials) token URL — the internal-only
+    /// Tenant Service route, not routed by the public API Gateway (#1397 / #1406). Deriving from the
+    /// effective Tenant Service URL if not explicitly set.
+    /// </summary>
+    public string GetServiceAuthTokenUrl() =>
+        ServiceAuthTokenUrl ?? (string.IsNullOrEmpty(GetTenantServiceUrl()) ? string.Empty : $"{GetTenantServiceUrl()}/api/internal/service-auth/token");
+
+    /// <summary>
+    /// Gets the user-login URL — <c>POST /api/auth/login</c> on the Tenant Service, taking a JSON
+    /// <c>{email, password}</c> body (issue #1402). Distinct from <see cref="GetAuthTokenUrl"/>,
+    /// which is the OAuth2 token endpoint used only for refresh.
+    /// </summary>
+    public string GetUserLoginUrl() =>
+        string.IsNullOrEmpty(GetTenantServiceUrl()) ? string.Empty : $"{GetTenantServiceUrl()}/api/auth/login";
+
+    /// <summary>
+    /// Gets the org-selection completion URL — <c>POST /api/auth/select-org</c> on the Tenant
+    /// Service, used to complete login for a multi-org user (see <see cref="GetUserLoginUrl"/>).
+    /// </summary>
+    public string GetOrgSelectUrl() =>
+        string.IsNullOrEmpty(GetTenantServiceUrl()) ? string.Empty : $"{GetTenantServiceUrl()}/api/auth/select-org";
 }

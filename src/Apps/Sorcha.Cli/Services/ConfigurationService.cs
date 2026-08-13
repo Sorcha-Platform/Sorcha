@@ -200,6 +200,10 @@ public class ConfigurationService : IConfigurationService
                     PeerServiceUrl = null,  // Derived from ServiceUrl via API Gateway
                     WalletServiceUrl = null,  // Derived from ServiceUrl via API Gateway
                     AuthTokenUrl = "http://localhost/api/service-auth/token",
+                    // Internal-only endpoint (#1397/#1406) — only reachable when the CLI runs
+                    // inside the Sorcha trust network. Set explicitly so 'sorcha auth login
+                    // --client-id ...' fails with a clear error rather than the stale public route.
+                    ServiceAuthTokenUrl = "http://localhost/api/internal/service-auth/token",
                     DefaultClientId = "sorcha-cli",
                     VerifySsl = false,
                     TimeoutSeconds = 30

@@ -150,7 +150,12 @@ TENANT_URL=$(get_user_input "Tenant Service URL" "http://localhost/api/tenants")
 REGISTER_URL=$(get_user_input "Register Service URL" "http://localhost/api/register")
 WALLET_URL=$(get_user_input "Wallet Service URL" "http://localhost/api/wallets")
 PEER_URL=$(get_user_input "Peer Service URL" "http://localhost/api/peers")
-AUTH_URL=$(get_user_input "Auth Token URL" "http://localhost/api/service-auth/token")
+AUTH_URL=$(get_user_input "Auth Token URL (browser/user grants — password, refresh_token)" "http://localhost/api/service-auth/token")
+# Service-principal (client_credentials) minting moved to an INTERNAL-only Tenant Service route
+# as of #1397/#1406 — the public API Gateway does not route /api/internal/*. This default only
+# works when bootstrap runs co-located inside the Sorcha trust network (e.g. from a container on
+# the docker-compose network); from a host machine hitting the gateway it will 404/400.
+SERVICE_AUTH_URL=$(get_user_input "Service-Principal Auth Token URL (internal-only, #1397)" "http://localhost/api/internal/service-auth/token")
 
 write_info "CLI will be configured to use profile: $PROFILE"
 write_success "Configuration profile prepared"
@@ -299,6 +304,7 @@ if sorcha config init \
     --wallet-url "$WALLET_URL" \
     --peer-url "$PEER_URL" \
     --auth-url "$AUTH_URL" \
+    --service-auth-url "$SERVICE_AUTH_URL" \
     --client-id "$BOOTSTRAP_CLIENT_ID" \
     --check-connectivity false \
     --set-active true 2>&1; then

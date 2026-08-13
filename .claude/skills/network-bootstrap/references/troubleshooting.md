@@ -124,14 +124,28 @@ az vm user update --resource-group sorcha-n1-uk --name sorcha-n1-vm \
 
 **Symptom:** `sorcha auth login` fails with `Cannot read keys when either application does not have a console`.
 
-**Root Cause:** The CLI prompts interactively even when credentials are provided via flags.
-
-**Workaround:** Use the service principal token API directly:
+**Root Cause:** The CLI prompts interactively even when credentials are provided via flags. Fixed for
+the default case (`--interactive` now defaults to `false`, so `--username`/`--password` alone no
+longer force a prompt); if it still recurs, first try the current CLI's user-login path directly:
 
 ```bash
-curl -s --ssl-no-revoke -X POST "https://n1.sorcha.dev/api/service-auth/token" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=client_credentials&client_id=<ID>&client_secret=<SECRET>"
+sorcha auth login --username <email> --password <password> --profile n1
+```
+
+(issue #1402 fixed this to POST the JSON `/api/auth/login` endpoint and no longer needs the
+service-principal token API at all — the workaround below is for the SERVICE-PRINCIPAL case only,
+not user login.)
+
+**Service-principal workaround:** as of #1397/#1406, `client_credentials` minting is an
+**internal-only** Tenant Service route (`POST /api/internal/service-auth/token`) — the public API
+Gateway does not route `/api/internal/*`, so a curl from outside n1 (even against
+`https://n1.sorcha.dev`) will 404. Run it from inside the trust network instead, e.g. via SSH:
+
+```bash
+ssh sorcha@n1.sorcha.dev "docker compose exec -T tenant-service curl -s -X POST \
+  http://localhost:8080/api/internal/service-auth/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'grant_type=client_credentials&client_id=<ID>&client_secret=<SECRET>'"
 ```
 
 ---

@@ -12,6 +12,7 @@
       "walletServiceUrl": "https://localhost:7001",
       "blueprintServiceUrl": "https://localhost:7000",
       "authTokenUrl": "https://localhost:7110/api/service-auth/token",
+      "serviceAuthTokenUrl": "https://localhost:7110/api/internal/service-auth/token",
       "defaultClientId": "sorcha-cli",
       "verifySsl": false,
       "timeoutSeconds": 30
@@ -24,6 +25,7 @@
       "walletServiceUrl": "http://localhost:8080/wallet",
       "blueprintServiceUrl": "http://localhost:8080/blueprint",
       "authTokenUrl": "http://localhost:8080/tenant/api/service-auth/token",
+      "serviceAuthTokenUrl": "http://localhost:8080/tenant/api/internal/service-auth/token",
       "defaultClientId": "sorcha-cli",
       "verifySsl": false,
       "timeoutSeconds": 30
@@ -36,6 +38,7 @@
       "walletServiceUrl": "https://n1.sorcha.dev/wallet",
       "blueprintServiceUrl": "https://n1.sorcha.dev/blueprint",
       "authTokenUrl": "https://n1.sorcha.dev/tenant/api/service-auth/token",
+      "serviceAuthTokenUrl": "https://n1.sorcha.dev/tenant/api/internal/service-auth/token",
       "defaultClientId": "sorcha-cli",
       "verifySsl": true,
       "timeoutSeconds": 30
@@ -48,6 +51,7 @@
       "walletServiceUrl": "https://wallet.sorcha.io",
       "blueprintServiceUrl": "https://blueprint.sorcha.io",
       "authTokenUrl": "https://tenant.sorcha.io/api/service-auth/token",
+      "serviceAuthTokenUrl": "https://tenant.sorcha.io/api/internal/service-auth/token",
       "defaultClientId": "sorcha-cli",
       "verifySsl": true,
       "timeoutSeconds": 30

@@ -59,9 +59,9 @@ public class AuthenticationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task LoginAsync_ShouldAuthenticateUser_AndCacheToken()
+    public async Task LoginAsync_SingleOrgAccount_AuthenticatesDirectly_AndCachesToken()
     {
-        // Arrange
+        // Arrange — the server returns a token directly for a single-org account.
         await _configService.EnsureConfigDirectoryAsync();
 
         var tokenResponse = new TokenResponse
@@ -74,9 +74,9 @@ public class AuthenticationServiceTests : IDisposable
 
         _httpHandler.SetResponse(HttpStatusCode.OK, tokenResponse);
 
-        var loginRequest = new PasswordGrantRequest
+        var loginRequest = new UserLoginRequest
         {
-            Username = "testuser",
+            Email = "testuser@example.com",
             Password = "testpass"
         };
 
@@ -88,11 +88,122 @@ public class AuthenticationServiceTests : IDisposable
         result.AccessToken.Should().Be("test-access-token");
         result.RefreshToken.Should().Be("test-refresh-token");
 
+        // Verify the request went to the JSON user-login endpoint, not the OAuth2 token endpoint.
+        _httpHandler.Requests.Should().ContainSingle();
+        _httpHandler.Requests[0].RequestUri!.AbsolutePath.Should().Be("/api/auth/login");
+
         // Verify token was cached
         var cachedToken = await _tokenCache.GetAsync("docker");
         cachedToken.Should().NotBeNull();
         cachedToken!.AccessToken.Should().Be("test-access-token");
-        cachedToken.Subject.Should().Be("testuser");
+        cachedToken.Subject.Should().Be("testuser@example.com");
+    }
+
+    [Fact]
+    public async Task LoginAsync_MultiOrgAccount_NoOrganizationIdSupplied_ThrowsOrgSelectionRequired()
+    {
+        // Arrange — the server returns requires_org_selection instead of a token.
+        await _configService.EnsureConfigDirectoryAsync();
+
+        var orgId1 = Guid.NewGuid();
+        var orgId2 = Guid.NewGuid();
+        var orgSelectionResponse = new OrgSelectionResponse
+        {
+            RequiresOrgSelection = true,
+            PlatformLoginToken = "platform-login-token",
+            Organizations =
+            [
+                new OrgSelectionEntry { OrganizationId = orgId1, Name = "Org One", Subdomain = "org-one", Role = "Administrator" },
+                new OrgSelectionEntry { OrganizationId = orgId2, Name = "Org Two", Subdomain = "org-two", Role = "Member" }
+            ]
+        };
+
+        _httpHandler.SetResponse(HttpStatusCode.OK, orgSelectionResponse);
+
+        var loginRequest = new UserLoginRequest { Email = "multi@example.com", Password = "testpass" };
+
+        // Act
+        var act = () => _authService.LoginAsync(loginRequest, "docker");
+
+        // Assert
+        var exception = await act.Should().ThrowAsync<OrgSelectionRequiredException>();
+        exception.Which.PlatformLoginToken.Should().Be("platform-login-token");
+        exception.Which.Organizations.Should().HaveCount(2);
+        exception.Which.Organizations.Should().Contain(o => o.OrganizationId == orgId1 && o.Name == "Org One");
+
+        // No token should have been cached — login did not complete.
+        var cachedToken = await _tokenCache.GetAsync("docker");
+        cachedToken.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task LoginAsync_MultiOrgAccount_OrganizationIdPreSelected_CompletesLoginInOneCall()
+    {
+        // Arrange — org selection required, but the caller pre-selected an org via --organization-id.
+        await _configService.EnsureConfigDirectoryAsync();
+
+        var orgId = Guid.NewGuid();
+        var orgSelectionResponse = new OrgSelectionResponse
+        {
+            RequiresOrgSelection = true,
+            PlatformLoginToken = "platform-login-token",
+            Organizations = [new OrgSelectionEntry { OrganizationId = orgId, Name = "Pre-selected Org", Role = "Administrator" }]
+        };
+
+        _httpHandler.EnqueueResponse(HttpStatusCode.OK, orgSelectionResponse);
+
+        var tokenResponse = new TokenResponse
+        {
+            AccessToken = "final-access-token",
+            RefreshToken = "final-refresh-token",
+            TokenType = "Bearer",
+            ExpiresIn = 3600
+        };
+        _httpHandler.EnqueueResponse(HttpStatusCode.OK, tokenResponse);
+
+        var loginRequest = new UserLoginRequest { Email = "preselect@example.com", Password = "testpass" };
+
+        // Act
+        var result = await _authService.LoginAsync(loginRequest, "docker", organizationId: orgId);
+
+        // Assert
+        result.AccessToken.Should().Be("final-access-token");
+
+        _httpHandler.Requests.Should().HaveCount(2);
+        _httpHandler.Requests[0].RequestUri!.AbsolutePath.Should().Be("/api/auth/login");
+        _httpHandler.Requests[1].RequestUri!.AbsolutePath.Should().Be("/api/auth/select-org");
+
+        var cachedToken = await _tokenCache.GetAsync("docker");
+        cachedToken.Should().NotBeNull();
+        cachedToken!.AccessToken.Should().Be("final-access-token");
+        cachedToken.Subject.Should().Be("preselect@example.com");
+    }
+
+    [Fact]
+    public async Task CompleteOrgSelectionAsync_ValidToken_ReturnsAndCachesFinalToken()
+    {
+        // Arrange
+        await _configService.EnsureConfigDirectoryAsync();
+
+        var tokenResponse = new TokenResponse
+        {
+            AccessToken = "select-org-access-token",
+            TokenType = "Bearer",
+            ExpiresIn = 3600
+        };
+        _httpHandler.SetResponse(HttpStatusCode.OK, tokenResponse);
+
+        // Act
+        var result = await _authService.CompleteOrgSelectionAsync(
+            "platform-login-token", Guid.NewGuid(), "docker", "user@example.com");
+
+        // Assert
+        result.AccessToken.Should().Be("select-org-access-token");
+
+        var cachedToken = await _tokenCache.GetAsync("docker");
+        cachedToken.Should().NotBeNull();
+        cachedToken!.AccessToken.Should().Be("select-org-access-token");
+        cachedToken.Subject.Should().Be("user@example.com");
     }
 
     [Fact]
@@ -128,6 +239,40 @@ public class AuthenticationServiceTests : IDisposable
         cachedToken.Should().NotBeNull();
         cachedToken!.AccessToken.Should().Be("sp-access-token");
         cachedToken.Subject.Should().Be("test-client-id");
+
+        // Verify the request went to the INTERNAL-only token endpoint (#1397/#1406), not the
+        // public /api/service-auth/token route.
+        _httpHandler.Requests.Should().ContainSingle();
+        _httpHandler.Requests[0].RequestUri!.AbsolutePath.Should().Be("/api/internal/service-auth/token");
+    }
+
+    [Fact]
+    public async Task LoginServicePrincipalAsync_InternalEndpointUnreachable_SurfacesClearInternalNetworkError()
+    {
+        // Arrange — simulates the public API Gateway's catch-all 404 for /api/internal/* (#1397),
+        // the situation a host-run CLI hits when it is outside the Sorcha trust network.
+        await _configService.EnsureConfigDirectoryAsync();
+
+        _httpHandler.SetResponse(HttpStatusCode.NotFound, null);
+
+        var loginRequest = new ServicePrincipalLoginRequest
+        {
+            ClientId = "test-client-id",
+            ClientSecret = "test-client-secret"
+        };
+
+        // Act
+        var act = () => _authService.LoginServicePrincipalAsync(loginRequest, "docker");
+
+        // Assert — the error must explain this is an internal-network operation, not a generic
+        // "authentication failed" message (CLAUDE.md #18 honesty principle applied to auth).
+        var exception = await act.Should().ThrowAsync<InvalidOperationException>();
+        exception.Which.Message.Should().Contain("INTERNAL-only");
+        exception.Which.Message.Should().Contain("trust network");
+
+        // No token should have been cached.
+        var cachedToken = await _tokenCache.GetAsync("docker");
+        cachedToken.Should().BeNull();
     }
 
     [Fact]

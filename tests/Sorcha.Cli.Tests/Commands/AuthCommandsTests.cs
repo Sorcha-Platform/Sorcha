@@ -134,6 +134,19 @@ public class AuthCommandsTests : IDisposable
     }
 
     [Fact]
+    public void AuthLoginCommand_ShouldHaveOrganizationIdOption()
+    {
+        // Arrange & Act
+        var command = new AuthLoginCommand(_authService, _configService);
+
+        // Assert — pre-selects an org for a multi-org account (issue #1402).
+        var organizationIdOption = command.Options.FirstOrDefault(o => o.Name == "--organization-id");
+        organizationIdOption.Should().NotBeNull();
+        organizationIdOption!.Required.Should().BeFalse();
+        organizationIdOption.Aliases.Should().Contain("--org");
+    }
+
+    [Fact]
     public void AuthLogoutCommand_ShouldHaveCorrectNameAndDescription()
     {
         // Arrange & Act
@@ -346,9 +359,9 @@ public class AuthCommandsTests : IDisposable
 
         _httpHandler.SetResponse(HttpStatusCode.OK, tokenResponse);
 
-        var loginRequest = new PasswordGrantRequest
+        var loginRequest = new UserLoginRequest
         {
-            Username = "cachetest",
+            Email = "cachetest@example.com",
             Password = "password123"
         };
 
@@ -359,7 +372,7 @@ public class AuthCommandsTests : IDisposable
         var cachedToken = await _tokenCache.GetAsync("docker");
         cachedToken.Should().NotBeNull();
         cachedToken!.AccessToken.Should().Be("cached-access-token");
-        cachedToken.Subject.Should().Be("cachetest");
+        cachedToken.Subject.Should().Be("cachetest@example.com");
     }
 
     [Fact]

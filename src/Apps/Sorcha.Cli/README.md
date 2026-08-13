@@ -125,10 +125,18 @@ sorcha register list
 
 ### Overview
 
-The CLI uses OAuth2 for authentication and supports two grant types:
+`sorcha auth login` supports two authentication flows, which target **different endpoints** (issues
+#1402/#1406):
 
-1. **Password Grant** - For user authentication
-2. **Client Credentials Grant** - For service principal (application) authentication
+1. **User login** — `POST /api/auth/login` (JSON `{email, password}`) on the Tenant Service. Handles
+   both single-org accounts (returns a token directly) and multi-org accounts (a follow-up
+   `POST /api/auth/select-org` step, driven by `--organization-id`/`--org` or an interactive prompt).
+2. **Service principal (`client_credentials`)** — `POST /api/internal/service-auth/token`, an
+   **internal-only** Tenant Service route. The public API Gateway does not route `/api/internal/*`
+   (#1397), so this only succeeds when the CLI runs inside the Sorcha trust network (e.g. co-located
+   in the docker-compose network) or a profile's `ServiceAuthTokenUrl` points directly at a
+   reachable Tenant Service. A host-run CLI outside that boundary gets a clear error explaining this,
+   not a fake success or a generic failure.
 
 ### User Authentication
 
@@ -138,7 +146,7 @@ sorcha auth login
 ```
 
 This will prompt you securely for:
-- Username
+- Username (email)
 - Password (input is masked with asterisks)
 
 **Non-Interactive Mode (Less Secure):**
@@ -148,9 +156,22 @@ sorcha auth login --username admin@acme.com --password mypassword
 
 ⚠️ **Warning:** Command-line arguments are visible in process lists. Use interactive mode in production.
 
+**Multi-org accounts:** if the account belongs to more than one organisation, `sorcha auth login`
+either prompts you to pick one interactively, or — with `--organization-id`/`--org` — completes
+login in a single non-interactive call:
+
+```bash
+sorcha auth login --username admin@acme.com --password mypassword --organization-id <org-guid>
+```
+
+With no `--organization-id` and no interactive terminal (e.g. a CI runner with redirected stdin),
+the command fails with a clear error listing the available organisation IDs instead of hanging.
+
 ### Service Principal Authentication
 
-Service principals are used for automation, CI/CD pipelines, and application-to-application authentication.
+Service principals are used for automation, CI/CD pipelines, and application-to-application
+authentication. **This only works from inside the Sorcha trust network** — the token endpoint is
+internal-only (#1397/#1406); see the Overview above.
 
 **Interactive Mode:**
 ```bash
@@ -163,6 +184,10 @@ This will prompt for the client secret securely.
 ```bash
 sorcha auth login --client-id my-app-id --client-secret my-secret
 ```
+
+If the internal token endpoint is unreachable (the common case for a CLI running on a developer's
+host machine against a dockerised deployment), the command fails with an error explaining that
+service-principal login is an internal-network operation, rather than a generic auth failure.
 
 ### Token Storage & Security
 

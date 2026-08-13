@@ -6,6 +6,7 @@ using System.Text.Json;
 using Sorcha.Cli.Infrastructure;
 using Sorcha.Cli.Models;
 using Sorcha.Cli.Services;
+using Sorcha.Tenant.Models.Auth;
 
 namespace Sorcha.Cli.Commands;
 
@@ -39,6 +40,7 @@ public class AuthLoginCommand : Command
     private readonly Option<string?> _clientSecretOption;
     private readonly Option<bool> _interactiveOption;
     private readonly Option<string?> _profileOption;
+    private readonly Option<Guid?> _organizationIdOption;
 
     public AuthLoginCommand(
         IAuthenticationService authService,
@@ -84,12 +86,19 @@ public class AuthLoginCommand : Command
             Description = "Profile to authenticate with (defaults to active profile)"
         };
 
+        _organizationIdOption = new Option<Guid?>("--organization-id", "--org")
+        {
+            Description = "Pre-select an organization for a multi-org user account (avoids the "
+                + "interactive org-selection prompt). Ignored for service-principal login."
+        };
+
         Options.Add(_usernameOption);
         Options.Add(_passwordOption);
         Options.Add(_clientIdOption);
         Options.Add(_clientSecretOption);
         Options.Add(_interactiveOption);
         Options.Add(_profileOption);
+        Options.Add(_organizationIdOption);
 
         this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
@@ -99,6 +108,7 @@ public class AuthLoginCommand : Command
             var clientSecret = parseResult.GetValue(_clientSecretOption);
             var interactive = parseResult.GetValue(_interactiveOption);
             var profileName = parseResult.GetValue(_profileOption);
+            var organizationId = parseResult.GetValue(_organizationIdOption);
 
             try
             {
@@ -120,7 +130,7 @@ public class AuthLoginCommand : Command
                 }
                 else
                 {
-                    await LoginUserAsync(username, password, interactive, profileName);
+                    await LoginUserAsync(username, password, interactive, profileName, organizationId);
                 }
 
                 return ExitCodes.Success;
@@ -133,7 +143,7 @@ public class AuthLoginCommand : Command
         });
     }
 
-    private async Task LoginUserAsync(string? username, string? password, bool interactive, string profileName)
+    private async Task LoginUserAsync(string? username, string? password, bool interactive, string profileName, Guid? organizationId)
     {
         // Get credentials
         if (interactive || string.IsNullOrEmpty(username))
@@ -162,15 +172,24 @@ public class AuthLoginCommand : Command
             throw new InvalidOperationException("Password is required.");
         }
 
-        // Authenticate
-        var request = new PasswordGrantRequest
+        // Authenticate against the JSON user-login endpoint (POST /api/auth/login — issue #1402).
+        var request = new UserLoginRequest
         {
-            Username = username,
+            Email = username,
             Password = password
         };
 
         ConsoleHelper.WriteInfo($"Authenticating user: {username}");
-        var response = await _authService.LoginAsync(request, profileName);
+
+        TokenResponse response;
+        try
+        {
+            response = await _authService.LoginAsync(request, profileName, organizationId);
+        }
+        catch (OrgSelectionRequiredException orgSelection)
+        {
+            response = await ResolveOrgSelectionAsync(orgSelection, profileName, username);
+        }
 
         ConsoleHelper.WriteSuccess("Authentication successful!");
         ConsoleHelper.WriteInfo($"Access token expires in {response.ExpiresIn} seconds");
@@ -179,6 +198,44 @@ public class AuthLoginCommand : Command
         {
             ConsoleHelper.WriteInfo("Refresh token received (will auto-refresh)");
         }
+    }
+
+    /// <summary>
+    /// Resolves an <see cref="OrgSelectionRequiredException"/> raised for a multi-org account: in a
+    /// non-interactive context (redirected stdin — a script or CI runner), fails with a clear list
+    /// of organization IDs so the caller can re-run with <c>--organization-id</c>; otherwise prompts
+    /// interactively.
+    /// </summary>
+    private async Task<TokenResponse> ResolveOrgSelectionAsync(OrgSelectionRequiredException orgSelection, string profileName, string username)
+    {
+        var organizations = orgSelection.Organizations;
+
+        if (Console.IsInputRedirected)
+        {
+            var orgList = string.Join(
+                Environment.NewLine,
+                organizations.Select(o => $"  {o.OrganizationId}  {o.Name} ({o.Role})"));
+
+            throw new InvalidOperationException(
+                "This account belongs to multiple organizations and input is non-interactive. "
+                + $"Re-run with --organization-id <guid>:{Environment.NewLine}{orgList}");
+        }
+
+        ConsoleHelper.WriteWarning("This account belongs to multiple organizations:");
+        for (var i = 0; i < organizations.Count; i++)
+        {
+            var org = organizations[i];
+            Console.WriteLine($"  [{i + 1}] {org.Name} ({org.Role}) — {org.OrganizationId}");
+        }
+
+        var selection = ConsoleHelper.ReadLine($"Select organization [1-{organizations.Count}]");
+        if (!int.TryParse(selection, out var index) || index < 1 || index > organizations.Count)
+        {
+            throw new InvalidOperationException($"Invalid organization selection: '{selection}'.");
+        }
+
+        var chosen = organizations[index - 1];
+        return await _authService.CompleteOrgSelectionAsync(orgSelection.PlatformLoginToken, chosen.OrganizationId, profileName, username);
     }
 
     private async Task LoginServicePrincipalAsync(string? clientId, string? clientSecret, bool interactive, string profileName)
