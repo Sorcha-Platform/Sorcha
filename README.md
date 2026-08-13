@@ -344,6 +344,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 - [GitHub Issues](https://github.com/Sorcha-Platform/Sorcha/issues)
 - [GitHub Discussions](https://github.com/Sorcha-Platform/Sorcha/discussions)
 - [Contributing Guide](CONTRIBUTING.md)
+- [Security Policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)
 
 ---
