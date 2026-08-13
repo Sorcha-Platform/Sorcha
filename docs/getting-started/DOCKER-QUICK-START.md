@@ -43,8 +43,16 @@ Or use the provided script (Windows):
 
 ### 3. Start Services
 
+Run the setup script first — it generates the per-deploy secrets (including the 8
+service-to-service `ServiceAuth` secrets) into `.env` before starting the stack. A bare
+`docker-compose up` without a generated `.env` fails by design (see main [README Quick
+Start](../../README.md#quick-start)):
+
 ```bash
-# Start all services in detached mode
+# Interactive setup — generates .env, pulls images, starts services
+./scripts/sorcha-setup.sh
+
+# Once .env exists, you can also drive compose directly:
 docker-compose up -d
 
 # View logs (optional)

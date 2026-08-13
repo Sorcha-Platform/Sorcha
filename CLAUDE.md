@@ -13,8 +13,10 @@ Sorcha implements the **DAD** (Disclosure, Alteration, Destruction) security mod
 ```bash
 # Prerequisites: .NET 10 SDK, Docker Desktop
 
-# Start all services (recommended)
-docker-compose up -d
+# Generate per-deploy config (.env, incl. service-to-service secrets), then start
+# all services. A bare `docker-compose up` without a generated .env fails by
+# design — docker-compose.yml guards the 8 ServiceAuth secrets with ${VAR:?...}.
+./scripts/sorcha-setup.sh
 
 # Access points:
 # - API Gateway:      http://localhost:80
