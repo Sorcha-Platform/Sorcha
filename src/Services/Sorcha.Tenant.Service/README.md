@@ -274,6 +274,25 @@ secret is resolved via `ServicePrincipalSecretResolver.Resolve` in this order:
 
 The resolved source (`Configured` / `Generated`) is logged; the secret value itself never is.
 
+### Admin Password Fail-Closed (issue #1409)
+
+`DatabaseInitializer.SeedAdminUserAsync` seeds the initial `admin@sorcha.local` `PlatformUser`.
+Its password is resolved via `AdminPasswordResolver.Resolve` — the same shape as
+`ServicePrincipalSecretResolver` above — in this order:
+
+1. `Seed:AdminPassword` (env `Seed__AdminPassword`) — an operator-configured, per-deploy password.
+   Wins in every environment.
+2. **Production/Staging** with no configured password **fails closed** (`InvalidOperationException`
+   at startup) rather than seeding the well-known `Dev_Pass_2025!` literal on an
+   internet-reachable node — the known-credential gap this resolver closes.
+3. Any other environment (Development, Testing, or unset) with no configured password uses the
+   committed `DatabaseInitializer.DefaultAdminPassword` (`Dev_Pass_2025!`) — the unchanged local
+   dev/test convenience. `docker-compose.yml` runs Tenant Service with
+   `ASPNETCORE_ENVIRONMENT=Development`, so this remains the default for local/demo deployments.
+
+The resolved source (`Configured` / `DevDefault`) is logged. The dev-default password is logged
+alongside it (it is a published convenience literal); a configured, operator-set password never is.
+
 ---
 
 ## API Endpoints
