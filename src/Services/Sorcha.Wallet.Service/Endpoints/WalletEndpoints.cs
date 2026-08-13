@@ -899,14 +899,21 @@ public static class WalletEndpoints
                 // #1397 — the service-token bypass above is deliberately broad (Blueprint Service
                 // legitimately signs OTHER organisations' wallets during credential issuance), but a
                 // validator:*-owned wallet is the docket-signing / SSR-owner system key. Narrow the
-                // bypass so only the Validator service principal itself may sign with one — any other
-                // service token targeting it is the #1397 oracle.
+                // bypass so only the trusted system principals that operate that key may sign with one:
+                //   validator-service — seals dockets with the docket-signing key
+                //   register-service  — signs register genesis at creation (finalize) and F189 governance
+                // Any OTHER service token targeting it is the #1397 oracle. (Blueprint's sandbox-register
+                // creation delegates finalize to register-service, so it is covered transitively; peer
+                // replicates but never seals; genesis import uses /system/recover, not /sign.)
                 var systemWallet = await walletManager.GetWalletAsync(address, cancellationToken);
                 if (systemWallet is not null && systemWallet.Owner is not null &&
                     systemWallet.Owner.StartsWith("validator:", StringComparison.Ordinal))
                 {
                     var clientId = context.User.Claims.FirstOrDefault(c => c.Type == "client_id")?.Value;
-                    if (!string.Equals(clientId, "validator-service", StringComparison.Ordinal))
+                    var isSystemSigner =
+                        string.Equals(clientId, "validator-service", StringComparison.Ordinal) ||
+                        string.Equals(clientId, "register-service", StringComparison.Ordinal);
+                    if (!isSystemSigner)
                     {
                         logger.LogWarning(
                             "SEC-AUDIT: service principal {ClientId} attempted to sign system wallet {Wallet} owned by {Owner}",
