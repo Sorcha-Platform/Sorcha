@@ -42,9 +42,11 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
     }
 
     [Fact]
-    public async Task GetOAuth2Token_WithClientCredentials_ReturnsToken()
+    public async Task GetOAuth2Token_WithClientCredentials_ReturnsBadRequest()
     {
-        // Arrange
+        // #1397 — client_credentials is no longer served on the PUBLIC token endpoint (the gateway
+        // proxies this route; minting a service token here requires only the client_id/client_secret,
+        // no bearer). It must be refused here regardless of credential validity.
         var request = new OAuth2TokenRequest
         {
             GrantType = "client_credentials",
@@ -57,6 +59,25 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
         var response = await _unauthenticatedClient.PostAsJsonAsync("/api/service-auth/token", request);
 
         // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task GetInternalServiceToken_WithClientCredentials_ReturnsToken()
+    {
+        // Arrange — the internal-only equivalent of the retired public client_credentials path.
+        var request = new OAuth2TokenRequest
+        {
+            GrantType = "client_credentials",
+            ClientId = "test-client-id",
+            ClientSecret = "test-client-secret",
+            Scope = "blueprints:read"
+        };
+
+        // Act
+        var response = await _unauthenticatedClient.PostAsJsonAsync("/api/internal/service-auth/token", request);
+
+        // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var tokenResponse = await response.Content.ReadFromJsonAsync<TokenResponse>();
         tokenResponse.Should().NotBeNull();
@@ -65,7 +86,7 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
     }
 
     [Fact]
-    public async Task GetOAuth2Token_WithInvalidCredentials_ReturnsUnauthorized()
+    public async Task GetInternalServiceToken_WithInvalidCredentials_ReturnsUnauthorized()
     {
         // Arrange
         var request = new OAuth2TokenRequest
@@ -76,7 +97,7 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
         };
 
         // Act
-        var response = await _unauthenticatedClient.PostAsJsonAsync("/api/service-auth/token", request);
+        var response = await _unauthenticatedClient.PostAsJsonAsync("/api/internal/service-auth/token", request);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
@@ -125,7 +146,7 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
     [Fact]
     public async Task GetDelegatedToken_WithValidCredentials_ReturnsToken()
     {
-        // Arrange
+        // Arrange — /token/delegated moved to the internal-only group (#1397).
         var request = new DelegatedTokenRequest
         {
             ClientId = "test-client-id",
@@ -134,7 +155,7 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
         };
 
         // Act
-        var response = await _unauthenticatedClient.PostAsJsonAsync("/api/service-auth/token/delegated", request);
+        var response = await _unauthenticatedClient.PostAsJsonAsync("/api/internal/service-auth/token/delegated", request);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -155,10 +176,28 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
         };
 
         // Act
-        var response = await _unauthenticatedClient.PostAsJsonAsync("/api/service-auth/token/delegated", request);
+        var response = await _unauthenticatedClient.PostAsJsonAsync("/api/internal/service-auth/token/delegated", request);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task GetDelegatedToken_OnPublicRoute_ReturnsNotFound()
+    {
+        // #1397 — /token/delegated no longer exists under the public /api/service-auth group at all.
+        var request = new DelegatedTokenRequest
+        {
+            ClientId = "test-client-id",
+            ClientSecret = "test-client-secret",
+            DelegatedUserId = TestDataSeeder.AdminUserId
+        };
+
+        // Act
+        var response = await _unauthenticatedClient.PostAsJsonAsync("/api/service-auth/token/delegated", request);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]

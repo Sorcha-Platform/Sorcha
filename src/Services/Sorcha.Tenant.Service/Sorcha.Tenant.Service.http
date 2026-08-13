@@ -194,9 +194,13 @@ Authorization: Bearer {{token}}
 # ===========================
 # Service-to-Service Authentication
 # ===========================
+# #1397: client_credentials, /token/delegated, and /rotate-secret moved to the INTERNAL-only group
+# (/api/internal/service-auth/*) — the API Gateway has no route for /api/internal/*, so these are
+# unreachable from outside the Docker network. The public /api/service-auth/token endpoint now
+# serves only password + refresh_token grants (the browser session flows).
 
-### Get service token (client credentials flow)
-POST {{Sorcha.Tenant.Service_HostAddress}}/api/service-auth/token
+### Get service token (client credentials flow) — internal-only
+POST {{Sorcha.Tenant.Service_HostAddress}}/api/internal/service-auth/token
 Content-Type: application/json
 
 {
@@ -208,8 +212,8 @@ Content-Type: application/json
 
 ###
 
-### Get delegated token (act on behalf of user)
-POST {{Sorcha.Tenant.Service_HostAddress}}/api/service-auth/token/delegated
+### Get delegated token (act on behalf of user) — internal-only
+POST {{Sorcha.Tenant.Service_HostAddress}}/api/internal/service-auth/token/delegated
 Content-Type: application/json
 
 {
@@ -222,8 +226,8 @@ Content-Type: application/json
 
 ###
 
-### Rotate service principal secret
-POST {{Sorcha.Tenant.Service_HostAddress}}/api/service-auth/rotate-secret?clientId=service-blueprintservice
+### Rotate service principal secret — internal-only
+POST {{Sorcha.Tenant.Service_HostAddress}}/api/internal/service-auth/rotate-secret?clientId=service-blueprintservice
 Content-Type: application/json
 
 {
