@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & open-ended feedback
+    url: https://github.com/Sorcha-Platform/Sorcha/discussions
+    about: For questions and discussion that aren't a specific bug or feature request.

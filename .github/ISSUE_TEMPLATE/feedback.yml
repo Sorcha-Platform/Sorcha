@@ -1,0 +1,57 @@
+name: First-impressions feedback
+description: Not a specific bug or feature request — tell us how your first run of Sorcha went.
+title: "[Feedback]: "
+labels:
+  - feedback
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form is for general impressions rather than a single reproducible defect — if you hit a concrete error, use the **Bug report** form instead so it carries repro steps. Agents are welcome to file this too: describe what you tried and where the trail went cold.
+
+  - type: dropdown
+    id: entry-point
+    attributes:
+      label: Which entry point did you try?
+      options:
+        - "Self-hosted (one-line installer)"
+        - "Shared demo node (n1.sorcha.dev)"
+        - "MCP / agent"
+        - "Docs only"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-worked
+    attributes:
+      label: What worked
+      description: What got you further than you expected, or just worked smoothly.
+    validations:
+      required: true
+
+  - type: textarea
+    id: where-stuck
+    attributes:
+      label: Where you got stuck
+      description: The point where you slowed down, backtracked, or gave up. Be as specific as you can — a page URL, a command, an error you didn't file separately.
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-expected
+    attributes:
+      label: What you expected instead
+      description: What would have made the sticking point above a non-issue.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: >
+        Optional. Find it in the UI footer, the Settings/Help page's "Version" field,
+        or `info.version` from `GET /.well-known/openapi.json`.
+      placeholder: "e.g. 2.935.1"
+    validations:
+      required: false

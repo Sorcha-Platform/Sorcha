@@ -259,8 +259,20 @@ Include:
 - `bug` - Something isn't working
 - `enhancement` - New feature or request
 - `documentation` - Documentation improvements
-- `good first issue` - Good for newcomers
-- `help wanted` - Extra attention needed
+- `good first issue` - Small, self-contained, and a reasonable way to learn the codebase. Doesn't require deep familiarity with Sorcha's architecture to complete safely.
+- `help wanted` - The maintainers want outside help on this; scope may be larger or less well-defined than `good first issue`.
+- `agent-friendly` - Meets the bar below: a fresh autonomous agent (or a fresh Claude session with no prior context) can pick it up cold and complete it without needing to ask a human a clarifying question first. See "The agent-friendly bar" below before applying or requesting this label.
+
+### The agent-friendly bar
+
+An issue labelled `agent-friendly` is a promise that the issue text itself is a sufficient brief — an agent shouldn't need to guess intent, hunt for the relevant code, or invent its own success criteria. Before applying the label (maintainers) or asking for it (contributors filing an issue meant for agent pickup), the issue must contain:
+
+1. **Affected files/area** — the specific file(s), directory, or service the change lives in (e.g. `src/Services/Sorcha.Tenant.Service/Services/LoginService.cs`, not "the auth system"). If the exact file is unknown, name the narrowest area you can (service + rough responsibility) so the agent's first move is confirmation, not a codebase-wide search.
+2. **Inputs** — what the agent needs to know to start: relevant request/response shapes, an example payload, a reproducing command, a linked PR/commit that shows the pattern to follow, or a pointer to a similar already-solved case elsewhere in the repo.
+3. **Explicit done-criteria** — a concrete, checkable statement of what "finished" looks like. Not "fix the bug" but "calling `POST /api/x` with `{...}` returns `200` instead of `500`" or "`FooTests.Bar_Baz_Should()` passes." If the fix is structural (e.g. a naming/pattern cleanup), name the specific instances or the exact rule to apply everywhere.
+4. **How to verify** — the command(s) to run to confirm the done-criteria are met (a `dotnet test --filter ...` invocation, a specific `curl`/CLI call, a script under `walkthroughs/`). An agent should be able to close the loop itself, not rely on a maintainer to eyeball the result.
+
+An issue missing any of these isn't wrong to file — it's just not `agent-friendly` yet. Add the missing piece (or ask the reporter to) before applying the label.
 
 ## Release Process
 
