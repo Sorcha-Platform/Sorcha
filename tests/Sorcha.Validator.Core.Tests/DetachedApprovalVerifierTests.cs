@@ -156,7 +156,7 @@ public sealed class DetachedApprovalVerifierTests
         var (submission, person) = await DelegatedAsync(
             operation, new[] { GovernanceOperationType.CryptoPolicyUpdate });
 
-        var result = await Verifier().VerifyAsync(RegisterId, operation, submission, Now);
+        var result = await Verifier().VerifyAsync(RegisterId, operation, submission, Now, allowDelegated: true);
 
         result.Accepted.Should().BeTrue(result.Detail);
         result.AccountableIndividualDid.Should().Be(person.Did,
@@ -193,7 +193,7 @@ public sealed class DetachedApprovalVerifierTests
         submission.Authorisation.DelegationSignature = await SignAsync(digest, impostor);
         submission.Authorisation.DelegationPublicKey = impostor.PublicKeyB64;
 
-        var result = await Verifier().VerifyAsync(RegisterId, operation, submission, Now);
+        var result = await Verifier().VerifyAsync(RegisterId, operation, submission, Now, allowDelegated: true);
 
         result.Accepted.Should().BeFalse();
         result.Detail.Should().Contain("delegation was not signed by a key belonging");
@@ -223,7 +223,7 @@ public sealed class DetachedApprovalVerifierTests
         var (submission, _) = await DelegatedAsync(
             operation, new[] { GovernanceOperationType.CryptoPolicyUpdate });
 
-        var result = await Verifier().VerifyAsync(RegisterId, operation, submission, Now);
+        var result = await Verifier().VerifyAsync(RegisterId, operation, submission, Now, allowDelegated: true);
 
         result.Accepted.Should().BeFalse();
         result.Reason.Should().Be(AuthorisationRefusalReason.OutOfScope);
@@ -237,7 +237,8 @@ public sealed class DetachedApprovalVerifierTests
             operation, new[] { GovernanceOperationType.CryptoPolicyUpdate });
 
         var result = await Verifier().VerifyAsync(
-            RegisterId, operation, submission, Now, isRevoked: id => id == "delegation-1");
+            RegisterId, operation, submission, Now, isRevoked: id => id == "delegation-1",
+            allowDelegated: true);
 
         result.Accepted.Should().BeFalse();
         result.Reason.Should().Be(AuthorisationRefusalReason.Revoked);
