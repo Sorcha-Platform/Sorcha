@@ -23,9 +23,11 @@ namespace Sorcha.Integration.Tests.Quickstart;
 /// <para>
 /// Skipped unless <c>SORCHA_DOCKER=1</c> is set and the standard
 /// <c>docker-compose.yml</c> stack is running. Local dev creds are
-/// <c>admin@sorcha.local / Dev_Pass_2025!</c>; service-principal creds are
-/// <c>service-blueprint / blueprint-service-secret</c>. CI gates the same
-/// test under the Docker-CI workflow.
+/// <c>admin@sorcha.local / Dev_Pass_2025!</c>; the service-principal client
+/// id is <c>service-blueprint</c>, and its secret is per-deploy (#1412) —
+/// export <c>BLUEPRINT_SERVICE_SECRET</c> with the same value
+/// <c>sorcha-setup.sh</c> wrote to <c>.env</c> before running this test. CI
+/// gates the same test under the Docker-CI workflow.
 /// </para>
 /// <para>
 /// This test was first executed manually against the running Docker stack
@@ -44,11 +46,23 @@ public class InboxRoundTripTests
     private static bool DockerEnabled =>
         Environment.GetEnvironmentVariable("SORCHA_DOCKER") == "1";
 
+    // The Blueprint service-principal's ServiceAuth secret is per-deploy since
+    // #1412 — sorcha-setup.sh generates BLUEPRINT_SERVICE_SECRET into .env
+    // instead of the old committed "blueprint-service-secret" literal. Read
+    // the same env var name here so this test authenticates against whatever
+    // secret the running stack was actually provisioned with (#1423).
+    private static string? BlueprintServiceSecret =>
+        Environment.GetEnvironmentVariable("BLUEPRINT_SERVICE_SECRET");
+
     [SkippableFact]
     public async Task InboxRoundTrip_PostEntry_FiresRealtime_AndPersistsToRest()
     {
         Skip.IfNot(DockerEnabled,
             "Docker stack not running. Set SORCHA_DOCKER=1 and start docker-compose.yml.");
+        Skip.IfNot(!string.IsNullOrEmpty(BlueprintServiceSecret),
+            "BLUEPRINT_SERVICE_SECRET not set. Export the same value sorcha-setup.sh wrote " +
+            "to .env (the Blueprint service principal's per-deploy secret; #1412) before " +
+            "running with SORCHA_DOCKER=1.");
 
         // 1. Acquire user JWT (admin) and service-principal JWT (Blueprint Service).
         using var http = new HttpClient { BaseAddress = new Uri(GatewayUrl) };
@@ -160,7 +174,7 @@ public class InboxRoundTripTests
         {
             new KeyValuePair<string, string>("grant_type", "client_credentials"),
             new KeyValuePair<string, string>("client_id", "service-blueprint"),
-            new KeyValuePair<string, string>("client_secret", "blueprint-service-secret"),
+            new KeyValuePair<string, string>("client_secret", BlueprintServiceSecret!),
         });
         var resp = await http.PostAsync("/api/service-auth/token", form);
         resp.EnsureSuccessStatusCode();

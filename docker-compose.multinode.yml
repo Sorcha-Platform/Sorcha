@@ -89,7 +89,11 @@ services:
       JwtSettings__InstallationName: ${INSTALLATION_NAME:-localhost}
       JwtSettings__SigningKey: ${JWT_SIGNING_KEY:-c29yY2hhLWRvY2tlci1kZXYta2V5LTIwMjUtbWluLTI1Ni1iaXRzLXNlY3VyZQ==}
       ServiceAuth__ClientId: tenant-service
-      ServiceAuth__ClientSecret: tenant-service-secret
+      # Same ClientId as the base compose's tenant-service (this is a second
+      # replica of the SAME principal, not a distinct identity), so it MUST
+      # use the same generated secret (#1423) — sorcha-setup.sh writes
+      # TENANT_SERVICE_SECRET into .env; no literal default.
+      ServiceAuth__ClientSecret: ${TENANT_SERVICE_SECRET:?not set — run ./scripts/sorcha-setup.sh to generate .env (see README Quick Start); bare docker compose up is unsupported}
       ServiceAuth__Scopes: "wallets:sign wallets:verify persona:crypto"
       ServiceClients__WalletService__Address: http://wallet-service:8080
     depends_on:

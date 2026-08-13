@@ -151,7 +151,12 @@ services:
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_URLS: http://+:8080
       ServiceAuth__ClientId: service-wallet
-      ServiceAuth__ClientSecret: wallet-service-secret
+      # Per-deploy secret (#1423, same treatment as the main docker-compose.yml
+      # per #1412) — deploy-desktop.sh/.ps1 generates WALLET_SERVICE_SECRET
+      # into .env on first run. No literal default: a bare `docker compose up`
+      # without a generated .env must fail loudly, not silently run with a
+      # committed secret.
+      ServiceAuth__ClientSecret: ${WALLET_SERVICE_SECRET:?set WALLET_SERVICE_SECRET in .env — run scripts/deploy-desktop.sh (or .ps1) to generate it, or see .env.desktop.example}
       ServiceAuth__Scopes: "registers:write registers:read"
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceClients__RegisterService__Address: http://register-service:8080
@@ -193,7 +198,8 @@ services:
       # MUST stay false in a true production deployment.
       Platform__AllowAdminVerifiedUserCreation: "true"
       ServiceAuth__ClientId: tenant-service
-      ServiceAuth__ClientSecret: tenant-service-secret
+      # Per-deploy secret (#1423) — see wallet-service's ServiceAuth__ClientSecret above.
+      ServiceAuth__ClientSecret: ${TENANT_SERVICE_SECRET:?set TENANT_SERVICE_SECRET in .env — run scripts/deploy-desktop.sh (or .ps1) to generate it, or see .env.desktop.example}
       ServiceAuth__Scopes: "wallets:sign wallets:verify persona:crypto"
       ServiceClients__WalletService__Address: http://wallet-service:8080
       ServiceClients__TenantService__Address: http://tenant-service:8080
@@ -255,7 +261,8 @@ services:
       # MUST equal validator-service Validator__ValidatorId (shared system wallet).
       SystemWalletSigning__ValidatorId: local-validator
       ServiceAuth__ClientId: register-service
-      ServiceAuth__ClientSecret: register-service-secret
+      # Per-deploy secret (#1423) — see wallet-service's ServiceAuth__ClientSecret above.
+      ServiceAuth__ClientSecret: ${REGISTER_SERVICE_SECRET:?set REGISTER_SERVICE_SECRET in .env — run scripts/deploy-desktop.sh (or .ps1) to generate it, or see .env.desktop.example}
       ServiceAuth__Scopes: "wallets:sign validator:write"
       ServiceClients__TenantService__Address: http://tenant-service:8080
     volumes:
@@ -287,7 +294,8 @@ services:
       ASPNETCORE_HTTP_PORTS: "8080"
       ConnectionStrings__Redis: redis:6379
       ServiceAuth__ClientId: validator-service
-      ServiceAuth__ClientSecret: validator-service-secret
+      # Per-deploy secret (#1423) — see wallet-service's ServiceAuth__ClientSecret above.
+      ServiceAuth__ClientSecret: ${VALIDATOR_SERVICE_SECRET:?set VALIDATOR_SERVICE_SECRET in .env — run scripts/deploy-desktop.sh (or .ps1) to generate it, or see .env.desktop.example}
       ServiceAuth__Scopes: "registers:write registers:read blueprints:read"
       # MUST equal register-service SystemWalletSigning__ValidatorId.
       Validator__ValidatorId: local-validator
@@ -339,7 +347,8 @@ services:
       ServiceClients__BlueprintService__Address: http://blueprint-service:8080
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceAuth__ClientId: service-haip
-      ServiceAuth__ClientSecret: haip-service-secret
+      # Per-deploy secret (#1423) — see wallet-service's ServiceAuth__ClientSecret above.
+      ServiceAuth__ClientSecret: ${HAIP_SERVICE_SECRET:?set HAIP_SERVICE_SECRET in .env — run scripts/deploy-desktop.sh (or .ps1) to generate it, or see .env.desktop.example}
       ServiceAuth__Scopes: "blueprints:read"
     depends_on:
       redis: { condition: service_healthy }
@@ -368,7 +377,8 @@ services:
       ASPNETCORE_HTTP_PORTS: "8080"
       MongoDB__DatabaseName: sorcha_system_register
       ServiceAuth__ClientId: service-peer
-      ServiceAuth__ClientSecret: peer-service-secret
+      # Per-deploy secret (#1423) — see wallet-service's ServiceAuth__ClientSecret above.
+      ServiceAuth__ClientSecret: ${PEER_SERVICE_SECRET:?set PEER_SERVICE_SECRET in .env — run scripts/deploy-desktop.sh (or .ps1) to generate it, or see .env.desktop.example}
       ServiceAuth__Scopes: "registers:write registers:read"
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceClients__RegisterService__Address: http://register-service:8080
@@ -417,7 +427,8 @@ services:
       ServiceClients__PeerService__Address: http://peer-service:5000
       ServiceClients__PeerService__HttpAddress: http://peer-service:8080
       ServiceAuth__ClientId: service-blueprint
-      ServiceAuth__ClientSecret: blueprint-service-secret
+      # Per-deploy secret (#1423) — see wallet-service's ServiceAuth__ClientSecret above.
+      ServiceAuth__ClientSecret: ${BLUEPRINT_SERVICE_SECRET:?set BLUEPRINT_SERVICE_SECRET in .env — run scripts/deploy-desktop.sh (or .ps1) to generate it, or see .env.desktop.example}
       ServiceAuth__Scopes: "wallets:sign registers:write blueprints:manage"
       TransactionConfirmation__TimeoutSeconds: "60"
       TransactionConfirmation__PollIntervalSeconds: "1"
