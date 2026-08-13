@@ -1,0 +1,100 @@
+name: Bug report
+description: Something in Sorcha isn't working the way it should.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. This form works the same whether you're a human tester or an autonomous agent — fill in every required field precisely, since the fields below are what a maintainer (or another agent) will use to reproduce and fix the issue without further back-and-forth.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: A clear, specific description of the observed behaviour. Include exact error messages, status codes, or log lines if you have them.
+      placeholder: |
+        e.g. POST /api/v1/wallet/create returned 500 Internal Server Error with body {"error":"..."}.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What you expected to happen instead.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: entry-point
+    attributes:
+      label: Entry point used
+      description: Which surface were you using when you hit this?
+      options:
+        - "Self-hosted (one-line installer)"
+        - "Shared demo node (n1.sorcha.dev)"
+        - "MCP / agent"
+        - "Docs only"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: >
+        The Sorcha version you were running. Find it in the UI footer (bottom of any page),
+        the Settings/Help page's "Version" field, or by calling `GET /.well-known/openapi.json`
+        and reading `info.version` from the response body.
+      placeholder: "e.g. 2.935.1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro-steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps from a clean starting point. Include request bodies, CLI commands, or UI clicks — whatever is needed for someone else to hit the same failure.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, browser (if UI), .NET version (if self-hosted), Docker version, and anything else about how the platform was running.
+      placeholder: |
+        OS: ...
+        Browser: ...
+        Docker: ...
+        .NET SDK: ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or output
+      description: Paste any stack traces, console output, or network responses. This will be rendered as-is, so no need to add backticks.
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: agent-disclosure
+    attributes:
+      label: Reporter
+      description: Optional — helps maintainers calibrate how to respond.
+      options:
+        - label: This report was filed by an autonomous agent (not a human directly typing it)
+          required: false
