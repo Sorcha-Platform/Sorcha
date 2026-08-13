@@ -218,6 +218,14 @@ lets a caller encrypt *to* a wallet they do not own, and `GET /{address}` intent
 an active delegate. `sign`, `decrypt`, `decapsulate` and `GET /{address}` already verify ownership
 inline.
 
+**#1397 — the service-token bypass on `sign` is narrowed for `validator:*`-owned wallets.** A
+`validator:*`-owned system wallet holds the docket-signing / SSR-owner key, so a service token may
+only sign with one when it is the Validator service principal itself (`client_id == "validator-service"`,
+per `Sorcha.Tenant.Service`'s seeded `ServicePrincipal`). Any other service token targeting a
+`validator:*` wallet gets **403** with a `SEC-AUDIT` log; the bypass for every other (non-system)
+wallet — e.g. Blueprint Service signing an issuing org's wallet during credential issuance — is
+unchanged.
+
 ### Wallet Management
 
 | Method | Endpoint | Description |
