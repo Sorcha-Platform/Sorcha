@@ -419,6 +419,16 @@ write_env_file() {
     : "${HAIP_SERVICE_SECRET:=$(generate_service_secret)}"
     : "${VERIFIER_SERVICE_SECRET:=$(generate_service_secret)}"
 
+    # Seed admin password (issues #1409 / #1434). In Development the Tenant
+    # Service uses its committed dev default when AdminPassword is empty; in
+    # Production/Staging DatabaseInitializer fail-closes at startup unless it is
+    # set, so generate a strong one for any non-Development install. It is shown
+    # once in the final summary and is not recoverable afterwards.
+    SEED_ADMIN_EMAIL="${SEED_ADMIN_EMAIL:-admin@sorcha.local}"
+    if [ "$ASPNETCORE_ENVIRONMENT" != "Development" ]; then
+        : "${SEED_ADMIN_PASSWORD:=$(generate_service_secret)}"
+    fi
+
     if [ -f "$ENV_FILE" ]; then
         local backup="$ENV_FILE.backup.$(date +%Y%m%d-%H%M%S)"
         cp "$ENV_FILE" "$backup"
@@ -485,6 +495,13 @@ VALIDATOR_SERVICE_SECRET=${VALIDATOR_SERVICE_SECRET}
 TENANT_SERVICE_SECRET=${TENANT_SERVICE_SECRET}
 HAIP_SERVICE_SECRET=${HAIP_SERVICE_SECRET}
 VERIFIER_SERVICE_SECRET=${VERIFIER_SERVICE_SECRET}
+
+# Seed admin credentials (issues #1409 / #1434). Development uses the Tenant
+# Service dev default when AdminPassword is empty; Production/Staging fail-closed
+# at startup unless it is set, so setup generates one above for non-Development
+# installs. Read as Seed:AdminEmail / Seed:AdminPassword by DatabaseInitializer.
+SEED_ADMIN_EMAIL=${SEED_ADMIN_EMAIL:-admin@sorcha.local}
+SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD:-}
 ENVFILE
 
     success ".env file written"
@@ -639,8 +656,15 @@ print_summary() {
     echo -e "  Aspire Dashboard   ${CYAN}http://localhost:18888${NC}"
     echo ""
     echo -e "${BOLD}Default Login:${NC}"
-    echo -e "  Email:     ${CYAN}admin@sorcha.local${NC}"
-    echo -e "  Password:  ${CYAN}Dev_Pass_2025!${NC}"
+    if [ "$ASPNETCORE_ENVIRONMENT" != "Development" ] && [ -n "${SEED_ADMIN_PASSWORD:-}" ]; then
+        echo -e "  Email:     ${CYAN}${SEED_ADMIN_EMAIL:-admin@sorcha.local}${NC}"
+        echo -e "  Password:  ${CYAN}${SEED_ADMIN_PASSWORD}${NC}"
+        echo -e "             (generated for this ${ASPNETCORE_ENVIRONMENT} install — save it now;"
+        echo -e "              it is not recoverable. Change it on first login.)"
+    else
+        echo -e "  Email:     ${CYAN}admin@sorcha.local${NC}"
+        echo -e "  Password:  ${CYAN}Dev_Pass_2025!${NC}  (development default)"
+    fi
     echo ""
     echo -e "${BOLD}Useful Commands:${NC}"
     echo -e "  View logs:         ${CYAN}docker compose logs -f${NC}"

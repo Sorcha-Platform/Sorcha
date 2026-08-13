@@ -481,6 +481,12 @@ services:
       Seed__ServicePrincipals__tenant-service: ${TENANT_SERVICE_SECRET:?not set — run ./scripts/sorcha-setup.sh to generate .env (see README Quick Start); bare docker compose up is unsupported}
       Seed__ServicePrincipals__service-haip: ${HAIP_SERVICE_SECRET:?not set — run ./scripts/sorcha-setup.sh to generate .env (see README Quick Start); bare docker compose up is unsupported}
       Seed__ServicePrincipals__service-verifier: ${VERIFIER_SERVICE_SECRET:?not set — run ./scripts/sorcha-setup.sh to generate .env (see README Quick Start); bare docker compose up is unsupported}
+      # Seed admin credentials (issues #1409 / #1434). An empty AdminPassword is
+      # allowed in Development (DatabaseInitializer uses its dev default); in
+      # Production/Staging DatabaseInitializer fail-closes at startup unless it is
+      # set, so sorcha-setup.sh generates one for any non-Development install.
+      Seed__AdminEmail: ${SEED_ADMIN_EMAIL:-admin@sorcha.local}
+      Seed__AdminPassword: ${SEED_ADMIN_PASSWORD:-}
       ServiceClients__WalletService__Address: http://wallet-service:8080
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceClients__RegisterService__Address: http://register-service:8080
