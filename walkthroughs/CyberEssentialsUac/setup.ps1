@@ -374,6 +374,30 @@ foreach ($p in $participantDefs) {
 }
 
 # ============================================================================
+# Step 6c: Provision the Feature-083 org master key for the credential ISSUER org.
+# ============================================================================
+# Blueprint A's action 1 (assessor) issues a CyberEssentialsUacPosture credential
+# (targetAudience: SorchaLocalWallet) signed by the assessor org. Without a master
+# key, IssuanceKeyService.GetActiveSigningMaterialAsync returns null and the mint
+# FAILS (400 "Failed to issue credential"). Re-login first so the session JWT
+# carries wallet_address (the master-key endpoint is wallet-authorized); the
+# assessor's wallet was created above. Idempotent (409 on re-run is fine).
+# See the walkthrough-builder skill.
+
+Write-WtStep "Step 6c: Provision credential-issuer org master key"
+
+$assessorIssuerSession = Connect-SorchaUser `
+    -TenantUrl      $sorchaEnv.TenantUrl `
+    -Email          $assessorAdminEmail `
+    -Password       $secrets.DefaultPassword `
+    -OrganizationId $assessorOrgId
+
+Set-SorchaOrgMasterKey `
+    -WalletUrl      $sorchaEnv.WalletUrl `
+    -OrganizationId $assessorOrgId `
+    -Headers        $assessorIssuerSession.Headers
+
+# ============================================================================
 # Step 7: Substitute Assessor Issuer DID into Blueprint B
 # ============================================================================
 # Blueprint B's credentialRequirements.trustPolicy.allowedIssuers contains the

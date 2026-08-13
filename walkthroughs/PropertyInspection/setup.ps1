@@ -150,6 +150,34 @@ foreach ($p in $participantPublishDefs) {
     Write-WtInfo "  Published $($p.role)"
 }
 
+# ── Provision the Feature-083 org master key for the credential ISSUER org ─
+# Action 1 (housing-officer, sender) issues a JobAssignmentCredential to the
+# contractor. credentialIssuanceConfig omits targetAudience, which defaults to
+# SorchaLocalWallet (see CredentialIssuanceConfig.TargetAudience) — so this is
+# the same native-wallet issuance path as ConstructionPermit / CyberEssentialsUac
+# / Strathcarron, not the HAIP OpenID4VCI path. Without a master key,
+# IssuanceKeyService.GetActiveSigningMaterialAsync returns null and the mint
+# FAILS (400 "Failed to issue credential"). $housingSession was obtained above
+# (line ~84) via Connect-SorchaUser AFTER the housing-officer's wallet was
+# already created during the shared council setup, so its JWT already carries
+# wallet_address — no extra re-login needed here. Idempotent (409 on re-run
+# is fine). See the walkthrough-builder skill.
+#
+# NB: action 6 (sender "tenant") also carries a credentialIssuanceConfig
+# (ServiceCompletionCredential, also defaulting to SorchaLocalWallet) but is
+# NOT provisioned here — the tenant is a Public-org citizen/consumer, and
+# POST /api/wallets/org/{orgId}/master-key requires RequireAdministrator +
+# RequirePlatformAudience, which a consumer-tier token can never satisfy.
+# Provisioning a master key for the shared Public org (if that's even the
+# right fix) is a platform-wide decision, not a per-walkthrough setup step.
+# Flagged for follow-up; left unedited.
+Write-WtStep "Provisioning credential-issuer org master key (housing-officer / Strathcarron Council)"
+
+Set-SorchaOrgMasterKey `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -OrganizationId $housingRole.organizationId `
+    -Headers $housingSession.Headers
+
 # ── Publish blueprint ─────────────────────────────────────────────
 Write-WtStep "Publishing blueprint"
 
