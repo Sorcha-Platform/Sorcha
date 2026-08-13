@@ -9,6 +9,15 @@ A decentralised register platform for secure, multi-participant data flow orches
 
 Sorcha lets organizations define structured workflows — called **blueprints** — where multiple parties exchange, validate, and record data with cryptographic guarantees. Every transaction is signed, every change is immutable, and every participant sees only what they're authorized to access.
 
+## Four ways in
+
+| Path | Best if you want to... |
+|------|-------------------------|
+| **[Self-host in one line](#try-it-in-one-line)** | run the full stack locally in Docker right now |
+| **[Try the shared sandbox](https://n1.sorcha.dev)** | poke at a live, publicly-reachable instance without installing anything. `n1.sorcha.dev` is a shared demo node, not a production deployment — no real data, periodically wiped. See [`SECURITY.md`](SECURITY.md) |
+| **[Read first](docs/quickstart.md)** | understand setup and architecture before running anything — written to be followed by a human or an AI agent |
+| **[Connect an AI agent](#for-ai-agents-and-integrators)** | point an MCP (Model Context Protocol) client or coding agent at a node and have it drive a workflow |
+
 ## Try it in one line
 
 With **Docker** and **git** installed, this downloads Sorcha, asks a few setup questions, generates your config, and brings the whole stack up:
@@ -40,8 +49,8 @@ It clones this repo into `./sorcha` and hands off to [`scripts/sorcha-setup.sh`]
 | Capability | Description |
 |------------|-------------|
 | **Blueprint Workflows** | Define multi-step, multi-party data flows as declarative JSON with conditional routing, schema validation, and business logic evaluation |
-| **Distributed Ledger** | Immutable, append-only transaction registers with chain validation, Merkle-tree dockets, and DID URI addressing |
-| **Cryptographic Wallets** | HD wallet management (BIP32/39/44) with ED25519, P-256, RSA-4096, and post-quantum algorithms (ML-DSA, ML-KEM, SLH-DSA) |
+| **Distributed Ledger** | Immutable, append-only transaction registers with chain validation, Merkle-tree **dockets** (batches of transactions sealed together), and **DID** (Decentralized Identifier) URI addressing |
+| **Cryptographic Wallets** | HD wallet management (BIP32/39/44) with ED25519, P-256, RSA-4096, and post-quantum algorithms ML-DSA and ML-KEM (SLH-DSA is planned, not yet implemented — see [`STANDARDS.md`](STANDARDS.md)) |
 | **Field-Level Encryption** | Envelope encryption with per-recipient key wrapping — participants see only the fields they're authorized to access |
 | **Multi-Tenant Identity** | JWT authentication with OAuth2 client credentials, participant identity registry, and wallet address linking |
 | **Peer Network** | gRPC-based P2P topology for register replication across nodes |
@@ -196,7 +205,7 @@ See the [CLI documentation](src/Apps/Sorcha.Cli/README.md) for the full command 
 ```mermaid
 graph TD
     UI["Sorcha UI<br/><small>Blazor WASM</small>"]
-    GW["API Gateway<br/><small>YARP Reverse Proxy</small>"]
+    GW["API Gateway<br/><small>Reverse Proxy</small>"]
 
     BP["Blueprint Service<br/><small>Workflows + SignalR</small>"]
     REG["Register Service<br/><small>Distributed Ledger</small>"]
@@ -229,14 +238,14 @@ graph TD
 
 | Service | Purpose |
 |---------|---------|
-| **API Gateway** | YARP reverse proxy — single entry point for all API traffic |
+| **API Gateway** | Reverse proxy built on YARP (Microsoft's .NET reverse-proxy toolkit) — single entry point for all API traffic |
 | **Blueprint Service** | Workflow management, execution engine, SignalR notifications |
-| **Register Service** | Distributed ledger, transaction storage, OData queries |
+| **Register Service** | Distributed ledger, transaction storage, OData (Open Data Protocol) query support |
 | **Wallet Service** | Cryptographic key management, signing, encryption |
 | **Tenant Service** | Multi-tenant auth, JWT issuer, participant identity |
 | **Validator Service** | Transaction validation, consensus, docket building |
-| **Peer Service** | P2P network topology, gRPC replication |
-| **HAIP Service** | OpenID4VCI/VP external-wallet surface (credential issue + verify), reached via the gateway |
+| **Peer Service** | Peer-to-peer network topology, gRPC replication |
+| **HAIP Service** | OpenID4VCI/VP external-wallet surface (HAIP = OpenID4VC High-Assurance Interoperability Profile) — credential issue + verify, reached via the gateway |
 
 ## Configuration
 
@@ -253,10 +262,11 @@ Key settings:
 
 ## For AI Agents and Integrators
 
-Sorcha publishes a machine-readable surface so AI agents, AI coding assistants, and integrators picking up the platform can find, parse, and reason over it without out-of-band documentation. The four published documents are the canonical agent-facing reference and live alongside the standards file and the well-known endpoints:
+Sorcha publishes a machine-readable surface so AI agents, AI coding assistants, and integrators picking up the platform can find, parse, and reason over it without out-of-band documentation. These published documents are the canonical agent-facing reference and live alongside the standards file and the well-known endpoints:
 
 | Surface | Purpose |
 |---------|---------|
+| [`AGENTS.md`](AGENTS.md) | Entry point for an autonomous coding agent working in this repository — read this first |
 | [`llms.txt`](llms.txt) | One-screen factual summary, llmstxt.org-conforming |
 | [`STANDARDS.md`](STANDARDS.md) | Single source of truth for every standard the platform implements |
 | [`docs/quickstart.md`](docs/quickstart.md) | Agent-runnable setup against a clean Docker host |
@@ -264,7 +274,8 @@ Sorcha publishes a machine-readable surface so AI agents, AI coding assistants, 
 | [`docs/openid4vc-haip-integration.md`](docs/openid4vc-haip-integration.md) | Wallet ecosystem boundary (OpenID4VCI / OpenID4VP / HAIP 1.0) |
 | [`docs/applicability.md`](docs/applicability.md) | Regulatory-pull domains (DPP, trade finance, IPC-1782, municipal) |
 | [`docs/security-model.md`](docs/security-model.md) | Selective disclosure, post-quantum posture, honest gaps |
-| [`docs/mcp-server.md`](docs/mcp-server.md) | Connecting an AI agent via the Model Context Protocol |
+| [`docs/reference/maturity-and-limitations.md`](docs/reference/maturity-and-limitations.md) | What's production-shaped versus demo-grade before you test |
+| [`docs/mcp-server.md`](docs/mcp-server.md) | Connecting an AI agent via the Model Context Protocol — transports, auth, role slices |
 | [`docs/llms-full.txt`](docs/llms-full.txt) | Long-form machine-readable narrative |
 | `GET /.well-known/openapi.json` *(running gateway)* | Aggregated OpenAPI 3.1 surface with `info.x-mcp-server` and `info.x-standards` |
 | `GET /.well-known/openapi.yaml` *(running gateway)* | YAML form of the same document |
