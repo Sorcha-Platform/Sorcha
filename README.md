@@ -89,11 +89,15 @@ cd Sorcha
 
 # Interactive setup — checks prerequisites, generates .env, pulls images, starts services
 ./scripts/sorcha-setup.sh
-
-# Or manual setup:
-cp .env.example .env          # Edit with your settings
-docker compose up -d          # Start all services
 ```
+
+`./scripts/sorcha-setup.sh` is the supported path — it generates the per-deploy service-principal
+secrets (among other things) into `.env` before starting the stack. **A bare `docker compose up`
+without a generated `.env` fails by design**: `docker-compose.yml` guards the 8 service-to-service
+secrets with `${VAR:?...}`, so `docker compose up`/`config` aborts immediately with a message
+pointing back here rather than silently running on committed secrets. `cp .env.example .env` alone
+is **not** sufficient — `.env.example` documents the available keys but does not contain generated
+secret values.
 
 On success the script prints `[sorcha-setup] success — gateway reachable at http://localhost`. Verify with `curl -s http://localhost/api/health` — every service should report `Healthy`.
 

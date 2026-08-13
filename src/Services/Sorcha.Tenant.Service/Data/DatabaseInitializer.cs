@@ -390,49 +390,42 @@ public class DatabaseInitializer
         _logger.LogInformation("Checking for service principals...");
 
         // Define service principals to seed
-        // DevSecret is used in Development environment for docker-compose compatibility
-        var servicePrincipals = new (Guid Id, string ServiceName, string ClientId, string? DevSecret, string[] Scopes)[]
+        var servicePrincipals = new (Guid Id, string ServiceName, string ClientId, string[] Scopes)[]
         {
             (
                 BlueprintServicePrincipalId,
                 "Blueprint Service",
                 "service-blueprint",
-                "blueprint-service-secret",
                 new[] { "blueprints:read", "blueprints:write", "wallets:sign", "register:write" }
             ),
             (
                 WalletServicePrincipalId,
                 "Wallet Service",
                 "service-wallet",
-                "wallet-service-secret",
                 new[] { "wallets:read", "wallets:write", "wallets:sign", "wallets:encrypt", "wallets:decrypt", "registers:read" }
             ),
             (
                 RegisterServicePrincipalId,
                 "Register Service",
                 "register-service",
-                "register-service-secret",
                 new[] { "registers:read", "registers:write", "registers:query", "validator:write", "wallets:sign" }
             ),
             (
                 PeerServicePrincipalId,
                 "Peer Service",
                 "service-peer",
-                "peer-service-secret",
                 new[] { "peers:read", "peers:write", "registers:read" }
             ),
             (
                 ValidatorServicePrincipalId,
                 "Validator Service",
                 "validator-service",
-                "validator-service-secret",
                 new[] { "validator:read", "validator:write", "wallets:sign", "registers:read", "blueprints:read" }
             ),
             (
                 TenantServicePrincipalId,
                 "Tenant Service",
                 "tenant-service",
-                "tenant-service-secret",
                 // persona:crypto grants access to the Wallet Service's
                 // /persona/encrypt|decrypt endpoints used by the Consumer
                 // persona feature (092). Only the Tenant Service is issued
@@ -443,7 +436,6 @@ public class DatabaseInitializer
                 HaipServicePrincipalId,
                 "HAIP Service",
                 "service-haip",
-                "haip-service-secret",
                 // HAIP Service uses its service token to call Blueprint Service's
                 // presentation-callback endpoint (Feature 111). RequireService
                 // policy only checks the token_type=service claim, so the scope
@@ -454,7 +446,6 @@ public class DatabaseInitializer
                 VerifierServicePrincipalId,
                 "Verifier Service",
                 "service-verifier",
-                "verifier-service-secret",
                 // The Open/desk Verifier (Sorcha.Verifier) uses its service token to call the HAIP
                 // Service's authenticated create-request + result endpoints (Feature 164 / #1189).
                 // RequireAuthorization only checks for any authenticated caller, so the scope list is
@@ -475,11 +466,11 @@ public class DatabaseInitializer
             if (existing == null)
             {
                 // Per-deploy secret (issue #1412) — configured value wins in every environment;
-                // Development falls back to the committed dev literal; Production/Staging FAIL
-                // CLOSED rather than seeding a random secret the client services can never know.
+                // Production/Staging FAIL CLOSED rather than seeding a random secret the client
+                // services can never know.
                 var configuredSecret = _configuration[$"Seed:ServicePrincipals:{sp.ClientId}"];
                 var (clientSecret, secretSource) = ServicePrincipalSecretResolver.Resolve(
-                    sp.ClientId, sp.DevSecret, configuredSecret, environment);
+                    sp.ClientId, configuredSecret, environment);
                 var encryptedSecret = EncryptClientSecret(clientSecret);
 
                 _logger.LogInformation("Creating service principal: {ServiceName}", sp.ServiceName);

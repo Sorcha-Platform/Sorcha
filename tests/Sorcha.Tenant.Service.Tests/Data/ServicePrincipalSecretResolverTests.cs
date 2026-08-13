@@ -11,12 +11,14 @@ namespace Sorcha.Tenant.Service.Tests.Data;
 /// selection extracted from <see cref="DatabaseInitializer.SeedServicePrincipalsAsync"/> for issue
 /// #1412. Client (docker-compose <c>ServiceAuth__ClientSecret</c>) and server (this resolver, fed by
 /// <c>Seed:ServicePrincipals:{clientId}</c>) must agree on a value, or inter-service auth silently
-/// breaks — the bug this resolver exists to close.
+/// breaks — the bug this resolver exists to close. The committed dev-literal fallback is gone:
+/// docker-compose.yml now guards both sides with <c>${VAR:?...}</c>, so a real deployment always has
+/// the configured value; only the Generated branch (below) remains reachable, and only for
+/// self-contained tests.
 /// </summary>
 public sealed class ServicePrincipalSecretResolverTests
 {
     private const string ClientId = "service-blueprint";
-    private const string DevSecret = "blueprint-service-secret";
     private const string ConfiguredSecret = "a-generated-per-deploy-secret-value";
 
     [Theory]
@@ -28,7 +30,7 @@ public sealed class ServicePrincipalSecretResolverTests
     public void Resolve_ConfiguredSecretPresent_IsUsedRegardlessOfEnvironment(string? environment)
     {
         var (secret, source) = ServicePrincipalSecretResolver.Resolve(
-            ClientId, DevSecret, ConfiguredSecret, environment);
+            ClientId, ConfiguredSecret, environment);
 
         secret.Should().Be(ConfiguredSecret);
         source.Should().Be(ServicePrincipalSecretSource.Configured);
@@ -38,30 +40,11 @@ public sealed class ServicePrincipalSecretResolverTests
     public void Resolve_ConfiguredSecretIsWhitespace_FallsThroughAsAbsent()
     {
         var (secret, source) = ServicePrincipalSecretResolver.Resolve(
-            ClientId, DevSecret, "   ", "Development");
+            ClientId, "   ", "Development");
 
-        secret.Should().Be(DevSecret);
-        source.Should().Be(ServicePrincipalSecretSource.DevLiteral);
-    }
-
-    [Fact]
-    public void Resolve_DevelopmentNoConfiguredSecret_FallsBackToDevLiteral()
-    {
-        var (secret, source) = ServicePrincipalSecretResolver.Resolve(
-            ClientId, DevSecret, configuredValue: null, "Development");
-
-        secret.Should().Be(DevSecret);
-        source.Should().Be(ServicePrincipalSecretSource.DevLiteral);
-    }
-
-    [Fact]
-    public void Resolve_DevelopmentIsCaseInsensitive()
-    {
-        var (secret, source) = ServicePrincipalSecretResolver.Resolve(
-            ClientId, DevSecret, configuredValue: null, "development");
-
-        secret.Should().Be(DevSecret);
-        source.Should().Be(ServicePrincipalSecretSource.DevLiteral);
+        secret.Should().NotBeNullOrWhiteSpace();
+        secret.Should().NotBe(ConfiguredSecret);
+        source.Should().Be(ServicePrincipalSecretSource.Generated);
     }
 
     [Theory]
@@ -70,7 +53,7 @@ public sealed class ServicePrincipalSecretResolverTests
     public void Resolve_ProductionOrStagingNoConfiguredSecret_ThrowsWithClearMessage(string environment)
     {
         var act = () => ServicePrincipalSecretResolver.Resolve(
-            ClientId, DevSecret, configuredValue: null, environment);
+            ClientId, configuredValue: null, environment);
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage($"*{ClientId}*")
@@ -78,26 +61,17 @@ public sealed class ServicePrincipalSecretResolverTests
                       && ex.Message.Contains($"Seed__ServicePrincipals__{ClientId}", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public void Resolve_ProductionNoConfiguredSecretAndNoDevLiteral_StillThrows()
-    {
-        var act = () => ServicePrincipalSecretResolver.Resolve(
-            ClientId, devSecret: null, configuredValue: null, "Production");
-
-        act.Should().Throw<InvalidOperationException>();
-    }
-
     [Theory]
+    [InlineData("Development")]
     [InlineData("Testing")]
     [InlineData("SomethingElse")]
     [InlineData(null)]
-    public void Resolve_OtherEnvironmentNoConfiguredSecret_GeneratesFreshNonLiteralSecret(string? environment)
+    public void Resolve_NonProdEnvironmentNoConfiguredSecret_GeneratesFreshSecret(string? environment)
     {
         var (secret, source) = ServicePrincipalSecretResolver.Resolve(
-            ClientId, DevSecret, configuredValue: null, environment);
+            ClientId, configuredValue: null, environment);
 
         secret.Should().NotBeNullOrWhiteSpace();
-        secret.Should().NotBe(DevSecret);
         secret.Should().NotBe(ConfiguredSecret);
         source.Should().Be(ServicePrincipalSecretSource.Generated);
     }
@@ -106,21 +80,10 @@ public sealed class ServicePrincipalSecretResolverTests
     public void Resolve_TestingEnvironment_GeneratesADifferentSecretEachCall()
     {
         var (first, _) = ServicePrincipalSecretResolver.Resolve(
-            ClientId, DevSecret, configuredValue: null, "Testing");
+            ClientId, configuredValue: null, "Testing");
         var (second, _) = ServicePrincipalSecretResolver.Resolve(
-            ClientId, DevSecret, configuredValue: null, "Testing");
+            ClientId, configuredValue: null, "Testing");
 
         first.Should().NotBe(second);
-    }
-
-    [Fact]
-    public void Resolve_NonDevelopmentEnvironmentWithDevLiteral_DoesNotUseTheDevLiteral()
-    {
-        // A dev-literal fallback must never leak outside Development, even when one is supplied.
-        var (secret, source) = ServicePrincipalSecretResolver.Resolve(
-            ClientId, DevSecret, configuredValue: null, "Testing");
-
-        secret.Should().NotBe(DevSecret);
-        source.Should().Be(ServicePrincipalSecretSource.Generated);
     }
 }
