@@ -127,6 +127,34 @@ $councilWallet = New-SorchaWallet `
 Write-WtSuccess "Council wallet: $($councilWallet.Address)"
 
 # ============================================================================
+# Step 4b: Provision the Feature-083 org master key for the credential ISSUER org.
+# ============================================================================
+# The council org's "licensing-officer" participant issues both the
+# AssuredIdentityCredential (strathcarron-driving-licence.json, action 2) and
+# the BlueBadgeCredential (strathcarron-blue-badge.json, action 3 — published
+# later by setup-blue-badge-demo.ps1 against this same council org/wallet).
+# Both are SorchaLocalWallet issuances. Without a master key,
+# IssuanceKeyService.GetActiveSigningMaterialAsync returns null and the mint
+# FAILS (400 "Failed to issue credential"). Re-login first so the session JWT
+# carries wallet_address (the master-key endpoint is wallet-authorized); the
+# council wallet was just created above. Idempotent (409 on re-run is fine).
+# One org issues both blueprints, so a single provisioning call here covers
+# strathcarron-blue-badge.json as well. See the walkthrough-builder skill.
+
+Write-WtStep "Step 4b: Provision credential-issuer org master key"
+
+$councilIssuerSession = Connect-SorchaUser `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Email $councilAdminEmail `
+    -Password $councilAdminPassword `
+    -OrganizationId $councilOrgId
+
+Set-SorchaOrgMasterKey `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -OrganizationId $councilOrgId `
+    -Headers $councilIssuerSession.Headers
+
+# ============================================================================
 # Step 5: Register + Blueprint
 # ============================================================================
 Write-WtStep "Step 5: Driving Licence register + blueprint"
