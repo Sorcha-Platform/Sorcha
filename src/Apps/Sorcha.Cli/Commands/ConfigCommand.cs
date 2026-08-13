@@ -132,6 +132,7 @@ public class ConfigInitCommand : Command
     private readonly Option<string?> _walletUrlOption;
     private readonly Option<string?> _peerUrlOption;
     private readonly Option<string?> _authUrlOption;
+    private readonly Option<string?> _serviceAuthUrlOption;
     private readonly Option<string> _clientIdOption;
     private readonly Option<bool> _verifySslOption;
     private readonly Option<int> _timeoutOption;
@@ -174,7 +175,14 @@ public class ConfigInitCommand : Command
 
         _authUrlOption = new Option<string?>("--auth-url", "-a")
         {
-            Description = "Auth Token URL (optional override)"
+            Description = "Auth Token URL for browser/human grants — password, refresh_token (optional override)"
+        };
+
+        _serviceAuthUrlOption = new Option<string?>("--service-auth-url")
+        {
+            Description = "Service-principal (client_credentials) token URL — internal-only Tenant "
+                + "Service route, not reachable through the public API Gateway (#1397/#1406). "
+                + "Optional override."
         };
 
         _clientIdOption = new Option<string>("--client-id", "-c")
@@ -214,6 +222,7 @@ public class ConfigInitCommand : Command
         Options.Add(_walletUrlOption);
         Options.Add(_peerUrlOption);
         Options.Add(_authUrlOption);
+        Options.Add(_serviceAuthUrlOption);
         Options.Add(_clientIdOption);
         Options.Add(_verifySslOption);
         Options.Add(_timeoutOption);
@@ -231,6 +240,7 @@ public class ConfigInitCommand : Command
                 var walletUrl = parseResult.GetValue(_walletUrlOption);
                 var peerUrl = parseResult.GetValue(_peerUrlOption);
                 var authUrl = parseResult.GetValue(_authUrlOption);
+                var serviceAuthUrl = parseResult.GetValue(_serviceAuthUrlOption);
                 var clientId = parseResult.GetValue(_clientIdOption)!;
                 var verifySsl = parseResult.GetValue(_verifySslOption);
                 var timeout = parseResult.GetValue(_timeoutOption);
@@ -260,6 +270,7 @@ public class ConfigInitCommand : Command
                     WalletServiceUrl = walletUrl,
                     PeerServiceUrl = peerUrl,
                     AuthTokenUrl = authUrl,
+                    ServiceAuthTokenUrl = serviceAuthUrl,
                     DefaultClientId = clientId,
                     VerifySsl = verifySsl,
                     TimeoutSeconds = timeout
@@ -299,6 +310,7 @@ public class ConfigInitCommand : Command
                 Console.WriteLine($"  Wallet Service:   {profile.GetWalletServiceUrl()}{(string.IsNullOrWhiteSpace(walletUrl) ? " (from base)" : "")}");
                 Console.WriteLine($"  Peer Service:     {profile.GetPeerServiceUrl()}{(string.IsNullOrWhiteSpace(peerUrl) ? " (from base)" : "")}");
                 Console.WriteLine($"  Auth Token URL:   {profile.GetAuthTokenUrl()}{(string.IsNullOrWhiteSpace(authUrl) ? " (from base)" : "")}");
+                Console.WriteLine($"  Service Auth URL: {profile.GetServiceAuthTokenUrl()}{(string.IsNullOrWhiteSpace(serviceAuthUrl) ? " (derived — internal-only)" : "")}");
                 Console.WriteLine($"  Connectivity:     {connectivityStatus}");
                 if (setActive)
                 {
@@ -431,6 +443,7 @@ public class ConfigViewCommand : BaseCommand
             ValidatorServiceUrl = profile.GetValidatorServiceUrl(),
             GatewayUrl = profile.GetGatewayUrl(),
             AuthTokenUrl = profile.GetAuthTokenUrl(),
+            ServiceAuthTokenUrl = profile.GetServiceAuthTokenUrl(),
             VerifySsl = profile.VerifySsl,
             TimeoutSeconds = profile.TimeoutSeconds,
             Authenticated = isAuthenticated,
@@ -459,6 +472,7 @@ public class ConfigViewCommand : BaseCommand
         Console.WriteLine($"  Validator:        {profile.GetValidatorServiceUrl()}");
         Console.WriteLine($"  Gateway:          {profile.GetGatewayUrl()}");
         Console.WriteLine($"  Auth Token:       {profile.GetAuthTokenUrl()}");
+        Console.WriteLine($"  Service Auth:     {profile.GetServiceAuthTokenUrl()} (internal-only, #1397)");
         Console.WriteLine();
         Console.WriteLine("Settings:");
         Console.WriteLine($"  Verify SSL:       {profile.VerifySsl}");
@@ -733,6 +747,7 @@ public class ConfigExportCommand : Command
                         p.ValidatorServiceUrl,
                         p.GatewayUrl,
                         p.AuthTokenUrl,
+                        p.ServiceAuthTokenUrl,
                         p.DefaultClientId,
                         p.VerifySsl,
                         p.TimeoutSeconds,

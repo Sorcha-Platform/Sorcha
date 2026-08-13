@@ -80,6 +80,24 @@ public class DemoAuthService
             if (!response.IsSuccessStatusCode)
             {
                 var error = await response.Content.ReadAsStringAsync(ct);
+
+                // As of #1397/#1406, client_credentials minting is an INTERNAL-only Tenant Service
+                // route the public API Gateway does not route — a 404 here (the gateway's
+                // catch-all falling through to the UI SPA) or a 400 pointing at the internal path
+                // means the Demo is running outside the Sorcha trust network. Surface that plainly
+                // rather than a bare status/body dump.
+                if (response.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.BadRequest)
+                {
+                    _logger.LogError(
+                        "Service-principal token request to {TokenUrl} failed with {StatusCode}: "
+                        + "this endpoint is internal-only (#1397) and not reachable through the "
+                        + "public API Gateway. The Demo must run inside the Sorcha trust network "
+                        + "(or SorchaApi:TenantServiceUrl must point directly at a reachable Tenant "
+                        + "Service) for service-principal authentication to work. Response body: {Error}",
+                        tokenUrl, response.StatusCode, error);
+                    return null;
+                }
+
                 _logger.LogError("Token request failed: {StatusCode} - {Error}",
                     response.StatusCode, error);
                 return null;

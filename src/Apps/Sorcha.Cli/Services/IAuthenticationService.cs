@@ -11,13 +11,30 @@ namespace Sorcha.Cli.Services;
 public interface IAuthenticationService
 {
     /// <summary>
-    /// Authenticates a user with username and password.
+    /// Authenticates a user with email and password via <c>POST /api/auth/login</c> (issue #1402).
     /// Caches the token for subsequent requests.
     /// </summary>
     /// <param name="request">Login request</param>
     /// <param name="profileName">Profile to use for authentication</param>
+    /// <param name="organizationId">
+    /// Optional organisation to pre-select when the account belongs to more than one organisation.
+    /// When the account is multi-org and this is <see langword="null"/>, the call throws
+    /// <see cref="OrgSelectionRequiredException"/> instead of completing login.
+    /// </param>
     /// <returns>Token response</returns>
-    Task<TokenResponse> LoginAsync(PasswordGrantRequest request, string profileName);
+    Task<TokenResponse> LoginAsync(UserLoginRequest request, string profileName, Guid? organizationId = null);
+
+    /// <summary>
+    /// Completes login for a multi-org user after <see cref="OrgSelectionRequiredException"/> was
+    /// thrown by <see cref="LoginAsync"/>, via <c>POST /api/auth/select-org</c>. Caches the
+    /// resulting token for subsequent requests.
+    /// </summary>
+    /// <param name="platformLoginToken">The short-lived token from the org-selection response.</param>
+    /// <param name="organizationId">The chosen organisation.</param>
+    /// <param name="profileName">Profile to use for authentication.</param>
+    /// <param name="subjectEmail">The user's email, for the cached token's subject.</param>
+    /// <returns>Token response</returns>
+    Task<TokenResponse> CompleteOrgSelectionAsync(string platformLoginToken, Guid organizationId, string profileName, string subjectEmail);
 
     /// <summary>
     /// Authenticates a service principal with client credentials.

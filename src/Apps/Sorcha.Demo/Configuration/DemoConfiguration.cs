@@ -26,10 +26,19 @@ public class SorchaApiConfiguration
     public string? ClientSecret { get; set; }
 
     /// <summary>
-    /// Gets the auth token endpoint URL
+    /// Gets the service-principal (client_credentials) token endpoint URL.
     /// </summary>
+    /// <remarks>
+    /// As of #1397/#1406, client_credentials minting is an INTERNAL-only Tenant Service route —
+    /// the public API Gateway does not route <c>/api/internal/*</c>. This only succeeds when the
+    /// Demo runs co-located inside the Sorcha trust network (or <see cref="TenantServiceUrl"/> is
+    /// pointed directly at a reachable Tenant Service); a host-run Demo against <see cref="BaseUrl"/>
+    /// will get a 404 from the gateway's catch-all route.
+    /// <see cref="Sorcha.Demo.Services.Auth.DemoAuthService"/> surfaces that as a clear error rather
+    /// than a silent failure.
+    /// </remarks>
     public string GetAuthTokenUrl() =>
-        $"{BaseUrl.TrimEnd('/')}/api/service-auth/token";
+        $"{BaseUrl.TrimEnd('/')}/api/internal/service-auth/token";
 
     /// <summary>
     /// Gets the effective Wallet Service URL (specific or via gateway)

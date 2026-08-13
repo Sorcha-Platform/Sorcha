@@ -12,6 +12,16 @@ namespace Sorcha.Cli.Models;
 /// request and share no field but <c>password</c>, so the collision was pure noise — it forced a
 /// standing justification in <c>CliWireContractTests.NotAWireContract</c>, whose own text named
 /// renaming this type as the real fix. The name now says which grant it is.</para>
+///
+/// <para>Issue #1402 — the CLI's <c>auth login</c> user flow no longer uses this type. It targeted
+/// the wrong endpoint for user login (the service-principal token endpoint,
+/// <c>/api/service-auth/token</c>, not the intended user-facing route) and now goes through
+/// <see cref="UserLoginRequest"/> against <c>POST /api/auth/login</c> instead, which also handles
+/// multi-org account selection that this form-encoded grant cannot express. This type is left in
+/// place — unused by any CLI command today — because the OAuth2 password grant it models is still a
+/// live, documented server capability (<c>ServiceAuthEndpoints.HandlePasswordGrant</c>); it is not
+/// dead in the sense of describing something the server no longer does, only in the sense of having
+/// no current CLI call site.</para>
 /// </summary>
 public class PasswordGrantRequest
 {

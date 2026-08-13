@@ -132,6 +132,15 @@ public sealed class CliWireContractTests
         ["TrustListSnapshotSummary"] = "TrustListSnapshotSummaryResponse",
         ["TrustListSnapshotDetail"] = "TrustListSnapshotDetailResponse",
         ["TrustListAnchor"] = "TrustListAnchorResponse",
+
+        // Issue #1402 — the CLI's user-login request is deliberately named UserLoginRequest, not
+        // LoginRequest, so it does not collide with the server's PRIVATE OAuth2TokenRequest shape
+        // (used by the /api/service-auth/token form-and-JSON parser) and so a reader is not misled
+        // into thinking this is the same PasswordGrantRequest/LoginRequest naming clash issue #1160
+        // already fixed. It exchanges bodies with the Tenant Service's
+        // Sorcha.Tenant.Service.Models.Dtos.LoginRequest (POST /api/auth/login), so pair against
+        // that type by name explicitly.
+        ["UserLoginRequest"] = "LoginRequest",
     };
 
     /// <summary>
