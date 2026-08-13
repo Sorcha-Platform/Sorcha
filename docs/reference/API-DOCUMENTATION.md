@@ -86,11 +86,16 @@ Visit the Scalar API documentation UI at `/scalar/v1` to explore all endpoints i
 
 The Sorcha Platform uses OAuth 2.0 for authentication. All protected endpoints require a valid JWT Bearer token.
 
-**Token Endpoint:** `POST /api/service-auth/token`
+**Token Endpoint (public, via the API Gateway):** `POST /api/service-auth/token`
 
-**Supported Grant Types:**
+**Supported Grant Types on the public endpoint:**
 - `password` - User credentials (email + password)
-- `client_credentials` - Service principal authentication
+- `refresh_token` - Browser/CLI session refresh
+
+**`client_credentials` (service principal authentication) is internal-only** — see below. It is
+**not** served on the public `/api/service-auth/token` route; the API Gateway proxies that route,
+and serving `client_credentials` there would let anyone who obtained a service principal's
+`client_id`/`client_secret` mint a service-tier token from outside the network (#1397).
 
 ### User Authentication (Password Grant)
 
@@ -111,14 +116,22 @@ grant_type=password&username=admin@sorcha.local&password=Dev_Pass_2025!
 }
 ```
 
-### Service Principal Authentication (Client Credentials Grant)
+### Service Principal Authentication (Client Credentials Grant) — internal-only
+
+`client_credentials` is served only on `POST /api/internal/service-auth/token`, which the API
+Gateway does **not** route (like the rest of `/api/internal/*`, it 404s from outside the Docker
+network). Callers must reach the Tenant Service directly — this is how `Sorcha.ServiceClients`'
+`ServiceAuthClient` already authenticates service-to-service.
 
 ```http
-POST /api/service-auth/token
+POST /api/internal/service-auth/token
 Content-Type: application/x-www-form-urlencoded
 
 grant_type=client_credentials&client_id=service-blueprint&client_secret=<secret>
 ```
+
+The delegated-authority (`POST /api/internal/service-auth/token/delegated`) and secret-rotation
+(`POST /api/internal/service-auth/rotate-secret`) endpoints are internal-only for the same reason.
 
 ### Using the Access Token
 

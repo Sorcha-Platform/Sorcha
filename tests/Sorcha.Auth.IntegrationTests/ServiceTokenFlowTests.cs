@@ -290,7 +290,9 @@ public class ServiceTokenFlowTests : IAsyncLifetime
     #region Mock Tenant Service
 
     /// <summary>
-    /// Mock HTTP handler that simulates the Tenant Service /api/service-auth/token endpoint.
+    /// Mock HTTP handler that simulates the Tenant Service /api/internal/service-auth/token
+    /// endpoint (the internal-only client_credentials route — #1397 moved client_credentials
+    /// off the public /api/service-auth/token path; ServiceAuthClient now posts here).
     /// Returns properly-signed JWTs for valid credentials, or 401 for invalid.
     /// </summary>
     private sealed class MockTenantServiceHandler : HttpMessageHandler
@@ -315,7 +317,7 @@ public class ServiceTokenFlowTests : IAsyncLifetime
         {
             RequestCount++;
 
-            if (request.RequestUri?.PathAndQuery != "/api/service-auth/token")
+            if (request.RequestUri?.PathAndQuery != "/api/internal/service-auth/token")
             {
                 return new HttpResponseMessage(HttpStatusCode.NotFound);
             }
