@@ -50,7 +50,7 @@ It clones this repo into `./sorcha` and hands off to [`scripts/sorcha-setup.sh`]
 |------------|-------------|
 | **Blueprint Workflows** | Define multi-step, multi-party data flows as declarative JSON with conditional routing, schema validation, and business logic evaluation |
 | **Distributed Ledger** | Immutable, append-only transaction registers with chain validation, Merkle-tree **dockets** (batches of transactions sealed together), and **DID** (Decentralized Identifier) URI addressing |
-| **Cryptographic Wallets** | HD wallet management (BIP32/39/44) with ED25519, P-256, RSA-4096, and post-quantum algorithms ML-DSA and ML-KEM (SLH-DSA is planned, not yet implemented — see [`STANDARDS.md`](STANDARDS.md)) |
+| **Cryptographic Wallets** | HD wallet management (BIP32/39/44) with ED25519, P-256, RSA-4096, and post-quantum algorithms — ML-DSA (FIPS 204) and ML-KEM (FIPS 203) are the core, default path; FIPS-205 (SLH-DSA) primitives are also present in the cryptography library, see [`STANDARDS.md`](STANDARDS.md) |
 | **Field-Level Encryption** | Envelope encryption with per-recipient key wrapping — participants see only the fields they're authorized to access |
 | **Multi-Tenant Identity** | JWT authentication with OAuth2 client credentials, participant identity registry, and wallet address linking |
 | **Peer Network** | gRPC-based P2P topology for register replication across nodes |
