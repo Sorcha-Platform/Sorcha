@@ -95,10 +95,21 @@ function Initialize-Env {
     Warn "No .env found — generating one with fresh secrets."
     Copy-Item (Join-Path $BundleDir '.env.desktop.example') $EnvFile
     $jwt = New-SecretB64; $pgp = New-SecretAlnum; $mgp = New-SecretAlnum   # alnum: mongo pwd is in a URI
+    # Per-service ServiceAuth client secrets (#1423) — one per internal service principal.
+    $walletS = New-SecretAlnum; $tenantS = New-SecretAlnum; $registerS = New-SecretAlnum
+    $validatorS = New-SecretAlnum; $haipS = New-SecretAlnum; $peerS = New-SecretAlnum
+    $blueprintS = New-SecretAlnum
     (Get-Content $EnvFile) `
-        -replace '^JWT_SIGNING_KEY=.*',   "JWT_SIGNING_KEY=$jwt" `
-        -replace '^POSTGRES_PASSWORD=.*', "POSTGRES_PASSWORD=$pgp" `
-        -replace '^MONGO_PASSWORD=.*',    "MONGO_PASSWORD=$mgp" |
+        -replace '^JWT_SIGNING_KEY=.*',         "JWT_SIGNING_KEY=$jwt" `
+        -replace '^POSTGRES_PASSWORD=.*',       "POSTGRES_PASSWORD=$pgp" `
+        -replace '^MONGO_PASSWORD=.*',          "MONGO_PASSWORD=$mgp" `
+        -replace '^WALLET_SERVICE_SECRET=.*',   "WALLET_SERVICE_SECRET=$walletS" `
+        -replace '^TENANT_SERVICE_SECRET=.*',   "TENANT_SERVICE_SECRET=$tenantS" `
+        -replace '^REGISTER_SERVICE_SECRET=.*', "REGISTER_SERVICE_SECRET=$registerS" `
+        -replace '^VALIDATOR_SERVICE_SECRET=.*',"VALIDATOR_SERVICE_SECRET=$validatorS" `
+        -replace '^HAIP_SERVICE_SECRET=.*',     "HAIP_SERVICE_SECRET=$haipS" `
+        -replace '^PEER_SERVICE_SECRET=.*',     "PEER_SERVICE_SECRET=$peerS" `
+        -replace '^BLUEPRINT_SERVICE_SECRET=.*',"BLUEPRINT_SERVICE_SECRET=$blueprintS" |
         Set-Content $EnvFile
     Ok "Generated $EnvFile (secrets written)."
 }

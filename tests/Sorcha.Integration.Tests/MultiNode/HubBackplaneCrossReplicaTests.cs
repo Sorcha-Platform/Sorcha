@@ -37,6 +37,14 @@ public class HubBackplaneCrossReplicaTests
     private static bool MultinodeEnabled =>
         Environment.GetEnvironmentVariable("SORCHA_MULTINODE") == "1";
 
+    // The Blueprint service-principal's ServiceAuth secret is per-deploy since
+    // #1412 — sorcha-setup.sh generates BLUEPRINT_SERVICE_SECRET into .env
+    // instead of the old committed "blueprint-service-secret" literal. Read
+    // the same env var name here so this test authenticates against whatever
+    // secret the running stack was actually provisioned with (#1423).
+    private static string? BlueprintServiceSecret =>
+        Environment.GetEnvironmentVariable("BLUEPRINT_SERVICE_SECRET");
+
     [SkippableFact]
     [Trait("Hub", "Blueprint")]
     public async Task BlueprintHub_EventOnReplicaA_ReachesClientOnReplicaB_WithinBudget()
@@ -86,6 +94,10 @@ public class HubBackplaneCrossReplicaTests
     public async Task TenantHub_EventOnReplicaA_ReachesClientOnReplicaB_WithinBudget()
     {
         Skip.IfNot(MultinodeEnabled, "Multi-node fixture not running. Set SORCHA_MULTINODE=1 and start docker-compose.multinode.yml.");
+        Skip.IfNot(!string.IsNullOrEmpty(BlueprintServiceSecret),
+            "BLUEPRINT_SERVICE_SECRET not set. Export the same value sorcha-setup.sh wrote " +
+            "to .env (the Blueprint service principal's per-deploy secret; #1412) before " +
+            "running with SORCHA_MULTINODE=1.");
 
         // 1. Acquire admin user token. TenantHub auto-joins user:{platform_user_id}
         //    on connect; same JWT on both replicas → both pinned to the same
@@ -155,7 +167,7 @@ public class HubBackplaneCrossReplicaTests
         {
             new KeyValuePair<string, string>("grant_type", "client_credentials"),
             new KeyValuePair<string, string>("client_id", "service-blueprint"),
-            new KeyValuePair<string, string>("client_secret", "blueprint-service-secret"),
+            new KeyValuePair<string, string>("client_secret", BlueprintServiceSecret!),
         });
         var resp = await http.PostAsync("/api/service-auth/token", form);
         resp.EnsureSuccessStatusCode();

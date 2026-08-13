@@ -107,7 +107,15 @@ services:
       MongoDB__ConnectionString: mongodb://sorcha:sorcha_dev_password@mongodb-b:27017
       MongoDB__DatabaseName: sorcha_system_register
       ServiceAuth__ClientId: service-peer-b
-      ServiceAuth__ClientSecret: peer-service-b-secret
+      # peer-b is a SYNTHETIC second identity for this local two-peer smoke
+      # test — it is not one of the base compose's 8 guarded ServiceAuth
+      # secrets (no "service-peer-b" principal exists there), and
+      # sorcha-setup.sh does not generate a value for it. Env-indirected
+      # (#1423) with the current literal kept as the default so the existing
+      # `docker compose -f docker-compose.yml -f docker-compose.federation.yml
+      # up -d` flow keeps working without extra setup; override
+      # PEER_SERVICE_B_SECRET if you need a non-default value.
+      ServiceAuth__ClientSecret: ${PEER_SERVICE_B_SECRET:-peer-service-b-secret}
       ServiceAuth__Scopes: "registers:write registers:read"
       ServiceClients__TenantService__Address: http://tenant-service-b:8080
       ServiceClients__RegisterService__Address: http://register-service-b:8080

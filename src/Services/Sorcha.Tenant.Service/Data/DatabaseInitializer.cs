@@ -210,7 +210,15 @@ public class DatabaseInitializer
             .FirstOrDefaultAsync(u => u.Id == WellKnownIds.DefaultAdminUserId, cancellationToken);
 
         var adminEmail = _configuration["Seed:AdminEmail"] ?? DefaultAdminEmail;
-        var adminPassword = _configuration["Seed:AdminPassword"] ?? DefaultAdminPassword;
+
+        // Per-deploy admin password (issue #1409) — a configured value wins in every
+        // environment; Production/Staging FAIL CLOSED rather than seeding the well-known
+        // Dev_Pass_2025! literal on an internet-reachable node.
+        var environment = _configuration["ASPNETCORE_ENVIRONMENT"] ??
+                           Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+        var configuredAdminPassword = _configuration["Seed:AdminPassword"];
+        var (adminPassword, adminPasswordSource) = AdminPasswordResolver.Resolve(
+            configuredAdminPassword, environment);
 
         if (existingPlatformUser == null)
         {
@@ -233,8 +241,20 @@ public class DatabaseInitializer
             dbContext.PlatformUsers.Add(platformUser);
             await dbContext.SaveChangesAsync(cancellationToken);
             _logger.LogInformation("Admin PlatformUser created with ID: {Id}", platformUser.Id);
-            _logger.LogWarning("Default admin credentials - Email: {Email}, Password: {Password} - CHANGE IN PRODUCTION!",
-                adminEmail, adminPassword);
+
+            if (adminPasswordSource == AdminPasswordSource.DevDefault)
+            {
+                // Only the committed convenience literal is safe to print — never log an
+                // operator-configured password (issue #1409).
+                _logger.LogWarning(
+                    "Default admin credentials - Email: {Email}, Password: {Password} - CHANGE IN PRODUCTION!",
+                    adminEmail, adminPassword);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Admin credentials seeded for {Email} from configured Seed:AdminPassword", adminEmail);
+            }
         }
         else
         {
