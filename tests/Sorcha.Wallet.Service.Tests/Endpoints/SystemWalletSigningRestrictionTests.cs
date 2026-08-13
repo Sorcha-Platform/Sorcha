@@ -30,9 +30,12 @@ namespace Sorcha.Wallet.Service.Tests.Endpoints;
 /// <summary>
 /// #1397 — narrows the service-token ownership bypass in <c>WalletEndpoints.SignTransaction</c>
 /// so that a <c>validator:*</c>-owned system wallet (the docket-signing / SSR-owner key) may only
-/// be signed by the Validator service principal (<c>client_id == "validator-service"</c>, confirmed
-/// against <see cref="Sorcha.Tenant.Service.Data.DatabaseInitializer.ValidatorServicePrincipalId"/>'s
-/// seeded <c>ClientId</c> — NOT "service-validator" as a naive guess would assume).
+/// be signed by the trusted system principals that operate it: <c>validator-service</c> (docket
+/// sealing) and <c>register-service</c> (register genesis at creation + F189 governance). The
+/// register-service arm was added after a live n1 walkthrough caught that register finalize signs
+/// the validator system wallet through register-service — the initial fix allowed only
+/// <c>validator-service</c> and broke all new register creation. Client ids confirmed against the
+/// seeded <c>ClientId</c>s in <see cref="Sorcha.Tenant.Service.Data.DatabaseInitializer"/>.
 ///
 /// Service tokens legitimately bypass wallet ownership for ordinary (non-<c>validator:*</c>) wallets —
 /// e.g. Blueprint Service signs the issuing org's wallet during credential issuance for a different
@@ -181,6 +184,21 @@ public sealed class SystemWalletSigningRestrictionTests
 
         result.Should().NotBeOfType<Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult>();
         result.GetType().Name.Should().Contain("Ok", "the validator principal must be able to sign its own system wallet");
+    }
+
+    [Fact]
+    public async Task SignTransaction_RegisterServiceToken_SystemWallet_Proceeds()
+    {
+        // Register creation (finalize) signs the register genesis with the validator system wallet
+        // through the register-service principal. A live n1 walkthrough caught that the initial
+        // validator-service-only allowlist 403'd this and broke all new register creation.
+        var (wallet, _) = await _walletManager.CreateWalletAsync("System", "ED25519", ValidatorOwner, "system");
+        var context = BuildServiceHttpContext(clientId: "register-service");
+
+        var result = await InvokeSignTransactionAsync(wallet.Address, ValidSignRequest(), context);
+
+        result.Should().NotBeOfType<Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult>();
+        result.GetType().Name.Should().Contain("Ok", "register-service signs register genesis with the validator system wallet");
     }
 
     [Fact]
