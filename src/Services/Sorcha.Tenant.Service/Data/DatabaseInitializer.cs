@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Buffers.Text;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Sorcha.Tenant.Service.Models;
@@ -464,9 +463,9 @@ public class DatabaseInitializer
             )
         };
 
-        // Check if we're in development mode - use predictable secrets for docker-compose
-        var isDevelopment = _configuration["ASPNETCORE_ENVIRONMENT"] == "Development" ||
-                           Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
+        // Environment used to decide fallback/fail-closed behaviour in ServicePrincipalSecretResolver.
+        var environment = _configuration["ASPNETCORE_ENVIRONMENT"] ??
+                           Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
 
         foreach (var sp in servicePrincipals)
         {
@@ -475,10 +474,12 @@ public class DatabaseInitializer
 
             if (existing == null)
             {
-                // Use dev secret in Development, otherwise generate random
-                var clientSecret = isDevelopment && !string.IsNullOrEmpty(sp.DevSecret)
-                    ? sp.DevSecret
-                    : GenerateClientSecret();
+                // Per-deploy secret (issue #1412) — configured value wins in every environment;
+                // Development falls back to the committed dev literal; Production/Staging FAIL
+                // CLOSED rather than seeding a random secret the client services can never know.
+                var configuredSecret = _configuration[$"Seed:ServicePrincipals:{sp.ClientId}"];
+                var (clientSecret, secretSource) = ServicePrincipalSecretResolver.Resolve(
+                    sp.ClientId, sp.DevSecret, configuredSecret, environment);
                 var encryptedSecret = EncryptClientSecret(clientSecret);
 
                 _logger.LogInformation("Creating service principal: {ServiceName}", sp.ServiceName);
@@ -497,22 +498,10 @@ public class DatabaseInitializer
                 dbContext.ServicePrincipals.Add(servicePrincipal);
                 await dbContext.SaveChangesAsync(cancellationToken);
 
-                if (isDevelopment && !string.IsNullOrEmpty(sp.DevSecret))
-                {
-                    _logger.LogInformation(
-                        "Service Principal Created (Development) - {ServiceName}, Client ID: {ClientId}",
-                        sp.ServiceName, sp.ClientId);
-                }
-                else
-                {
-                    _logger.LogWarning(
-                        "Service Principal Created - {ServiceName}\n" +
-                        "  Client ID:     {ClientId}\n" +
-                        "  Client Secret: {ClientSecret}\n" +
-                        "  Scopes:        {Scopes}\n" +
-                        "  ⚠️  SAVE THIS SECRET - It will not be shown again!",
-                        sp.ServiceName, sp.ClientId, clientSecret, string.Join(", ", sp.Scopes));
-                }
+                // Never log the secret value itself — only where it came from.
+                _logger.LogInformation(
+                    "Service Principal Created - {ServiceName}, Client ID: {ClientId}, Secret source: {SecretSource}",
+                    sp.ServiceName, sp.ClientId, secretSource);
             }
             else
             {
@@ -533,15 +522,6 @@ public class DatabaseInitializer
                 }
             }
         }
-    }
-
-    /// <summary>
-    /// Generates a cryptographically secure client secret.
-    /// </summary>
-    private static string GenerateClientSecret()
-    {
-        var bytes = RandomNumberGenerator.GetBytes(32);
-        return Base64Url.EncodeToString(bytes);
     }
 
     /// <summary>

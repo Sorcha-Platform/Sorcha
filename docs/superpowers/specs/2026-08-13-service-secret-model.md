@@ -1,7 +1,18 @@
 # Per-deploy service-secret model — design note (needs sign-off)
 
 **Date:** 2026-08-13
-**Status:** DECISION REQUIRED before implementation. This is Task 3 of the Public Gates plan
+**Status: IMPLEMENTED** (branch `fix/1412-per-deploy-service-secrets`, issue #1412). Option A below
+shipped as designed: `scripts/sorcha-setup.sh` generates the 8 secrets into `.env`;
+`docker-compose.yml` reads each via `${VAR:-<literal>}` on both the client
+(`ServiceAuth__ClientSecret`) and the Tenant seed (`Seed__ServicePrincipals__{clientId}`) sides, so a
+bare `docker compose up` still boots on the committed literals while a generated `.env` overrides
+both in lockstep; `DatabaseInitializer` resolves each principal's secret via the new
+`ServicePrincipalSecretResolver.Resolve` (configured → dev-literal-in-Development →
+fail-closed-in-Production/Staging → generated-elsewhere). The `.secrets-allowlist` literals are
+untouched (still grandfathered `:-` defaults). The analysis below is kept for the rationale trail;
+treat "DECISION REQUIRED" language as historical.
+
+**Original status line (superseded):** DECISION REQUIRED before implementation. This is Task 3 of the Public Gates plan
 (`docs/superpowers/plans/2026-08-13-public-gates-readiness.md`), the deeper root-cause half of the
 #1397 fix. It changes how every node authenticates service-to-service, so it must not be implemented
 and deployed without the maintainer's explicit go-ahead.

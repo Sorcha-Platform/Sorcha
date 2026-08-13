@@ -237,7 +237,9 @@ services:
       ServiceClients__PeerService__HttpAddress: http://peer-service:8080
       # Service-to-service auth for Wallet/Register Service calls during action execution
       ServiceAuth__ClientId: service-blueprint
-      ServiceAuth__ClientSecret: blueprint-service-secret
+      # Per-deploy secret (issue #1412) — sorcha-setup.sh generates BLUEPRINT_SERVICE_SECRET
+      # into .env; the literal default keeps a bare `docker compose up` working in dev.
+      ServiceAuth__ClientSecret: ${BLUEPRINT_SERVICE_SECRET:-blueprint-service-secret}
       ServiceAuth__Scopes: "wallets:sign registers:write blueprints:manage"
       # Transaction confirmation tuning for Docker dev
       TransactionConfirmation__TimeoutSeconds: "60"
@@ -295,7 +297,9 @@ services:
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_URLS: http://+:8080
       ServiceAuth__ClientId: service-wallet
-      ServiceAuth__ClientSecret: wallet-service-secret
+      # Per-deploy secret (issue #1412) — sorcha-setup.sh generates WALLET_SERVICE_SECRET
+      # into .env; the literal default keeps a bare `docker compose up` working in dev.
+      ServiceAuth__ClientSecret: ${WALLET_SERVICE_SECRET:-wallet-service-secret}
       ServiceAuth__Scopes: "registers:write registers:read"
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceClients__RegisterService__Address: http://register-service:8080
@@ -394,7 +398,9 @@ services:
       SystemWalletSigning__ValidatorId: local-validator
       # Service-to-service auth for Wallet Service calls
       ServiceAuth__ClientId: register-service
-      ServiceAuth__ClientSecret: register-service-secret
+      # Per-deploy secret (issue #1412) — sorcha-setup.sh generates REGISTER_SERVICE_SECRET
+      # into .env; the literal default keeps a bare `docker compose up` working in dev.
+      ServiceAuth__ClientSecret: ${REGISTER_SERVICE_SECRET:-register-service-secret}
       ServiceAuth__Scopes: "wallets:sign validator:write"
       ServiceClients__TenantService__Address: http://tenant-service:8080
       # System Register bootstrap is automatic (Feature 057) — no env var needed
@@ -449,11 +455,27 @@ services:
       Platform__AllowAdminVerifiedUserCreation: "true"
       # Service-to-service auth for Wallet Service calls during wallet link verification
       ServiceAuth__ClientId: tenant-service
-      ServiceAuth__ClientSecret: tenant-service-secret
+      # Per-deploy secret (issue #1412) — sorcha-setup.sh generates TENANT_SERVICE_SECRET
+      # into .env; the literal default keeps a bare `docker compose up` working in dev.
+      ServiceAuth__ClientSecret: ${TENANT_SERVICE_SECRET:-tenant-service-secret}
       # persona:crypto is required by the Wallet Service persona encrypt/decrypt
       # endpoints that back the Consumer persona feature (092). wallets:sign and
       # wallets:verify are retained for participant wallet link verification.
       ServiceAuth__Scopes: "wallets:sign wallets:verify persona:crypto"
+      # Per-deploy service-principal seed secrets (issue #1412) — read by
+      # DatabaseInitializer.SeedServicePrincipalsAsync as Seed:ServicePrincipals:{ClientId}.
+      # Keyed by each principal's ACTUAL ClientId (see DatabaseInitializer.cs), NOT the
+      # service's own ServiceAuth__ClientId env var name. Same generated value as the
+      # matching client-side ServiceAuth__ClientSecret above so client and server agree;
+      # literal defaults match the current committed dev secrets.
+      Seed__ServicePrincipals__service-blueprint: ${BLUEPRINT_SERVICE_SECRET:-blueprint-service-secret}
+      Seed__ServicePrincipals__service-wallet: ${WALLET_SERVICE_SECRET:-wallet-service-secret}
+      Seed__ServicePrincipals__register-service: ${REGISTER_SERVICE_SECRET:-register-service-secret}
+      Seed__ServicePrincipals__service-peer: ${PEER_SERVICE_SECRET:-peer-service-secret}
+      Seed__ServicePrincipals__validator-service: ${VALIDATOR_SERVICE_SECRET:-validator-service-secret}
+      Seed__ServicePrincipals__tenant-service: ${TENANT_SERVICE_SECRET:-tenant-service-secret}
+      Seed__ServicePrincipals__service-haip: ${HAIP_SERVICE_SECRET:-haip-service-secret}
+      Seed__ServicePrincipals__service-verifier: ${VERIFIER_SERVICE_SECRET:-verifier-service-secret}
       ServiceClients__WalletService__Address: http://wallet-service:8080
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceClients__RegisterService__Address: http://register-service:8080
@@ -514,7 +536,9 @@ services:
       ASPNETCORE_HTTP_PORTS: "8080"
       MongoDB__DatabaseName: sorcha_system_register
       ServiceAuth__ClientId: service-peer
-      ServiceAuth__ClientSecret: peer-service-secret
+      # Per-deploy secret (issue #1412) — sorcha-setup.sh generates PEER_SERVICE_SECRET
+      # into .env; the literal default keeps a bare `docker compose up` working in dev.
+      ServiceAuth__ClientSecret: ${PEER_SERVICE_SECRET:-peer-service-secret}
       ServiceAuth__Scopes: "registers:write registers:read"
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceClients__RegisterService__Address: http://register-service:8080
@@ -585,7 +609,9 @@ services:
       ConnectionStrings__Redis: redis:6379
       # Service-to-service auth for Wallet Service calls
       ServiceAuth__ClientId: validator-service
-      ServiceAuth__ClientSecret: validator-service-secret
+      # Per-deploy secret (issue #1412) — sorcha-setup.sh generates VALIDATOR_SERVICE_SECRET
+      # into .env; the literal default keeps a bare `docker compose up` working in dev.
+      ServiceAuth__ClientSecret: ${VALIDATOR_SERVICE_SECRET:-validator-service-secret}
       ServiceAuth__Scopes: "registers:write registers:read blueprints:read"
       # Validator configuration.
       # Shared identifier for this node's local-validator system wallet.
@@ -715,7 +741,9 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ApiGateway__BaseUrl: http://api-gateway:8080
       ServiceAuth__ClientId: service-verifier
-      ServiceAuth__ClientSecret: verifier-service-secret
+      # Per-deploy secret (issue #1412) — sorcha-setup.sh generates VERIFIER_SERVICE_SECRET
+      # into .env; the literal default keeps a bare `docker compose up` working in dev.
+      ServiceAuth__ClientSecret: ${VERIFIER_SERVICE_SECRET:-verifier-service-secret}
       ServiceAuth__Scopes: "blueprints:read"
       Verifier__HaipBaseUrl: http://haip-service:8080
       ServiceClients__TenantService__Address: http://tenant-service:8080
@@ -751,7 +779,9 @@ services:
       ServiceClients__BlueprintService__Address: http://blueprint-service:8080
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceAuth__ClientId: service-haip
-      ServiceAuth__ClientSecret: haip-service-secret
+      # Per-deploy secret (issue #1412) — sorcha-setup.sh generates HAIP_SERVICE_SECRET
+      # into .env; the literal default keeps a bare `docker compose up` working in dev.
+      ServiceAuth__ClientSecret: ${HAIP_SERVICE_SECRET:-haip-service-secret}
       ServiceAuth__Scopes: "blueprints:read"
     depends_on:
       redis:
