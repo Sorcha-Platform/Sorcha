@@ -305,6 +305,7 @@ A map of the top-level directories — enough to orient a newcomer. For a full s
 | [Architecture](docs/architecture.md) | System design and data flows |
 | [Deployment Guide](docs/guides/DEPLOYMENT.md) | Production deployment |
 | [Troubleshooting](docs/guides/TROUBLESHOOTING.md) | Common issues and solutions |
+| [What's Real vs Demo](docs/reference/maturity-and-limitations.md) | Maturity posture and known limitations before you test |
 
 ## Walkthroughs
 
@@ -344,6 +345,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 - [GitHub Issues](https://github.com/Sorcha-Platform/Sorcha/issues)
 - [GitHub Discussions](https://github.com/Sorcha-Platform/Sorcha/discussions)
 - [Contributing Guide](CONTRIBUTING.md)
+- [Security Policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)
 
 ---

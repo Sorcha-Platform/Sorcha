@@ -546,7 +546,7 @@ Documentation debt compounds quickly. A 2-minute doc update now prevents 30 minu
 - Create duplicate service clients
 - Re-declare Wallet HTTP DTOs — the canonical `WalletDto` / `CreateWallet*` / `SignTransaction*` / `WalletAddressDto` / `AddressListResponse` live only in `Sorcha.Wallet.Contracts` (CI-gated by `wallet-contracts-gate`)
 - Use `JsonNode` with JsonSchema.Net (use `JsonElement`)
-- Commit secrets or credentials
+- Commit secrets or credentials (CI-gated by `secrets-gate` / `scripts/check-secrets.ps1`; ratchet at `.secrets-allowlist`, may only shrink)
 - Skip documentation updates when changing code (see Documentation Sync Policy above)
 - Store mnemonics (user responsibility to backup)
 

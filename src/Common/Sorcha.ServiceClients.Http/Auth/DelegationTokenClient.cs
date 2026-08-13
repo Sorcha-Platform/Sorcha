@@ -15,7 +15,8 @@ namespace Sorcha.ServiceClients.Auth;
 /// <remarks>
 /// Delegation tokens are short-lived (5 minutes) and user-specific, so they are NOT cached.
 /// Each call acquires a service token via IServiceAuthClient, then POSTs both the service
-/// token and the user's access token to /api/service-auth/token/delegated.
+/// token and the user's access token to /api/internal/service-auth/token/delegated — the
+/// internal-only route (not routed by the public API Gateway, per #1397).
 /// </remarks>
 public class DelegationTokenClient : IDelegationTokenClient
 {
@@ -65,7 +66,7 @@ public class DelegationTokenClient : IDelegationTokenClient
             };
 
             var response = await _httpClient.PostAsJsonAsync(
-                "/api/service-auth/token/delegated",
+                "/api/internal/service-auth/token/delegated",
                 request,
                 cancellationToken);
 
