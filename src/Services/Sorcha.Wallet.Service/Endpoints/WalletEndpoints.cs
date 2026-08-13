@@ -894,6 +894,27 @@ public static class WalletEndpoints
                     return Results.Forbid();
                 }
             }
+            else
+            {
+                // #1397 — the service-token bypass above is deliberately broad (Blueprint Service
+                // legitimately signs OTHER organisations' wallets during credential issuance), but a
+                // validator:*-owned wallet is the docket-signing / SSR-owner system key. Narrow the
+                // bypass so only the Validator service principal itself may sign with one — any other
+                // service token targeting it is the #1397 oracle.
+                var systemWallet = await walletManager.GetWalletAsync(address, cancellationToken);
+                if (systemWallet is not null && systemWallet.Owner is not null &&
+                    systemWallet.Owner.StartsWith("validator:", StringComparison.Ordinal))
+                {
+                    var clientId = context.User.Claims.FirstOrDefault(c => c.Type == "client_id")?.Value;
+                    if (!string.Equals(clientId, "validator-service", StringComparison.Ordinal))
+                    {
+                        logger.LogWarning(
+                            "SEC-AUDIT: service principal {ClientId} attempted to sign system wallet {Wallet} owned by {Owner}",
+                            clientId, address, systemWallet.Owner);
+                        return Results.Forbid();
+                    }
+                }
+            }
 
             // Only check derived key status if this is an org-derived wallet.
             // Use DerivedKeyRecordId FK to avoid a full table scan for standalone wallets.
