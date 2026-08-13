@@ -387,6 +387,29 @@ $null = Add-SorchaPublicOrgSubscription `
     -SysAdminEmail $secrets.meridianAdminEmail
 
 # ============================================================================
+# Provision the Feature-083 org master key for the credential ISSUER org.
+# Action 6 (planning-officer) issues a BuildingPermitCredential signed by the planning
+# authority's org. Without a master key, IssuanceKeyService.GetActiveSigningMaterialAsync
+# returns null and the mint FAILS (400 "Failed to issue credential") — this walkthrough
+# predated the requirement and lacked the step that TradeFinance / ForestryCertification /
+# SelfBuildHouse have. Re-login first so the session JWT carries wallet_address (the master-key
+# endpoint is wallet-authorized); the planning-officer's wallet was created above. Idempotent
+# (409 on re-run is fine). See the walkthrough-builder skill.
+# ============================================================================
+Write-WtStep "Step 9b: Provision credential-issuer org master key"
+
+$planningIssuerSession = Connect-SorchaUser `
+    -TenantUrl $env.TenantUrl `
+    -Email $secrets.planningEmail `
+    -Password $secrets.planningPassword `
+    -OrganizationId $orgs.strathcarron
+
+Set-SorchaOrgMasterKey `
+    -WalletUrl $env.WalletUrl `
+    -OrganizationId $orgs.strathcarron `
+    -Headers $planningIssuerSession.Headers
+
+# ============================================================================
 # Step 9: Publish Participant Records to Register
 # ============================================================================
 Write-WtStep "Step 10: Publish Participant Records to Register"
