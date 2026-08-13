@@ -27,9 +27,30 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
     #region Client Credentials Token Tests
 
     [Fact]
+    public async Task GetServiceToken_OnPublicEndpoint_ShouldReturnBadRequest_ForClientCredentials()
+    {
+        // #1397 — the PUBLIC /api/service-auth/token endpoint (proxied by the API Gateway) no longer
+        // serves client_credentials at all, regardless of whether the credentials are valid. This is
+        // the fix under test: minting a service-tier token here used to require only the committed
+        // dev client secrets, no bearer, reachable from the open internet.
+        var formData = new Dictionary<string, string>
+        {
+            ["client_id"] = "some-client",
+            ["client_secret"] = "some-secret",
+            ["grant_type"] = "client_credentials"
+        };
+
+        // Act
+        var response = await _unauthClient.PostAsync("/api/service-auth/token", new FormUrlEncodedContent(formData));
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task GetServiceToken_ShouldReturnUnauthorized_WithInvalidCredentials()
     {
-        // Arrange
+        // Arrange — internal-only endpoint (#1397); not routed by the public API Gateway.
         var formData = new Dictionary<string, string>
         {
             ["client_id"] = "invalid-client",
@@ -38,7 +59,7 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
         };
 
         // Act
-        var response = await _unauthClient.PostAsync("/api/service-auth/token", new FormUrlEncodedContent(formData));
+        var response = await _unauthClient.PostAsync("/api/internal/service-auth/token", new FormUrlEncodedContent(formData));
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
@@ -47,7 +68,8 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
     [Fact]
     public async Task GetServiceToken_ShouldReturnBadRequest_WithInvalidGrantType()
     {
-        // Arrange
+        // Arrange — this exercises the PUBLIC endpoint's password-grant validation (missing
+        // username/password), unaffected by the #1397 client_credentials move.
         var formData = new Dictionary<string, string>
         {
             ["client_id"] = "some-client",
@@ -65,7 +87,7 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
     [Fact]
     public async Task GetServiceToken_ShouldReturnBadRequest_WithMissingClientId()
     {
-        // Arrange
+        // Arrange — internal-only endpoint (#1397).
         var formData = new Dictionary<string, string>
         {
             ["client_id"] = "",
@@ -74,7 +96,7 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
         };
 
         // Act
-        var response = await _unauthClient.PostAsync("/api/service-auth/token", new FormUrlEncodedContent(formData));
+        var response = await _unauthClient.PostAsync("/api/internal/service-auth/token", new FormUrlEncodedContent(formData));
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -83,7 +105,7 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
     [Fact]
     public async Task GetServiceToken_ShouldReturnBadRequest_WithMissingClientSecret()
     {
-        // Arrange
+        // Arrange — internal-only endpoint (#1397).
         var formData = new Dictionary<string, string>
         {
             ["client_id"] = "some-client",
@@ -92,7 +114,7 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
         };
 
         // Act
-        var response = await _unauthClient.PostAsync("/api/service-auth/token", new FormUrlEncodedContent(formData));
+        var response = await _unauthClient.PostAsync("/api/internal/service-auth/token", new FormUrlEncodedContent(formData));
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -105,7 +127,7 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
     [Fact]
     public async Task GetDelegatedToken_ShouldReturnUnauthorized_WithInvalidCredentials()
     {
-        // Arrange
+        // Arrange — internal-only endpoint (#1397); not routed by the public API Gateway.
         var request = new DelegatedTokenRequest
         {
             ClientId = "invalid-client",
@@ -114,7 +136,7 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
         };
 
         // Act
-        var response = await _unauthClient.PostAsJsonAsync("/api/service-auth/token/delegated", request);
+        var response = await _unauthClient.PostAsJsonAsync("/api/internal/service-auth/token/delegated", request);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
@@ -123,7 +145,7 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
     [Fact]
     public async Task GetDelegatedToken_ShouldReturnBadRequest_WithMissingDelegatedUserId()
     {
-        // Arrange
+        // Arrange — internal-only endpoint (#1397).
         var request = new DelegatedTokenRequest
         {
             ClientId = "some-client",
@@ -132,10 +154,28 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
         };
 
         // Act
-        var response = await _unauthClient.PostAsJsonAsync("/api/service-auth/token/delegated", request);
+        var response = await _unauthClient.PostAsJsonAsync("/api/internal/service-auth/token/delegated", request);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task GetDelegatedToken_OnPublicRoute_ShouldReturnNotFound()
+    {
+        // #1397 — /token/delegated no longer exists under the public /api/service-auth group.
+        var request = new DelegatedTokenRequest
+        {
+            ClientId = "some-client",
+            ClientSecret = "some-secret",
+            DelegatedUserId = Guid.NewGuid()
+        };
+
+        // Act
+        var response = await _unauthClient.PostAsJsonAsync("/api/service-auth/token/delegated", request);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     #endregion
@@ -392,14 +432,14 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
     [Fact]
     public async Task RotateSecret_ShouldReturnUnauthorized_WithInvalidCredentials()
     {
-        // Arrange
+        // Arrange — internal-only endpoint (#1397); not routed by the public API Gateway.
         var request = new RotateSecretRequest
         {
             CurrentSecret = "wrong-secret"
         };
 
         // Act
-        var response = await _unauthClient.PostAsJsonAsync("/api/service-auth/rotate-secret?clientId=some-client", request);
+        var response = await _unauthClient.PostAsJsonAsync("/api/internal/service-auth/rotate-secret?clientId=some-client", request);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
@@ -408,14 +448,14 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
     [Fact]
     public async Task RotateSecret_ShouldReturnBadRequest_WithMissingClientId()
     {
-        // Arrange
+        // Arrange — internal-only endpoint (#1397).
         var request = new RotateSecretRequest
         {
             CurrentSecret = "some-secret"
         };
 
         // Act
-        var response = await _unauthClient.PostAsJsonAsync("/api/service-auth/rotate-secret", request);
+        var response = await _unauthClient.PostAsJsonAsync("/api/internal/service-auth/rotate-secret", request);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -424,14 +464,14 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
     [Fact]
     public async Task RotateSecret_ShouldReturnBadRequest_WithMissingCurrentSecret()
     {
-        // Arrange
+        // Arrange — internal-only endpoint (#1397).
         var request = new RotateSecretRequest
         {
             CurrentSecret = ""
         };
 
         // Act
-        var response = await _unauthClient.PostAsJsonAsync("/api/service-auth/rotate-secret?clientId=some-client", request);
+        var response = await _unauthClient.PostAsJsonAsync("/api/internal/service-auth/rotate-secret?clientId=some-client", request);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -453,8 +493,8 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
             CurrentSecret = created!.ClientSecret
         };
 
-        // Act
-        var response = await _unauthClient.PostAsJsonAsync($"/api/service-auth/rotate-secret?clientId={created.ClientId}", request);
+        // Act — internal-only endpoint (#1397).
+        var response = await _unauthClient.PostAsJsonAsync($"/api/internal/service-auth/rotate-secret?clientId={created.ClientId}", request);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -463,6 +503,22 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
         result.Should().NotBeNull();
         result!.NewClientSecret.Should().NotBeNullOrEmpty();
         result.NewClientSecret.Should().NotBe(created.ClientSecret);
+    }
+
+    [Fact]
+    public async Task RotateSecret_OnPublicRoute_ShouldReturnNotFound()
+    {
+        // #1397 — /rotate-secret no longer exists under the public /api/service-auth group.
+        var request = new RotateSecretRequest
+        {
+            CurrentSecret = "some-secret"
+        };
+
+        // Act
+        var response = await _unauthClient.PostAsJsonAsync("/api/service-auth/rotate-secret?clientId=some-client", request);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     #endregion

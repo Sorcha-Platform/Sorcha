@@ -21,23 +21,20 @@ public static class ServiceAuthEndpoints
         var group = app.MapGroup("/api/service-auth")
             .WithTags("Service Authentication");
 
-        // Unified OAuth2 token endpoint supporting multiple grant types
+        // Public OAuth2 token endpoint — serves ONLY the browser/human grant types (password,
+        // refresh_token). This route is proxied by the public API Gateway (/api/service-auth/{**catch-all}),
+        // and client_credentials service-token minting was the #1397 vector: it accepted the
+        // repo-committed dev service secrets from anyone on the internet and minted a signing-capable
+        // service token. client_credentials now lives ONLY on the internal-only group below.
         // Note: We manually parse both form-urlencoded and JSON in the handler,
         // so we don't use .Accepts<T>() which would cause Content-Type validation issues
         group.MapPost("/token", GetOAuth2Token)
             .WithName("GetOAuth2Token")
-            .WithSummary("OAuth2 token endpoint")
-            .WithDescription("OAuth2 compliant token endpoint. Supports grant types: password, client_credentials, refresh_token. Accepts both application/x-www-form-urlencoded and application/json content types.")
-            .AllowAnonymous()
-            .Produces<TokenResponse>()
-            .ProducesValidationProblem()
-            .Produces(StatusCodes.Status401Unauthorized);
-
-        // Delegated authority token
-        group.MapPost("/token/delegated", GetDelegatedToken)
-            .WithName("GetDelegatedToken")
-            .WithSummary("Get delegated authority token")
-            .WithDescription("Gets a service token that acts on behalf of a user.")
+            .WithSummary("OAuth2 token endpoint (password + refresh_token only)")
+            .WithDescription("OAuth2 compliant token endpoint. Supports grant types: password, refresh_token. " +
+                "client_credentials service-token minting has moved to POST /api/internal/service-auth/token " +
+                "(not reachable through the public API Gateway) — see #1397. Accepts both " +
+                "application/x-www-form-urlencoded and application/json content types.")
             .AllowAnonymous()
             .Produces<TokenResponse>()
             .ProducesValidationProblem()
@@ -121,11 +118,45 @@ public static class ServiceAuthEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status403Forbidden);
 
-        // Secret rotation (requires current secret)
-        group.MapPost("/rotate-secret", RotateSecret)
+        // Internal-only service-to-service auth surface (#1397). The API Gateway has NO route for
+        // /api/internal/* — an external request falls through to the UI's `/{**catch-all}` route and
+        // 404s, the same mechanism the rest of the /api/internal/* surface already relies on. These
+        // endpoints still authenticate the CALLER by client_id/client_secret rather than a bearer token
+        // (there is no bearer yet, so .AllowAnonymous() here is correct) — being unreachable from
+        // outside the Docker network is what makes them "internal-only", not an auth policy.
+        var internalGroup = app.MapGroup("/api/internal/service-auth")
+            .WithTags("Service Authentication (internal)");
+
+        internalGroup.MapPost("/token", GetInternalServiceToken)
+            .WithName("GetInternalServiceToken")
+            .WithSummary("Internal client_credentials token endpoint")
+            .WithDescription("OAuth2 client_credentials grant only. NOT routed by the public API Gateway — " +
+                "callers must reach the Tenant Service directly inside the internal network. Moved off the " +
+                "public /api/service-auth/token route as part of the #1397 remediation.")
+            .AllowAnonymous()
+            .Produces<TokenResponse>()
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        // Delegated authority token — service acting on behalf of a user. Internal-only for the same
+        // reason as client_credentials: it authenticates by client_id/client_secret, which is exactly
+        // the credential class #1397 showed can leak, and there is no legitimate external caller (see
+        // ServiceAuthClient / DelegationTokenClient below — both already target the Tenant Service
+        // directly, never the gateway).
+        internalGroup.MapPost("/token/delegated", GetDelegatedToken)
+            .WithName("GetDelegatedToken")
+            .WithSummary("Get delegated authority token (internal)")
+            .WithDescription("Gets a service token that acts on behalf of a user. Internal-only — not routed by the API Gateway.")
+            .AllowAnonymous()
+            .Produces<TokenResponse>()
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        // Secret rotation (requires current secret) — internal-only for the same reason.
+        internalGroup.MapPost("/rotate-secret", RotateSecret)
             .WithName("RotateServiceSecret")
-            .WithSummary("Rotate service principal secret")
-            .WithDescription("Rotates the client secret for a service principal. Requires current secret.")
+            .WithSummary("Rotate service principal secret (internal)")
+            .WithDescription("Rotates the client secret for a service principal. Requires current secret. Internal-only — not routed by the API Gateway.")
             .AllowAnonymous()
             .Produces<RotateSecretResponse>()
             .ProducesValidationProblem()
@@ -136,14 +167,16 @@ public static class ServiceAuthEndpoints
 
     private static async Task<Results<Ok<TokenResponse>, UnauthorizedHttpResult, ValidationProblem>> GetOAuth2Token(
         HttpContext context,
-        IServiceAuthService serviceAuthService,
         ILoginService loginService,
         ITokenService tokenService,
         ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
-        // Parse request data (support both form-urlencoded and JSON)
-        string grantType, username, password, clientId, clientSecret, refreshToken, scope;
+        // Parse request data (support both form-urlencoded and JSON).
+        // Only password + refresh_token are served here — client_id/client_secret are deliberately NOT
+        // read on this public path; client_credentials is handled exclusively by the internal-only
+        // GetInternalServiceToken handler below (#1397).
+        string grantType, username, password, refreshToken, scope;
 
         var contentType = context.Request.ContentType?.ToLowerInvariant() ?? "";
         if (contentType.Contains("application/json"))
@@ -161,8 +194,6 @@ public static class ServiceAuthEndpoints
             grantType = request.GrantType ?? "";
             username = request.Username ?? "";
             password = request.Password ?? "";
-            clientId = request.ClientId ?? "";
-            clientSecret = request.ClientSecret ?? "";
             refreshToken = request.RefreshToken ?? "";
             scope = request.Scope ?? "";
         }
@@ -173,11 +204,11 @@ public static class ServiceAuthEndpoints
             grantType = form["grant_type"].ToString();
             username = form["username"].ToString();
             password = form["password"].ToString();
-            clientId = form["client_id"].ToString();
-            clientSecret = form["client_secret"].ToString();
             refreshToken = form["refresh_token"].ToString();
             scope = form["scope"].ToString();
         }
+
+        _ = scope; // password/refresh_token grants on this endpoint don't take a caller-supplied scope
 
         if (string.IsNullOrWhiteSpace(grantType))
         {
@@ -190,13 +221,64 @@ public static class ServiceAuthEndpoints
         return grantType switch
         {
             "password" => await HandlePasswordGrant(username, password, loginService, logger, cancellationToken),
-            "client_credentials" => await HandleClientCredentialsGrant(clientId, clientSecret, scope, serviceAuthService, cancellationToken),
             "refresh_token" => await HandleRefreshTokenGrant(refreshToken, tokenService, cancellationToken),
+            "client_credentials" => TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["grant_type"] = [
+                    "client_credentials is not available on the public token endpoint. Use " +
+                    "POST /api/internal/service-auth/token from inside the internal network. See #1397."]
+            }),
             _ => TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
-                ["grant_type"] = [$"Unsupported grant type: {grantType}. Supported: password, client_credentials, refresh_token"]
+                ["grant_type"] = [$"Unsupported grant type: {grantType}. Supported: password, refresh_token"]
             })
         };
+    }
+
+    private static async Task<Results<Ok<TokenResponse>, UnauthorizedHttpResult, ValidationProblem>> GetInternalServiceToken(
+        HttpContext context,
+        IServiceAuthService serviceAuthService,
+        CancellationToken cancellationToken)
+    {
+        // Internal-only client_credentials endpoint. Not routed by the API Gateway — see the route
+        // comment on MapServiceAuthEndpoints. Parsing mirrors GetOAuth2Token (form + JSON).
+        string grantType, clientId, clientSecret, scope;
+
+        var contentType = context.Request.ContentType?.ToLowerInvariant() ?? "";
+        if (contentType.Contains("application/json"))
+        {
+            var request = await context.Request.ReadFromJsonAsync<OAuth2TokenRequest>(cancellationToken);
+            if (request == null)
+            {
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["request"] = ["Invalid JSON request body"]
+                });
+            }
+
+            grantType = request.GrantType ?? "";
+            clientId = request.ClientId ?? "";
+            clientSecret = request.ClientSecret ?? "";
+            scope = request.Scope ?? "";
+        }
+        else
+        {
+            var form = await context.Request.ReadFormAsync(cancellationToken);
+            grantType = form["grant_type"].ToString();
+            clientId = form["client_id"].ToString();
+            clientSecret = form["client_secret"].ToString();
+            scope = form["scope"].ToString();
+        }
+
+        if (!string.IsNullOrWhiteSpace(grantType) && grantType != "client_credentials")
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["grant_type"] = [$"Unsupported grant type on the internal token endpoint: {grantType}. Supported: client_credentials"]
+            });
+        }
+
+        return await HandleClientCredentialsGrant(clientId, clientSecret, scope, serviceAuthService, cancellationToken);
     }
 
     private static async Task<Results<Ok<TokenResponse>, UnauthorizedHttpResult, ValidationProblem>> HandlePasswordGrant(

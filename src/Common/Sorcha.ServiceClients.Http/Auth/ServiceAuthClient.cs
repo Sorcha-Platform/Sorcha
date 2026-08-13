@@ -15,7 +15,8 @@ namespace Sorcha.ServiceClients.Auth;
 /// OAuth2 client_credentials implementation for service-to-service JWT token acquisition
 /// </summary>
 /// <remarks>
-/// Acquires tokens from the Tenant Service POST /api/service-auth/token endpoint.
+/// Acquires tokens from the Tenant Service POST /api/internal/service-auth/token endpoint — the
+/// internal-only client_credentials route (not routed by the public API Gateway, per #1397).
 /// Tokens are cached in-memory and refreshed when within 5 minutes of expiry.
 /// Thread-safe via SemaphoreSlim.
 /// </remarks>
@@ -106,7 +107,7 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
                 ["scope"] = _scopes
             });
 
-            var response = await _httpClient.PostAsync("/api/service-auth/token", formData, cancellationToken);
+            var response = await _httpClient.PostAsync("/api/internal/service-auth/token", formData, cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {
