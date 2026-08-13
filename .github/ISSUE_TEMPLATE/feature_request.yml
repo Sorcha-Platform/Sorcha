@@ -1,0 +1,44 @@
+name: Feature request
+description: Propose a new capability or improvement for Sorcha.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing an improvement. Describe the problem before the solution — it lets a maintainer (or another agent) evaluate whether the proposed approach is actually the best fix.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What's missing, awkward, or broken about the current behaviour? Who runs into it and when?
+      placeholder: |
+        e.g. There's no way to list wallets by org from the CLI, so scripting an org-wide audit requires N manual calls.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed solution
+      description: What you'd like to see instead. Sketch an API shape, CLI flag, or UI change if you have one in mind — it doesn't need to be final.
+    validations:
+      required: true
+
+  - type: textarea
+    id: who-benefits
+    attributes:
+      label: Who benefits
+      description: Which users, integrators, or workflows this helps (e.g. self-hosters, external testers, agent integrations, a specific service team).
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you considered and why you didn't propose them instead. "None" is a fine answer.
+    validations:
+      required: false
