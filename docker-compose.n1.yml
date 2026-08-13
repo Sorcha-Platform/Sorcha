@@ -138,7 +138,12 @@ services:
       ServiceClients__BlueprintService__Address: http://blueprint-service:8080
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceAuth__ClientId: service-haip
-      ServiceAuth__ClientSecret: haip-service-secret
+      # Same var/spelling as the base compose (#1423) — required because this
+      # override REPLACES (not additive-merges) the base haip-service
+      # environment block, so the guard has to be repeated here too. n1's
+      # .env already supplies HAIP_SERVICE_SECRET for the base compose; no
+      # new var introduced.
+      ServiceAuth__ClientSecret: ${HAIP_SERVICE_SECRET:?not set — run ./scripts/sorcha-setup.sh to generate .env (see README Quick Start); bare docker compose up is unsupported}
       ServiceAuth__Scopes: "blueprints:read"
 
   sorcha-ui-web:

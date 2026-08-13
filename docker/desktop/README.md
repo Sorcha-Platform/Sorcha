@@ -71,7 +71,8 @@ containers). Data in the named volumes is preserved.
 
 - The gateway is **HTTP-only on :8880**. Front it with a TLS-terminating reverse
   proxy (Caddy / nginx) if reachable off the machine.
-- `.env` holds the JWT signing key and DB passwords — it's generated `chmod 600`
+- `.env` holds the JWT signing key, DB passwords, and the per-service
+  `*_SERVICE_SECRET` ServiceAuth credentials — it's generated `chmod 600`
   and must never be committed.
 - `INSTALLATION_NAME` is fixed at first boot (it's baked into issued tokens).
   Changing it later invalidates existing tokens.

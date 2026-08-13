@@ -94,11 +94,25 @@ ensure_env() {
   cp "$BUNDLE_DIR/.env.desktop.example" "$ENV_FILE"
   local jwt pgp mgp
   jwt="$(gen_secret_b64)"; pgp="$(gen_secret_alnum)"; mgp="$(gen_secret_alnum)"
+  # Per-service ServiceAuth client secrets (#1423) — one per internal service
+  # principal; alphanumeric so they're safe unquoted in .env and in compose
+  # ${VAR:?...} interpolation.
+  local wallet_s tenant_s register_s validator_s haip_s peer_s blueprint_s
+  wallet_s="$(gen_secret_alnum)"; tenant_s="$(gen_secret_alnum)"; register_s="$(gen_secret_alnum)"
+  validator_s="$(gen_secret_alnum)"; haip_s="$(gen_secret_alnum)"; peer_s="$(gen_secret_alnum)"
+  blueprint_s="$(gen_secret_alnum)"
   # Mongo password is embedded in a connection URI, so keep it alphanumeric.
   sed -i.bak \
     -e "s|^JWT_SIGNING_KEY=.*|JWT_SIGNING_KEY=${jwt}|" \
     -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${pgp}|" \
     -e "s|^MONGO_PASSWORD=.*|MONGO_PASSWORD=${mgp}|" \
+    -e "s|^WALLET_SERVICE_SECRET=.*|WALLET_SERVICE_SECRET=${wallet_s}|" \
+    -e "s|^TENANT_SERVICE_SECRET=.*|TENANT_SERVICE_SECRET=${tenant_s}|" \
+    -e "s|^REGISTER_SERVICE_SECRET=.*|REGISTER_SERVICE_SECRET=${register_s}|" \
+    -e "s|^VALIDATOR_SERVICE_SECRET=.*|VALIDATOR_SERVICE_SECRET=${validator_s}|" \
+    -e "s|^HAIP_SERVICE_SECRET=.*|HAIP_SERVICE_SECRET=${haip_s}|" \
+    -e "s|^PEER_SERVICE_SECRET=.*|PEER_SERVICE_SECRET=${peer_s}|" \
+    -e "s|^BLUEPRINT_SERVICE_SECRET=.*|BLUEPRINT_SERVICE_SECRET=${blueprint_s}|" \
     "$ENV_FILE" && rm -f "$ENV_FILE.bak"
   chmod 600 "$ENV_FILE"
   ok "Generated $ENV_FILE (secrets written, mode 600)."
