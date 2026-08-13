@@ -276,6 +276,7 @@ Sorcha publishes a machine-readable surface so AI agents, AI coding assistants, 
 | [`docs/security-model.md`](docs/security-model.md) | Selective disclosure, post-quantum posture, honest gaps |
 | [`docs/reference/maturity-and-limitations.md`](docs/reference/maturity-and-limitations.md) | What's production-shaped versus demo-grade before you test |
 | [`docs/mcp-server.md`](docs/mcp-server.md) | Connecting an AI agent via the Model Context Protocol — transports, auth, role slices |
+| [`docs/guides/mcp-agent-quickstart.md`](docs/guides/mcp-agent-quickstart.md) | Copy-pasteable path for an **external** autonomous agent: point MCP at a node, authenticate, and drive one workflow action to a sealed transaction |
 | [`docs/llms-full.txt`](docs/llms-full.txt) | Long-form machine-readable narrative |
 | `GET /.well-known/openapi.json` *(running gateway)* | Aggregated OpenAPI 3.1 surface with `info.x-mcp-server` and `info.x-standards` |
 | `GET /.well-known/openapi.yaml` *(running gateway)* | YAML form of the same document |
