@@ -194,6 +194,11 @@ public class SecurityTests : IAsyncLifetime
 
     #region A04:2021 – Insecure Design
 
+    // For a real, in-process burst that actually asserts throttling (429s) against the SHIPPED
+    // Production rate-limit config, see
+    // Sorcha.ApiGateway.Tests.RateLimiting.ProductionRateLimitBurstTests — the Public Gates
+    // verification that production rate limits activate. This test stays skipped: it never
+    // asserted throttling even when run, only that requests complete without erroring.
     [Fact(Skip = "Requires running services")]
     public async Task RateLimiting_ExcessiveRequests_ShouldThrottle()
     {
