@@ -350,6 +350,10 @@ builder.Services.AddWalletAuthorization();
 
 var app = builder.Build();
 
+// Issue #1433 — sanitized global exception handler, FIRST in the pipeline so it wraps every
+// other middleware's unhandled exceptions too (see ServiceDefaults.Extensions for rationale).
+app.UseSanitizedExceptionHandling();
+
 // Apply database migrations automatically (only if PostgreSQL is configured)
 await app.Services.ApplyWalletDatabaseMigrationsAsync();
 

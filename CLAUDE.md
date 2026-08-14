@@ -473,6 +473,38 @@ Do not flip half of this: add-only migrations without an upgrade process is wors
 
 ---
 
+### 20. Global sanitized exception handling (issue #1433)
+
+Every service registers `Sorcha.ServiceDefaults.SanitizedExceptionHandler` via `AddServiceDefaults()`
+(`AddProblemDetails()` + `AddExceptionHandler<SanitizedExceptionHandler>()`) and applies it via
+`app.UseSanitizedExceptionHandling()` — called as the **very first** line after `var app =
+builder.Build();`, before any other `app.Use*`, so it wraps every other middleware's unhandled
+exceptions too.
+
+```csharp
+var app = builder.Build();
+
+// FIRST in the pipeline — wraps every other middleware's unhandled exceptions.
+app.UseSanitizedExceptionHandling();
+```
+
+- **Deliberately environment-UNGATED.** ASP.NET Core auto-adds the DeveloperExceptionPage (full
+  stack trace in the response body) whenever no exception-handling middleware is registered and
+  `ASPNETCORE_ENVIRONMENT=Development` — and before this handler existed, Sorcha had none anywhere.
+  At least one internet-facing node ran with `Development` set, so that page was the live behaviour
+  in production (issue #1433). The sanitized problem+json response is the only possible unhandled-
+  exception response in every environment — a misconfigured node can no longer leak a stack trace,
+  exception type, or exception message.
+- **Only catches UNHANDLED exceptions.** Endpoints that already return their own typed/problem+json
+  errors via `IResult` (the overwhelming majority in Sorcha) are untouched. `AddProblemDetails()`
+  does change the *default* shape ASP.NET Core generates for framework-level 400/415/etc. responses
+  (e.g. minimal-API binding failures) — if you add a test asserting that shape, assert the new one.
+- Full exception detail (type, message, stack trace) is still logged server-side via `ILogger` —
+  only the HTTP response body is sanitized. Every response carries a `traceId` extension an operator
+  can correlate against that log line.
+
+---
+
 ## Key Documentation
 
 | Document | Purpose |

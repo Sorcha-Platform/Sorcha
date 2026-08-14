@@ -52,6 +52,12 @@ public static class Extensions
 
         builder.Services.AddStorageRegistration();
 
+        // Issue #1433 — global sanitized unhandled-exception posture. Registered here so every
+        // service gets it automatically via AddServiceDefaults; the corresponding app-pipeline call
+        // is UseSanitizedExceptionHandling (each Program.cs calls it as the FIRST middleware).
+        builder.Services.AddProblemDetails();
+        builder.Services.AddExceptionHandler<Sorcha.ServiceDefaults.SanitizedExceptionHandler>();
+
         return builder;
     }
 
@@ -198,6 +204,29 @@ public static class Extensions
             Predicate = r => r.Tags.Contains("live")
         });
 
+        return app;
+    }
+
+    /// <summary>
+    /// Applies the global sanitized unhandled-exception handler (issue #1433). Returns RFC 7807
+    /// problem+json with a generic title, the HTTP status, and a trace id — never the exception's
+    /// type, message, or stack trace. Backed by the <see cref="Sorcha.ServiceDefaults.SanitizedExceptionHandler"/>
+    /// registered by <see cref="AddServiceDefaults{TBuilder}"/>.
+    /// </summary>
+    /// <remarks>
+    /// Call this FIRST in the pipeline — before <c>UseForwardedHeaders</c>, <c>UseSerilogLogging</c>,
+    /// security headers, input validation, CORS, auth, and rate limiting — so it wraps every other
+    /// middleware's unhandled exceptions too. Deliberately not gated to Production/Staging: ASP.NET
+    /// Core auto-adds the DeveloperExceptionPage (full stack trace in the response body) whenever
+    /// <c>ASPNETCORE_ENVIRONMENT=Development</c> and no exception-handling middleware is registered, and
+    /// at least one Sorcha node has run Development while internet-facing. Applying this unconditionally
+    /// means that misconfiguration can no longer leak a stack trace, regardless of environment.
+    /// </remarks>
+    /// <param name="app">The web application</param>
+    /// <returns>The web application for chaining</returns>
+    public static WebApplication UseSanitizedExceptionHandling(this WebApplication app)
+    {
+        app.UseExceptionHandler();
         return app;
     }
 

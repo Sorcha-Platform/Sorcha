@@ -113,11 +113,11 @@ public static class PlatformOrgEndpoints
     /// Returns a paginated list of all organisations with user counts.
     /// </summary>
     private static async Task<IResult> ListOrganizations(
-        string? status,
-        int page,
-        int pageSize,
         TenantDbContext db,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? status,
+        int page = 1,
+        int pageSize = 50)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
@@ -223,10 +223,10 @@ public static class PlatformOrgEndpoints
     /// </summary>
     private static async Task<IResult> GetOrganizationUsers(
         Guid orgId,
-        int page,
-        int pageSize,
         TenantDbContext db,
-        CancellationToken ct)
+        CancellationToken ct,
+        int page = 1,
+        int pageSize = 20)
     {
         var orgExists = await db.Organizations.AnyAsync(o => o.Id == orgId, ct);
         if (!orgExists)
