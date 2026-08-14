@@ -158,3 +158,9 @@ services:
       Dashboard__AspireDashboardUrl: https://n1.sorcha.dev:18888
       # Disable HTTPS on gateway - Caddy handles TLS
       ASPNETCORE_URLS: http://+:8080
+      # Rate limits (#1437): this override MERGES with the base api-gateway environment
+      # (compose unions environment maps across -f files), so n1's gateway inherits the base
+      # RateLimiting__* production limits (api 600/min, auth 60/min, strict 60 tokens, all
+      # QueueLimit=0). n1 is the public edge this fix targets, so it is deliberately NOT loosened
+      # here. Only tenant-service's PlatformAuth is loosened above, for walkthrough user-creation
+      # bursts. To relax a gateway limit for a demo, set the RATELIMIT_* vars in the host .env.
