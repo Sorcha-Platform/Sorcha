@@ -842,6 +842,25 @@ services:
       ConnectionStrings__Redis: redis:6379
       OpenApi__RequireAuth: ${OPENAPI_REQUIRE_AUTH:-true}
       Dashboard__AspireDashboardUrl: http://localhost:18888
+      # Production rate limits, delivered via env vars (issue #1437). appsettings.Production.json
+      # is stripped from every image by .dockerignore ("**/appsettings.*.json"), and deployments
+      # (incl. n1) do not run ASPNETCORE_ENVIRONMENT=Production on the gateway — so the coded
+      # RateLimitSettings defaults (ApiPermitLimit 100000, ApiQueueLimit 1000) were the effective
+      # limits on the public edge, leaving the gateway ~100k API req/min/IP unthrottled. Env vars
+      # are the real config channel for a deployed container and apply regardless of environment.
+      # Values mirror src/Services/Sorcha.ApiGateway/appsettings.Production.json.
+      # The QueueLimit=0 entries are load-bearing: a FixedWindow limiter QUEUES overflow up to
+      # QueueLimit rather than rejecting, so any non-zero queue (the coded default is 1000) never
+      # emits a 429 until a burst exceeds PermitLimit+QueueLimit in one window. QueueLimit=0 =
+      # immediate clean 429 at the limit. Overridable per-deploy via the RATELIMIT_* vars.
+      RateLimiting__ApiPermitLimit: ${RATELIMIT_API_PERMIT:-600}
+      RateLimiting__ApiQueueLimit: ${RATELIMIT_API_QUEUE:-0}
+      RateLimiting__AuthenticationPermitLimit: ${RATELIMIT_AUTH_PERMIT:-60}
+      RateLimiting__AuthenticationQueueLimit: ${RATELIMIT_AUTH_QUEUE:-0}
+      RateLimiting__StrictTokenLimit: ${RATELIMIT_STRICT_TOKENS:-60}
+      RateLimiting__StrictTokensPerPeriod: ${RATELIMIT_STRICT_PER_PERIOD:-10}
+      RateLimiting__StrictReplenishmentPeriodSeconds: ${RATELIMIT_STRICT_PERIOD_SECS:-1}
+      RateLimiting__StrictQueueLimit: ${RATELIMIT_STRICT_QUEUE:-0}
     volumes:
       - dataprotection-keys:/home/app/.aspnet/DataProtection-Keys
       - ./docker/certs:/https:ro
