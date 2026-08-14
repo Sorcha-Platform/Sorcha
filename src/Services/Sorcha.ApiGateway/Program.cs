@@ -99,6 +99,10 @@ builder.Services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>
 
 var app = builder.Build();
 
+// Issue #1433 — sanitized global exception handler, FIRST in the pipeline so it wraps every
+// other middleware's unhandled exceptions too (see ServiceDefaults.Extensions for rationale).
+app.UseSanitizedExceptionHandling();
+
 // Configure the HTTP request pipeline
 app.MapDefaultEndpoints();
 

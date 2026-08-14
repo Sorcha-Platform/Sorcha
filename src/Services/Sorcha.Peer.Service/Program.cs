@@ -240,6 +240,10 @@ builder.Services.AddHttpClient();
 
 var app = builder.Build();
 
+// Issue #1433 — sanitized global exception handler, FIRST in the pipeline so it wraps every
+// other middleware's unhandled exceptions too (see ServiceDefaults.Extensions for rationale).
+app.UseSanitizedExceptionHandling();
+
 // Apply PeerDbContext migrations on startup (matching Blueprint/Wallet/Tenant pattern)
 if (!string.IsNullOrEmpty(peerDbConnectionString))
 {

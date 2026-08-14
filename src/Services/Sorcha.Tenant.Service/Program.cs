@@ -211,6 +211,10 @@ builder.Services.AddSorchaAddressLookup(builder.Configuration);
 
 var app = builder.Build();
 
+// Issue #1433 — sanitized global exception handler, FIRST in the pipeline so it wraps every
+// other middleware's unhandled exceptions too (see ServiceDefaults.Extensions for rationale).
+app.UseSanitizedExceptionHandling();
+
 // Feature 146 — fail closed at startup if no at-rest secret-protection key can be resolved
 // (resolves the singleton, which runs TenantSecretKeyResolver.ResolveProtectionKey()).
 _ = app.Services.GetRequiredService<Sorcha.Tenant.Service.Services.ISecretProtectionProvider>();

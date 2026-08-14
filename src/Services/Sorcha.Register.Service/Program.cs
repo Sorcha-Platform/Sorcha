@@ -335,6 +335,10 @@ builder.Services.AddRegisterAuthorization();
 
 var app = builder.Build();
 
+// Issue #1433 — sanitized global exception handler, FIRST in the pipeline so it wraps every
+// other middleware's unhandled exceptions too (see ServiceDefaults.Extensions for rationale).
+app.UseSanitizedExceptionHandling();
+
 if (storageType.Equals("MongoDB", StringComparison.OrdinalIgnoreCase))
 {
     app.Logger.LogInformation("Register Service using MongoDB storage");

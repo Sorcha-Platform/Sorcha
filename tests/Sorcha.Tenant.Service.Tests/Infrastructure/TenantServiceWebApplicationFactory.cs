@@ -328,6 +328,20 @@ public class TenantServiceWebApplicationFactory : WebApplicationFactory<Program>
     }
 
     /// <summary>
+    /// Create an HTTP client with test authentication configured for a platform SystemAdmin
+    /// (system-admin org membership + SystemAdmin role) — required by the "RequireSystemAdmin"
+    /// policy that gates <c>/api/platform/*</c> endpoints (see AuthorizationPolicyExtensions).
+    /// </summary>
+    public HttpClient CreateSystemAdminClient()
+    {
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Role", "SystemAdmin");
+        client.DefaultRequestHeaders.Add("X-Test-User-Id", TestDataSeeder.AdminUserId.ToString());
+        client.DefaultRequestHeaders.Add("X-Test-Organization-Id", WellKnownIds.SystemAdminOrgId.ToString());
+        return client;
+    }
+
+    /// <summary>
     /// Create an HTTP client with test authentication configured for a regular member.
     /// </summary>
     public HttpClient CreateMemberClient()
