@@ -114,10 +114,12 @@ public static class InstanceProjectionResolver
 
     /// <summary>
     /// Resolves participant-id → wallet bindings this transaction contributes, keyed by the
-    /// blueprint participant id (never self-keyed by wallet address). Binds the completed action's
-    /// sender to the tx sender, and the next action's sender to the recipient (the next actor), so
-    /// bindings accumulate across the chain. Best-effort — on any resolution failure the transaction
-    /// still folds control state with whatever bindings resolved.
+    /// blueprint participant id (never self-keyed by wallet address). Three sources, in descending
+    /// order of authority: the wallets the published blueprint binds; the completed action's sender,
+    /// bound to the wallet that signed this transaction; and — only where neither of those already
+    /// says who someone is — an unambiguous hand-off to the next action's sender. Bindings
+    /// accumulate across the chain. Best-effort: on any resolution failure the transaction still
+    /// folds control state with whatever bindings resolved.
     /// </summary>
     public static async Task<IReadOnlyDictionary<string, string>> ResolveParticipantBindingsAsync(
         string blueprintId,
@@ -156,15 +158,41 @@ public static class InstanceProjectionResolver
             if (completedAction is { Sender.Length: > 0 } && !string.IsNullOrEmpty(tx.SenderWallet))
                 bindings[completedAction.Sender] = tx.SenderWallet;
 
-            var recipientWallet = tx.RecipientsWallets?.FirstOrDefault(
-                w => !string.IsNullOrEmpty(w) && !string.Equals(w, tx.SenderWallet, StringComparison.OrdinalIgnoreCase));
-            if (recipientWallet is not null)
+            // Hand-off binding: name the NEXT actor from this transaction's recipients, so an open
+            // participant who has not yet acted is discoverable before their first submission.
+            //
+            // This is a GUESS and is treated as one. A transaction fans out to every participant a
+            // disclosure names, so RecipientsWallets is a set whose ORDER carries no meaning —
+            // "the first entry that isn't the sender" identifies the next actor only when there is
+            // exactly one candidate. It is therefore applied only where nothing better is known,
+            // and never allowed to displace a fact:
+            //
+            //   - a participant the BLUEPRINT binds is already seeded above, authoritatively;
+            //   - a participant who SIGNED this transaction was just bound from tx.SenderWallet;
+            //   - more than one non-sender recipient means the fan-out does not identify anyone.
+            //
+            // Overwriting either fact is not a lesser evil than leaving a participant unbound: the
+            // fold merges these bindings last-writer-wins, and instance.ParticipantWallets is what
+            // InstanceParticipantGate and GetPendingActionsByWalletAsync authorise against. A wrong
+            // entry therefore locks the real participant out of the instance that is waiting for
+            // them — 403 "You are not a participant on this instance", and nothing in their pending
+            // list — whereas an absent entry costs only pre-action discoverability and repairs
+            // itself the moment they act. Found live on n1 by the TradeFinance walkthrough (#1427),
+            // where two consecutive actions share a sender and folding the first rebound that
+            // sender to whichever recipient happened to be listed first.
+            var handOffCandidates = tx.RecipientsWallets?
+                .Where(w => !string.IsNullOrEmpty(w) && !string.Equals(w, tx.SenderWallet, StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList() ?? [];
+
+            if (handOffCandidates.Count == 1)
             {
+                var recipientWallet = handOffCandidates[0];
                 foreach (var nextId in nextActionIds)
                 {
                     var nextAction = actionResolver.GetActionDefinition(bp, nextId.ToString());
                     if (nextAction is { Sender.Length: > 0 })
-                        bindings[nextAction.Sender] = recipientWallet;
+                        bindings.TryAdd(nextAction.Sender, recipientWallet);
                 }
             }
         }
