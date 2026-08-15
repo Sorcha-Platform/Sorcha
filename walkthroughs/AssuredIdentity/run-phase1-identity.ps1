@@ -239,6 +239,10 @@ Write-WtSuccess "Action 2 approved — credential issuance triggered (target: So
 # ============================================================================
 Write-WtStep "Step 6: Poll Sorcha Wallet /credentials for AssuredIdentityCredential"
 
+# The vct declared by blueprints/assured-identity.json action 2 (credentialIssuanceConfig.vct).
+# Kept beside the poll it drives so the two cannot drift apart silently again.
+$AssuredIdentityVct = "https://sorcha.dev/vc/assured-identity/v1"
+
 $deadline = (Get-Date).AddSeconds($DeliveryTimeoutSeconds)
 $delivered = $false
 $credentialId = $null
@@ -249,7 +253,16 @@ while ((Get-Date) -lt $deadline) {
             -Uri "$($state.walletUrl)/v1/wallet/credentials" `
             -Headers $citizenSession.Headers
         if ($snapshot.credentials -and $snapshot.credentials.Count -gt 0) {
-            $hit = $snapshot.credentials | Where-Object { $_.vct -match "AssuredIdentity" -or $_.displayLabel -match "Assured" } | Select-Object -First 1
+            # Match the vct the blueprint actually issues. It is a URI, and a kebab-case one:
+            #   https://sorcha.dev/vc/assured-identity/v1
+            # The old test `-match "AssuredIdentity"` was written when the vct was the PascalCase
+            # type name, and after the VCT decoupling (#1187 — vct-only URIs) it matches NOTHING.
+            # displayLabel is empty on this endpoint, so the `-or` arm never saved it either. The
+            # credential arrived within seconds; the script polled the full 60 s past it and reported
+            # "did not land" for a credential sitting in the response it was reading (#1427).
+            $hit = $snapshot.credentials |
+                Where-Object { $_.vct -eq $AssuredIdentityVct } |
+                Select-Object -First 1
             if ($hit) {
                 $delivered = $true
                 $credentialId = $hit.id
