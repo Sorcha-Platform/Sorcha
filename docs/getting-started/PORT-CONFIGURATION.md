@@ -27,6 +27,10 @@ live values in the Aspire Dashboard.
 > Gateway** (or service-to-service on the internal Docker network). Override any host port with the
 > matching environment variable (e.g. `REGISTER_PORT`, `TENANT_PORT`, `GATEWAY_HTTP_PORT`).
 
+| Service | Docker external (host) | Container internal | Purpose |
+|---------|------------------------|---------------------|---------|
+| **Tenant Service — workload mTLS listener** | _internal only_ (no published port) | `8443` | Feature 191 (#1420) service-to-service certificate token mint. Additive to the normal Tenant listener; activates only when `ServiceAuth:Mtls:ServerCertificate` + `ServiceAuth:Mtls:TrustBundle` are configured. Never published to the host — reached only on the internal Docker network by other services' `ServiceAuth:MtlsTokenAddress` (default `https://tenant-service:8443`). Override with `ServiceAuth:Mtls:Port`. |
+
 ## Infrastructure ports
 
 | Service | Docker external (host) | Purpose |

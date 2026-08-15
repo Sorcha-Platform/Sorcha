@@ -2,12 +2,14 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net.Http.Json;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.Serialization;
 using Sorcha.ServiceClients.Configuration;
 using Sorcha.Tenant.Models.Auth;
+using Sorcha.WorkloadIdentity;
 
 namespace Sorcha.ServiceClients.Auth;
 
@@ -17,6 +19,15 @@ namespace Sorcha.ServiceClients.Auth;
 /// <remarks>
 /// Acquires tokens from the Tenant Service POST /api/internal/service-auth/token endpoint — the
 /// internal-only client_credentials route (not routed by the public API Gateway, per #1397).
+/// <para>
+/// F191 (#1420): when <c>ServiceAuth:ClientCertificate</c> is configured, the client runs in
+/// CERTIFICATE MODE — token requests go to the Tenant workload mTLS listener
+/// (<c>ServiceAuth:MtlsTokenAddress</c>) presenting the workload certificate as the client
+/// credential, with the server certificate pinned to the workload trust bundle. No shared secret
+/// is transmitted or required. Configured-but-unreadable material throws at construction —
+/// certificate mode NEVER silently falls back to the secret path (FR-009). With no certificate
+/// configured, the legacy secret path is byte-for-byte unchanged.
+/// </para>
 /// Tokens are cached in-memory and refreshed when within 5 minutes of expiry.
 /// Thread-safe via SemaphoreSlim.
 /// </remarks>
@@ -25,8 +36,11 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
     private readonly HttpClient _httpClient;
     private readonly ILogger<ServiceAuthClient> _logger;
     private readonly string _clientId;
-    private readonly string _clientSecret;
+    private readonly string? _clientSecret;
     private readonly string _scopes;
+    private readonly bool _certificateMode;
+    private readonly HttpClient? _mtlsHttpClient;
+    private readonly X509Certificate2? _clientCertificate;
 
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private string? _cachedToken;
@@ -45,9 +59,60 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
 
         _clientId = configuration["ServiceAuth:ClientId"]
             ?? throw new InvalidOperationException("ServiceAuth:ClientId not configured");
-        _clientSecret = configuration["ServiceAuth:ClientSecret"]
-            ?? throw new InvalidOperationException("ServiceAuth:ClientSecret not configured");
         _scopes = configuration["ServiceAuth:Scopes"] ?? DefaultScopes;
+
+        var certificateSource = configuration[WorkloadIdentityConfig.ClientCertificate];
+        _certificateMode = !string.IsNullOrWhiteSpace(certificateSource);
+
+        if (_certificateMode)
+        {
+            // Fail-fast on any broken material: throwing here (startup) is deliberate.
+            _clientCertificate = WorkloadCertificateLoader.Load(
+                certificateSource!,
+                configuration[WorkloadIdentityConfig.ClientCertificatePassword]);
+
+            var bundleSource = configuration[WorkloadIdentityConfig.TrustBundle];
+            if (string.IsNullOrWhiteSpace(bundleSource))
+            {
+                throw new WorkloadCertificateLoadException(
+                    $"Certificate mode requires '{WorkloadIdentityConfig.TrustBundle}' (workload CA bundle) to pin the token endpoint's server certificate.");
+            }
+
+            var trustBundle = WorkloadTrustBundle.Resolve(bundleSource);
+            var mtlsAddress = configuration[WorkloadIdentityConfig.MtlsTokenAddress]
+                ?? WorkloadIdentityConfig.DefaultMtlsTokenAddress;
+
+            var handler = new SocketsHttpHandler();
+            handler.SslOptions.ClientCertificates = new X509CertificateCollection { _clientCertificate };
+            // Explicit selection: auto-selection matches against the server's advertised CA list,
+            // which a private workload CA is typically not on — always present OUR certificate.
+            handler.SslOptions.LocalCertificateSelectionCallback = (_, _, _, _, _) => _clientCertificate;
+            handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, _, _) =>
+                certificate is X509Certificate2 serverCertificate && trustBundle.Validate(serverCertificate, out _);
+
+            _mtlsHttpClient = new HttpClient(handler, disposeHandler: true)
+            {
+                BaseAddress = new Uri(mtlsAddress),
+            };
+
+            _clientSecret = configuration["ServiceAuth:ClientSecret"];
+            if (!string.IsNullOrEmpty(_clientSecret))
+            {
+                _logger.LogInformation(
+                    "ServiceAuthClient for {ClientId} is in certificate mode; the configured ServiceAuth:ClientSecret is ignored for token acquisition",
+                    _clientId);
+            }
+
+            _logger.LogInformation(
+                "ServiceAuthClient for {ClientId} using workload-certificate credential against {MtlsAddress}",
+                _clientId, mtlsAddress);
+        }
+        else
+        {
+            // Legacy secret mode — unchanged behaviour, including the fail-fast on a missing secret.
+            _clientSecret = configuration["ServiceAuth:ClientSecret"]
+                ?? throw new InvalidOperationException("ServiceAuth:ClientSecret not configured");
+        }
 
         // Set base address for Tenant Service (JWT issuer)
         if (_httpClient.BaseAddress is null)
@@ -96,18 +161,25 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
         try
         {
             _logger.LogInformation(
-                "Service token refresh triggered for {ClientId} with scopes [{Scopes}]",
-                _clientId, _scopes);
+                "Service token refresh triggered for {ClientId} with scopes [{Scopes}] via {CredentialMode}",
+                _clientId, _scopes, _certificateMode ? "workload certificate" : "client secret");
 
-            using var formData = new FormUrlEncodedContent(new Dictionary<string, string>
+            var formFields = new Dictionary<string, string>
             {
                 ["grant_type"] = "client_credentials",
                 ["client_id"] = _clientId,
-                ["client_secret"] = _clientSecret,
                 ["scope"] = _scopes
-            });
+            };
+            if (!_certificateMode)
+            {
+                // Legacy path only — certificate mode never transmits a secret.
+                formFields["client_secret"] = _clientSecret!;
+            }
 
-            var response = await _httpClient.PostAsync("/api/internal/service-auth/token", formData, cancellationToken);
+            using var formData = new FormUrlEncodedContent(formFields);
+
+            var tokenHttpClient = _certificateMode ? _mtlsHttpClient! : _httpClient;
+            var response = await tokenHttpClient.PostAsync("/api/internal/service-auth/token", formData, cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -158,6 +230,8 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
     public void Dispose()
     {
         _refreshLock.Dispose();
+        _mtlsHttpClient?.Dispose();
+        _clientCertificate?.Dispose();
         GC.SuppressFinalize(this);
     }
 

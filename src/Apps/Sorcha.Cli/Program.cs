@@ -208,6 +208,9 @@ internal class Program
         // System register genesis operations
         rootCommand.Subcommands.Add(new SystemRegisterGenesisCommand(clientFactory, authService, configService));
 
+        // Workload-identity certificate lifecycle (F191 / #1420) — local filesystem, no API calls
+        rootCommand.Subcommands.Add(new Sorcha.Cli.Commands.WorkloadCa.WorkloadCaCommand());
+
         // Configuration management commands
         rootCommand.Subcommands.Add(new ConfigCommand(configService, authService));
 

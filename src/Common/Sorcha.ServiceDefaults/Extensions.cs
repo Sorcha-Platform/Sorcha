@@ -177,9 +177,16 @@ public static class Extensions
     /// <returns>The builder for chaining.</returns>
     public static TBuilder AddDefaultHealthChecks<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
+        // F191 (#1420): expiry surveillance for workload-identity certificates. Registered
+        // fleet-wide; reports Healthy("not configured") in legacy secret mode, so services
+        // without certificates are unaffected.
+        builder.Services.AddSingleton<Sorcha.ServiceDefaults.WorkloadIdentity.WorkloadCertificateHealthCheck>();
+
         builder.Services.AddHealthChecks()
             // Add a default liveness check to ensure app is responsive
-            .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
+            .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"])
+            .AddCheck<Sorcha.ServiceDefaults.WorkloadIdentity.WorkloadCertificateHealthCheck>(
+                Sorcha.WorkloadIdentity.WorkloadIdentityConfig.HealthCheckName);
 
         return builder;
     }
@@ -303,8 +310,24 @@ public static class Extensions
                 await next();
             });
 
-            // Enable HTTPS redirection only when HTTPS is configured
-            app.UseHttpsRedirection();
+            // Enable HTTPS redirection only when HTTPS is configured.
+            //
+            // F191 (#1420) carve-out: the workload mTLS listener (client-cert-REQUIRED service
+            // auth) must never become the redirect target. Before F191 no in-container https
+            // listener existed, so this middleware could not resolve a port and no-opped; the
+            // mTLS listener would silently "activate" it and 307 every plaintext internal
+            // caller onto a port that demands a client certificate — breaking secret-path
+            // coexistence platform-wide. When the ONLY https surface is the workload listener
+            // (no explicit https_port configured), skip redirection to preserve the exact
+            // pre-F191 behaviour.
+            var workloadMtlsIsOnlyHttpsSurface =
+                !string.IsNullOrWhiteSpace(app.Configuration[Sorcha.WorkloadIdentity.WorkloadIdentityConfig.MtlsServerCertificate])
+                && string.IsNullOrWhiteSpace(app.Configuration["https_port"])
+                && string.IsNullOrWhiteSpace(app.Configuration["HTTPS_PORT"]);
+            if (!workloadMtlsIsOnlyHttpsSurface)
+            {
+                app.UseHttpsRedirection();
+            }
         }
 
         return app;

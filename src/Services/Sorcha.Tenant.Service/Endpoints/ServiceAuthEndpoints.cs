@@ -132,7 +132,9 @@ public static class ServiceAuthEndpoints
             .WithSummary("Internal client_credentials token endpoint")
             .WithDescription("OAuth2 client_credentials grant only. NOT routed by the public API Gateway — " +
                 "callers must reach the Tenant Service directly inside the internal network. Moved off the " +
-                "public /api/service-auth/token route as part of the #1397 remediation.")
+                "public /api/service-auth/token route as part of the #1397 remediation. client_secret is " +
+                "OPTIONAL when the request arrives over the workload mTLS listener with a valid workload " +
+                "certificate — the chain-validated certificate's SPIFFE identity is the credential (F191/#1420).")
             .AllowAnonymous()
             .Produces<TokenResponse>()
             .ProducesValidationProblem()
@@ -146,7 +148,9 @@ public static class ServiceAuthEndpoints
         internalGroup.MapPost("/token/delegated", GetDelegatedToken)
             .WithName("GetDelegatedToken")
             .WithSummary("Get delegated authority token (internal)")
-            .WithDescription("Gets a service token that acts on behalf of a user. Internal-only — not routed by the API Gateway.")
+            .WithDescription("Gets a service token that acts on behalf of a user. Internal-only — not routed by the " +
+                "API Gateway. clientSecret is OPTIONAL when the request arrives over the workload mTLS listener with " +
+                "a valid workload certificate (F191/#1420).")
             .AllowAnonymous()
             .Produces<TokenResponse>()
             .ProducesValidationProblem()
@@ -238,6 +242,7 @@ public static class ServiceAuthEndpoints
     private static async Task<Results<Ok<TokenResponse>, UnauthorizedHttpResult, ValidationProblem>> GetInternalServiceToken(
         HttpContext context,
         IServiceAuthService serviceAuthService,
+        IConfiguration configuration,
         CancellationToken cancellationToken)
     {
         // Internal-only client_credentials endpoint. Not routed by the API Gateway — see the route
@@ -278,8 +283,51 @@ public static class ServiceAuthEndpoints
             });
         }
 
+        // F191 US3: the per-deployment retire switch. A secret-presenting request is refused
+        // with an EXPLICIT error (not a generic 401 — the credential may be perfectly valid;
+        // the deployment has retired the credential CLASS).
+        if (!string.IsNullOrWhiteSpace(clientSecret) && SharedSecretsDisabled(configuration))
+        {
+            return SharedSecretsDisabledProblem("client_secret");
+        }
+
+        // F191: a secretless request whose connection carries a client certificate uses the
+        // certificate as the credential. The certificate is only ever non-null on the workload
+        // mTLS listener, where Kestrel has already chain-validated it against the workload trust
+        // bundle at handshake (RequireCertificate) — the plaintext internal listener never
+        // negotiates one. Presence of client_secret always selects the legacy secret path.
+        if (string.IsNullOrWhiteSpace(clientSecret) && context.Connection.ClientCertificate is { } clientCertificate)
+        {
+            if (string.IsNullOrWhiteSpace(clientId))
+            {
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["client_id"] = ["Client ID is required for client_credentials grant"]
+                });
+            }
+
+            var certResponse = await serviceAuthService.AuthenticateServiceWithCertificateAsync(
+                clientId, clientCertificate, string.IsNullOrWhiteSpace(scope) ? null : scope, cancellationToken);
+
+            return certResponse == null
+                ? TypedResults.Unauthorized()
+                : TypedResults.Ok(certResponse);
+        }
+
         return await HandleClientCredentialsGrant(clientId, clientSecret, scope, serviceAuthService, cancellationToken);
     }
+
+    private static bool SharedSecretsDisabled(IConfiguration configuration) =>
+        configuration.GetValue<bool>(Sorcha.WorkloadIdentity.WorkloadIdentityConfig.DisableSharedSecrets);
+
+    private static ValidationProblem SharedSecretsDisabledProblem(string fieldName) =>
+        TypedResults.ValidationProblem(new Dictionary<string, string[]>
+        {
+            [fieldName] = [
+                "Shared-secret service authentication is disabled on this deployment " +
+                "(ServiceAuth:DisableSharedSecrets). Authenticate with a workload certificate " +
+                "over the mTLS token endpoint instead (F191/#1420)."]
+        });
 
     private static async Task<Results<Ok<TokenResponse>, UnauthorizedHttpResult, ValidationProblem>> HandlePasswordGrant(
         string username,
@@ -382,9 +430,17 @@ public static class ServiceAuthEndpoints
 
     private static async Task<Results<Ok<TokenResponse>, UnauthorizedHttpResult, ValidationProblem>> GetDelegatedToken(
         DelegatedTokenRequest request,
+        HttpContext context,
         IServiceAuthService serviceAuthService,
+        IConfiguration configuration,
         CancellationToken cancellationToken)
     {
+        // F191 US3: retire switch — see GetInternalServiceToken.
+        if (!string.IsNullOrWhiteSpace(request.ClientSecret) && SharedSecretsDisabled(configuration))
+        {
+            return SharedSecretsDisabledProblem("clientSecret");
+        }
+
         if (string.IsNullOrWhiteSpace(request.ClientId))
         {
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
@@ -393,19 +449,36 @@ public static class ServiceAuthEndpoints
             });
         }
 
-        if (string.IsNullOrWhiteSpace(request.ClientSecret))
-        {
-            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-            {
-                ["clientSecret"] = ["Client secret is required"]
-            });
-        }
-
         if (request.DelegatedUserId == Guid.Empty)
         {
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["delegatedUserId"] = ["Delegated user ID is required"]
+            });
+        }
+
+        // F191: certificate-credential parity with the client_credentials endpoint — a secretless
+        // request on the workload mTLS listener authenticates by its chain-validated certificate.
+        if (string.IsNullOrWhiteSpace(request.ClientSecret))
+        {
+            if (context.Connection.ClientCertificate is { } clientCertificate)
+            {
+                var certResponse = await serviceAuthService.AuthenticateWithDelegationByCertificateAsync(
+                    request.ClientId,
+                    clientCertificate,
+                    request.DelegatedUserId,
+                    request.DelegatedOrganizationId,
+                    request.Scope,
+                    cancellationToken);
+
+                return certResponse == null
+                    ? TypedResults.Unauthorized()
+                    : TypedResults.Ok(certResponse);
+            }
+
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["clientSecret"] = ["Client secret is required (or present a workload certificate over the mTLS listener)"]
             });
         }
 

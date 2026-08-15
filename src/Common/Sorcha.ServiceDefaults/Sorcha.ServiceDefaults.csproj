@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Sorcha.ServiceClients\Sorcha.ServiceClients.csproj" />
+    <ProjectReference Include="..\Sorcha.WorkloadIdentity\Sorcha.WorkloadIdentity.csproj" />
   </ItemGroup>
 
   <ItemGroup>

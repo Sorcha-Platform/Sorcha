@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Sorcha.WorkloadIdentity</PackageId>
+    <Description>Per-installation workload identity for Sorcha service-to-service auth (Feature 191 / #1420): SPIFFE-style identifiers, Workload CA and leaf certificate issuance, trust-bundle chain validation, certificate loading and expiry inventory. BCL-only leaf — no Sorcha runtime dependencies.</Description>
+    <PackageTags>sorcha;mtls;workload-identity;spiffe;x509</PackageTags>
+    <RootNamespace>Sorcha.WorkloadIdentity</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sorcha.WorkloadIdentity.Tests" />
+  </ItemGroup>
+
+</Project>

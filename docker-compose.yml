@@ -241,6 +241,12 @@ services:
       # into .env. No literal default: a bare `docker compose up` without a generated
       # .env must fail loudly, not silently run with a committed secret.
       ServiceAuth__ClientSecret: ${BLUEPRINT_SERVICE_SECRET:?not set — run ./scripts/sorcha-setup.sh to generate .env (see README Quick Start); bare docker compose up is unsupported}
+      # F191 (#1420): workload-certificate credential — base64 PKCS#12 delivered via .env by
+      # `sorcha workload-ca` (invoked from sorcha-setup.sh). Empty default keeps the legacy
+      # secret path; when set, token minting goes over mTLS and no secret is transmitted.
+      ServiceAuth__ClientCertificate: ${BLUEPRINT_WORKLOAD_CERT:-}
+      ServiceAuth__ClientCertificatePassword: ${WORKLOAD_CERT_PASSWORD:-}
+      ServiceAuth__TrustBundle: ${WORKLOAD_TRUST_BUNDLE:-}
       ServiceAuth__Scopes: "wallets:sign registers:write blueprints:manage"
       # Transaction confirmation tuning for Docker dev
       TransactionConfirmation__TimeoutSeconds: "60"
@@ -302,6 +308,10 @@ services:
       # into .env. No literal default: a bare `docker compose up` without a generated
       # .env must fail loudly, not silently run with a committed secret.
       ServiceAuth__ClientSecret: ${WALLET_SERVICE_SECRET:?not set — run ./scripts/sorcha-setup.sh to generate .env (see README Quick Start); bare docker compose up is unsupported}
+      # F191 (#1420): workload-certificate credential (see blueprint-service note).
+      ServiceAuth__ClientCertificate: ${WALLET_WORKLOAD_CERT:-}
+      ServiceAuth__ClientCertificatePassword: ${WORKLOAD_CERT_PASSWORD:-}
+      ServiceAuth__TrustBundle: ${WORKLOAD_TRUST_BUNDLE:-}
       ServiceAuth__Scopes: "registers:write registers:read"
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceClients__RegisterService__Address: http://register-service:8080
@@ -404,6 +414,10 @@ services:
       # into .env. No literal default: a bare `docker compose up` without a generated
       # .env must fail loudly, not silently run with a committed secret.
       ServiceAuth__ClientSecret: ${REGISTER_SERVICE_SECRET:?not set — run ./scripts/sorcha-setup.sh to generate .env (see README Quick Start); bare docker compose up is unsupported}
+      # F191 (#1420): workload-certificate credential (see blueprint-service note).
+      ServiceAuth__ClientCertificate: ${REGISTER_WORKLOAD_CERT:-}
+      ServiceAuth__ClientCertificatePassword: ${WORKLOAD_CERT_PASSWORD:-}
+      ServiceAuth__TrustBundle: ${WORKLOAD_TRUST_BUNDLE:-}
       ServiceAuth__Scopes: "wallets:sign validator:write"
       ServiceClients__TenantService__Address: http://tenant-service:8080
       # System Register bootstrap is automatic (Feature 057) — no env var needed
@@ -462,6 +476,15 @@ services:
       # into .env. No literal default: a bare `docker compose up` without a generated
       # .env must fail loudly, not silently run with a committed secret.
       ServiceAuth__ClientSecret: ${TENANT_SERVICE_SECRET:?not set — run ./scripts/sorcha-setup.sh to generate .env (see README Quick Start); bare docker compose up is unsupported}
+      # F191 (#1420): workload-certificate credential (see blueprint-service note).
+      ServiceAuth__ClientCertificate: ${TENANT_WORKLOAD_CERT:-}
+      ServiceAuth__ClientCertificatePassword: ${WORKLOAD_CERT_PASSWORD:-}
+      ServiceAuth__TrustBundle: ${WORKLOAD_TRUST_BUNDLE:-}
+      # F191: workload mTLS listener (certificate-credential mint). Activates only when BOTH
+      # values are set; :8443 stays internal to the compose network (no host publish).
+      ServiceAuth__Mtls__ServerCertificate: ${TENANT_WORKLOAD_SERVER_CERT:-}
+      ServiceAuth__Mtls__ServerCertificatePassword: ${WORKLOAD_CERT_PASSWORD:-}
+      ServiceAuth__Mtls__TrustBundle: ${WORKLOAD_TRUST_BUNDLE:-}
       # persona:crypto is required by the Wallet Service persona encrypt/decrypt
       # endpoints that back the Consumer persona feature (092). wallets:sign and
       # wallets:verify are retained for participant wallet link verification.
@@ -551,6 +574,10 @@ services:
       # into .env. No literal default: a bare `docker compose up` without a generated
       # .env must fail loudly, not silently run with a committed secret.
       ServiceAuth__ClientSecret: ${PEER_SERVICE_SECRET:?not set — run ./scripts/sorcha-setup.sh to generate .env (see README Quick Start); bare docker compose up is unsupported}
+      # F191 (#1420): workload-certificate credential (see blueprint-service note).
+      ServiceAuth__ClientCertificate: ${PEER_WORKLOAD_CERT:-}
+      ServiceAuth__ClientCertificatePassword: ${WORKLOAD_CERT_PASSWORD:-}
+      ServiceAuth__TrustBundle: ${WORKLOAD_TRUST_BUNDLE:-}
       ServiceAuth__Scopes: "registers:write registers:read"
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceClients__RegisterService__Address: http://register-service:8080
@@ -625,6 +652,10 @@ services:
       # into .env. No literal default: a bare `docker compose up` without a generated
       # .env must fail loudly, not silently run with a committed secret.
       ServiceAuth__ClientSecret: ${VALIDATOR_SERVICE_SECRET:?not set — run ./scripts/sorcha-setup.sh to generate .env (see README Quick Start); bare docker compose up is unsupported}
+      # F191 (#1420): workload-certificate credential (see blueprint-service note).
+      ServiceAuth__ClientCertificate: ${VALIDATOR_WORKLOAD_CERT:-}
+      ServiceAuth__ClientCertificatePassword: ${WORKLOAD_CERT_PASSWORD:-}
+      ServiceAuth__TrustBundle: ${WORKLOAD_TRUST_BUNDLE:-}
       ServiceAuth__Scopes: "registers:write registers:read blueprints:read"
       # Validator configuration.
       # Shared identifier for this node's local-validator system wallet.
@@ -758,6 +789,10 @@ services:
       # into .env. No literal default: a bare `docker compose up` without a generated
       # .env must fail loudly, not silently run with a committed secret.
       ServiceAuth__ClientSecret: ${VERIFIER_SERVICE_SECRET:?not set — run ./scripts/sorcha-setup.sh to generate .env (see README Quick Start); bare docker compose up is unsupported}
+      # F191 (#1420): workload-certificate credential (see blueprint-service note).
+      ServiceAuth__ClientCertificate: ${VERIFIER_WORKLOAD_CERT:-}
+      ServiceAuth__ClientCertificatePassword: ${WORKLOAD_CERT_PASSWORD:-}
+      ServiceAuth__TrustBundle: ${WORKLOAD_TRUST_BUNDLE:-}
       ServiceAuth__Scopes: "blueprints:read"
       Verifier__HaipBaseUrl: http://haip-service:8080
       ServiceClients__TenantService__Address: http://tenant-service:8080
@@ -797,6 +832,10 @@ services:
       # into .env. No literal default: a bare `docker compose up` without a generated
       # .env must fail loudly, not silently run with a committed secret.
       ServiceAuth__ClientSecret: ${HAIP_SERVICE_SECRET:?not set — run ./scripts/sorcha-setup.sh to generate .env (see README Quick Start); bare docker compose up is unsupported}
+      # F191 (#1420): workload-certificate credential (see blueprint-service note).
+      ServiceAuth__ClientCertificate: ${HAIP_WORKLOAD_CERT:-}
+      ServiceAuth__ClientCertificatePassword: ${WORKLOAD_CERT_PASSWORD:-}
+      ServiceAuth__TrustBundle: ${WORKLOAD_TRUST_BUNDLE:-}
       ServiceAuth__Scopes: "blueprints:read"
     depends_on:
       redis:

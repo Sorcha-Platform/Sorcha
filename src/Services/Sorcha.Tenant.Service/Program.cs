@@ -23,6 +23,11 @@ var builder = WebApplication.CreateBuilder(args);
 // Add .NET Aspire service defaults (includes service discovery, health checks, and default observability)
 builder.AddServiceDefaults();
 
+// F191 (#1420): additive workload mTLS listener for certificate-credential service auth.
+// No-op unless ServiceAuth:Mtls:ServerCertificate + ServiceAuth:Mtls:TrustBundle are configured;
+// fail-fast at startup when configured material is unreadable.
+builder.AddWorkloadMtlsListener();
+
 // Add structured logging with Serilog (OPS-001)
 builder.AddSerilogLogging();
 
@@ -214,6 +219,15 @@ var app = builder.Build();
 // Issue #1433 — sanitized global exception handler, FIRST in the pipeline so it wraps every
 // other middleware's unhandled exceptions too (see ServiceDefaults.Extensions for rationale).
 app.UseSanitizedExceptionHandling();
+
+// F191 US3 (#1420): make a retired-secrets deployment diagnosable from startup logs — with the
+// flag on, every secret-presenting service-auth request is refused platform-wide.
+if (app.Configuration.GetValue<bool>(Sorcha.WorkloadIdentity.WorkloadIdentityConfig.DisableSharedSecrets))
+{
+    app.Logger.LogWarning(
+        "ServiceAuth:DisableSharedSecrets is ENABLED — shared-secret service authentication is disabled; " +
+        "only workload-certificate credentials mint service tokens (F191/#1420)");
+}
 
 // Feature 146 — fail closed at startup if no at-rest secret-protection key can be resolved
 // (resolves the singleton, which runs TenantSecretKeyResolver.ResolveProtectionKey()).

@@ -37,7 +37,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          ALL_SERVICES='["blueprint-service","wallet-service","register-service","tenant-service","peer-service","validator-service","api-gateway","mcp-server","ui-web","wallet-pwa","verifier","sample-strathcarron-portal"]'
+          ALL_SERVICES='["blueprint-service","wallet-service","register-service","tenant-service","peer-service","validator-service","api-gateway","mcp-server","ui-web","wallet-pwa","verifier","sample-strathcarron-portal","cli"]'
 
           # Three-dot: changes on the PR branch since its merge-base with the target, so commits
           # landed on master after the branch point don't spuriously fan out the matrix.
@@ -67,6 +67,8 @@ jobs:
           SERVICE_PATHS["verifier"]="src/Apps/Sorcha.Verifier/ src/Apps/Sorcha.UI/Sorcha.UI.Components.User/"
           # The sample council portal consumes the shared user-facing component library too.
           SERVICE_PATHS["sample-strathcarron-portal"]="samples/strathcarron-portal/ src/Apps/Sorcha.UI/Sorcha.UI.Components.User/"
+          # F191: the CLI image exists so SDK-less hosts can run `sorcha workload-ca` from the installer.
+          SERVICE_PATHS["cli"]="src/Apps/Sorcha.Cli/"
 
           CHANGED="["
           FIRST=true
@@ -125,6 +127,7 @@ jobs:
           DOCKERFILES["wallet-pwa"]="src/Apps/Sorcha.Wallet.Pwa/Dockerfile"
           DOCKERFILES["verifier"]="src/Apps/Sorcha.Verifier/Dockerfile"
           DOCKERFILES["sample-strathcarron-portal"]="samples/strathcarron-portal/Dockerfile"
+          DOCKERFILES["cli"]="src/Apps/Sorcha.Cli/Dockerfile"
           echo "dockerfile=${DOCKERFILES[${{ matrix.service }}]}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
