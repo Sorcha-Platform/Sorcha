@@ -31,6 +31,15 @@ public sealed class SchemaRefResolver : ISchemaRefResolver
         "x-width"
     ];
 
+    /// <summary>
+    /// Document-identity keywords that are dropped when a component is inlined. They identify the
+    /// primitive as a standalone document; inside a host schema they identify nothing, and a
+    /// retained <c>$id</c> makes two blueprints that share a primitive collide in the JSON Schema
+    /// implementation's process-wide registry. See ResolveCoreRefInPlace for the failure this caused.
+    /// </summary>
+    private static readonly HashSet<string> IdentityKeywords =
+        new(StringComparer.Ordinal) { "$id", "$schema" };
+
     private readonly ICoreSchemaRepository _repository;
     private readonly ILogger<SchemaRefResolver> _logger;
 
@@ -175,8 +184,23 @@ public sealed class SchemaRefResolver : ISchemaRefResolver
         // Replace site contents with the resolved component contents in place.
         // This works whether `site` is a property value, an array item, or the
         // root node — the parent reference is preserved.
+        //
+        // The component's identity keywords are deliberately NOT carried across. $id and $schema
+        // identify the primitive AS A DOCUMENT; once its body is spliced into a property site of a
+        // different document they identify nothing, and there is no longer any reference into the
+        // subtree for them to resolve. Leaving them in is actively harmful: JSON Schema
+        // implementations register every identified subschema they parse in a process-wide registry,
+        // so the second blueprint to inline the same primitive fails to parse at all. On n1 the
+        // Validator rejected every AssuredIdentity submission with VAL_SCHEMA_005 "Malformed JSON
+        // schema ... Overwriting registered schemas is not permitted", naming a blueprint that was
+        // not malformed (#1427). Had it not thrown, the registration would have been worse: one
+        // blueprint's schema silently resolving another's dangling $ref, making validation depend on
+        // parse order.
         site.Clear();
-        var componentKeys = resolvedObj.Select(kvp => kvp.Key).ToList();
+        var componentKeys = resolvedObj
+            .Select(kvp => kvp.Key)
+            .Where(key => !IdentityKeywords.Contains(key))
+            .ToList();
         foreach (var key in componentKeys)
         {
             // Detach the value from the cloned component so we can reparent it.

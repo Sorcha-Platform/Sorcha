@@ -2193,8 +2193,28 @@ public class ValidationEngine : IValidationEngine
     /// blueprints embed UI-renderer hints (x-pages, x-sections, x-introduction,
     /// x-width, x-rule, x-persona, x-file) that must survive round-trips
     /// without interfering with schema validation.
+    /// <para>
+    /// Also strips <c>$id</c> everywhere. An action schema reaching the validator is a
+    /// SELF-CONTAINED document: Blueprint Service's <c>SchemaRefResolver.Flatten</c> has already
+    /// inlined every <c>https://schemas.sorcha.dev/core/*</c> reference, copying the primitive's own
+    /// <c>$id</c> along with its body, and catalogue-derived schemas (DPP, FHIR, ISO 20022,
+    /// schema.org) carry a root <c>$id</c> of their source URL. Identity keywords only matter for
+    /// resolving references BETWEEN documents, which cannot happen here — but Json.Schema registers
+    /// every identified schema it parses in a process-wide registry, so retaining them has two
+    /// consequences and no benefit:
+    /// </para>
+    /// <list type="bullet">
+    /// <item>The second blueprint to inline a shared primitive fails to parse outright —
+    /// "Overwriting registered schemas is not permitted" — reported as VAL_SCHEMA_005 "Malformed
+    /// JSON schema", which points the operator at a blueprint that is not malformed. Every
+    /// submission to it is rejected and never seals. Found on n1 by the AssuredIdentity walkthrough
+    /// (#1427), whose action 1 inlines four core primitives.</item>
+    /// <item>Worse than the failure: had it not thrown, one blueprint's registered schema could
+    /// silently resolve a DIFFERENT blueprint's dangling <c>$ref</c>, making validation depend on
+    /// which blueprint the process happened to parse first.</item>
+    /// </list>
     /// </summary>
-    private static string StripCustomExtensionKeywords(JsonElement root)
+    internal static string StripCustomExtensionKeywords(JsonElement root)
     {
         var node = JsonNode.Parse(root.GetRawText());
         StripXPrefixedKeysRecursive(node);
@@ -2207,7 +2227,8 @@ public class ValidationEngine : IValidationEngine
         {
             case JsonObject obj:
                 var toRemove = obj
-                    .Where(kvp => kvp.Key.StartsWith("x-", StringComparison.Ordinal))
+                    .Where(kvp => kvp.Key.StartsWith("x-", StringComparison.Ordinal)
+                               || string.Equals(kvp.Key, "$id", StringComparison.Ordinal))
                     .Select(kvp => kvp.Key)
                     .ToList();
                 foreach (var key in toRemove)
