@@ -171,9 +171,16 @@ public static class Extensions
     /// <returns>The builder for chaining.</returns>
     public static TBuilder AddDefaultHealthChecks<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
+        // F191 (#1420): expiry surveillance for workload-identity certificates. Registered
+        // fleet-wide; reports Healthy("not configured") in legacy secret mode, so services
+        // without certificates are unaffected.
+        builder.Services.AddSingleton<Sorcha.ServiceDefaults.WorkloadIdentity.WorkloadCertificateHealthCheck>();
+
         builder.Services.AddHealthChecks()
             // Add a default liveness check to ensure app is responsive
-            .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
+            .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"])
+            .AddCheck<Sorcha.ServiceDefaults.WorkloadIdentity.WorkloadCertificateHealthCheck>(
+                Sorcha.WorkloadIdentity.WorkloadIdentityConfig.HealthCheckName);
 
         return builder;
     }

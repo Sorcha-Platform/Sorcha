@@ -70,9 +70,9 @@ restore). License header + file-scoped namespaces on every new file. `dotnet bui
 **Goal**: health check + metric warn before certs expire.
 **Independent test**: health check states for ok/expiring/expired/unconfigured.
 
-- [ ] T033 [P] [US4] Tests first in `tests/Sorcha.ServiceDefaults.Tests/WorkloadCertificateHealthCheckTests.cs` (locate/create alongside existing ServiceDefaults tests): >window ⇒ Healthy; inside window ⇒ Degraded naming cert + expiry; expired ⇒ Unhealthy; unconfigured ⇒ Healthy not-applicable (FR-010/S4 scenarios)
-- [ ] T034 [US4] Implement in `src/Common/Sorcha.ServiceDefaults/` (new `WorkloadCertificateHealthCheck.cs` + registration inside `AddServiceDefaults`/health extension): check name `workload-certificate`; gauge `sorcha_workload_cert_days_to_expiry{subject}` on new meter `Sorcha.WorkloadIdentity`; add `Sorcha.WorkloadIdentity` ProjectReference to `Sorcha.ServiceDefaults.csproj`; `WorkloadIdentity:ExpiryWarningDays` default 30
-- [ ] T035 [US4] Checkpoint: ServiceDefaults tests green; one service builds+runs with no cert configured and reports Healthy (no dev regression)
+- [X] T033 [P] [US4] Tests first in `tests/Sorcha.ServiceDefaults.Tests/WorkloadCertificateHealthCheckTests.cs` (locate/create alongside existing ServiceDefaults tests): >window ⇒ Healthy; inside window ⇒ Degraded naming cert + expiry; expired ⇒ Unhealthy; unconfigured ⇒ Healthy not-applicable (FR-010/S4 scenarios)
+- [X] T034 [US4] Implement in `src/Common/Sorcha.ServiceDefaults/` (new `WorkloadCertificateHealthCheck.cs` + registration inside `AddServiceDefaults`/health extension): check name `workload-certificate`; gauge `sorcha_workload_cert_days_to_expiry{subject}` on new meter `Sorcha.WorkloadIdentity`; add `Sorcha.WorkloadIdentity` ProjectReference to `Sorcha.ServiceDefaults.csproj`; `WorkloadIdentity:ExpiryWarningDays` default 30
+- [X] T035 [US4] Checkpoint: ServiceDefaults tests green; one service builds+runs with no cert configured and reports Healthy (no dev regression)
 
 ## Phase 7: Polish, docs sync, verification
 
