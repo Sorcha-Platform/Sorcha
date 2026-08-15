@@ -77,37 +77,56 @@ Write-WtInfo "Public org enabled"
 # ============================================================================
 Write-WtStep "Step 3: Create Strathcarron Council org"
 
-$councilAdminEmail    = "council-admin@strathcarron.local"
+# The council admin is an ORG OPERATOR, so it is provisioned org-scoped — never registered as a
+# public user first. Registering publicly and then naming the same address as -AdminEmail is the
+# documented anti-pattern (walkthrough-builder skill): it makes the operator multi-org at best, and
+# on a node where the org ALREADY EXISTS it does nothing at all — New-SorchaOrganization's duplicate
+# recovery returns the existing org without adopting the admin, so the user stays Public-only. On n1,
+# where the `council` walkthrough had already created Strathcarron Council, that produced a session
+# scoped to the Public org and a 403 four steps later at master-key provisioning (#1427).
+#
+# The address is deliberately distinct from council-admin@strathcarron.local, which earlier revisions
+# of this script left behind as a public account on any node they ran against; /users/provision
+# requires an email that is new platform-wide.
+$councilAdminEmail    = "council-issuer@strathcarron.local"
 $councilAdminPassword = $secrets.DefaultPassword
-
-Register-SorchaPublicUser `
-    -TenantUrl $sorchaEnv.TenantUrl `
-    -Email $councilAdminEmail `
-    -Password $councilAdminPassword `
-    -DisplayName "Strathcarron Council Admin" | Out-Null
-
-$publicUsers = Invoke-SorchaApi -Method GET `
-    -Uri "$($sorchaEnv.TenantUrl)/organizations/$publicOrgId/users?includeInactive=true" `
-    -Headers $sysAdmin.Headers
-$councilAdminUser = $publicUsers.users | Where-Object { $_.email -eq $councilAdminEmail } | Select-Object -First 1
-if ($councilAdminUser) {
-    Confirm-SorchaUserEmail `
-        -TenantUrl $sorchaEnv.TenantUrl `
-        -OrganizationId $publicOrgId `
-        -UserId $councilAdminUser.id `
-        -Headers $sysAdmin.Headers
-    Write-WtInfo "Verified council-admin email"
-}
 
 $councilOrg = New-SorchaOrganization `
     -TenantUrl $sorchaEnv.TenantUrl `
     -Name "Strathcarron Council" `
     -Subdomain "strathcarron" `
     -AdminEmail $councilAdminEmail `
+    -AdminPassword $councilAdminPassword `
+    -AdminDisplayName "Strathcarron Council Issuer" `
+    -AdminEmailVerified `
     -Headers $sysAdmin.Headers `
     -Description "Issues licences and other credentials to Strathcarron citizens"
 $councilOrgId = $councilOrg.OrganizationId
 Write-WtSuccess "Council org: $councilOrgId"
+
+# Whether the org was created just now or recovered as an existing one, make sure the operator is
+# actually IN it. The recovery path cannot create members, and a re-run finds the user already there
+# — both are fine, both are handled here rather than surfacing later as an unexplained 403.
+if (-not $councilOrg.AdminDirectlyAdded) {
+    try {
+        New-SorchaOrgUser `
+            -TenantUrl $sorchaEnv.TenantUrl `
+            -OrganizationId $councilOrgId `
+            -Email $councilAdminEmail `
+            -Password $councilAdminPassword `
+            -DisplayName "Strathcarron Council Issuer" `
+            -Roles @("Administrator") `
+            -EmailVerified `
+            -Headers $sysAdmin.Headers | Out-Null
+    } catch {
+        # Already provisioned by an earlier run — the password is deterministic, so the login below
+        # picks the existing account up. Anything else is a real failure and must not be swallowed.
+        $body = ''
+        try { $body = Get-SorchaErrorBody $_ } catch { }
+        if ("$body$($_.Exception.Message)" -notmatch 'already exists|duplicate|409') { throw }
+        Write-WtInfo "Council operator already provisioned — reusing"
+    }
+}
 
 # ============================================================================
 # Step 4: Council Admin — Login, Wallet
@@ -143,6 +162,23 @@ Write-WtSuccess "Council wallet: $($councilWallet.Address)"
 
 Write-WtStep "Step 4b: Provision credential-issuer org master key"
 
+# Register the council admin as a participant FIRST — creating a wallet is not enough.
+#
+# wallet_address is put on a JWT by TokenService.AddWalletAddressClaimAsync, which looks up the
+# PARTICIPANT record for (user, org) and takes its first active wallet LINK. A wallet with no
+# participant record produces no claim, no matter how many times you log in again. Without the claim
+# the F142 publish gate refuses the blueprint with
+# "You do not hold a publish-governance role (Owner, Admin, or Designer) on the target register." —
+# on a register this very user owns, which is what makes it so misleading. Verified on n1: a fresh
+# register created by this user, with an empty wallet_address claim, was refused (#1427).
+$null = Register-SorchaParticipant `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -OrganizationId $councilOrgId `
+    -WalletAddress $councilWallet.Address `
+    -DisplayName "Strathcarron Council Issuer" `
+    -Headers $councilSession.Headers
+
 $councilIssuerSession = Connect-SorchaUser `
     -TenantUrl $sorchaEnv.TenantUrl `
     -Email $councilAdminEmail `
@@ -153,6 +189,17 @@ Set-SorchaOrgMasterKey `
     -WalletUrl $sorchaEnv.WalletUrl `
     -OrganizationId $councilOrgId `
     -Headers $councilIssuerSession.Headers
+
+# From here on, use the RE-LOGGED session for everything wallet-authorized.
+#
+# $councilSession was obtained at Step 4 BEFORE the council wallet existed, and wallet_address is
+# added to a JWT only at login (TokenService.AddWalletAddressClaimAsync). So that token carries no
+# wallet_address for the rest of its life, and the F142 publish gate — which matches the caller's
+# wallet_address against the register's governance roster — refuses it with
+# "You do not hold a publish-governance role (Owner, Admin, or Designer) on the target register."
+# The message reads like a ROLE problem; the admin's roles were never in question. Noted as a
+# pre-existing gap in #1427 and confirmed live on n1.
+$councilSession = $councilIssuerSession
 
 # ============================================================================
 # Step 5: Register + Blueprint
@@ -271,6 +318,9 @@ $state = @{
     blueprintUrl           = $sorchaEnv.BlueprintUrl
     publicOrgId            = $publicOrgId
     councilOrgId           = $councilOrgId
+    # Recorded so setup-blue-badge-demo.ps1 signs in as whoever THIS script provisioned, instead of
+    # hardcoding an address the two files have to keep in step by hand.
+    councilAdminEmail      = $councilAdminEmail
     councilWalletAddress   = $councilWallet.Address
     registerId             = $register.RegisterId
     blueprintId            = $blueprint.BlueprintId

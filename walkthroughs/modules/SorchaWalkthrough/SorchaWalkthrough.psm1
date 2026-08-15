@@ -560,10 +560,24 @@ function Connect-SorchaUser {
         -Uri "$TenantUrl/auth/login" `
         -Body $loginBody
 
-    # Single-org user: token returned directly
+    # Single-org user: token returned directly.
+    #
+    # The server picks the org here — there is no selection step — so the token may be scoped to an
+    # org OTHER than the one the caller asked for. That is always a bug in the caller's setup (the
+    # user was never added to the org they are about to act in), and it used to pass silently: the
+    # session looked fine and every later call against the requested org failed with a bare 403,
+    # pointing at permissions rather than at the wrong-org session. Strathcarron lost a whole setup
+    # run to it — the council admin existed only in the Public org, so master-key provisioning 403'd
+    # four steps later (#1427). Fail here, where the cause is still visible.
     if ($loginResponse.access_token) {
         $token = $loginResponse.access_token
         $jwt = Decode-SorchaJwt -Token $token
+        if ($jwt.org_id -and $OrganizationId -and $jwt.org_id -ne $OrganizationId) {
+            throw ("Connect-SorchaUser: $Email is single-org in $($jwt.org_id), but org $OrganizationId was requested. " +
+                   "The user is not a member of the requested org, so every org-scoped call will 403. " +
+                   "Provision them into it with New-SorchaOrgUser (org-scoped, single-org) rather than " +
+                   "registering a public account and hoping org creation adopts it.")
+        }
         Write-WtSuccess "Logged in as $Email (single-org: $($jwt.org_id))"
         return @{
             Token          = $token
@@ -1903,9 +1917,15 @@ function New-SorchaOrganization {
             $existing = $orgs.items | Where-Object { $_.subdomain -eq $Subdomain } | Select-Object -First 1
             if ($existing) {
                 Write-WtSuccess "Found existing org: $($existing.id)"
+                # AdminDirectlyAdded = $false, and that is the whole point of reporting it: this path
+                # recovers an org that someone else created, so the -AdminEmail passed to THIS call
+                # was never provisioned into it. Saying $true here (as it used to) told callers the
+                # admin was ready when they had no membership at all, and the first org-scoped call
+                # they made 403'd with nothing to connect it to (#1427). Callers must ensure
+                # membership themselves — see New-SorchaOrgUser.
                 return @{
                     OrganizationId    = "$($existing.id)"
-                    AdminDirectlyAdded = $true
+                    AdminDirectlyAdded = $false
                 }
             }
             throw "Organization '$Name' looked like a duplicate but could not be found by subdomain"
