@@ -114,10 +114,12 @@ public static class InstanceProjectionResolver
 
     /// <summary>
     /// Resolves participant-id → wallet bindings this transaction contributes, keyed by the
-    /// blueprint participant id (never self-keyed by wallet address). Binds the completed action's
-    /// sender to the tx sender, and the next action's sender to the recipient (the next actor), so
-    /// bindings accumulate across the chain. Best-effort — on any resolution failure the transaction
-    /// still folds control state with whatever bindings resolved.
+    /// blueprint participant id (never self-keyed by wallet address). Three sources, in descending
+    /// order of authority: the wallets the published blueprint binds; the completed action's sender,
+    /// bound to the wallet that signed this transaction; and — only where neither of those already
+    /// says who someone is — an unambiguous hand-off to the next action's sender. Bindings
+    /// accumulate across the chain. Best-effort: on any resolution failure the transaction still
+    /// folds control state with whatever bindings resolved.
     /// </summary>
     public static async Task<IReadOnlyDictionary<string, string>> ResolveParticipantBindingsAsync(
         string blueprintId,
