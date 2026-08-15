@@ -99,6 +99,23 @@ services:
       SocialProviders__1__Name: GitHub
       SocialProviders__1__ClientId: ${GITHUB_OAUTH_CLIENT_ID:-}
       SocialProviders__1__ClientSecret: ${GITHUB_OAUTH_CLIENT_SECRET:-}
+      # F191 (#1420) retire switch — n1 runs cert-only service-to-service auth.
+      # Every service mints its service token against the Tenant mTLS listener
+      # (https://tenant-service:8443) with its workload certificate; this refuses
+      # any secret-presenting mint with an explicit 400. Live-verified on n1
+      # 2026-08-15 (SC-007) before being folded in here.
+      #
+      # It lives in THIS file, not a separate override, deliberately: the flag was
+      # briefly carried by a 4th compose file on the box, so the documented 3-file
+      # `-f` command silently dropped it on the next tenant-service recreate — a
+      # posture regression with no error. n1's standard command now carries it.
+      #
+      # Precondition (already met on n1): the F191 workload-certificate block must
+      # be present in the host .env (8 client certs + CA bundle + server cert +
+      # WORKLOAD_CERT_PASSWORD, provisioned by /opt/sorcha/f191-provision.sh).
+      # Without it no service can mint at all. Rollback: comment this out and
+      # `up -d --force-recreate --no-deps tenant-service`.
+      ServiceAuth__DisableSharedSecrets: "true"
 
   peer-service:
     image: sorchadev/peer-service:latest

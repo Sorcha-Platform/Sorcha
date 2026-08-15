@@ -925,6 +925,12 @@ Only after live verification — never as a big-bang cutover:
 5. **Optionally remove** the 8 `*_SERVICE_SECRET` client wirings from the deployment configuration
    at leisure — they are inert once the switch is on.
 
+**Put the flag in the deployment's own compose override, not a separate extra file.** A retire flag
+carried by an additional `-f` file drops silently the moment anyone runs that deployment's documented
+compose command — the Tenant Service simply comes back in coexistence mode, with no error and no log
+to distinguish it. n1 hit exactly this and now carries `ServiceAuth__DisableSharedSecrets: "true"` in
+`docker-compose.n1.yml` itself, so its standard three-file command cannot lose the posture.
+
 Troubleshooting: a service failing at startup naming its client certificate means the mounted
 material is missing/unreadable — check the mount and `WORKLOAD_CERT_PASSWORD` (this is deliberate
 fail-fast, not a bug). A mint refused on identity mismatch means the PFX belongs to a different
