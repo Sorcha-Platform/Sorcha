@@ -692,6 +692,10 @@ builder.AddSorchaCors();
 var app = builder.Build();
 var logger = app.Logger;
 
+// Issue #1433 — sanitized global exception handler, FIRST in the pipeline so it wraps every
+// other middleware's unhandled exceptions too (see ServiceDefaults.Extensions for rationale).
+app.UseSanitizedExceptionHandling();
+
 // Apply database migrations on startup (if PostgreSQL is configured)
 if (!string.IsNullOrEmpty(blueprintDbConn))
 {

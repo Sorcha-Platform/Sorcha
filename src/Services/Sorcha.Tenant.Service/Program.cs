@@ -216,6 +216,10 @@ builder.Services.AddSorchaAddressLookup(builder.Configuration);
 
 var app = builder.Build();
 
+// Issue #1433 — sanitized global exception handler, FIRST in the pipeline so it wraps every
+// other middleware's unhandled exceptions too (see ServiceDefaults.Extensions for rationale).
+app.UseSanitizedExceptionHandling();
+
 // F191 US3 (#1420): make a retired-secrets deployment diagnosable from startup logs — with the
 // flag on, every secret-presenting service-auth request is refused platform-wide.
 if (app.Configuration.GetValue<bool>(Sorcha.WorkloadIdentity.WorkloadIdentityConfig.DisableSharedSecrets))
