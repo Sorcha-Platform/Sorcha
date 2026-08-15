@@ -51,10 +51,12 @@ public static class WorkloadCertificateLoader
 
         try
         {
+            // Default (non-ephemeral) key storage: these certificates authenticate TLS
+            // connections, and Windows SChannel refuses ephemeral private keys.
             return X509CertificateLoader.LoadPkcs12(
                 pkcs12Bytes,
                 password,
-                X509KeyStorageFlags.EphemeralKeySet);
+                X509KeyStorageFlags.Exportable);
         }
         catch (Exception ex)
         {

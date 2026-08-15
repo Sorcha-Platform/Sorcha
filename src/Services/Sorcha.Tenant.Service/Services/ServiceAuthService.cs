@@ -3,13 +3,16 @@
 
 using System.Buffers.Text;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Org.BouncyCastle.Crypto.Generators;
 using Org.BouncyCastle.Crypto.Parameters;
+using Sorcha.ServiceDefaults.Auth;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Models.Auth;
+using Sorcha.WorkloadIdentity;
 
 namespace Sorcha.Tenant.Service.Services;
 
@@ -21,15 +24,23 @@ public class ServiceAuthService : IServiceAuthService
     private readonly IIdentityRepository _identityRepository;
     private readonly ITokenService _tokenService;
     private readonly ILogger<ServiceAuthService> _logger;
+    private readonly string _installationName;
 
     public ServiceAuthService(
         IIdentityRepository identityRepository,
         ITokenService tokenService,
+        IConfiguration configuration,
         ILogger<ServiceAuthService> logger)
     {
         _identityRepository = identityRepository ?? throw new ArgumentNullException(nameof(identityRepository));
         _tokenService = tokenService ?? throw new ArgumentNullException(nameof(tokenService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        // The SPIFFE trust domain is the SAME installation name that namespaces JWT issuer and
+        // audiences (spec 136) — resolved through SorchaAudiences.Normalize so the two can never
+        // diverge (F191 research D1/D5).
+        ArgumentNullException.ThrowIfNull(configuration);
+        _installationName = SorchaAudiences.Normalize(configuration["JwtSettings:InstallationName"]);
     }
 
     /// <inheritdoc />
@@ -82,6 +93,131 @@ public class ServiceAuthService : IServiceAuthService
 
         _logger.LogInformation("Service {ServiceName} authenticated successfully", servicePrincipal.ServiceName);
         return tokenResponse;
+    }
+
+    /// <inheritdoc />
+    public async Task<TokenResponse?> AuthenticateServiceWithCertificateAsync(
+        string clientId,
+        X509Certificate2 clientCertificate,
+        string? requestedScopes,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(clientId) || clientCertificate is null)
+        {
+            return null;
+        }
+
+        if (!VerifyWorkloadIdentity(clientId, clientCertificate))
+        {
+            return null;
+        }
+
+        var servicePrincipal = await _identityRepository.GetServicePrincipalByClientIdAsync(clientId, cancellationToken);
+        if (servicePrincipal == null)
+        {
+            _logger.LogWarning("Certificate service authentication failed: client ID {ClientId} not found", clientId);
+            return null;
+        }
+
+        if (servicePrincipal.Status != ServicePrincipalStatus.Active)
+        {
+            _logger.LogWarning("Certificate service authentication failed: client {ClientId} is {Status}", clientId, servicePrincipal.Status);
+            return null;
+        }
+
+        // Scope handling is deliberately identical to the secret path.
+        if (!string.IsNullOrEmpty(requestedScopes))
+        {
+            var requested = requestedScopes.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var allowed = servicePrincipal.Scopes.Intersect(requested).ToArray();
+            if (allowed.Length == 0)
+            {
+                _logger.LogWarning("Certificate service authentication failed: no valid scopes for client {ClientId}", clientId);
+                return null;
+            }
+            servicePrincipal.Scopes = allowed;
+        }
+
+        var tokenResponse = await _tokenService.GenerateServiceTokenAsync(servicePrincipal, null, null, cancellationToken);
+
+        _logger.LogInformation(
+            "Service {ServiceName} authenticated successfully via workload certificate", servicePrincipal.ServiceName);
+        return tokenResponse;
+    }
+
+    /// <inheritdoc />
+    public async Task<TokenResponse?> AuthenticateWithDelegationByCertificateAsync(
+        string clientId,
+        X509Certificate2 clientCertificate,
+        Guid delegatedUserId,
+        Guid? delegatedOrgId,
+        string? requestedScopes,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(clientId) || clientCertificate is null)
+        {
+            return null;
+        }
+
+        if (!VerifyWorkloadIdentity(clientId, clientCertificate))
+        {
+            return null;
+        }
+
+        var servicePrincipal = await _identityRepository.GetServicePrincipalByClientIdAsync(clientId, cancellationToken);
+        if (servicePrincipal == null)
+        {
+            _logger.LogWarning("Certificate delegated auth failed: client ID {ClientId} not found", clientId);
+            return null;
+        }
+
+        if (servicePrincipal.Status != ServicePrincipalStatus.Active)
+        {
+            _logger.LogWarning("Certificate delegated auth failed: client {ClientId} is {Status}", clientId, servicePrincipal.Status);
+            return null;
+        }
+
+        if (!servicePrincipal.Scopes.Contains("tenant:delegate"))
+        {
+            _logger.LogWarning("Certificate delegated auth failed: client {ClientId} does not have delegation scope", clientId);
+            return null;
+        }
+
+        var tokenResponse = await _tokenService.GenerateServiceTokenAsync(
+            servicePrincipal, delegatedUserId, delegatedOrgId, cancellationToken);
+
+        _logger.LogInformation(
+            "Service {ServiceName} authenticated via workload certificate with delegation for user {UserId}",
+            servicePrincipal.ServiceName, delegatedUserId);
+
+        return tokenResponse;
+    }
+
+    /// <summary>
+    /// Verifies that the (TLS-layer-validated) certificate's SPIFFE URI SAN names EXACTLY the
+    /// requested client id in THIS installation's trust domain. Ordinal comparison — a
+    /// case-insensitive match would let one principal impersonate another.
+    /// </summary>
+    private bool VerifyWorkloadIdentity(string clientId, X509Certificate2 clientCertificate)
+    {
+        if (!WorkloadCertificateAuthority.TryGetSpiffeId(clientCertificate, out var presented))
+        {
+            _logger.LogWarning(
+                "Certificate service authentication failed for {ClientId}: presented certificate carries no SPIFFE workload identity (subject {Subject})",
+                clientId, clientCertificate.Subject);
+            return false;
+        }
+
+        var expected = SpiffeId.ForService(_installationName, clientId);
+        if (!expected.Equals(presented))
+        {
+            _logger.LogWarning(
+                "Certificate service authentication failed: presented workload identity {PresentedIdentity} does not match expected {ExpectedIdentity} for client {ClientId}",
+                presented, expected, clientId);
+            return false;
+        }
+
+        return true;
     }
 
     /// <inheritdoc />

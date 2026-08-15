@@ -82,9 +82,11 @@ public record DelegatedTokenRequest
     public required string ClientId { get; init; }
 
     /// <summary>
-    /// Client secret.
+    /// Client secret. Optional since F191 (#1420): a request arriving over the workload mTLS
+    /// listener with a valid workload certificate needs no secret — the chain-validated
+    /// certificate is the credential. Secretless requests on any other listener are refused.
     /// </summary>
-    public required string ClientSecret { get; init; }
+    public string? ClientSecret { get; init; }
 
     /// <summary>
     /// User ID to delegate authority for.

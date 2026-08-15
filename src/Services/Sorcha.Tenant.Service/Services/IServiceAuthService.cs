@@ -27,6 +27,45 @@ public interface IServiceAuthService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Authenticates a service using its workload certificate as the client credential
+    /// (F191 / #1420). The certificate is expected to be chain-validated at the TLS layer
+    /// (mTLS listener + workload trust bundle); this method verifies the certificate's SPIFFE
+    /// identity names exactly the requested client id, then applies the same principal-status
+    /// and scope-intersection gating as the secret path. No shared secret is involved.
+    /// </summary>
+    /// <param name="clientId">Client ID the caller claims.</param>
+    /// <param name="clientCertificate">TLS-layer-validated client certificate.</param>
+    /// <param name="requestedScopes">Requested scopes (optional).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Token response or null if authentication fails.</returns>
+    Task<TokenResponse?> AuthenticateServiceWithCertificateAsync(
+        string clientId,
+        System.Security.Cryptography.X509Certificates.X509Certificate2 clientCertificate,
+        string? requestedScopes,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Authenticates a service with delegated authority using its workload certificate as the
+    /// client credential (F191). Same identity verification as
+    /// <see cref="AuthenticateServiceWithCertificateAsync"/>, same delegation gating
+    /// (<c>tenant:delegate</c> scope) as the secret path.
+    /// </summary>
+    /// <param name="clientId">Client ID the caller claims.</param>
+    /// <param name="clientCertificate">TLS-layer-validated client certificate.</param>
+    /// <param name="delegatedUserId">User ID to delegate authority for.</param>
+    /// <param name="delegatedOrgId">Organization ID (optional).</param>
+    /// <param name="requestedScopes">Requested scopes (optional).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Token response or null if authentication fails.</returns>
+    Task<TokenResponse?> AuthenticateWithDelegationByCertificateAsync(
+        string clientId,
+        System.Security.Cryptography.X509Certificates.X509Certificate2 clientCertificate,
+        Guid delegatedUserId,
+        Guid? delegatedOrgId,
+        string? requestedScopes,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Authenticates a service with delegated authority.
     /// </summary>
     /// <param name="clientId">Client ID.</param>

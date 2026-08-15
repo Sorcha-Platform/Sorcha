@@ -23,6 +23,11 @@ var builder = WebApplication.CreateBuilder(args);
 // Add .NET Aspire service defaults (includes service discovery, health checks, and default observability)
 builder.AddServiceDefaults();
 
+// F191 (#1420): additive workload mTLS listener for certificate-credential service auth.
+// No-op unless ServiceAuth:Mtls:ServerCertificate + ServiceAuth:Mtls:TrustBundle are configured;
+// fail-fast at startup when configured material is unreadable.
+builder.AddWorkloadMtlsListener();
+
 // Add structured logging with Serilog (OPS-001)
 builder.AddSerilogLogging();
 

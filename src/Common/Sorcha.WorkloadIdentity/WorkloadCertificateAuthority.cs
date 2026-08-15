@@ -177,7 +177,13 @@ public static class WorkloadCertificateAuthority
             effectiveNotAfter,
             serial);
 
-        return withoutKey.CopyWithPrivateKey(leafKey);
+        // Round-trip through PKCS#12 with default (non-ephemeral) key storage: Windows SChannel
+        // refuses TLS with ephemeral private keys, and these leaves exist to do TLS.
+        using var ephemeral = withoutKey.CopyWithPrivateKey(leafKey);
+        return X509CertificateLoader.LoadPkcs12(
+            ephemeral.Export(X509ContentType.Pfx),
+            password: null,
+            X509KeyStorageFlags.Exportable);
     }
 
     private static IEnumerable<string> EnumerateUriSans(X509SubjectAlternativeNameExtension sanExtension)

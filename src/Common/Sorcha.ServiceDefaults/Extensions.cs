@@ -274,8 +274,24 @@ public static class Extensions
                 await next();
             });
 
-            // Enable HTTPS redirection only when HTTPS is configured
-            app.UseHttpsRedirection();
+            // Enable HTTPS redirection only when HTTPS is configured.
+            //
+            // F191 (#1420) carve-out: the workload mTLS listener (client-cert-REQUIRED service
+            // auth) must never become the redirect target. Before F191 no in-container https
+            // listener existed, so this middleware could not resolve a port and no-opped; the
+            // mTLS listener would silently "activate" it and 307 every plaintext internal
+            // caller onto a port that demands a client certificate — breaking secret-path
+            // coexistence platform-wide. When the ONLY https surface is the workload listener
+            // (no explicit https_port configured), skip redirection to preserve the exact
+            // pre-F191 behaviour.
+            var workloadMtlsIsOnlyHttpsSurface =
+                !string.IsNullOrWhiteSpace(app.Configuration[Sorcha.WorkloadIdentity.WorkloadIdentityConfig.MtlsServerCertificate])
+                && string.IsNullOrWhiteSpace(app.Configuration["https_port"])
+                && string.IsNullOrWhiteSpace(app.Configuration["HTTPS_PORT"]);
+            if (!workloadMtlsIsOnlyHttpsSurface)
+            {
+                app.UseHttpsRedirection();
+            }
         }
 
         return app;

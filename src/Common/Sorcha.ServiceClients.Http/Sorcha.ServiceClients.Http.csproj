@@ -25,6 +25,7 @@
     <ProjectReference Include="..\Sorcha.Wallet.Contracts\Sorcha.Wallet.Contracts.csproj" />
     <ProjectReference Include="..\Sorcha.Tenant.Models\Sorcha.Tenant.Models.csproj" />
     <ProjectReference Include="..\Sorcha.Serialization\Sorcha.Serialization.csproj" />
+    <ProjectReference Include="..\Sorcha.WorkloadIdentity\Sorcha.WorkloadIdentity.csproj" />
     <ProjectReference Include="..\Sorcha.Cryptography.Secp256k1\Sorcha.Cryptography.Secp256k1.csproj" />
   </ItemGroup>
 
