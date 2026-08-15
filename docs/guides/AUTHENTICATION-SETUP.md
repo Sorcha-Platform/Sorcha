@@ -792,7 +792,7 @@ After authentication is configured:
 
 ## Service Auth Configuration
 
-All services authenticate to the Tenant Service using OAuth2 client credentials. The table below lists the complete configuration for each service.
+All services authenticate to the Tenant Service using OAuth2 client credentials. The table below lists the complete configuration for each service. **This is the legacy/coexistence-default credential.** A deployment can additionally (or eventually instead) authenticate services with a workload certificate over mutual TLS — see [Service-to-service auth: workload certificates (mTLS, F191)](#service-to-service-auth-workload-certificates-mtls-f191) below. Until a deployment explicitly disables shared secrets, both paths work side by side.
 
 | Service | ClientId | ClientSecret | Scopes |
 |---------|----------|--------------|--------|
@@ -816,6 +816,121 @@ These values are configured in each service's `appsettings.json` or via environm
 ```
 
 > **Production Note:** Replace all default secrets with strong, randomly generated values stored in Azure Key Vault or an equivalent secrets manager. Never use the default secrets shown above in production.
+
+---
+
+## Service-to-service auth: workload certificates (mTLS, F191)
+
+Issue [#1420](https://github.com/Sorcha-Platform/Sorcha/issues/1420) retires the shared OAuth2
+client secret as the *only* way a service proves its identity at the token mint. A per-installation
+X.509 **workload certificate**, presented over mutual TLS, is now an equally valid credential.
+Nothing downstream of the mint changes — same service JWT shape, same `RequireService` policy, same
+scopes and tier audiences. Full design: `specs/191-mtls-workload-identity/spec.md`.
+
+### How it's configured
+
+**Server side (Tenant Service).** An additive Kestrel listener on port `8443` (internal-only, never
+published to the host) activates only when both keys below are set:
+
+| Key | Purpose |
+|-----|---------|
+| `ServiceAuth:Mtls:ServerCertificate` | Tenant's mTLS listener server certificate (PFX path or base64 PKCS#12) |
+| `ServiceAuth:Mtls:ServerCertificatePassword` | PFX password |
+| `ServiceAuth:Mtls:TrustBundle` | Workload CA trust bundle (path, inline PEM, or base64 PEM) |
+| `ServiceAuth:Mtls:Port` | Listener port (default `8443`) |
+| `ServiceAuth:DisableSharedSecrets` | Retire step only — see below (default `false`) |
+
+**Client side (every service).** No shared-library changes are needed to call the Tenant Service;
+configure a certificate instead of (or alongside) `ServiceAuth:ClientSecret`:
+
+| Key | Purpose |
+|-----|---------|
+| `ServiceAuth:ClientCertificate` | This service's workload leaf certificate (PFX path or base64 PKCS#12) |
+| `ServiceAuth:ClientCertificatePassword` | PFX password |
+| `ServiceAuth:TrustBundle` | Workload CA trust bundle (path, inline PEM, or base64 PEM), used to authenticate the Tenant mTLS listener's server certificate |
+| `ServiceAuth:MtlsTokenAddress` | Mint address to call in certificate mode (default `https://tenant-service:8443`) |
+
+If no certificate is configured, behaviour is byte-for-byte unchanged from before this feature — the
+legacy secret path, zero setup, exactly as dev/Aspire has always worked. If a certificate **is**
+configured but the file is missing or unreadable, the service **fails fast at startup** — it never
+silently falls back to the secret. If both a certificate and a secret are configured, the certificate
+path is used and the secret is ignored for token acquisition (logged once at startup).
+
+### Coexistence, by default
+
+Both credential paths work side by side until an operator explicitly disables the secret path per
+deployment:
+
+- `ServiceAuth:DisableSharedSecrets=false` (default) — services authenticate by secret or by
+  certificate; both succeed.
+- `ServiceAuth:DisableSharedSecrets=true` (set on the **Tenant Service** only) — secret-based
+  `client_credentials` requests are refused with an explicit "shared secrets disabled" error;
+  certificate-based requests are unaffected. The condition is logged prominently at Tenant startup so
+  a mis-flipped deployment is diagnosable from the logs, not from a wave of failed mints.
+
+### How `sorcha-setup.sh` provisions it
+
+A fresh install needs no extra operator action. `./scripts/sorcha-setup.sh`:
+
+1. Generates `WORKLOAD_CERT_PASSWORD` into `.env` (same generator chain as the per-deploy service
+   secrets from #1412).
+2. Runs `sorcha workload-ca init --dir ./config/workload-certs --installation "$INSTALLATION_NAME"`
+   — `sorcha` on `PATH` first, else the `sorchadev/cli` Docker image — creating the Workload CA, one
+   leaf per service principal, and the Tenant server certificate.
+3. Appends a marker-delimited, base64-encoded block of the cert env vars above to `.env` (idempotent
+   — replaced on re-run). `docker compose up` then brings services up minting via certificate.
+
+Provisioning failure degrades loudly to the shared-secret path (warn + skip) rather than
+half-configuring certificate mode. `config/workload-certs/` is gitignored, joining `.env` and
+`docker/certs` precedent — certificate material is never committed.
+
+### Lifecycle commands
+
+Certificate lifecycle is owned entirely by the CLI's `sorcha workload-ca` command group (full
+reference in `src/Apps/Sorcha.Cli/README.md`):
+
+```bash
+sorcha workload-ca status                     # expiry table; exit 2 when anything is inside 30 days
+sorcha workload-ca renew                      # re-issue expiring leaves under the current CA
+sorcha workload-ca rotate-ca                  # new CA, bundle=[new,old] overlap, all leaves re-issued
+sorcha workload-ca rotate-ca --complete       # drop the old root once every service is on the new CA
+```
+
+After `renew` or `rotate-ca`, re-run `./scripts/sorcha-setup.sh` (its keep-existing-`.env` path) to
+re-encode the refreshed material into `.env`, then recreate the affected containers — services load
+certificates at startup only.
+
+### Health check
+
+Every service exposes workload-certificate expiry via the standard health-check and metrics
+surfaces: health check name **`workload-certificate`** — `Healthy` when no certificate is configured
+(legacy secret mode) or when expiry is comfortably outside the warning window; `Degraded` inside
+`WorkloadIdentity:ExpiryWarningDays` (default 30); `Unhealthy` once expired or unreadable. Metric:
+`sorcha_workload_cert_days_to_expiry{subject}` on the `Sorcha.WorkloadIdentity` meter.
+
+### Retiring shared secrets (per deployment)
+
+Only after live verification — never as a big-bang cutover:
+
+1. **Verify every service mints via certificate.** Check each service's startup/token-acquisition
+   logs for certificate-mode minting, and confirm the `workload-certificate` health check is
+   `Healthy` platform-wide.
+2. **Set `ServiceAuth:DisableSharedSecrets=true` on the Tenant Service only**
+   (`ServiceAuth__DisableSharedSecrets=true` in its environment).
+3. **Recreate the Tenant Service** (`docker compose up -d --force-recreate --no-deps
+   tenant-service`).
+4. **Verify**: the Tenant startup log states secret-based service auth is disabled; a
+   secret-presenting `client_credentials` request is refused; certificate-based minting and the
+   platform's golden-path walkthrough are unaffected.
+5. **Optionally remove** the 8 `*_SERVICE_SECRET` client wirings from the deployment configuration
+   at leisure — they are inert once the switch is on.
+
+Troubleshooting: a service failing at startup naming its client certificate means the mounted
+material is missing/unreadable — check the mount and `WORKLOAD_CERT_PASSWORD` (this is deliberate
+fail-fast, not a bug). A mint refused on identity mismatch means the PFX belongs to a different
+service or installation — compare against `sorcha workload-ca status`. TLS handshake failures after
+a CA rotation usually mean containers weren't recreated between `rotate-ca` and `--complete`, or
+`--complete` ran before all services picked up new-CA leaves.
 
 ---
 

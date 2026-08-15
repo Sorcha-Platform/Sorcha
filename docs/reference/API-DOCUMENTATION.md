@@ -133,6 +133,34 @@ grant_type=client_credentials&client_id=service-blueprint&client_secret=<secret>
 The delegated-authority (`POST /api/internal/service-auth/token/delegated`) and secret-rotation
 (`POST /api/internal/service-auth/rotate-secret`) endpoints are internal-only for the same reason.
 
+#### Workload-identity (mTLS) credential — Feature 191 / #1420
+
+The same two token endpoints — `POST /api/internal/service-auth/token` and
+`POST /api/internal/service-auth/token/delegated` — are additionally reachable on the Tenant
+Service's dedicated mutual-TLS listener (`https://tenant-service:8443`, internal-only, never
+published to the host). On that listener `client_secret` is **optional**: a chain-validated client
+certificate whose SPIFFE URI SAN (`spiffe://{installation}/service/{client_id}`) matches the
+requested `client_id` is a complete credential on its own. The plaintext internal listener is
+unchanged — `client_secret` remains required there. Response shape, JWT claims, audience, and
+lifetime are identical regardless of which credential minted the token; downstream consumers cannot
+tell the two paths apart.
+
+| Condition | Result |
+|---|---|
+| Cert chains to unknown CA / expired / not-yet-valid | TLS handshake rejected (request never reaches the handler) |
+| No client cert presented on the mTLS listener | handshake rejected |
+| SPIFFE SAN ≠ requested `client_id` | `400`/`401 invalid_client`, logged with both identities |
+| Principal missing or not Active | `401` (same as the secret path) |
+| `client_secret` present and `ServiceAuth:DisableSharedSecrets=true` | explicit "shared secrets disabled" error |
+| `client_secret` present and the flag is `false` (default) | legacy secret path, unchanged |
+
+`ServiceAuth:DisableSharedSecrets=true` is a per-deployment retire step (off by default —
+coexistence is the shipped behaviour): once set, secret-based `client_credentials` requests are
+refused platform-wide while certificate-based minting is unaffected. `POST
+/api/internal/service-auth/rotate-secret` is unchanged and becomes inert once secrets are disabled.
+Certificate lifecycle is CLI-owned (`sorcha workload-ca init|status|renew|rotate-ca`); full contract
+at `specs/191-mtls-workload-identity/contracts/service-auth-mtls.md`.
+
 ### Using the Access Token
 
 Include the access token in the `Authorization` header:

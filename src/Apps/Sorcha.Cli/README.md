@@ -499,6 +499,52 @@ token gets a 403.
 | `sorcha trust import` | Import a trusted-list document (by `--file` upload or `--url` fetch) |
 | `sorcha trust delete` | Delete all versions of a trusted-list snapshot |
 
+### Workload-CA Commands (Feature 191 / #1420)
+
+Certificate lifecycle for service-to-service mTLS workload identity (see the Tenant Service README's
+"Workload-Identity Service Auth" section for the server side). The CLI is the only supported way to
+create, inspect, and rotate the per-installation Workload CA and per-service leaf certificates — no
+hand-run certificate toolchain. `./scripts/sorcha-setup.sh` invokes these commands automatically on
+a fresh install; a `sorchadev/cli` Docker image is also published for SDK-less hosts that need to run
+`workload-ca` without a local .NET SDK.
+
+Common options: `--dir <path>` (cert directory, default `./config/workload-certs`),
+`--installation <name>` (default `sorcha` — must match the deployment's
+`JwtSettings:InstallationName`), `--password <pw>` / env `WORKLOAD_CERT_PASSWORD` (PFX password).
+
+| Command | Description |
+|---------|-------------|
+| `sorcha workload-ca init` | Create the Workload CA (EC P-256, ~5y) + one leaf per service principal (~2y, SPIFFE URI SAN + DNS SAN) + the Tenant Service's mTLS listener server certificate. Idempotent — existing valid material is left untouched and reported `unchanged`. `--services <client_id=dnshost,...>` overrides the default 8-principal map. Exit codes: 0 success, 1 error (nothing partially written). |
+| `sorcha workload-ca status` | Print an expiry table (kind, subject, SPIFFE/DNS identity, days remaining, state). `--threshold-days <n>` (default 30). Exit codes: 0 all ok, **2** something expiring/expired/invalid (scriptable), 1 error. |
+| `sorcha workload-ca renew` | Re-issue leaves + server cert (fresh keypair) whose remaining validity is inside the threshold, signed by the current CA. `--all` forces every leaf. Exit codes: 0 (including nothing-to-do), 1 error. Services only pick up new certificates once their container is recreated. |
+| `sorcha workload-ca rotate-ca` | Generate a new CA; the trust bundle becomes `[newRoot, oldRoot]` (overlap) and every leaf + the server cert is re-issued under the new root; old CA kept as `ca/ca.previous.pfx`. Run `sorcha workload-ca rotate-ca --complete` once all services are running on new-CA leaves to drop the old root and delete `ca.previous.pfx` — refuses (exit 1) if no overlap is detectable. Exit codes: 0 success, 1 error. |
+
+**Directory layout** (under `--dir`, default `./config/workload-certs`; gitignored, joins `.env` /
+`docker/certs` precedent):
+
+```
+ca/ca.pfx                     # Workload CA private key + cert
+ca/bundle.pem                 # public trust bundle (1 or 2 roots during rotation overlap)
+ca/ca.previous.pfx            # retained old CA, present only mid-rotation
+services/{client_id}.pfx      # one leaf per service principal
+server/tenant-service.pfx     # Tenant Service mTLS listener server certificate
+```
+
+**Examples:**
+
+```bash
+sorcha workload-ca init --dir ./config/workload-certs --installation sorcha-dev
+sorcha workload-ca status --threshold-days 30
+sorcha workload-ca renew
+sorcha workload-ca rotate-ca && sorcha workload-ca rotate-ca --complete   # after containers recreated
+```
+
+Distributed both as the standard NuGet global tool (unchanged `cli-publish.yml` pipeline) and as the
+`sorchadev/cli` Docker image (`src/Apps/Sorcha.Cli/Dockerfile`, entrypoint `sorcha`) for hosts with
+no local .NET SDK. `sorcha-setup.sh` prefers `sorcha` on `PATH` and falls back to
+`docker run --rm -v <dir>:/certs sorchadev/cli workload-ca init --dir /certs ...`. Private keys are
+never printed or logged.
+
 ### System Register Commands
 
 | Command | Description |

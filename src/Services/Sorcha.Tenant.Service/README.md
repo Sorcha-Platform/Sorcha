@@ -293,6 +293,50 @@ Its password is resolved via `AdminPasswordResolver.Resolve` — the same shape 
 The resolved source (`Configured` / `DevDefault`) is logged. The dev-default password is logged
 alongside it (it is a published convenience literal); a configured, operator-set password never is.
 
+### Workload-Identity Service Auth (Feature 191 / #1420)
+
+Service-to-service authentication is moving from a shared OAuth2 client secret to a per-installation
+X.509 workload certificate presented over mutual TLS. The certificate replaces the secret at the
+token mint **only** — everything downstream (service JWT shape, `RequireService`, scopes, tier
+audiences) is unchanged. Both credential paths coexist by default; a deployment retires the shared
+secret only after live verification (runbook in `docs/guides/AUTHENTICATION-SETUP.md`).
+
+**mTLS listener.** An additive Kestrel listener on port **8443** (internal-only — never published to
+the host) activates when both `ServiceAuth:Mtls:ServerCertificate` and `ServiceAuth:Mtls:TrustBundle`
+are configured. Client certificates are **required** and chain-validated against the installation's
+Workload CA bundle at the TLS handshake; requests without a valid client cert never reach the
+handler.
+
+**Mint contract.** `POST /api/internal/service-auth/token` and
+`POST /api/internal/service-auth/token/delegated` accept `client_secret` as **optional** when the
+request arrives on the mTLS listener with a valid workload certificate — the certificate itself is
+the credential. The handler additionally requires the certificate's SPIFFE URI SAN
+(`spiffe://{installation}/service/{client_id}`, where `{installation}` is
+`JwtSettings:InstallationName` — the same source as the JWT issuer/audiences) to exactly match the
+requested `client_id`; a mismatch is refused and logged with both identities. On the plaintext
+internal listener `client_secret` remains required — secretless requests are refused there.
+`POST /api/internal/service-auth/rotate-secret` is unchanged and becomes inert once a deployment
+disables shared secrets.
+
+**Coexistence switch.** `ServiceAuth:DisableSharedSecrets=true` refuses secret-based
+`client_credentials` requests platform-wide with an explicit "shared secrets disabled" error, while
+certificate-based minting continues unaffected; off (the default) both paths succeed. The switch is
+logged prominently at startup so a mis-flipped deployment is diagnosable from startup logs.
+
+**Server-side config keys:**
+
+| Key | Purpose | Default |
+|-----|---------|---------|
+| `ServiceAuth:Mtls:ServerCertificate` | Identity-service mTLS listener certificate (PFX path or base64 PKCS#12) | unset (listener inactive) |
+| `ServiceAuth:Mtls:ServerCertificatePassword` | PFX password | unset |
+| `ServiceAuth:Mtls:TrustBundle` | Workload CA trust bundle (path, inline PEM, or base64 PEM) | unset |
+| `ServiceAuth:Mtls:Port` | mTLS listener port | `8443` |
+| `ServiceAuth:DisableSharedSecrets` | Refuse secret-based service auth platform-wide (retire step only) | `false` |
+
+Certificate lifecycle (init / status / renew / rotate-ca) is CLI-owned — see the "workload-ca"
+section of `src/Apps/Sorcha.Cli/README.md`. Full config/delivery and mint contracts:
+`specs/191-mtls-workload-identity/contracts/`.
+
 ---
 
 ## API Endpoints
