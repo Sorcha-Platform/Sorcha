@@ -125,18 +125,27 @@ Add-SorchaPublicOrgSubscription -TenantUrl $sorchaEnv.TenantUrl `
 # ── Publish participants to register ──────────────────────────────
 Write-WtStep "Publishing participants to register"
 
+# The tenant is deliberately ABSENT. They are the sender of action 0, the starting action, which
+# makes them the Feature 103 OPEN participant: late-bound to whoever actually submits, not declared
+# up front. Every other walkthrough with a citizen starting-participant does the same (AssuredIdentity
+# publishes only the analyst and licensing officer; ConstructionPermit only the four org roles).
+#
+# Publishing them was not merely redundant, it could not work: the call publishes a participant record
+# FOR AN ORGANISATION, and the tenant's organisation is the shared Public org, authorised with the
+# citizen's own consumer-tier session. n1 answers
+# POST /api/organizations/00000000-0000-0000-0000-000000000002/participants/publish with 403, and
+# setup died there before reaching the blueprint publish (#1427).
 $participantPublishDefs = @(
-    @{ role = "tenant"; name = $tenantDef.name; org = "Public"; address = $tenantWallet.Address; publicKey = $tenantParticipant.PublicKey ?? $tenantWallet.PublicKey; orgId = $publicOrgId; session = $tenantSession }
     @{ role = "housing-officer"; name = $housingRole.name; org = "Strathcarron Council"; address = $housingRole.walletAddress; publicKey = $housingRole.publicKey; orgId = $housingRole.organizationId; session = $housingSession }
     @{ role = "contractor"; name = $contractorRole.name; org = "Stoniebridge Construction"; address = $contractorRole.walletAddress; publicKey = $contractorRole.publicKey; orgId = $contractorRole.organizationId; session = $contractorSession }
     @{ role = "building-inspector"; name = $councilState.roles."building-inspector".name; org = "Strathcarron Council"; address = $councilState.roles."building-inspector".walletAddress; publicKey = $councilState.roles."building-inspector".publicKey; orgId = $councilState.roles."building-inspector".organizationId; session = $null }
 )
 
-# Building inspector session
+# Building inspector session (last entry — index tracks the list above)
 $biRole = $councilState.roles."building-inspector"
 $biSession = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl `
     -Email $biRole.email -Password $biRole.password -OrganizationId $biRole.organizationId
-$participantPublishDefs[3].session = $biSession
+$participantPublishDefs[-1].session = $biSession
 
 foreach ($p in $participantPublishDefs) {
     Publish-SorchaParticipant -TenantUrl $sorchaEnv.TenantUrl `
@@ -181,8 +190,10 @@ Set-SorchaOrgMasterKey `
 # ── Publish blueprint ─────────────────────────────────────────────
 Write-WtStep "Publishing blueprint"
 
+# "tenant" is intentionally absent — open participant, late-bound at runtime (see the
+# participant-publish block above). Publish-SorchaBlueprint would skip it anyway, but leaving it out
+# keeps the map honest about who is actually pre-bound.
 $walletMap = @{
-    "tenant"            = $tenantWallet.Address
     "housing-officer"   = $housingRole.walletAddress
     "contractor"        = $contractorRole.walletAddress
     "building-inspector" = $biRole.walletAddress
@@ -204,21 +215,27 @@ if ($blueprint.Warnings) {
 # ── Create tenant persona ────────────────────────────────────────
 Write-WtStep "Creating tenant persona"
 
+# Field names and formats are the SERVER's, not this script's invention:
+#   PersonaAddress is (Line1, Line2?, City, Region?, PostalCode, Country, IsDefault, Label?)
+#   — Sorcha.Tenant.Models.Persona.PersonaAddress. The older "street"/"locality" spellings bound to
+#   nothing, so PUT /api/me/persona answered 400 addresses[0].line1=required, addresses[0].city=required.
+#   PersonaService validates phones against E.164 (PersonaService.E164Regex), so the number must carry
+#   no spaces: "+441463555201", not "+44 1463 555 201" — the spaced form returned invalid_phone.
 $personaDefs = @{
     a = @{
         givenName = "Flora"; familyName = "MacInnes"; fullName = "Flora MacInnes"
-        phones = @(@{ value = "+44 1463 555 201"; isDefault = $true })
-        addresses = @(@{ street = "14 Moray Crescent"; locality = "Carronbridge"; postalCode = "SC4 2TL"; country = "GB"; isDefault = $true })
+        phones = @(@{ value = "+441463555201"; isDefault = $true })
+        addresses = @(@{ line1 = "14 Moray Crescent"; city = "Carronbridge"; postalCode = "SC4 2TL"; country = "GB"; isDefault = $true })
     }
     b = @{
         givenName = "Angus"; familyName = "Beaton"; fullName = "Angus Beaton"
-        phones = @(@{ value = "+44 1463 555 302"; isDefault = $true })
-        addresses = @(@{ street = "7 Loch Morach Drive"; locality = "Dalreoch"; postalCode = "SC6 8JN"; country = "GB"; isDefault = $true })
+        phones = @(@{ value = "+441463555302"; isDefault = $true })
+        addresses = @(@{ line1 = "7 Loch Morach Drive"; city = "Dalreoch"; postalCode = "SC6 8JN"; country = "GB"; isDefault = $true })
     }
     c = @{
         givenName = "Eilidh"; familyName = "Drummond"; fullName = "Eilidh Drummond"
-        phones = @(@{ value = "+44 1463 555 403"; isDefault = $true })
-        addresses = @(@{ street = "3 Invercarron Row"; locality = "Invercarron"; postalCode = "SC2 5PA"; country = "GB"; isDefault = $true })
+        phones = @(@{ value = "+441463555403"; isDefault = $true })
+        addresses = @(@{ line1 = "3 Invercarron Row"; city = "Invercarron"; postalCode = "SC2 5PA"; country = "GB"; isDefault = $true })
     }
 }
 

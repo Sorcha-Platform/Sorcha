@@ -402,12 +402,40 @@ Set-SorchaOrgMasterKey `
 # ============================================================================
 # Blueprint B's credentialRequirements.trustPolicy.allowedIssuers contains the
 # literal placeholder "{{ASSESSOR_ISSUER_DID}}" that must be replaced with the
-# assessor's real DID before publish. The DID is did:sorcha:org:<walletAddress>.
+# assessor's real DID before publish.
+#
+# That DID is NOT did:sorcha:org:<operational wallet address>. Once the org has a
+# Feature 083 master key — which this walkthrough provisions, because it must, to
+# issue a verifiable credential at all — credentials are signed by a DERIVED
+# vc-issuance child key, and `iss` carries that child's address. Pinning the
+# operational address produces a policy that matches nothing: the credential is
+# issued and delivered perfectly, and the gate then refuses it with
+# "No trust source vouched for the issuer under the AnyOf policy" (blueprint-service
+# TrustEvaluator), surfaced to the caller as a bare sanitized 400.
+#
+# Observed on n1 (#1427) — the two addresses side by side:
+#   operational : did:sorcha:org:ws11qrg5jnsc5ckvcy5w4yyrxqfnzxx7j54ch5uf9ylztxxxz2lx9l2dc9h2g09
+#   credential  : did:sorcha:org:ws11qplqu8nhcy36uz5she75pg24a23aw458gzm9ty8na9luaqnupwr3vvj7gwf
+#
+# The org's DID document is the authority for which one to pin: its `id` IS the
+# issuance DID, and it lists the #vc-issuance-N verification method the credential's
+# kid names. Resolve it rather than reconstructing the string. NB the endpoint is
+# served at /orgs/{orgId}/did.json — NOT under /api.
 
 Write-WtStep "Step 7: Resolve Assessor Issuer DID → Blueprint B"
 
-$assessorDid  = "did:sorcha:org:$($assessorWallet.Address)"
-Write-WtInfo "Assessor issuer DID: $assessorDid"
+$assessorDidDocUrl = "$($sorchaEnv.GatewayUrl)/orgs/$assessorOrgId/did.json"
+$assessorDidDoc = Invoke-SorchaApi -Method GET -Uri $assessorDidDocUrl
+$assessorDid = $assessorDidDoc.id
+if (-not $assessorDid) {
+    throw ("Could not resolve the assessor org's issuance DID from $assessorDidDocUrl. " +
+           "Without it the trust policy would pin the operational wallet DID, which no issued " +
+           "credential ever carries, and every credential-gated submission would be refused.")
+}
+Write-WtInfo "Assessor issuer DID (from org DID document): $assessorDid"
+if ($assessorDid -eq "did:sorcha:org:$($assessorWallet.Address)") {
+    Write-WtWarn "  Issuance DID equals the operational wallet DID — the org master key may not be provisioned."
+}
 
 $bpBTemplatePath  = Join-Path $scriptDir "cyber-insurance-application-template.json"
 $bpBResolvedPath  = Join-Path $scriptDir ".bpB.resolved.json"

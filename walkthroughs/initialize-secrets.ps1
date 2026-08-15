@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env pwsh
+#!/usr/bin/env pwsh
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
@@ -238,6 +238,17 @@ $secrets = [ordered]@{
         housingOfficerEmail         = "housing@strathcarron.local"
         housingOfficerPassword      = "Dev_Pass_2025!"
         housingOfficerName          = "Housing Officer"
+    }
+    "cyber-essentials-uac" = @{
+        adminEmail      = $platformEmail
+        adminPassword   = $platformPassword
+        adminName       = $platformName
+        DefaultPassword = $platformPassword
+    }
+    "ping-pong-n1" = @{
+        adminEmail    = $platformEmail
+        adminPassword = $platformPassword
+        adminName     = $platformName
     }
     "property-inspection" = @{
         tenantAEmail    = "tenant-a@citizen.local"

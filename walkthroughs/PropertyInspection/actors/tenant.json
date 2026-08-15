@@ -4,7 +4,7 @@
     "description": "Council tenant — reports problem with photo, verifies operative, confirms satisfaction"
   },
   "connection": {
-    "gatewayUrl": "http://localhost",
+    "gatewayUrl": "{{gatewayUrl}}",
     "registerId": "{{registerId}}",
     "credentials": {
       "email": "{{roles.tenant.email}}",

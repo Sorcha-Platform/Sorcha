@@ -10,6 +10,7 @@
   "template": {
     "id": "property-inspection-generated",
     "title": "Council Property Inspection",
+    "description": "Council property repair workflow — a tenant reports a problem with photo evidence, the council triages and allocates a contractor, the tenant verifies the operative's identity credential on arrival, and the work is completed, reviewed and signed off. The description lives here as well as on the outer wrapper because the publisher posts THIS object; a wrapper-only description publishes as empty and is refused (minimum 5 characters).",
     "version": 1,
     "metadata": {
       "category": "Council Services",
@@ -32,7 +33,7 @@
         "name": "Council Tenant",
         "organisation": "Public",
         "description": "Reports problem with photo evidence, verifies operative identity, confirms satisfaction",
-        "walletAddress": "addr_patched_by_publish_blueprint"
+        "walletAddress": null
       },
       {
         "id": "housing-officer",
@@ -219,6 +220,10 @@
         "title": "Verify Operative",
         "description": "Tenant verifies the contractor's identity using the JobAssignmentCredential before granting access",
         "sender": "tenant",
+        "rejectionConfig": {
+          "requireReason": true,
+          "isTerminal": true
+        },
         "dataSchemas": [
           {
             "type": "object",

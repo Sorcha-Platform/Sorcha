@@ -4,7 +4,7 @@
     "description": "Housing Officer — triages requests, allocates contractor, reviews completion"
   },
   "connection": {
-    "gatewayUrl": "http://localhost",
+    "gatewayUrl": "{{gatewayUrl}}",
     "registerId": "{{registerId}}",
     "credentials": {
       "email": "{{roles.housing-officer.email}}",

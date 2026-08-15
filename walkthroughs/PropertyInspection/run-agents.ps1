@@ -63,7 +63,12 @@ $instance = Invoke-SorchaApi -Method POST `
         tenantId    = $housingRole.organizationId
     }
 
-if (-not $instance?.id) {
+# ${instance}?.id, NOT $instance?.id — "?" is a legal character in a PowerShell variable name, so
+# the unbraced form parses as ${instance?}.id, reads an undefined variable, and yields $null. The
+# guard was therefore ALWAYS true: this script reported "Failed to create blueprint instance" and
+# exited 1 on every run, including the runs where the instance was created perfectly well. Proven by
+# printing the value beside the check — id 36c8bb1a-… present, guard still firing (#1427).
+if (-not ${instance}?.id) {
     Write-Error "Failed to create blueprint instance."
     exit 1
 }
@@ -71,9 +76,25 @@ Write-WtSuccess "Instance created: $($instance.id)"
 
 # ── Resolve agent command ─────────────────────────────────────────
 if (-not $AgentBinary) {
-    $agentProject = Join-Path $walkthroughDir ".." ".." "src" "Apps" "Sorcha.Agent" "Sorcha.Agent.csproj"
+    $agentProject = (Resolve-Path (Join-Path $walkthroughDir ".." ".." "src" "Apps" "Sorcha.Agent" "Sorcha.Agent.csproj")).Path
+
+    # Build ONCE, here, then run every agent with --no-build.
+    #
+    # Four `dotnet run` processes start within milliseconds of each other and each tries to build the
+    # same project into the same obj/bin. They collide on the intermediate assemblies and all four die
+    # with CS2012 "Cannot open ... for writing ... being used by another process" — a build race that
+    # reads like a Sorcha failure and has nothing to do with the workflow. Serialising the build is
+    # enough; the agents themselves are independent (#1427).
+    Write-WtInfo "Building sorcha-agent once (four concurrent 'dotnet run' builds race on obj/bin)..."
+    $buildLog = & dotnet build $agentProject -v quiet --nologo 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        $buildLog | Select-Object -Last 20 | ForEach-Object { Write-Host $_ }
+        Write-Error "sorcha-agent failed to build — cannot launch actors."
+        exit 1
+    }
+
     $agentCmd = "dotnet"
-    $agentBaseArgs = @("run", "--project", (Resolve-Path $agentProject).Path, "--")
+    $agentBaseArgs = @("run", "--project", $agentProject, "--no-build", "--")
 } else {
     $agentCmd = $AgentBinary
     $agentBaseArgs = @()

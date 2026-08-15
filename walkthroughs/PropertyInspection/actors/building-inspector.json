@@ -4,7 +4,7 @@
     "description": "Building Inspector — safety sign-off for Emergency severity jobs"
   },
   "connection": {
-    "gatewayUrl": "http://localhost",
+    "gatewayUrl": "{{gatewayUrl}}",
     "registerId": "{{registerId}}",
     "credentials": {
       "email": "{{roles.building-inspector.email}}",

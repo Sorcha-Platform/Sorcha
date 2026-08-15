@@ -275,6 +275,11 @@ walkthroughs/**/state.json
 # Cross-node walkthrough run artefacts + ad-hoc compliance reports (local-only, never commit)
 walkthroughs/**/crossnode-state.json
 walkthroughs/COMPLIANCE-REPORT.md
+# Setup-generated state under a bespoke name. The council setup writes council-state.json (shared by
+# PropertyInspection), which the `state.json` rule above does not match — it showed up untracked
+# after a run. Same class of runtime artefact, same treatment.
+walkthroughs/**/council-state.json
+walkthroughs/**/logs/
 
 # Performance benchmark test results
 walkthroughs/PerformanceBenchmark/results/*.json

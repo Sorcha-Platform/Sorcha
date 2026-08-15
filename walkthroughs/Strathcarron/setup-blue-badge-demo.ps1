@@ -67,7 +67,14 @@ $sorchaEnv = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$Sk
 # ============================================================================
 Write-WtStep "Step 2: Sign in as Strathcarron council admin"
 $councilOrgId = $coldStartState.councilOrgId
-$councilAdminEmail = "council-admin@strathcarron.local"
+# Take the operator from cold-start state rather than repeating the address here — the two scripts
+# drifted apart exactly this way, and a hardcoded email that is not a member of the council org logs
+# in against the Public org instead, then fails several steps later with an unrelated-looking 403.
+$councilAdminEmail = $coldStartState.councilAdminEmail
+if (-not $councilAdminEmail) {
+    throw ("Cold-start state carries no councilAdminEmail — it was written by a revision of " +
+           "setup-cold-start-demo.ps1 that predates this field. Re-run setup-cold-start-demo.ps1.")
+}
 $councilSession = Connect-SorchaUser `
     -TenantUrl $sorchaEnv.TenantUrl `
     -Email $councilAdminEmail `
