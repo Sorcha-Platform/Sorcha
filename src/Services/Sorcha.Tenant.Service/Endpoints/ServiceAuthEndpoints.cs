@@ -242,6 +242,7 @@ public static class ServiceAuthEndpoints
     private static async Task<Results<Ok<TokenResponse>, UnauthorizedHttpResult, ValidationProblem>> GetInternalServiceToken(
         HttpContext context,
         IServiceAuthService serviceAuthService,
+        IConfiguration configuration,
         CancellationToken cancellationToken)
     {
         // Internal-only client_credentials endpoint. Not routed by the API Gateway — see the route
@@ -282,6 +283,14 @@ public static class ServiceAuthEndpoints
             });
         }
 
+        // F191 US3: the per-deployment retire switch. A secret-presenting request is refused
+        // with an EXPLICIT error (not a generic 401 — the credential may be perfectly valid;
+        // the deployment has retired the credential CLASS).
+        if (!string.IsNullOrWhiteSpace(clientSecret) && SharedSecretsDisabled(configuration))
+        {
+            return SharedSecretsDisabledProblem("client_secret");
+        }
+
         // F191: a secretless request whose connection carries a client certificate uses the
         // certificate as the credential. The certificate is only ever non-null on the workload
         // mTLS listener, where Kestrel has already chain-validated it against the workload trust
@@ -307,6 +316,18 @@ public static class ServiceAuthEndpoints
 
         return await HandleClientCredentialsGrant(clientId, clientSecret, scope, serviceAuthService, cancellationToken);
     }
+
+    private static bool SharedSecretsDisabled(IConfiguration configuration) =>
+        configuration.GetValue<bool>(Sorcha.WorkloadIdentity.WorkloadIdentityConfig.DisableSharedSecrets);
+
+    private static ValidationProblem SharedSecretsDisabledProblem(string fieldName) =>
+        TypedResults.ValidationProblem(new Dictionary<string, string[]>
+        {
+            [fieldName] = [
+                "Shared-secret service authentication is disabled on this deployment " +
+                "(ServiceAuth:DisableSharedSecrets). Authenticate with a workload certificate " +
+                "over the mTLS token endpoint instead (F191/#1420)."]
+        });
 
     private static async Task<Results<Ok<TokenResponse>, UnauthorizedHttpResult, ValidationProblem>> HandlePasswordGrant(
         string username,
@@ -411,8 +432,15 @@ public static class ServiceAuthEndpoints
         DelegatedTokenRequest request,
         HttpContext context,
         IServiceAuthService serviceAuthService,
+        IConfiguration configuration,
         CancellationToken cancellationToken)
     {
+        // F191 US3: retire switch — see GetInternalServiceToken.
+        if (!string.IsNullOrWhiteSpace(request.ClientSecret) && SharedSecretsDisabled(configuration))
+        {
+            return SharedSecretsDisabledProblem("clientSecret");
+        }
+
         if (string.IsNullOrWhiteSpace(request.ClientId))
         {
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>

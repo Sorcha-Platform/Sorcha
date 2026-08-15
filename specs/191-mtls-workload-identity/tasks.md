@@ -61,9 +61,9 @@ restore). License header + file-scoped namespaces on every new file. `dotnet bui
 **Goal**: `ServiceAuth:DisableSharedSecrets=true` refuses every secret-presenting service-auth path while cert path continues.
 **Independent test**: flag-matrix unit/integration tests.
 
-- [ ] T030 [P] [US3] Tests first in `tests/Sorcha.Tenant.Service.Tests/ServiceAuth/DisableSharedSecretsTests.cs`: flag false ⇒ both paths mint (coexistence); flag true ⇒ secret `client_credentials` AND secret delegated refused with explicit "shared secrets disabled" error while cert path mints; flag true ⇒ startup log line present (assert via logger capture)
-- [ ] T031 [US3] Implement flag in `src/Services/Sorcha.Tenant.Service/Services/ServiceAuthService.cs` (+ prominent startup log in `Program.cs`/extension; note in code that `/rotate-secret` becomes inert by construction when flag on)
-- [ ] T032 [US3] Checkpoint: Tenant test project green; refusal error text matches `contracts/service-auth-mtls.md`
+- [X] T030 [P] [US3] Tests first in `tests/Sorcha.Tenant.Service.Tests/ServiceAuth/DisableSharedSecretsTests.cs`: flag false ⇒ both paths mint (coexistence); flag true ⇒ secret `client_credentials` AND secret delegated refused with explicit "shared secrets disabled" error while cert path mints; flag true ⇒ startup log line present (assert via logger capture)
+- [X] T031 [US3] Implement flag in `src/Services/Sorcha.Tenant.Service/Services/ServiceAuthService.cs` (+ prominent startup log in `Program.cs`/extension; note in code that `/rotate-secret` becomes inert by construction when flag on)
+- [X] T032 [US3] Checkpoint: Tenant test project green; refusal error text matches `contracts/service-auth-mtls.md`
 
 ## Phase 6: User Story 4 — expiry observability (P3)
 

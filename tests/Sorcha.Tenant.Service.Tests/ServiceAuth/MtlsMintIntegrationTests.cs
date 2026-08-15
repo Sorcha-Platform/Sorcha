@@ -34,7 +34,7 @@ namespace Sorcha.Tenant.Service.Tests.ServiceAuth;
 /// production-shape override from <see cref="TenantServiceWebApplicationFactory"/> (in-memory
 /// stores, Testing environment) and adds ONLY the F191 listener configuration.
 /// </summary>
-public sealed class MtlsTenantFactory : TenantServiceWebApplicationFactory
+public class MtlsTenantFactory : TenantServiceWebApplicationFactory
 {
     public const string Installation = "test"; // must match base factory JwtSettings:InstallationName
 
