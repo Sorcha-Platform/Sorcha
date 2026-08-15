@@ -4,7 +4,7 @@
     "description": "Site Operative — completes repair work with photo evidence and delivery note"
   },
   "connection": {
-    "gatewayUrl": "http://localhost",
+    "gatewayUrl": "{{gatewayUrl}}",
     "registerId": "{{registerId}}",
     "credentials": {
       "email": "{{roles.contractor.email}}",
