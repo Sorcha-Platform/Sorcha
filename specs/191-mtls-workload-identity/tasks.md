@@ -80,7 +80,7 @@ restore). License header + file-scoped namespaces on every new file. `dotnet bui
 - [X] T037 [P] Update `.specify/MASTER-TASKS.md` (F191 entry 📋→🚧→✅ as appropriate) and add issue cross-reference #1420
 - [X] T038 Full gate: `dotnet build` (0 warnings in changed projects), affected test projects each green (WorkloadIdentity, Tenant, ServiceClients, Cli, ServiceDefaults), `scripts/check-secrets.ps1` green (no new material tracked), `scripts/check-dockerfile-version-args.ps1` green, `docker compose config` green
 - [X] T039 Local live smoke (pre-PR, seam discipline): `sorcha workload-ca init` against a scratch dir + run the T020 suite + start the local compose stack with generated certs and observe one real service acquire its token via the mTLS endpoint (log evidence) with golden secret path also still working; record evidence in PR body
-- [ ] T040 Create PR against master (branch `191-mtls-workload-identity`): spec/plan/contracts + implementation; PR body carries SC checklist w/ evidence, the coexistence-default statement, and the explicit post-merge n1 live-verification plan (SC-007: deploy → secretless service mints → AIAS golden path → flip DisableSharedSecrets → re-verify) per quickstart.md
+- [X] T040 Create PR against master (branch `191-mtls-workload-identity`): spec/plan/contracts + implementation; PR body carries SC checklist w/ evidence, the coexistence-default statement, and the explicit post-merge n1 live-verification plan (SC-007: deploy → secretless service mints → AIAS golden path → flip DisableSharedSecrets → re-verify) per quickstart.md
 
 ## Dependencies
 
