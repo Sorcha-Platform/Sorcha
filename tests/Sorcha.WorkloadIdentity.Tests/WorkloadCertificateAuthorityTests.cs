@@ -106,6 +106,20 @@ public class WorkloadCertificateAuthorityTests
     }
 
     [Fact]
+    public void IssueServiceCertificate_CarriesAuthorityKeyIdentifierMatchingIssuer()
+    {
+        // AKI→SKI binding is what lets OpenSSL chain-building pick the RIGHT root when the old
+        // and new CA share a subject DN during rotate-ca overlap (Linux-only failure without it).
+        using var ca = WorkloadCertificateAuthority.CreateCertificateAuthority("sorcha");
+        using var leaf = WorkloadCertificateAuthority.IssueServiceCertificate(
+            ca, SpiffeId.ForService("sorcha", "service-blueprint"), "blueprint-service");
+
+        var caSki = ca.Extensions.OfType<X509SubjectKeyIdentifierExtension>().Single().SubjectKeyIdentifier;
+        var leafAki = leaf.Extensions.OfType<X509AuthorityKeyIdentifierExtension>().Single();
+        Convert.ToHexString(leafAki.KeyIdentifier!.Value.Span).Should().Be(caSki);
+    }
+
+    [Fact]
     public void IssueServerCertificate_CarriesDnsSanAndServerAuthEku()
     {
         using var ca = WorkloadCertificateAuthority.CreateCertificateAuthority("sorcha");

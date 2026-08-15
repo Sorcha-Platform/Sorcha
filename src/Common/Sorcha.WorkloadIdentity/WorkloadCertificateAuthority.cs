@@ -161,6 +161,14 @@ public static class WorkloadCertificateAuthority
             new OidCollection { eku }, critical: false));
         request.CertificateExtensions.Add(san.Build());
         request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, critical: false));
+        // Authority Key Identifier is LOAD-BEARING for CA rotation, not just hygiene: during
+        // rotate-ca overlap the old and new roots share a subject DN, and OpenSSL-based chain
+        // building (Linux) selects its issuer candidate by subject — without AKI→SKI matching it
+        // can bind a leaf to the WRONG same-subject root and fail with NotSignatureValid.
+        // Windows CryptoAPI happens to tolerate this, so only Linux ever sees the failure.
+        request.CertificateExtensions.Add(
+            X509AuthorityKeyIdentifierExtension.CreateFromCertificate(
+                issuingCa, includeKeyIdentifier: true, includeIssuerAndSerial: false));
 
         var effectiveNotBefore = notBefore ?? (DateTimeOffset.UtcNow - ClockSkewAllowance);
         var effectiveNotAfter = notAfter ?? effectiveNotBefore.AddYears(validityYears);
