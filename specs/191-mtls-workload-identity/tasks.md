@@ -9,24 +9,24 @@ restore). License header + file-scoped namespaces on every new file. `dotnet bui
 
 ## Phase 1: Setup
 
-- [ ] T001 Create leaf library project `src/Common/Sorcha.WorkloadIdentity/Sorcha.WorkloadIdentity.csproj` (net10.0, nullable, BCL-only — NO new NuGet deps, no `<Version>` per §14) and add to `Sorcha.sln`
-- [ ] T002 Create test project `tests/Sorcha.WorkloadIdentity.Tests/Sorcha.WorkloadIdentity.Tests.csproj` (xUnit v3 + FluentAssertions, mirroring an existing Common test csproj) and add to `Sorcha.sln`
-- [ ] T003 [P] Add `config/workload-certs/` to `.gitignore` (joins `.env`/`docker/certs` per-deploy material precedent)
+- [X] T001 Create leaf library project `src/Common/Sorcha.WorkloadIdentity/Sorcha.WorkloadIdentity.csproj` (net10.0, nullable, BCL-only — NO new NuGet deps, no `<Version>` per §14) and add to `Sorcha.sln`
+- [X] T002 Create test project `tests/Sorcha.WorkloadIdentity.Tests/Sorcha.WorkloadIdentity.Tests.csproj` (xUnit v3 + FluentAssertions, mirroring an existing Common test csproj) and add to `Sorcha.sln`
+- [X] T003 [P] Add `config/workload-certs/` to `.gitignore` (joins `.env`/`docker/certs` per-deploy material precedent)
 
 ## Phase 2: Foundational (blocks all user stories)
 
 **Library primitives every story consumes — each is TDD: test file first, RED, then implement.**
 
-- [ ] T004 [P] Tests for SPIFFE id build/parse/reject in `tests/Sorcha.WorkloadIdentity.Tests/SpiffeIdTests.cs` (round-trip; Ordinal full-URI equality; reject non-spiffe scheme, wrong path shape, empty domain; trust domain lowercased)
-- [ ] T005 [P] Implement `src/Common/Sorcha.WorkloadIdentity/SpiffeId.cs` (`spiffe://{installation}/service/{clientId}` build/parse/equality)
-- [ ] T006 [P] Tests for issuance in `tests/Sorcha.WorkloadIdentity.Tests/WorkloadCertificateAuthorityTests.cs` (CA: P-256 self-signed, CA=true pathlen 0, ~5y; leaf: CA-signed, URI SAN = SpiffeId, DNS SAN, EKU clientAuth, ~2y; server cert: EKU serverAuth, DNS SAN; PFX round-trip with password)
-- [ ] T007 Implement `src/Common/Sorcha.WorkloadIdentity/WorkloadCertificateAuthority.cs` using BCL `CertificateRequest` (pattern precedent: Tenant `Trust/X509CertificateBuilder.cs` — do NOT reference that project; this is a separate trust rail per research D4)
-- [ ] T008 [P] Tests for chain validation in `tests/Sorcha.WorkloadIdentity.Tests/WorkloadTrustBundleTests.cs` — the refusal truth table: valid leaf→OK; other-CA leaf→refused; expired→refused; not-yet-valid→refused; multi-root bundle accepts leaves of BOTH roots (rotation overlap); single-root bundle refuses old-root leaf
-- [ ] T009 Implement `src/Common/Sorcha.WorkloadIdentity/WorkloadTrustBundle.cs` (PEM bundle load; `X509Chain` with `CustomRootTrust` + `X509RevocationMode.NoCheck`; validation helper usable from both Kestrel callback and tests)
-- [ ] T010 [P] Tests for loading + inventory in `tests/Sorcha.WorkloadIdentity.Tests/WorkloadCertificateLoaderTests.cs` (PFX by path; base64 blob; wrong password / missing file ⇒ typed exception naming the source — fail-fast contract FR-009) and `WorkloadCertificateInventoryTests.cs` (ok/expiring/expired classification vs threshold)
-- [ ] T011 [P] Implement `src/Common/Sorcha.WorkloadIdentity/WorkloadCertificateLoader.cs` (VerifierCertificate path-or-base64 pattern) and `src/Common/Sorcha.WorkloadIdentity/WorkloadCertificateInventory.cs`
-- [ ] T012 [P] Implement `src/Common/Sorcha.WorkloadIdentity/WorkloadIdentityConfig.cs` — canonical config-key constants per `contracts/config-keys.md` (client keys, Tenant `ServiceAuth:Mtls:*`, `ServiceAuth:DisableSharedSecrets`, `WorkloadIdentity:ExpiryWarningDays`) + the default 8-principal client_id→DNS map (verify verifier hostname `sorcha-verifier` against docker-compose.yml while here)
-- [ ] T013 Checkpoint: `dotnet build` clean; `dotnet test tests/Sorcha.WorkloadIdentity.Tests` green; every guard that never ran RED mutation-checked (weaken CustomRootTrust to system roots; skip expiry; case-insensitive SpiffeId compare) with the failing test named in the commit message
+- [X] T004 [P] Tests for SPIFFE id build/parse/reject in `tests/Sorcha.WorkloadIdentity.Tests/SpiffeIdTests.cs` (round-trip; Ordinal full-URI equality; reject non-spiffe scheme, wrong path shape, empty domain; trust domain lowercased)
+- [X] T005 [P] Implement `src/Common/Sorcha.WorkloadIdentity/SpiffeId.cs` (`spiffe://{installation}/service/{clientId}` build/parse/equality)
+- [X] T006 [P] Tests for issuance in `tests/Sorcha.WorkloadIdentity.Tests/WorkloadCertificateAuthorityTests.cs` (CA: P-256 self-signed, CA=true pathlen 0, ~5y; leaf: CA-signed, URI SAN = SpiffeId, DNS SAN, EKU clientAuth, ~2y; server cert: EKU serverAuth, DNS SAN; PFX round-trip with password)
+- [X] T007 Implement `src/Common/Sorcha.WorkloadIdentity/WorkloadCertificateAuthority.cs` using BCL `CertificateRequest` (pattern precedent: Tenant `Trust/X509CertificateBuilder.cs` — do NOT reference that project; this is a separate trust rail per research D4)
+- [X] T008 [P] Tests for chain validation in `tests/Sorcha.WorkloadIdentity.Tests/WorkloadTrustBundleTests.cs` — the refusal truth table: valid leaf→OK; other-CA leaf→refused; expired→refused; not-yet-valid→refused; multi-root bundle accepts leaves of BOTH roots (rotation overlap); single-root bundle refuses old-root leaf
+- [X] T009 Implement `src/Common/Sorcha.WorkloadIdentity/WorkloadTrustBundle.cs` (PEM bundle load; `X509Chain` with `CustomRootTrust` + `X509RevocationMode.NoCheck`; validation helper usable from both Kestrel callback and tests)
+- [X] T010 [P] Tests for loading + inventory in `tests/Sorcha.WorkloadIdentity.Tests/WorkloadCertificateLoaderTests.cs` (PFX by path; base64 blob; wrong password / missing file ⇒ typed exception naming the source — fail-fast contract FR-009) and `WorkloadCertificateInventoryTests.cs` (ok/expiring/expired classification vs threshold)
+- [X] T011 [P] Implement `src/Common/Sorcha.WorkloadIdentity/WorkloadCertificateLoader.cs` (VerifierCertificate path-or-base64 pattern) and `src/Common/Sorcha.WorkloadIdentity/WorkloadCertificateInventory.cs`
+- [X] T012 [P] Implement `src/Common/Sorcha.WorkloadIdentity/WorkloadIdentityConfig.cs` — canonical config-key constants per `contracts/config-keys.md` (client keys, Tenant `ServiceAuth:Mtls:*`, `ServiceAuth:DisableSharedSecrets`, `WorkloadIdentity:ExpiryWarningDays`) + the default 8-principal client_id→DNS map (verify verifier hostname `sorcha-verifier` against docker-compose.yml while here)
+- [X] T013 Checkpoint: `dotnet build` clean; `dotnet test tests/Sorcha.WorkloadIdentity.Tests` green; every guard that never ran RED mutation-checked (weaken CustomRootTrust to system roots; skip expiry; case-insensitive SpiffeId compare) with the failing test named in the commit message
 
 ## Phase 3: User Story 1 — cert-bound token mint (P1, MVP)
 
