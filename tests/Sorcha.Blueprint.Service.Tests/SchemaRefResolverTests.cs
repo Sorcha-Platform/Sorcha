@@ -52,6 +52,39 @@ public class SchemaRefResolverTests
     }
 
     [Fact]
+    public void Flatten_DropsTheComponentsOwnIdentityKeywords()
+    {
+        // $id and $schema identify the PRIMITIVE AS A DOCUMENT. Once its body is spliced into a
+        // property site of a different document they no longer identify anything — but they are not
+        // merely redundant, they are harmful: JSON Schema implementations register every identified
+        // subschema they parse in a process-wide registry, so two blueprints that inline the same
+        // primitive collide. On n1 the Validator refused every AssuredIdentity submission with
+        // VAL_SCHEMA_005 "Malformed JSON schema ... Overwriting registered schemas is not
+        // permitted" — a blueprint that was not malformed, named as the culprit (#1427).
+        //
+        // The identifier is also what a reader would use to resolve a $ref INTO this subtree; there
+        // is nothing left to resolve once the content is inlined.
+        _repo.Upsert(PostalAddressUri, BuildPostalAddress());
+
+        var consumer = JsonNode.Parse($$"""
+            {
+              "type": "object",
+              "properties": {
+                "address": { "$ref": "{{PostalAddressUri}}" }
+              }
+            }
+            """)!;
+
+        var flattened = _sut.Flatten(consumer);
+
+        var address = flattened["properties"]!["address"]!.AsObject();
+        address.ContainsKey("$id").Should().BeFalse("an inlined component no longer identifies a document");
+        address.ContainsKey("$schema").Should().BeFalse("the dialect is declared by the host schema, not the inlined fragment");
+        // The constraints must survive — dropping identity must not drop meaning.
+        address["properties"]!["line1"]!["type"]!.GetValue<string>().Should().Be("string");
+    }
+
+    [Fact]
     public void Flatten_DoesNotMutateInputTree()
     {
         _repo.Upsert(PostalAddressUri, BuildPostalAddress());
