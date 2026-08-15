@@ -48,7 +48,7 @@ public static class WorkloadMtlsExtensions
         var serverCertificate = WorkloadCertificateLoader.Load(
             serverCertSource!,
             configuration[WorkloadIdentityConfig.MtlsServerCertificatePassword]);
-        var trustBundle = WorkloadTrustBundle.LoadFromFile(bundleSource!);
+        var trustBundle = WorkloadTrustBundle.Resolve(bundleSource!);
 
         var mtlsPort = int.TryParse(configuration[WorkloadIdentityConfig.MtlsPort], out var configuredPort)
             ? configuredPort

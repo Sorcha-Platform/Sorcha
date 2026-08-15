@@ -133,4 +133,35 @@ public class WorkloadTrustBundleTests
 
         act.Should().Throw<WorkloadCertificateLoadException>().WithMessage($"*{missing}*");
     }
+
+    [Fact]
+    public void Resolve_AcceptsFilePath_InlinePem_AndBase64Pem()
+    {
+        // The three delivery shapes: a mounted file, inline PEM (config value), and base64 PEM
+        // (the .env / compose env-var delivery model — no bind mounts, no junk-dir traps).
+        var (ca, _) = IssuePair("sorcha", "service-blueprint", "blueprint-service");
+        var pem = WorkloadTrustBundle.ExportBundlePem(new[] { ca });
+
+        var path = Path.Combine(Path.GetTempPath(), $"bundle-{Guid.NewGuid():N}.pem");
+        File.WriteAllText(path, pem);
+        try
+        {
+            WorkloadTrustBundle.Resolve(path).Roots.Should().ContainSingle(r => r.Thumbprint == ca.Thumbprint);
+            WorkloadTrustBundle.Resolve(pem).Roots.Should().ContainSingle(r => r.Thumbprint == ca.Thumbprint);
+            var base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(pem));
+            WorkloadTrustBundle.Resolve(base64).Roots.Should().ContainSingle(r => r.Thumbprint == ca.Thumbprint);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Resolve_UnusableSource_Throws()
+    {
+        var act = () => WorkloadTrustBundle.Resolve("definitely-not-a-path-pem-or-base64");
+
+        act.Should().Throw<WorkloadCertificateLoadException>();
+    }
 }

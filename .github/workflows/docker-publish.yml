@@ -39,7 +39,7 @@ jobs:
       - name: Detect changed services
         id: detect
         run: |
-          ALL_SERVICES='["blueprint-service","wallet-service","register-service","tenant-service","peer-service","validator-service","api-gateway","mcp-server","ui-web","haip-service","wallet-pwa","verifier"]'
+          ALL_SERVICES='["blueprint-service","wallet-service","register-service","tenant-service","peer-service","validator-service","api-gateway","mcp-server","ui-web","haip-service","wallet-pwa","verifier","cli"]'
 
           if [ "${{ github.event.inputs.force_publish_all }}" == "true" ]; then
             echo "Force publishing all services"
@@ -89,6 +89,8 @@ jobs:
           # wallet-pwa + verifier both ProjectReference Sorcha.UI.Components.User.
           SERVICE_PATHS["wallet-pwa"]="src/Apps/Sorcha.Wallet.Pwa/ src/Apps/Sorcha.UI/Sorcha.UI.Components.User/"
           SERVICE_PATHS["verifier"]="src/Apps/Sorcha.Verifier/ src/Apps/Sorcha.UI/Sorcha.UI.Components.User/"
+          # F191: the CLI image exists so SDK-less hosts can run `sorcha workload-ca` from the installer.
+          SERVICE_PATHS["cli"]="src/Apps/Sorcha.Cli/"
 
           DIFF_FILES=$(git diff --name-only HEAD~1 HEAD)
 
@@ -149,6 +151,7 @@ jobs:
           DOCKERFILES["haip-service"]="src/Services/Sorcha.Haip.Service/Dockerfile"
           DOCKERFILES["wallet-pwa"]="src/Apps/Sorcha.Wallet.Pwa/Dockerfile"
           DOCKERFILES["verifier"]="src/Apps/Sorcha.Verifier/Dockerfile"
+          DOCKERFILES["cli"]="src/Apps/Sorcha.Cli/Dockerfile"
           echo "dockerfile=${DOCKERFILES[${{ matrix.service }}]}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx

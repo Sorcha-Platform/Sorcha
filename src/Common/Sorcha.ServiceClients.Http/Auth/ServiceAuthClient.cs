@@ -78,7 +78,7 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
                     $"Certificate mode requires '{WorkloadIdentityConfig.TrustBundle}' (workload CA bundle) to pin the token endpoint's server certificate.");
             }
 
-            var trustBundle = WorkloadTrustBundle.LoadFromFile(bundleSource);
+            var trustBundle = WorkloadTrustBundle.Resolve(bundleSource);
             var mtlsAddress = configuration[WorkloadIdentityConfig.MtlsTokenAddress]
                 ?? WorkloadIdentityConfig.DefaultMtlsTokenAddress;
 

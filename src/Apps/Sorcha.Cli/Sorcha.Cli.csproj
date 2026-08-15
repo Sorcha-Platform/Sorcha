@@ -79,6 +79,7 @@
     <ProjectReference Include="..\..\Common\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Wallet.Contracts\Sorcha.Wallet.Contracts.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Tenant.Models\Sorcha.Tenant.Models.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.WorkloadIdentity\Sorcha.WorkloadIdentity.csproj" />
   </ItemGroup>
 
 </Project>

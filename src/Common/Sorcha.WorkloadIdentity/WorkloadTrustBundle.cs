@@ -74,6 +74,38 @@ public sealed class WorkloadTrustBundle
     }
 
     /// <summary>
+    /// Resolves a bundle from any supported configuration shape: an existing file path, inline
+    /// PEM content, or base64-encoded PEM (the env-var delivery model — certificates travel in
+    /// `.env` like every other per-deploy credential, avoiding bind-mount traps).
+    /// </summary>
+    /// <exception cref="WorkloadCertificateLoadException">The source matches no supported shape.</exception>
+    public static WorkloadTrustBundle Resolve(string source)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+            throw new WorkloadCertificateLoadException("Workload trust bundle source is empty.");
+
+        if (File.Exists(source))
+            return LoadFromFile(source);
+
+        if (source.Contains("BEGIN CERTIFICATE", StringComparison.Ordinal))
+            return FromPem(source);
+
+        try
+        {
+            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(source));
+            if (decoded.Contains("BEGIN CERTIFICATE", StringComparison.Ordinal))
+                return FromPem(decoded);
+        }
+        catch (FormatException)
+        {
+            // fall through to the diagnostic below
+        }
+
+        throw new WorkloadCertificateLoadException(
+            "Workload trust bundle source is neither an existing file, inline PEM, nor base64-encoded PEM.");
+    }
+
+    /// <summary>
     /// Validates that a presented certificate chains to one of the bundled roots and is within
     /// its validity period. Suitable for both Kestrel's client-certificate validation callback
     /// and outbound server-certificate pinning.
