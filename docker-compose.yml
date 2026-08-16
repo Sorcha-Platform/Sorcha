@@ -219,6 +219,12 @@ services:
       OTEL_SERVICE_NAME: blueprint-service
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
+      # Issue #1447: the status-list base URLs are SIGNED into every issued credential, so
+      # they must be this deployment's public origin — never a placeholder. Set PUBLIC_ORIGIN
+      # per deploy (n1 overrides these two keys directly in docker-compose.n1.yml). The
+      # default is deployment-local HTTPS: the Wallet Service refuses non-HTTPS status URLs.
+      StatusList__BaseUrl: ${PUBLIC_ORIGIN:-https://localhost}/api/v1/credentials/status-lists
+      StatusList__IetfBaseUrl: ${PUBLIC_ORIGIN:-https://localhost}/api/v1/credentials/ietf-status-lists
       # AI Provider configuration (Anthropic Claude API)
       AIProvider__ApiKey: ${ANTHROPIC_API_KEY:-}
       AIProvider__Model: claude-sonnet-4-5-20250929

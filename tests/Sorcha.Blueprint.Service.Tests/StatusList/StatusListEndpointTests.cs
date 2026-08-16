@@ -178,6 +178,9 @@ public class StatusListEndpointTests
             listId,
             _statusListManagerMock.Object,
             _configuration,
+            new Sorcha.Blueprint.Service.Configuration.StatusListUrls.Resolved(
+                "https://test.example/api/v1/credentials/status-lists",
+                "https://test.example/api/v1/credentials/ietf-status-lists"),
             CancellationToken.None
         ]);
         return await (Task<IResult>)result!;

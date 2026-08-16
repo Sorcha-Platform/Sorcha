@@ -674,6 +674,12 @@ builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.TemplateSeed
 // blueprints/schemas/ into the unified schema index, serving both UI and AI tools.
 
 // Add Status List Manager (039-verifiable-presentations)
+// Issue #1447: resolve the status-list base URLs ONCE at startup — fails fast in
+// Production/Staging when unset, and in every environment on the sorcha.example
+// placeholder. The URL is signed into each issued credential and unfixable after.
+builder.Services.AddSingleton(
+    Sorcha.Blueprint.Service.Configuration.StatusListUrls.Resolve(
+        builder.Configuration, builder.Environment.EnvironmentName));
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.IStatusListManager,
     Sorcha.Blueprint.Service.Services.StatusListManager>();
 
