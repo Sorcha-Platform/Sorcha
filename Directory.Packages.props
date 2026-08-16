@@ -8,10 +8,9 @@
     <PackageVersion Include="Anthropic.SDK" Version="5.10.0" />
     <PackageVersion Include="Azure.Communication.Email" Version="1.1.0" />
     <PackageVersion Include="Microsoft.Bcl.Memory" Version="10.0.11" />
-    <!-- MCP 2.x is a MAJOR bump — held at 1.4.1 (2026-08-16 audit); tracked for a dedicated upgrade PR. -->
-    <PackageVersion Include="ModelContextProtocol" Version="1.4.1" />
-    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="1.4.1" />
-    <!-- .NET Aspire — Aspire 13.4.x transitively requires MCP ≥ 1.3.0; MCP itself is on 1.4.1. -->
+    <PackageVersion Include="ModelContextProtocol" Version="2.2.0" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
+    <!-- .NET Aspire — Aspire 13.4.x transitively requires MCP ≥ 1.3.0; MCP itself is on 2.2.0. -->
     <PackageVersion Include="Aspire.Hosting.AppHost" Version="13.4.6" />
     <PackageVersion Include="Aspire.Hosting.MongoDB" Version="13.4.6" />
     <PackageVersion Include="Aspire.Hosting.PostgreSQL" Version="13.4.6" />
