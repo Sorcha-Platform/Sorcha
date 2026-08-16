@@ -14,14 +14,11 @@ public class StatusListManagerTests
 
     public StatusListManagerTests()
     {
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["StatusList:BaseUrl"] = "https://test.example/api/v1/credentials/status-lists"
-            })
-            .Build();
+        var urls = new Sorcha.Blueprint.Service.Configuration.StatusListUrls.Resolved(
+            "https://test.example/api/v1/credentials/status-lists",
+            "https://test.example/api/v1/credentials/ietf-status-lists");
 
-        _manager = new StatusListManager(_loggerMock.Object, config);
+        _manager = new StatusListManager(_loggerMock.Object, urls);
     }
 
     // ===== GetOrCreateListAsync Tests =====

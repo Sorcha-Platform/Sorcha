@@ -617,6 +617,23 @@ public static class CredentialEndpoints
             });
         }
 
+        // Issue #1447: sorcha.example is the codebase's reserved placeholder host. Every
+        // deployment that never configured StatusList:BaseUrl signed this dead URL into
+        // its credentials, making FailClosed revocation permanently unpassable. The
+        // Blueprint Service now fails fast on the placeholder at startup; this is the
+        // last line of defense at the signing seam for any other caller.
+        if (!string.IsNullOrWhiteSpace(request.StatusListUrl)
+            && Uri.TryCreate(request.StatusListUrl, UriKind.Absolute, out var statusListHostUri)
+            && statusListHostUri.Host.Equals("sorcha.example", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest(new
+            {
+                error = "statusListUrl points at the reserved placeholder host sorcha.example, " +
+                        "which can never serve a status list — configure the deployment's public " +
+                        "origin (StatusList:BaseUrl) instead (issue #1447)"
+            });
+        }
+
         if (request.StatusListIndex.HasValue && request.StatusListIndex.Value < 0)
         {
             return Results.BadRequest(new

@@ -70,13 +70,12 @@ public class StatusListManager : IStatusListManager, IDisposable
 
     public StatusListManager(
         ILogger<StatusListManager> logger,
-        IConfiguration configuration,
+        Sorcha.Blueprint.Service.Configuration.StatusListUrls.Resolved urls,
         IDistributedCache? cache = null)
     {
         _logger = logger;
         _cache = cache;
-        _baseUrl = configuration.GetValue<string>("StatusList:BaseUrl")
-            ?? "https://sorcha.example/api/v1/credentials/status-lists";
+        _baseUrl = urls.BaseUrl;
     }
 
     /// <inheritdoc />

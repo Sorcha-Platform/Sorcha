@@ -72,14 +72,14 @@ public static class StatusListEndpoints
         string listId,
         IStatusListManager statusListManager,
         IConfiguration configuration,
+        Sorcha.Blueprint.Service.Configuration.StatusListUrls.Resolved urls,
         CancellationToken cancellationToken)
     {
         var list = await statusListManager.GetListAsync(listId, cancellationToken);
         if (list == null)
             return Results.NotFound(new { error = $"Status list '{listId}' not found" });
 
-        var baseUrl = configuration.GetValue<string>("StatusList:BaseUrl")
-            ?? "https://sorcha.example/api/v1/credentials/status-lists";
+        var baseUrl = urls.BaseUrl;
 
         // Return W3C BitstringStatusListCredential format
         var response = new
@@ -111,6 +111,7 @@ public static class StatusListEndpoints
         IStatusListManager statusListManager,
         IIetfTokenStatusListSerializer serializer,
         IConfiguration configuration,
+        Sorcha.Blueprint.Service.Configuration.StatusListUrls.Resolved urls,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -125,9 +126,7 @@ public static class StatusListEndpoints
             return Results.NotFound(new { error = $"Status list '{listId}' bitstring not available" });
 
         // Build the full sub URL per IETF Token Status List spec
-        var ietfBaseUrl = configuration.GetValue<string>("StatusList:IetfBaseUrl")
-            ?? "https://sorcha.example/api/v1/credentials/ietf-status-lists";
-        var subUrl = $"{ietfBaseUrl}/{listId}";
+        var subUrl = $"{urls.IetfBaseUrl}/{listId}";
 
         // Signing key: configurable for production, ephemeral fallback for dev.
         // The ephemeral key fallback is intentional for pre-release — no startup validation

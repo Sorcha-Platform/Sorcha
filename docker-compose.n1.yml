@@ -24,6 +24,10 @@ services:
     environment:
       <<: *jwt-env
       AIProvider__ApiKey: ${ANTHROPIC_API_KEY:-}
+      # Issue #1447: signed into every issued credential — must be n1's public origin
+      # (same rationale as Haip__IssuerUrl below).
+      StatusList__BaseUrl: https://n1.sorcha.dev/api/v1/credentials/status-lists
+      StatusList__IetfBaseUrl: https://n1.sorcha.dev/api/v1/credentials/ietf-status-lists
 
   wallet-service:
     image: sorchadev/wallet-service:latest
