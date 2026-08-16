@@ -177,9 +177,8 @@
     <!-- Console -->
     <PackageVersion Include="ReadLine" Version="2.0.1" />
     <!-- HTTP Client -->
-    <!-- Refit 12-15 are MAJOR bumps — held at 11.0.1 (2026-08-16 audit); tracked for a dedicated upgrade PR. -->
-    <PackageVersion Include="Refit" Version="11.0.1" />
-    <PackageVersion Include="Refit.HttpClientFactory" Version="11.0.1" />
+    <PackageVersion Include="Refit" Version="15.1.0" />
+    <PackageVersion Include="Refit.HttpClientFactory" Version="15.1.0" />
     <!-- OpenAPI -->
     <PackageVersion Include="Scalar.AspNetCore" Version="2.16.20" />
     <!-- Email Templates. Bumped 5.12.0 → 7.2.3 — 5.12.0 carries NU1904 CRITICAL (GHSA-5wr9-m6jw-xx44)
