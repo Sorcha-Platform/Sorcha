@@ -211,11 +211,10 @@
     <PackageVersion Include="Testcontainers.MongoDb" Version="4.14.0" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.14.0" />
     <PackageVersion Include="Testcontainers.Redis" Version="4.14.0" />
-    <!-- Testing - xUnit. xunit.v3 4.0 + runner 4.0 are MAJOR bumps across ~50 test projects — held (2026-08-16 audit); tracked for a dedicated upgrade PR. -->
-    <PackageVersion Include="xunit" Version="2.9.3" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
-    <PackageVersion Include="xunit.v3" Version="3.2.2" />
-    <PackageVersion Include="xunit.v3.extensibility.core" Version="3.2.2" />
+    <!-- Testing - xUnit (v2 "xunit" pin removed 2026-08-16 — zero referencing projects) -->
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
+    <PackageVersion Include="xunit.v3" Version="4.0.0" />
+    <PackageVersion Include="xunit.v3.extensibility.core" Version="4.0.0" />
     <!-- YAML -->
     <PackageVersion Include="YamlDotNet" Version="18.1.0" />
     <!-- Reverse Proxy -->

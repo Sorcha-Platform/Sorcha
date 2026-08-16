@@ -79,9 +79,11 @@ jobs:
           SORCHA_MULTINODE: "1"
           SORCHA_TEST_JWT: ${{ steps.jwt.outputs.token }}
         run: |
-          dotnet test tests/Sorcha.Integration.Tests/Sorcha.Integration.Tests.csproj \
-              --filter "Category=MultiNode" \
-              --logger "console;verbosity=normal"
+          # MTP-mode dotnet test (global.json opts in; xunit.v3 4.x / MTP 2.x dropped the
+          # VSTest target on .NET 10 SDK): --project replaces the bare path, and the
+          # xunit trait filter replaces VSTest --filter / --logger.
+          dotnet test --project tests/Sorcha.Integration.Tests/Sorcha.Integration.Tests.csproj \
+              --filter-trait "Category=MultiNode"
 
       - name: Capture stack logs on failure
         if: failure()
