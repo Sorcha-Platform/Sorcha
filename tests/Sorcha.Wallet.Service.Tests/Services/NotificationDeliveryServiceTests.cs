@@ -484,7 +484,7 @@ public class NotificationDeliveryServiceTests
         _mockRateLimiter
             .Setup(r => r.TryAcquireAsync(TestUserId, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new RedisConnectionException(
-                ConnectionFailureType.UnableToResolvePhysicalConnection, "Connection lost"));
+                ConnectionFailureType.UnableToResolvePhysicalConnection, CommandFlags.None, "Connection lost"));
 
         var act = () => CallDeliverAsync();
 
@@ -501,7 +501,7 @@ public class NotificationDeliveryServiceTests
                 It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<double>(),
                 It.IsAny<SortedSetWhen>(), It.IsAny<CommandFlags>()))
             .ThrowsAsync(new RedisConnectionException(
-                ConnectionFailureType.UnableToResolvePhysicalConnection, "Connection lost"));
+                ConnectionFailureType.UnableToResolvePhysicalConnection, CommandFlags.None, "Connection lost"));
 
         var act = () => CallDeliverAsync();
 
