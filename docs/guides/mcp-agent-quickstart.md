@@ -15,7 +15,7 @@ the bottom).
 | Option | Command |
 |---|---|
 | Self-hosted (your own Docker stack) | Follow the [one-line installer](../../README.md#try-it-in-one-line) or [`docs/quickstart.md`](../quickstart.md) first — you need a running gateway at `http://localhost` before anything below works. |
-| Shared sandbox | `https://n1.sorcha.dev` — a live, public, periodically-wiped demo node. No setup required, but see [`SECURITY.md`](../../SECURITY.md) before you put anything sensitive through it. |
+| Shared sandbox | `https://n1.sorcha.dev` — a live, public, periodically-wiped demo node. No setup required, but see [`SECURITY.md`](https://github.com/Sorcha-Platform/Sorcha/blob/master/SECURITY.md) before you put anything sensitive through it. |
 
 The examples below use `http://localhost` for a self-hosted stack. Swap in `https://n1.sorcha.dev` (or
 your own node's origin) throughout.
@@ -59,7 +59,7 @@ REST call.
 `POST /api/service-auth/token` endpoint only accepts the `password` and `refresh_token` grant types.
 `client_credentials` service-token minting is deliberately **not** reachable from outside the
 platform — it moved to an internal-only route after a real external-facing signing-oracle finding
-(issue #1397, see [`SECURITY.md`](../../SECURITY.md)). If your agent needs to act as a specific
+(issue #1397, see [`SECURITY.md`](https://github.com/Sorcha-Platform/Sorcha/blob/master/SECURITY.md)). If your agent needs to act as a specific
 workflow participant, it authenticates as that participant's human-owned (or agent-operated) account
 with a password, exactly like a person would.
 
