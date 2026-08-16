@@ -388,7 +388,8 @@ public class PeerService : BackgroundService
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Stopping peer service");
-        _internalCts.Cancel();
+        // Host teardown can race StopAsync against Dispose — a disposed CTS must not throw here.
+        try { _internalCts.Cancel(); } catch (ObjectDisposedException) { }
         await base.StopAsync(cancellationToken);
     }
 
@@ -397,8 +398,16 @@ public class PeerService : BackgroundService
     /// </summary>
     public override void Dispose()
     {
-        _internalCts?.Cancel();
-        _internalCts?.Dispose();
+        // Idempotent: the host may dispose hosted services more than once, and Cancel()
+        // on an already-disposed CTS throws ObjectDisposedException.
+        if (!_disposed)
+        {
+            _disposed = true;
+            try { _internalCts?.Cancel(); } catch (ObjectDisposedException) { }
+            _internalCts?.Dispose();
+        }
         base.Dispose();
     }
+
+    private bool _disposed;
 }

@@ -6,17 +6,13 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <!--
-      Issue #818: tests/Directory.Build.props forces Microsoft.Testing.Platform on every test
-      project, which is correct for the xunit.v3 suite. This project is NUnit + NUnit3TestAdapter
-      (VSTest) and has no MTP runner, so under forced MTP a filtered "dotnet test" run (e.g.
-      "FullyQualifiedName~X") matched nothing and exited 0: a silent false-positive in which an
-      unconditional Assert.Fail "passed". Opt back out to VSTest dispatch so a filtered
-      "dotnet test" enumerates and runs NUnit tests correctly. CI does not run this project via
-      "dotnet test" (it is in nuget-ci.yml's INFRA skip-list, needs browsers/Docker), so this
-      only affects local filtered runs.
+      The repo's global.json opts "dotnet test" into MTP mode (required by xunit.v3 4.x /
+      MTP 2.x on the .NET 10 SDK), and MTP mode errors on any VSTest-only project. This
+      project is NUnit, so it enables NUnit's MTP runner (NUnit3TestAdapter 6.x) instead of
+      the former VSTest opt-out. That opt-out existed for issue #818 — under adapter 5.x a
+      forced-MTP filtered run silently matched nothing — which the real MTP runner resolves.
     -->
-    <UseMicrosoftTestingPlatformRunner>false</UseMicrosoftTestingPlatformRunner>
-    <TestingPlatformDotnetTestSupport>false</TestingPlatformDotnetTestSupport>
+    <EnableNUnitRunner>true</EnableNUnitRunner>
   </PropertyGroup>
 
   <ItemGroup>

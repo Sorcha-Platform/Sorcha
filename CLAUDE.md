@@ -602,11 +602,14 @@ docker-compose run mcp-server --jwt-token <token> # Run MCP server with JWT auth
 # .NET Aspire
 dotnet run --project src/Apps/Sorcha.AppHost      # Start with Aspire
 
-# Build & Test
+# Build & Test — "dotnet test" runs in Microsoft.Testing.Platform (MTP) mode, opted in via
+# global.json (required by xunit.v3 4.x on the .NET 10 SDK). VSTest-style args no longer apply.
 dotnet restore && dotnet build                    # Build solution
-dotnet test                                       # Run all tests
-dotnet test --filter "FullyQualifiedName~Blueprint"  # Filtered tests
-dotnet test --collect:"XPlat Code Coverage"       # With coverage
+dotnet test                                       # Run all tests (MTP mode)
+dotnet test --project tests/X/X.csproj            # One project
+dotnet test --filter-class "*BlueprintTests*"     # Filtered (xunit MTP filters: --filter-class/-method/-namespace/-trait)
+# Coverage: the old --collect:"XPlat Code Coverage" (VSTest/coverlet collector) does not run
+# under MTP mode — use the coverage-analysis skill / CI coverage jobs instead.
 
 # Code Quality
 dotnet format                                     # Format code
