@@ -33,7 +33,7 @@ poking at it.
     critique, anything that doesn't fit a bug report but is still worth us hearing.
 - **Security vulnerabilities → do NOT use Issues or Discussions.** Use GitHub's private
   vulnerability reporting (Security tab → "Report a vulnerability"). See
-  [`SECURITY.md`](../../SECURITY.md) for what's in scope and what to expect.
+  [`SECURITY.md`](https://github.com/Sorcha-Platform/Sorcha/blob/master/SECURITY.md) for what's in scope and what to expect.
 
 ## What we're looking for
 
@@ -55,7 +55,7 @@ Also genuinely useful, roughly in order of how much we can act on it fast:
 3. Terminology or documentation that reads as internal-only or unexplained to someone with zero
    context on the codebase.
 4. Anything that looks like a security or trust-model gap — see the "in scope" list in
-   [`SECURITY.md`](../../SECURITY.md) before deciding whether it's a public Discussion/Issue or a
+   [`SECURITY.md`](https://github.com/Sorcha-Platform/Sorcha/blob/master/SECURITY.md) before deciding whether it's a public Discussion/Issue or a
    private security report.
 
 ## What's demo-grade right now
@@ -72,7 +72,7 @@ how" is worth more than the abstract description on that page.
 
 If you're testing against the shared public sandbox at `n1.sorcha.dev`: it's genuinely public,
 shared with other testers, and periodically wiped. Don't put real data or secrets through it —
-see [`SECURITY.md`](../../SECURITY.md) for the full scope statement.
+see [`SECURITY.md`](https://github.com/Sorcha-Platform/Sorcha/blob/master/SECURITY.md) for the full scope statement.
 
 ## Thanks
 

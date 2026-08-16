@@ -93,7 +93,7 @@ whether a `full-replica` subscription was ever requested before concluding repli
 
 n1 is the platform's shared public demo node. It is periodically reset — genesis re-ceremony, full data
 wipe — as part of normal operation, and it is shared with other testers. See
-[`SECURITY.md`](../../SECURITY.md) for the full scope statement: no production secrets, no expectation
+[`SECURITY.md`](https://github.com/Sorcha-Platform/Sorcha/blob/master/SECURITY.md) for the full scope statement: no production secrets, no expectation
 of data privacy or durability on n1.
 
 ### Pre-release schema policy: no upgrade path yet
@@ -133,5 +133,5 @@ as evidence for anything security- or correctness-critical, not just a green bui
 ## If you find something this page doesn't mention
 
 That's useful information on its own — either the gap wasn't known, or it's known but not documented
-here yet. See [`SECURITY.md`](../../SECURITY.md) for anything security-relevant, or open a regular
+here yet. See [`SECURITY.md`](https://github.com/Sorcha-Platform/Sorcha/blob/master/SECURITY.md) for anything security-relevant, or open a regular
 GitHub issue otherwise.
