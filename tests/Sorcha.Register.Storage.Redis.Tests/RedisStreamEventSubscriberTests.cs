@@ -80,6 +80,8 @@ public class RedisStreamEventSubscriberTests
                 It.IsAny<int?>(),
                 It.IsAny<bool>(),
                 It.IsAny<TimeSpan?>(),
+                It.IsAny<int?>(),
+                It.IsAny<int?>(),
                 It.IsAny<CommandFlags>()))
             .ReturnsAsync(Array.Empty<RedisStream>());
     }
@@ -94,6 +96,8 @@ public class RedisStreamEventSubscriberTests
                 It.IsAny<int?>(),
                 It.IsAny<bool>(),
                 It.IsAny<TimeSpan?>(),
+                It.IsAny<int?>(),
+                It.IsAny<int?>(),
                 It.IsAny<CommandFlags>()))
             .ReturnsAsync(() =>
             {
@@ -172,7 +176,10 @@ public class RedisStreamEventSubscriberTests
                 It.IsAny<RedisValue>(),
                 It.IsAny<bool>(),
                 It.IsAny<CommandFlags>()))
-            .ThrowsAsync(new RedisServerException("BUSYGROUP Consumer Group name already exists"));
+            // SER007: RedisErrorKind is [Experimental] in 3.1; the only non-obsolete ctor requires it.
+#pragma warning disable SER007
+            .ThrowsAsync(new RedisServerException(RedisErrorKind.Unknown, CommandFlags.None, "BUSYGROUP Consumer Group name already exists"));
+#pragma warning restore SER007
 
         SetupStreamReadEmpty();
 
@@ -308,6 +315,8 @@ public class RedisStreamEventSubscriberTests
                 It.IsAny<int?>(),
                 It.IsAny<bool>(),
                 It.IsAny<TimeSpan?>(),
+                It.IsAny<int?>(),
+                It.IsAny<int?>(),
                 It.IsAny<CommandFlags>()))
             .ReturnsAsync(() => { Interlocked.Increment(ref callCount); return Array.Empty<RedisStream>(); });
 

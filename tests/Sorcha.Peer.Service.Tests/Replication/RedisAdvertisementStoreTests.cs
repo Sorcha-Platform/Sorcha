@@ -101,7 +101,7 @@ public class RedisAdvertisementStoreTests
         _mockDb.Setup(db => db.StringSetAsync(
                 It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<Expiration>(),
                 It.IsAny<ValueCondition>(), It.IsAny<CommandFlags>()))
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Redis down"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, CommandFlags.None, "Redis down"));
 
         var ad = new LocalRegisterAdvertisement
         {
@@ -207,7 +207,7 @@ public class RedisAdvertisementStoreTests
     public async Task RemoveLocalAsync_RedisUnavailable_DoesNotThrow()
     {
         _mockDb.Setup(db => db.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "down"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, CommandFlags.None, "down"));
 
         var act = () => _store.RemoveLocalAsync("reg-1");
         await act.Should().NotThrowAsync();
@@ -259,7 +259,7 @@ public class RedisAdvertisementStoreTests
     public async Task GetAllLocalAsync_RedisUnavailable_ReturnsEmpty()
     {
         _mockDb.Setup(db => db.SetMembersAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "down"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, CommandFlags.None, "down"));
 
         var results = await _store.GetAllLocalAsync();
         results.Should().BeEmpty();

@@ -120,7 +120,7 @@ public sealed class CitizenPresentationLogReporterTests
         _db.Setup(d => d.StringSetAsync(
                 It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
                 It.IsAny<TimeSpan?>(), It.IsAny<When>()))
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "down"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, CommandFlags.None, "down"));
         var entry = Entry();
 
         var accepted = await _sut.ReportAsync(PlatformUserId, [entry]);

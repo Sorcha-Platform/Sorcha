@@ -196,8 +196,8 @@
     <PackageVersion Include="Sodium.Core" Version="1.4.1" />
     <!-- Console UI -->
     <PackageVersion Include="Spectre.Console" Version="0.57.2" />
-    <!-- Redis. 3.x is a MAJOR bump (backplane, caches, Lua consumers) — held at 2.13.17 (2026-08-16 audit); tracked for a dedicated upgrade PR. -->
-    <PackageVersion Include="StackExchange.Redis" Version="2.13.17" />
+    <!-- Redis -->
+    <PackageVersion Include="StackExchange.Redis" Version="3.1.13" />
     <!-- CLI -->
     <PackageVersion Include="System.CommandLine" Version="2.0.11" />
     <!-- JWT -->

@@ -974,7 +974,7 @@ public class TransactionPoolPollerTests
         var transaction = CreateValidTransaction("tx-1");
 
         _mockDatabase.Setup(x => x.KeyExistsAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, CommandFlags.None, "Connection refused"));
 
         // Act
         var result = await poller.SubmitTransactionAsync("register-1", transaction);
@@ -990,7 +990,7 @@ public class TransactionPoolPollerTests
         var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
 
         _mockDatabase.Setup(x => x.SortedSetPopAsync(It.IsAny<RedisKey>(), It.IsAny<Order>(), It.IsAny<CommandFlags>()))
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, CommandFlags.None, "Connection refused"));
 
         // Act
         var result = await poller.PollTransactionsAsync("register-1", 10);
@@ -1006,7 +1006,7 @@ public class TransactionPoolPollerTests
         var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
 
         _mockDatabase.Setup(x => x.ListLengthAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, CommandFlags.None, "Connection refused"));
 
         // Act
         var result = await poller.GetUnverifiedCountAsync("register-1");
@@ -1022,7 +1022,7 @@ public class TransactionPoolPollerTests
         var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
 
         _mockDatabase.Setup(x => x.KeyExistsAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, CommandFlags.None, "Connection refused"));
 
         // Act
         var result = await poller.ExistsAsync("register-1", "tx-1");
@@ -1038,7 +1038,7 @@ public class TransactionPoolPollerTests
         var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
 
         _mockDatabase.Setup(x => x.ListRemoveAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<long>(), It.IsAny<CommandFlags>()))
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, CommandFlags.None, "Connection refused"));
 
         // Act
         var result = await poller.RemoveTransactionAsync("register-1", "tx-1");
@@ -1062,7 +1062,7 @@ public class TransactionPoolPollerTests
             It.IsAny<long>(),
             It.IsAny<long>(),
             It.IsAny<CommandFlags>()))
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, CommandFlags.None, "Connection refused"));
 
         // Act
         var result = await poller.CleanupExpiredAsync("register-1");
@@ -1090,7 +1090,7 @@ public class TransactionPoolPollerTests
             It.IsAny<long>(),
             It.IsAny<Order>(),
             It.IsAny<CommandFlags>()))
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, CommandFlags.None, "Connection refused"));
 
         // Act
         var stats = await poller.GetStatsAsync("register-1");

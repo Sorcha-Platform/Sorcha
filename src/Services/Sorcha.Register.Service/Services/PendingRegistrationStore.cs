@@ -74,15 +74,12 @@ public class PendingRegistrationStore : IPendingRegistrationStore
 
         var key = RedisKeyPrefix + registerId;
 
-        // Get and delete atomically using a transaction
-        var tran = _database.CreateTransaction();
-        var getTask = tran.StringGetAsync(key);
-        var delTask = tran.KeyDeleteAsync(key);
-        var committed = tran.Execute();
+        // Get and delete atomically in a single GETDEL round trip
+        var value = _database.StringGetDelete(key);
 
-        if (committed && getTask.Result.HasValue)
+        if (value.HasValue)
         {
-            registration = JsonSerializer.Deserialize<PendingRegistration>((string)getTask.Result!);
+            registration = JsonSerializer.Deserialize<PendingRegistration>((string)value!);
             _logger.LogDebug("Removed pending registration for ID {RegisterId}", registerId);
             return true;
         }
