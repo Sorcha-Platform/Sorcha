@@ -106,12 +106,49 @@ public sealed class WalletCredentialRecord
             IssuedAt = IssuedAt,
             ExpiresAt = ExpiresAt,
             RawToken = RawToken ?? string.Empty,
-            Status = Status ?? "Active",
+            Status = NormaliseStatus(Status),
             RegisterId = RegisterId,
             StatusListUrl = StatusListUrl,
             StatusListIndex = StatusListIndex,
             DisplayConfigJson = DisplayConfigJson
         };
+    }
+
+    /// <summary>
+    /// Translate the wallet's wire spelling of a credential status into the PascalCase form
+    /// <see cref="CredentialIssuanceResult.Status"/> documents (<c>Active</c>, <c>Suspended</c>,
+    /// <c>Revoked</c>, <c>Expired</c>, <c>Consumed</c>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The wallet serialises <c>CredentialStatus</c> through <c>SorchaJson.Options</c>, whose enum
+    /// converter is <c>JsonNamingPolicy.KebabCaseLower</c> — so the wire carries <c>"active"</c> and
+    /// <c>"pending-acceptance"</c>, not <c>"Active"</c> and <c>"PendingAcceptance"</c>.
+    /// </para>
+    /// <para>
+    /// Passing that through unchanged fails the lifecycle gate
+    /// <c>Status is not ("Active" or "Suspended")</c>, which is an exact, case-sensitive match: an
+    /// Active credential is refused with <i>"Credential must be in Active or Suspended state to
+    /// revoke"</i> while every surface shows it as active. That was the SECOND defect behind #1475
+    /// and stayed hidden because the first one (the read shape) meant the gate was never reached.
+    /// </para>
+    /// <para>
+    /// Normalising here rather than relaxing the gate is deliberate. The gate is a real
+    /// authorisation decision — <c>pending-acceptance</c> and <c>revoked</c> must keep failing it —
+    /// so it should compare canonical values, and translating a wire representation into the
+    /// target type's documented contract is exactly what a mapping layer is for.
+    /// </para>
+    /// </remarks>
+    private static string NormaliseStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status)) return "Active";
+
+        // Already PascalCase (no separator, leading capital) — leave it alone.
+        if (!status.Contains('-') && char.IsUpper(status[0])) return status;
+
+        var segments = status.Split('-', StringSplitOptions.RemoveEmptyEntries);
+        return string.Concat(segments.Select(s =>
+            char.ToUpperInvariant(s[0]) + s[1..].ToLowerInvariant()));
     }
 
     /// <summary>
