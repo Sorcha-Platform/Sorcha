@@ -162,7 +162,7 @@ try {
     $allOrgs = Invoke-SorchaApi -Method GET `
         -Uri "$($sorchaEnv.TenantUrl)/platform/organizations?page=1&pageSize=50" `
         -Headers $sysAdmin.Headers
-    $items = if ($allOrgs.items) { $allOrgs.items } else { @($allOrgs) }
+    $items = Resolve-SorchaCollection -Response $allOrgs -PropertyName 'items'
     $existing = $items | Where-Object { $_.subdomain -eq $fcSubdomain } | Select-Object -First 1
     if (-not $existing) { throw "Could not create or find Forestry Certification org" }
     $fcOrgId = $existing.id
@@ -196,7 +196,7 @@ try {
     $allOrgs = Invoke-SorchaApi -Method GET `
         -Uri "$($sorchaEnv.TenantUrl)/platform/organizations?page=1&pageSize=50" `
         -Headers $sysAdmin.Headers
-    $items = if ($allOrgs.items) { $allOrgs.items } else { @($allOrgs) }
+    $items = Resolve-SorchaCollection -Response $allOrgs -PropertyName 'items'
     $existing = $items | Where-Object { $_.subdomain -eq $htSubdomain } | Select-Object -First 1
     if (-not $existing) { throw "Could not create or find Highland Timber org" }
     $htOrgId = $existing.id

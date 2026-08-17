@@ -169,7 +169,7 @@ foreach ($org in $selectedOrgs) {
             # Org may already exist — look it up by listing platform orgs
             Write-WtInfo "  Organisation '$($org.name)' may already exist — looking up..."
             $allOrgsResponse = Invoke-SorchaApi -Method GET -Uri "$($env.TenantUrl)/platform/organizations?page=1&pageSize=50" -Headers $seedAdmin.Headers
-            $allOrgs = if ($allOrgsResponse.items) { $allOrgsResponse.items } else { @($allOrgsResponse) }
+            $allOrgs = Resolve-SorchaCollection -Response $allOrgsResponse -PropertyName 'items'
             $existing = $allOrgs | Where-Object { $_.subdomain -eq $subdomain }
             if ($existing) {
                 $orgId = $existing.id

@@ -232,6 +232,15 @@ try {
     Write-WtWarn "Public org subscribe to driving-licence register failed: $($_.Exception.Message)"
 }
 
+# The genesis governance roster seals asynchronously after New-SorchaRegister returns, and the
+# F142 publish gate reads it. Publishing before it seals fails with a 403 whose wording blames
+# the caller's publish-governance ROLE — nothing about the role is wrong. Confirmed live on n1
+# 2026-08-17: this setup 403'd on a fresh register and succeeded unchanged on the re-run.
+$null = Wait-SorchaRegisterRoster `
+    -GatewayUrl $sorchaEnv.GatewayUrl `
+    -RegisterId $register.RegisterId `
+    -Headers $councilSession.Headers
+
 # Wallet map: council "licensing-officer" participant; citizen is open
 # (late-bound at submission time).
 $walletMap = @{
