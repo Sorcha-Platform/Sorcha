@@ -295,15 +295,26 @@ public class GovernanceRosterService : IGovernanceRosterService
                 break;
         }
 
-        return new RegisterControlRecord
-        {
-            RegisterId = currentRoster.RegisterId,
-            Name = currentRoster.Name,
-            Description = currentRoster.Description,
-            CreatedAt = currentRoster.CreatedAt,
-            Attestations = updatedAttestations,
-            Metadata = currentRoster.Metadata
-        };
+        // A governance operation changes MEMBERSHIP. Everything else about the register — its crypto
+        // policy, its governance policy, its routing-attestation strength, its validator roster —
+        // must survive being governed.
+        //
+        // This was an object initializer naming six of the ten properties, so the other four were
+        // dropped by every enacted Add/Remove/Transfer. Nothing failed: the validator roster is
+        // resolved from the GENESIS docket by both of its readers, so dockets kept sealing. What
+        // moved was the governance rule itself — ValidateQuorumAsync reads the quorum formula from
+        // RegisterPolicy.Governance, so a consortium register set to Unanimous fell back to the
+        // StrictMajority default the moment its first change enacted, turning three-of-three into
+        // two-of-three with nothing reported. It also silently discarded the work of
+        // GovernanceEnactmentService.ApplyValidatorRosterChange, which updates Validators and then
+        // hands the record straight to this method.
+        //
+        // Cloned rather than re-listed so the next property added to RegisterControlRecord is
+        // carried forward on the day it is added. Guarded by
+        // ApplyOperationPreservesRegisterConfigurationTests, which asserts by reflection.
+        var updated = currentRoster.ShallowCopy();
+        updated.Attestations = updatedAttestations;
+        return updated;
     }
 
     private static void ValidateAddProposal(

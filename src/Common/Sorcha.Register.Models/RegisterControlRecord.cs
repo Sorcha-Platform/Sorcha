@@ -103,6 +103,33 @@ public class RegisterControlRecord
     public Dictionary<string, string>? Metadata { get; set; }
 
     /// <summary>
+    /// A field-for-field copy of this record, including every property.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Exists so a caller that changes <b>one</b> aspect of a control record cannot silently drop the
+    /// rest. <c>GovernanceRosterService.ApplyOperation</c> rebuilt the record with an object
+    /// initializer naming six of the ten properties, so every enacted Add, Remove and Transfer
+    /// discarded <see cref="CryptoPolicy"/>, <see cref="RegisterPolicy"/>,
+    /// <see cref="RoutingAttestation"/> and <see cref="Validators"/> — and because
+    /// <c>GetCurrentRosterAsync</c> takes the newest roster-bearing payload wholesale, they did not
+    /// come back. A register configured for <c>Unanimous</c> quorum quietly reverted to the
+    /// <c>StrictMajority</c> default on its first governance change.
+    /// </para>
+    /// <para>
+    /// The point of cloning rather than re-listing is that a property added to this type is carried
+    /// forward on the day it is added. A hand-written list rots in the same direction as the bug it
+    /// replaced.
+    /// </para>
+    /// <para>
+    /// Shallow by design: the nested policy sections are treated as immutable snapshots and shared,
+    /// which is what the previous code did with <see cref="Metadata"/>. Replace the whole section
+    /// rather than mutating one in place.
+    /// </para>
+    /// </remarks>
+    public RegisterControlRecord ShallowCopy() => (RegisterControlRecord)MemberwiseClone();
+
+    /// <summary>
     /// Validates that at least one owner attestation exists
     /// </summary>
     public bool HasOwnerAttestation()
