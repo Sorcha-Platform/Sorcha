@@ -1642,6 +1642,61 @@ function Invoke-SorchaActionPostWithCadenceRetry {
     }
 }
 
+function Wait-SorchaRegisterRoster {
+    <#
+    .SYNOPSIS
+        Block until a newly-created register's genesis governance roster has sealed.
+    .DESCRIPTION
+        The register's genesis control transaction — which records the owner governance roster
+        the F142 publish gate reads — seals ASYNCHRONOUSLY after New-SorchaRegister returns. A
+        blueprint publish issued immediately reads an EMPTY roster and fail-closes with
+
+            403 "You do not hold a publish-governance role (Owner, Admin, or Designer)
+                 on the target register."
+
+        That message reads like a ROLE problem, so it sends you looking at the caller's roles and
+        its `wallet_address` claim — both of which are usually fine. The actual cause is timing,
+        and it is load-bearing whether a walkthrough happens to have other work between creating
+        the register and publishing: ConstructionPermit and Forestry get away with it, while
+        TradeFinance and Strathcarron 403 every time.
+
+        Poll until at least one roster member exists before publishing.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$GatewayUrl,
+        [Parameter(Mandatory)][string]$RegisterId,
+        [Parameter(Mandatory)][hashtable]$Headers,
+        [int]$TimeoutSeconds = 60
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $started  = Get-Date
+    $polls    = 0
+
+    while ((Get-Date) -lt $deadline) {
+        $polls++
+        try {
+            $roster = Invoke-SorchaApi -Method GET `
+                -Uri "$GatewayUrl/api/registers/$RegisterId/governance/roster" `
+                -Headers $Headers
+            $count = @($roster.members).Count
+            if ($roster -and $roster.members -and $count -gt 0) {
+                $elapsed = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
+                Write-WtInfo "  Governance roster sealed ($count member(s)) in ${elapsed}s ($polls polls)"
+                return $true
+            }
+        } catch {
+            # The roster endpoint 404s until the genesis tx lands; keep polling.
+        }
+        Start-Sleep -Seconds 2
+    }
+
+    Write-WtWarn ("  Governance roster for register $RegisterId did not seal within ${TimeoutSeconds}s. " +
+                  "A blueprint publish now will 403 with a publish-governance-role message that " +
+                  "actually means the roster is still empty.")
+    return $false
+}
+
 function Resolve-SorchaCollection {
     <#
     .SYNOPSIS
