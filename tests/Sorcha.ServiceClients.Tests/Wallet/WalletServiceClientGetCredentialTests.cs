@@ -108,6 +108,46 @@ public class WalletServiceClientGetCredentialTests
         result.Claims.Should().ContainKey("scopeDeviceCount");
     }
 
+    [Theory]
+    // The wallet serialises CredentialStatus with KebabCaseLower, so these are the real wire values.
+    [InlineData("active", "Active")]
+    [InlineData("suspended", "Suspended")]
+    [InlineData("revoked", "Revoked")]
+    [InlineData("pending-acceptance", "PendingAcceptance")]
+    // Already-canonical values must survive untouched.
+    [InlineData("Active", "Active")]
+    [InlineData("PendingAcceptance", "PendingAcceptance")]
+    public async Task GetCredentialAsync_NormalisesTheStatusToTheDocumentedPascalCase(
+        string wireStatus, string expected)
+    {
+        // The lifecycle gate is `Status is not ("Active" or "Suspended")` — an exact, case-sensitive
+        // match. Passing the wire spelling through unchanged refuses an Active credential with
+        // "Credential must be in Active or Suspended state to revoke" while every surface shows it
+        // as active. That was the second defect behind #1475.
+        var payload = RealWalletReadPayload().Replace("\"status\":\"active\"", $"\"status\":\"{wireStatus}\"");
+        payload.Should().Contain(wireStatus, "the fixture must actually carry the status under test");
+
+        var client = BuildClient(_ => Respond(HttpStatusCode.OK, payload));
+
+        var result = await client.GetCredentialAsync(IssuerWallet, CredentialId);
+
+        result!.Status.Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task GetCredentialAsync_DoesNotMakeNonRevocableStatesLookRevocable()
+    {
+        // Normalisation must not flatten every state into something the gate accepts —
+        // pending-acceptance and revoked have to keep failing it.
+        var payload = RealWalletReadPayload().Replace("\"status\":\"active\"", "\"status\":\"pending-acceptance\"");
+        var client = BuildClient(_ => Respond(HttpStatusCode.OK, payload));
+
+        var result = await client.GetCredentialAsync(IssuerWallet, CredentialId);
+
+        (result!.Status is "Active" or "Suspended").Should().BeFalse(
+            "a credential the holder has not accepted is not revocable");
+    }
+
     [Fact]
     public async Task GetCredentialAsync_ReturnsNull_WhenTheWalletGenuinelyHasNoSuchCredential()
     {
