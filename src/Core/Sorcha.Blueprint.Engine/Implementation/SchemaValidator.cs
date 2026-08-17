@@ -112,7 +112,31 @@ public class SchemaValidator : ISchemaValidator
         // Deep-clone via round-trip so the caller's schema node is never mutated.
         var clone = JsonNode.Parse(schema.ToJsonString());
         StripInPlace(clone);
+        EnsureDialectDeclared(clone);
         return clone ?? new JsonObject();
+    }
+
+    /// <summary>The dialect every Sorcha core primitive declares.</summary>
+    private const string DefaultSchemaDialect = "https://json-schema.org/draft/2020-12/schema";
+
+    /// <summary>
+    /// Declares the dialect at the document root when the document does not declare one. Mirrors
+    /// <c>ValidationEngine.EnsureDialectDeclared</c> — read the rationale there.
+    /// </summary>
+    /// <remarks>
+    /// Without <c>$schema</c>, Json.Schema parses under a strict default where an unknown keyword is
+    /// fatal rather than an annotation. Since #1445 stopped inlined core primitives carrying their
+    /// own <c>$schema</c>, nothing else in a Sorcha action schema declares one — so a primitive with
+    /// a non-core keyword (<c>DateOfBirth.v1</c>'s <c>formatMaximum</c>) made the whole schema
+    /// unparseable. The two strip implementations must stay in lockstep or the submit path and the
+    /// validate path disagree about which blueprints are valid.
+    /// </remarks>
+    private static void EnsureDialectDeclared(JsonNode? node)
+    {
+        if (node is JsonObject obj && !obj.ContainsKey("$schema"))
+        {
+            obj["$schema"] = DefaultSchemaDialect;
+        }
     }
 
     private static void StripInPlace(JsonNode? node)
