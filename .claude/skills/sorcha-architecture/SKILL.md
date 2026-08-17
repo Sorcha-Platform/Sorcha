@@ -2750,6 +2750,73 @@ fixes it.
 counts two approvals while appearing to count three. Assert the expected count before comparing, or
 the test passes vacuously.
 
+### A roster member added by governance has NO KEY, and promoting one bricks the register
+
+`Add` puts a subject on the roster with `PublicKey = string.Empty` — both writers do
+(`GovernanceEnactmentService.ProjectRoster` and the Owner-override path in `Program.cs`). The
+comment says *"recorded when they first attest"*. **Nothing ever attests.** The only writers of a
+real attestation key in `src/` are the CLI genesis ceremony, `RegisterCreationOrchestrator` (genesis,
+from signed attestations), and `ApplyOperation`'s Transfer arm copying an existing one;
+`GovernanceProposalRequest` carries no target key.
+
+Roster authority is matched **by public key** (`RightsEnforcementService` →
+`GovernanceKeyMatcher.Matches`, and `TryDecode("")` is false), so an added member can neither sign a
+governance transaction nor cast a counting approval — its votes are excluded as
+`KeyNotTheRosterKey`. And `ApplyOperation`'s Transfer arm promotes the target **carrying its empty
+key**, so transferring ownership to an added member leaves a register whose Owner nobody can act as.
+`SelectSigner` prefers the Owner and `/propose` passes `preferredSubject: null`, so there is no route
+around it — the register is permanently ungovernable.
+
+**The failure is silent at the HTTP layer.** Live on n1 (2026-08-17): the promoted Owner's next
+proposal returned **200** and never sealed — `VAL_PERM_002: none of 1 signature(s) match a roster
+member`. Only the docket and the validator log show it. Issue **#1464**; it is why F189 US4's
+acceptance test cannot be performed on the system register (**#1400**).
+
+### The system register is proposable but NOT approvable
+
+Its roster has exactly one member — the ceremony Owner, `did:sorcha:genesis:…`, whose key is the
+node's `validator:*` system wallet. US4 (#1396) made that subject able to **sign a control
+transaction** server-side. It cannot **approve** one: `Transfer` is excluded from the Owner override
+(FR-010) so it needs quorum — which on a one-member roster is that member's own approval — but
+approvals are detached and produced **outside** the platform by design (R-014), and
+`/api/v1/wallets/{address}/sign` correctly refuses `validator:*` wallets to everything except the
+`validator-service` / `register-service` principals (#1397/#1424). Issue **#1465**.
+
+⚠ **Do not "unblock" this by minting a service token to sign the system wallet from a harness.** That
+is the #1397 oracle wearing a different hat, and it proves nothing about the governance surface.
+
+### A governance change must not rewrite the rule it is judged by
+
+`ApplyOperation` rebuilt `RegisterControlRecord` with an object initializer naming **six of its ten**
+properties, silently dropping `CryptoPolicy`, `RegisterPolicy`, `RoutingAttestation` and
+`Validators` on every enacted Add/Remove/Transfer — and `GetCurrentRosterAsync` takes the newest
+roster-bearing payload **wholesale**, so they did not come back.
+
+Nothing failed, because both readers of the validator roster (`RegisterLocalRelationshipService` and
+the peer `ValidatorKeyCache`) resolve it from the **genesis** docket. What moved was governance
+itself: `ValidateQuorumAsync` reads the quorum formula from `RegisterPolicy.Governance`, so **a
+register configured for `Unanimous` reverted to the `StrictMajority` default on its first governance
+change** — three-of-three quietly becoming two-of-three. It also discarded its own caller's work,
+since `ProjectRoster` applies a validator-roster change and then hands the record straight to it.
+
+Fixed in PR #1463 via `RegisterControlRecord.ShallowCopy()` — **clone, never re-list**, so the next
+property added to the type is carried forward on the day it is added. Guarded by
+`ApplyOperationPreservesRegisterConfigurationTests`, which asserts **by reflection**. Registers that
+already enacted a change keep the truncated roster; the ledger is immutable.
+
+### A node's seeded system blueprints are never updated
+
+`SeedBlueprintsIfMissingAsync` skips a blueprint that already **exists**, so redeploying does not
+refresh it: the image's catalogue at `/app/blueprints/templates/{id}.json` and the SSR's published
+copy drift apart with nothing checking. n1 served the pre-T054 `register-governance-v1` from its
+2026-08-07 genesis until 2026-08-17, and once SSR-ledger blueprint resolution went live that refused
+**every governance proposal on every register** with `VAL_SCHEMA_004` — behind a `202 Accepted`.
+
+**Republishing alone is not enough** — `BlueprintCache` is Redis-backed with an in-process L1. The
+remedy is three steps: `POST /api/system-register/publish` with the image's own catalogue body
+(extract via `docker cp`; the containers are chiseled and have no shell), then
+`redis-cli DEL sorcha:validator:blueprint:{id}`, then recreate the validator. Issue **#1466**.
+
 ### ⚠ R-006 — an approval proves custody, not organisational intent. NOT SOLVED.
 
 **Do not describe register governance as proving that an organisation approved something.** An
