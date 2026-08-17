@@ -2218,7 +2218,48 @@ public class ValidationEngine : IValidationEngine
     {
         var node = JsonNode.Parse(root.GetRawText());
         StripXPrefixedKeysRecursive(node);
+        EnsureDialectDeclared(node);
         return node?.ToJsonString() ?? "{}";
+    }
+
+    /// <summary>
+    /// The dialect a schema is evaluated under. 2020-12 is what every Sorcha core primitive declares
+    /// and what the engine has always evaluated against.
+    /// </summary>
+    private const string DefaultSchemaDialect = "https://json-schema.org/draft/2020-12/schema";
+
+    /// <summary>
+    /// Declares the JSON Schema dialect at the document root when the document does not declare one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Without a <c>$schema</c>, JsonSchema.Net parses under a strict default in which an unknown
+    /// keyword is FATAL, not an annotation. Sorcha action schemas never declare a dialect themselves,
+    /// so until #1445 the only declaration in the document was the one that rode in on an inlined
+    /// core primitive. #1445 correctly stopped copying a component's <c>$id</c> (it collides in the
+    /// process-wide registry) but took <c>$schema</c> with it — and <c>$schema</c> is not merely an
+    /// identity keyword, it selects the vocabulary.
+    /// </para>
+    /// <para>
+    /// The consequence was invisible until a blueprint inlined a primitive carrying a NON-CORE
+    /// keyword. <c>DateOfBirth.v1</c> carries <c>"formatMaximum": "today"</c> (a Sorcha token), so
+    /// every blueprint asking for a date of birth started failing
+    /// <c>VAL_SCHEMA_005 "Unknown keywords (formatMaximum) are disallowed for this dialect"</c> —
+    /// every submission refused, never sealed, behind an HTTP 202. Found on n1 2026-08-17.
+    /// </para>
+    /// <para>
+    /// Normalising here rather than in <c>SchemaRefResolver</c> is deliberate: a blueprint already
+    /// sealed on a ledger cannot be re-flattened, and the dialect a document is read under is an
+    /// evaluation concern rather than part of the signed content. An explicit declaration is never
+    /// overwritten — a schema that says which draft it is written in keeps it.
+    /// </para>
+    /// </remarks>
+    private static void EnsureDialectDeclared(JsonNode? node)
+    {
+        if (node is JsonObject obj && !obj.ContainsKey("$schema"))
+        {
+            obj["$schema"] = DefaultSchemaDialect;
+        }
     }
 
     private static void StripXPrefixedKeysRecursive(JsonNode? node)
