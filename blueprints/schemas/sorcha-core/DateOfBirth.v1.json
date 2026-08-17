@@ -3,7 +3,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "title": "Date of Birth",
-  "description": "A person's date of birth. The Sorcha formatMaximum token 'today' bounds the date picker to the past. NOTE: this bound is enforced by the RENDERER ONLY — formatMaximum has no server-side consumer, so a future date submitted directly to the API is accepted and sealed. Do not rely on it as a validation constraint (see issue #1469).",
+  "description": "A person's date of birth. 'format: date' IS enforced server-side by the validator (a malformed or non-calendar date is refused with VAL_SCHEMA_004). The Sorcha 'formatMaximum' token 'today' is NOT: it bounds the date picker in the renderer only, has no server-side consumer, and a future date submitted directly to the API is accepted and sealed. Treat the past-only bound as a UI affordance, not a validation constraint, and re-check it in your own action logic if it matters (see issue #1469).",
   "x-sections": [
     {
       "title": "Date of Birth",
