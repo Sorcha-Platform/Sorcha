@@ -7,6 +7,7 @@ using Json.Schema;
 using Sorcha.Blueprint.Engine.Caching;
 using Sorcha.Blueprint.Engine.Interfaces;
 using Sorcha.Blueprint.Engine.Models;
+using Sorcha.Blueprint.Models.Schemas;
 
 namespace Sorcha.Blueprint.Engine.Implementation;
 
@@ -56,6 +57,10 @@ public class SchemaValidator : ISchemaValidator
             // disallowed for this dialect". Mirrors ValidationEngine.StripCustomExtensionKeywords
             // on the validator side so both validation paths tolerate the same blueprint schemas.
             var strippedSchema = StripExtensionKeywords(schema);
+
+            // The stripped text names the Sorcha dialect, so it must be registered before
+            // FromText resolves it. Idempotent.
+            SorchaSchemaDialect.EnsureRegistered();
 
             // Parse the JSON Schema (cached — avoids re-parsing same schema)
             var jsonSchema = _schemaCache.GetOrAdd(strippedSchema, text => JsonSchema.FromText(text));
@@ -116,27 +121,34 @@ public class SchemaValidator : ISchemaValidator
         return clone ?? new JsonObject();
     }
 
-    /// <summary>The dialect every Sorcha core primitive declares.</summary>
-    private const string DefaultSchemaDialect = "https://json-schema.org/draft/2020-12/schema";
-
     /// <summary>
-    /// Declares the dialect at the document root when the document does not declare one. Mirrors
+    /// Declares the dialect a schema is READ under. Mirrors
     /// <c>ValidationEngine.EnsureDialectDeclared</c> — read the rationale there.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Without <c>$schema</c>, Json.Schema parses under a strict default where an unknown keyword is
     /// fatal rather than an annotation. Since #1445 stopped inlined core primitives carrying their
     /// own <c>$schema</c>, nothing else in a Sorcha action schema declares one — so a primitive with
     /// a non-core keyword (<c>DateOfBirth.v1</c>'s <c>formatMaximum</c>) made the whole schema
-    /// unparseable. The two strip implementations must stay in lockstep or the submit path and the
-    /// validate path disagree about which blueprints are valid.
+    /// unparseable.
+    /// </para>
+    /// <para>
+    /// The declared dialect is now Sorcha's 2020-12 superset, so <c>formatMaximum</c> /
+    /// <c>formatMinimum</c> are ENFORCED rather than ignored as annotations. The two
+    /// implementations must stay in lockstep or the submit path and the validate path disagree
+    /// about which payloads are valid — a bound enforced on one side only is worse than neither.
+    /// </para>
     /// </remarks>
     private static void EnsureDialectDeclared(JsonNode? node)
     {
-        if (node is JsonObject obj && !obj.ContainsKey("$schema"))
-        {
-            obj["$schema"] = DefaultSchemaDialect;
-        }
+        if (node is not JsonObject obj) return;
+
+        var declared = obj.TryGetPropertyValue("$schema", out var existing)
+            ? existing?.GetValue<string>()
+            : null;
+
+        obj["$schema"] = SorchaSchemaDialect.ResolveReadDialect(declared);
     }
 
     private static void StripInPlace(JsonNode? node)
