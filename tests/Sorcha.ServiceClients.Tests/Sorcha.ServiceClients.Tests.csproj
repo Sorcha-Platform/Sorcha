@@ -28,6 +28,15 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Common\Sorcha.ServiceClients\Sorcha.ServiceClients.csproj" />
     <ProjectReference Include="..\..\src\Common\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />
+    <!--
+      #1475: the credential read-shape contract test needs the PRODUCER type (CredentialEntity,
+      which the Wallet Service returns verbatim) as well as the consumer client. Referencing both
+      sides is a layering combination no production assembly may have — legitimate only in a test
+      project, and the same pattern Sorcha.Cli.ContractTests uses to pin CLI/server wire shapes.
+      Building the fixture from the real entity is the point: a hand-written JSON literal would
+      drift with the producer and prove nothing.
+    -->
+    <ProjectReference Include="..\..\src\Core\Sorcha.Wallet.Portable\Sorcha.Wallet.Portable.csproj" />
   </ItemGroup>
 
   <ItemGroup>

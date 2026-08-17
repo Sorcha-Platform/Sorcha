@@ -498,26 +498,46 @@ public class WalletServiceClient : IWalletServiceClient
         string credentialId,
         CancellationToken cancellationToken = default)
     {
-        try
-        {
-            await SetAuthHeaderAsync(cancellationToken);
+        await SetAuthHeaderAsync(cancellationToken);
 
-            var response = await _httpClient.GetAsync(
-                $"/api/v1/wallets/{walletAddress}/credentials/{credentialId}",
-                cancellationToken);
+        var response = await _httpClient.GetAsync(
+            $"/api/v1/wallets/{walletAddress}/credentials/{credentialId}",
+            cancellationToken);
 
-            if (!response.IsSuccessStatusCode)
-                return null;
-
-            return await response.Content.ReadFromJsonAsync<CredentialIssuanceResult>(
-                SorchaJson.Options, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to get credential {CredentialId} from wallet {WalletAddress}",
-                credentialId, walletAddress);
+        // Only a genuine 404 means "this wallet holds no such credential". Every other failure
+        // is an error about the LOOKUP, and must not be reported to the caller as absence:
+        // collapsing them all to null is what let issue #1475 present a deserialisation bug as a
+        // bodiless "credential not found" for a credential that plainly existed.
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return null;
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogError(
+                "Wallet returned {StatusCode} reading credential {CredentialId} from wallet {WalletAddress}: {Body}",
+                (int)response.StatusCode, credentialId, walletAddress, body);
+            throw new HttpRequestException(
+                $"Wallet returned {(int)response.StatusCode} reading credential '{credentialId}'.");
         }
+
+        // Read the STORED-credential shape, not the issuance shape — see WalletCredentialRecord.
+        // A mapping failure here throws rather than returning null, so it surfaces as an error
+        // about reading the credential instead of masquerading as the credential not existing.
+        var record = await response.Content.ReadFromJsonAsync<WalletCredentialRecord>(
+            SorchaJson.Options, cancellationToken);
+
+        var result = record?.ToIssuanceResult();
+        if (result is null)
+        {
+            _logger.LogError(
+                "Credential {CredentialId} in wallet {WalletAddress} could not be mapped from the wallet read shape.",
+                credentialId, walletAddress);
+            throw new InvalidOperationException(
+                $"Credential '{credentialId}' could not be mapped from the wallet response.");
+        }
+
+        return result;
     }
 
     public async Task<bool> UpdateCredentialStatusAsync(
