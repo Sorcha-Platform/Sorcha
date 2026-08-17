@@ -161,6 +161,21 @@ duplicate-YAML-key parse failure that takes the *whole* compose file down, as ha
 wallet-alone → import → up-rest ordering. Read the skill section before using it; it is more
 involved than Option A and the on-box script's numbered output is the authority, not this summary.
 
+> ⚠ **The widened window must be derived from the genesis age, and the seal gate must name the
+> genesis transaction. Both were wrong, and together they reported a broken node as healthy
+> (2026-08-17).** `n1-recover.sh` hard-coded `GenesisMaxAge=4 days`, written when the compiled-in
+> genesis was 3 days old. Ten days later `VAL_TIME_002` refused it — but the script's gate only
+> asked whether the earliest docket held at least one transaction, and by then the first
+> blueprint-seed publish had taken docket 0. The script printed `GENESIS SEALED`, restored the
+> 1-hour default, and left a node with no genesis in its ledger, no roster, and a trust anchor
+> that had never been established. Everything downstream looked fine: 16 healthy containers,
+> `/api/health` 200, blueprints publishing.
+>
+> The on-box script now sets a 3650-day window during the ceremony and waits for the genesis
+> `txId` read out of the genesis file itself, so neither fault can recur. **A fixed window
+> silently expires as the embedded genesis ages — never reintroduce one.** More generally: a
+> gate that would pass on a node that did the wrong thing is not a gate.
+
 **Ordering is load-bearing in both options:** wallet-service must come up **alone** and have the
 validator key imported into it via `/api/v1/wallets/system/recover` **before** register-service or
 validator-service start — otherwise those services auto-generate the wrong system wallet
@@ -175,14 +190,32 @@ org (network-bootstrap skill, Step 4).
 
 ### 3.4 Verify n1's genesis sealed before touching tiny
 
+⚠ **Check for the GENESIS TRANSACTION, not merely for a non-empty docket 0.** Counting transactions
+answers "did this node seal anything", which is true of a node whose genesis was *refused* and whose
+docket 0 was taken by the first blueprint-seed publish instead. That is not hypothetical — it
+happened on 2026-08-17 and the run reported success (see the trap below). Ask for the txId:
+
 ```bash
 ssh sorcha@51.105.7.135 'docker exec sorcha-mongodb mongosh -u sorcha -p sorcha_dev_password --authenticationDatabase admin --quiet --eval "
-db=db.getSiblingDB(\"sorcha_register_aebf26362e079087571ac0932d4db973\");
-db.dockets.find({}).sort({TimeStamp:1}).forEach(d=>print(\"State=\"+d.State+\" nTx=\"+(d.TransactionIds?d.TransactionIds.length:0)));"'
+var d=db.getSiblingDB(\"sorcha_register_aebf26362e079087571ac0932d4db973\");
+d.transactions.find({},{_id:0,TxId:1,DocketNumber:1,\"MetaData.TrackingData\":1}).forEach(function(t){
+  var td=(t.MetaData&&t.MetaData.TrackingData)||{};
+  print(\"d\"+(t.DocketNumber?t.DocketNumber.low:\"?\")+\"  \"+(td.Type==\"Genesis\"?\"GENESIS fp=\"+td.Fingerprint:(td.BlueprintId||\"-\")));});"'
 ```
 
-Docket 0 must show `nTx>=1` (the genesis control tx sealed into it). An empty docket 0 silently
-breaks `SyncOnly` replication for `tiny` — do not proceed to §3.5 until this is confirmed. Then:
+A correct bootstrap looks **exactly** like this — the genesis in docket 0, then the four seeds:
+
+```
+d0  GENESIS fp=d75e14004364867dae55f44330330edf
+d1  register-creation-v1
+d2  register-governance-v1
+d3  create-organisation-v1
+d4  join-private-register-v1
+```
+
+If `d0` is a blueprint and no `GENESIS` row exists, the genesis was rejected — **stop**, do not
+proceed to §3.5, and see the trap below. A genesis-less docket 0 silently breaks `SyncOnly`
+replication for `tiny`. Then:
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' https://n1.sorcha.dev/api/health   # expect 200
