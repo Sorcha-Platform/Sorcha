@@ -218,36 +218,78 @@ public class TrustEvaluator : ITrustEvaluator
                 : null;
         }
 
+        // EVERY reference is read before anything is decided. Returning on the first non-Valid
+        // answer would make the reported reason depend on the order the credential happens to list
+        // its entries in — a credential that is both suspended and revoked would report whichever
+        // came first. Revocation is terminal in both specifications, so it must win either way.
+        StatusReference? revokedRef = null;
+        StatusReference? suspendedRef = null;
+        var unresolved = false;
+
         foreach (var reference in references)
         {
-            var bit = await _statusChecker.CheckAsync(reference, ct).ConfigureAwait(false);
+            var status = await _statusChecker.CheckAsync(reference, ct).ConfigureAwait(false);
 
-            switch (bit)
+            switch (status)
             {
-                case StatusListBit.NotSet:
+                case CredentialStatusValue.Valid:
                     continue;
 
-                case StatusListBit.Set:
-                    // The purpose is named so an operator can tell a suspension from a revocation in
-                    // the log, even though both refuse and the failure reason cannot yet carry it.
-                    return TrustDecision.Reject(
-                        TrustFailureReason.Revoked,
-                        reference.Purpose is { Length: > 0 } purpose
-                            ? $"Credential status '{purpose}' is set."
-                            : "Credential is revoked or suspended.");
+                case CredentialStatusValue.Invalid:
+                    revokedRef ??= reference;
+                    continue;
+
+                case CredentialStatusValue.Suspended:
+                    suspendedRef ??= reference;
+                    continue;
 
                 default:
-                    if (issuer.RevocationPolicy == RevocationCheckPolicy.FailClosed)
-                    {
-                        return TrustDecision.Reject(TrustFailureReason.RevocationUnavailable,
-                            "Revocation status could not be resolved (fail-closed).");
-                    }
+                    unresolved = true;
                     continue;
             }
         }
 
+        // Precedence: a definite terminal status, then a definite reversible one, then "could not
+        // tell". A status we DID resolve always outranks one we did not — a credential known to be
+        // suspended is refused as suspended even if its revocation list was unreachable.
+        if (revokedRef is not null)
+        {
+            return TrustDecision.Reject(
+                TrustFailureReason.Revoked,
+                StatusMessage("revoked", revokedRef));
+        }
+
+        if (suspendedRef is not null)
+        {
+            return TrustDecision.Reject(
+                TrustFailureReason.Suspended,
+                StatusMessage("suspended", suspendedRef));
+        }
+
+        if (unresolved && issuer.RevocationPolicy == RevocationCheckPolicy.FailClosed)
+        {
+            return TrustDecision.Reject(TrustFailureReason.RevocationUnavailable,
+                "Revocation status could not be resolved (fail-closed).");
+        }
+
         return null;
     }
+
+    /// <summary>
+    /// Builds the refusal message: the plain status word first, then the list's declared purpose
+    /// where it has one so a log line stays diagnosable for a credential carrying several entries.
+    /// </summary>
+    /// <remarks>
+    /// The plain word is load-bearing, not decoration. Several downstream consumers pick their
+    /// decline reason by substring-matching this message (both <c>HaipPresentationConsumer</c>
+    /// copies, <c>SorchaWalletPresentationConsumer</c>), so a message that said only
+    /// "Credential status 'suspension' is set." — as #1495's did — contains neither "revoked" nor
+    /// "suspended" and matches nothing, silently falling through to VerifierError. Keep the word.
+    /// </remarks>
+    private static string StatusMessage(string statusWord, StatusReference? reference) =>
+        reference?.Purpose is { Length: > 0 } purpose
+            ? $"Credential is {statusWord} (status list purpose '{purpose}')."
+            : $"Credential is {statusWord}.";
 
     private static TrustPolicy NormalisePolicy(TrustPolicy? policy)
     {

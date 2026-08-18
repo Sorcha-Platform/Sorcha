@@ -73,7 +73,17 @@ public sealed class MdocPresentationVerifier
             result.HolderKeyVerified = verify.IsValid; // device-auth holder binding gates IsValid for mdoc
             result.X5cChainValid = verify.Trust?.DecidingSources.Any(s =>
                 s is TrustSourceKind.X509Tenant or TrustSourceKind.TrustList);
-            result.StatusCheckResult = verify.Trust?.FailureReason == TrustFailureReason.Revoked ? "Revoked" : null;
+            // Feature 192 — a switch, not the old equality-plus-ternary. That form silently mapped
+            // every non-revoked failure to null ("no status problem"), so adding Suspended to the
+            // enum would have made a suspended credential report NOTHING while still being refused
+            // — strictly worse than the revocation it used to claim, and green in CI.
+            result.StatusCheckResult = verify.Trust?.FailureReason switch
+            {
+                TrustFailureReason.Revoked => "Revoked",
+                TrustFailureReason.Suspended => "Suspended",
+                TrustFailureReason.RevocationUnavailable => "Unknown",
+                _ => null
+            };
 
             if (result.IsValid && requiredClaims is not null)
             {

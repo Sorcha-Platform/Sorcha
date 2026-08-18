@@ -197,6 +197,7 @@ public class CredentialVerifier : ICredentialVerifier
     {
         TrustFailureReason.SignatureInvalid => CredentialFailureReason.InvalidSignature,
         TrustFailureReason.Revoked => CredentialFailureReason.Revoked,
+        TrustFailureReason.Suspended => CredentialFailureReason.Suspended,
         TrustFailureReason.RevocationUnavailable => CredentialFailureReason.RevocationCheckUnavailable,
         // UntrustedIssuer / ChainInvalid / SourceUnavailable / InsufficientAssurance /
         // HolderBindingInvalid / IntegrityFailure / FormatUnsupported — the issuer is not accepted.

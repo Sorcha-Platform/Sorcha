@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
+using CredentialStatusValue = Sorcha.Blueprint.Engine.Credentials.CredentialStatusValue;
 using EngineCredentials = Sorcha.Blueprint.Engine.Credentials;
 
 namespace Sorcha.Haip.Service.Services;
@@ -38,40 +39,38 @@ public sealed class IetfTokenStatusListChecker : EngineCredentials.IStatusListCh
     /// <summary>
     /// Feature 135 (T023) — unified status seam. Adapts the IETF Token Status List check to the
     /// engine's <see cref="EngineCredentials.IStatusListChecker"/> so both verification paths read
-    /// revocation identically. Explicit implementation keeps the local <see cref="StatusListBit"/>
-    /// enum from clashing with the engine's identically-named type.
+    /// status identically.
     /// </summary>
-    async Task<EngineCredentials.StatusListBit> EngineCredentials.IStatusListChecker.CheckAsync(
-        EngineCredentials.StatusReference statusRef, CancellationToken cancellationToken)
+    /// <remarks>
+    /// Feature 192 removed the translation step that used to live here. There were two
+    /// identically-named <c>StatusListBit</c> enums — one local, one in the engine — and this
+    /// method mapped between them; both were tri-states, so the SUSPENDED value this checker had
+    /// just decoded had nowhere to go. The local enum is gone and the read path returns
+    /// <see cref="CredentialStatusValue"/> throughout, so there is nothing left to translate.
+    /// </remarks>
+    public Task<CredentialStatusValue> CheckAsync(
+        EngineCredentials.StatusReference statusRef, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(statusRef);
         if (string.IsNullOrWhiteSpace(statusRef.Uri))
-            return EngineCredentials.StatusListBit.Unknown;
+            return Task.FromResult(CredentialStatusValue.Unresolved);
 
-        var bit = await CheckBitAsync(statusRef.Uri, statusRef.Index, cancellationToken).ConfigureAwait(false);
-        return bit switch
-        {
-            StatusListBit.NotSet => EngineCredentials.StatusListBit.NotSet,
-            StatusListBit.Set => EngineCredentials.StatusListBit.Set,
-            _ => EngineCredentials.StatusListBit.Unknown
-        };
+        return CheckBitAsync(statusRef.Uri, statusRef.Index, cancellationToken);
     }
 
     /// <summary>
-    /// Returns <see cref="StatusListBit.NotSet"/> when the bit at
-    /// <paramref name="idx"/> is 0 (active), <see cref="StatusListBit.Set"/>
-    /// when it is 1 (revoked/suspended), or <see cref="StatusListBit.Unknown"/>
-    /// when the envelope cannot be fetched, verified, or decoded. The verifier
-    /// treats <c>Unknown</c> as a non-fatal status signal — the caller decides
-    /// whether to fail-open or fail-closed.
+    /// Reads the status of the entry at <paramref name="idx"/>, or
+    /// <see cref="CredentialStatusValue.Unresolved"/> when the envelope cannot be fetched,
+    /// verified, or decoded. The verifier treats Unresolved as a non-fatal signal — the caller
+    /// decides whether to fail-open or fail-closed.
     /// </summary>
-    public async Task<StatusListBit> CheckBitAsync(
+    public async Task<CredentialStatusValue> CheckBitAsync(
         string uri, int idx, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(uri))
-            return StatusListBit.Unknown;
+            return CredentialStatusValue.Unresolved;
         if (idx < 0)
-            return StatusListBit.Unknown;
+            return CredentialStatusValue.Unresolved;
 
         string jwt;
         try
@@ -86,14 +85,14 @@ public sealed class IetfTokenStatusListChecker : EngineCredentials.IStatusListCh
                 _logger.LogWarning(
                     "IETF status list fetch failed: {StatusCode} {ReasonPhrase} for {Uri}",
                     (int)response.StatusCode, response.ReasonPhrase, uri);
-                return StatusListBit.Unknown;
+                return CredentialStatusValue.Unresolved;
             }
             jwt = (await response.Content.ReadAsStringAsync(ct)).Trim();
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             _logger.LogWarning(ex, "IETF status list fetch errored for {Uri}", uri);
-            return StatusListBit.Unknown;
+            return CredentialStatusValue.Unresolved;
         }
 
         return ParseAndReadBit(jwt, idx);
@@ -102,14 +101,14 @@ public sealed class IetfTokenStatusListChecker : EngineCredentials.IStatusListCh
     /// <summary>
     /// Pure-function variant: decodes a signed IETF Token Status List JWT,
     /// verifies the signature against the embedded <c>jwk</c> header, and reads
-    /// the bit at <paramref name="idx"/>. Returns <see cref="StatusListBit.Unknown"/>
+    /// the entry at <paramref name="idx"/>. Returns <see cref="CredentialStatusValue.Unresolved"/>
     /// on any parse, signature, or index failure. Extracted for unit testing
     /// without an <see cref="HttpClient"/>.
     /// </summary>
-    internal static StatusListBit ParseAndReadBit(string jwt, int idx)
+    internal static CredentialStatusValue ParseAndReadBit(string jwt, int idx)
     {
         var parts = jwt.Split('.');
-        if (parts.Length != 3) return StatusListBit.Unknown;
+        if (parts.Length != 3) return CredentialStatusValue.Unresolved;
 
         JsonElement header;
         JsonElement payload;
@@ -122,36 +121,36 @@ public sealed class IetfTokenStatusListChecker : EngineCredentials.IStatusListCh
         }
         catch
         {
-            return StatusListBit.Unknown;
+            return CredentialStatusValue.Unresolved;
         }
 
         // Sanity-check typ — must be "statuslist+jwt".
         if (!header.TryGetProperty("typ", out var typEl)
             || !string.Equals(typEl.GetString(), "statuslist+jwt", StringComparison.Ordinal))
         {
-            return StatusListBit.Unknown;
+            return CredentialStatusValue.Unresolved;
         }
 
         if (!header.TryGetProperty("alg", out var algEl))
-            return StatusListBit.Unknown;
+            return CredentialStatusValue.Unresolved;
         var alg = algEl.GetString();
-        if (string.IsNullOrEmpty(alg)) return StatusListBit.Unknown;
+        if (string.IsNullOrEmpty(alg)) return CredentialStatusValue.Unresolved;
 
         // Verify the envelope signature using the embedded JWK header. Pre-x5c
         // dev posture — once spec 096 lands this should walk the x5c chain and
         // validate against the trust anchor.
         if (!header.TryGetProperty("jwk", out var jwkEl))
-            return StatusListBit.Unknown;
+            return CredentialStatusValue.Unresolved;
 
         var signingInput = Encoding.UTF8.GetBytes($"{parts[0]}.{parts[1]}");
         if (!VerifySignature(signingInput, signature, jwkEl, alg))
-            return StatusListBit.Unknown;
+            return CredentialStatusValue.Unresolved;
 
         // Decompress the zlib-packed bitstring and read the bit.
         if (!payload.TryGetProperty("status_list", out var statusList))
-            return StatusListBit.Unknown;
+            return CredentialStatusValue.Unresolved;
         if (!statusList.TryGetProperty("lst", out var lstEl))
-            return StatusListBit.Unknown;
+            return CredentialStatusValue.Unresolved;
         var bits = statusList.TryGetProperty("bits", out var bitsEl) && bitsEl.TryGetInt32(out var b)
             ? b : 1;
 
@@ -163,7 +162,7 @@ public sealed class IetfTokenStatusListChecker : EngineCredentials.IStatusListCh
         }
         catch
         {
-            return StatusListBit.Unknown;
+            return CredentialStatusValue.Unresolved;
         }
 
         // Multi-bit lists pack `bits` bits per entry. 1-bit lists are the common case.
@@ -221,41 +220,68 @@ public sealed class IetfTokenStatusListChecker : EngineCredentials.IStatusListCh
     }
 
     /// <summary>
-    /// Reads the bit at entry index <paramref name="idx"/> from a bitstring where
-    /// each entry takes <paramref name="bitsPerEntry"/> bits. Returns
-    /// <see cref="StatusListBit.Set"/> if any bit in the entry is set; otherwise
-    /// <see cref="StatusListBit.NotSet"/>.
+    /// Reads the STATUS VALUE of entry <paramref name="idx"/> from a bitstring where each entry
+    /// takes <paramref name="bitsPerEntry"/> bits, MSB-first both across and within bytes.
     /// </summary>
-    internal static StatusListBit ReadBit(byte[] raw, int idx, int bitsPerEntry)
+    /// <remarks>
+    /// <para>
+    /// Feature 192. This method used to return "set" if ANY bit in the entry was set, which made
+    /// <c>0x02</c> SUSPENDED and <c>0x01</c> INVALID indistinguishable BY CONSTRUCTION — the read
+    /// side threw away the distinction #1492 had just gone to the trouble of encoding correctly on
+    /// the write side. It now accumulates the entry's bits into its value and reports that.
+    /// </para>
+    /// <para>
+    /// The accumulation order mirrors <c>IetfStatusListPacker.PackTwoBit</c>, which writes the
+    /// high bit at <c>2i</c> and the low bit at <c>2i+1</c>, so the two round-trip.
+    /// </para>
+    /// <para>
+    /// A value the spec reserves for application-specific use (<c>0x03</c> and above) is reported
+    /// as <see cref="CredentialStatusValue.Unresolved"/>, NOT as a status. We genuinely cannot
+    /// interpret it, and "I could not tell" is the honest answer — the caller's fail-closed policy
+    /// then decides, which for the default FailClosed still refuses.
+    /// </para>
+    /// </remarks>
+    internal static CredentialStatusValue ReadBit(byte[] raw, int idx, int bitsPerEntry)
     {
-        if (bitsPerEntry <= 0) return StatusListBit.Unknown;
+        // The spec permits exactly these widths. Anything else means we have misread the envelope,
+        // and guessing a layout would invent a status for whichever entry we happened to land on.
+        if (bitsPerEntry is not (1 or 2 or 4 or 8))
+            return CredentialStatusValue.Unresolved;
 
         var startBit = (long)idx * bitsPerEntry;
         var endBit = startBit + bitsPerEntry;
-        if (endBit > (long)raw.Length * 8)
-            return StatusListBit.Unknown;
+        if (idx < 0 || endBit > (long)raw.Length * 8)
+            return CredentialStatusValue.Unresolved;
 
+        var value = 0;
         for (var bit = startBit; bit < endBit; bit++)
         {
             var byteIdx = (int)(bit / 8);
             var bitIdx = (int)(bit % 8);
             // IETF & W3C use MSB-first bit ordering within a byte.
-            if ((raw[byteIdx] & (1 << (7 - bitIdx))) != 0)
-                return StatusListBit.Set;
+            var isSet = (raw[byteIdx] & (1 << (7 - bitIdx))) != 0;
+            value = (value << 1) | (isSet ? 1 : 0);
         }
-        return StatusListBit.NotSet;
-    }
-}
 
-/// <summary>
-/// Result of reading a bit from a status list bitstring.
-/// </summary>
-public enum StatusListBit
-{
-    /// <summary>Bit read successfully and is 0 — credential is active.</summary>
-    NotSet = 0,
-    /// <summary>Bit read successfully and is 1 — credential is revoked or suspended.</summary>
-    Set = 1,
-    /// <summary>Status could not be resolved (fetch failed, signature invalid, etc.).</summary>
-    Unknown = 2,
+        return value switch
+        {
+            IetfStatusValue.Valid => CredentialStatusValue.Valid,
+            IetfStatusValue.Invalid => CredentialStatusValue.Invalid,
+            IetfStatusValue.Suspended => CredentialStatusValue.Suspended,
+            _ => CredentialStatusValue.Unresolved
+        };
+    }
+
+    /// <summary>
+    /// The IETF Token Status List status values this verifier understands. Mirrors the write-side
+    /// constants on <c>IetfStatusListPacker</c>, which lives in the Blueprint Service — the two
+    /// services do not share an assembly, so the values are pinned by
+    /// <c>IetfStatusValueReadTests</c> on each side rather than by a shared type.
+    /// </summary>
+    private static class IetfStatusValue
+    {
+        public const int Valid = 0x00;
+        public const int Invalid = 0x01;
+        public const int Suspended = 0x02;
+    }
 }

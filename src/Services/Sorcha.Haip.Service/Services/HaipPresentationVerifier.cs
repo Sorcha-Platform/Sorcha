@@ -272,6 +272,11 @@ public class HaipPresentationVerifier
     {
         if (decision.FailureReason == TrustFailureReason.Revoked)
             return "Revoked";
+        // Feature 192 — a suspension is reversible, so it must not be reported as the terminal
+        // status. This is a verifier-visible wire value: HaipPresentationConsumer.MapReason reads
+        // it back by string to pick the decline reason.
+        if (decision.FailureReason == TrustFailureReason.Suspended)
+            return "Suspended";
         if (decision.FailureReason == TrustFailureReason.RevocationUnavailable)
             return "Unknown";
         if (decision.IsTrusted && statusRef is not null)

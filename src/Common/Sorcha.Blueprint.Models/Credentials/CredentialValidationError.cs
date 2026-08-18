@@ -40,8 +40,14 @@ public enum CredentialFailureReason
     /// <summary>The credential has expired.</summary>
     Expired,
 
-    /// <summary>The credential has been revoked by the issuer.</summary>
+    /// <summary>The credential has been revoked by the issuer. Terminal — it cannot be reinstated.</summary>
     Revoked,
+
+    /// <summary>
+    /// The credential has been suspended by the issuer. Refused like a revocation, but the issuer
+    /// may lift it — so holder-facing copy must not use the terminal wording.
+    /// </summary>
+    Suspended,
 
     /// <summary>The credential's cryptographic signature is invalid.</summary>
     InvalidSignature,

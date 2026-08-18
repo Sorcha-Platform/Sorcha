@@ -138,10 +138,14 @@ public class SuspendedCredentialIsRefusedTests
     /// <summary>Answers per reference, so revocation and suspension can differ.</summary>
     private sealed class PerPurposeStatusChecker(bool revocationSet, bool suspensionSet) : IStatusListChecker
     {
-        public Task<StatusListBit> CheckAsync(StatusReference statusRef, CancellationToken ct = default)
+        public Task<CredentialStatusValue> CheckAsync(StatusReference statusRef, CancellationToken ct = default)
         {
-            var set = statusRef.Purpose == "suspension" ? suspensionSet : revocationSet;
-            return Task.FromResult(set ? StatusListBit.Set : StatusListBit.NotSet);
+            var isSuspension = statusRef.Purpose == "suspension";
+            var set = isSuspension ? suspensionSet : revocationSet;
+            if (!set) return Task.FromResult(CredentialStatusValue.Valid);
+            return Task.FromResult(isSuspension
+                ? CredentialStatusValue.Suspended
+                : CredentialStatusValue.Invalid);
         }
     }
 
