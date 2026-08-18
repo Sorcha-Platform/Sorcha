@@ -460,6 +460,34 @@ The endpoints are `POST /api/v1/credentials/{id}/{revoke|suspend|reinstate|refre
 `GetAndVerifyIssuer`, so a defect there kills the whole lifecycle surface at once — which is exactly
 what happened (#1475: every one of them returned a **bodiless 404** for credentials that existed).
 
+### Two status-list specs, and they disagree about suspension
+
+Sorcha serves both rails. They model suspension incompatibly, so one must be a projection —
+**W3C is what Sorcha stores; the IETF view is derived at serve time.**
+
+| | W3C Bitstring Status List | IETF Token Status List |
+|---|---|---|
+| suspension is… | a separate **list** with its own `statusPurpose` | a distinct **value** in one list |
+| encoding | 1 bit per entry | `bits` ∈ {1,2,4,8}; **≥2 required** for SUSPENDED |
+| values | bit set/unset, meaning from the list's purpose | `0x00` VALID, `0x01` INVALID, `0x02` SUSPENDED |
+
+W3C, verbatim: `revocation` "is not reversible"; `suspension` "is reversible". A credential may carry
+several `credentialStatus` entries with different purposes, and a verifier MUST raise
+`STATUS_VERIFICATION_ERROR` if the purpose it checks is absent from the list.
+
+**Two rules that follow, both learned the expensive way:**
+
+- **Never relabel a bit width — re-encode.** Declaring `bits: 2` is a claim about byte layout. Handing
+  a 1-bit array over while declaring 2 makes a reader take entry N from bits 2N..2N+1, so revoking
+  index 1 reports index 0 as not-valid: a status invented for a credential nobody touched.
+  `IetfStatusListPacker` projects the two W3C lists into a real 2-bit array.
+- **Revocation is terminal in BOTH specs.** Nothing may clear a revocation bit. A reinstate clears
+  suspension only, and a revocation list must IGNORE an `Active` event rather than un-revoke.
+
+And when folding status events from the ledger, decide the purpose by the **status word**, not by the
+list id the event names — events written before the purposes were split all name the revocation list,
+suspensions included.
+
 ### The state machine
 
 | Operation | Requires | Effect |
