@@ -352,25 +352,30 @@ public sealed class GovernanceEnactmentService : IGovernanceEnactmentService
         RegisterAttestation? newAttestation = null;
         if (operation.OperationType == GovernanceOperationType.Add)
         {
-            // #1464 — the key is DERIVED from the subject DID, not left empty. The old comment
-            // here said the key "is recorded when they first attest", but no attest path was ever
-            // built, so a governance-added member stayed unkeyed forever and could never sign.
+            // #1464 — DELIBERATELY LEFT EMPTY. An earlier fix derived this from the subject DID,
+            // on the reasoning that a classical ws1 address is Bech32 over [network][publicKey] so
+            // "the key IS the identity". That is true of the wallet's PRIMARY key — and governance
+            // does not use the primary key.
             //
-            // A classical ws1 address is Bech32 over [network][publicKey], so the key IS the
-            // identity: deriving it is a pure function of sealed proposal content and therefore
-            // deterministic across nodes — which is why this is done here rather than by resolving
-            // the key from a local participant registry, which would differ per node.
+            // A roster attestation records the organisation's SLOT-100 key
+            // (sorcha:register-attestation); GovernanceSigningService signs approvals there, and
+            // GovernanceKeyMatcher authorises by matching it. Proven live on n1 2026-08-18: for one
+            // wallet the address-derived key was VHWQB/… and the slot-100 key thfb6l9P… — different
+            // keys.
             //
-            // A ws2 (PQC) subject yields null and stays unkeyed on purpose: that address carries a
-            // HASH, and storing a hash here would never match a raw signature key. Promotion of an
-            // unkeyed member is refused by ApplyOperation, so it fails closed rather than silently.
-            var derivedKey = RosterKeyDerivation.TryDerivePublicKey(operation.TargetDid);
-
+            // So deriving produced a NON-EMPTY BUT WRONG key, which is worse than empty: an empty
+            // key fails loudly at the ApplyOperation guard below, whereas a wrong one passes every
+            // check and is excluded silently at tally time as KeyNotTheRosterKey. Reverted.
+            //
+            // The slot-100 key cannot be derived from the identity at all, and resolving it from a
+            // local wallet at enactment would break determinism (nodes that do not host that wallet
+            // would fold different bytes). It has to arrive IN the sealed proposal, proven by the
+            // target — see #1464.
             newAttestation = new RegisterAttestation
             {
                 Role = operation.TargetRole,
                 Subject = operation.TargetDid,
-                PublicKey = derivedKey ?? string.Empty,
+                PublicKey = string.Empty,
                 Signature = string.Empty,
                 Algorithm = SignatureAlgorithm.ED25519,
                 GrantedAt = operation.ProposedAt,

@@ -2498,15 +2498,14 @@ governanceGroup.MapPost("/propose", async (
     RegisterAttestation? newAttestation = null;
     if (operation.OperationType == GovernanceOperationType.Add)
     {
-        // #1464 — derive the key from the subject DID; see RosterKeyDerivation. Left empty only
-        // for subjects whose address cannot carry a key (ws2/PQC), where ApplyOperation's
-        // fail-closed guard then prevents the member being promoted to Owner.
+        // #1464 — left empty deliberately; see the note in GovernanceEnactmentService.ProjectRoster.
+        // Deriving from the DID yields the wallet's PRIMARY key, but governance matches the SLOT-100
+        // key, so a derived value is non-empty and wrong — which fails silently instead of loudly.
         newAttestation = new RegisterAttestation
         {
             Role = operation.TargetRole,
             Subject = operation.TargetDid,
-            PublicKey = Sorcha.Register.Service.Services.RosterKeyDerivation
-                .TryDerivePublicKey(operation.TargetDid) ?? string.Empty,
+            PublicKey = string.Empty,
             Signature = string.Empty,
             Algorithm = Sorcha.Register.Models.SignatureAlgorithm.ED25519,
             GrantedAt = DateTimeOffset.UtcNow
