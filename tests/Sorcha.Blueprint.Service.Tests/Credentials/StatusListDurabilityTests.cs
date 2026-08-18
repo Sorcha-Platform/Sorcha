@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -41,8 +42,18 @@ public class StatusListDurabilityTests
         IStatusListStore store, IRegisterServiceClient? register = null)
     {
         register ??= EmptyRegister();
+
+        // The reconciler resolves the SCOPED register client from a scope per call — it is consumed
+        // by the singleton manager, so holding the client directly is a captive dependency that DI
+        // validation rejects at startup (it took n1 down once). Build a real provider so the test
+        // exercises the same resolution path.
+        var services = new ServiceCollection();
+        services.AddScoped(_ => register);
+        var provider = services.BuildServiceProvider();
+
         var reconciler = new StatusListLedgerReconciler(
-            register, NullLogger<StatusListLedgerReconciler>.Instance);
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<StatusListLedgerReconciler>.Instance);
 
         return new StatusListManager(
             NullLogger<StatusListManager>.Instance,

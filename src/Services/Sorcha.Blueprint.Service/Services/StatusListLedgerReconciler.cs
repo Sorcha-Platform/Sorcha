@@ -3,6 +3,7 @@
 
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 
 using Sorcha.Blueprint.Models.Credentials;
 using Sorcha.Register.Models;
@@ -47,8 +48,16 @@ public record StatusListReconciliation(StatusListReadiness Readiness, int Events
 /// answers and both believe they are correct.
 /// </para>
 /// </remarks>
+/// <remarks>
+/// <para>
+/// Takes <see cref="IServiceScopeFactory"/> rather than <c>IRegisterServiceClient</c> directly.
+/// The register client is registered SCOPED, and this reconciler is consumed by the singleton
+/// <c>StatusListManager</c> — holding the client would be a captive dependency, which .NET's DI
+/// validation refuses at startup. A scope is created per reconciliation instead.
+/// </para>
+/// </remarks>
 public class StatusListLedgerReconciler(
-    IRegisterServiceClient registerClient,
+    IServiceScopeFactory scopeFactory,
     ILogger<StatusListLedgerReconciler> logger)
 {
     private const int PageSize = 100;
@@ -72,6 +81,9 @@ public class StatusListLedgerReconciler(
         try
         {
             var events = new List<(ulong Docket, DateTime At, CredentialStatusChangePayload Payload)>();
+
+            using var scope = scopeFactory.CreateScope();
+            var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
 
             var page = 1;
             while (true)
