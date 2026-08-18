@@ -21,6 +21,7 @@ using Sorcha.Validator.Service.Services.Interfaces;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 using ActionModel = Sorcha.Blueprint.Models.Action;
 using Sorcha.Blueprint.Models;
+using Sorcha.Blueprint.Models.Schemas;
 
 namespace Sorcha.Validator.Service.Services;
 
@@ -1812,6 +1813,10 @@ public class ValidationEngine : IValidationEngine
 
     internal static Json.Schema.JsonSchema GetOrParseActionSchema(string schemaText)
     {
+        // The schema text names the Sorcha dialect (see EnsureDialectDeclared), so the dialect
+        // must exist in the registry before FromText resolves it. Idempotent.
+        SorchaSchemaDialect.EnsureRegistered();
+
         var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(schemaText));
         var key = Convert.ToHexString(hashBytes);
         var lazy = _actionSchemaCache.GetOrAdd(key, _ => new Lazy<Json.Schema.JsonSchema>(
@@ -2223,10 +2228,17 @@ public class ValidationEngine : IValidationEngine
     }
 
     /// <summary>
-    /// The dialect a schema is evaluated under. 2020-12 is what every Sorcha core primitive declares
-    /// and what the engine has always evaluated against.
+    /// The dialect a schema is evaluated under: draft 2020-12 plus Sorcha's
+    /// <c>formatMaximum</c> / <c>formatMinimum</c> date bounds.
     /// </summary>
-    private const string DefaultSchemaDialect = "https://json-schema.org/draft/2020-12/schema";
+    /// <remarks>
+    /// Was plain 2020-12. Under that dialect <c>formatMaximum</c> is an unknown keyword, therefore
+    /// an annotation, therefore silently ignored — so <c>DateOfBirth.v1</c>'s "must be in the past"
+    /// bound constrained the date picker and nothing else, and a future date posted straight to the
+    /// API sealed into a docket (measured on n1 2026-08-17). A declared date range is validation,
+    /// not display, so it is enforced here. See <see cref="SorchaSchemaDialect"/>.
+    /// </remarks>
+    private const string DefaultSchemaDialect = SorchaSchemaDialect.Id;
 
     /// <summary>
     /// Declares the JSON Schema dialect at the document root when the document does not declare one.
@@ -2256,10 +2268,18 @@ public class ValidationEngine : IValidationEngine
     /// </remarks>
     private static void EnsureDialectDeclared(JsonNode? node)
     {
-        if (node is JsonObject obj && !obj.ContainsKey("$schema"))
-        {
-            obj["$schema"] = DefaultSchemaDialect;
-        }
+        if (node is not JsonObject obj) return;
+
+        // A document declaring nothing, or plain 2020-12, is READ under the Sorcha dialect — a
+        // strict superset that adds only formatMaximum/formatMinimum. That upgrade is what makes
+        // the bounds apply to blueprints ALREADY SEALED, whose baked-in schemas will forever
+        // declare 2020-12 and cannot be re-flattened. A document declaring some other draft keeps
+        // it: it was authored against different semantics.
+        var declared = obj.TryGetPropertyValue("$schema", out var existing)
+            ? existing?.GetValue<string>()
+            : null;
+
+        obj["$schema"] = SorchaSchemaDialect.ResolveReadDialect(declared);
     }
 
     private static void StripXPrefixedKeysRecursive(JsonNode? node)

@@ -44,7 +44,33 @@ internal static class ValidatorSchemaEvaluation
     {
         var node = JsonNode.Parse(schema.GetRawText());
         StripXPrefixed(node);
+        DeclareDialect(node);
+
+        Sorcha.Blueprint.Models.Schemas.SorchaSchemaDialect.EnsureRegistered();
         return JsonSchema.FromText(node!.ToJsonString());
+    }
+
+    /// <summary>
+    /// Mirrors <c>ValidationEngine.EnsureDialectDeclared</c>: a document declaring nothing, or plain
+    /// 2020-12, is read under the Sorcha dialect (2020-12 plus <c>formatMaximum</c> /
+    /// <c>formatMinimum</c>).
+    /// </summary>
+    /// <remarks>
+    /// Without this the mirror diverged from production in two ways that would both surface as a
+    /// contract test disagreeing with a live seal: an undeclared dialect parses under a strict
+    /// default where an unknown keyword is FATAL, and a declared 2020-12 silently ignores the date
+    /// bounds that production now enforces. No governance schema uses those keywords today, so
+    /// this is drift insurance rather than a fix — which is precisely when it is cheapest to add.
+    /// </remarks>
+    private static void DeclareDialect(JsonNode? node)
+    {
+        if (node is not JsonObject obj) return;
+
+        var declared = obj.TryGetPropertyValue("$schema", out var existing)
+            ? existing?.GetValue<string>()
+            : null;
+
+        obj["$schema"] = Sorcha.Blueprint.Models.Schemas.SorchaSchemaDialect.ResolveReadDialect(declared);
     }
 
     internal static EvaluationResults Evaluate(JsonElement schema, JsonElement instance) =>

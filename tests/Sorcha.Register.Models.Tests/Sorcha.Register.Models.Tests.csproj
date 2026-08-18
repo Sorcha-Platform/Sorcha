@@ -29,6 +29,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Common\Sorcha.Register.Models\Sorcha.Register.Models.csproj" />
+    <!--
+      ValidatorSchemaEvaluation mirrors the Validator's parse sequence so a contract test's verdict
+      means what a live seal would mean. That sequence now declares the Sorcha dialect, so the
+      mirror needs the dialect it names.
+    -->
+    <ProjectReference Include="..\..\src\Common\Sorcha.Blueprint.Models\Sorcha.Blueprint.Models.csproj" />
   </ItemGroup>
 
   <ItemGroup>

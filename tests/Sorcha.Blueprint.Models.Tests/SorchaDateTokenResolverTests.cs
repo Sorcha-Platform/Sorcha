@@ -2,10 +2,10 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
-using Sorcha.Validator.Core.Tokens;
+using Sorcha.Blueprint.Models.Schemas;
 using Xunit;
 
-namespace Sorcha.Validator.Core.Tests;
+namespace Sorcha.Blueprint.Models.Tests;
 
 /// <summary>
 /// Tests for <see cref="SorchaDateTokenResolver"/> — the helper that translates
