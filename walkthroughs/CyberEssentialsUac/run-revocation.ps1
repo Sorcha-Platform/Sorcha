@@ -128,9 +128,15 @@ $walletCreds = Invoke-SorchaApi `
     -Headers $subjectSession.Headers `
     -ShowJson:$ShowJson
 
+# Pick an ACTIVE credential to revoke. Selecting first-of-type makes the scenario
+# non-deterministic across runs: this wallet gains one posture credential per happy-path run and
+# keeps the revoked ones, so a re-run can pick an already-revoked credential and then fail at S3-2
+# with "must be in Active or Suspended state to revoke".
 $cred = $null
 if ($walletCreds) {
-    $cred = @($walletCreds) | Where-Object { $_.type -eq "https://sorcha.dev/vc/cyber-essentials-uac/v1" } | Select-Object -First 1
+    $ofType = @($walletCreds) | Where-Object { $_.type -eq "https://sorcha.dev/vc/cyber-essentials-uac/v1" }
+    $cred = $ofType | Where-Object { $_.status -eq 'active' } | Select-Object -First 1
+    if (-not $cred) { $cred = $ofType | Select-Object -First 1 }
 }
 
 if (-not $cred) {
@@ -198,11 +204,19 @@ Write-WtStep "S3-4: Building presentation from revoked credential"
 # exports the raw token.  The credential is Revoked in the issuer wallet but
 # the subject-org wallet may still hold the cached copy — the status-list check
 # happens server-side at blueprint action execute time, not client-side here.
+# Pin the EXACT credential that was just revoked. Selecting by type alone presents whichever
+# credential happens to be first in the wallet, and this wallet accumulates one posture credential
+# per run — so the scenario silently presented an ACTIVE credential and then asserted that the
+# platform should have refused it. The platform was right and the test was wrong (n1, 2026-08-17).
 $presR = Get-SorchaCredentialPresentation `
     -WalletUrl      $sorchaEnv.WalletUrl `
     -WalletAddress  $state.roles.'subject-org'.walletAddress `
     -CredentialType "https://sorcha.dev/vc/cyber-essentials-uac/v1" `
+    -CredentialId   $cred.id `
     -Token          $subjectSession.Token
+
+Assert ($presR.credentialId -eq $cred.id) `
+    "presentation is built from the REVOKED credential ($($cred.id)), not merely one of that type"
 
 Assert ($presR -ne $null) "presentation object constructed from revoked credential"
 

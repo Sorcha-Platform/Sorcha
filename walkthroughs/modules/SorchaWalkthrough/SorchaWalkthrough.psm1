@@ -1,4 +1,4 @@
-﻿# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
 # SorchaWalkthrough.psm1 — Shared module for all Sorcha walkthrough scripts.
@@ -1998,7 +1998,14 @@ function Get-SorchaCredentialPresentation {
         [Parameter(Mandatory)][string]$WalletUrl,
         [Parameter(Mandatory)][string]$WalletAddress,
         [Parameter(Mandatory)][string]$CredentialType,
-        [Parameter(Mandatory)][string]$Token
+        [Parameter(Mandatory)][string]$Token,
+        # Pin an EXACT credential rather than "first of this type". Required whenever the assertion
+        # depends on WHICH credential is presented — e.g. proving a REVOKED credential is refused.
+        # A wallet accumulates credentials of the same type across runs, so selecting by type alone
+        # silently presents whichever happens to be first, and a test that believes it is presenting
+        # a revoked credential can be presenting an active one. That produced a false "revoked
+        # credential accepted" reading on n1 (2026-08-17).
+        [string]$CredentialId
     )
 
     $headers = @{ Authorization = "Bearer $Token" }
@@ -2025,13 +2032,26 @@ function Get-SorchaCredentialPresentation {
         # return the already-active ones and the caller sees no difference.
     }
 
-    $credentials = Invoke-SorchaApi -Method GET `
-        -Uri "$WalletUrl/v1/wallets/$WalletAddress/credentials/" `
-        -Headers $headers
+    # The default listing returns ACTIVE credentials only, which is the right holder-side default —
+    # a wallet should not casually hand over a revoked credential. But pinning an exact -CredentialId
+    # means the caller knows precisely which credential it wants, INCLUDING a revoked one: that is
+    # the adversarial case a verifier must refuse (a holder who kept the token and presents it
+    # anyway). Widen the query only in that case, so the default stays safe.
+    $listUri = if ($CredentialId) {
+        "$WalletUrl/v1/wallets/$WalletAddress/credentials/?status=All"
+    } else {
+        "$WalletUrl/v1/wallets/$WalletAddress/credentials/"
+    }
+
+    $credentials = Invoke-SorchaApi -Method GET -Uri $listUri -Headers $headers
 
     if (-not $credentials) { return $null }
 
-    $match = $credentials | Where-Object { $_.type -eq $CredentialType } | Select-Object -First 1
+    $match = if ($CredentialId) {
+        $credentials | Where-Object { $_.id -eq $CredentialId } | Select-Object -First 1
+    } else {
+        $credentials | Where-Object { $_.type -eq $CredentialType } | Select-Object -First 1
+    }
     if (-not $match) { return $null }
 
     $exported = Invoke-SorchaApi -Method GET `
