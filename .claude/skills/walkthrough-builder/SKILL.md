@@ -259,6 +259,67 @@ issued credentials; wiping n1 exposed it immediately.
 - **Footgun (don't do this):** `CyberEssentialsUac` / `AssuredIdentity` historically provisioned only **HAIP** enrolment, not a master key — so their blueprint SorchaLocalWallet issuance fell to the bare-wallet `iss` path. HAIP enrolment is for the OID4VCI variant; it does **not** substitute for the F083 master key on the blueprint issuance path.
 - **Allowlist interaction:** the F083 master key makes `iss` become `did:sorcha:org:{DERIVED vc-issuance child address}` — which is **different** from the org's operational wallet address. A `trustPolicy.did-allowlist` pinning the *operational* `did:sorcha:org:{wallet}` will then NOT match (no `alsoKnownAs` bridge). See the **`verifiable-credentials` skill → "Org VC-Issuer Signing & DID Anchoring"** for the three-address model and the re-anchor fix; until that lands, pin the *derived* issuance DID (read it back from the issued credential / the org's `did.json` `id`), not the operational one.
 
+#### REQUIRED: PUBLISH participants onto the register, and PROVE their keys resolve
+
+`Register-SorchaParticipant` links a wallet to an identity **in the tenant**. It does **not** put the
+participant's public key **on the register**. `Publish-SorchaParticipant` does that, and without it
+`POST /registers/{id}/participants/resolve-public-keys` returns `notFound` for every wallet.
+
+Skipping it produces a **four-step silent chain, entirely behind HTTP 202/200**:
+
+1. no resolvable key → **every recipient is skipped** (`Public key not found on register for wallet … — recipient skipped`)
+2. no recipients → the action payload carries **no disclosure-group envelope**
+3. it therefore **cannot be decrypted** (`payload is neither a disclosure-group envelope nor has a WalletAccess recipient`)
+4. so the credential's **claim mappings find nothing and are DROPPED** — `Claim mapping source '/subjectName' has no value in action data; dropping claim` — and the credential mints **with no claims** and is **never delivered**
+
+Every symptom points somewhere else. Step 4's warning names your *schema*, so you go and check the
+`sourceField` pointers, which are fine. The wallet simply never receives anything, which reads as a
+delivery bug. Found end-to-end while building `CredentialLifecycle` (2026-08-18).
+
+```powershell
+$pub = Publish-SorchaParticipant `
+    -TenantUrl $env.TenantUrl -OrganizationId $orgId -RegisterId $registerId `
+    -ParticipantName "Holder Operator" -OrganizationName "Holder Org" `
+    -WalletAddress $wallet.Address -PublicKey $wallet.PublicKey -Headers $session.Headers
+
+# The publish tx seals ASYNC — see the ParticipantSealed cadence mode above.
+Wait-SorchaActorReady -Mode ParticipantSealed -TxId $pub.transactionId `
+    -RegisterId $registerId -Headers $session.Headers -GatewayUrl $env.GatewayUrl
+
+# PROVE it. This is three lines and it converts an unrecognisable downstream failure
+# into a named one at the point of cause.
+$resolved = Invoke-SorchaApi -Method POST `
+    -Uri "$($env.RegisterUrl)/registers/$registerId/participants/resolve-public-keys" `
+    -Body @{ walletAddresses = @($wallet.Address) } -Headers $session.Headers
+if (@($resolved.notFound).Count -gt 0) { throw "Keys not on register: $($resolved.notFound -join ', ')" }
+```
+
+⚠ **`notFound` here is NOT automatically the cause of a delivery failure.** ConstructionPermit,
+ForestryCertification and even the AssuredIdentity recipient that successfully received a credential
+all return `notFound` for their state.json role wallets — because those walkthroughs either do not
+encrypt to recipients or the addresses in `state.json` are not the ones the action addresses. So:
+**use the resolve check as a positive gate in your own setup, not as a diagnosis of someone else's
+walkthrough.** Confirm against a walkthrough that both issues and delivers before concluding.
+
+#### Register and blueprint shape limits that only fail at publish
+
+- **Register name ≤ 38 characters.** `"Credential Lifecycle Conformance Register"` (41) is refused
+  with `Register name must be 38 characters or less`. Easy to hit with descriptive names.
+- **A blueprint needs at least 2 participants** (`Blueprint must have at least 2 participants`). A
+  single-action gate still needs someone on the other side — give the second participant a
+  disclosure and **no action of its own** if you do not want an extra cadence step per submission.
+- **`Publish-SorchaBlueprint` skips the starting-action sender from `$walletMap` regardless** — it
+  logs `Skipped <id> (open participant — late-bound at runtime)` even when you passed a wallet for
+  it. Do not fight this; supply wallets for the non-starting participants and let the sender bind.
+
+#### A new walkthrough needs an entry in `initialize-secrets.ps1`
+
+`Get-SorchaSecrets -WalkthroughName "my-walkthrough"` throws
+`No secrets found for walkthrough 'x'` until the name exists in the `$walkthroughSecrets` map. Add it
+there, and — because `initialize-secrets.ps1` refuses to touch an existing file without `-Force` —
+add the same key to `walkthroughs/.secrets/passwords.json` by hand rather than regenerating every
+other walkthrough's passwords.
+
 #### Cadence is now auto-retried in `Invoke-SorchaAction` (F145)
 
 `Invoke-SorchaAction` wraps its submit POST in `Invoke-SorchaActionPostWithCadenceRetry`, which **retries only the transient `400 "Action N is not a current action"`** (the projector hasn't folded the previous seal yet) up to 15×1s. So you no longer strictly need an explicit `Wait-SorchaActorReady -Mode AwaitingInbox` before every actor switch — the retry self-heals the cadence everywhere. Explicit `AwaitingInbox` gates remain valid (belt-and-braces) and are still clearer in setup.ps1 publish-seal waits. Any non-cadence 400 (schema, auth) is rethrown immediately.
@@ -374,9 +435,10 @@ $proc = Start-Process -FilePath "dotnet" -ArgumentList $agentArgs ...
 - Validate instance creation before launching agents
 - Clean up env vars on exit
 
-## Two PowerShell traps that silently invert a walkthrough's verdict
+## Four PowerShell traps that silently invert a walkthrough's verdict
 
-Both shipped undetected for months and both are invisible on a clean node.
+The first two shipped undetected for months and are invisible on a clean node; the last two
+fail loudly but blame the platform.
 
 **An empty string is FALSY.** `/actions/execute` has two 202 shapes: the normal one carries a
 populated `transactionId`, but when an action has recipient disclosure groups to encrypt the platform
@@ -408,6 +470,21 @@ $items = Resolve-SorchaCollection -Response $walletCreds -PropertyName 'credenti
 **The generalisable smell:** any guard whose truthiness depends on a value the *platform* chose —
 an empty string, a projected null, a count — needs testing at 0, 1 and 2 elements. "It worked when I
 ran it" usually means "I ran it with one".
+
+**`Invoke-WebRequest.Content` is a BYTE ARRAY unless the content type is recognised as text.**
+`application/statuslist+jwt` is not, so `.Content.Trim()` dies with
+`[System.Byte] does not contain a method named 'Trim'` — which reads like the endpoint returned
+something malformed, when it returned exactly the right thing. Decode explicitly:
+
+```powershell
+$body = if ($resp.Content -is [byte[]]) { [Text.Encoding]::UTF8.GetString($resp.Content) }
+        else { [string]$resp.Content }
+```
+
+**`Write-WtInfo ""` throws.** `Cannot bind argument to parameter 'Message' because it is an empty
+string` — and because it usually appears inside a `catch` block printing a friendly explanation, it
+replaces your diagnostic with a parameter-binding error at exactly the moment you needed the
+diagnostic. Use `Write-Host ""` for spacing.
 
 ## Testing credentials: four traps that make a walkthrough lie (2026-08-17)
 
@@ -476,6 +553,60 @@ wrong thing. Read the validator log for the `VAL_*` code rather than inferring f
 A walkthrough asserting "the platform refused X" is only meaningful if it also proves **it submitted
 X**. Before filing a platform defect off a failing walkthrough, print what the harness actually sent —
 one command usually settles it, and it is cheaper than the write-up you will otherwise have to retract.
+
+## Writing a conformance check (as opposed to a demo)
+
+A demo shows the happy path works. A **conformance check** asks whether the platform's behaviour
+matches a specification, and it has to keep asking after something breaks. Reference implementation:
+`walkthroughs/CredentialLifecycle/` — 39 checks over the credential status lifecycle, built
+2026-08-18 and passing on n1.
+
+**Assert the GATE's verdict, not the platform's self-report.** A wallet status field says what the
+platform *believes*; a credential-gated submission says what it *enforces*. Those can differ — a
+suspension that never flips a bit changes the status field and nothing else. The gate is also the
+only assertion that survives a refactor of the status plumbing.
+
+**Nothing may abort the run.** Make each platform call return a result object rather than throw:
+
+```powershell
+function Invoke-Lifecycle(...) {
+    try { ...; return [pscustomobject]@{ Ok=$true;  Status=$r.status; HttpStatus=200 } }
+    catch { return [pscustomobject]@{ Ok=$false; Error=$_.Exception.Message; HttpStatus=$code } }
+}
+```
+
+Dying on the first 500 tells you one thing when the run was about to tell you eight. This is not
+defensiveness — on the first real run of `CredentialLifecycle` a transient 500 in phase 4 hid six
+later phases that were all fine, and the next run passed 39/39 with no change.
+
+**A 5xx is NOT a refusal.** "Reinstating a revoked credential must fail" passes on a 500, but a 500
+means the platform *fell over*, not that it *declined*. Score them separately:
+
+```powershell
+Check "P5" "reinstating a REVOKED credential is refused" (-not $r.Ok)
+Check "P5" "the refusal is a 4xx decision, not a 5xx failure" ($r.HttpStatus -ge 400 -and $r.HttpStatus -lt 500)
+```
+
+**Check what you PUBLISH, decoded from the artefact itself.** Read the credential's own
+`credentialStatus`, fetch the URLs it names, and decode those bytes — do not ask a convenience API
+what it thinks the status is. A verifier you have never met reads the bytes, and asserting that your
+reader agrees with your writer proves nothing. That is exactly how #1492 shipped a `bits: 2` header
+over a 1-bit array that Sorcha's own checker then misread. If a header declares a width, **assert the
+payload is wide enough for it.**
+
+**Two of everything, for anything indexed.** #1491, #1492 and #1502 were all the same shape — the
+right operation applied to the wrong entry — and every one is invisible with a single subject. Issue
+a second credential and assert it is *unaffected* by the first's status change.
+
+**The failure detail should say what it MEANS, not restate the assertion.** `"got 'Revoked'"` is
+weaker than `"suspension is reversible and revocation is not — telling a holder their credential was
+revoked when it was suspended is materially misleading"`. Someone reads that line at 2am with no
+context.
+
+**Prove the preconditions, at the point of cause.** `setup.ps1` calls `resolve-public-keys` and
+throws if the keys are missing, because the alternative is a run that fails four steps later with a
+claim-mapping warning pointing at the wrong file. A cheap assertion where the state is created is
+worth an hour of log archaeology.
 
 ## Actor Definition Patterns
 
@@ -725,6 +856,7 @@ await orgCard.First.ClickAsync();
 | TradeFinance | 6 | 10 | 2 | Cross-register VCs, dispute loops, 4 orgs |
 | HaipIdentityAttestation | 1 (agent) | N/A | N/A | OID4VCI pre-auth code flow, SD-JWT VC with cnf |
 | AssuredIdentity | 3 (citizen + verification-analyst + licensing-officer) | 7 across 2 blueprints | 1 | Feature 107 — canonical citizen identity (5-page wizard, id-card review, optional portrait) + driving licence chain (OID4VP present + OID4VCI issue) + unattended rules-mode agents + cross-peer smoke |
+| **CredentialLifecycle** | 2 | 3 across 2 blueprints | 1 | **The standard credential conformance check** — issue → active → suspend → reinstate → revoke → terminal, plus W3C + IETF published wire format and index independence. 39 checks, script-based by design (no agents: it must control WHEN each status change happens). Run it after any change to status lists, credential issuance, or the trust/revocation seam. |
 
 ## Troubleshooting
 
@@ -733,6 +865,9 @@ await orgCard.First.ClickAsync();
 | Actor hangs, no actions discovered | SignalR not connected, polling too slow | Check logs, reduce `intervalSeconds` |
 | "Unresolved variable" error | Missing env var or state.json key | Run `validate` command first |
 | Action submission fails 400 | Payload doesn't match schema | Check action name matches blueprint exactly |
+| Credential minted with NO claims; `Claim mapping source '/x' has no value in action data` | Participants were never PUBLISHED to the register, so recipients were skipped and the prior action's payload could not be decrypted — the mapping is reading an empty payload, not a wrong pointer | `Publish-SorchaParticipant` + wait `ParticipantSealed`, then assert `resolve-public-keys` returns no `notFound` |
+| Credential issued but never arrives in the wallet | Same chain as above (no recipients ⇒ nothing addressed to the holder), OR a circuit breaker opened by unrelated 500s (#1506) | Check for `recipient skipped` and `The circuit is now open` in the blueprint-service log before suspecting delivery |
+| Walkthrough "passes" but asserts on a credential from an earlier run | Selected by TYPE in a wallet that accumulates them | Snapshot ids before issuing; require a NEW id; pin `-CredentialId` on the presentation |
 | Credential requirement blocks | VC not yet issued by upstream action | Expected — actor waits until VC exists |
 | Auth fails across registers | Org not subscribed to register | Check setup.ps1 subscriptions |
 | Agent: "No such host" on metadata fetch | IssuerUrl uses Docker hostname | Set `Haip__IssuerUrl=http://127.0.0.1` in docker-compose |
