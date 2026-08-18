@@ -9,6 +9,8 @@ using System.Text.Json;
 
 using FluentAssertions;
 
+using Sorcha.Blueprint.Engine.Credentials;
+
 using Sorcha.Haip.Service.Services;
 
 using Xunit;
@@ -32,7 +34,7 @@ public class IetfTokenStatusListCheckerTests
 
         var bit = IetfTokenStatusListChecker.ParseAndReadBit(jwt, idx: 42);
 
-        bit.Should().Be(StatusListBit.NotSet);
+        bit.Should().Be(CredentialStatusValue.Valid);
     }
 
     [Fact]
@@ -45,9 +47,9 @@ public class IetfTokenStatusListCheckerTests
 
         var bit = IetfTokenStatusListChecker.ParseAndReadBit(jwt, idx: 42);
 
-        bit.Should().Be(StatusListBit.Set);
-        IetfTokenStatusListChecker.ParseAndReadBit(jwt, idx: 41).Should().Be(StatusListBit.NotSet);
-        IetfTokenStatusListChecker.ParseAndReadBit(jwt, idx: 43).Should().Be(StatusListBit.NotSet);
+        bit.Should().Be(CredentialStatusValue.Invalid);
+        IetfTokenStatusListChecker.ParseAndReadBit(jwt, idx: 41).Should().Be(CredentialStatusValue.Valid);
+        IetfTokenStatusListChecker.ParseAndReadBit(jwt, idx: 43).Should().Be(CredentialStatusValue.Valid);
     }
 
     [Fact]
@@ -62,7 +64,7 @@ public class IetfTokenStatusListCheckerTests
 
         var bit = IetfTokenStatusListChecker.ParseAndReadBit(tamperedJwt, idx: 0);
 
-        bit.Should().Be(StatusListBit.Unknown,
+        bit.Should().Be(CredentialStatusValue.Unresolved,
             "a tampered signature MUST cause the status read to be treated as Unknown, never Active");
     }
 
@@ -75,7 +77,7 @@ public class IetfTokenStatusListCheckerTests
 
         var bit = IetfTokenStatusListChecker.ParseAndReadBit(jwt, idx: 0);
 
-        bit.Should().Be(StatusListBit.Unknown);
+        bit.Should().Be(CredentialStatusValue.Unresolved);
     }
 
     [Fact]
@@ -83,22 +85,22 @@ public class IetfTokenStatusListCheckerTests
     {
         var jwt = BuildSignedEnvelope(new byte[16], bitsPerEntry: 1);
 
-        IetfTokenStatusListChecker.ParseAndReadBit(jwt, idx: 128).Should().Be(StatusListBit.Unknown);
-        IetfTokenStatusListChecker.ParseAndReadBit(jwt, idx: 10_000).Should().Be(StatusListBit.Unknown);
+        IetfTokenStatusListChecker.ParseAndReadBit(jwt, idx: 128).Should().Be(CredentialStatusValue.Unresolved);
+        IetfTokenStatusListChecker.ParseAndReadBit(jwt, idx: 10_000).Should().Be(CredentialStatusValue.Unresolved);
     }
 
     [Fact]
     public void ReadBit_TwoBitList_ReadsAcrossBoundary()
     {
         // 2-bit list: entry 0 occupies bits 0-1, entry 1 occupies 2-3, etc.
-        // Set entry index 3 (bits 6-7) to 01 — any bit set → Set.
+        // Entry 3 (bits 6-7) = 0b01 — IETF 0x01 INVALID, i.e. revoked.
         var raw = new byte[2];
         raw[0] = 0b0000_0001;
 
         IetfTokenStatusListChecker.ReadBit(raw, idx: 3, bitsPerEntry: 2)
-            .Should().Be(StatusListBit.Set);
+            .Should().Be(CredentialStatusValue.Invalid);
         IetfTokenStatusListChecker.ReadBit(raw, idx: 0, bitsPerEntry: 2)
-            .Should().Be(StatusListBit.NotSet);
+            .Should().Be(CredentialStatusValue.Valid);
     }
 
     // --- Test helpers ---

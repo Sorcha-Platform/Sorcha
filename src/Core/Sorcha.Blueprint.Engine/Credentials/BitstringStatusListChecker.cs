@@ -41,22 +41,31 @@ public class BitstringStatusListChecker : IRevocationChecker, IStatusListChecker
 
     /// <inheritdoc />
     /// <remarks>
-    /// Feature 135 — unified status seam. Maps the W3C status word to a
-    /// <see cref="StatusListBit"/>: "Active" → NotSet, "Revoked"/"Suspended" → Set,
-    /// null (unreachable/unparseable) → Unknown so the caller applies its fail-closed policy.
+    /// <para>
+    /// Feature 135 — unified status seam. Feature 192 — the mapping now PRESERVES which status was
+    /// set. <see cref="CheckBitAsync"/> already resolved the list's own <c>statusPurpose</c> to
+    /// "Revoked" or "Suspended"; the old mapping collapsed both to a single "set" one line later,
+    /// which is where the distinction was lost for the W3C rail.
+    /// </para>
+    /// <para>
+    /// A word this checker does not recognise maps to <see cref="CredentialStatusValue.Unresolved"/>
+    /// rather than to a status — asserting "revoked" off a value we cannot interpret would be a
+    /// false accusation, and Unresolved is what the fail-closed policy exists to handle.
+    /// </para>
     /// </remarks>
-    public async Task<StatusListBit> CheckAsync(StatusReference statusRef, CancellationToken cancellationToken = default)
+    public async Task<CredentialStatusValue> CheckAsync(StatusReference statusRef, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(statusRef);
         if (string.IsNullOrWhiteSpace(statusRef.Uri))
-            return StatusListBit.Unknown;
+            return CredentialStatusValue.Unresolved;
 
         var status = await CheckBitAsync(statusRef.Uri, statusRef.Index, cancellationToken).ConfigureAwait(false);
         return status switch
         {
-            "Active" => StatusListBit.NotSet,
-            "Revoked" or "Suspended" => StatusListBit.Set,
-            _ => StatusListBit.Unknown
+            "Active" => CredentialStatusValue.Valid,
+            "Revoked" => CredentialStatusValue.Invalid,
+            "Suspended" => CredentialStatusValue.Suspended,
+            _ => CredentialStatusValue.Unresolved
         };
     }
 

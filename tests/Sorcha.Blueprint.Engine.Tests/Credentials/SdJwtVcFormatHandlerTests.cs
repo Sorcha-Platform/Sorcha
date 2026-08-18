@@ -105,7 +105,7 @@ public class SdJwtVcFormatHandlerTests
             "LicenseCredential", "did:sorcha:org:gov",
             new Dictionary<string, object> { ["license_type"] = "ClassA" },
             statusClaim: EngineSdJwtTestFactory.IetfStatusClaim("https://issuer/status/1", 7));
-        var handler = BuildHandler(minted, statusChecker: new EngineSdJwtTestFactory.FakeStatusChecker(StatusListBit.Set));
+        var handler = BuildHandler(minted, statusChecker: new EngineSdJwtTestFactory.FakeStatusChecker(CredentialStatusValue.Invalid));
 
         var result = await handler.VerifyAsync(
             Presented(minted.Raw),

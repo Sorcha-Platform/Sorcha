@@ -1,6 +1,6 @@
 # Feature 192 — Credential status reporting: suspension is not revocation
 
-**Status:** 📋 Planned — drafted 2026-08-18, NOT started
+**Status:** ✅ COMPLETE — drafted 2026-08-18, gates settled A1/B2/C1/D2 the same day, implemented
 **Branch:** `feature/192-credential-status-reporting`
 **Origin:** #1482 read-side gap, surfaced while sizing the work after PRs #1491 / #1492 / #1495
 **Depends on:** #1491 (purposes split), #1492 (IETF projection), #1495 (every purpose evaluated) — all merged
@@ -102,9 +102,23 @@ Acceptance:
 
 ---
 
-## Decision gates — **OPEN, need Stuart before implementation**
+## Decision gates — **SETTLED 2026-08-18: A1 / B2 / C1 / D2**
 
-These are the reason this is a spec rather than a PR. The code is small; the semantics are not.
+Stuart took all four recommendations. Kept below as written, because the reasoning is the record of
+why the code looks the way it does.
+
+Two things the implementation learned that the gates did not anticipate:
+
+- **D2 was worth it for the reason claimed.** Retiring `StatusListBit` broke 12 call sites and the
+  build stayed clean in `src/` — every break was a test. There was also a SECOND, identically-named
+  `StatusListBit` inside the HAIP service, whose only purpose was to be translated to the engine's;
+  both were tri-states, so the SUSPENDED value the IETF checker had just decoded had nowhere to go.
+  That parallel type is gone.
+- **B2 found less than expected in one place and more in another.** No surface renders decline
+  reasons as prose, so there was no revocation wording to correct — but `MapReason` is a chain of
+  equality tests, and a suspension fell through all of them to `VerifierError` ("the verifier
+  broke"). Meanwhile `CitizenInboxProjector` excludes the Active→Suspended transition *by design*,
+  so a holder is never told about a suspension at all (**#1498**, filed, not folded in).
 
 ### Gate A — Is SUSPENDED always a refusal?
 

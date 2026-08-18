@@ -118,9 +118,9 @@ internal static class EngineSdJwtTestFactory
     }
 
     /// <summary>A status checker returning a fixed bit for any reference.</summary>
-    public sealed class FakeStatusChecker(StatusListBit bit) : IStatusListChecker
+    public sealed class FakeStatusChecker(CredentialStatusValue bit) : IStatusListChecker
     {
-        public Task<StatusListBit> CheckAsync(StatusReference statusRef, CancellationToken ct = default) =>
+        public Task<CredentialStatusValue> CheckAsync(StatusReference statusRef, CancellationToken ct = default) =>
             Task.FromResult(bit);
     }
 

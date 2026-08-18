@@ -112,4 +112,52 @@ public class HaipPresentationConsumerTests
         outcome.Kind.Should().Be(PresentationOutcomeKind.Decline);
         outcome.Reason.Should().Be(PresentationDeclineReason.Revoked);
     }
+
+    /// <summary>
+    /// Feature 192 — the decline reason is written into the presentation-outcome transaction, so it
+    /// lands on the citizen's own application record. A suspension recorded there as Revoked tells
+    /// someone their credential was cancelled when it was paused.
+    /// </summary>
+    /// <remarks>
+    /// This is the arm the compiler could not have demanded. <c>MapReason</c> is a chain of equality
+    /// tests, so before the suspension arm existed a suspended credential matched nothing and fell
+    /// through to <see cref="PresentationDeclineReason.VerifierError"/> — "the verifier broke" —
+    /// which is worse than the revocation it used to claim, and would have shipped green.
+    /// </remarks>
+    [Fact]
+    public async Task VerifyAsync_SuspendedViaStatusCheck_ReturnsSuspendedNotRevokedOrVerifierError()
+    {
+        var result = new VerificationResult
+        {
+            IsValid = false,
+            Errors = new List<string> { "Credential is suspended (status list purpose 'suspension')." },
+            StatusCheckResult = "suspended"
+        };
+        var json = JsonSerializer.SerializeToElement(result);
+
+        var outcome = await _consumer.VerifyAsync(MakeContext(), json, CancellationToken.None);
+
+        outcome.Kind.Should().Be(PresentationOutcomeKind.Decline);
+        outcome.Reason.Should().Be(PresentationDeclineReason.Suspended);
+    }
+
+    /// <summary>
+    /// A credential that is somehow both keeps the TERMINAL reason. Revocation cannot be lifted, so
+    /// reporting the reversible status would imply it could come back.
+    /// </summary>
+    [Fact]
+    public async Task VerifyAsync_BothRevokedAndSuspended_KeepsTheTerminalReason()
+    {
+        var result = new VerificationResult
+        {
+            IsValid = false,
+            Errors = new List<string> { "Credential is revoked.", "Credential is suspended." },
+            StatusCheckResult = "revoked"
+        };
+        var json = JsonSerializer.SerializeToElement(result);
+
+        var outcome = await _consumer.VerifyAsync(MakeContext(), json, CancellationToken.None);
+
+        outcome.Reason.Should().Be(PresentationDeclineReason.Revoked);
+    }
 }

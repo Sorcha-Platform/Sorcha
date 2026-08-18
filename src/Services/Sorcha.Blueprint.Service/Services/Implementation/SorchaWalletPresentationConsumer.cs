@@ -378,6 +378,10 @@ public sealed class SorchaWalletPresentationConsumer : IPresentationConsumer
         {
             if (error.Contains("revoked", StringComparison.OrdinalIgnoreCase))
                 return PresentationDeclineReason.Revoked;
+            // Feature 192 — kept below revoked so the terminal status wins for a credential that
+            // is somehow both.
+            if (error.Contains("suspended", StringComparison.OrdinalIgnoreCase))
+                return PresentationDeclineReason.Suspended;
             if (error.Contains("expired", StringComparison.OrdinalIgnoreCase))
                 return PresentationDeclineReason.ExpiredCredential;
             if (error.Contains("issuer", StringComparison.OrdinalIgnoreCase))

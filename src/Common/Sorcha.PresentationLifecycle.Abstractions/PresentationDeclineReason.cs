@@ -21,9 +21,22 @@ public enum PresentationDeclineReason
     WrongIssuer,
 
     /// <summary>
-    /// Credential has been revoked by the issuer (status-list check failed).
+    /// Credential has been revoked by the issuer (status-list check failed). Terminal.
     /// </summary>
     Revoked,
+
+    /// <summary>
+    /// Credential has been suspended by the issuer (status-list check failed). Declined exactly
+    /// like <see cref="Revoked"/>, but REVERSIBLE — the issuer may reinstate it.
+    /// </summary>
+    /// <remarks>
+    /// Feature 192. This reason is the holder-facing half: the decline reason is written into the
+    /// presentation-outcome transaction, so it lands on the citizen's own application record. Before
+    /// this member existed a suspension was recorded there as <see cref="Revoked"/> — telling
+    /// someone their credential was cancelled when it was paused, which is the same untruth F186
+    /// exists to fix for refused applications.
+    /// </remarks>
+    Suspended,
 
     /// <summary>
     /// Presentation payload did not match the required claim schema.

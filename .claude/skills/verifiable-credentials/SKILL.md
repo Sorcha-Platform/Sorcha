@@ -499,11 +499,45 @@ suspensions included.
 **Revocation is terminal by design** — `reinstate` refuses anything that is not `Suspended`. Do not
 "fix" that by widening it.
 
-⚠ **Suspend and revoke currently share ONE bit.** `StatusListManager.AllocateIndexAsync` hardcodes
-purpose `"revocation"`, so there is no separate suspension list: a suspended credential is
-indistinguishable from a revoked one to a verifier, and the bit is therefore **not monotonic**
-(reinstate clears it). Anything that projects these events must apply them in **ledger order**, or
-two nodes can converge on opposite answers.
+**Suspend and revoke have had separate lists since #1491** — one list per purpose sharing one index,
+issuance emitting one `credentialStatus` entry per purpose (array form only when a suspension list
+exists, so single-purpose credentials keep the old object shape). The suspension bit is **not
+monotonic** (reinstate clears it), so anything projecting these events must apply them in **ledger
+order**, or two nodes converge on opposite answers.
+
+### Suspension is reported as suspension (Feature 192)
+
+The full chain now carries which status applied — `CredentialStatusValue { Valid, Invalid, Suspended,
+Unresolved }` on `IStatusListChecker` (the old `StatusListBit` tri-state is gone), then
+`TrustFailureReason.Suspended` → `CredentialFailureReason.Suspended` →
+`PresentationDeclineReason.Suspended`.
+
+- **`Unresolved` is a first-class answer, never a status.** "I could not tell" is a third thing:
+  an unreachable list, and also an IETF value of `0x03`+ (reserved, application-specific). Claiming
+  "revoked" off a value you cannot interpret is a false accusation. It routes to the fail-closed
+  policy, which still refuses — it just stops us saying why.
+- **Precedence is `Invalid > Suspended > Unresolved > Valid`, and every reference is read before
+  anything is decided.** Returning on the first non-Valid answer would make the reported reason
+  depend on the order the credential happens to list its entries in.
+- **A resolved status outranks an unresolved one.** Suspension set + revocation list unreachable ⇒
+  refuse as *suspended*, not as "could not check".
+
+⚠ **Adding a member to any of these enums is NOT compiler-checked.** Every downstream consumer tests
+**equality**, not an exhaustive switch — `MdocPresentationVerifier`, `HaipPresentationVerifier`, both
+`HaipPresentationConsumer` copies, `SorchaWalletPresentationConsumer`. A new member compiles clean
+and falls silently to the else branch: before F192 wired them up, a suspension would have made mdoc
+report `StatusCheckResult = null` (*no status problem*) and the consumer return `VerifierError` (*the
+verifier broke*) — both **worse** than the revocation they used to claim, and both green in CI. Grep
+the consumers; do not trust the build.
+
+⚠ **The refusal message's plain status word is load-bearing.** Those consumers substring-match it for
+"revoked" / "suspended". #1495 changed the message to `Credential status '{purpose}' is set.`, which
+contains neither word and therefore matched nothing. Keep the word in the message.
+
+⚠ **There is a THIRD status rail** — `IStatusListCache` / `StatusListVerdict` in
+`Sorcha.Verifier.Engine`, used for the delegation credential on the F127 local route. It is still a
+tri-state, publishes **LSB-first** where both specs and every other Sorcha component are MSB-first,
+and ignores `bits` entirely. Issue **#1499**; do not assume a fix on the other two rails reached it.
 
 ### Two different wire shapes for one credential — do not conflate them
 

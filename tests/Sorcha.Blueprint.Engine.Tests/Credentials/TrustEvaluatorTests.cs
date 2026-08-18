@@ -25,9 +25,9 @@ public class TrustEvaluatorTests
                 : TrustSourceVouch.Decline(DeclineReason));
     }
 
-    private sealed class FakeStatusChecker(StatusListBit bit) : IStatusListChecker
+    private sealed class FakeStatusChecker(CredentialStatusValue bit) : IStatusListChecker
     {
-        public Task<StatusListBit> CheckAsync(StatusReference statusRef, CancellationToken ct) => Task.FromResult(bit);
+        public Task<CredentialStatusValue> CheckAsync(StatusReference statusRef, CancellationToken ct) => Task.FromResult(bit);
     }
 
     private static IssuerContext SignedIssuer(string id = "did:sorcha:org:test") =>
@@ -192,7 +192,7 @@ public class TrustEvaluatorTests
     [Fact]
     public async Task EvaluateAsync_StatusRevoked_RejectsRevoked()
     {
-        var evaluator = EvaluatorWithStatus(new FakeStatusChecker(StatusListBit.Set),
+        var evaluator = EvaluatorWithStatus(new FakeStatusChecker(CredentialStatusValue.Invalid),
             new FakeResolver { Kind = TrustSourceKind.Register, Vouches = true });
         var issuer = SignedIssuer();
         issuer.Status = new StatusReference { Uri = "https://status", Index = 3 };
@@ -206,7 +206,7 @@ public class TrustEvaluatorTests
     [Fact]
     public async Task EvaluateAsync_StatusUnknown_FailClosed_RejectsRevocationUnavailable()
     {
-        var evaluator = EvaluatorWithStatus(new FakeStatusChecker(StatusListBit.Unknown),
+        var evaluator = EvaluatorWithStatus(new FakeStatusChecker(CredentialStatusValue.Unresolved),
             new FakeResolver { Kind = TrustSourceKind.Register, Vouches = true });
         var issuer = SignedIssuer();
         issuer.Status = new StatusReference { Uri = "https://status", Index = 3 };
@@ -221,7 +221,7 @@ public class TrustEvaluatorTests
     [Fact]
     public async Task EvaluateAsync_StatusUnknown_FailOpen_Accepts()
     {
-        var evaluator = EvaluatorWithStatus(new FakeStatusChecker(StatusListBit.Unknown),
+        var evaluator = EvaluatorWithStatus(new FakeStatusChecker(CredentialStatusValue.Unresolved),
             new FakeResolver { Kind = TrustSourceKind.Register, Vouches = true });
         var issuer = SignedIssuer();
         issuer.Status = new StatusReference { Uri = "https://status", Index = 3 };

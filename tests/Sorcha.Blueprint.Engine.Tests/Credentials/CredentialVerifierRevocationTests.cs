@@ -29,7 +29,7 @@ public class CredentialVerifierRevocationTests
     public async Task VerifyAsync_ActiveCredential_Accepted()
     {
         var minted = MintWithStatus();
-        var verifier = Factory.BuildVerifier(directory: null, statusChecker: new Factory.FakeStatusChecker(StatusListBit.NotSet), minted);
+        var verifier = Factory.BuildVerifier(directory: null, statusChecker: new Factory.FakeStatusChecker(CredentialStatusValue.Valid), minted);
         var requirements = new[] { new CredentialRequirement { Type = "LicenseCredential" } };
 
         var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
@@ -44,7 +44,7 @@ public class CredentialVerifierRevocationTests
     public async Task VerifyAsync_RevokedCredential_Rejected()
     {
         var minted = MintWithStatus();
-        var verifier = Factory.BuildVerifier(directory: null, statusChecker: new Factory.FakeStatusChecker(StatusListBit.Set), minted);
+        var verifier = Factory.BuildVerifier(directory: null, statusChecker: new Factory.FakeStatusChecker(CredentialStatusValue.Invalid), minted);
         var requirements = new[] { new CredentialRequirement { Type = "LicenseCredential" } };
 
         var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
@@ -57,7 +57,7 @@ public class CredentialVerifierRevocationTests
     public async Task VerifyAsync_UnavailableStatus_FailClosed_Blocked()
     {
         var minted = MintWithStatus();
-        var verifier = Factory.BuildVerifier(directory: null, statusChecker: new Factory.FakeStatusChecker(StatusListBit.Unknown), minted);
+        var verifier = Factory.BuildVerifier(directory: null, statusChecker: new Factory.FakeStatusChecker(CredentialStatusValue.Unresolved), minted);
         var requirements = new[]
         {
             new CredentialRequirement { Type = "LicenseCredential", RevocationCheckPolicy = RevocationCheckPolicy.FailClosed }
@@ -73,7 +73,7 @@ public class CredentialVerifierRevocationTests
     public async Task VerifyAsync_UnavailableStatus_FailOpen_Accepted()
     {
         var minted = MintWithStatus();
-        var verifier = Factory.BuildVerifier(directory: null, statusChecker: new Factory.FakeStatusChecker(StatusListBit.Unknown), minted);
+        var verifier = Factory.BuildVerifier(directory: null, statusChecker: new Factory.FakeStatusChecker(CredentialStatusValue.Unresolved), minted);
         var requirements = new[]
         {
             new CredentialRequirement { Type = "LicenseCredential", RevocationCheckPolicy = RevocationCheckPolicy.FailOpen }

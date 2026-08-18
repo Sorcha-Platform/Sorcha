@@ -119,6 +119,13 @@ public sealed class HaipPresentationConsumer : IPresentationConsumer
         if (allErrors.Contains("revoked", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(result.StatusCheckResult, "revoked", StringComparison.OrdinalIgnoreCase))
             return PresentationDeclineReason.Revoked;
+        // Feature 192 — checked AFTER revoked so a credential that is somehow both keeps the
+        // terminal reason. Without this arm a suspension falls all the way through to
+        // VerifierError ("the verifier broke"), which is worse than the revocation it used to
+        // report: the compiler cannot catch it because these are equality tests, not a switch.
+        if (allErrors.Contains("suspended", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(result.StatusCheckResult, "suspended", StringComparison.OrdinalIgnoreCase))
+            return PresentationDeclineReason.Suspended;
         if (allErrors.Contains("schema", StringComparison.OrdinalIgnoreCase) ||
             allErrors.Contains("claim", StringComparison.OrdinalIgnoreCase))
             return PresentationDeclineReason.SchemaMismatch;

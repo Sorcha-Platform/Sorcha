@@ -19,7 +19,7 @@ using Sorcha.Mdoc.Cose;
 using Sorcha.Haip.Service.Services;
 using Xunit;
 
-using EngineBit = Sorcha.Blueprint.Engine.Credentials.StatusListBit;
+using EngineStatus = Sorcha.Blueprint.Engine.Credentials.CredentialStatusValue;
 
 namespace Sorcha.Haip.Service.Tests;
 
@@ -42,9 +42,9 @@ public class MdocPresentationVerifierTests
             Task.FromResult<TrustAnchorSet?>(root is null ? null : new TrustAnchorSet { Roots = [root], CheckRevocation = false });
     }
 
-    private sealed class FakeStatusChecker(EngineBit bit) : IStatusListChecker
+    private sealed class FakeStatusChecker(EngineStatus status) : IStatusListChecker
     {
-        public Task<EngineBit> CheckAsync(StatusReference statusRef, CancellationToken ct = default) => Task.FromResult(bit);
+        public Task<EngineStatus> CheckAsync(StatusReference statusRef, CancellationToken ct = default) => Task.FromResult(status);
     }
 
     private static MdocPresentationVerifier BuildVerifier(byte[]? trustedRoot, IStatusListChecker? status = null)
@@ -201,7 +201,7 @@ public class MdocPresentationVerifierTests
     public async Task Verify_RevokedStatus_FailsRevoked()
     {
         var built = BuildMdoc(status: new MsoStatus { Uri = "https://issuer/status/1", Idx = 4 });
-        var verifier = BuildVerifier(trustedRoot: built.IssuerCertDer, status: new FakeStatusChecker(EngineBit.Set));
+        var verifier = BuildVerifier(trustedRoot: built.IssuerCertDer, status: new FakeStatusChecker(EngineStatus.Invalid));
 
         var result = await verifier.VerifyAsync(EncodeVpToken(built.Response), ClientId, Nonce, ResponseUri, X509Policy());
 

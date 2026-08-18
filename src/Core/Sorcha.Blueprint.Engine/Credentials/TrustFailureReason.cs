@@ -15,8 +15,15 @@ public enum TrustFailureReason
     /// <summary>The issuer signature did not verify.</summary>
     SignatureInvalid,
 
-    /// <summary>The credential is revoked or suspended per its status list.</summary>
+    /// <summary>The credential is revoked per its status list. Terminal — it cannot come back.</summary>
     Revoked,
+
+    /// <summary>
+    /// The credential is suspended per its status list. Refused exactly like a revocation, but
+    /// REVERSIBLE — the issuer may reinstate it. Kept distinct from <see cref="Revoked"/> so a
+    /// verifier can respond proportionately and a holder is not told a temporary pause is final.
+    /// </summary>
+    Suspended,
 
     /// <summary>Revocation status could not be resolved and policy is fail-closed.</summary>
     RevocationUnavailable,
