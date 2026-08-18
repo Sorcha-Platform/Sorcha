@@ -2498,11 +2498,15 @@ governanceGroup.MapPost("/propose", async (
     RegisterAttestation? newAttestation = null;
     if (operation.OperationType == GovernanceOperationType.Add)
     {
+        // #1464 — derive the key from the subject DID; see RosterKeyDerivation. Left empty only
+        // for subjects whose address cannot carry a key (ws2/PQC), where ApplyOperation's
+        // fail-closed guard then prevents the member being promoted to Owner.
         newAttestation = new RegisterAttestation
         {
             Role = operation.TargetRole,
             Subject = operation.TargetDid,
-            PublicKey = string.Empty,
+            PublicKey = Sorcha.Register.Service.Services.RosterKeyDerivation
+                .TryDerivePublicKey(operation.TargetDid) ?? string.Empty,
             Signature = string.Empty,
             Algorithm = Sorcha.Register.Models.SignatureAlgorithm.ED25519,
             GrantedAt = DateTimeOffset.UtcNow

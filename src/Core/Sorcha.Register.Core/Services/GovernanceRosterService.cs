@@ -266,6 +266,30 @@ public class GovernanceRosterService : IGovernanceRosterService
                 var targetAttestation = updatedAttestations.First(a => a.Subject == operation.TargetDid);
                 var oldOwner = updatedAttestations.First(a => a.Role == RegisterRole.Owner);
 
+                // #1464 — an Owner with no public key cannot govern the register it owns. Roster
+                // authority is matched BY KEY (GovernanceKeyMatcher returns false for an empty one,
+                // deliberately), so such an Owner can never sign a governance transaction, its
+                // approvals are excluded from every tally, and SelectSigner prefers the Owner — so
+                // there is no way to route around it. The register is permanently ungovernable.
+                //
+                // Demonstrated live on n1: the promoted Owner's next proposal returned HTTP 200 and
+                // never sealed (VAL_PERM_002). The HTTP layer reported success throughout.
+                //
+                // Refuse here rather than upstream because every enactment path — both Add sites and
+                // the propose-and-enact override — funnels through this method, so this is the one
+                // place the bad end-state can be made unreachable rather than merely unlikely.
+                //
+                // Note this guards who GAINS authority, not who loses it: transferring away from an
+                // already-unkeyed Owner is the repair for a register in that state, and refusing it
+                // would make the damage permanent.
+                if (string.IsNullOrWhiteSpace(targetAttestation.PublicKey))
+                {
+                    throw new InvalidOperationException(
+                        $"Cannot transfer ownership to '{operation.TargetDid}': the roster holds no "
+                        + "public key for it, so it could never sign a governance transaction and the "
+                        + "register would become permanently ungovernable (#1464).");
+                }
+
                 // Demote old Owner to Admin
                 updatedAttestations.Remove(oldOwner);
                 updatedAttestations.Add(new RegisterAttestation

@@ -352,13 +352,25 @@ public sealed class GovernanceEnactmentService : IGovernanceEnactmentService
         RegisterAttestation? newAttestation = null;
         if (operation.OperationType == GovernanceOperationType.Add)
         {
+            // #1464 — the key is DERIVED from the subject DID, not left empty. The old comment
+            // here said the key "is recorded when they first attest", but no attest path was ever
+            // built, so a governance-added member stayed unkeyed forever and could never sign.
+            //
+            // A classical ws1 address is Bech32 over [network][publicKey], so the key IS the
+            // identity: deriving it is a pure function of sealed proposal content and therefore
+            // deterministic across nodes — which is why this is done here rather than by resolving
+            // the key from a local participant registry, which would differ per node.
+            //
+            // A ws2 (PQC) subject yields null and stays unkeyed on purpose: that address carries a
+            // HASH, and storing a hash here would never match a raw signature key. Promotion of an
+            // unkeyed member is refused by ApplyOperation, so it fails closed rather than silently.
+            var derivedKey = RosterKeyDerivation.TryDerivePublicKey(operation.TargetDid);
+
             newAttestation = new RegisterAttestation
             {
                 Role = operation.TargetRole,
                 Subject = operation.TargetDid,
-                // The joining organisation's key is not known at enactment — it is recorded when they
-                // first attest. An empty key here is the roster saying "entitled, not yet keyed".
-                PublicKey = string.Empty,
+                PublicKey = derivedKey ?? string.Empty,
                 Signature = string.Empty,
                 Algorithm = SignatureAlgorithm.ED25519,
                 GrantedAt = operation.ProposedAt,
