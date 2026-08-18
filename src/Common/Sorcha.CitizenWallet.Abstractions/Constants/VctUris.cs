@@ -90,4 +90,18 @@ public static class VctUris
     /// </summary>
     public const string CyberLevelV1 =
         "https://sorcha.dev/vc/cyber-level/v1";
+
+    /// <summary>
+    /// Credential-lifecycle conformance credential v1. Issued by
+    /// <c>walkthroughs/CredentialLifecycle</c> purely so its status can be driven through every
+    /// state the two status-list specifications define — active, suspended, reinstated, revoked.
+    /// </summary>
+    /// <remarks>
+    /// It is a real platform type rather than an ad-hoc string because the conformance suite has to
+    /// exercise the same issuance path every other credential uses; a type outside the catalogue
+    /// would be testing a path nothing else takes. It carries no meaning outside that suite and
+    /// should not be required by any production blueprint.
+    /// </remarks>
+    public const string CredentialLifecycleConformanceV1 =
+        "https://sorcha.dev/vc/credential-lifecycle-conformance/v1";
 }

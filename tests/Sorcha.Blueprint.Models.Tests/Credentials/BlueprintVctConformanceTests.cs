@@ -43,6 +43,7 @@ public class BlueprintVctConformanceTests
         ["RefurbishmentCertificateCredential"] = VctUris.RefurbishmentCertificateV1,
         ["BuildingPermitCredential"] = VctUris.BuildingPermitV1,
         ["CyberLevelCredential"] = VctUris.CyberLevelV1,
+        ["CredentialLifecycleConformance"] = VctUris.CredentialLifecycleConformanceV1,
     };
 
     private static readonly HashSet<string> CanonicalUris = new(Canonical.Values, StringComparer.Ordinal);
