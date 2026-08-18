@@ -18,7 +18,29 @@ public class StatusListManagerTests
             "https://test.example/api/v1/credentials/status-lists",
             "https://test.example/api/v1/credentials/ietf-status-lists");
 
-        _manager = new StatusListManager(_loggerMock.Object, urls);
+        // #1482: the manager is now backed by a durable store and reconciles against the register.
+        // These tests exercise the in-memory store and an empty register, which is the same
+        // behaviour they asserted before — the list starts empty and nothing has been revoked.
+        var register = new Mock<Sorcha.ServiceClients.Register.IRegisterServiceClient>();
+        register.Setup(r => r.GetTransactionsAsync(
+                It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.ServiceClients.Register.TransactionPage
+            {
+                Page = 1,
+                PageSize = 100,
+                Total = 0,
+                Transactions = []
+            });
+
+        var reconciler = new StatusListLedgerReconciler(
+            register.Object,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<StatusListLedgerReconciler>.Instance);
+
+        _manager = new StatusListManager(
+            _loggerMock.Object,
+            urls,
+            new Sorcha.Blueprint.Service.Storage.InMemoryStatusListStore(),
+            reconciler);
     }
 
     // ===== GetOrCreateListAsync Tests =====
