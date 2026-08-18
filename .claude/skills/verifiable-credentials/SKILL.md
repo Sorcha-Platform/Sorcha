@@ -534,6 +534,27 @@ the consumers; do not trust the build.
 "revoked" / "suspended". #1495 changed the message to `Credential status '{purpose}' is set.`, which
 contains neither word and therefore matched nothing. Keep the word in the message.
 
+### Run the conformance check after touching any of this
+
+`walkthroughs/CredentialLifecycle/` is the standard credential conformance check — **39 assertions**
+covering issue → active → suspend → reinstate → revoke → terminal, both published wire formats, and
+index independence:
+
+```bash
+pwsh walkthroughs/CredentialLifecycle/setup.ps1           -Profile n1
+pwsh walkthroughs/CredentialLifecycle/run-conformance.ps1 -Profile n1
+```
+
+It exists because unit tests at this seam kept passing while the platform was wrong. Three of its
+phases encode defects that shipped: **P3** (reinstate ⇒ accepted again) is the assertion a
+refusal-only test can never make, and is what would have caught a suspension quietly becoming
+terminal; **P7** asserts the IETF `lst` is *wide enough for the `bits` it declares* (#1492); **P8**
+issues a second credential and proves the first's status change did not touch it (#1491/#1492/#1502
+were all "the right operation on the wrong entry").
+
+It reads status from the **credential's own `credentialStatus`** and fetches those URLs, rather than
+asking a convenience API — asserting your reader agrees with your writer proves nothing.
+
 ⚠ **There is a THIRD status rail** — `IStatusListCache` / `StatusListVerdict` in
 `Sorcha.Verifier.Engine`, used for the delegation credential on the F127 local route. It is still a
 tri-state, publishes **LSB-first** where both specs and every other Sorcha component are MSB-first,

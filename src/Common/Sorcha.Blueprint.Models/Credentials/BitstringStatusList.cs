@@ -119,6 +119,35 @@ public class BitstringStatusList
     }
 
     /// <summary>
+    /// Consumes a SPECIFIC index, advancing this list past it. Returns false if the index is beyond
+    /// capacity.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Issue #1502. A credential carries one entry number across every purpose list, so the number
+    /// is chosen once over all of them and then reserved in each — rather than each list allocating
+    /// its own and the results being compared afterwards. Independent allocation drifts the moment
+    /// one list is created later than its sibling, and the lagging list then believes indexes are
+    /// free that credentials already point at.
+    /// </para>
+    /// <para>
+    /// Reserving an index below <see cref="NextAvailableIndex"/> is a no-op rather than an error:
+    /// the caller reserves the same shared index in several lists, and one of them is usually the
+    /// list that number came from.
+    /// </para>
+    /// </remarks>
+    public bool ReserveIndex(int index)
+    {
+        if (index < 0 || index >= Size)
+            return false;
+
+        if (index >= NextAvailableIndex)
+            NextAvailableIndex = index + 1;
+
+        return true;
+    }
+
+    /// <summary>
     /// Gets the bit value at the specified index.
     /// </summary>
     public bool GetBit(int index)

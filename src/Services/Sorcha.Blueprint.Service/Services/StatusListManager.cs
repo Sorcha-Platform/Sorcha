@@ -193,30 +193,46 @@ public class StatusListManager : IStatusListManager, IDisposable
         await semaphore.WaitAsync(ct);
         try
         {
-            var index = list.AllocateIndex();
-            if (index == -1)
+            // ONE numbering space, stored twice (#1502). The index is decided once across both
+            // lists and then reserved in each. The previous code allocated from each list
+            // independently, compared the results, logged a warning when they disagreed, and
+            // carried on — so a suspension list created later than its revocation sibling stayed
+            // permanently behind, believing indexes were free that credentials already pointed at.
+            //
+            // Taking the max is what heals an already-drifted pair: the lagging list jumps to its
+            // sibling's numbering. Skipping numbers in it is harmless — an index no credential
+            // references simply has a clear bit, which reads as "in good standing", and no
+            // credential is ever issued against it.
+            var index = Math.Max(list.NextAvailableIndex, suspension.NextAvailableIndex);
+
+            if (index >= list.Size || index >= suspension.Size)
             {
-                _logger.LogWarning("Status list {ListId} is full (capacity: {Size})", list.Id, list.Size);
+                _logger.LogWarning(
+                    "Status list {ListId} is full (capacity: {Size})", list.Id, list.Size);
                 throw new InvalidOperationException($"Status list {list.Id} is full");
             }
 
-            _logger.LogInformation(
-                "Allocated index {Index} in status list {ListId} for credential {CredentialId}",
-                index, list.Id, credentialId ?? "(pre-allocation — not yet signed)");
+            if (list.NextAvailableIndex != suspension.NextAvailableIndex)
+            {
+                _logger.LogInformation(
+                    "Status lists for issuer {Issuer} on register {Register} were at different "
+                    + "indexes (revocation {Revocation}, suspension {Suspension}); both advanced to "
+                    + "{Index} so this credential keeps one entry number in every purpose list",
+                    issuerWallet, registerId, list.NextAvailableIndex, suspension.NextAvailableIndex, index);
+            }
 
             // Persist immediately. NextAvailableIndex is the one thing the ledger cannot rebuild,
             // and if it resets a new credential is handed an index an older one already holds,
             // so revoking the new one would silently mark the old one revoked too.
-            // Burn the SAME index in the suspension list so one credential has one entry number
-            // in both. Allocating independently would let the two lists drift apart and a
-            // suspension would then flip a bit belonging to a different credential.
-            var suspensionIndex = suspension.AllocateIndex();
-            if (suspensionIndex != index)
+            if (!list.ReserveIndex(index) || !suspension.ReserveIndex(index))
             {
-                _logger.LogWarning(
-                    "Suspension list {ListId} allocated index {Suspension} but the revocation list allocated {Revocation}; the lists have drifted",
-                    suspension.Id, suspensionIndex, index);
+                throw new InvalidOperationException(
+                    $"Could not reserve index {index} across both purpose lists for {list.Id}");
             }
+
+            _logger.LogInformation(
+                "Allocated index {Index} in status lists {ListId} + {SuspensionId} for credential {CredentialId}",
+                index, list.Id, suspension.Id, credentialId ?? "(pre-allocation — not yet signed)");
 
             await _store.SaveAsync(list, ct).ConfigureAwait(false);
             await _store.SaveAsync(suspension, ct).ConfigureAwait(false);

@@ -175,6 +175,22 @@ $action1Payload = @{
     privilegedAccess = $evidenceCompliant.privilegedAccess
 }
 
+# Snapshot the wallet BEFORE issuing. "A credential of this type exists" is a VACUOUS
+# assertion in a wallet that accumulates one per run — it passes on a credential this run
+# did not issue, including a revoked one, and then the failure surfaces downstream as a 400
+# that looks like a platform fault (#1503). Only a credential absent before and present
+# after was issued by this action.
+$preIssueIds = @()
+try {
+    $preIssue = Invoke-SorchaApi -Method GET `
+        -Uri "$($sorchaEnv.WalletUrl)/v1/wallets/$($state.roles.'subject-org'.walletAddress)/credentials/?status=All" `
+        -Headers $subjectSession.Headers
+    $preIssueIds = @(Resolve-SorchaCollection -Response $preIssue -PropertyName 'credentials' |
+        Where-Object { $_.type -eq "https://sorcha.dev/vc/cyber-essentials-uac/v1" } |
+        ForEach-Object { $_.id })
+} catch { }
+Write-WtInfo "Wallet holds $($preIssueIds.Count) posture credential(s) before issuance"
+
 $r1 = Invoke-SorchaAction `
     -BlueprintUrl  $sorchaEnv.BlueprintUrl `
     -InstanceId    $instanceAId `
@@ -199,15 +215,36 @@ while ((Get-Date) -lt $credDeadline) {
         $walletCreds = Invoke-SorchaApi -Method GET -Uri $walletCredUrl -Headers $subjectSession.Headers
         $items = Resolve-SorchaCollection -Response $walletCreds -PropertyName 'credentials'
         if ($items) {
-            $postureCred = @($items) | Where-Object { $_.type -eq "https://sorcha.dev/vc/cyber-essentials-uac/v1" } | Select-Object -First 1
+            # NEW since the snapshot, and Active. Both halves matter: dropping "new" matches a
+            # stale credential, dropping "Active" matches a revoked one this run happened to issue
+            # nothing newer than.
+            $postureCred = @($items) |
+                Where-Object { $_.type -eq "https://sorcha.dev/vc/cyber-essentials-uac/v1" } |
+                Where-Object { $preIssueIds -notcontains $_.id } |
+                Select-Object -First 1
             if ($postureCred) { break }
         }
     } catch { }
     Start-Sleep -Seconds 2
 }
-Assert ($postureCred -ne $null) "Posture credential delivered to subject-org wallet after action 1"
-$credentialIdFromResponse = if ($postureCred) { $postureCred.id } else { $r1.issuedCredentialId }
-Write-WtInfo "Posture credential id: $credentialIdFromResponse"
+
+if (-not $postureCred) {
+    Write-WtInfo "No NEW posture credential arrived within 45s. Wallet currently holds:"
+    try {
+        $dbg = Invoke-SorchaApi -Method GET -Uri $walletCredUrl -Headers $subjectSession.Headers
+        Resolve-SorchaCollection -Response $dbg -PropertyName 'credentials' |
+            Where-Object { $_.type -eq "https://sorcha.dev/vc/cyber-essentials-uac/v1" } |
+            ForEach-Object { Write-WtInfo "   $($_.id)  status=$($_.status)" }
+    } catch { }
+    Write-WtInfo "The action may have minted one that could not be delivered — check the Blueprint"
+    Write-WtInfo "Service log for 'Public key not found on register ... recipient skipped'."
+}
+
+Assert ($postureCred -ne $null) "action 1 issued a NEW posture credential and it reached the subject-org wallet"
+Assert ($postureCred.status -ne 'revoked') "the newly issued credential is not revoked"
+
+$credentialIdFromResponse = $postureCred.id
+Write-WtInfo "Posture credential id: $credentialIdFromResponse (status: $($postureCred.status))"
 
 # ------------------------------------------------------------------
 # S1-4: Create Blueprint B instance and get presentation
@@ -232,13 +269,19 @@ Write-WtInfo "Blueprint B instance: $instanceBId"
 
 Write-WtInfo "S1-4: Fetching CyberEssentialsUacPosture presentation from subject-org wallet"
 
+# Pin the EXACT credential this run issued. Selecting by type alone presents whichever is
+# first in a wallet that accumulates them — the direct cause of #1477 defect 2, #1483 and
+# #1503.
 $pres = Get-SorchaCredentialPresentation `
     -WalletUrl       $sorchaEnv.WalletUrl `
     -WalletAddress   $state.roles.'subject-org'.walletAddress `
     -CredentialType  "https://sorcha.dev/vc/cyber-essentials-uac/v1" `
+    -CredentialId    $credentialIdFromResponse `
     -Token           $subjectSession.Token
 
 Assert ($pres -ne $null) "subject-org holds a presentable CyberEssentialsUacPosture credential"
+Assert ($pres.credentialId -eq $credentialIdFromResponse) `
+    "the presentation is built from the credential this run issued ($credentialIdFromResponse)"
 
 # ------------------------------------------------------------------
 # S1-5: Freshness assertion on assessmentDate

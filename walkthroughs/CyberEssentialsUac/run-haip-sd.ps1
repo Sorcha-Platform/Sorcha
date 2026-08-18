@@ -112,16 +112,52 @@ if (-not (Test-Path $walletDir)) {
 
 $secrets = Get-SorchaSecrets -WalkthroughName "cyber-essentials-uac"
 
-# SERVICE TOKEN — client_credentials grant using the service principal registered by setup.ps1.
-# The resulting token carries a client_id claim and token_type=service, satisfying the
-# RequireService policy on /api/v1/offers/ and /api/v1/verifier/requests + /result.
-$encodedSecret = [Uri]::EscapeDataString($state.haip.clientSecret)
-$encodedScope  = [Uri]::EscapeDataString("haip:issue haip:verify")
-$ccBody = "grant_type=client_credentials&client_id=$($state.haip.clientId)&client_secret=$encodedSecret&scope=$encodedScope"
-$tokenResp = Invoke-SorchaApi -Method POST `
-    -Uri "$baseUrl/api/service-auth/token" `
-    -Body $ccBody `
-    -ContentType "application/x-www-form-urlencoded"
+# SERVICE TOKEN — client_credentials for the service principal registered by setup.ps1. The
+# resulting token carries a client_id claim and token_type=service, satisfying the RequireService
+# policy on /api/v1/offers/ and /api/v1/verifier/requests + /result.
+#
+# ⚠ THIS PATH IS CLOSED FROM OUTSIDE THE NETWORK, and has been since #1397.
+#
+#   • #1397 removed client_credentials from the PUBLIC token endpoint (it was a signing oracle).
+#     The grant now lives on POST /api/internal/service-auth/token, reachable only from inside
+#     the internal network.
+#   • F191 then made service-to-service auth CERT-ONLY on n1 (ServiceAuth:DisableSharedSecrets),
+#     so even reaching the internal endpoint, a client_secret is refused with an explicit 400 —
+#     the caller must present a workload certificate.
+#
+# So an external walkthrough script cannot mint a service token at all. That is a deliberate
+# security posture, not a regression, and repointing the URL would not fix it. Skipping with an
+# explanation beats failing with a confusing 400 that reads like a platform fault (#1503) — and
+# beats inventing a fake success path (CLAUDE.md §18).
+#
+# To run this variant, it needs an in-network runner holding workload cert material. Tracked on
+# #1503.
+$tokenResp = $null
+try {
+    $encodedSecret = [Uri]::EscapeDataString($state.haip.clientSecret)
+    $encodedScope  = [Uri]::EscapeDataString("haip:issue haip:verify")
+    $ccBody = "grant_type=client_credentials&client_id=$($state.haip.clientId)&client_secret=$encodedSecret&scope=$encodedScope"
+    $tokenResp = Invoke-SorchaApi -Method POST `
+        -Uri "$baseUrl/api/service-auth/token" `
+        -Body $ccBody `
+        -ContentType "application/x-www-form-urlencoded"
+} catch {
+    Write-Host ""
+    Write-WtBanner "CyberEssentialsUac HAIP/OID4VP variant — SKIPPED (cannot mint a service token)"
+    Write-WtInfo "The public client_credentials grant was closed by #1397, and F191 made s2s auth"
+    Write-WtInfo "cert-only, so no external script can obtain a service token."
+    Write-Host ""
+    Write-WtInfo "Server said: $($_.Exception.Message)"
+    Write-Host ""
+    Write-WtInfo "This is the security posture working as designed — not a platform fault."
+    Write-WtInfo "Running it needs an in-network runner with workload cert material. See #1503."
+    Write-Host ""
+    Write-WtInfo "The non-HAIP scenarios are unaffected and still cover the credential lifecycle:"
+    Write-WtInfo "  pwsh walkthroughs/CyberEssentialsUac/run-agents.ps1      -Profile n1"
+    Write-WtInfo "  pwsh walkthroughs/CyberEssentialsUac/run-revocation.ps1  -Profile n1"
+    Write-WtInfo "  pwsh walkthroughs/CyberEssentialsUac/run-suspension.ps1  -Profile n1"
+    exit 0
+}
 
 Assert ($tokenResp -and $tokenResp.access_token) "client_credentials grant returned an access token"
 $svcHeaders = @{ Authorization = "Bearer $($tokenResp.access_token)" }

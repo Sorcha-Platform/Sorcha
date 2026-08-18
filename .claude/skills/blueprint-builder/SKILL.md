@@ -87,7 +87,7 @@ Sorcha blueprints define multi-participant workflows as JSON documents. Each blu
 
 | Concept | Details |
 |---------|---------|
-| Participants | Min 2 required. Each has `id`, `name`. `id` is referenced by `action.sender`. **Leave `walletAddress` null for citizen-facing or credential-bootstrapped roles** — see Open Participants below. |
+| Participants | **Min 2 required** — publish fails with `Blueprint must have at least 2 participants`. Each has `id`, `name`. `id` is referenced by `action.sender`. A single-action blueprint (e.g. a credential gate) still needs a second participant: give it a **disclosure and no action of its own**, which satisfies the rule without adding a cadence step to every submission. **Leave `walletAddress` null for citizen-facing or credential-bootstrapped roles** — see Open Participants below. |
 | Actions | Sequential IDs starting at 0. One must have `isStartingAction: true`. Starting actions are **open by design** — anyone may submit; the first sender is bound to the participant for the rest of the instance. |
 | Routes | Define flow between actions. `nextActionIds: []` = workflow completion |
 | DataSchemas | JSON Schema for action payload. `IEnumerable<JsonDocument>` in C# |
@@ -784,6 +784,27 @@ Five further properties, all optional and all used by the shipped AIAS blueprint
 - **`displayConfig`** — card presentation (colours, logo, layout) for the issued credential.
 - **`format`** — credential wire format. Only `SdJwtVc` exists today; there is **no mdoc/mDL issuance**, which is the blocker for ISO 18013-5 proximity presentation.
 - **`trustAnchor`** — defaults to `Register`.
+
+⚠ **`claimMappings` fail SILENTLY, and the warning names your pointer rather than the real cause.**
+A `sourceField` that resolves to nothing is dropped and the credential mints **without that claim** —
+no error, no failed action, a sealed transaction and a delivered (or undeliverable) credential:
+
+```
+Claim mapping source '/subjectName' has no value in action data; dropping claim 'subjectName'
+```
+
+The obvious reading is "my JSON Pointer is wrong". It usually is not. The pointers are resolved
+against the **prior action's decrypted payload**, so anything that stops that payload being decrypted
+empties every mapping at once. The most common cause is that the recipients were skipped because the
+participants' public keys are not on the register, which leaves the payload with no disclosure-group
+envelope. Tell them apart by the *count*: one dropped claim is a pointer bug; **all of them dropped
+together is a decryption or key-resolution failure upstream** — check the blueprint-service log for
+`recipient skipped` before touching the schema. (Found while building `walkthroughs/CredentialLifecycle`,
+2026-08-18; see the **walkthrough-builder** skill → "PUBLISH participants onto the register".)
+
+A credential with no claims still satisfies a requirement that only checks its *type*, so a gate can
+accept an empty credential. If the claims carry meaning, put them in `requiredClaims` on the
+consuming action so the gate fails loudly instead.
 
 #### SorchaLocalWallet citizen-PWA worked example (Feature 114 US4)
 
