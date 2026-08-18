@@ -839,7 +839,7 @@ public static class CredentialEndpoints
             }
             else
             {
-                claims["credentialStatus"] = new Dictionary<string, object>
+                var revocationEntry = new Dictionary<string, object>
                 {
                     ["id"] = $"{effectiveStatusListUrl}#{effectiveStatusListIndex.Value}",
                     ["type"] = "BitstringStatusListEntry",
@@ -847,6 +847,27 @@ public static class CredentialEndpoints
                     ["statusListIndex"] = effectiveStatusListIndex.Value.ToString(),
                     ["statusListCredential"] = effectiveStatusListUrl!
                 };
+
+                // Two purposes means two entries (W3C example A.3). Emitted as an ARRAY only
+                // when a suspension list exists, so a credential with revocation alone keeps
+                // the single-object shape every existing verifier already reads.
+                if (!string.IsNullOrWhiteSpace(request.SuspensionStatusListUrl))
+                {
+                    var suspensionEntry = new Dictionary<string, object>
+                    {
+                        ["id"] = $"{request.SuspensionStatusListUrl}#{effectiveStatusListIndex.Value}",
+                        ["type"] = "BitstringStatusListEntry",
+                        ["statusPurpose"] = "suspension",
+                        ["statusListIndex"] = effectiveStatusListIndex.Value.ToString(),
+                        ["statusListCredential"] = request.SuspensionStatusListUrl!
+                    };
+
+                    claims["credentialStatus"] = new List<object> { revocationEntry, suspensionEntry };
+                }
+                else
+                {
+                    claims["credentialStatus"] = revocationEntry;
+                }
             }
         }
 
@@ -1084,6 +1105,17 @@ public class IssueCredentialRequest
     public string? RegisterId { get; init; }
 
     public string? StatusListUrl { get; init; }
+
+    /// <summary>
+    /// The issuer's SUSPENSION status list, when one exists.
+    /// </summary>
+    /// <remarks>
+    /// When supplied, the credential carries TWO BitstringStatusListEntry entries at the same
+    /// index — one per purpose — because W3C defines revocation as not reversible and
+    /// suspension as reversible. A single shared bit advertises a suspended credential as
+    /// revoked, and lifting the suspension clears a revocation bit that must never clear.
+    /// </remarks>
+    public string? SuspensionStatusListUrl { get; init; }
 
     /// <summary>
     /// Optional pre-allocated status list index. See <see cref="StatusListUrl"/>.

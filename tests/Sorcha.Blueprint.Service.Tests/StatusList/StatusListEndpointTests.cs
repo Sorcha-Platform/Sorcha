@@ -78,7 +78,15 @@ public class StatusListEndpointTests
             .ReturnsAsync(list);
         _statusListManagerMock
             .Setup(m => m.AllocateIndexAsync("issuer-1", "register-1", "cred-1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new StatusListAllocation(list.Id, 42, "https://test.example/api/v1/credentials/status-lists/" + list.Id));
+            .ReturnsAsync(new StatusListAllocation(
+            list.Id,
+            42,
+            "https://test.example/api/v1/credentials/status-lists/" + list.Id,
+            // Same index in the sibling suspension list — revocation and suspension are
+            // distinct W3C statuses and each has its own list.
+            list.Id.Replace("-revocation-", "-suspension-"),
+            "https://test.example/api/v1/credentials/status-lists/"
+                + list.Id.Replace("-revocation-", "-suspension-")));
 
         var result = await InvokeAllocateIndex(list.Id, new AllocateIndexRequest { CredentialId = "cred-1" });
 

@@ -229,6 +229,10 @@ public interface IWalletServiceClient
         // credential-lifecycle endpoints can post a CredentialStatusChange when it is later
         // revoked — without it that ledger write is skipped silently (#1482).
         string? registerId = null,
+        // The issuer's SUSPENSION list. W3C makes revocation irreversible and suspension
+        // reversible, so a credential needs an entry per purpose — sharing one bit reports a
+        // suspended credential as revoked.
+        string? suspensionStatusListUrl = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

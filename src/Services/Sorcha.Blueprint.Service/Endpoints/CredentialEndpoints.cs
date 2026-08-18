@@ -135,7 +135,7 @@ public static class CredentialEndpoints
 
         // Update bitstring status list (set bit = revoked)
         var statusListUpdated = await TryUpdateStatusListBit(
-            credential.Value, true, request.Reason ?? "Revoked", statusListManager, logger, cancellationToken);
+            credential.Value, true, request.Reason ?? "Revoked", "revocation", statusListManager, logger, cancellationToken);
 
         var revokedAt = DateTimeOffset.UtcNow;
         logger.LogInformation(
@@ -187,7 +187,7 @@ public static class CredentialEndpoints
 
         // Update bitstring status list (set bit = suspended)
         var statusListUpdated = await TryUpdateStatusListBit(
-            credential.Value, true, request.Reason ?? "Suspended", statusListManager, logger, cancellationToken);
+            credential.Value, true, request.Reason ?? "Suspended", "suspension", statusListManager, logger, cancellationToken);
 
         logger.LogInformation("Suspended credential {CredentialId} by {Issuer}. Reason: {Reason}",
             credentialId, request.IssuerWallet, request.Reason ?? "(none)");
@@ -237,7 +237,7 @@ public static class CredentialEndpoints
 
         // Clear bitstring status list (clear bit = active again)
         var statusListUpdated = await TryUpdateStatusListBit(
-            credential.Value, false, request.Reason ?? "Reinstated", statusListManager, logger, cancellationToken);
+            credential.Value, false, request.Reason ?? "Reinstated", "suspension", statusListManager, logger, cancellationToken);
 
         logger.LogInformation("Reinstated credential {CredentialId} by {Issuer}. Reason: {Reason}",
             credentialId, request.IssuerWallet, request.Reason ?? "(none)");
@@ -342,10 +342,20 @@ public static class CredentialEndpoints
     /// Attempts to update the bitstring status list for a credential.
     /// Returns true if the bit was updated, false if no status list info is available.
     /// </summary>
+    /// <summary>
+    /// Sets or clears this credential's bit in the status list for <paramref name="purpose"/>.
+    /// </summary>
+    /// <remarks>
+    /// W3C Bitstring Status List defines <c>revocation</c> as NOT reversible and <c>suspension</c>
+    /// as reversible, so each purpose has its own list and its own bit at the same index. Writing a
+    /// suspension into the revocation list advertises the credential to every verifier as revoked,
+    /// and lifting that suspension then clears a revocation bit the spec says can never be cleared.
+    /// </remarks>
     private static async Task<bool> TryUpdateStatusListBit(
         CredentialIssuanceResult credential,
         bool value,
         string reason,
+        string purpose,
         IStatusListManager statusListManager,
         ILogger logger,
         CancellationToken cancellationToken)
@@ -359,6 +369,10 @@ public static class CredentialEndpoints
             var listId = credential.StatusListUrl.Split('/').LastOrDefault();
             if (string.IsNullOrWhiteSpace(listId))
                 return false;
+
+            // The id ends with its purpose (…-revocation-1). Retarget rather than require a second
+            // URL, so a credential that only ever knew its revocation list still resolves the sibling.
+            listId = RetargetListIdToPurpose(listId, purpose);
 
             await statusListManager.SetBitAsync(listId, credential.StatusListIndex.Value, value, reason, cancellationToken);
             return true;
@@ -398,6 +412,19 @@ public static class CredentialEndpoints
         var trimmed = url.TrimEnd('/');
         var slash = trimmed.LastIndexOf('/');
         return slash >= 0 && slash < trimmed.Length - 1 ? trimmed[(slash + 1)..] : null;
+    }
+
+    /// <summary>
+    /// Rewrites a status-list id so it addresses <paramref name="purpose"/>. Ids are
+    /// <c>{issuerWallet}-{registerId}-{purpose}-{version}</c> and the two purposes share an index.
+    /// </summary>
+    internal static string RetargetListIdToPurpose(string listId, string purpose)
+    {
+        var parts = listId.Split('-');
+        if (parts.Length < 2) return listId;
+
+        parts[^2] = purpose;
+        return string.Join('-', parts);
     }
 
     private static async Task TrySubmitStatusChangeTransactionAsync(

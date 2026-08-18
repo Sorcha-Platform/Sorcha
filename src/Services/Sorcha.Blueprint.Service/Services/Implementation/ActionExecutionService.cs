@@ -2542,6 +2542,9 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         // running without a status list manager wired up.
         string? preAllocatedStatusListUrl = null;
         int? preAllocatedStatusListIndex = null;
+        // W3C treats revocation (not reversible) and suspension (reversible) as different
+        // statuses, so the credential carries one entry per purpose at the same index.
+        string? preAllocatedSuspensionListUrl = null;
 
         if (_statusListManager != null && _credentialStatusEmbeddingEnabled)
         {
@@ -2555,6 +2558,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                     senderWallet, instance.RegisterId, credentialId: null, cancellationToken);
                 preAllocatedStatusListUrl = allocation.StatusListUrl;
                 preAllocatedStatusListIndex = allocation.Index;
+                preAllocatedSuspensionListUrl = allocation.SuspensionListUrl;
 
                 _logger.LogInformation(
                     "Pre-allocated status list index {Index} in list {ListId} for upcoming credential issuance",
@@ -2598,6 +2602,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                 statusListUrl: preAllocatedStatusListUrl,
                 statusListIndex: preAllocatedStatusListIndex,
                 statusListPurpose: preAllocatedStatusListUrl != null ? "revocation" : null,
+                suspensionStatusListUrl: preAllocatedSuspensionListUrl,
 #pragma warning disable CS0618 // accept deprecated SorchaInternal for backward-compat (treated as local-wallet delivery)
                 skipRecipientStore: config.TargetAudience is TargetAudience.SorchaLocalWallet or TargetAudience.SorchaInternal,
 #pragma warning restore CS0618
