@@ -43,6 +43,10 @@ public sealed class InboxService : IInboxService
     }
 
     /// <inheritdoc />
+    /// <inheritdoc />
+    public Task<bool> PlatformUserExistsAsync(Guid platformUserId, CancellationToken ct = default) =>
+        _store.PlatformUserExistsAsync(platformUserId, ct);
+
     public async Task<InboxWriteResult> WriteAsync(InboxWriteRequest request, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(request);

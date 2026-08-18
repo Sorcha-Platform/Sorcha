@@ -107,6 +107,16 @@ public static class InternalEndpoints
         // instead. Deliberately ONE batch route keyed by claim name — not an endpoint per checkable
         // attribute — so a caller resolving several bindings makes one round trip and a newly
         // resolvable attribute is a mapping entry in the service, never a new route.
+        group.MapGet("/platform-users/{platformUserId:guid}/exists", PlatformUserExists)
+            .WithName("PlatformUserExists")
+            .WithSummary("Whether the supplied id names a real platform user.")
+            .WithDescription("Issue #1506. InboxEntries.PlatformUserId is a foreign key, so a caller "
+                + "writing on someone's behalf needs to tell 'this is a platform user' from 'this is "
+                + "some other GUID' BEFORE writing — every id here is a GUID, so a wrong one is "
+                + "indistinguishable by shape and only the database notices. Deliberately returns a "
+                + "bare boolean rather than the user, so it discloses nothing but existence.")
+            .Produces<PlatformUserExistsResponse>(StatusCodes.Status200OK);
+
         group.MapGet("/platform-users/{platformUserId:guid}/claims", ResolveLivePlatformUserClaims)
             .WithName("ResolveLivePlatformUserClaims")
             .WithSummary("Resolve the current value of named identity claims for a platform user")
@@ -124,6 +134,21 @@ public static class InternalEndpoints
     /// Resolves live identity claim values for a platform user. See
     /// <see cref="ILivePlatformUserClaimsService"/> for why this exists and why it is a batch read.
     /// </summary>
+    private static async Task<Ok<PlatformUserExistsResponse>> PlatformUserExists(
+        Guid platformUserId,
+        Sorcha.Tenant.Service.Data.TenantDbContext db,
+        CancellationToken ct)
+    {
+        // 200 with exists:false rather than 404 — the caller is asking a question, and "no" is a
+        // successful answer to it. A 404 would be ambiguous with the route being absent, which is
+        // exactly the confusion that makes a missing internal endpoint hard to diagnose.
+        var exists = await db.PlatformUsers
+            .AsNoTracking()
+            .AnyAsync(u => u.Id == platformUserId, ct);
+
+        return TypedResults.Ok(new PlatformUserExistsResponse(platformUserId, exists));
+    }
+
     private static async Task<Results<Ok<IReadOnlyDictionary<string, string>>, NotFound, BadRequest<string>>>
         ResolveLivePlatformUserClaims(
             Guid platformUserId,
@@ -341,6 +366,9 @@ public static class InternalEndpoints
 
     /// <summary>Wire shape for <see cref="ResolvePlatformUserByIdentity"/>.</summary>
     public sealed record PlatformUserResolution(Guid UserIdentityId, Guid PlatformUserId);
+
+    /// <summary>Whether an id names a real platform user (issue #1506).</summary>
+    public sealed record PlatformUserExistsResponse(Guid PlatformUserId, bool Exists);
 
     private static async Task<Results<Ok<PlatformUserResolution>, NotFound>> ResolvePlatformUserByIdentity(
         Guid userIdentityId,

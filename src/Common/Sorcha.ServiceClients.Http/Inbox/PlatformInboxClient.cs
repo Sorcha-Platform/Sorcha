@@ -98,9 +98,47 @@ public sealed class PlatformInboxClient : IPlatformInboxClient
         return body?.PlatformUserId;
     }
 
+    /// <inheritdoc />
+    public async Task<bool> PlatformUserExistsAsync(Guid platformUserId, CancellationToken ct = default)
+    {
+        try
+        {
+            await ServiceClientAuthHelper.SetAuthHeaderAsync(
+                _httpClient, _serviceAuth, _logger, "Tenant Service (platform-user existence)", ct);
+
+            using var resp = await _httpClient
+                .GetAsync($"api/internal/platform-users/{platformUserId:D}/exists", ct)
+                .ConfigureAwait(false);
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                // Fail CLOSED. "I could not check" is not "it exists" — treating it as existence is
+                // what put an unverified id in front of the foreign key in the first place.
+                _logger.LogDebug(
+                    "Platform-user existence check for {PlatformUserId} returned {StatusCode}; treating as unknown",
+                    platformUserId, resp.StatusCode);
+                return false;
+            }
+
+            var body = await resp.Content
+                .ReadFromJsonAsync<PlatformUserExistsShape>(SorchaJson.Options, ct)
+                .ConfigureAwait(false);
+            return body?.Exists ?? false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex,
+                "Platform-user existence check failed for {PlatformUserId}; treating as unknown",
+                platformUserId);
+            return false;
+        }
+    }
+
     private sealed record InboxResponseEnvelope(InboxEntryShape? Entry, bool Idempotent);
 
     private sealed record InboxEntryShape(Guid Id);
 
     private sealed record PlatformUserResolutionShape(Guid UserIdentityId, Guid PlatformUserId);
+
+    private sealed record PlatformUserExistsShape(Guid PlatformUserId, bool Exists);
 }

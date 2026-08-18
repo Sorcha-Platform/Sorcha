@@ -25,6 +25,18 @@ public interface IInboxStore
     /// </summary>
     Task<InboxAddResult> AddOrFindAsync(InboxEntry candidate, CancellationToken ct = default);
 
+    /// <summary>
+    /// True when <paramref name="platformUserId"/> names a real platform user.
+    /// </summary>
+    /// <remarks>
+    /// Issue #1506. <c>InboxEntries.PlatformUserId</c> is a foreign key, so writing an id that is
+    /// not a platform user reaches Postgres and throws. That is a 500 caused entirely by the
+    /// caller's argument — and on n1 a run of those 500s tripped a circuit breaker that then
+    /// blocked credential issuance, so a best-effort notification write took out the operation it
+    /// was meant to describe. Checking first turns it into the 4xx it always was.
+    /// </remarks>
+    Task<bool> PlatformUserExistsAsync(Guid platformUserId, CancellationToken ct = default);
+
     /// <summary>Returns a page of entries, newest first, with optional filters.</summary>
     /// <param name="platformUserId">Owner of the inbox entries.</param>
     /// <param name="page">One-based page number.</param>

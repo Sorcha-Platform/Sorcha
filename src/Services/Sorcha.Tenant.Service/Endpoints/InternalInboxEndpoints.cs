@@ -59,6 +59,20 @@ public static class InternalInboxEndpoints
             return Results.BadRequest(new { error = "title required, ≤ 200 chars" });
         }
 
+        // #1506 — PlatformUserId is a FOREIGN KEY, so an id that is merely well-formed reaches
+        // Postgres and throws. The resulting 500 is caused entirely by the caller's argument, and
+        // on n1 a run of them tripped a circuit breaker that then blocked credential issuance
+        // outright: a best-effort notification write took out the operation it was describing.
+        // Refusing here keeps a caller's bug looking like a caller's bug.
+        if (!await service.PlatformUserExistsAsync(request.PlatformUserId, ct))
+        {
+            return Results.BadRequest(new
+            {
+                error = "platformUserId does not name a known platform user",
+                platformUserId = request.PlatformUserId
+            });
+        }
+
         var write = new InboxWriteRequest(
             PlatformUserId: request.PlatformUserId,
             Category: request.Category,

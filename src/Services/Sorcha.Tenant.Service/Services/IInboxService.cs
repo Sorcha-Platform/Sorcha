@@ -27,6 +27,13 @@ public interface IInboxService
     /// </returns>
     Task<InboxWriteResult> WriteAsync(InboxWriteRequest request, CancellationToken ct = default);
 
+    /// <summary>
+    /// True when <paramref name="platformUserId"/> names a real platform user (issue #1506).
+    /// Callers writing on someone's behalf should check before writing, so an unknown id is a 4xx
+    /// rather than a foreign-key 500.
+    /// </summary>
+    Task<bool> PlatformUserExistsAsync(Guid platformUserId, CancellationToken ct = default);
+
     /// <summary>Returns a page of the user's inbox entries, newest first. Excludes dismissed entries unless <paramref name="includeDismissed"/> is true.</summary>
     /// <param name="platformUserId">Owner of the inbox entries.</param>
     /// <param name="page">One-based page number.</param>
