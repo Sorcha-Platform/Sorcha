@@ -245,6 +245,12 @@ $secrets = [ordered]@{
         adminName       = $platformName
         DefaultPassword = $platformPassword
     }
+    "credential-lifecycle" = @{
+        adminEmail      = $platformEmail
+        adminPassword   = $platformPassword
+        adminName       = $platformName
+        DefaultPassword = $platformPassword
+    }
     "ping-pong-n1" = @{
         adminEmail    = $platformEmail
         adminPassword = $platformPassword
