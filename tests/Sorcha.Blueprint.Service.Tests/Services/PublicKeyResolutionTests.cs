@@ -582,7 +582,7 @@ public class PublicKeyResolutionTests
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(),
             It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<List<string>?>(), It.IsAny<string?>(),
             It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<bool>(),
-            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<JsonElement?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<JsonElement?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
             Times.Never, "fail-closed must issue zero credentials (SC-004)");
     }
 
@@ -619,7 +619,7 @@ public class PublicKeyResolutionTests
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(),
                 It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<List<string>?>(), It.IsAny<string?>(),
                 It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<bool>(),
-                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<JsonElement?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<JsonElement?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .Callback(new InvocationAction(inv => capturedHolderJwk = (JsonElement?)inv.Arguments[13]))
             .ReturnsAsync(new CredentialIssuanceResult
             {

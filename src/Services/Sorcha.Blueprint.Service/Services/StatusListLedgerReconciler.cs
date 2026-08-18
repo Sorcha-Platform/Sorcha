@@ -113,10 +113,14 @@ public class StatusListLedgerReconciler(
             }
 
             // LEDGER ORDER — see the class remarks. Arrival order is not good enough.
+            var isSuspensionList = listId.Contains("-suspension-", StringComparison.Ordinal);
+
             foreach (var e in events.OrderBy(e => e.Docket).ThenBy(e => e.At))
             {
-                var revoked = IsRevokedState(e.Payload.NewStatus);
-                list.SetBit(e.Payload.StatusListIndex!.Value, revoked);
+                var bit = BitForPurpose(e.Payload.NewStatus, isSuspensionList);
+                if (bit is null) continue;
+
+                list.SetBit(e.Payload.StatusListIndex!.Value, bit.Value);
                 applied++;
                 highestDocket = (long)e.Docket;
             }
@@ -143,10 +147,35 @@ public class StatusListLedgerReconciler(
     /// Maps a status word to the revocation bit. <c>Active</c> clears it; <c>Revoked</c> and
     /// <c>Suspended</c> set it — they share one bit today, which is why the fold must be ordered.
     /// </summary>
-    private static bool IsRevokedState(string? status) =>
-        status is not null
-        && (status.Equals("Revoked", StringComparison.OrdinalIgnoreCase)
-            || status.Equals("Suspended", StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// The bit a status change implies for THIS list, or null when the event does not concern it.
+    /// </summary>
+    /// <remarks>
+    /// W3C keeps the two purposes distinct — revocation is not reversible, suspension is — so each
+    /// list only folds the events that belong to it:
+    /// <list type="bullet">
+    ///   <item><c>Revoked</c> sets the revocation bit and says nothing about suspension.</item>
+    ///   <item><c>Suspended</c> sets the suspension bit and MUST NOT touch revocation.</item>
+    ///   <item><c>Active</c> (reinstatement) clears the suspension bit only. Clearing a revocation
+    ///         bit would contradict the spec, so a revocation list ignores it entirely rather than
+    ///         un-revoking a credential.</item>
+    /// </list>
+    /// </remarks>
+    private static bool? BitForPurpose(string? status, bool isSuspensionList)
+    {
+        if (status is null) return null;
+
+        if (status.Equals("Revoked", StringComparison.OrdinalIgnoreCase))
+            return isSuspensionList ? null : true;
+
+        if (status.Equals("Suspended", StringComparison.OrdinalIgnoreCase))
+            return isSuspensionList ? true : null;
+
+        if (status.Equals("Active", StringComparison.OrdinalIgnoreCase))
+            return isSuspensionList ? false : null;
+
+        return null;
+    }
 
     private static CredentialStatusChangePayload? TryReadPayload(TransactionModel tx)
     {

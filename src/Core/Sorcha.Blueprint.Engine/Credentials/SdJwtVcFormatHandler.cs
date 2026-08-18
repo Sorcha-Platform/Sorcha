@@ -170,15 +170,95 @@ public class SdJwtVcFormatHandler : ICredentialFormatHandler
         }
 
         // W3C Bitstring Status List — credentialStatus { statusListCredential, statusListIndex, statusPurpose }.
-        if (payload.TryGetProperty("credentialStatus", out var w3c) && w3c.ValueKind == JsonValueKind.Object)
+        // The value is an OBJECT for a single purpose and an ARRAY when the credential carries one
+        // entry per purpose (spec example A.3), which is how revocation and suspension are
+        // expressed: W3C makes revocation not reversible and suspension reversible, so they are
+        // different statuses and cannot share a bit.
+        if (payload.TryGetProperty("credentialStatus", out var w3c))
         {
-            var uri = ReadString(w3c, "statusListCredential");
-            var idx = ReadInt(w3c, "statusListIndex");
-            if (uri is not null && idx is not null)
-                return new StatusReference { Uri = uri, Index = idx.Value, Purpose = ReadString(w3c, "statusPurpose") };
+            if (w3c.ValueKind == JsonValueKind.Object)
+                return ReadW3cEntry(w3c);
+
+            if (w3c.ValueKind == JsonValueKind.Array)
+            {
+                // Prefer revocation: it is the terminal status, so if it is set no other purpose
+                // changes the outcome. ExtractStatusReferences() returns them all for callers that
+                // must evaluate every purpose.
+                foreach (var e in w3c.EnumerateArray())
+                {
+                    if (e.ValueKind != JsonValueKind.Object) continue;
+                    if (!string.Equals(ReadString(e, "statusPurpose"), "revocation", StringComparison.Ordinal)) continue;
+                    var preferred = ReadW3cEntry(e);
+                    if (preferred is not null) return preferred;
+                }
+
+                foreach (var e in w3c.EnumerateArray())
+                {
+                    if (e.ValueKind != JsonValueKind.Object) continue;
+                    var any = ReadW3cEntry(e);
+                    if (any is not null) return any;
+                }
+            }
         }
 
         return null;
+    }
+
+    /// <summary>Reads one W3C <c>BitstringStatusListEntry</c> object into a status reference.</summary>
+    private static StatusReference? ReadW3cEntry(JsonElement entry)
+    {
+        var uri = ReadString(entry, "statusListCredential");
+        var idx = ReadInt(entry, "statusListIndex");
+        if (uri is null || idx is null) return null;
+
+        return new StatusReference
+        {
+            Uri = uri,
+            Index = idx.Value,
+            Purpose = ReadString(entry, "statusPurpose")
+        };
+    }
+
+    /// <summary>
+    /// Every status reference the credential declares — one per purpose.
+    /// </summary>
+    /// <remarks>
+    /// A credential is unusable if ANY of its purposes is set: a revoked credential and a
+    /// suspended one must both be refused. Checking only the first entry would let a suspended
+    /// credential through whenever suspension happened to be listed second.
+    /// </remarks>
+    internal static IReadOnlyList<StatusReference> ExtractStatusReferences(JsonElement payload)
+    {
+        var all = new List<StatusReference>();
+
+        if (payload.TryGetProperty("status", out var ietf) && ietf.ValueKind == JsonValueKind.Object
+            && ietf.TryGetProperty("status_list", out var sl) && sl.ValueKind == JsonValueKind.Object)
+        {
+            var uri = ReadString(sl, "uri");
+            var idx = ReadInt(sl, "idx");
+            if (uri is not null && idx is not null)
+                all.Add(new StatusReference { Uri = uri, Index = idx.Value });
+        }
+
+        if (payload.TryGetProperty("credentialStatus", out var w3c))
+        {
+            if (w3c.ValueKind == JsonValueKind.Object)
+            {
+                var one = ReadW3cEntry(w3c);
+                if (one is not null) all.Add(one);
+            }
+            else if (w3c.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var e in w3c.EnumerateArray())
+                {
+                    if (e.ValueKind != JsonValueKind.Object) continue;
+                    var one = ReadW3cEntry(e);
+                    if (one is not null) all.Add(one);
+                }
+            }
+        }
+
+        return all;
     }
 
     private static string? ReadString(JsonElement obj, string name) =>

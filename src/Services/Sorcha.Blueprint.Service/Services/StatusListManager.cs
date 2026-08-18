@@ -51,7 +51,22 @@ public interface IStatusListManager
 /// <summary>
 /// Result of allocating an index in a status list.
 /// </summary>
-public record StatusListAllocation(string ListId, int Index, string StatusListUrl);
+/// <summary>
+/// A reserved entry, held at the SAME index in the issuer's revocation and suspension lists.
+/// </summary>
+/// <remarks>
+/// W3C Bitstring Status List defines revocation as *not reversible* and suspension as
+/// *reversible*, so they are different statuses and cannot share a bit: a suspended credential
+/// written to the revocation list is advertised to every verifier as REVOKED, and lifting the
+/// suspension then clears a revocation bit the spec says can never be cleared. One index is
+/// reserved across both lists so a credential carries one entry per purpose.
+/// </remarks>
+public record StatusListAllocation(
+    string ListId,
+    int Index,
+    string StatusListUrl,
+    string SuspensionListId,
+    string SuspensionListUrl);
 
 /// <summary>
 /// Result of setting a bit in a status list.
@@ -172,6 +187,7 @@ public class StatusListManager : IStatusListManager, IDisposable
         string issuerWallet, string registerId, string? credentialId, CancellationToken ct = default)
     {
         var list = await GetOrCreateListAsync(issuerWallet, registerId, "revocation", ct);
+        var suspension = await GetOrCreateListAsync(issuerWallet, registerId, "suspension", ct);
         var semaphore = _locks.GetOrAdd(list.Id, _ => new SemaphoreSlim(1, 1));
 
         await semaphore.WaitAsync(ct);
@@ -191,10 +207,23 @@ public class StatusListManager : IStatusListManager, IDisposable
             // Persist immediately. NextAvailableIndex is the one thing the ledger cannot rebuild,
             // and if it resets a new credential is handed an index an older one already holds,
             // so revoking the new one would silently mark the old one revoked too.
+            // Burn the SAME index in the suspension list so one credential has one entry number
+            // in both. Allocating independently would let the two lists drift apart and a
+            // suspension would then flip a bit belonging to a different credential.
+            var suspensionIndex = suspension.AllocateIndex();
+            if (suspensionIndex != index)
+            {
+                _logger.LogWarning(
+                    "Suspension list {ListId} allocated index {Suspension} but the revocation list allocated {Revocation}; the lists have drifted",
+                    suspension.Id, suspensionIndex, index);
+            }
+
             await _store.SaveAsync(list, ct).ConfigureAwait(false);
+            await _store.SaveAsync(suspension, ct).ConfigureAwait(false);
 
             var url = $"{_baseUrl}/{list.Id}";
-            return new StatusListAllocation(list.Id, index, url);
+            var suspensionUrl = $"{_baseUrl}/{suspension.Id}";
+            return new StatusListAllocation(list.Id, index, url, suspension.Id, suspensionUrl);
         }
         finally
         {
