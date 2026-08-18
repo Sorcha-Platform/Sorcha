@@ -125,6 +125,24 @@ public static class StatusListEndpoints
         if (rawBytes == null)
             return Results.NotFound(new { error = $"Status list '{listId}' bitstring not available" });
 
+        // IETF models suspension as a VALUE inside one list, where W3C uses a separate list per
+        // purpose. So the IETF view is a PROJECTION of Sorcha's two 1-bit lists into one 2-bit
+        // array — never the 1-bit array relabelled, which would make a reader take entry N from
+        // bits 2N..2N+1 and report a status for a credential nobody touched.
+        var bitsPerEntry = 1;
+        var suspensionListId = CredentialEndpoints.RetargetListIdToPurpose(listId, "suspension");
+        var suspensionList = await statusListManager.GetListAsync(suspensionListId, cancellationToken);
+
+        if (suspensionList is not null)
+        {
+            var revocationListId = CredentialEndpoints.RetargetListIdToPurpose(listId, "revocation");
+            var revocationList = await statusListManager.GetListAsync(revocationListId, cancellationToken)
+                                 ?? list;
+
+            bitsPerEntry = 2;
+            rawBytes = IetfStatusListPacker.PackTwoBit(revocationList, suspensionList, revocationList.Size);
+        }
+
         // Build the full sub URL per IETF Token Status List spec
         var subUrl = $"{urls.IetfBaseUrl}/{listId}";
 
@@ -153,8 +171,6 @@ public static class StatusListEndpoints
         }
 
         var issuerDid = $"did:sorcha:org:{list.IssuerWallet}";
-        var bitsPerEntry = list.Purpose == "suspension" ? 2 : 1;
-
         var maxAge = configuration.GetValue<int>("StatusList:CacheMaxAgeSeconds", 300);
         var jwt = serializer.Serialize(rawBytes, subUrl, issuerDid, bitsPerEntry, signingKey, algorithm, maxAge);
 
