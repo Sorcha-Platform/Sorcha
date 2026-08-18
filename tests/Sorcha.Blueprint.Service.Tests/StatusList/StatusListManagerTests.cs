@@ -32,8 +32,15 @@ public class StatusListManagerTests
                 Transactions = []
             });
 
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions
+            .AddScoped(services, _ => register.Object);
+        var provider = Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions
+            .BuildServiceProvider(services);
+
         var reconciler = new StatusListLedgerReconciler(
-            register.Object,
+            Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+                .GetRequiredService<Microsoft.Extensions.DependencyInjection.IServiceScopeFactory>(provider),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<StatusListLedgerReconciler>.Instance);
 
         _manager = new StatusListManager(
