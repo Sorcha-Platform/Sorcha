@@ -396,6 +396,7 @@ public class WalletServiceClient : IWalletServiceClient
         string? trustAnchor = null,
         string? vct = null,
         string? displayName = null,
+        string? registerId = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -417,6 +418,7 @@ public class WalletServiceClient : IWalletServiceClient
                 statusListUrl,
                 statusListIndex,
                 statusListPurpose,
+                registerId,
                 skipRecipientStore,
                 issuerOrgName,
                 tenantId,
