@@ -77,6 +77,39 @@ public interface IGovernanceSigningService
         byte[] digest,
         string? preferredSubject = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Produces the ORGANISATION half of a detached approval, for the one subject whose governance
+    /// key this node legitimately holds: the system register's ceremony-minted Owner (#1465).
+    /// Returns <c>null</c> for every other subject.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Approvals are detached and produced outside the platform by design (R-014) — the server must
+    /// not hold a multi-party register's key. The system register at genesis is not multi-party: its
+    /// roster has exactly one member, whose recorded key IS this node's system wallet, and the node
+    /// already signs the SSR's control transactions with it. The asymmetry that it could raise a
+    /// proposal it could never approve was an accident of the two paths being built separately, not
+    /// a boundary.
+    /// </para>
+    /// <para>
+    /// This produces ONLY the organisation's signature. The accountability block naming the
+    /// individual who stands behind the approval (FR-029) is still the caller's to supply and is
+    /// still required — the server can sign for the ceremony key it holds, but it cannot honestly
+    /// say who wanted the change.
+    /// </para>
+    /// <para>
+    /// Expected to become dead code: once the SSR's ownership transfers to a real
+    /// <c>did:sorcha:w:</c> organisation, that organisation signs its own approvals externally and
+    /// nothing reaches this again.
+    /// </para>
+    /// </remarks>
+    Task<GovernanceSignResult?> TrySignApprovalAsync(
+        string registerId,
+        GovernanceOperation operation,
+        string approverDid,
+        bool isApproval,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>Outcome of signing as a roster organisation.</summary>
@@ -235,6 +268,43 @@ public class GovernanceSigningService : IGovernanceSigningService
             WalletAddress = walletAddress,
             Subject = attestation.Subject
         };
+    }
+
+    /// <inheritdoc />
+    public async Task<GovernanceSignResult?> TrySignApprovalAsync(
+        string registerId,
+        GovernanceOperation operation,
+        string approverDid,
+        bool isApproval,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        ArgumentNullException.ThrowIfNull(operation);
+        ArgumentException.ThrowIfNullOrWhiteSpace(approverDid);
+
+        // Scoped exactly as narrowly as the signing branch: the genesis subject, nothing else. A
+        // general "sign for any roster member" here would recreate GovernanceApprovalService, which
+        // R-014 removed for good reason.
+        if (!IsGenesisSubject(approverDid))
+        {
+            return null;
+        }
+
+        // The SAME canonicalisation the verifier rebuilds from stored content. Computing the digest
+        // any other way here would be two implementations of one statement — the shape that lets a
+        // producer and a verifier disagree about what was signed.
+        var digest = GovernanceApprovalStatement.ComputeDigest(
+            registerId, operation, approverDid, isApproval);
+
+        var signed = await SignDigestAsync(registerId, digest, preferredSubject: approverDid, cancellationToken)
+            .ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "Produced the organisation half of a governance approval on register {RegisterId} as the "
+            + "ceremony Owner {Subject}; the accountability block remains the caller's",
+            registerId, approverDid);
+
+        return signed;
     }
 
     /// <summary>
