@@ -1,6 +1,6 @@
 # Feature 192 — Tasks
 
-**Status:** ✅ COMPLETE — gates settled **A1 / B2 / C1 / D2** (Stuart, 2026-08-18), implemented same day
+**Status:** ✅ Implemented + merged (#1500); ⛔ **T015 live gate blocked on #1502** — gates settled **A1 / B2 / C1 / D2** (Stuart, 2026-08-18)
 **Branch:** `feature/192-credential-status-reporting`
 
 Legend: 📋 pending · 🚧 in progress · ✅ done · ⛔ blocked on a gate
@@ -73,11 +73,19 @@ TDD order. T003 must be RED before T005.
 
 ## Close-out
 
-- ✅ **T015** Live-verify on n1: issue a credential, **suspend** it, present it, and confirm the
-  refusal names suspension rather than revocation — then **reinstate** it and confirm it is accepted
-  again. The reinstate leg is the one that proves the reversibility is real end to end, and it is the
-  leg no unit test covers.
-  - n1 must be carrying #1491/#1492/#1495 first; as of 2026-08-18 it carries only #1490.
+- ⛔ **T015** Live-verify on n1 — **BLOCKED on #1502**, not done. Run 2026-08-18 against v2.977.1.
+  - ✅ The **reporting** half is live-verified: a refused presentation now reads
+    `Credential is revoked (status list purpose 'revocation')` in the Blueprint Service log — the
+    plain status word plus the purpose, exactly the format the consumers substring-match.
+  - ✅ Revocation enforcement re-proved end to end (`run-revocation.ps1 -Profile n1`): revoke →
+    present → **HTTP 400 FailClosed**. F192 did not narrow the refusal.
+  - ⛔ The **suspend → refuse → reinstate → accept** arc could not be completed. n1's issuer has
+    drifted status lists (**#1502**): the suspension list was created after the revocation list, so
+    it allocates a different index and the bit a suspension sets is not the bit the credential
+    points at. Suspension cannot be proven end to end on that issuer until #1502 is fixed.
+  - The gate itself is written and committed as `walkthroughs/CyberEssentialsUac/run-suspension.ps1`
+    (Scenario 4), sibling of `run-revocation.ps1`. Re-run it once #1502 lands.
+
 - ✅ **T016** Update `.specify/MASTER-TASKS.md`, the `verifiable-credentials` skill, and the
   `credential-status-list-specs` memory — the "Still open" section of that memory is what this
   feature closes.
