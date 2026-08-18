@@ -237,6 +237,58 @@ public class WalletServiceClientIssueCredentialTests
         doc.RootElement.TryGetProperty("displayName", out _).Should().BeFalse();
     }
 
+    [Fact]
+    public async Task IssueCredentialAsync_WithRegisterId_PutsItOnTheWire()
+    {
+        // #1482: the issuer's credential row is what the credential-lifecycle endpoints read, and
+        // without a RegisterId they skip the CredentialStatusChange ledger write — silently, at
+        // Debug level. The result was that a revocation never reached the ledger on ANY deployment:
+        // node-local, unauditable, and impossible to replicate to another node.
+        string? capturedBody = null;
+        var handler = new Mock<HttpMessageHandler>();
+        handler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .Returns<HttpRequestMessage, CancellationToken>(async (req, ct) =>
+            {
+                capturedBody = req.Content is null ? null : await req.Content.ReadAsStringAsync(ct);
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        JsonSerializer.Serialize(new
+                        {
+                            credentialId = "urn:uuid:test",
+                            type = "TestCredential",
+                            issuerDid = "did:sorcha:w:issuer",
+                            subjectDid = "did:sorcha:w:recipient",
+                            claims = new Dictionary<string, object> { ["foo"] = "bar" },
+                            issuedAt = DateTimeOffset.UtcNow,
+                            rawToken = "eyJ.test.token",
+                        }, JsonOptions),
+                        System.Text.Encoding.UTF8,
+                        "application/json"),
+                };
+            });
+
+        var client = BuildClient(handler);
+
+        await client.IssueCredentialAsync(
+            issuerWalletAddress: "ws1qissuer",
+            credentialType: "TestCredential",
+            claims: new Dictionary<string, object> { ["foo"] = "bar" },
+            recipientWallet: "ws1qrecipient",
+            registerId: "2141b08339d34c27824536ec250b025e");
+
+        capturedBody.Should().NotBeNullOrEmpty();
+        using var doc = JsonDocument.Parse(capturedBody!);
+        doc.RootElement.TryGetProperty("registerId", out var regEl).Should().BeTrue(
+            "the issuer's credential row needs the register so a later revocation can be written "
+            + "to the ledger (#1482)");
+        regEl.GetString().Should().Be("2141b08339d34c27824536ec250b025e");
+    }
+
     private static WalletServiceClient BuildClient(Mock<HttpMessageHandler> handler)
     {
         var http = new HttpClient(handler.Object);

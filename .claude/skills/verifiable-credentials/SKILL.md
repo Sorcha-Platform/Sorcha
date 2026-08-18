@@ -453,6 +453,67 @@ Platform registration:
 
 See `references/maui-ui.md` for full component set, QR/deep-link flows, and Playwright test harness.
 
+## Credential lifecycle — the operational contract (learned the hard way, 2026-08-17)
+
+The endpoints are `POST /api/v1/credentials/{id}/{revoke|suspend|reinstate|refresh}` in
+`Sorcha.Blueprint.Service/Endpoints/CredentialEndpoints.cs`. All four go through
+`GetAndVerifyIssuer`, so a defect there kills the whole lifecycle surface at once — which is exactly
+what happened (#1475: every one of them returned a **bodiless 404** for credentials that existed).
+
+### The state machine
+
+| Operation | Requires | Effect |
+|---|---|---|
+| `revoke` | `Active` or `Suspended` | terminal — nothing reinstates a revoked credential |
+| `suspend` | `Active` | reversible |
+| `reinstate` | **`Suspended` only** | back to `Active` |
+
+**Revocation is terminal by design** — `reinstate` refuses anything that is not `Suspended`. Do not
+"fix" that by widening it.
+
+⚠ **Suspend and revoke currently share ONE bit.** `StatusListManager.AllocateIndexAsync` hardcodes
+purpose `"revocation"`, so there is no separate suspension list: a suspended credential is
+indistinguishable from a revoked one to a verifier, and the bit is therefore **not monotonic**
+(reinstate clears it). Anything that projects these events must apply them in **ledger order**, or
+two nodes can converge on opposite answers.
+
+### Two different wire shapes for one credential — do not conflate them
+
+- **Issuance** returns `CredentialIssuanceResult` — `credentialId`, `claims` (an object).
+- **Reading** a stored credential returns the persisted `CredentialEntity` — **`id`**, **`claimsJson`**
+  (a serialised *string*), plus `statusListUrl` / `statusListIndex` which may be EMPTY even though
+  the SD-JWT itself carries a complete `credentialStatus`.
+
+Deserialising a read into the issuance type throws on required members, and if that throw is
+swallowed the caller reports "not found" for a credential that plainly exists. Use
+`WalletCredentialRecord` (`Sorcha.ServiceClients.Http/Wallet/`) for reads and map; never relax
+`CredentialIssuanceResult` to accommodate the read shape.
+
+### Status values are kebab-case-lower on the wire
+
+`CredentialStatus` serialises through `SorchaJson.Options`, whose enum converter is
+`JsonNamingPolicy.KebabCaseLower`. The wire carries **`"active"`**, **`"pending-acceptance"`** —
+never `"Active"`. Any gate written as an exact match against PascalCase
+(`Status is not ("Active" or "Suspended")`) can never match. Normalise in the mapping layer, and
+keep the gate strict — it is a real authorisation decision.
+
+### Where the truth lives (and where it does not)
+
+Revocation state currently has **three homes that can disagree**: the wallet credential row
+(durable), the bitstring status list (**process memory only** — lost on restart, #1482), and a
+`CredentialStatusChange` register transaction. The register is the one that replicates across nodes,
+so it is the source of truth; treat the bitstring as a cache that must be rebuildable from the ledger.
+
+### Two behaviours worth knowing before you debug
+
+- **Revocation is enforced, synchronously.** A revoked credential presented to a credential-gated
+  action is refused with **HTTP 400** at submit time — not the 202-then-never-seal shape a *schema*
+  violation takes. If you see a 202 and a seal, revocation was not the thing that refused.
+- **The wallet's default credential listing returns `Active` only.** A holder cannot casually present
+  a revoked credential; you must ask for `?status=All` to see one. Good default — but it means a test
+  that thinks it is presenting a revoked credential may be presenting nothing, or something else
+  entirely (see the `walkthrough-builder` skill).
+
 ## Common Pitfalls
 
 - **Do not** use Data Integrity Proofs / JSON-LD canonicalisation. Sorcha chose SD-JWT VC. `DataIntegrityProof`, `eddsa-rdfc-2022`, and RDF canonicalisation are **not** in the codebase and should not be added.
@@ -462,6 +523,17 @@ See `references/maui-ui.md` for full component set, QR/deep-link flows, and Play
 - **Do not** put `HttpClient` calls inside `CredentialVerifier`. Revocation lookups go through `IRevocationChecker`; the WASM-friendly in-memory implementation is what makes offline verification bundles (feature 079) possible.
 - **Do not** cache DID documents indefinitely. Validator key rotation (feature 086) must invalidate cached documents. Use `IMemoryCache` with a `CancellationChangeToken` driven off `IValidatorKeyCache.OnRotated`.
 - **Do not** default `RevocationCheckPolicy` to `FailOpen` — feature 093 made `FailClosed` the default for a reason.
+- **Do not** deserialise a *stored* credential into `CredentialIssuanceResult` — that is the issuance
+  shape. The read shape is `CredentialEntity` (`id`, `claimsJson`); use `WalletCredentialRecord`.
+  Conflating them killed revoke/suspend/reinstate/refresh platform-wide (#1475).
+- **Do not** compare a credential status with an exact PascalCase literal. The wire is
+  kebab-case-lower (`"active"`, `"pending-acceptance"`), so `Status is "Active"` never matches.
+- **Do not** treat `null` from a credential lookup as "not found". Distinguish a genuine 404 from a
+  failed read — collapsing them reports absence for a credential that exists and sends the next
+  person hunting in the wrong place.
+- **Do not** assume the status-list bit survives a restart. `StatusListManager` holds lists in
+  process memory (#1482); after a restart every status URL 404s and, because fail-closed genuinely
+  works, **every credential-gated action refuses**.
 - **Do not** redesign the `CredentialIssuanceConfig` / `CredentialRequirement` / `CredentialPresentation` types as records. They are mutable classes by deliberate choice for `DataAnnotations` interop.
 
 ## See Also

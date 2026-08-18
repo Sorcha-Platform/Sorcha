@@ -400,9 +400,16 @@ public static class CredentialEndpoints
             // Pre-Feature 106 credentials don't carry the originating RegisterId — there's
             // nowhere to post the lifecycle tx to. Verifier-side checks still work via the
             // BitstringStatusList; only the holder-side cached row will be stale.
-            logger.LogDebug(
-                "Skipping CredentialStatusChange register tx for {CredentialId}: no RegisterId on credential record",
-                credential.CredentialId);
+            // WARNING, not Debug. This is a ledger platform declining to write a lifecycle event
+            // to the ledger: the revocation becomes node-local, unauditable and unreplicable. It
+            // logged at Debug for months, so on any node logging at Information it was completely
+            // invisible — which is how #1482 hid. If this fires, the credential predates the
+            // RegisterId being persisted on the issuer's row and its revocation will not propagate.
+            logger.LogWarning(
+                "No CredentialStatusChange register tx for {CredentialId}: the credential record "
+                + "carries no RegisterId, so this {Status} change is local to this node and will "
+                + "not replicate or appear in the audit trail",
+                credential.CredentialId, newStatus);
             return;
         }
 

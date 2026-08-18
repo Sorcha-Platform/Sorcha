@@ -227,7 +227,16 @@ Blueprint publishing requires `CanPublishBlueprints` = **Administrator role OR a
 
 #### REQUIRED: wait for the register-genesis roster to seal before publishing (publish races the seal)
 
-The register's genesis control tx — which records the owner governance roster the F142 gate reads — seals **asynchronously after `New-SorchaRegister` returns**. A blueprint publish issued immediately reads an **empty** roster and fail-closes with the *same* `403 "You do not hold a publish-governance role"`. ConstructionPermit/Forestry got away with it by having other steps between register-create and publish; TradeFinance didn't and 403'd every time. **Poll `GET /api/registers/{id}/governance/roster` until `members.Count > 0` before publishing** (the register-genesis analogue of the F145 action-seal cadence).
+The register's genesis control tx — which records the owner governance roster the F142 gate reads — seals **asynchronously after `New-SorchaRegister` returns**. A blueprint publish issued immediately reads an **empty** roster and fail-closes with the *same* `403 "You do not hold a publish-governance role"`. ConstructionPermit/Forestry got away with it by having other steps between register-create and publish; TradeFinance didn't and 403'd every time. **Use `Wait-SorchaRegisterRoster` before publishing** (the register-genesis analogue of the F145 action-seal cadence):
+
+```powershell
+$null = Wait-SorchaRegisterRoster -GatewayUrl $sorchaEnv.GatewayUrl `
+    -RegisterId $register.RegisterId -Headers $ownerSession.Headers
+```
+
+The 403 wording blames the caller's publish-governance ROLE, which sends you looking at roles and the
+`wallet_address` claim — both usually fine. The cause is timing. Whether a walkthrough gets away with
+it depends purely on how much work sits between creating the register and publishing.
 
 #### REQUIRED: a credential-ISSUING org must provision a Feature 083 master key
 
@@ -238,6 +247,13 @@ Any org that issues a native SorchaLocalWallet SD-JWT VC **MUST** call `Set-Sorc
 Set-SorchaOrgMasterKey -WalletUrl $sorchaEnv.WalletUrl `
     -OrganizationId $issuerOrgId -Headers $issuerSession.Headers   # idempotent on 409
 ```
+
+`Set-SorchaOrgMasterKey` now ALSO calls `POST /api/v1/orgs/{orgId}/issuance-key/ensure`, because a
+master key only *enables* the Feature 120 issuance key — it does not derive it, and the org's DID
+document is published only as a side effect of a key event. Until then `GET /orgs/{orgId}/did.json`
+**404s**, so a walkthrough that must pin the issuer's issuance DID in a trust policy cannot resolve
+one before that org's first credential. This stayed hidden for months because these orgs had already
+issued credentials; wiping n1 exposed it immediately.
 
 - **Do this:** `ForestryCertification`, `TradeFinance`, `SelfBuildHouse` (their issuer orgs provision master keys).
 - **Footgun (don't do this):** `CyberEssentialsUac` / `AssuredIdentity` historically provisioned only **HAIP** enrolment, not a master key — so their blueprint SorchaLocalWallet issuance fell to the bare-wallet `iss` path. HAIP enrolment is for the OID4VCI variant; it does **not** substitute for the F083 master key on the blueprint issuance path.
@@ -357,6 +373,109 @@ $proc = Start-Process -FilePath "dotnet" -ArgumentList $agentArgs ...
 - Use `$sorchaEnv` not `$env` (avoids confusion with `$env:` provider)
 - Validate instance creation before launching agents
 - Clean up env vars on exit
+
+## Two PowerShell traps that silently invert a walkthrough's verdict
+
+Both shipped undetected for months and both are invisible on a clean node.
+
+**An empty string is FALSY.** `/actions/execute` has two 202 shapes: the normal one carries a
+populated `transactionId`, but when an action has recipient disclosure groups to encrypt the platform
+offloads to a background service and returns **`transactionId = ""`** plus an `operationId`. So
+
+```powershell
+if ($WaitForSeal -and $response.transactionId) { ... }   # skips SILENTLY on the offload path
+```
+
+the cadence guard the whole framework depends on did nothing — no error, no log line. `Invoke-SorchaAction`
+now resolves the id via `GET /api/operations/{operationId}` (its **`transactionHash` IS the tx id**)
+and throws rather than continuing unverified.
+
+**`$response.prop` on an ARRAY is member enumeration, and it is truthy.** The idiom
+`if ($r.credentials) { $r.credentials } else { $r }` is meant to unwrap "envelope or bare array". On a
+bare array PowerShell projects `.credentials` from every element and returns an array of `$null`s —
+`Count > 0`, therefore **truthy** — so the envelope branch wins and you get a same-length collection of
+nulls. Every downstream match fails and the walkthrough reports "not delivered" for data the platform
+returned correctly.
+
+It is **invisible at one element** (a single `$null` is falsy → correct branch) and **appears at two**,
+so it presents as passing on a clean node and failing on the second run. Use `Resolve-SorchaCollection`,
+which tests for the array FIRST:
+
+```powershell
+$items = Resolve-SorchaCollection -Response $walletCreds -PropertyName 'credentials'
+```
+
+**The generalisable smell:** any guard whose truthiness depends on a value the *platform* chose —
+an empty string, a projected null, a count — needs testing at 0, 1 and 2 elements. "It worked when I
+ran it" usually means "I ran it with one".
+
+## Testing credentials: four traps that make a walkthrough lie (2026-08-17)
+
+Every one of these produced a *confident wrong verdict* — three said the platform was broken when it
+was not, and one hid a real defect. They share a shape: **the harness fed in something other than
+what the assertion claimed**, and a green run on a clean node hid it.
+
+### 1. Pin the credential id whenever the assertion depends on WHICH credential
+
+`Get-SorchaCredentialPresentation -CredentialType …` returns the **first** credential of that type.
+A wallet accumulates one credential per happy-path run and keeps revoked ones, so from the second run
+onward "the revoked credential" is whichever happens to be first — usually an active one.
+
+That produced a false **"a revoked credential is accepted"** security report. The platform was right
+throughout; the test presented an active credential and asserted refusal.
+
+```powershell
+# WRONG when the assertion is about a specific credential's STATE
+$pres = Get-SorchaCredentialPresentation -CredentialType $type -Token $tok
+
+# RIGHT — pin the exact credential, then PROVE you pinned it before asserting the outcome
+$pres = Get-SorchaCredentialPresentation -CredentialType $type -CredentialId $cred.id -Token $tok
+Assert ($pres.credentialId -eq $cred.id) "presentation is built from the REVOKED credential"
+```
+
+**Assert the subject IS the subject before asserting anything about the result.** Selecting by type
+is fine only when any credential of that type genuinely will do.
+
+### 2. The default credential listing is `Active` only
+
+`GET /v1/wallets/{addr}/credentials/` returns Active credentials. A revoked or pending credential is
+**not in the list at all** — so pinning by id still finds nothing unless you widen it:
+
+```powershell
+GET /v1/wallets/{addr}/credentials/?status=All
+```
+
+Freshly-issued credentials sit at `pending-acceptance` for the same reason. The Active-only default is
+correct holder-side behaviour (a wallet should not casually hand over a revoked credential); it just
+makes the adversarial case — a holder who kept the token and presents it anyway — impossible to build
+unless you ask for it explicitly.
+
+### 3. Pick a credential in the state the scenario needs, not the first one
+
+A revocation scenario that revokes `Select-Object -First 1` will, on a re-run, pick an
+already-revoked credential and fail at the revoke step with *"must be in Active or Suspended state"* —
+looking like a platform fault. Filter on the state you need:
+
+```powershell
+$cred = $ofType | Where-Object { $_.status -eq 'active' } | Select-Object -First 1
+```
+
+### 4. Know which refusals are synchronous and which hide behind a 202
+
+| Refusal | Shape |
+|---|---|
+| Credential invalid / revoked / untrusted | **synchronous HTTP 400** at submit |
+| Schema violation (`VAL_SCHEMA_004`) | **HTTP 202 + a tx id**, then the tx never seals |
+
+So `-WaitForSeal` timing out is a *schema/validator* refusal, and an immediate 400 is a *credential*
+refusal. Asserting `throws` for a schema violation, or a seal timeout for a bad credential, tests the
+wrong thing. Read the validator log for the `VAL_*` code rather than inferring from the HTTP status.
+
+### The generalisable rule
+
+A walkthrough asserting "the platform refused X" is only meaningful if it also proves **it submitted
+X**. Before filing a platform defect off a failing walkthrough, print what the harness actually sent —
+one command usually settles it, and it is cheaper than the write-up you will otherwise have to retract.
 
 ## Actor Definition Patterns
 
