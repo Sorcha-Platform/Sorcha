@@ -34,7 +34,10 @@ internal static class EngineSdJwtTestFactory
         Dictionary<string, object>? dataClaims = null,
         IEnumerable<string>? disclosable = null,
         Dictionary<string, object>? statusClaim = null,
-        string? kid = null)
+        string? kid = null,
+        // W3C credentialStatus. Accepts object[] so a credential can declare one entry per purpose
+        // (revocation AND suspension), which is the shape that exposed suspension not being checked.
+        object? credentialStatusClaim = null)
     {
         using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var privateKey = ecdsa.ExportECPrivateKey();
@@ -47,6 +50,9 @@ internal static class EngineSdJwtTestFactory
             allClaims[k] = v;
         if (statusClaim is not null)
             allClaims["status"] = statusClaim;
+
+        if (credentialStatusClaim is not null)
+            allClaims["credentialStatus"] = credentialStatusClaim;
 
         var disclosableList = (disclosable ?? dataClaims.Keys).ToList();
 

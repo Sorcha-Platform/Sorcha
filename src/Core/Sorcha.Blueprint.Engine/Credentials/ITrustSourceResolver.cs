@@ -42,6 +42,21 @@ public class IssuerContext
     /// <summary>
     /// How to treat an unavailable revocation result. Defaults to fail-closed.
     /// </summary>
+    /// <summary>
+    /// Every status reference the credential declares — one per purpose.
+    /// </summary>
+    /// <remarks>
+    /// A credential may declare revocation AND suspension (W3C allows one entry per purpose), and
+    /// it is unusable if ANY of them is set. Evaluating only one lets a suspended-but-not-revoked
+    /// credential through, which is exactly what happened when the two purposes were split into
+    /// separate lists and the reader kept preferring the revocation entry.
+    /// <para>
+    /// <see cref="Status"/> remains the primary reference for callers that only need one; this is
+    /// the full set and includes it.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<StatusReference> Statuses { get; set; } = [];
+
     public RevocationCheckPolicy RevocationPolicy { get; set; } = RevocationCheckPolicy.FailClosed;
 }
 
