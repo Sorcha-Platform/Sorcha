@@ -200,7 +200,13 @@ public class TrustEvaluator : ITrustEvaluator
     /// </summary>
     private async Task<TrustDecision?> CheckStatusAsync(IssuerContext issuer, CancellationToken ct)
     {
-        if (issuer.Status is null)
+        // Evaluate EVERY declared purpose. A credential is unusable if any of them is set, so
+        // checking only the primary reference lets a suspended-but-not-revoked credential through.
+        var references = issuer.Statuses is { Count: > 0 }
+            ? issuer.Statuses
+            : issuer.Status is null ? [] : new[] { issuer.Status };
+
+        if (references.Count == 0)
             return null; // no status reference — treated as active
 
         if (_statusChecker is null)
@@ -212,16 +218,35 @@ public class TrustEvaluator : ITrustEvaluator
                 : null;
         }
 
-        var bit = await _statusChecker.CheckAsync(issuer.Status, ct).ConfigureAwait(false);
-        return bit switch
+        foreach (var reference in references)
         {
-            StatusListBit.NotSet => null,
-            StatusListBit.Set => TrustDecision.Reject(TrustFailureReason.Revoked, "Credential is revoked or suspended."),
-            _ => issuer.RevocationPolicy == RevocationCheckPolicy.FailClosed
-                ? TrustDecision.Reject(TrustFailureReason.RevocationUnavailable,
-                    "Revocation status could not be resolved (fail-closed).")
-                : null
-        };
+            var bit = await _statusChecker.CheckAsync(reference, ct).ConfigureAwait(false);
+
+            switch (bit)
+            {
+                case StatusListBit.NotSet:
+                    continue;
+
+                case StatusListBit.Set:
+                    // The purpose is named so an operator can tell a suspension from a revocation in
+                    // the log, even though both refuse and the failure reason cannot yet carry it.
+                    return TrustDecision.Reject(
+                        TrustFailureReason.Revoked,
+                        reference.Purpose is { Length: > 0 } purpose
+                            ? $"Credential status '{purpose}' is set."
+                            : "Credential is revoked or suspended.");
+
+                default:
+                    if (issuer.RevocationPolicy == RevocationCheckPolicy.FailClosed)
+                    {
+                        return TrustDecision.Reject(TrustFailureReason.RevocationUnavailable,
+                            "Revocation status could not be resolved (fail-closed).");
+                    }
+                    continue;
+            }
+        }
+
+        return null;
     }
 
     private static TrustPolicy NormalisePolicy(TrustPolicy? policy)

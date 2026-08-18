@@ -61,6 +61,7 @@ public class SdJwtVcFormatHandler : ICredentialFormatHandler
         // read independently of signature verification so an unresolved/invalid signature still
         // produces a well-formed (fail-closed) decision.
         var (issuerId, statusRef) = ParseIssuerPayload(presentation.Raw);
+        var allStatuses = ParseAllStatusReferences(presentation.Raw);
 
         // Resolve the issuer key (x5c → DID → embedded jwk, service-layer; pinned in-memory, engine).
         var keyResolution = await _keyResolver.ResolveAsync(presentation.Raw, cancellationToken).ConfigureAwait(false);
@@ -94,6 +95,7 @@ public class SdJwtVcFormatHandler : ICredentialFormatHandler
             X5cChain = keyResolution?.X5cChain,
             SignatureVerified = signatureVerified,
             Status = statusRef,
+            Statuses = allStatuses,
             RevocationPolicy = requirement.RevocationCheckPolicy
         };
 
@@ -205,6 +207,26 @@ public class SdJwtVcFormatHandler : ICredentialFormatHandler
     }
 
     /// <summary>Reads one W3C <c>BitstringStatusListEntry</c> object into a status reference.</summary>
+    /// <summary>
+    /// Every status reference in the presented token — one per declared purpose.
+    /// </summary>
+    private static IReadOnlyList<StatusReference> ParseAllStatusReferences(string rawSdJwt)
+    {
+        try
+        {
+            var jwtPart = rawSdJwt.TrimEnd('~').Split('~')[0];
+            var segments = jwtPart.Split('.');
+            if (segments.Length < 2) return [];
+
+            using var doc = JsonDocument.Parse(Base64Url.DecodeFromChars(segments[1]));
+            return ExtractStatusReferences(doc.RootElement);
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
     private static StatusReference? ReadW3cEntry(JsonElement entry)
     {
         var uri = ReadString(entry, "statusListCredential");
@@ -227,7 +249,7 @@ public class SdJwtVcFormatHandler : ICredentialFormatHandler
     /// suspended one must both be refused. Checking only the first entry would let a suspended
     /// credential through whenever suspension happened to be listed second.
     /// </remarks>
-    internal static IReadOnlyList<StatusReference> ExtractStatusReferences(JsonElement payload)
+    public static IReadOnlyList<StatusReference> ExtractStatusReferences(JsonElement payload)
     {
         var all = new List<StatusReference>();
 
