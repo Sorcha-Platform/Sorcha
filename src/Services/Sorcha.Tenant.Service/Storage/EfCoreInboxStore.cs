@@ -24,6 +24,10 @@ public sealed class EfCoreInboxStore : IInboxStore
     }
 
     /// <inheritdoc />
+    /// <inheritdoc />
+    public Task<bool> PlatformUserExistsAsync(Guid platformUserId, CancellationToken ct = default) =>
+        _db.PlatformUsers.AsNoTracking().AnyAsync(u => u.Id == platformUserId, ct);
+
     public async Task<InboxAddResult> AddOrFindAsync(InboxEntry candidate, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(candidate);

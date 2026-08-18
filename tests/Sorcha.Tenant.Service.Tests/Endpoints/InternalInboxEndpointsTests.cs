@@ -133,6 +133,50 @@ public class InternalInboxEndpointsTests
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    /// <summary>
+    /// Issue #1506 — a platform user that does not exist must be refused with a 4xx, not reach
+    /// Postgres and blow up on <c>FK_InboxEntries_PlatformUsers_PlatformUserId</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The endpoint checked only that the id was not <see cref="Guid.Empty"/>, so any other wrong
+    /// GUID became a 500 caused entirely by the caller's argument. On n1 the Blueprint Service sent
+    /// a <c>UserIdentity</c> id — right shape, wrong table — and a run of the resulting 500s tripped
+    /// a Polly circuit breaker, after which credential issuance failed outright with "The circuit is
+    /// now open and is not allowing calls".
+    /// </para>
+    /// <para>
+    /// So a best-effort NOTIFICATION write took out CREDENTIAL ISSUANCE. The inbox contract is that
+    /// a writer failure must never roll back the underlying operation, and a 500 breaks that at the
+    /// transport layer however carefully the caller wraps its own call. A 4xx is also simply the
+    /// truthful answer: the caller passed an id that is not a platform user.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task Write_ForAnUnknownPlatformUser_IsRefusedWith4xx_NotA500()
+    {
+        var response = await _serviceClient.PostAsJsonAsync(
+            "/api/internal/inbox", BuildRequest(Guid.NewGuid()));
+
+        response.StatusCode.Should().NotBe(HttpStatusCode.InternalServerError,
+            "a 500 here tripped a circuit breaker on n1 that then blocked credential issuance (#1506)");
+        ((int)response.StatusCode).Should().BeInRange(400, 499,
+            "an id that is not a platform user is a caller error and should read as one");
+    }
+
+    /// <summary>
+    /// The guard must not be so eager that it refuses legitimate writes — the whole notification
+    /// surface runs through this endpoint, so an over-broad check would silence every bell.
+    /// </summary>
+    [Fact]
+    public async Task Write_ForAKnownPlatformUser_StillSucceeds()
+    {
+        var response = await _serviceClient.PostAsJsonAsync(
+            "/api/internal/inbox", BuildRequest(TestDataSeeder.MemberPlatformUserId));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
     private static InboxWriteRequestDto BuildRequest(Guid platformUserId) => new(
         PlatformUserId: platformUserId,
         Category: InboxCategory.Action,

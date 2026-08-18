@@ -121,8 +121,32 @@ public sealed class BlueprintInboxWriter : IBlueprintInboxWriter
 
         // Org wallet: owner is a UserIdentity → resolve to its PlatformUser. Consumer wallet: owner
         // is already the PlatformUserId → the identity lookup misses and we use it directly.
+        //
+        // ⚠ #1506 — that second case is a GUESS, and the guess used to be unconditional
+        // (`?? ownerId`). A miss means "this GUID is not a UserIdentity"; it is NOT evidence that it
+        // is a PlatformUser. Every id in this system is a GUID, so a wrong one is indistinguishable
+        // by shape and only Postgres notices — as a foreign-key 500 on a best-effort notification
+        // write, which on n1 tripped a circuit breaker that then blocked credential issuance.
+        //
+        // So confirm before asserting it. If we cannot confirm, skip the notice: this whole surface
+        // is best-effort by contract, and a missing bell is strictly better than a 500 that takes
+        // the underlying operation down with it.
         var viaOwnerIdentity = await _inbox.ResolvePlatformUserIdAsync(ownerId, ct).ConfigureAwait(false);
-        return viaOwnerIdentity ?? ownerId;
+        if (viaOwnerIdentity is not null)
+        {
+            return viaOwnerIdentity;
+        }
+
+        if (await _inbox.PlatformUserExistsAsync(ownerId, ct).ConfigureAwait(false))
+        {
+            return ownerId;
+        }
+
+        _logger.LogDebug(
+            "Inbox skip — wallet {Wallet} owner {Owner} is neither a resolvable UserIdentity nor a "
+            + "known PlatformUser, so there is nobody to notify",
+            walletAddress, ownerId);
+        return null;
     }
 
     /// <inheritdoc />

@@ -29,6 +29,18 @@ public interface IPlatformInboxClient
     /// </summary>
     /// <returns>The platform user id, or <c>null</c> if no UserIdentity matches.</returns>
     Task<Guid?> ResolvePlatformUserIdAsync(Guid userIdentityId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Whether <paramref name="platformUserId"/> names a real platform user.
+    /// </summary>
+    /// <remarks>
+    /// Issue #1506. A caller that has a GUID and believes it is a PlatformUserId has no way to
+    /// check that by shape — every id in the system is a GUID — so the belief used to be verified
+    /// only by the foreign key, as a 500 on a best-effort notification write. Returns false when
+    /// the id is unknown, and false when the check itself cannot be made: an unverified id must
+    /// never be written, and skipping a notice is the cheaper failure.
+    /// </remarks>
+    Task<bool> PlatformUserExistsAsync(Guid platformUserId, CancellationToken ct = default);
 }
 
 /// <summary>Wire shape sent to the internal inbox endpoint.</summary>

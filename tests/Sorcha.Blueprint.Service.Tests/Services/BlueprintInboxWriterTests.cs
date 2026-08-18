@@ -188,9 +188,12 @@ public class BlueprintInboxWriterTests
             .ReturnsAsync((ParticipantInfo?)null);
         _wallets.Setup(w => w.GetWalletAsync("citizen-wallet", It.IsAny<CancellationToken>()))
             .ReturnsAsync(Wallet(owner: platformUserId.ToString()));
-        // Owner is already a PlatformUserId, so the UserIdentity resolution misses and we use it directly.
+        // Owner is already a PlatformUserId, so the UserIdentity resolution misses — and we then
+        // CONFIRM it is a platform user before using it (#1506). The miss alone is not evidence.
         _inbox.Setup(i => i.ResolvePlatformUserIdAsync(platformUserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid?)null);
+        _inbox.Setup(i => i.PlatformUserExistsAsync(platformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
@@ -205,6 +208,65 @@ public class BlueprintInboxWriterTests
         captured!.PlatformUserId.Should().Be(platformUserId);
         captured.Category.Should().Be("Workflow");
         captured.Summary.Should().Be("AIAS needs a verified email before it can assure you.");
+    }
+
+    /// <summary>
+    /// Issue #1506 — a wallet owner that is neither a resolvable UserIdentity nor a known
+    /// PlatformUser must produce NO inbox write.
+    /// </summary>
+    /// <remarks>
+    /// The writer used to end in <c>?? ownerId</c>: if the UserIdentity lookup missed, it assumed
+    /// the GUID must therefore be a PlatformUserId. Every id here is a GUID, so a wrong one is
+    /// indistinguishable by shape and only the foreign key noticed — as a 500 on a best-effort
+    /// notification write, which on n1 tripped a circuit breaker that then blocked credential
+    /// issuance outright. A missing bell is strictly better than that.
+    /// </remarks>
+    [Fact]
+    public async Task WriteDecisionAsync_OwnerIsNeitherIdentityNorPlatformUser_SkipsInbox()
+    {
+        var strayId = Guid.NewGuid();
+
+        _participants.Setup(p => p.GetByWalletAddressAsync("org-wallet", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ParticipantInfo?)null);
+        _wallets.Setup(w => w.GetWalletAsync("org-wallet", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Wallet(owner: strayId.ToString()));
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(strayId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid?)null);
+        _inbox.Setup(i => i.PlatformUserExistsAsync(strayId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        await _sut.WriteDecisionAsync("org-wallet", "instance-A", "2", "Title", "reason", "Warning");
+
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    /// <summary>
+    /// The existence check fails CLOSED: if it cannot be made, the id stays unverified and nothing
+    /// is written. "I could not check" is not "it exists" — treating it as existence is what put an
+    /// unverified id in front of the foreign key.
+    /// </summary>
+    [Fact]
+    public async Task WriteDecisionAsync_ExistenceCheckUnavailable_SkipsInbox()
+    {
+        var unknownId = Guid.NewGuid();
+
+        _participants.Setup(p => p.GetByWalletAddressAsync("org-wallet", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ParticipantInfo?)null);
+        _wallets.Setup(w => w.GetWalletAsync("org-wallet", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Wallet(owner: unknownId.ToString()));
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(unknownId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid?)null);
+        _inbox.Setup(i => i.PlatformUserExistsAsync(unknownId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("tenant unreachable"));
+
+        var act = async () => await _sut.WriteDecisionAsync(
+            "org-wallet", "instance-A", "2", "Title", "reason", "Warning");
+
+        // Best-effort by contract: it must not throw INTO the caller either.
+        await act.Should().NotThrowAsync();
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
