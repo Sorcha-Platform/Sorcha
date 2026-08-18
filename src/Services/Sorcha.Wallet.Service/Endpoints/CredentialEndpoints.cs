@@ -926,6 +926,9 @@ public static class CredentialEndpoints
             CreatedAt = DateTimeOffset.UtcNow,
             StatusListUrl = effectiveStatusListUrl,
             StatusListIndex = effectiveStatusListIndex,
+            // Without this the lifecycle endpoints cannot post a CredentialStatusChange — they read
+            // THIS row, and a missing RegisterId made them skip the ledger write silently (#1482).
+            RegisterId = request.RegisterId,
             DisplayConfigJson = displayConfigJson
         };
         await store.StoreAsync(issuerEntity, cancellationToken);
@@ -1067,6 +1070,19 @@ public class IssueCredentialRequest
     /// <see cref="StatusListIndex"/>, the issuer embeds a W3C BitstringStatusListEntry
     /// credentialStatus claim in the signed SD-JWT payload (Feature 093 US2).
     /// </summary>
+    /// <summary>
+    /// Register the credential is issued against.
+    /// </summary>
+    /// <remarks>
+    /// Persisted on the ISSUER's row so the credential-lifecycle endpoints can post a
+    /// <c>CredentialStatusChange</c> transaction when the credential is later revoked, suspended or
+    /// reinstated. Those endpoints read the issuer's copy, and without this they skip the ledger
+    /// write entirely — so a revocation stayed node-local, unauditable and unreplicated (#1482).
+    /// The recipient's row already carried it, written by InboundCredentialDetector; the two copies
+    /// held complementary halves of the metadata and the consumer read the half without it.
+    /// </remarks>
+    public string? RegisterId { get; init; }
+
     public string? StatusListUrl { get; init; }
 
     /// <summary>

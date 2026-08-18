@@ -4,7 +4,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 
-namespace Sorcha.Validator.Core.Tokens;
+namespace Sorcha.Blueprint.Models.Schemas;
 
 /// <summary>
 /// Resolves Sorcha date tokens used as cutoffs in <c>formatMinimum</c> /

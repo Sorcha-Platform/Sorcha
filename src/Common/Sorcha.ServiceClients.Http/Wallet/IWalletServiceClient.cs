@@ -225,6 +225,10 @@ public interface IWalletServiceClient
         string? trustAnchor = null,
         string? vct = null,
         string? displayName = null,
+        // Register the credential is issued against. Persisted on the ISSUER's row so the
+        // credential-lifecycle endpoints can post a CredentialStatusChange when it is later
+        // revoked — without it that ledger write is skipped silently (#1482).
+        string? registerId = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

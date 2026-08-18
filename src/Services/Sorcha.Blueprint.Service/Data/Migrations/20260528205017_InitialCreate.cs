@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -143,6 +143,27 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "StatusLists",
+                schema: "blueprint",
+                columns: table => new
+                {
+                    Id = table.Column<string>(type: "text", nullable: false),
+                    IssuerWallet = table.Column<string>(type: "text", nullable: false),
+                    RegisterId = table.Column<string>(type: "text", nullable: false),
+                    Purpose = table.Column<string>(type: "text", nullable: false),
+                    EncodedList = table.Column<string>(type: "text", nullable: false),
+                    Size = table.Column<int>(type: "integer", nullable: false),
+                    NextAvailableIndex = table.Column<int>(type: "integer", nullable: false),
+                    Version = table.Column<int>(type: "integer", nullable: false),
+                    LastUpdated = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    ReconciledToDocket = table.Column<long>(type: "bigint", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_StatusLists", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "FileMetadata",
                 schema: "blueprint",
                 columns: table => new
@@ -191,6 +212,12 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_StatusLists_IssuerWallet_RegisterId_Purpose",
+                schema: "blueprint",
+                table: "StatusLists",
+                columns: new[] { "IssuerWallet", "RegisterId", "Purpose" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_FileMetadata_Orphans",
@@ -288,6 +315,10 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "BlueprintTemplates",
+                schema: "blueprint");
+
+            migrationBuilder.DropTable(
+                name: "StatusLists",
                 schema: "blueprint");
 
             migrationBuilder.DropTable(
