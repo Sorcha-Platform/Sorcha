@@ -2684,6 +2684,7 @@ governanceGroup.MapPost("/proposals/{proposalId}/approve", async (
     Sorcha.Register.Core.Services.IGovernanceRosterService rosterService,
     Sorcha.Validator.Core.Validators.IDetachedApprovalVerifier verifier,
     Sorcha.Register.Service.Services.IGovernanceApprovalActionSubmitter submitter,
+    Sorcha.Register.Service.Services.IGovernanceSigningService signingService,
     ILoggerFactory loggerFactory,
     string registerId,
     string proposalId,
@@ -2772,6 +2773,40 @@ governanceGroup.MapPost("/proposals/{proposalId}/approve", async (
             reason = "refused-not-on-roster",
             approverDid = submission.ApproverDid
         }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    // #1465 — the system register's ceremony Owner cannot sign its own approval externally: its
+    // governance key IS this node's system wallet, and POST /wallets/{addr}/sign correctly refuses
+    // that wallet to everything but the validator and register services (#1397/#1424). So the SSR
+    // could raise a Transfer it could never approve, and Transfer is deliberately outside the Owner
+    // override — the register was proposable but not governable.
+    //
+    // The server supplies ONLY the organisation's signature, and only for that one subject. The
+    // accountability block naming who stands behind the approval (FR-029) is untouched and still
+    // required: the node can sign for the ceremony key it holds, but it cannot honestly say who
+    // wanted the change. Every other subject still signs externally — this is not a route back to
+    // the server signing on organisations' behalf, which R-014 removed.
+    if (string.IsNullOrWhiteSpace(submission.Signature))
+    {
+        var serverSigned = await signingService.TrySignApprovalAsync(
+            registerId, operation, submission.ApproverDid, submission.IsApproval, ct);
+
+        if (serverSigned is null)
+        {
+            return Results.BadRequest(new
+            {
+                error = "Approval signature required",
+                reason = "no-signature",
+                detail = "Approvals are produced outside the platform: sign the approval statement "
+                       + "with the organisation's governance key and submit the signature. The server "
+                       + "signs only for the system register's ceremony-minted Owner, whose key it "
+                       + "holds by construction.",
+                approverDid = submission.ApproverDid
+            });
+        }
+
+        submission.Signature = Convert.ToBase64String(serverSigned.Signature);
+        submission.PublicKey = Convert.ToBase64String(serverSigned.PublicKey);
     }
 
     // The signature is checked against the statement rebuilt from the STORED operation, never from
