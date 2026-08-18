@@ -33,6 +33,12 @@ public class BlueprintDbContext : DbContext
     /// </summary>
     public DbSet<PublishOverrideEntity> PublishOverrides => Set<PublishOverrideEntity>();
 
+    /// <summary>
+    /// Bitstring Status Lists. Durable because revocation must survive a restart, and because the
+    /// allocation counter cannot be reconstructed from the ledger (#1482).
+    /// </summary>
+    public DbSet<StatusListEntity> StatusLists => Set<StatusListEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -145,6 +151,14 @@ public class BlueprintDbContext : DbContext
         });
 
         // Feature 142 — PublishOverride configuration (append-only audit)
+        modelBuilder.Entity<StatusListEntity>(entity =>
+        {
+            entity.ToTable("StatusLists");
+            entity.HasKey(e => e.Id);
+            // Reconciliation and rebuild both work per issuer+register.
+            entity.HasIndex(e => new { e.IssuerWallet, e.RegisterId, e.Purpose });
+        });
+
         modelBuilder.Entity<PublishOverrideEntity>(entity =>
         {
             entity.ToTable("PublishOverrides");

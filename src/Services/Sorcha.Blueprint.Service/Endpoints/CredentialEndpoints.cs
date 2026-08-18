@@ -386,6 +386,20 @@ public static class CredentialEndpoints
     /// no-ops (points at the issuer's wallet service), and this register-tx path is what
     /// actually reaches the holder.
     /// </remarks>
+    /// <summary>
+    /// Recovers the status-list identifier from the credential's status-list URL, whose final path
+    /// segment IS the list id (<c>{issuerWallet}-{registerId}-{purpose}-1</c>).
+    /// </summary>
+    private static string? DeriveStatusListId(CredentialIssuanceResult credential)
+    {
+        var url = credential.StatusListUrl;
+        if (string.IsNullOrWhiteSpace(url)) return null;
+
+        var trimmed = url.TrimEnd('/');
+        var slash = trimmed.LastIndexOf('/');
+        return slash >= 0 && slash < trimmed.Length - 1 ? trimmed[(slash + 1)..] : null;
+    }
+
     private static async Task TrySubmitStatusChangeTransactionAsync(
         CredentialIssuanceResult credential,
         string issuerWallet,
@@ -423,6 +437,10 @@ public static class CredentialEndpoints
                 SubjectDid = credential.SubjectDid,
                 Reason = reason,
                 ChangedAt = DateTimeOffset.UtcNow,
+                // Self-describing: a node folding this transaction cannot look the credential up in
+                // the issuing node's wallet, so the event must carry the bit it changes (#1482).
+                StatusListId = DeriveStatusListId(credential),
+                StatusListIndex = credential.StatusListIndex,
             };
 
             var payloadJson = JsonSerializer.Serialize(payload);

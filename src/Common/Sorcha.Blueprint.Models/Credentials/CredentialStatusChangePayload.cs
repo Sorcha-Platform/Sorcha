@@ -71,4 +71,24 @@ public class CredentialStatusChangePayload
     [DataAnnotations.Required]
     [JsonPropertyName("changedAt")]
     public DateTimeOffset ChangedAt { get; set; }
+
+    /// <summary>
+    /// Identifier of the Bitstring Status List this change applies to.
+    /// </summary>
+    /// <remarks>
+    /// The event must be self-describing: another node folding this transaction has no access to the
+    /// issuing node's wallet, so it cannot look the credential up to discover which list and bit the
+    /// change refers to. Without these two fields a status list can never be rebuilt from the ledger,
+    /// which is the whole point of writing the event (#1482).
+    /// </remarks>
+    public string? StatusListId { get; set; }
+
+    /// <summary>
+    /// Index of this credential's bit within <see cref="StatusListId"/>.
+    /// </summary>
+    /// <remarks>
+    /// Nullable because a credential issued before status lists were allocated carries no index;
+    /// such an event records the status change for audit but cannot be projected onto a bitstring.
+    /// </remarks>
+    public int? StatusListIndex { get; set; }
 }
