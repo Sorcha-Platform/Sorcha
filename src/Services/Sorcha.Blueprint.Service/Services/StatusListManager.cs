@@ -5,6 +5,8 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Caching.Distributed;
 using Sorcha.Blueprint.Models.Credentials;
 
+using Sorcha.Blueprint.Service.Storage;
+
 namespace Sorcha.Blueprint.Service.Services;
 
 /// <summary>
@@ -62,36 +64,107 @@ public record StatusListBitUpdate(string ListId, int Index, bool Value, int Vers
 /// </summary>
 public class StatusListManager : IStatusListManager, IDisposable
 {
+    // In-process memo ONLY. The durable copy lives in IStatusListStore and the authoritative
+    // status bits come from the register. This exists for speed, not for state: anything not
+    // also in the store is lost on restart by design, which is what #1482 was about.
     private readonly ConcurrentDictionary<string, BitstringStatusList> _lists = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
+    private readonly ConcurrentDictionary<string, StatusListReadiness> _readiness = new();
     private readonly IDistributedCache? _cache;
+    private readonly IStatusListStore _store;
+    private readonly StatusListLedgerReconciler _reconciler;
     private readonly ILogger<StatusListManager> _logger;
     private readonly string _baseUrl;
 
     public StatusListManager(
         ILogger<StatusListManager> logger,
         Sorcha.Blueprint.Service.Configuration.StatusListUrls.Resolved urls,
+        IStatusListStore store,
+        StatusListLedgerReconciler reconciler,
         IDistributedCache? cache = null)
     {
         _logger = logger;
         _cache = cache;
+        _store = store;
+        _reconciler = reconciler;
         _baseUrl = urls.BaseUrl;
     }
 
+    /// <summary>
+    /// How current a list is. <see cref="StatusListReadiness.Warming"/> means not folded yet,
+    /// which is a retryable answer and NOT an assertion that nothing is revoked.
+    /// </summary>
+    public StatusListReadiness GetReadiness(string listId) =>
+        _readiness.TryGetValue(listId, out var r) ? r : StatusListReadiness.Warming;
+
+    /// <summary>
+    /// Loads a list from the durable store (or creates it), then folds the register status-change
+    /// events onto it once per process.
+    /// </summary>
+    /// <remarks>
+    /// Creating an empty list and serving it is the dangerous path: an all-zero bitstring reads as
+    /// nothing-is-revoked, which is exactly the wrong answer after a restart. So a freshly-loaded
+    /// list is reconciled against the ledger before it is usable, and a failed reconcile marks the
+    /// list Failed rather than Ready-and-empty.
+    /// </remarks>
+    private async Task<BitstringStatusList> LoadAndReconcileAsync(
+        string listId, string issuerWallet, string registerId, string purpose, CancellationToken ct)
+    {
+        if (_lists.TryGetValue(listId, out var memo)
+            && _readiness.TryGetValue(listId, out var r) && r == StatusListReadiness.Ready)
+        {
+            return memo;
+        }
+
+        var semaphore = _locks.GetOrAdd(listId, _ => new SemaphoreSlim(1, 1));
+        await semaphore.WaitAsync(ct);
+        try
+        {
+            if (_lists.TryGetValue(listId, out var again)
+                && _readiness.TryGetValue(listId, out var r2) && r2 == StatusListReadiness.Ready)
+            {
+                return again;
+            }
+
+            _readiness[listId] = StatusListReadiness.Warming;
+
+            var list = await _store.GetAsync(listId, ct).ConfigureAwait(false);
+            if (list is null)
+            {
+                _logger.LogInformation(
+                    "Creating new {Purpose} status list for issuer {Issuer} on register {Register}",
+                    purpose, issuerWallet, registerId);
+                list = BitstringStatusList.Create(issuerWallet, registerId, purpose);
+                await _store.SaveAsync(list, ct).ConfigureAwait(false);
+            }
+
+            var outcome = await _reconciler.ReconcileAsync(list, listId, ct).ConfigureAwait(false);
+            if (outcome.Readiness == StatusListReadiness.Ready)
+            {
+                await _store.SaveAsync(list, ct).ConfigureAwait(false);
+                if (outcome.ReconciledToDocket is { } d)
+                {
+                    await _store.SetReconciledDocketAsync(listId, d, ct).ConfigureAwait(false);
+                }
+            }
+
+            _readiness[listId] = outcome.Readiness;
+            _lists[listId] = list;
+            return list;
+        }
+        finally
+        {
+            semaphore.Release();
+        }
+    }
+
     /// <inheritdoc />
-    public Task<BitstringStatusList> GetOrCreateListAsync(
+    public async Task<BitstringStatusList> GetOrCreateListAsync(
         string issuerWallet, string registerId, string purpose, CancellationToken ct = default)
     {
         var key = $"{issuerWallet}-{registerId}-{purpose}-1";
-        var list = _lists.GetOrAdd(key, _ =>
-        {
-            _logger.LogInformation(
-                "Creating new {Purpose} status list for issuer {Issuer} on register {Register}",
-                purpose, issuerWallet, registerId);
-            return BitstringStatusList.Create(issuerWallet, registerId, purpose);
-        });
-
-        return Task.FromResult(list);
+        return await LoadAndReconcileAsync(key, issuerWallet, registerId, purpose, ct)
+            .ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -115,6 +188,11 @@ public class StatusListManager : IStatusListManager, IDisposable
                 "Allocated index {Index} in status list {ListId} for credential {CredentialId}",
                 index, list.Id, credentialId ?? "(pre-allocation — not yet signed)");
 
+            // Persist immediately. NextAvailableIndex is the one thing the ledger cannot rebuild,
+            // and if it resets a new credential is handed an index an older one already holds,
+            // so revoking the new one would silently mark the old one revoked too.
+            await _store.SaveAsync(list, ct).ConfigureAwait(false);
+
             var url = $"{_baseUrl}/{list.Id}";
             return new StatusListAllocation(list.Id, index, url);
         }
@@ -128,8 +206,8 @@ public class StatusListManager : IStatusListManager, IDisposable
     public async Task<StatusListBitUpdate> SetBitAsync(
         string listId, int index, bool value, string? reason = null, CancellationToken ct = default)
     {
-        if (!_lists.TryGetValue(listId, out var list))
-            throw new KeyNotFoundException($"Status list {listId} not found");
+        var list = await LoadByIdAsync(listId, ct).ConfigureAwait(false)
+            ?? throw new KeyNotFoundException($"Status list {listId} not found");
 
         var semaphore = _locks.GetOrAdd(listId, _ => new SemaphoreSlim(1, 1));
 
@@ -137,6 +215,7 @@ public class StatusListManager : IStatusListManager, IDisposable
         try
         {
             list.SetBit(index, value);
+            await _store.SaveAsync(list, ct).ConfigureAwait(false);
 
             // Invalidate cache
             if (_cache != null)
@@ -157,20 +236,36 @@ public class StatusListManager : IStatusListManager, IDisposable
     }
 
     /// <inheritdoc />
-    public Task<BitstringStatusList?> GetListAsync(string listId, CancellationToken ct = default)
-    {
-        _lists.TryGetValue(listId, out var list);
-        return Task.FromResult(list);
-    }
+    public async Task<BitstringStatusList?> GetListAsync(string listId, CancellationToken ct = default) =>
+        await LoadByIdAsync(listId, ct).ConfigureAwait(false);
 
     /// <inheritdoc />
-    public Task<byte[]?> GetRawBitstringBytesAsync(string listId, CancellationToken ct = default)
+    public async Task<byte[]?> GetRawBitstringBytesAsync(string listId, CancellationToken ct = default)
     {
-        if (!_lists.TryGetValue(listId, out var list))
-            return Task.FromResult<byte[]?>(null);
+        var list = await LoadByIdAsync(listId, ct).ConfigureAwait(false);
+        if (list is null) return null;
 
-        var raw = BitstringStatusList.DecompressBitstring(list.EncodedList);
-        return Task.FromResult<byte[]?>(raw);
+        return BitstringStatusList.DecompressBitstring(list.EncodedList);
+    }
+
+    /// <summary>
+    /// Loads a list already known to this node by id, reconciling it against the register on first
+    /// touch. Returns null when the id has never existed here, a genuine 404 distinct from known
+    /// but not yet folded, which <see cref="GetReadiness"/> reports.
+    /// </summary>
+    private async Task<BitstringStatusList?> LoadByIdAsync(string listId, CancellationToken ct)
+    {
+        if (_lists.TryGetValue(listId, out var memo)
+            && _readiness.TryGetValue(listId, out var r) && r == StatusListReadiness.Ready)
+        {
+            return memo;
+        }
+
+        var stored = await _store.GetAsync(listId, ct).ConfigureAwait(false);
+        if (stored is null) return null;
+
+        return await LoadAndReconcileAsync(
+            listId, stored.IssuerWallet, stored.RegisterId, stored.Purpose, ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc />

@@ -3,7 +3,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "title": "Date of Birth",
-  "description": "A person's date of birth. Constrained to the past via the Sorcha formatMaximum token 'today'. The renderer prevents future dates in the date picker; the validator rejects them on submission.",
+  "description": "A person's date of birth. Constrained to the past via the Sorcha formatMaximum token 'today', which is ENFORCED BY THE VALIDATOR: a future date is refused with VAL_SCHEMA_004 whatever route it arrives by, including a direct API call. The date picker applies the same bound in the renderer, but that is a convenience on top of the validation, not the validation itself.",
   "x-sections": [
     {
       "title": "Date of Birth",

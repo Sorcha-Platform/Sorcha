@@ -386,6 +386,20 @@ public static class CredentialEndpoints
     /// no-ops (points at the issuer's wallet service), and this register-tx path is what
     /// actually reaches the holder.
     /// </remarks>
+    /// <summary>
+    /// Recovers the status-list identifier from the credential's status-list URL, whose final path
+    /// segment IS the list id (<c>{issuerWallet}-{registerId}-{purpose}-1</c>).
+    /// </summary>
+    private static string? DeriveStatusListId(CredentialIssuanceResult credential)
+    {
+        var url = credential.StatusListUrl;
+        if (string.IsNullOrWhiteSpace(url)) return null;
+
+        var trimmed = url.TrimEnd('/');
+        var slash = trimmed.LastIndexOf('/');
+        return slash >= 0 && slash < trimmed.Length - 1 ? trimmed[(slash + 1)..] : null;
+    }
+
     private static async Task TrySubmitStatusChangeTransactionAsync(
         CredentialIssuanceResult credential,
         string issuerWallet,
@@ -400,9 +414,16 @@ public static class CredentialEndpoints
             // Pre-Feature 106 credentials don't carry the originating RegisterId — there's
             // nowhere to post the lifecycle tx to. Verifier-side checks still work via the
             // BitstringStatusList; only the holder-side cached row will be stale.
-            logger.LogDebug(
-                "Skipping CredentialStatusChange register tx for {CredentialId}: no RegisterId on credential record",
-                credential.CredentialId);
+            // WARNING, not Debug. This is a ledger platform declining to write a lifecycle event
+            // to the ledger: the revocation becomes node-local, unauditable and unreplicable. It
+            // logged at Debug for months, so on any node logging at Information it was completely
+            // invisible — which is how #1482 hid. If this fires, the credential predates the
+            // RegisterId being persisted on the issuer's row and its revocation will not propagate.
+            logger.LogWarning(
+                "No CredentialStatusChange register tx for {CredentialId}: the credential record "
+                + "carries no RegisterId, so this {Status} change is local to this node and will "
+                + "not replicate or appear in the audit trail",
+                credential.CredentialId, newStatus);
             return;
         }
 
@@ -416,6 +437,10 @@ public static class CredentialEndpoints
                 SubjectDid = credential.SubjectDid,
                 Reason = reason,
                 ChangedAt = DateTimeOffset.UtcNow,
+                // Self-describing: a node folding this transaction cannot look the credential up in
+                // the issuing node's wallet, so the event must carry the bit it changes (#1482).
+                StatusListId = DeriveStatusListId(credential),
+                StatusListIndex = credential.StatusListIndex,
             };
 
             var payloadJson = JsonSerializer.Serialize(payload);

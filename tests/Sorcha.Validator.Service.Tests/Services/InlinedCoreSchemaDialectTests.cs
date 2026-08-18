@@ -125,4 +125,66 @@ public class InlinedCoreSchemaDialectTests
             "the document already said which dialect it is written in; normalisation only supplies a "
             + "missing declaration");
     }
+
+    [Fact]
+    public void AnInlinedDateOfBirth_RefusesAFutureDate()
+    {
+        // The whole point of enforcing formatMaximum. Driven through the exact production
+        // sequence (strip → parse → evaluate), because the bound is only reachable via the
+        // dialect the strip step declares — testing the handler directly would prove the logic
+        // and not the wiring.
+        //
+        // Measured on n1 2026-08-17 BEFORE this landed: dateOfBirth = 2035-06-15 was accepted and
+        // sealed into a docket, because formatMaximum was unknown to plain 2020-12 and therefore
+        // an annotation.
+        var schema = ParseAsValidatorDoes(ActionSchemaInliningDateOfBirth);
+
+        var future = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(
+            """{ "dob": { "dateOfBirth": "2035-06-15" } }""");
+
+        schema.Evaluate(future, new Json.Schema.EvaluationOptions
+        {
+            OutputFormat = Json.Schema.OutputFormat.List,
+            RequireFormatValidation = true
+        }).IsValid.Should().BeFalse("a date of birth in the future is not a date of birth");
+    }
+
+    [Fact]
+    public void ASchemaDeclaringPlain202012_IsUpgraded_SoBoundsAreEnforcedOnAlreadySealedBlueprints()
+    {
+        // A blueprint already sealed on a ledger carries its flattened schema forever, and that
+        // text declares 2020-12. If normalisation left an explicit 2020-12 alone, every existing
+        // blueprint would keep silently ignoring its own declared bounds — so the upgrade from
+        // 2020-12 to the Sorcha superset is what makes this fix retroactive rather than
+        // applying only to blueprints published from now on.
+        const string sealedShape = """
+        {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "dateOfBirth": { "type": "string", "format": "date", "formatMaximum": "today" }
+          }
+        }
+        """;
+
+        var element = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(sealedShape);
+        var schema = ValidationEngine.GetOrParseActionSchema(
+            ValidationEngine.StripCustomExtensionKeywords(element));
+
+        var future = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(
+            """{ "dateOfBirth": "2035-06-15" }""");
+        var past = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(
+            """{ "dateOfBirth": "1980-04-01" }""");
+
+        var options = new Json.Schema.EvaluationOptions
+        {
+            OutputFormat = Json.Schema.OutputFormat.List,
+            RequireFormatValidation = true
+        };
+
+        schema.Evaluate(future, options).IsValid.Should().BeFalse(
+            "an explicit 2020-12 declaration must be upgraded to the Sorcha superset, or already-"
+            + "sealed blueprints keep ignoring their own bounds");
+        schema.Evaluate(past, options).IsValid.Should().BeTrue();
+    }
 }

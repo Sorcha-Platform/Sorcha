@@ -257,6 +257,15 @@ if (!string.IsNullOrEmpty(blueprintDbConn))
         typeof(Sorcha.Blueprint.Service.Storage.IPublishOverrideStore).FullName!,
         typeof(Sorcha.Blueprint.Service.Storage.EfCorePublishOverrideStore).FullName!,
         "postgres");
+
+    // Status lists hold revocation state. Unlike the two above this is NOT convenience-grade: a
+    // revocation is meant to be permanent and publicly checkable, and losing it silently un-revokes
+    // credentials for anyone who checks (#1482).
+    builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IStatusListStore, Sorcha.Blueprint.Service.Storage.EfCoreStatusListStore>();
+    storageLog.RegisterPersistent(
+        typeof(Sorcha.Blueprint.Service.Storage.IStatusListStore).FullName!,
+        typeof(Sorcha.Blueprint.Service.Storage.EfCoreStatusListStore).FullName!,
+        "postgres");
 }
 else
 {
@@ -271,6 +280,14 @@ else
         typeof(Sorcha.Blueprint.Service.Storage.IPublishOverrideStore).FullName!,
         typeof(Sorcha.Blueprint.Service.Storage.InMemoryPublishOverrideStore).FullName!,
         "no Postgres connection string in ConnectionStrings:Blueprint:Postgres or ConnectionStrings:Sorcha:Postgres — convenience-grade, not audited");
+
+    // This is the pre-#1482 behaviour, kept only as the no-database fallback. It is registered as
+    // in-memory deliberately so the storage audit reports it rather than it looking durable.
+    builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IStatusListStore, Sorcha.Blueprint.Service.Storage.InMemoryStatusListStore>();
+    storageLog.RegisterInMemory(
+        typeof(Sorcha.Blueprint.Service.Storage.IStatusListStore).FullName!,
+        typeof(Sorcha.Blueprint.Service.Storage.InMemoryStatusListStore).FullName!,
+        "no Postgres connection string in ConnectionStrings:Blueprint:Postgres or ConnectionStrings:Sorcha:Postgres — revocation state will NOT survive a restart");
 }
 
 // Add Orchestration services (Sprint 6)
@@ -680,6 +697,7 @@ builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.TemplateSeed
 builder.Services.AddSingleton(
     Sorcha.Blueprint.Service.Configuration.StatusListUrls.Resolve(
         builder.Configuration, builder.Environment.EnvironmentName));
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.StatusListLedgerReconciler>();
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.IStatusListManager,
     Sorcha.Blueprint.Service.Services.StatusListManager>();
 

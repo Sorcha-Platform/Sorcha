@@ -2616,6 +2616,11 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                 // and records credentialName in the display config (not the bare type).
                 vct: config.Vct,
                 displayName: config.DisplayName,
+                // The register this credential is issued against, persisted on the ISSUER's row.
+                // The credential-lifecycle endpoints read that row and need it to post a
+                // CredentialStatusChange transaction; without it a revocation never reaches the
+                // ledger, so it cannot be audited or replicated to another node (#1482).
+                registerId: config.RegisterId ?? instance.RegisterId,
                 cancellationToken: cancellationToken);
 
             return result;
