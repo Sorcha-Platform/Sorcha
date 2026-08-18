@@ -986,6 +986,29 @@ function Set-SorchaOrgMasterKey {
             throw
         }
     }
+
+    # The master key ENABLES the Feature 120 issuance key; it does not DERIVE it. Until the
+    # issuance key exists, the org has no published DID document at all — GET /orgs/{id}/did.json
+    # 404s — because the document is (re)generated as a side effect of a key event.
+    #
+    # That is a bootstrap hole for any walkthrough that must PIN the issuer's DID in a blueprint
+    # trust policy: on a freshly-created org the DID cannot be resolved before the org's first
+    # credential is issued, yet the blueprint that issues it needs the DID at publish time.
+    # (This stayed hidden until n1 was wiped on 2026-08-17: previously these orgs had already
+    # issued credentials, so the key — and the document — existed as a side effect.)
+    #
+    # `issuance-key/ensure` is the platform's designed answer: idempotent, derives on first call,
+    # and "Triggers DID document regeneration on the Tenant side as a side effect."
+    try {
+        $ensure = Invoke-SorchaApi -Method POST `
+            -Uri "$WalletUrl/v1/orgs/$OrganizationId/issuance-key/ensure" `
+            -Headers $Headers
+        Write-WtInfo "  Org issuance key ready for $OrganizationId (rotation $($ensure.rotationIndex), $($ensure.algorithm)) — DID document published"
+    } catch {
+        Write-WtWarn ("  Could not ensure the org issuance key for $OrganizationId — the org's " +
+                      "did.json will not resolve until its first credential is issued, so any " +
+                      "trust policy pinning its issuance DID cannot be built yet. $($_.Exception.Message)")
+    }
 }
 
 # ============================================================================
@@ -1619,6 +1642,202 @@ function Invoke-SorchaActionPostWithCadenceRetry {
     }
 }
 
+function Wait-SorchaRegisterRoster {
+    <#
+    .SYNOPSIS
+        Block until a newly-created register's genesis governance roster has sealed.
+    .DESCRIPTION
+        The register's genesis control transaction — which records the owner governance roster
+        the F142 publish gate reads — seals ASYNCHRONOUSLY after New-SorchaRegister returns. A
+        blueprint publish issued immediately reads an EMPTY roster and fail-closes with
+
+            403 "You do not hold a publish-governance role (Owner, Admin, or Designer)
+                 on the target register."
+
+        That message reads like a ROLE problem, so it sends you looking at the caller's roles and
+        its `wallet_address` claim — both of which are usually fine. The actual cause is timing,
+        and it is load-bearing whether a walkthrough happens to have other work between creating
+        the register and publishing: ConstructionPermit and Forestry get away with it, while
+        TradeFinance and Strathcarron 403 every time.
+
+        Poll until at least one roster member exists before publishing.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$GatewayUrl,
+        [Parameter(Mandatory)][string]$RegisterId,
+        [Parameter(Mandatory)][hashtable]$Headers,
+        [int]$TimeoutSeconds = 60
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $started  = Get-Date
+    $polls    = 0
+
+    while ((Get-Date) -lt $deadline) {
+        $polls++
+        try {
+            $roster = Invoke-SorchaApi -Method GET `
+                -Uri "$GatewayUrl/api/registers/$RegisterId/governance/roster" `
+                -Headers $Headers
+            $count = @($roster.members).Count
+            if ($roster -and $roster.members -and $count -gt 0) {
+                $elapsed = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
+                Write-WtInfo "  Governance roster sealed ($count member(s)) in ${elapsed}s ($polls polls)"
+                return $true
+            }
+        } catch {
+            # The roster endpoint 404s until the genesis tx lands; keep polling.
+        }
+        Start-Sleep -Seconds 2
+    }
+
+    Write-WtWarn ("  Governance roster for register $RegisterId did not seal within ${TimeoutSeconds}s. " +
+                  "A blueprint publish now will 403 with a publish-governance-role message that " +
+                  "actually means the roster is still empty.")
+    return $false
+}
+
+function Resolve-SorchaCollection {
+    <#
+    .SYNOPSIS
+        Return the item collection from a response that may be either a bare JSON array or an
+        envelope object carrying a named collection property.
+    .DESCRIPTION
+        Sorcha list endpoints are not uniform: some return a bare array, others an envelope
+        (`{ "credentials": [...] }` / `{ "items": [...] }`). Walkthroughs handled that with
+
+            $items = if ($response.credentials) { $response.credentials } else { $response }
+
+        which is SILENTLY WRONG for a bare array of two or more elements. `$array.credentials`
+        is PowerShell **member enumeration**: it projects `credentials` from every element and,
+        when no element has it, returns an array of $nulls. That array has Count > 0 and is
+        therefore TRUTHY, so the `if` takes the envelope branch and `$items` becomes a
+        same-length collection of $nulls. Every downstream `Where-Object { $_.type -eq ... }`
+        then matches nothing, and the walkthrough reports "not delivered" for data the platform
+        returned correctly.
+
+        The bug is invisible at one element (a single $null is falsy, so the correct branch is
+        taken) and appears at two — so it presents as a walkthrough that passes on a clean node
+        and fails on the second run. Test for the array FIRST; only then look for the property.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowNull()]$Response,
+        [Parameter(Mandatory)][string]$PropertyName
+    )
+
+    if ($null -eq $Response) { return @() }
+
+    # A bare array IS the collection — check before ANY member access on $Response.
+    if ($Response -is [System.Collections.IList]) { return @($Response) }
+
+    $prop = $Response.PSObject.Properties[$PropertyName]
+    if ($prop -and $null -ne $prop.Value) { return @($prop.Value) }
+
+    return @($Response)
+}
+
+function Resolve-SorchaAsyncTransactionId {
+    <#
+    .SYNOPSIS
+        Resolve the transaction id for an action whose encryption was offloaded to the
+        background service (the 202 "encryption offload" path).
+    .DESCRIPTION
+        `/actions/{id}/execute` has TWO distinct 202 shapes, and only one of them carries a
+        transaction id:
+
+          * normal async  — `isAsync=true`, `transactionId` POPULATED (the tx is already built).
+          * encryption offload — `isAsync=true`, `transactionId` is the EMPTY STRING, and only
+            `operationId` is set. `ActionExecutionService` returns this whenever the action has
+            recipient disclosure groups to encrypt; the tx id is assigned later, by the
+            background encryption service ("Will be filled by background service").
+
+        An empty string is FALSY in PowerShell, so a caller doing
+        `if ($WaitForSeal -and $response.transactionId)` silently skips the seal wait on the
+        second shape — the cadence guard the whole walkthrough framework depends on becomes
+        inert with no error and no log line, and the script races the validator exactly as it
+        did before `-WaitForSeal` existed. Any assertion on `$response.transactionId` also
+        fails on a submission the platform actually accepted and sealed.
+
+        This resolver closes that gap: it polls `GET /api/operations/{operationId}` (the
+        documented polling fallback for clients without SignalR) until the operation reports a
+        `transactionHash`, which IS the transaction id — the F079 lifecycle endpoint echoes it
+        back as `transactionId`, and the instance's `lastAppliedTxId` matches it.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$GatewayUrl,
+        [Parameter(Mandatory)][string]$OperationId,
+        [Parameter(Mandatory)][hashtable]$Headers,
+        [int]$TimeoutSeconds = 90
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $polls = 0
+    $started = Get-Date
+
+    while ((Get-Date) -lt $deadline) {
+        $polls++
+        $op = $null
+        try {
+            $op = Invoke-SorchaApi -Method GET `
+                -Uri "$GatewayUrl/api/operations/$OperationId" `
+                -Headers $Headers
+        } catch {
+            # The operation row can lag the 202 by a beat; keep polling until the deadline.
+            $op = $null
+        }
+
+        if ($op) {
+            if ($op.error) {
+                throw ("Encryption operation $OperationId failed: $($op.error)" +
+                       $(if ($op.failedRecipient) { " (recipient: $($op.failedRecipient))" } else { "" }))
+            }
+            if (-not [string]::IsNullOrWhiteSpace($op.transactionHash)) {
+                $elapsed = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
+                Write-WtInfo ("  Async encryption op $($OperationId.Substring(0, [Math]::Min(10, $OperationId.Length)))… " +
+                              "-> tx $($op.transactionHash.Substring(0, 10))… in ${elapsed}s ($polls polls)")
+                return $op.transactionHash
+            }
+        }
+
+        Start-Sleep -Seconds 1
+    }
+
+    throw ("Encryption operation $OperationId did not report a transactionHash within " +
+           "${TimeoutSeconds}s. The action was accepted (HTTP 202) but its transaction id " +
+           "could not be resolved, so the seal could not be verified.")
+}
+
+function Resolve-SorchaActionTransactionId {
+    <#
+    .SYNOPSIS
+        Normalise an action-submission response so `.transactionId` is always meaningful.
+    .DESCRIPTION
+        On the encryption-offload 202 the platform returns an EMPTY `transactionId` plus an
+        `operationId`. This fills the real id in (resolved via the operations endpoint) so
+        every caller — seal waits, assertions, logging — can rely on `.transactionId`.
+        Responses that already carry an id are returned untouched.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowNull()]$Response,
+        [Parameter(Mandatory)][string]$BlueprintUrl,
+        [Parameter(Mandatory)][hashtable]$Headers,
+        [int]$TimeoutSeconds = 90
+    )
+
+    if (-not $Response) { return $Response }
+    if (-not [string]::IsNullOrWhiteSpace($Response.transactionId)) { return $Response }
+    if ([string]::IsNullOrWhiteSpace($Response.operationId)) { return $Response }
+
+    $resolved = Resolve-SorchaAsyncTransactionId `
+        -GatewayUrl ($BlueprintUrl -replace '/api$', '') `
+        -OperationId $Response.operationId `
+        -Headers $Headers `
+        -TimeoutSeconds $TimeoutSeconds
+
+    $Response | Add-Member -NotePropertyName transactionId -NotePropertyValue $resolved -Force
+    return $Response
+}
+
 function Invoke-SorchaAction {
     <#
     .SYNOPSIS
@@ -1688,7 +1907,16 @@ function Invoke-SorchaAction {
 
         Write-WtSuccess "Action $ActionId REJECTED"
 
-        if ($WaitForSeal -and $response.transactionId) {
+        $response = Resolve-SorchaActionTransactionId `
+            -Response $response -BlueprintUrl $BlueprintUrl `
+            -Headers $executeHeaders -TimeoutSeconds $WaitForSealTimeoutSeconds
+
+        if ($WaitForSeal) {
+            if ([string]::IsNullOrWhiteSpace($response.transactionId)) {
+                throw ("Action $ActionId rejection was accepted but returned no transaction id " +
+                       "(and no operationId to resolve one from), so -WaitForSeal cannot " +
+                       "verify the seal. Refusing to continue silently.")
+            }
             $gatewayUrl = $BlueprintUrl -replace '/api$', ''
             Wait-SorchaActorReady -Mode AfterSubmit `
                 -TxId $response.transactionId `
@@ -1722,7 +1950,16 @@ function Invoke-SorchaAction {
         $nextAction = if ($response.nextAction) { $response.nextAction } else { "complete" }
         Write-WtSuccess "Action $ActionId executed (next: $nextAction)"
 
-        if ($WaitForSeal -and $response.transactionId) {
+        $response = Resolve-SorchaActionTransactionId `
+            -Response $response -BlueprintUrl $BlueprintUrl `
+            -Headers $executeHeaders -TimeoutSeconds $WaitForSealTimeoutSeconds
+
+        if ($WaitForSeal) {
+            if ([string]::IsNullOrWhiteSpace($response.transactionId)) {
+                throw ("Action $ActionId was accepted but returned no transaction id " +
+                       "(and no operationId to resolve one from), so -WaitForSeal cannot " +
+                       "verify the seal. Refusing to continue silently.")
+            }
             $gatewayUrl = $BlueprintUrl -replace '/api$', ''
             Wait-SorchaActorReady -Mode AfterSubmit `
                 -TxId $response.transactionId `

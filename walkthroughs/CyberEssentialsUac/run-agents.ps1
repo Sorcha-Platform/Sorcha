@@ -197,7 +197,7 @@ $credDeadline = (Get-Date).AddSeconds(45)
 while ((Get-Date) -lt $credDeadline) {
     try {
         $walletCreds = Invoke-SorchaApi -Method GET -Uri $walletCredUrl -Headers $subjectSession.Headers
-        $items = if ($walletCreds.credentials) { $walletCreds.credentials } else { $walletCreds }
+        $items = Resolve-SorchaCollection -Response $walletCreds -PropertyName 'credentials'
         if ($items) {
             $postureCred = @($items) | Where-Object { $_.type -eq "https://sorcha.dev/vc/cyber-essentials-uac/v1" } | Select-Object -First 1
             if ($postureCred) { break }
@@ -356,7 +356,7 @@ function Get-PostureCount {
     param($url, $headers)
     try {
         $r = Invoke-SorchaApi -Method GET -Uri $url -Headers $headers
-        $items = if ($r.credentials) { $r.credentials } else { $r }
+        $items = Resolve-SorchaCollection -Response $r -PropertyName 'credentials'
         return (@($items) | Where-Object { $_.type -eq "https://sorcha.dev/vc/cyber-essentials-uac/v1" }).Count
     } catch { return 0 }
 }

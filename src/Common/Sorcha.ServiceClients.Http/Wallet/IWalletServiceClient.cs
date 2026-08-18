@@ -228,8 +228,18 @@ public interface IWalletServiceClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets a credential by ID from a wallet
+    /// Gets a credential by ID from a wallet.
     /// </summary>
+    /// <returns>
+    /// The credential, or <c>null</c> ONLY when the wallet genuinely holds no credential with
+    /// that id (HTTP 404).
+    /// </returns>
+    /// <remarks>
+    /// Throws on any other failure — a non-404 status, or a response that cannot be mapped from
+    /// the wallet's stored-credential shape. Callers must not treat those as absence: doing so is
+    /// what made issue #1475 present a deserialisation mismatch as a bodiless "credential not
+    /// found", silently disabling revoke / suspend / reinstate / refresh platform-wide.
+    /// </remarks>
     Task<CredentialIssuanceResult?> GetCredentialAsync(
         string walletAddress,
         string credentialId,
