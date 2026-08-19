@@ -54,6 +54,11 @@ public static class ValidationEngineExtensions
         services.AddScoped<Sorcha.Validator.Core.Validators.IDetachedApprovalVerifier,
             Sorcha.Validator.Core.Validators.DetachedApprovalVerifier>();
 
+        // Feature 193: the seat-acceptance rule runs on EVERY node, from sealed content — a roster
+        // key that only the proposing node checked is a key nobody proved.
+        services.AddScoped<Sorcha.Validator.Core.Validators.ISeatAcceptanceVerifier,
+            Sorcha.Validator.Core.Validators.SeatAcceptanceVerifier>();
+
         services.AddScoped<IRightsEnforcementService, RightsEnforcementService>();
 
         // Register the validation engine as scoped (matches IRegisterServiceClient lifetime)

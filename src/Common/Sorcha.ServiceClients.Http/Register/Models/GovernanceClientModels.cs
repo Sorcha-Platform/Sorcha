@@ -22,6 +22,14 @@ public class GovernanceProposalRequest
     public string? Justification { get; set; }
     /// <summary>Collection of approval signatures associated with this resource.</summary>
     public List<ApprovalSignature>? ApprovalSignatures { get; set; }
+
+    /// <summary>
+    /// The target organisation's signed acceptance of the seat (Feature 193). Required for
+    /// <see cref="GovernanceOperationType.Add"/>: it nominates the slot-100 governance key to record
+    /// on the roster and proves the organisation holds it. Without one the member is seated unkeyed
+    /// and can never sign (#1464).
+    /// </summary>
+    public GovernanceSeatAcceptance? TargetAcceptance { get; set; }
 }
 
 /// <summary>

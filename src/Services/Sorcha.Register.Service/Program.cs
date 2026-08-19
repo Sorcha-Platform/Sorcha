@@ -252,6 +252,12 @@ builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceSigningSe
 builder.Services.AddScoped<Sorcha.Validator.Core.Validators.IDetachedApprovalVerifier,
     Sorcha.Validator.Core.Validators.DetachedApprovalVerifier>();
 
+// Feature 193: the same shape and the same reason — a seat acceptance is a LEDGER rule, so the
+// Register Service's check at propose time and the Validator's check against sealed content must be
+// one implementation. Registered here for the early refusal; the Validator registers it too.
+builder.Services.AddScoped<Sorcha.Validator.Core.Validators.ISeatAcceptanceVerifier,
+    Sorcha.Validator.Core.Validators.SeatAcceptanceVerifier>();
+
 // Feature 189: one way to read a proposal off the ledger, shared by the signing-request and approve
 // endpoints. The proposal IS its transaction, so there is no proposal table to drift from it.
 builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceProposalReader,
@@ -2280,7 +2286,8 @@ governanceGroup.MapPost("/propose", async (
     Sorcha.Register.Core.Services.IGovernanceRosterService rosterService,
     IHashProvider hashProvider,
     Sorcha.ServiceClients.Validator.IValidatorServiceClient validatorClient,
-    IGovernanceSigningService signingService) =>
+    IGovernanceSigningService signingService,
+    Sorcha.Validator.Core.Validators.ISeatAcceptanceVerifier seatAcceptanceVerifier) =>
 {
     // 1. Verify register exists
     var register = await repository.GetRegisterAsync(registerId);
@@ -2326,8 +2333,31 @@ governanceGroup.MapPost("/propose", async (
         // change into an enacted one.
         RosterSnapshotId = roster.LastControlTxId,
         QuorumFormulaAtRaise = roster.ControlRecord.RegisterPolicy?.Governance?.QuorumFormula
-                               ?? QuorumFormula.StrictMajority
+                               ?? QuorumFormula.StrictMajority,
+
+        // Feature 193 — travels on the OPERATION so it reaches sealed content. The Validator
+        // re-verifies it from the sealed payload on every node; an acceptance that existed only on
+        // the wire would be a rule this node enforced and no other node could check.
+        TargetAcceptance = request.TargetAcceptance
     };
+
+    // Feature 193 / #1464 — an Add must carry the target's signed acceptance, nominating the
+    // slot-100 governance key to record. Checked BEFORE the roster validation below so the refusal
+    // names the real cause: without it the member is seated with an empty key, can never sign, and
+    // the failure surfaces much later as an approval silently excluded from a tally.
+    //
+    // The same verifier runs in the Validator against sealed content (Gate C2) — this call is the
+    // early, friendly refusal, not the authority.
+    var acceptanceResult = await seatAcceptanceVerifier.VerifyAsync(registerId, operation);
+    if (!acceptanceResult.Accepted)
+    {
+        return Results.BadRequest(new
+        {
+            error = "Seat acceptance required",
+            reason = acceptanceResult.Reason.ToString(),
+            detail = acceptanceResult.Detail
+        });
+    }
 
     // 4. Validate proposal against current roster
     var validationResult = rosterService.ValidateProposal(roster, operation);
@@ -2498,14 +2528,14 @@ governanceGroup.MapPost("/propose", async (
     RegisterAttestation? newAttestation = null;
     if (operation.OperationType == GovernanceOperationType.Add)
     {
-        // #1464 — left empty deliberately; see the note in GovernanceEnactmentService.ProjectRoster.
-        // Deriving from the DID yields the wallet's PRIMARY key, but governance matches the SLOT-100
-        // key, so a derived value is non-empty and wrong — which fails silently instead of loudly.
+        // Feature 193 — the key the target NOMINATED and proved it holds, verified above and again
+        // by the Validator from sealed content. Never derived: deriving from the DID yields the
+        // wallet's PRIMARY key while governance matches the SLOT-100 key, which is #1464.
         newAttestation = new RegisterAttestation
         {
             Role = operation.TargetRole,
             Subject = operation.TargetDid,
-            PublicKey = string.Empty,
+            PublicKey = operation.TargetAcceptance?.GovernanceKey ?? string.Empty,
             Signature = string.Empty,
             Algorithm = Sorcha.Register.Models.SignatureAlgorithm.ED25519,
             GrantedAt = DateTimeOffset.UtcNow
@@ -3910,7 +3940,12 @@ record GovernanceProposalRequest(
     RegisterRole? TargetRole = null,
     [property: StringLength(2000)] string? Justification = null,
     List<ApprovalSignature>? ApprovalSignatures = null,
-    ValidatorRosterEntry? ValidatorEntry = null);
+    ValidatorRosterEntry? ValidatorEntry = null,
+    // Feature 193 — required for Add, ignored otherwise. The organisation being seated nominates
+    // its slot-100 governance key and signs that nomination with its primary key, so the roster
+    // records a key that member provably holds. Optional on the wire so Remove/Transfer callers are
+    // unaffected; the seat-acceptance verifier refuses an Add without one.
+    GovernanceSeatAcceptance? TargetAcceptance = null);
 
 record WriteDocketRequest(
     [property: Required(AllowEmptyStrings = false), StringLength(256)] string DocketId,
