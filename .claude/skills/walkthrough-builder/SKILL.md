@@ -238,6 +238,44 @@ The 403 wording blames the caller's publish-governance ROLE, which sends you loo
 `wallet_address` claim — both usually fine. The cause is timing. Whether a walkthrough gets away with
 it depends purely on how much work sits between creating the register and publishing.
 
+#### REQUIRED: every org must have its OWN wallet, created by its ADMIN — before the master key
+
+An organisation's canonical wallet is what its issuer DID anchors on (`did:sorcha:org:{address}`) and what
+its governance roster identity is matched against. **The platform does not create it.** Its BIP39 recovery
+phrase is shown once and never stored, so a service-to-service create generates a phrase with nobody present
+to receive it and the organisation can never be recovered — which is exactly what used to happen (#1525).
+
+Pass `-WalletUrl` to `New-SorchaOrganization` and it performs the step for you, by signing in as the admin
+it was just given:
+
+```powershell
+$org = New-SorchaOrganization -TenantUrl $env.TenantUrl -WalletUrl $env.WalletUrl `
+    -Name "Acme Verification Co." -Subdomain "acme-verif" `
+    -AdminEmail "ops@acme-verif.test" -AdminPassword $secrets.DefaultPassword `
+    -AdminDisplayName "Acme Ops" -AdminEmailVerified
+# $org.WalletAddress is now the ORGANISATION's wallet
+```
+
+Where an admin session only exists later (orgs created in a loop, or an org that already existed), call the
+step explicitly once you have one:
+
+```powershell
+$null = New-SorchaOrgWallet -TenantUrl $env.TenantUrl -WalletUrl $env.WalletUrl `
+    -OrganizationId $orgId -Headers $adminSession.Headers
+```
+
+- **Ordering matters.** It must exist **before** `Set-SorchaOrgMasterKey`, because the issuer DID anchors on
+  it — without it there is nothing to anchor a DID document to and `GET /orgs/{id}/did.json` 404s. That was
+  #1518, which presented as a timing race and was really a missing step.
+- **The org owns the wallet, not the admin.** `POST /api/v1/wallets` takes `organizationId`; the admin
+  receives the phrase but the wallet outlives them.
+- **A platform admin cannot do it** — refused by design, both at wallet-create and at link. The secret
+  belongs to the organisation.
+- **Idempotent**, and a second wallet is refused: replacing the canonical wallet orphans every credential
+  issued under the old one and every roster entry matched against it.
+- **There is no safety net any more.** `OrgWalletReconciliationService` swept every 60s and silently made
+  org wallets appear; it is deleted. Miss this step and the failure is visible, which is the point.
+
 #### REQUIRED: a credential-ISSUING org must provision a Feature 083 master key
 
 Any org that issues a native SorchaLocalWallet SD-JWT VC **MUST** call `Set-SorchaOrgMasterKey` for that org in setup (after its session carries `wallet_address`). Without it, `IssuanceKeyService.GetActiveSigningMaterialAsync` returns null and the mint **silently falls back to the org's root wallet key** — producing a credential whose `iss` is a **bare wallet address** (not a `did:`), with **no `kid`** and **no `jwk`** in the JWS header. That credential is **unverifiable**: a cross-register / insurer trust check fails with `TrustEvaluator: issuer signature not verified` (looks like a platform bug; it's a missing setup step).

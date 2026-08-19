@@ -2170,8 +2170,10 @@ verify half).
   a caller-supplied key; the server resolves the org P-256 key itself and **re-issues the internal
   tenant-root cert with auditable history** (`ITrustProvider.ReissueInternalCertAsync` supersede). Doubles
   as the **backfill** action for pre-existing orgs.
-- **Auto-enrol** — best-effort server-side hook after wallet provisioning (org creation +
-  `OrgWalletReconciliationService` ride-along), **not an API**. Failure never fails org creation.
+- **Auto-enrol** — best-effort server-side hook riding on `POST /api/organizations/{id}/wallet`, the
+  moment an org first has a wallet (#1525), **not an API**. Failure never fails the link. It used to
+  ride on server-side provisioning at org creation and on the `OrgWalletReconciliationService` sweep;
+  both are gone, because they minted org wallets with nobody present to receive the recovery phrase.
 - **Admin UI** — certificates panel in `OrgSettings.razor` backed by `IOrgCertificateAdminService`.
   `Organization.WalletAddress` is now exposed on `OrganizationResponse`.
 

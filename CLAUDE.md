@@ -503,6 +503,43 @@ app.UseSanitizedExceptionHandling();
   only the HTTP response body is sanitized. Every response carries a `traceId` extension an operator
   can correlate against that log line.
 
+### 21. An organisation's wallet is created by its OWN admin (#1525)
+
+The platform does **not** create an organisation's canonical signing wallet. Its BIP39 recovery
+phrase is **shown once and never stored**, so a service-to-service create generates a phrase with no
+human present to receive it and the organisation can never be recovered. It is also not the
+platform's secret to hold — it belongs to the org admin.
+
+```csharp
+// DON'T — this is what was removed. Owner would be the org, phrase discarded, org unrecoverable.
+var wallet = await _walletClient.CreateWalletAsync(name, "ED25519", org.Id.ToString(), org.Id.ToString());
+org.WalletAddress = wallet.Address;
+```
+
+**Create-then-link**, so the phrase never transits the Tenant Service:
+
+1. The org admin calls `POST /api/v1/wallets` with `organizationId` — the **organisation** becomes
+   the owner, and `mnemonicWords` is returned once, to them.
+2. `POST /api/organizations/{id}/wallet` records it, after verifying the org owns that wallet.
+
+- **A null `Organization.WalletAddress` is the "awaiting its wallet" state**, not a fault to be
+  quietly repaired. `OrgWalletReconciliationService` — a 60s sweep that silently minted org wallets
+  and discarded their phrases — is **deleted**; do not reintroduce anything like it.
+- **A platform SystemAdmin is refused** at both endpoints. This is the deliberate exception to their
+  usual cross-org reach, and `CallerOrganizationGate` is therefore *not* used on the link endpoint —
+  it exempts SystemAdmins by design. The handler compares the caller's org to the route itself.
+- **Ownership is verified** (addresses are public, so otherwise an admin could adopt any wallet whose
+  address they know) and **a second link is refused** — replacing the canonical wallet orphans every
+  credential issued under the old one and every governance roster entry matched against it.
+- **Ordering matters downstream.** The org wallet is what `did:sorcha:org:{address}` anchors on, so
+  it must exist *before* the F083 master key. Without it there is nothing to anchor a DID document
+  to and `GET /orgs/{id}/did.json` 404s — that was #1518, which looked like a timing race and was a
+  missing step.
+- Walkthroughs: pass `-WalletUrl` to `New-SorchaOrganization`, or call `New-SorchaOrgWallet` once an
+  admin session exists. See the **`walkthrough-builder`** skill.
+
+---
+
 ---
 
 ## Key Documentation
