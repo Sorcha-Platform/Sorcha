@@ -1,6 +1,6 @@
 # Feature 193 — Tasks
 
-**Status:** 🟡 A / C / D settled 2026-08-19 (**A1 / C2 / D1**); only Gate B's detail is open
+**Status:** 🚧 ALL GATES SETTLED 2026-08-19 — **A1 / B2 / C2 / D1**. Implementing.
 **Branch:** `feature/193-governance-member-keying`
 
 Legend: 📋 pending · 🚧 in progress · ✅ done · ⛔ blocked on a gate
@@ -8,9 +8,8 @@ Legend: 📋 pending · 🚧 in progress · ✅ done · ⛔ blocked on a gate
 Written for **A1** (the proposal carries the target's slot-100 key plus an acceptance signature by
 that key), **C2** (the Validator verifies it too) and **D1** (leave already-unkeyed members).
 
-**Gate B is the only thing still open, and it affects exactly one task — T005**, the canonical
-statement. Everything else can proceed: what the statement *covers* changes its field list, not the
-shape of the feature. Recommended B2 + `RosterSnapshotId` binding:
+**B2**: the acceptance is consent to a SPECIFIC SEAT, bound to the roster it was produced for, so it
+cannot be replayed to re-seat a removed organisation or to seat one at a role it never agreed to:
 
 ```
 sorcha:governance-seat-acceptance:v1 ␟ {registerId} ␟ {subjectDid} ␟ {role} ␟ {publicKey} ␟ {rosterSnapshotId}
@@ -38,7 +37,7 @@ TDD order. T004 must be RED before T006.
   attestation carries the **slot-100** key, and that member's approval is then **counted in a tally**.
   Assert the tally, not just the stored bytes — the stored key mattering is the whole point, and a
   test that only checks storage would pass on a key nobody can use. **Verify RED first.**
-- ⛔ **T005** (Gate B) Add `GovernanceSeatAcceptanceStatement` to `Sorcha.Register.Models`, mirroring
+- 📋 **T005** Add `GovernanceSeatAcceptanceStatement` to `Sorcha.Register.Models`, mirroring
   `GovernanceApprovalStatement`: a versioned, unit-separated canonical string over
   (register id, subject, role, key) and a `ComputeDigest`. **One implementation** — the producer and
   both verifiers must call it, never rebuild it.

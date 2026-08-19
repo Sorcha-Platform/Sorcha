@@ -139,6 +139,22 @@ public sealed class GovernanceApprovalStatementBindingTests
             };
         }
 
+        if (type == typeof(GovernanceSeatAcceptance))
+        {
+            // A genuinely DIFFERENT acceptance — different governance key AND different signing
+            // key. This is what an approver is agreeing to when they approve an Add: not merely
+            // "seat B", but "seat B with THIS governance key". If the digest did not cover it, an
+            // acceptance could be swapped after approvals were collected and the roster would
+            // record a key nobody approved (Feature 193).
+            return new GovernanceSeatAcceptance
+            {
+                GovernanceKey = "R0dHRw==",
+                SigningPublicKey = "U1NTUw==",
+                Signature = "U2lnQg==",
+                Algorithm = SignatureAlgorithm.ED25519,
+            };
+        }
+
         throw new NotSupportedException(
             $"No mutation strategy for {property.Name} ({type.Name}). Add one — do not exclude the "
             + "property to make this pass, or the signature stops covering it.");

@@ -117,12 +117,12 @@ Acceptance:
 
 ---
 
-## Decision gates — **A / C / D SETTLED 2026-08-19; B reframed and open**
+## Decision gates — **ALL SETTLED 2026-08-19**
 
 | Gate | Answer |
 |---|---|
 | **A** | **A1** — the proposal carries the target's slot-100 key plus an acceptance signature by that key |
-| **B** | ⛔ **reframed** — the original question was not a real choice (see below); what remains open is what the signature commits the target to |
+| **B** | **B2** — consent to a specific seat, bound to `RosterSnapshotId` so an acceptance cannot be replayed |
 | **C** | **C2** — verified in the Validator as well as the Register Service, sharing one implementation |
 | **D** | **D1** — leave already-unkeyed members; they are inert and unpromotable |
 
@@ -181,7 +181,7 @@ exists: **`RosterSnapshotId`** — the roster head at proposal time, which propo
 acceptance bound the same way is valid only against the roster it was produced for, so a removed
 organisation's old acceptance cannot be replayed to seat them again.
 
-*Recommendation: **B2 plus the RosterSnapshotId binding**. The extra fields are free — the proposal
+*Answer: **B2 plus the RosterSnapshotId binding** (Stuart, 2026-08-19). The extra fields are free — the proposal
 already knows the subject, role and snapshot — and it makes the ledger record what the organisation
 agreed to, not just that it once held a key. Statement shape, mirroring
 `GovernanceApprovalStatement`:*

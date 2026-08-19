@@ -216,6 +216,89 @@ public class GovernanceOperation
     [JsonConverter(typeof(JsonStringEnumConverter))]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public QuorumFormula? QuorumFormulaAtRaise { get; set; }
+
+    /// <summary>
+    /// The target organisation's acceptance of the seat, carrying the governance key to record on
+    /// the roster (Feature 193). Required for <see cref="GovernanceOperationType.Add"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This lives on the OPERATION, not merely on the HTTP request, because it has to be in SEALED
+    /// content: every node folds the same proposal into the same roster bytes, and the Validator
+    /// re-verifies the acceptance from the sealed payload when it recounts. An acceptance that
+    /// existed only on the wire would be a rule the proposing node enforced and no other node could
+    /// check.
+    /// </para>
+    /// <para>
+    /// Null for Remove, Transfer and the validator-roster operations, which do not seat anybody.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("targetAcceptance")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public GovernanceSeatAcceptance? TargetAcceptance { get; set; }
+}
+
+/// <summary>
+/// An organisation's signed acceptance of a governance roster seat (Feature 193).
+/// </summary>
+/// <remarks>
+/// <para>
+/// Carries the SLOT-100 governance key to record on the roster, plus a signature by that key over
+/// <see cref="GovernanceSeatAcceptanceStatement"/>. The signature is what makes the carried key
+/// trustworthy: without it the proposer would simply be asserting somebody else's key, and could
+/// seat an organisation with a key the proposer controls — giving itself a second vote.
+/// </para>
+/// <para>
+/// The key cannot instead be derived or looked up. Deriving from the subject DID yields the wallet's
+/// PRIMARY key, not the slot-100 governance key (#1464, reverted in #1511); resolving it from a
+/// local wallet at enactment would break determinism across nodes.
+/// </para>
+/// </remarks>
+public class GovernanceSeatAcceptance
+{
+    /// <summary>
+    /// The organisation's slot-100 governance key (<c>sorcha:register-attestation</c>), base64.
+    /// This is the value recorded on the roster attestation and matched against every future
+    /// governance signature.
+    /// </summary>
+    [Required]
+    [JsonPropertyName("governanceKey")]
+    public string GovernanceKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The organisation's PRIMARY key, base64 — the one its wallet address encodes. This is the key
+    /// that signs the acceptance.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Signing with the primary key rather than the governance key is what makes the acceptance
+    /// ATTRIBUTABLE. A signature by the governance key proves only that <i>somebody</i> holds it —
+    /// so a proposer could seat another organisation carrying the proposer's own governance key,
+    /// produce that organisation's approvals, and vote twice.
+    /// </para>
+    /// <para>
+    /// The primary key can be checked against the subject: a <c>ws1</c> address is Bech32 over
+    /// <c>[network][publicKey]</c>, so <c>PublicKeyToWallet(signingKey)</c> must equal the address in
+    /// <c>did:sorcha:w:{address}</c>. Slot 100 has no such binding, which is why it is NAMED by the
+    /// statement rather than used to sign it.
+    /// </para>
+    /// </remarks>
+    [Required]
+    [JsonPropertyName("signingPublicKey")]
+    public string SigningPublicKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Signature by <see cref="SigningPublicKey"/> over the seat-acceptance statement, which binds
+    /// <see cref="GovernanceKey"/>. Base64.
+    /// </summary>
+    [Required]
+    [JsonPropertyName("signature")]
+    public string Signature { get; set; } = string.Empty;
+
+    /// <summary>Algorithm of both keys.</summary>
+    [JsonPropertyName("algorithm")]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public SignatureAlgorithm Algorithm { get; set; } = SignatureAlgorithm.ED25519;
 }
 
 /// <summary>
