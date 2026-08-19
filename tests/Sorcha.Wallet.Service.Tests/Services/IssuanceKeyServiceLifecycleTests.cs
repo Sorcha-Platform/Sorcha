@@ -147,6 +147,59 @@ public sealed class IssuanceKeyServiceLifecycleTests : IDisposable
     }
 
     [Fact]
+    public async Task GetOrDeriveAsync_KeyAlreadyExists_StillPublishesTheDidDocument()
+    {
+        // Issue #1518. The eager publish on the derive branch races Tenant's
+        // OrgWalletReconciliationService, which provisions the org's canonical wallet
+        // asynchronously — for a brand-new org the derive wins by a few seconds and the publish is
+        // skipped. The early return here then meant NOTHING re-attempted it, so did.json stayed 404
+        // until the org's first signature (which does self-heal, and fails closed).
+        //
+        // Measured on n1: `ensure` returned 200 in 3.8 ms with no publish attempt at all.
+        SeedActiveKey();
+
+        var state = await _sut.GetOrDeriveAsync(_orgId);
+
+        state.Should().NotBeNull("the existing key is still returned");
+        _didClient.Verify(x => x.RegenerateAsync(
+            It.IsAny<OrgDidRegenerateRequest>(), It.IsAny<CancellationToken>()),
+            Times.Once,
+            "an existing key says nothing about whether its DID document was ever published");
+    }
+
+    [Fact]
+    public async Task GetOrDeriveAsync_KeyExistsButPublishFails_StillReturnsTheKey()
+    {
+        // Best-effort, deliberately: this is a lookup, and a Tenant write failure must not turn it
+        // into a failure. Signing is where publication is enforced and fails closed.
+        SeedActiveKey();
+        _didClient.Setup(x => x.RegenerateAsync(
+                It.IsAny<OrgDidRegenerateRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var state = await _sut.GetOrDeriveAsync(_orgId);
+
+        state.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task GetOrDeriveAsync_KeyExistsButNoCanonicalAddressYet_ReturnsTheKeyWithoutPublishing()
+    {
+        // The window itself: the wallet genuinely does not exist yet, so there is nothing to anchor
+        // on. Skip quietly and return the key — the next call, or the first signature, will publish.
+        SeedActiveKey();
+        _orgInfo.Setup(x => x.ResolveCanonicalWalletAddressAsync(_orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+
+        var state = await _sut.GetOrDeriveAsync(_orgId);
+
+        state.Should().NotBeNull();
+        _didClient.Verify(x => x.RegenerateAsync(
+            It.IsAny<OrgDidRegenerateRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task RotateAsync_NoCanonicalAddress_SkipsDidDocumentRegeneration()
     {
         // Feature 149: with no resolvable canonical operational wallet (A), the published

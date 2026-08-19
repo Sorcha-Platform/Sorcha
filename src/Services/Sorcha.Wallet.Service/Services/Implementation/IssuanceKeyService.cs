@@ -64,7 +64,27 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
                   && k.Status == IssuanceKeyStatus.Active,
                 ct)
             .ConfigureAwait(false);
-        if (existing is not null) return existing;
+        if (existing is not null)
+        {
+            // The key exists, but that says nothing about whether its DID document was ever
+            // published. The eager publish below races Tenant's OrgWalletReconciliationService,
+            // which provisions the org's canonical wallet asynchronously — for a brand-new org the
+            // derive wins that race by a few seconds, the publish is skipped, and this early return
+            // meant nothing ever re-attempted it (issue #1518).
+            //
+            // Issuance itself was never at risk: GetActiveSigningMaterialAsync re-ensures before
+            // every signature and fails closed. But that leaves did.json 404 for the whole window
+            // between deriving a key and first signing with it, so an org can advertise an issuance
+            // key whose issuer DID does not resolve — and any consumer reading the document before
+            // the org has issued anything gets a 404.
+            //
+            // Best-effort and idempotent: the Tenant side no-ops on an unchanged key-version
+            // fingerprint, so this is one round trip, and a failure here must not fail the lookup.
+            await EnsureDidDocumentPublishedAsync(
+                organizationId, "IssuanceKeyEnsured", canonicalAddress: null, ct).ConfigureAwait(false);
+
+            return existing;
+        }
 
         // Derive via Feature 083 — uses orgId as both controller and subject for the org's own key.
         // OrgKeyDerivationService throws InvalidOperationException when the org has no
