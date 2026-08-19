@@ -2319,7 +2319,20 @@ function New-SorchaOrganization {
                 # org may well have. Ask New-SorchaOrgWallet instead — it queries the organisation
                 # itself and no-ops when a wallet is present.
                 $existingWallet = $null
-                if ($WalletUrl -and $AdminPassword) {
+
+                # Check with the headers we ALREADY hold before spending a login. The caller here is
+                # the sysadmin, who CallerOrganizationGate exempts, so this read works — and in the
+                # common case (the org already has its wallet) it costs one GET instead of a full
+                # authentication. That matters: an extra login per organisation across ten
+                # walkthroughs is enough to trip the auth rate limit and turn a whole run into 429s
+                # that look like failures.
+                try {
+                    $existingOrg = Invoke-SorchaApi -Method GET `
+                        -Uri "$TenantUrl/organizations/$($existing.id)" -Headers $Headers
+                    if ($existingOrg.walletAddress) { $existingWallet = $existingOrg.walletAddress }
+                } catch { }
+
+                if ($WalletUrl -and -not $existingWallet -and $AdminPassword) {
                     try {
                         $adminSession = Connect-SorchaUser `
                             -TenantUrl $TenantUrl -Email $AdminEmail -Password $AdminPassword `
@@ -2333,7 +2346,7 @@ function New-SorchaOrganization {
                         Write-WtWarn "confirmed or created as $AdminEmail : $($_.Exception.Message)"
                         Write-WtWarn "Sign in as an admin of that org and call New-SorchaOrgWallet (#1525)."
                     }
-                } elseif ($WalletUrl) {
+                } elseif ($WalletUrl -and -not $existingWallet) {
                     Write-WtWarn "Organization '$Name' already existed and no admin credential was supplied,"
                     Write-WtWarn "so its wallet could not be confirmed. Sign in as an admin of that org and"
                     Write-WtWarn "call New-SorchaOrgWallet, or the org cannot issue credentials (#1525)."
