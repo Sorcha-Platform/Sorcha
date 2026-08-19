@@ -1003,7 +1003,20 @@ function Set-SorchaOrgMasterKey {
         $ensure = Invoke-SorchaApi -Method POST `
             -Uri "$WalletUrl/v1/orgs/$OrganizationId/issuance-key/ensure" `
             -Headers $Headers
-        Write-WtInfo "  Org issuance key ready for $OrganizationId (rotation $($ensure.rotationIndex), $($ensure.algorithm)) — DID document published"
+        Write-WtInfo "  Org issuance key ready for $OrganizationId (rotation $($ensure.rotationIndex), $($ensure.algorithm))"
+
+        # Report what actually happened, not what we hoped. This line used to say "DID document
+        # published" unconditionally, which is how #1518 stayed invisible: the publish had been
+        # skipped for want of a canonical wallet the Tenant provisions a few seconds later, the
+        # endpoint returned 200, and setup happily announced success before failing four steps
+        # later on a did.json that was never there.
+        if ($null -ne $ensure.didDocumentPublished -and -not $ensure.didDocumentPublished) {
+            Write-WtWarn "  Issuer DID document is NOT yet published for $OrganizationId."
+            Write-WtWarn "  Issuance still works — it re-ensures before every signature and fails"
+            Write-WtWarn "  closed — but the issuer DID will not resolve until the org first signs."
+        } else {
+            Write-WtInfo "  Issuer DID document published"
+        }
     } catch {
         Write-WtWarn ("  Could not ensure the org issuance key for $OrganizationId — the org's " +
                       "did.json will not resolve until its first credential is issued, so any " +
