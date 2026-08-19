@@ -1,13 +1,20 @@
 # Feature 193 — Tasks
 
-**Status:** ⛔ BLOCKED on decision gates A–D in spec.md
+**Status:** 🟡 A / C / D settled 2026-08-19 (**A1 / C2 / D1**); only Gate B's detail is open
 **Branch:** `feature/193-governance-member-keying`
 
 Legend: 📋 pending · 🚧 in progress · ✅ done · ⛔ blocked on a gate
 
-Written for **A1** (proposal carries the key plus the target's acceptance signature), **B1**,
-**C2** (verified in the Validator too) and **D1** — the recommended answers. A2 or A3 changes T004–T009
-substantially; everything else stands.
+Written for **A1** (the proposal carries the target's slot-100 key plus an acceptance signature by
+that key), **C2** (the Validator verifies it too) and **D1** (leave already-unkeyed members).
+
+**Gate B is the only thing still open, and it affects exactly one task — T005**, the canonical
+statement. Everything else can proceed: what the statement *covers* changes its field list, not the
+shape of the feature. Recommended B2 + `RosterSnapshotId` binding:
+
+```
+sorcha:governance-seat-acceptance:v1 ␟ {registerId} ␟ {subjectDid} ␟ {role} ␟ {publicKey} ␟ {rosterSnapshotId}
+```
 
 ---
 
@@ -23,36 +30,36 @@ substantially; everything else stands.
 - 📋 **T003** Check whether any live register carries an unkeyed member (Gate D). n1 had none as of
   2026-08-19; do not assume that of other installations.
 
-## US1 — a governance-added member can govern — ⛔ Gates A + B + C
+## US1 — a governance-added member can govern — 📋 unblocked (T005 pends Gate B's detail)
 
 TDD order. T004 must be RED before T006.
 
-- ⛔ **T004** Write the end-to-end test: `Add` with a valid acceptance signature seats a member whose
+- 📋 **T004** Write the end-to-end test: `Add` with a valid acceptance signature seats a member whose
   attestation carries the **slot-100** key, and that member's approval is then **counted in a tally**.
   Assert the tally, not just the stored bytes — the stored key mattering is the whole point, and a
   test that only checks storage would pass on a key nobody can use. **Verify RED first.**
-- ⛔ **T005** Add `GovernanceSeatAcceptanceStatement` to `Sorcha.Register.Models`, mirroring
+- ⛔ **T005** (Gate B) Add `GovernanceSeatAcceptanceStatement` to `Sorcha.Register.Models`, mirroring
   `GovernanceApprovalStatement`: a versioned, unit-separated canonical string over
   (register id, subject, role, key) and a `ComputeDigest`. **One implementation** — the producer and
   both verifiers must call it, never rebuild it.
-- ⛔ **T006** Extend `GovernanceProposalRequest` with `TargetPublicKey` + `TargetAcceptance`
+- 📋 **T006** Extend `GovernanceProposalRequest` with `TargetPublicKey` + `TargetAcceptance`
   (signature + algorithm). Optional on the wire so `Remove`/`Transfer` are unaffected; **required for
   `Add`** and refused with a 4xx when absent.
-- ⛔ **T007** Record the carried key at both `Add` sites, replacing `string.Empty`.
-- ⛔ **T008** Verify the acceptance signature in `Sorcha.Validator.Core`, beside
+- 📋 **T007** Record the carried key at both `Add` sites, replacing `string.Empty`.
+- 📋 **T008** Verify the acceptance signature in `Sorcha.Validator.Core`, beside
   `DetachedApprovalVerifier`, and call it from BOTH the Register Service propose path and the
   Validator's control-transaction validation (Gate C2). A rule only the proposing node enforces is
   not a ledger rule.
-- ⛔ **T009** Refuse an `Add` whose acceptance signature does not verify against the carried key, or
+- 📋 **T009** Refuse an `Add` whose acceptance signature does not verify against the carried key, or
   whose carried key is empty — with a named reason, never a silent drop (FR-011c).
-- ⛔ **T010** Re-run T004; verify GREEN.
-- ⛔ **T011** **Mutation checks**, all three: (a) record the primary key instead of the carried one —
+- 📋 **T010** Re-run T004; verify GREEN.
+- 📋 **T011** **Mutation checks**, all three: (a) record the primary key instead of the carried one —
   the tally test must fail; (b) skip the acceptance verification — a forged-key test must fail;
   (c) verify in the Register Service but not the Validator — the per-node recount test must fail.
   (c) is the one that proves C2 was worth doing.
-- ⛔ **T012** Full suites: Register.Core, Register.Service, Validator.Service, Validator.Core.
+- 📋 **T012** Full suites: Register.Core, Register.Service, Validator.Service, Validator.Core.
 
-## US2 — the SSR handover (this is #1400) — ⛔ US1
+## US2 — the SSR handover (this is #1400) — ⛔ on US1
 
 - ⛔ **T013** Deploy to n1 and re-run the staged live gate. Scripts exist from the 2026-08-19 attempt:
   `.governance-livetest/us4-stage1-target-org.ps1`, `…stage2-add-steward.ps1`,
