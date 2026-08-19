@@ -109,12 +109,26 @@ public static class IssuanceKeyEndpoints
             // F120 lazy derivation not applicable for this org (no provisioned master key).
             return Results.Ok(new { provisioned = false, organizationId = orgId });
         }
+
+        // #1518: this endpoint's contract is "make this org ready to issue", so it waits for the
+        // issuer DID document to actually be published rather than reporting success on a publish
+        // that was silently skipped. For a brand-new org the canonical wallet the document anchors
+        // on is provisioned asynchronously by Tenant a few seconds later, and derivation wins that
+        // race — so without this, a caller that provisions an org and then reads its did.json gets
+        // a 404 and no indication anything was left undone.
+        //
+        // Only here. The credential-mint path calls GetOrDeriveAsync directly and must not wait.
+        var didPublished = await service
+            .PublishDidDocumentWaitingForWalletAsync(orgId, ct)
+            .ConfigureAwait(false);
+
         return Results.Ok(new EnsureIssuanceKeyResponse(
             OrganizationId: state.OrganizationId,
             RotationIndex: state.RotationIndex,
             Algorithm: state.Algorithm,
             Thumbprint: state.Thumbprint,
-            DerivedAt: state.DerivedAt));
+            DerivedAt: state.DerivedAt,
+            DidDocumentPublished: didPublished));
     }
 
     private static async Task<IResult> RotateIssuanceKey(
@@ -308,7 +322,13 @@ public sealed record EnsureIssuanceKeyResponse(
     int RotationIndex,
     string Algorithm,
     string Thumbprint,
-    DateTimeOffset DerivedAt);
+    DateTimeOffset DerivedAt,
+    /// <summary>
+    /// Whether the org's issuer DID document is published and resolvable. False means issuance
+    /// still works — it re-ensures before every signature and fails closed — but the issuer DID
+    /// will not resolve until the org first signs something (#1518).
+    /// </summary>
+    bool DidDocumentPublished = true);
 
 /// <summary>Request body for rotation — carries the authorising governance-op id.</summary>
 public sealed record RotateIssuanceKeyRequest(Guid GovernanceOpId);

@@ -28,6 +28,28 @@ public interface IIssuanceKeyService
     Task<IssuanceKeyState?> GetOrDeriveAsync(Guid organizationId, CancellationToken ct = default);
 
     /// <summary>
+    /// Publishes the org's issuer DID document, waiting briefly for the org's canonical wallet to
+    /// appear if it has not yet been provisioned. Returns whether a document is published.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// For a brand-new org the canonical wallet is provisioned ASYNCHRONOUSLY by Tenant's
+    /// <c>OrgWalletReconciliationService</c>, a few seconds after the org is created. Key derivation
+    /// wins that race, so the publish attempt on the derive path is skipped for want of anything to
+    /// anchor the document on, and the org is left advertising an issuance key whose issuer DID does
+    /// not resolve until it first signs something (issue #1518).
+    /// </para>
+    /// <para>
+    /// Deliberately NOT folded into <c>GetOrDeriveAsync</c>: that runs on the credential-mint path,
+    /// which must not wait on anything. This is for the provisioning call whose entire contract is
+    /// "make this org ready", where a few seconds is the right trade.
+    /// </para>
+    /// </remarks>
+    Task<bool> PublishDidDocumentWaitingForWalletAsync(
+        Guid organizationId,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Returns the currently-active issuance key for the org, or null if none has been derived.
     /// </summary>
     Task<IssuanceKeyState?> GetActiveAsync(Guid organizationId, CancellationToken ct = default);
