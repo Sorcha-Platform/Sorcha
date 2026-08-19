@@ -332,14 +332,28 @@ public class SystemRegisterService
             "Blueprint {BlueprintId} published to system register (txId: {TxId})",
             blueprintId, txId);
 
-        var currentVersion = await GetCurrentVersionAsync(cancellationToken);
+        // This blueprint's OWN publication count, not the register-wide total. Returning the total
+        // made the response disagree with what GetBlueprintAsync would report for the very blueprint
+        // just published.
+        //
+        // Whether the transaction submitted a moment ago is already query-visible depends on when the
+        // validator seals it, which is not this method's business to know. So count what is there and
+        // add this publication only if it is not among them — correct under either timing, rather
+        // than correct under the one that happens to hold today.
+        var publications = await GetBlueprintTransactionsAsync(cancellationToken);
+        var ofThisBlueprint = publications
+            .Where(t => GetBlueprintIdFromTransaction(t) == blueprintId)
+            .ToList();
+        var alreadyVisible = ofThisBlueprint
+            .Any(t => string.Equals(t.TxId, txId, StringComparison.OrdinalIgnoreCase));
+        var version = ofThisBlueprint.Count + (alreadyVisible ? 0 : 1);
 
         return new SystemRegisterEntry
         {
             BlueprintId = blueprintId,
             PublishedBy = publishedBy,
             PublishedAt = timestamp.UtcDateTime,
-            Version = currentVersion,
+            Version = version,
             IsActive = true,
             PublicationTransactionId = txId,
             Checksum = payloadHashHex,

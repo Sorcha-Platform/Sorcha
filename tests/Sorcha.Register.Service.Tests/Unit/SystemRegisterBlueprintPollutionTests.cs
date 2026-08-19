@@ -48,6 +48,8 @@ public class SystemRegisterBlueprintPollutionTests
     private const string GovernanceBlueprintId = "register-governance-v1";
 
     private readonly Mock<IRegisterRepository> _repository;
+    private readonly Mock<ISystemWalletSigningService> _signing = new();
+    private readonly Mock<IValidatorServiceClient> _validator = new();
     private readonly SystemRegisterService _service;
 
     public SystemRegisterBlueprintPollutionTests()
@@ -74,8 +76,8 @@ public class SystemRegisterBlueprintPollutionTests
             new Mock<ILogger<SystemRegisterService>>().Object,
             new RegisterManager(_repository.Object, events.Object),
             new TransactionManager(_repository.Object, events.Object),
-            new Mock<IValidatorServiceClient>().Object,
-            new Mock<ISystemWalletSigningService>().Object,
+            _validator.Object,
+            _signing.Object,
             hash.Object);
     }
 
@@ -241,9 +243,65 @@ public class SystemRegisterBlueprintPollutionTests
            .Should().BeEquivalentTo(new long[] { 1, 2 });
     }
 
+    [Fact]
+    public async Task PublishBlueprintAsync_ReportsThisBlueprintsOwnVersion_NotTheRegisterWideTotal()
+    {
+        // Three publications on the register, but only ONE of the blueprint being republished.
+        // The returned entry used to carry the register-wide total, so a publish response and a
+        // subsequent GET disagreed about the version of the very blueprint just published.
+        GivenLedger(
+            Publication("register-creation-v1", Day(1)),
+            Publication(GovernanceBlueprintId, Day(2)),
+            Publication("create-organisation-v1", Day(3)));
+        GivenPublishSucceeds();
+
+        var published = await _service.PublishBlueprintAsync(
+            GovernanceBlueprintId, BlueprintBody(), "admin-001");
+
+        published.Version.Should().Be(2, "this is the second publication of this blueprint");
+    }
+
+    [Fact]
+    public async Task PublishBlueprintAsync_FirstEverPublication_IsVersionOne()
+    {
+        GivenLedger(Publication("register-creation-v1", Day(1)));
+        GivenPublishSucceeds();
+
+        var published = await _service.PublishBlueprintAsync("brand-new-v1", BlueprintBody(), "admin-001");
+
+        published.Version.Should().Be(1);
+    }
+
     // ------------------------------------------------------------------ //
     // Fixtures                                                            //
     // ------------------------------------------------------------------ //
+
+    private void GivenPublishSucceeds()
+    {
+        _signing
+            .Setup(x => x.SignAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SystemSignResult
+            {
+                Signature = new byte[64],
+                PublicKey = new byte[32],
+                Algorithm = "ED25519",
+                WalletAddress = "system-wallet-addr"
+            });
+
+        _validator
+            .Setup(x => x.SubmitTransactionAsync(It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionSubmissionResult
+            {
+                Success = true,
+                TransactionId = "test-tx-id",
+                RegisterId = SystemRegisterConstants.SystemRegisterId
+            });
+    }
+
+    private static System.Text.Json.JsonElement BlueprintBody() =>
+        System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(
+            "{\"title\":\"Register Governance\"}");
 
     private static DateTime Day(int n) => new DateTime(2026, 8, 19, 0, 0, 0, DateTimeKind.Utc).AddMinutes(n);
 
