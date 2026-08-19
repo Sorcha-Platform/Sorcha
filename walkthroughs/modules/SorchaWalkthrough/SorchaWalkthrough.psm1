@@ -2094,6 +2094,47 @@ function Get-SorchaCredentialPresentation {
 # New-SorchaOrganization — Create org via Platform Admin API
 # ============================================================================
 
+function Invoke-SorchaOrgWalletStep {
+    <#
+    .SYNOPSIS
+        Internal: perform the org-wallet step during New-SorchaOrganization, as the org admin.
+    .DESCRIPTION
+        Returns the wallet address, or $null when the step was not applicable. Throws when the
+        caller asked for it (-WalletUrl) and it genuinely failed — a silently-skipped org wallet is
+        what #1518 was, surfacing much later as an issuer DID that does not resolve.
+    #>
+    param(
+        [string]$TenantUrl,
+        [string]$WalletUrl,
+        [string]$OrganizationId,
+        [string]$Subdomain,
+        [string]$AdminEmail,
+        [string]$AdminPassword,
+        [bool]$AdminDirectlyAdded
+    )
+
+    if (-not $WalletUrl) { return $null }
+
+    if (-not $AdminDirectlyAdded -or -not $AdminPassword) {
+        # The admin was invited rather than provisioned, so there is no session to act as. Say so:
+        # the org has no wallet and cannot issue until someone signs in and creates one.
+        Write-WtWarn "Org $OrganizationId has no admin session available, so its wallet was not created."
+        Write-WtWarn "Sign in as an admin of that org and call New-SorchaOrgWallet (#1525)."
+        return $null
+    }
+
+    $adminSession = Connect-SorchaUser `
+        -TenantUrl $TenantUrl -Email $AdminEmail -Password $AdminPassword `
+        -OrganizationId $OrganizationId
+
+    $result = New-SorchaOrgWallet `
+        -TenantUrl $TenantUrl -WalletUrl $WalletUrl `
+        -OrganizationId $OrganizationId -Headers $adminSession.Headers `
+        -Name "org-$Subdomain-signing"
+
+    return $result.WalletAddress
+}
+
 function New-SorchaOrgWallet {
     <#
     .SYNOPSIS
@@ -2192,7 +2233,17 @@ function New-SorchaOrganization {
         [string]$AdminDisplayName,
         # Mark the provisioned admin verified (bypasses the email loop). Requires the installation
         # to enable Platform:AllowAdminVerifiedUserCreation (dev/n1 do; production does not).
-        [switch]$AdminEmailVerified
+        [switch]$AdminEmailVerified,
+
+        # Supply this and the organisation's OWN wallet is created as part of provisioning, by
+        # signing in as its admin (#1525). Required for any org that issues credentials, owns a
+        # register or takes part in governance: the org wallet is what its issuer DID anchors on
+        # and what its governance roster identity is matched against.
+        #
+        # It is done here rather than left to the caller because it must happen, and because the
+        # platform will not do it for them — the recovery phrase is shown once and belongs to the
+        # org admin, so a human (or a script acting as that admin) has to be the one to take it.
+        [string]$WalletUrl
     )
 
     $body = @{
@@ -2215,9 +2266,17 @@ function New-SorchaOrganization {
 
         if ($response.success) {
             Write-WtSuccess "Organization '$Name' created: $($response.organizationId)"
+
+            $orgWalletAddress = Invoke-SorchaOrgWalletStep `
+                -TenantUrl $TenantUrl -WalletUrl $WalletUrl `
+                -OrganizationId "$($response.organizationId)" -Subdomain $Subdomain `
+                -AdminEmail $AdminEmail -AdminPassword $AdminPassword `
+                -AdminDirectlyAdded ([bool]$response.adminDirectlyAdded)
+
             return @{
-                OrganizationId    = $response.organizationId
+                OrganizationId     = $response.organizationId
                 AdminDirectlyAdded = $response.adminDirectlyAdded
+                WalletAddress      = $orgWalletAddress
             }
         } else {
             throw "Organization creation failed: $($response.error)"
@@ -2254,9 +2313,21 @@ function New-SorchaOrganization {
                 # admin was ready when they had no membership at all, and the first org-scoped call
                 # they made 403'd with nothing to connect it to (#1427). Callers must ensure
                 # membership themselves — see New-SorchaOrgUser.
+                # The org already existed, so THIS call never provisioned its admin — we cannot
+                # sign in as them to create the wallet. If it already has one, report it; otherwise
+                # say plainly that the step is outstanding rather than leaving it to be discovered
+                # four steps later as an unresolvable issuer DID.
+                $existingWallet = $existing.walletAddress
+                if ($WalletUrl -and -not $existingWallet) {
+                    Write-WtWarn "Organization '$Name' has no wallet and this call did not provision its admin,"
+                    Write-WtWarn "so it cannot be created here. Sign in as an admin of that org and call"
+                    Write-WtWarn "New-SorchaOrgWallet, or the org cannot issue credentials (#1525)."
+                }
+
                 return @{
-                    OrganizationId    = "$($existing.id)"
+                    OrganizationId     = "$($existing.id)"
                     AdminDirectlyAdded = $false
+                    WalletAddress      = $existingWallet
                 }
             }
             throw "Organization '$Name' looked like a duplicate but could not be found by subdomain"

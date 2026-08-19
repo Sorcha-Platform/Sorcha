@@ -121,6 +121,7 @@ Write-WtStep "Step 3: Create Demo Clinic Organization"
 try {
     $clinicOrg = New-SorchaOrganization `
         -TenantUrl $env.TenantUrl `
+        -WalletUrl $env.WalletUrl `
         -Name "Demo Clinic" `
         -Subdomain "health-demo" `
         -AdminEmail $secrets.patientEmail `

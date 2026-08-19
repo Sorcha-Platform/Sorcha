@@ -93,6 +93,7 @@ $councilAdminPassword = $secrets.DefaultPassword
 
 $councilOrg = New-SorchaOrganization `
     -TenantUrl $sorchaEnv.TenantUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
     -Name "Strathcarron Council" `
     -Subdomain "strathcarron" `
     -AdminEmail $councilAdminEmail `

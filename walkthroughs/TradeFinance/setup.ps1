@@ -153,6 +153,7 @@ foreach ($org in $selectedOrgs) {
         try {
             $newOrg = New-SorchaOrganization `
                 -TenantUrl $env.TenantUrl `
+                -WalletUrl $env.WalletUrl `
                 -Name $org.name `
                 -Subdomain $subdomain `
                 -AdminEmail $adminEmail `
