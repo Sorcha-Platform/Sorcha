@@ -37,6 +37,20 @@ public interface ITenantServiceClient
     Task<Organization> UpdateOrganizationAsync(string id, [Body] UpdateOrganizationRequest request, [Header("Authorization")] string authorization);
 
     /// <summary>
+    /// Records a wallet the ORG ADMIN created as this organisation's signing wallet (#1525).
+    /// </summary>
+    /// <remarks>
+    /// The link half of create-then-link. The wallet is created against the Wallet Service first,
+    /// which returns the recovery phrase once, to the admin — so the phrase never passes through
+    /// this service. Callable only by an administrator of that organisation.
+    /// </remarks>
+    [Post("/api/organizations/{organizationId}/wallet")]
+    Task<Organization> LinkOrganizationWalletAsync(
+        string organizationId,
+        [Body] LinkOrganizationWalletRequest request,
+        [Header("Authorization")] string authorization);
+
+    /// <summary>
     /// Deletes an organization.
     /// </summary>
     [Delete("/api/organizations/{id}")]
