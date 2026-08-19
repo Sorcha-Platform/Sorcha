@@ -115,6 +115,27 @@ function Invoke-SorchaApi {
         [switch]$ShowJson
     )
 
+    # The gateway rate-limits /api/auth/* as one bucket: AuthenticationPermitLimit=60 per minute
+    # with AuthenticationQueueLimit=0, so request 61 is an immediate 429 rather than a queued wait.
+    #
+    # That bucket is not just login. Registration, email verification and org selection all live
+    # under /api/auth/, and a setup that registers eight users, verifies them, then signs each one
+    # in exhausts it well before the interesting part of the run. Two full sweeps were lost reading
+    # those 429s as real results, and a throttle on Connect-SorchaUser alone did not help precisely
+    # because logins are the minority of the traffic hitting this limiter.
+    #
+    # So it goes here, at the one place every request passes through. 1.3s spacing gives ~46/min,
+    # inside the limit with margin, and costs nothing on the vast majority of calls that are not
+    # auth at all.
+    if ($Uri -match '/auth/') {
+        $minGapMs = 1300
+        if ($script:LastAuthCallAt) {
+            $sinceMs = ([DateTime]::UtcNow - $script:LastAuthCallAt).TotalMilliseconds
+            if ($sinceMs -lt $minGapMs) { Start-Sleep -Milliseconds ([int]($minGapMs - $sinceMs)) }
+        }
+        $script:LastAuthCallAt = [DateTime]::UtcNow
+    }
+
     $params = @{
         Uri            = $Uri
         Method         = $Method
@@ -549,23 +570,6 @@ function Connect-SorchaUser {
         [Parameter(Mandatory)][string]$Password,
         [Parameter(Mandatory)][string]$OrganizationId
     )
-
-    # Throttle. The gateway allows AuthenticationPermitLimit=60 logins per minute with
-    # AuthenticationQueueLimit=0 — one per second, and anything over it is an immediate 429, not a
-    # queued wait. Walkthroughs log in in tight loops (a per-role step signs in every participant
-    # back to back), so they trip it from a standing start and the whole run dies mid-setup looking
-    # like a platform failure.
-    #
-    # One choke point, because every walkthrough authenticates through here. 1.25s spacing gives
-    # ~48/min, comfortably inside the limit, and costs nothing on runs that were never near it.
-    $minGapMs = 1250
-    if ($script:LastLoginAt) {
-        $sinceMs = ([DateTime]::UtcNow - $script:LastLoginAt).TotalMilliseconds
-        if ($sinceMs -lt $minGapMs) {
-            Start-Sleep -Milliseconds ([int]($minGapMs - $sinceMs))
-        }
-    }
-    $script:LastLoginAt = [DateTime]::UtcNow
 
     # Step 1: Login
     $loginBody = @{
