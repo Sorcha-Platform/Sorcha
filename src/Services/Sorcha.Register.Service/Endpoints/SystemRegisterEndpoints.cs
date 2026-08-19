@@ -174,8 +174,12 @@ public static class SystemRegisterEndpoints
             var totalCount = allBlueprints.Count;
             var totalPages = (int)Math.Ceiling((double)totalCount / effectivePageSize);
 
+            // Newest first. Sorted on the publication time rather than Version, which counts
+            // publications OF ONE blueprint and so says nothing about how two different blueprints
+            // order against each other (#1515).
             var items = allBlueprints
-                .OrderByDescending(b => b.Version)
+                .OrderByDescending(b => b.PublishedAt)
+                .ThenBy(b => b.BlueprintId, StringComparer.Ordinal)
                 .Skip((effectivePage - 1) * effectivePageSize)
                 .Take(effectivePageSize)
                 .Select(b => new BlueprintSummaryResponse

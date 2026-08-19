@@ -142,11 +142,24 @@ public class SystemRegisterService
 
         var transactions = await GetBlueprintTransactionsAsync(cancellationToken);
         var entries = new List<SystemRegisterEntry>();
-        long version = 0;
+
+        // Version counts publications OF THE SAME BLUEPRINT, not position in the combined list.
+        // A shared running counter made a blueprint's version depend on how many times some OTHER
+        // blueprint had been published, which is why register-governance-v1 was reported as v2 and
+        // then v5 on n1 without anyone ever republishing it (#1515).
+        var publicationCounts = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var tx in transactions.OrderBy(t => t.TimeStamp))
         {
-            version++;
+            var blueprintId = GetBlueprintIdFromTransaction(tx);
+            if (string.IsNullOrEmpty(blueprintId))
+            {
+                continue;
+            }
+
+            publicationCounts.TryGetValue(blueprintId, out var version);
+            publicationCounts[blueprintId] = ++version;
+
             var entry = MapTransactionToEntry(tx, version);
             if (entry is not null)
             {
@@ -183,9 +196,10 @@ public class SystemRegisterService
             return null;
         }
 
-        // Calculate version by counting all blueprint transactions up to this one
-        var allOrdered = transactions.OrderBy(t => t.TimeStamp).ToList();
-        var version = allOrdered.IndexOf(matchingTx) + 1;
+        // Version = how many times THIS blueprint has been published, up to and including the match.
+        var version = transactions.Count(t =>
+            GetBlueprintIdFromTransaction(t) == blueprintId
+            && t.TimeStamp <= matchingTx.TimeStamp);
 
         return MapTransactionToEntry(matchingTx, version);
     }
@@ -318,14 +332,28 @@ public class SystemRegisterService
             "Blueprint {BlueprintId} published to system register (txId: {TxId})",
             blueprintId, txId);
 
-        var currentVersion = await GetCurrentVersionAsync(cancellationToken);
+        // This blueprint's OWN publication count, not the register-wide total. Returning the total
+        // made the response disagree with what GetBlueprintAsync would report for the very blueprint
+        // just published.
+        //
+        // Whether the transaction submitted a moment ago is already query-visible depends on when the
+        // validator seals it, which is not this method's business to know. So count what is there and
+        // add this publication only if it is not among them — correct under either timing, rather
+        // than correct under the one that happens to hold today.
+        var publications = await GetBlueprintTransactionsAsync(cancellationToken);
+        var ofThisBlueprint = publications
+            .Where(t => GetBlueprintIdFromTransaction(t) == blueprintId)
+            .ToList();
+        var alreadyVisible = ofThisBlueprint
+            .Any(t => string.Equals(t.TxId, txId, StringComparison.OrdinalIgnoreCase));
+        var version = ofThisBlueprint.Count + (alreadyVisible ? 0 : 1);
 
         return new SystemRegisterEntry
         {
             BlueprintId = blueprintId,
             PublishedBy = publishedBy,
             PublishedAt = timestamp.UtcDateTime,
-            Version = currentVersion,
+            Version = version,
             IsActive = true,
             PublicationTransactionId = txId,
             Checksum = payloadHashHex,
@@ -388,8 +416,37 @@ public class SystemRegisterService
     }
 
     /// <summary>
-    /// Queries all BlueprintPublish transactions on the system register
+    /// Queries the transactions on the system register that PUBLISH a blueprint.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The <c>BlueprintId</c> filter alone is not enough, and issue #1515 is what that costs. Every
+    /// governance transaction — propose, approve, enact — carries
+    /// <c>MetaData.BlueprintId = "register-governance-v1"</c>, because it genuinely IS an action
+    /// submission against that workflow. So governing the system register writes a steady stream of
+    /// transactions that look, to a BlueprintId-only filter, exactly like re-publications of the
+    /// governance blueprint, and they sort newest-first ahead of the real one.
+    /// </para>
+    /// <para>
+    /// The failure that follows is silent and total. <c>GetBlueprintAsync</c> returns the newest
+    /// match — an enactment control transaction — whose payload is a governance operation. It is
+    /// valid JSON, so it deserializes into a <c>BlueprintModel</c> without error; it simply has no
+    /// actions. The Validator then refuses the next governance transaction with
+    /// <c>VAL_SCHEMA_003: Action 1 not found in blueprint 'register-governance-v1'</c>, having
+    /// resolved a blueprint that was never a blueprint. Because the Validator caches the resolved
+    /// blueprint, the damage is latent until the first cache miss, at which point governance stops
+    /// working on EVERY register at once — the resolution is a single global lookup on the SSR.
+    /// Observed live on n1 immediately after transferring SSR ownership (F189 US4 / T063).
+    /// </para>
+    /// <para>
+    /// So the filter asks what a transaction IS, not merely which blueprint it names. Note that
+    /// <c>MetaData.TransactionType</c> cannot answer it: the SSR's own publications persist as
+    /// <c>Control</c> (value 0) alongside every governance transaction, so the post-#876
+    /// <c>BlueprintPublish</c> query matches nothing on a real node and the Control arm carries the
+    /// whole load. <c>TrackingData["transactionType"]</c> is the marker that actually distinguishes
+    /// them, written by <see cref="PublishBlueprintAsync"/> and by the bootstrapper.
+    /// </para>
+    /// </remarks>
     private async Task<List<TransactionModel>> GetBlueprintTransactionsAsync(CancellationToken cancellationToken = default)
     {
         var register = await _registerManager.GetRegisterAsync(
@@ -401,8 +458,7 @@ public class SystemRegisterService
         }
 
         // Pushed down: two index-backed type queries (post-#876 BlueprintPublish + pre-#876 Control),
-        // then the non-genesis BlueprintId filter in memory over that small subset. TrackingData is not
-        // reliably persisted through the validator pipeline, so we use BlueprintId from MetaData.
+        // then the publication filter in memory over that small subset.
         var byPublish = await _transactionManager.GetTransactionsByTypeAsync(
             SystemRegisterConstants.SystemRegisterId,
             Sorcha.Register.Models.Enums.TransactionType.BlueprintPublish,
@@ -415,11 +471,47 @@ public class SystemRegisterService
             cancellationToken: cancellationToken);
 
         return byPublish.Concat(byControl)
-            .Where(t => t.MetaData is not null
-                && !string.IsNullOrEmpty(t.MetaData.BlueprintId)
-                && t.MetaData.BlueprintId != "genesis")
+            .Where(IsBlueprintPublication)
             .OrderByDescending(t => t.TimeStamp)
             .ToList();
+    }
+
+    /// <summary>
+    /// True when a system-register transaction publishes a blueprint, as opposed to merely naming
+    /// one (which every governance action does — see <see cref="GetBlueprintTransactionsAsync"/>).
+    /// </summary>
+    /// <remarks>
+    /// Marker value written alongside the publication rather than inferred, so a future control
+    /// transaction that happens to carry a BlueprintId cannot re-open #1515 by accident. The
+    /// ActionId arm is the pre-marker fallback: a blueprint publication is not an action submission
+    /// and carries no action id, while everything governance writes carries one (1 propose,
+    /// 2 approve, 4 enact).
+    /// </remarks>
+    internal static bool IsBlueprintPublication(TransactionModel tx)
+    {
+        var meta = tx.MetaData;
+
+        if (meta is null
+            || string.IsNullOrEmpty(meta.BlueprintId)
+            || meta.BlueprintId == "genesis")
+        {
+            return false;
+        }
+
+        if (meta.TransactionType == Sorcha.Register.Models.Enums.TransactionType.BlueprintPublish)
+        {
+            return true;
+        }
+
+        if (meta.TrackingData is not null
+            && meta.TrackingData.TryGetValue("transactionType", out var marker)
+            && !string.IsNullOrWhiteSpace(marker))
+        {
+            return string.Equals(marker, nameof(Sorcha.Register.Models.Enums.TransactionType.BlueprintPublish),
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        return meta.ActionId is null;
     }
 
     /// <summary>
@@ -540,8 +632,15 @@ public class SystemRegisterEntry
     public string PublishedBy { get; set; } = string.Empty;
 
     /// <summary>
-    /// Incrementing version number for sync
+    /// How many times this blueprint has been published to the system register, counting this
+    /// publication. The first publication is 1.
     /// </summary>
+    /// <remarks>
+    /// It is NOT a position in the register's transaction list and NOT a docket number. It used to
+    /// be the former, which meant publishing an unrelated blueprint — or, after #1515, any
+    /// governance activity at all — silently advanced this number for a blueprint nobody had
+    /// touched.
+    /// </remarks>
     public long Version { get; set; }
 
     /// <summary>
