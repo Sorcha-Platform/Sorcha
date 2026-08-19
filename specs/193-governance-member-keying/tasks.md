@@ -61,19 +61,29 @@ TDD order. T004 must be RED before T006.
   (c) is the one that proves C2 was worth doing.
 - ✅ **T012** Full suites: Register.Core, Register.Service, Validator.Service, Validator.Core.
 
-## US2 — the SSR handover (this is #1400) — ⛔ on US1
+## US2 — the SSR handover (this is #1400) — T013-T015 ✅ 2026-08-19; T016 blocked on #1515
 
-- ⛔ **T013** Deploy to n1 and re-run the staged live gate. Scripts exist from the 2026-08-19 attempt:
-  `.governance-livetest/us4-stage1-target-org.ps1`, `…stage2-add-steward.ps1`,
-  `…restore-remove-steward.ps1`. Stage 2 must now seat the steward **keyed**.
-- ⛔ **T014** Verify the seated key equals the steward's **slot-100** key — not its primary. This is
-  the assertion that would have caught #1509 before it reached a transfer, so make it explicit rather
-  than implied by a later step passing.
-- ⛔ **T015** Propose the Transfer, collect both approvals (the ceremony Owner's server-side via
-  #1465, the steward's externally at slot 100), and confirm it enacts by the roster head MOVING —
-  never by the HTTP 200.
-- ⛔ **T016** T063: the former Owner can no longer govern; the new Owner can. Both proven by a sealed
-  docket.
+- ✅ **T013** Deployed and re-run 2026-08-19 on a **clean-genesis** n1 (`down -v`, volumes removed,
+  re-genesised on the compiled-in anchor `d75e14004364867dae55f44330330edf`). Stuart's call, and it
+  paid: it removed "relics from a previous installation" as a competing explanation for everything
+  that followed. Scripts: `.governance-livetest/us4-stage{1,2,2b,3}-*.ps1`.
+- ✅ **T014** Asserted explicitly, and it held: the seat carried
+  `YY8366ghcJ9oGj273a60ucI4gMZqNITI0vmKEN86I4w=` (slot 100), **not** the primary
+  `WTwFBgjtJc26HjlZwDqLTipNlQy2Xs+7h5NQL8CJL5g=`. `us4-stage2b-assert-key.ps1` reads the sealed
+  control transaction out of Mongo and fails on the primary key BY NAME, which is what makes it a
+  #1509 regression test rather than a "a key is present" check.
+- ✅ **T015** **T062 PASSED.** Quorum `2/2`, pool 2, `isOwnerOverride: false` — FR-010's Transfer
+  exclusion held. Sealed as **docket 12** proposal → **docket 13** carrying BOTH approvals →
+  **docket 14** enactment; ownership moved `did:sorcha:genesis:a3dd941f…` →
+  `did:sorcha:w:ws11qpvncpgx…`. Verified from the docket chain and the roster head, not from HTTP.
+- ⛔ **T016** T063 — **half one already passed**: the new Owner proposed `Remove(genesis)` and
+  received the **Owner override** (`votesRequired: 1, isOwnerOverride: true`), so authority moved
+  with the label. The enactment then did not seal, blocked by **#1515** (fixed in PR #1516):
+  governing the SSR pollutes its own blueprint index, so `register-governance-v1` resolved to a
+  governance *control transaction* and the validator refused the proposal with
+  `VAL_SCHEMA_003: Action 1 not found`. Re-run after the #1516 deploy; verify with
+  `check-1515.sh` FIRST, because a polluted resolution fails this gate for a reason that has nothing
+  to do with authority.
 - ⛔ **T017** Confirm the control record replicates to tiny, then re-run `rehearse.ps1 -Target n1` as
   an AIAS regression check.
 - ⛔ **T018** Have a restore path ready before starting, and say what it is. The 2026-08-19 attempt
