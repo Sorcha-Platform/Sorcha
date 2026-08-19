@@ -116,6 +116,16 @@ $authoritySession = Connect-SorchaUser `
     -TenantUrl $sorchaEnv.TenantUrl -Email $authorityEmail `
     -Password $secrets.DefaultPassword -OrganizationId $authorityOrgId
 
+# The ORGANISATION's own wallet, created by its admin (#1525). This is what the org's issuer DID
+# anchors on, so it must exist before the master key is provisioned in step 6 — without it there is
+# nothing to anchor a DID document to and the trust policy has nothing real to pin (#1518).
+# Deliberately a separate step from the operator's personal wallet below: the recovery phrase is
+# shown once and belongs to the org admin, which is why the platform will not create it for them.
+$null = New-SorchaOrgWallet `
+    -TenantUrl $sorchaEnv.TenantUrl -WalletUrl $sorchaEnv.WalletUrl `
+    -OrganizationId $authorityOrgId -Headers $authoritySession.Headers `
+    -Name "org-clc-authority-signing"
+
 $authorityWallet = New-SorchaWallet `
     -WalletUrl $sorchaEnv.WalletUrl -Name "Lifecycle Authority Wallet" `
     -Headers $authoritySession.Headers -Algorithm ED25519 -FetchPublicKey
@@ -136,6 +146,11 @@ Write-WtStep "Step 3b: Holder wallet + participant + re-login"
 $holderSession = Connect-SorchaUser `
     -TenantUrl $sorchaEnv.TenantUrl -Email $holderEmail `
     -Password $secrets.DefaultPassword -OrganizationId $holderOrgId
+
+$null = New-SorchaOrgWallet `
+    -TenantUrl $sorchaEnv.TenantUrl -WalletUrl $sorchaEnv.WalletUrl `
+    -OrganizationId $holderOrgId -Headers $holderSession.Headers `
+    -Name "org-clc-holder-signing"
 
 $holderWallet = New-SorchaWallet `
     -WalletUrl $sorchaEnv.WalletUrl -Name "Lifecycle Holder Wallet" `

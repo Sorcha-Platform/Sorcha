@@ -2094,6 +2094,80 @@ function Get-SorchaCredentialPresentation {
 # New-SorchaOrganization — Create org via Platform Admin API
 # ============================================================================
 
+function New-SorchaOrgWallet {
+    <#
+    .SYNOPSIS
+        Create the ORGANISATION's signing wallet, as its own admin (#1525).
+    .DESCRIPTION
+        The step that used to be missing everywhere, and the reason walkthroughs quietly depended on
+        a background sweep. An organisation's canonical wallet is what its issuer DID anchors on and
+        what its governance roster identity is matched against — and its BIP39 recovery phrase is
+        shown ONCE and never stored. So it is created deliberately, by an administrator OF THAT
+        ORGANISATION, who is then the only person holding the phrase. The platform will not do it:
+        a service-to-service create generates a phrase with nobody present to receive it.
+
+        Create-then-link, so the phrase never transits the Tenant Service:
+          1. POST {WalletUrl}/v1/wallets with organizationId  -> address + mnemonicWords
+          2. POST {TenantUrl}/organizations/{id}/wallet       -> records it as the org's wallet
+
+        Idempotent: if the organisation already has a wallet this returns it and creates nothing,
+        because replacing the canonical wallet would orphan every credential issued under the old one.
+
+        Headers MUST be the ORG ADMIN's session — a platform admin is refused by design.
+    .RETURNS
+        Hashtable with WalletAddress, Mnemonic (empty when the wallet already existed), Created.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$WalletUrl,
+        [Parameter(Mandatory)][string]$OrganizationId,
+        [Parameter(Mandatory)][hashtable]$Headers,
+        [string]$Algorithm = "ED25519",
+        [string]$Name
+    )
+
+    if (-not $Name) { $Name = "org-$OrganizationId-signing" }
+
+    # Already done? Ask the org, not our own bookkeeping.
+    try {
+        $org = Invoke-SorchaApi -Method GET `
+            -Uri "$TenantUrl/organizations/$OrganizationId" -Headers $Headers
+        if ($org.walletAddress) {
+            Write-WtInfo "  Org wallet already exists: $($org.walletAddress)"
+            return @{ WalletAddress = $org.walletAddress; Mnemonic = ""; Created = $false }
+        }
+    } catch {
+        # Fall through and attempt creation; the link step reports anything genuinely wrong.
+    }
+
+    Write-WtStep "Org admin creates the organisation's wallet"
+
+    $created = Invoke-SorchaApi -Method POST `
+        -Uri "$WalletUrl/v1/wallets" -Headers $Headers `
+        -Body @{
+            name           = $Name
+            algorithm      = $Algorithm
+            organizationId = $OrganizationId
+        }
+
+    $address  = $created.wallet.address
+    $mnemonic = ($created.mnemonicWords -join " ")
+
+    if (-not $address) { throw "Wallet creation returned no address for organisation $OrganizationId." }
+
+    # Shown once, never stored. Walkthroughs do not need to keep it, but printing it is what a real
+    # org admin sees and is the point of the step existing at all.
+    Write-WtWarn "  ORG RECOVERY MNEMONIC (shown once, never stored): $mnemonic"
+
+    $linked = Invoke-SorchaApi -Method POST `
+        -Uri "$TenantUrl/organizations/$OrganizationId/wallet" -Headers $Headers `
+        -Body @{ walletAddress = $address }
+
+    Write-WtSuccess "  Org wallet created and linked: $address"
+
+    return @{ WalletAddress = $address; Mnemonic = $mnemonic; Created = $true }
+}
+
 function New-SorchaOrganization {
     <#
     .SYNOPSIS
