@@ -352,30 +352,23 @@ public sealed class GovernanceEnactmentService : IGovernanceEnactmentService
         RegisterAttestation? newAttestation = null;
         if (operation.OperationType == GovernanceOperationType.Add)
         {
-            // #1464 — DELIBERATELY LEFT EMPTY. An earlier fix derived this from the subject DID,
-            // on the reasoning that a classical ws1 address is Bech32 over [network][publicKey] so
-            // "the key IS the identity". That is true of the wallet's PRIMARY key — and governance
-            // does not use the primary key.
+            // Feature 193 — the governance key the target NOMINATED in its signed acceptance,
+            // which travels in sealed content and is re-verified by the Validator on every node.
             //
-            // A roster attestation records the organisation's SLOT-100 key
-            // (sorcha:register-attestation); GovernanceSigningService signs approvals there, and
-            // GovernanceKeyMatcher authorises by matching it. Proven live on n1 2026-08-18: for one
-            // wallet the address-derived key was VHWQB/… and the slot-100 key thfb6l9P… — different
-            // keys.
+            // Never derived. An earlier fix (#1509, reverted in #1511) read the key out of the
+            // subject DID, on the reasoning that a ws1 address is Bech32 over [network][publicKey]
+            // so "the key IS the identity". True of the wallet's PRIMARY key — and governance
+            // matches the SLOT-100 key, so the derived value was non-empty and WRONG, which is
+            // worse than empty: empty fails loudly at the promotion guard, wrong is excluded
+            // silently at tally time.
             //
-            // So deriving produced a NON-EMPTY BUT WRONG key, which is worse than empty: an empty
-            // key fails loudly at the ApplyOperation guard below, whereas a wrong one passes every
-            // check and is excluded silently at tally time as KeyNotTheRosterKey. Reverted.
-            //
-            // The slot-100 key cannot be derived from the identity at all, and resolving it from a
-            // local wallet at enactment would break determinism (nodes that do not host that wallet
-            // would fold different bytes). It has to arrive IN the sealed proposal, proven by the
-            // target — see #1464.
+            // Still empty when no acceptance is present. The seat-acceptance verifier refuses such
+            // an Add long before here, so this is defence in depth rather than a live path.
             newAttestation = new RegisterAttestation
             {
                 Role = operation.TargetRole,
                 Subject = operation.TargetDid,
-                PublicKey = string.Empty,
+                PublicKey = operation.TargetAcceptance?.GovernanceKey ?? string.Empty,
                 Signature = string.Empty,
                 Algorithm = SignatureAlgorithm.ED25519,
                 GrantedAt = operation.ProposedAt,

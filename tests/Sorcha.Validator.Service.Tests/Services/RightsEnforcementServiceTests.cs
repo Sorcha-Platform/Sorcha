@@ -43,6 +43,19 @@ public class RightsEnforcementServiceTests
             _rosterServiceMock.Object, _cryptoMock.Object, logger.Object);
     }
 
+    /// <summary>
+    /// A service wired with a REAL seat-acceptance verifier (Feature 193). The default
+    /// <c>_service</c> above has none, which is how every pre-193 test keeps passing — an Add with
+    /// no acceptance is only refused where the verifier is present.
+    /// </summary>
+    private RightsEnforcementService ServiceWithSeatVerifier() =>
+        new(_rosterServiceMock.Object, _cryptoMock.Object,
+            new Mock<ILogger<RightsEnforcementService>>().Object,
+            approvalVerifier: null,
+            seatAcceptanceVerifier: new Sorcha.Validator.Core.Validators.SeatAcceptanceVerifier(
+                new Sorcha.Cryptography.Core.CryptoModule(),
+                new Sorcha.Cryptography.Utilities.WalletUtilities()));
+
     private static AdminRoster CreateRoster(params (byte[] publicKey, RegisterRole role, string did)[] members)
     {
         return new AdminRoster
@@ -1256,5 +1269,134 @@ public class RightsEnforcementServiceTests
         var result = await _service.ValidateGovernanceRightsAsync(tx);
 
         result.IsValid.Should().BeTrue("genesis is what creates the roster, so it cannot require one");
+    }
+
+    // ── Feature 193 / #1464: the seat-acceptance rule is enforced HERE, on every node ──────────
+
+    /// <summary>
+    /// An <c>Add</c> with no seat acceptance is refused by the VALIDATOR, not merely by the
+    /// Register Service that raised it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the test that makes Gate C2 a property rather than an assertion. The Register
+    /// Service checks the acceptance at propose time, but that is the node that composed the
+    /// proposal — if the rule lived only there, every other node replaying the sealed transaction
+    /// would accept a roster key nobody ever proved, and the register would seat a member on one
+    /// node's word.
+    /// </para>
+    /// <para>
+    /// Deleting the seat check from <c>RightsEnforcementService</c> must make this fail. If it does
+    /// not, the rule is a submission check wearing a ledger rule's clothes.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ValidateGovernanceRightsAsync_AddWithNoSeatAcceptance_RejectedByTheValidator()
+    {
+        var roster = CreateRoster((OwnerPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"));
+        _rosterServiceMock
+            .Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+        _rosterServiceMock
+            .Setup(r => r.ValidateProposal(roster, It.IsAny<GovernanceOperation>()))
+            .Returns(GovernanceValidationResult.Success());
+
+        var operation = new GovernanceOperation
+        {
+            OperationType = GovernanceOperationType.Add,
+            ProposerDid = "did:sorcha:w:owner1",
+            TargetDid = "did:sorcha:w:ws11qnewcomer",
+            TargetRole = RegisterRole.Admin,
+            ProposedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(7),
+            RosterSnapshotId = roster.LastControlTxId,
+            // TargetAcceptance deliberately absent.
+        };
+
+        var tx = CreateGovernanceTransaction(OwnerPublicKey, operation);
+
+        var result = await ServiceWithSeatVerifier().ValidateGovernanceRightsAsync(tx);
+
+        result.IsValid.Should().BeFalse(
+            "a roster key nobody proved must not be accepted just because another node composed the "
+            + "proposal");
+        result.Errors.Should().Contain(e => e.Code == "VAL_PERM_011");
+    }
+
+    /// <summary>
+    /// An acceptance signed by somebody other than the organisation being seated is refused — the
+    /// escalation where a proposer seats another organisation carrying the proposer's own key.
+    /// </summary>
+    [Fact]
+    public async Task ValidateGovernanceRightsAsync_SeatAcceptanceSignedByTheWrongParty_Rejected()
+    {
+        var roster = CreateRoster((OwnerPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"));
+        _rosterServiceMock
+            .Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+        _rosterServiceMock
+            .Setup(r => r.ValidateProposal(roster, It.IsAny<GovernanceOperation>()))
+            .Returns(GovernanceValidationResult.Success());
+
+        var operation = new GovernanceOperation
+        {
+            OperationType = GovernanceOperationType.Add,
+            ProposerDid = "did:sorcha:w:owner1",
+            TargetDid = "did:sorcha:w:ws11qnewcomer",
+            TargetRole = RegisterRole.Admin,
+            ProposedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(7),
+            RosterSnapshotId = roster.LastControlTxId,
+            TargetAcceptance = new GovernanceSeatAcceptance
+            {
+                // Well-formed and self-consistent, but the signing key does not derive to
+                // ws11qnewcomer — so nothing shows that organisation nominated this key.
+                GovernanceKey = "R292S2V5QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQT0=",
+                SigningPublicKey = Convert.ToBase64String(OwnerPublicKey),
+                Signature = Convert.ToBase64String(new byte[64]),
+                Algorithm = SignatureAlgorithm.ED25519,
+            },
+        };
+
+        var tx = CreateGovernanceTransaction(OwnerPublicKey, operation);
+
+        var result = await ServiceWithSeatVerifier().ValidateGovernanceRightsAsync(tx);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Code == "VAL_PERM_011");
+    }
+
+    /// <summary>
+    /// Operations that seat nobody are unaffected — the rule must not become a tax on every
+    /// governance change.
+    /// </summary>
+    [Fact]
+    public async Task ValidateGovernanceRightsAsync_RemoveNeedsNoSeatAcceptance()
+    {
+        var roster = CreateRoster(
+            (OwnerPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"),
+            (AdminPublicKey, RegisterRole.Admin, "did:sorcha:w:admin1"));
+        _rosterServiceMock
+            .Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+        _rosterServiceMock
+            .Setup(r => r.ValidateProposal(roster, It.IsAny<GovernanceOperation>()))
+            .Returns(GovernanceValidationResult.Success());
+
+        var operation = new GovernanceOperation
+        {
+            OperationType = GovernanceOperationType.Remove,
+            ProposerDid = "did:sorcha:w:owner1",
+            TargetDid = "did:sorcha:w:admin1",
+            ProposedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(7),
+            RosterSnapshotId = roster.LastControlTxId,
+        };
+
+        var tx = CreateGovernanceTransaction(OwnerPublicKey, operation);
+
+        var result = await ServiceWithSeatVerifier().ValidateGovernanceRightsAsync(tx);
+
+        result.Errors.Should().NotContain(e => e.Code == "VAL_PERM_011");
     }
 }

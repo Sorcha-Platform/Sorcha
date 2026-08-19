@@ -87,6 +87,17 @@ public sealed class GovernanceSigningRequestContractTests
             PublicKey = "QUFBQQ==",
             DerivationContext = "sorcha:docket-signing",
         },
+
+        // Feature 193 — the seat acceptance is bound by the approval statement, so an approver must
+        // receive it: approving an Add means agreeing to seat that organisation with THIS governance
+        // key, and a key lost in transit is one the approver never saw.
+        TargetAcceptance = new GovernanceSeatAcceptance
+        {
+            GovernanceKey = "R292S2V5",
+            SigningPublicKey = "UHJpbUtleQ==",
+            Signature = "U2lnbmF0dXJl",
+            Algorithm = SignatureAlgorithm.ED25519,
+        },
     };
 
     /// <summary>The request exactly as the endpoint composes it.</summary>

@@ -61,6 +61,7 @@ public class RightsEnforcementService : IRightsEnforcementService
     /// </para>
     /// </remarks>
     private readonly IDetachedApprovalVerifier? _approvalVerifier;
+    private readonly ISeatAcceptanceVerifier? _seatAcceptanceVerifier;
 
     /// <summary>
     /// The governance blueprint ID used to identify Control transactions
@@ -73,7 +74,8 @@ public class RightsEnforcementService : IRightsEnforcementService
         ILogger<RightsEnforcementService> logger,
         GovernanceMetrics? metrics = null,
         IReadOnlyRegisterRepository? repository = null,
-        IDetachedApprovalVerifier? approvalVerifier = null)
+        IDetachedApprovalVerifier? approvalVerifier = null,
+        ISeatAcceptanceVerifier? seatAcceptanceVerifier = null)
     {
         _rosterService = rosterService ?? throw new ArgumentNullException(nameof(rosterService));
         _cryptoModule = cryptoModule ?? throw new ArgumentNullException(nameof(cryptoModule));
@@ -81,6 +83,7 @@ public class RightsEnforcementService : IRightsEnforcementService
         _metrics = metrics;
         _repository = repository;
         _approvalVerifier = approvalVerifier;
+        _seatAcceptanceVerifier = seatAcceptanceVerifier;
     }
 
     /// <inheritdoc/>
@@ -297,6 +300,35 @@ public class RightsEnforcementService : IRightsEnforcementService
                         "proposal is no longer valid. Raise it again against the current roster.",
                         "Payload.Operation.RosterSnapshotId"));
                     return CreateFailureResult(transaction, sw.Elapsed, errors);
+                }
+
+                // Feature 193 / #1464 — an Add must carry the target's signed acceptance, nominating
+                // the slot-100 governance key to record. Checked HERE, from sealed content, on every
+                // node — not only by the node that raised the proposal. A roster key nobody proved
+                // would otherwise be accepted by every other node in the network, which is the
+                // difference between a submission check and a ledger rule.
+                //
+                // Same verifier instance type the Register Service calls, for the same reason
+                // IDetachedApprovalVerifier is shared: two implementations of one rule is how the
+                // two come to disagree about whether a governance change is authorised.
+                if (_seatAcceptanceVerifier is not null)
+                {
+                    var seat = await _seatAcceptanceVerifier.VerifyAsync(
+                        transaction.RegisterId, operation, ct);
+
+                    if (!seat.Accepted)
+                    {
+                        _logger.LogWarning(
+                            "Transaction {TransactionId} on register {RegisterId}: seat acceptance refused ({Reason}) — {Detail}",
+                            transaction.TransactionId, transaction.RegisterId, seat.Reason, seat.Detail);
+                        _metrics?.RecordRefused(transaction.RegisterId, "seat-acceptance");
+                        errors.Add(CreateError("VAL_PERM_011",
+                            "The organisation being added did not provide a valid signed acceptance "
+                            + "nominating the governance key to record for it, so the roster would "
+                            + $"hold a key it cannot use. {seat.Detail}",
+                            "Payload.Operation.TargetAcceptance"));
+                        return CreateFailureResult(transaction, sw.Elapsed, errors);
+                    }
                 }
 
                 // Feature 189 (FR-024): never let a governance change strand a register with nobody
