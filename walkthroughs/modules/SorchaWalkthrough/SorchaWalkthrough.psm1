@@ -128,7 +128,17 @@ function Invoke-SorchaApi {
     # inside the limit with margin, and costs nothing on the vast majority of calls that are not
     # auth at all.
     if ($Uri -match '/auth/') {
-        $minGapMs = 1300
+        # 8s => ~7/min. Measured, not assumed: on n1 a burst gets 429 after 8 calls, and even 5s
+        # spacing (12/min) still lost 2 of 15. The effective ceiling is around 10/min, which matches
+        # NEITHER configured value (tenant PlatformAuthPermitLimit=500, gateway
+        # AuthenticationPermitLimit=60) — that discrepancy is worth chasing separately, but until it
+        # is, this is the rate that actually completes a run.
+        #
+        # Override with SORCHA_WT_AUTH_GAP_MS where the limit is known to be looser (local Docker
+        # defaults are 100k/min, so set it to 0 there and lose nothing).
+        $minGapMs = 8000
+        $envGap = [System.Environment]::GetEnvironmentVariable('SORCHA_WT_AUTH_GAP_MS')
+        if ($envGap -and [int]::TryParse($envGap, [ref]$null)) { $minGapMs = [int]$envGap }
         if ($script:LastAuthCallAt) {
             $sinceMs = ([DateTime]::UtcNow - $script:LastAuthCallAt).TotalMilliseconds
             if ($sinceMs -lt $minGapMs) { Start-Sleep -Milliseconds ([int]($minGapMs - $sinceMs)) }
