@@ -840,8 +840,10 @@ key — replaces the prior ASN.1 500), `CERT_KEY_MISMATCH`, `CERT_CHAIN_INVALID`
 `CERT_UNSUITABLE`, `CERT_EXTERNAL_ANCHOR_UNAVAILABLE`. The org's P-256 key is its primary key when ES256,
 else a derived HAIP co-key under `sorcha:haip-issuer-signing`; CSR/cert signing is remote pre-hashed ES256
 via the Wallet Service seam `IOrgIssuerCertKeyService`, so the private key never leaves custody. **Auto-enrol**
-runs best-effort after wallet provisioning (org creation + `OrgWalletReconciliationService` ride-along) — a
-server-side hook, not an API; failure never fails org creation. CA keys are AES-256-GCM encrypted at rest
+runs best-effort as a ride-along on `POST /api/organizations/{id}/wallet`, the moment an organisation first
+has a wallet (#1525) — a server-side hook, not an API; failure never fails the link. It previously rode on
+server-side wallet provisioning at org creation and on the `OrgWalletReconciliationService` sweep, both of
+which are gone. CA keys are AES-256-GCM encrypted at rest
 (`TenantRootCaRecord`); `InternalCaTrustProvider` is a write-through cache over `ICertificateStore`. Admin UI:
 the certificates panel in `OrgSettings.razor` (`IOrgCertificateAdminService`). Metric
 `sorcha_org_cert_issuance_total{provenance,outcome,reason}`.
