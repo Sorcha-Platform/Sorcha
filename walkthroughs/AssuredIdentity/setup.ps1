@@ -123,6 +123,7 @@ $verificationOrg = New-SorchaOrganization `
     -Name "Acme Verification Co." `
     -Subdomain "acme-verification" `
     -AdminEmail $verificationAdminEmail `
+    -AdminPassword $verificationAdminPassword `
     -Headers $sysAdmin.Headers `
     -Description "Issues Assured Identity credentials to citizens"
 
@@ -421,6 +422,7 @@ $licensingOrg = New-SorchaOrganization `
     -Name "Acme Licensing Co." `
     -Subdomain "acme-licensing" `
     -AdminEmail $licensingAdminEmail `
+    -AdminPassword $licensingAdminPassword `
     -Headers $sysAdmin.Headers `
     -Description "Issues Driving Licence credentials to citizens holding an AssuredIdentityCredential"
 $licensingOrgId = $licensingOrg.OrganizationId
