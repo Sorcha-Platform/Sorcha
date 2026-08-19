@@ -29,6 +29,12 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
 {
     private const int IssuanceSlot = 1; // Feature 083 slot 1 = KeyUsage.VCIssuance
 
+    /// <summary>Attempts made by <see cref="PublishDidDocumentWaitingForWalletAsync"/> (#1518).</summary>
+    private const int PublishWaitAttempts = 6;
+
+    /// <summary>Gap between those attempts — 5 x 3s covers the observed ~4s reconciliation window.</summary>
+    private static readonly TimeSpan PublishWaitInterval = TimeSpan.FromSeconds(3);
+
     private readonly WalletDbContext _db;
     private readonly IOrgKeyDerivationService _orgKey;
     private readonly IOrgDidDocumentClient _didDocClient;
@@ -43,8 +49,12 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
         IOrgDidDocumentClient didDocClient,
         IOrgInfoClient orgInfo,
         Sorcha.Wallet.Core.Services.Interfaces.IOrgKeyProtectionProvider orgKeyProtection,
-        ILogger<IssuanceKeyService> logger)
+        ILogger<IssuanceKeyService> logger,
+        TimeSpan? publishWaitInterval = null)
     {
+        // Injectable purely so tests can exercise the retry without waiting out the real interval;
+        // production always takes the default.
+        _publishWaitInterval = publishWaitInterval ?? PublishWaitInterval;
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _orgKey = orgKey ?? throw new ArgumentNullException(nameof(orgKey));
         _didDocClient = didDocClient ?? throw new ArgumentNullException(nameof(didDocClient));
@@ -52,6 +62,8 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
         _orgKeyProtection = orgKeyProtection ?? throw new ArgumentNullException(nameof(orgKeyProtection));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
+
+    private readonly TimeSpan _publishWaitInterval;
 
     /// <inheritdoc />
     public async Task<IssuanceKeyState?> GetOrDeriveAsync(Guid organizationId, CancellationToken ct = default)
@@ -154,6 +166,62 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
             organizationId, "IssuanceKeyDerived", canonicalAddress: null, ct).ConfigureAwait(false);
 
         return state;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> PublishDidDocumentWaitingForWalletAsync(
+        Guid organizationId,
+        CancellationToken ct = default)
+    {
+        // The window this closes is Tenant's OrgWalletReconciliationService provisioning the org's
+        // canonical wallet, which it does a few seconds after the org is created. Measured on n1:
+        // key derived at 11:27:58, publish skipped at 11:27:59 for want of a wallet, wallet
+        // provisioned at 11:28:03 — a four-second miss that left did.json 404 (issue #1518).
+        //
+        // Bounded and cheap: a handful of attempts over ~15s, each one a single Tenant GET that
+        // returns immediately once the wallet exists. Every attempt after the first is skipped
+        // entirely in the common case, because the first one succeeds.
+        for (var attempt = 0; attempt < PublishWaitAttempts; attempt++)
+        {
+            if (attempt > 0)
+            {
+                try
+                {
+                    await Task.Delay(_publishWaitInterval, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return false;
+                }
+            }
+
+            if (await EnsureDidDocumentPublishedAsync(
+                    organizationId, "IssuanceKeyEnsured", canonicalAddress: null, ct)
+                    .ConfigureAwait(false))
+            {
+                if (attempt > 0)
+                {
+                    _logger.LogInformation(
+                        "Published DID document for org {OrgId} on attempt {Attempt} — the org's "
+                        + "canonical wallet was not yet provisioned when its issuance key was derived.",
+                        organizationId, attempt + 1);
+                }
+
+                return true;
+            }
+        }
+
+        // Not fatal, and deliberately not an error: issuance still fails closed at signing, and
+        // GetActiveSigningMaterialAsync re-ensures publication there. This only means the document
+        // is not up yet, so a reader before the org's first signature will get a 404.
+        _logger.LogWarning(
+            "Could not publish the DID document for org {OrgId} within {Seconds:0}s of ensuring its "
+            + "issuance key. Issuance is unaffected — it re-ensures before every signature and fails "
+            + "closed — but the issuer DID will not resolve until then.",
+            organizationId,
+            (PublishWaitAttempts - 1) * _publishWaitInterval.TotalSeconds);
+
+        return false;
     }
 
     /// <inheritdoc />

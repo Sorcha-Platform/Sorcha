@@ -199,6 +199,71 @@ public sealed class IssuanceKeyServiceLifecycleTests : IDisposable
             Times.Never);
     }
 
+    // ---------------------------------------------------------------- //
+    // #1518 — the ensure path waits for the org's canonical wallet        //
+    // ---------------------------------------------------------------- //
+
+    [Fact]
+    public async Task PublishDidDocumentWaitingForWallet_WalletAppearsLate_EventuallyPublishes()
+    {
+        // The live shape on n1: key derived 11:27:58, publish skipped 11:27:59 for want of a
+        // canonical wallet, wallet provisioned 11:28:03 by Tenant's reconciliation. Four seconds.
+        SeedActiveKey();
+        _orgInfo.SetupSequence(x => x.ResolveCanonicalWalletAddressAsync(_orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null)          // derivation wins the race
+            .ReturnsAsync((string?)null)
+            .ReturnsAsync(_canonicalAddress);     // reconciliation lands
+
+        var published = await FastSut().PublishDidDocumentWaitingForWalletAsync(_orgId);
+
+        published.Should().BeTrue();
+        _didClient.Verify(x => x.RegenerateAsync(
+            It.IsAny<OrgDidRegenerateRequest>(), It.IsAny<CancellationToken>()),
+            Times.Once,
+            "it should publish exactly once, on the attempt where the wallet finally resolves");
+    }
+
+    [Fact]
+    public async Task PublishDidDocumentWaitingForWallet_WalletNeverAppears_GivesUpWithoutThrowing()
+    {
+        // Bounded. Reporting false is the point — the caller learns the document is not up, rather
+        // than being told the org is ready when its issuer DID will not resolve.
+        SeedActiveKey();
+        _orgInfo.Setup(x => x.ResolveCanonicalWalletAddressAsync(_orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+
+        var published = await FastSut().PublishDidDocumentWaitingForWalletAsync(_orgId);
+
+        published.Should().BeFalse();
+        _didClient.Verify(x => x.RegenerateAsync(
+            It.IsAny<OrgDidRegenerateRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never,
+            "with nothing to anchor on there is no document to publish");
+    }
+
+    [Fact]
+    public async Task PublishDidDocumentWaitingForWallet_WalletAlreadyThere_PublishesOnTheFirstAttempt()
+    {
+        // The common case — an org whose wallet already exists must not pay for the retry at all.
+        SeedActiveKey();
+
+        var published = await FastSut().PublishDidDocumentWaitingForWalletAsync(_orgId);
+
+        published.Should().BeTrue();
+        _orgInfo.Verify(x => x.ResolveCanonicalWalletAddressAsync(_orgId, It.IsAny<CancellationToken>()),
+            Times.Once,
+            "no second attempt should be made once the first succeeds");
+    }
+
+    /// <summary>
+    /// The service under test with a near-zero retry interval, so the retry logic is exercised
+    /// without the suite sitting through the real 3s gaps.
+    /// </summary>
+    private IssuanceKeyService FastSut() => new(
+        _db, _orgKey.Object, _didClient.Object, _orgInfo.Object, _protection.Object,
+        NullLogger<IssuanceKeyService>.Instance,
+        publishWaitInterval: TimeSpan.FromMilliseconds(1));
+
     [Fact]
     public async Task RotateAsync_NoCanonicalAddress_SkipsDidDocumentRegeneration()
     {
