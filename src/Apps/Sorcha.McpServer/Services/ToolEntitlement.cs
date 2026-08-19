@@ -75,6 +75,7 @@ public static class ToolEntitlements
         new("sorcha_org_status", PlatformOnly, AdminRole),
         new("sorcha_platform_settings", PlatformOnly, AdminRole),
         new("sorcha_org_user_audit", PlatformOnly, AdminRole),
+        new("sorcha_org_wallet_status", PlatformOnly, AdminRole),
         new("sorcha_validator_control", PlatformOnly, AdminRole),
         new("sorcha_user_provision", PlatformOnly, AdminRole),
         new("sorcha_user_password_reset", PlatformOnly, AdminRole),
