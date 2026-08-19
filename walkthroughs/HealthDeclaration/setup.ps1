@@ -125,6 +125,7 @@ try {
         -Name "Demo Clinic" `
         -Subdomain "health-demo" `
         -AdminEmail $secrets.patientEmail `
+        -AdminPassword $secrets.patientPassword `
         -Headers $sysAdmin.Headers
 } catch {
     if ($_.Exception.Message -match 'already taken|409|duplicate|400') {

@@ -2313,15 +2313,30 @@ function New-SorchaOrganization {
                 # admin was ready when they had no membership at all, and the first org-scoped call
                 # they made 403'd with nothing to connect it to (#1427). Callers must ensure
                 # membership themselves — see New-SorchaOrgUser.
-                # The org already existed, so THIS call never provisioned its admin — we cannot
-                # sign in as them to create the wallet. If it already has one, report it; otherwise
-                # say plainly that the step is outstanding rather than leaving it to be discovered
-                # four steps later as an unresolvable issuer DID.
-                $existingWallet = $existing.walletAddress
-                if ($WalletUrl -and -not $existingWallet) {
-                    Write-WtWarn "Organization '$Name' has no wallet and this call did not provision its admin,"
-                    Write-WtWarn "so it cannot be created here. Sign in as an admin of that org and call"
-                    Write-WtWarn "New-SorchaOrgWallet, or the org cannot issue credentials (#1525)."
+                # The org already existed, so THIS call did not provision its admin. Do NOT infer the
+                # wallet state from the platform list: OrganizationSummaryResponse does not project
+                # walletAddress, so reading it here always yields null and warns about a wallet the
+                # org may well have. Ask New-SorchaOrgWallet instead — it queries the organisation
+                # itself and no-ops when a wallet is present.
+                $existingWallet = $null
+                if ($WalletUrl -and $AdminPassword) {
+                    try {
+                        $adminSession = Connect-SorchaUser `
+                            -TenantUrl $TenantUrl -Email $AdminEmail -Password $AdminPassword `
+                            -OrganizationId "$($existing.id)"
+                        $existingWallet = (New-SorchaOrgWallet `
+                            -TenantUrl $TenantUrl -WalletUrl $WalletUrl `
+                            -OrganizationId "$($existing.id)" -Headers $adminSession.Headers `
+                            -Name "org-$Subdomain-signing").WalletAddress
+                    } catch {
+                        Write-WtWarn "Organization '$Name' already existed and its wallet could not be"
+                        Write-WtWarn "confirmed or created as $AdminEmail : $($_.Exception.Message)"
+                        Write-WtWarn "Sign in as an admin of that org and call New-SorchaOrgWallet (#1525)."
+                    }
+                } elseif ($WalletUrl) {
+                    Write-WtWarn "Organization '$Name' already existed and no admin credential was supplied,"
+                    Write-WtWarn "so its wallet could not be confirmed. Sign in as an admin of that org and"
+                    Write-WtWarn "call New-SorchaOrgWallet, or the org cannot issue credentials (#1525)."
                 }
 
                 return @{

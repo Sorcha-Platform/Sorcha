@@ -207,6 +207,7 @@ foreach ($def in $orgDefs) {
         -Name $def.name `
         -Subdomain $def.subdomain `
         -AdminEmail $adminUser.email `
+        -AdminPassword $adminUser.password `
         -Headers $sysAdmin.Headers `
         -Description $def.desc
     $orgs[$def.subdomain] = $result.OrganizationId
