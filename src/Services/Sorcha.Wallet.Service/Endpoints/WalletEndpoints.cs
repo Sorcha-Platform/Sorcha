@@ -4,6 +4,7 @@
 #pragma warning disable ASPDEPR002 // WithOpenApi is deprecated; using it for co-located endpoint examples until transformer API stabilizes
 
 using System.Security.Claims;
+using Sorcha.ServiceClients.Auth;
 using System.Security.Cryptography;
 
 using Microsoft.AspNetCore.Builder;
@@ -406,6 +407,23 @@ public static class WalletEndpoints
             if (owner is null)
                 return Results.Unauthorized();
             var tenant = GetCurrentTenant(context);
+
+            // #1525 — an ORGANISATION's wallet is owned by the organisation, not by whoever set it
+            // up. It anchors the org's issuer DID and its governance roster identity, so it must
+            // outlive the individual; what the individual takes away is the recovery phrase, which
+            // is returned once below and never stored.
+            //
+            // Gate: the caller must be an Administrator OF THAT organisation. Checked from claims
+            // alone — org_id is already bound to the token, so there is nothing to look up and no
+            // way to name an organisation the caller is not in.
+            if (request.OrganizationId is { } orgId)
+            {
+                var refusal = CheckOrganizationWalletOwner(context.User, orgId);
+                if (refusal is not null) return refusal;
+
+                owner = orgId.ToString();
+                tenant = orgId.ToString();
+            }
 
             // Parse optional signing mode override
             SigningMode? signingModeOverride = null;
@@ -1976,6 +1994,42 @@ public static class WalletEndpoints
     // Read paths that look up wallets by NameIdentifier need to be aware of both eras
     // (legacy Owner=sub vs new Owner=platform_user_id) — see
     // CitizenWalletEndpoints.ResolveCitizenContextAsync for the read-tolerant equivalent.
+    /// <summary>
+    /// Gate for creating a wallet owned by an ORGANISATION rather than the caller (#1525).
+    /// Returns null when allowed, or the refusal to return.
+    /// </summary>
+    /// <remarks>
+    /// Checked from claims alone: <c>org_id</c> is already bound to the token, so there is nothing
+    /// to look up and no way to name an organisation the caller is not in. Extracted from the
+    /// handler so the boundary is directly testable — it decides who ends up holding an
+    /// organisation's recovery phrase.
+    /// </remarks>
+    internal static IResult? CheckOrganizationWalletOwner(ClaimsPrincipal user, Guid organizationId)
+    {
+        var callerOrg = user.FindFirstValue(TokenClaimConstants.OrgId)
+            ?? user.FindFirstValue("organization_id");
+
+        if (!Guid.TryParse(callerOrg, out var callerOrgId) || callerOrgId != organizationId)
+        {
+            return Results.Problem(
+                title: "Not your organisation",
+                detail: "A wallet can only be created for the organisation the caller belongs to.",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        if (!user.IsInRole("Administrator"))
+        {
+            return Results.Problem(
+                title: "Administrator role required",
+                detail: "Creating the organisation's signing wallet is an administrator action: its "
+                      + "recovery phrase is shown once and never stored, so whoever creates it is the "
+                      + "only person who will ever hold it.",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        return null;
+    }
+
     private static string? GetCurrentUser(HttpContext context)
     {
         return context.User.FindFirstValue("platform_user_id")

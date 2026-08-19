@@ -119,6 +119,7 @@ Write-WtStep "Step 4: Create Acme Verification Co."
 
 $verificationOrg = New-SorchaOrganization `
     -TenantUrl $sorchaEnv.TenantUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
     -Name "Acme Verification Co." `
     -Subdomain "acme-verification" `
     -AdminEmail $verificationAdminEmail `
@@ -416,6 +417,7 @@ if ($licensingPublicUser) {
 
 $licensingOrg = New-SorchaOrganization `
     -TenantUrl $sorchaEnv.TenantUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
     -Name "Acme Licensing Co." `
     -Subdomain "acme-licensing" `
     -AdminEmail $licensingAdminEmail `

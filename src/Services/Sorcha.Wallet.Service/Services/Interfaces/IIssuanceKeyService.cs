@@ -31,12 +31,11 @@ public interface IIssuanceKeyService
     /// Publishes the org's issuer DID document from current state. Returns whether one is published.
     /// </summary>
     /// <remarks>
-    /// Does NOT wait for the org's canonical wallet to exist. It is provisioned by Tenant's
-    /// <c>OrgWalletReconciliationService</c>, a 60-second sweep, so waiting for it is not something a
-    /// request can usefully do — an attempt to retry here (#1523) sat for 15s and still lost. The
-    /// real answer is for the org's wallet to be created as a deliberate admin step when the org is
-    /// set up, which is #1525; until then a brand-new org simply has no document to publish yet, and
-    /// issuance is unaffected because it re-ensures before every signature and fails closed.
+    /// Does NOT wait for the org's canonical wallet to exist. That wallet is created deliberately by
+    /// the organisation's own admin (#1525), because its BIP39 recovery phrase is shown once, never
+    /// stored, and belongs to them — so there is nothing to wait for and no timing to work around.
+    /// Until they have done it the org simply has no document to publish, and issuance is unaffected
+    /// because it re-ensures before every signature and fails closed.
     /// </remarks>
     Task<bool> PublishDidDocumentAsync(Guid organizationId, CancellationToken ct = default);
 

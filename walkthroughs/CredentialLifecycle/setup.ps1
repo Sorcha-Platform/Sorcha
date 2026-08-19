@@ -80,6 +80,7 @@ $holderEmail    = "ops@clc-holder.test"
 
 $authorityOrg = New-SorchaOrganization `
     -TenantUrl        $sorchaEnv.TenantUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
     -Headers          $sysAdmin.Headers `
     -Name             "Lifecycle Authority" `
     -Subdomain        "clc-authority" `
@@ -92,6 +93,7 @@ Write-WtSuccess "Authority org: $authorityOrgId"
 
 $holderOrg = New-SorchaOrganization `
     -TenantUrl        $sorchaEnv.TenantUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
     -Headers          $sysAdmin.Headers `
     -Name             "Lifecycle Holder" `
     -Subdomain        "clc-holder" `

@@ -33,6 +33,19 @@ public sealed record CreateWalletRequest
     [Bip39WordCount]
     public int WordCount { get; set; } = 24;
 
+    /// <summary>
+    /// Create this wallet as an ORGANISATION's wallet, owned by the organisation rather than by the
+    /// caller. Only an Administrator of that organisation may do so (#1525).
+    /// </summary>
+    /// <remarks>
+    /// The organisation's canonical signing wallet is what its issuer DID anchors on and what its
+    /// governance roster identity is matched against, so it belongs to the organisation and outlives
+    /// whoever set it up. The admin who creates it receives the BIP39 recovery phrase — shown once,
+    /// never stored — and is responsible for recording it; that custody is the whole reason this is
+    /// a deliberate human step rather than something the platform does on the org's behalf.
+    /// </remarks>
+    public Guid? OrganizationId { get; set; }
+
     /// <summary>Optional passphrase for additional security.</summary>
     public string? Passphrase { get; set; }
 

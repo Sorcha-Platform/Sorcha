@@ -228,6 +228,13 @@ function New-AiasOrg {
 
     Write-WtStep "5: verification-admin (Tier 2) login + issuer wallet + participant"
     $vAdmin = Connect-SorchaUser -TenantUrl $api -Email $vAdminEmail -Password $pw -OrganizationId $vOrgId
+    # The ORGANISATION's own wallet, created by its admin (#1525). Distinct from the issuer
+    # wallet below: this is what the org's issuer DID anchors on, so credential issuance has
+    # nothing to anchor to without it. The platform will not create it — the recovery phrase is
+    # shown once and belongs to the org admin.
+    $null = New-SorchaOrgWallet -TenantUrl $api -WalletUrl $api `
+        -OrganizationId $vOrgId -Headers $vAdmin.Headers
+
     $vWallet = New-SorchaWallet -WalletUrl $api -Name "$script:AiasName Issuer" -Headers $vAdmin.Headers -FetchPublicKey
     Write-WtSuccess "issuer wallet: $($vWallet.Address)"
     $null = Register-SorchaParticipant -TenantUrl $api -WalletUrl $api -OrganizationId $vOrgId -WalletAddress $vWallet.Address -DisplayName "AIAS Verification Admin" -Headers $vAdmin.Headers

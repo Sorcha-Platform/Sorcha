@@ -116,6 +116,7 @@ Write-WtStep "Step 3: Create Organizations"
 try {
     $senderOrg = New-SorchaOrganization `
         -TenantUrl $env.TenantUrl `
+        -WalletUrl $env.WalletUrl `
         -Name "Sender Corp" `
         -Subdomain "payload-sender" `
         -AdminEmail $senderEmail `
@@ -135,6 +136,7 @@ Write-WtInfo "Sender Org: $($senderOrg.OrganizationId)"
 try {
     $receiverOrg = New-SorchaOrganization `
         -TenantUrl $env.TenantUrl `
+        -WalletUrl $env.WalletUrl `
         -Name "Receiver Corp" `
         -Subdomain "payload-receiver" `
         -AdminEmail $receiverEmail `

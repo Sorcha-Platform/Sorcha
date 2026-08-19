@@ -98,39 +98,73 @@ public partial class OrganizationService : IOrganizationService
             "Created organization {OrganizationId} ({Subdomain}) by user {CreatorUserId}",
             created.Id, created.Subdomain, creatorUserId);
 
-        // Provision organization wallet for signing operations
-        try
-        {
-            var walletName = $"org-{created.Subdomain}-signing";
-            var walletInfo = await _walletClient.CreateWalletAsync(
-                walletName,
-                "ED25519",
-                created.Id.ToString(),
-                created.Id.ToString(),
-                cancellationToken);
-
-            created.WalletAddress = walletInfo.Address;
-            created.PublicKey = walletInfo.PublicKey;
-            created.SigningAlgorithm = walletInfo.Algorithm;
-            await _organizationRepository.UpdateAsync(created, cancellationToken);
-
-            _logger.LogInformation(
-                "Organization wallet provisioned: {OrganizationId} -> {WalletAddress}",
-                created.Id, walletInfo.Address);
-
-            // Feature 181 US5 (T049) — auto-enrol the org's internal X.509 certificate. Best-effort: a
-            // failure MUST NOT fail org creation (FR-022); the reconciliation service retries it.
-            await TryAutoEnrolCertificateAsync(created, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex,
-                "Failed to provision wallet for organization {OrganizationId}. " +
-                "Wallet will be provisioned by the reconciliation service.",
-                created.Id);
-        }
+        // The organisation's wallet is DELIBERATELY not created here (#1525).
+        //
+        // Creating it server-side means generating a BIP39 recovery phrase with no human present to
+        // receive it. The phrase is shown once at creation and never stored — that is the design —
+        // so a service-to-service create silently destroys it, and the organisation can never be
+        // recovered. Every org wallet in existence before this change was minted that way.
+        //
+        // It is also not the platform's secret to hold: the recovery phrase belongs to the ORG
+        // ADMIN. So the org is created without a wallet and the org admin creates it themselves via
+        // POST /api/organizations/{id}/wallet, having taken the phrase from the Wallet Service
+        // directly. A null WalletAddress IS the "awaiting its wallet" state.
 
         return OrganizationResponse.FromEntity(created);
+    }
+
+    /// <inheritdoc />
+    public async Task<OrganizationResponse?> LinkOrganizationWalletAsync(
+        Guid organizationId,
+        string walletAddress,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(walletAddress);
+
+        var org = await _organizationRepository.GetByIdAsync(organizationId, cancellationToken);
+        if (org is null)
+        {
+            return null;
+        }
+
+        // Never silently re-link. The canonical wallet anchors the org's issuer DID and its
+        // governance roster identity, so replacing it orphans every credential issued under the old
+        // one and every roster entry matched against it. Changing it is a deliberate migration, not
+        // a side effect of calling this twice.
+        if (!string.IsNullOrWhiteSpace(org.WalletAddress))
+        {
+            throw new InvalidOperationException(
+                $"Organisation {organizationId} already has a wallet ({org.WalletAddress}).");
+        }
+
+        // Prove the wallet belongs to this organisation. Without this an admin could adopt any
+        // wallet whose address they happen to know — addresses are public — and the org's issuer
+        // DID would then anchor on a key they do not control.
+        var wallet = await _walletClient.GetWalletAsync(walletAddress, cancellationToken)
+            ?? throw new InvalidOperationException(
+                $"Wallet '{walletAddress}' does not exist.");
+
+        if (!string.Equals(wallet.Owner, organizationId.ToString(), StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Wallet '{walletAddress}' is not owned by organisation {organizationId}.");
+        }
+
+        org.WalletAddress = wallet.Address;
+        org.PublicKey = wallet.PublicKey;
+        org.SigningAlgorithm = wallet.Algorithm;
+        await _organizationRepository.UpdateAsync(org, cancellationToken);
+
+        _logger.LogInformation(
+            "Organisation wallet linked: {OrganizationId} -> {WalletAddress} (created by its org admin)",
+            org.Id, wallet.Address);
+
+        // Feature 181 US5 — the X.509 auto-enrol ride-along used to hang off server-side wallet
+        // provisioning. That is gone, so it rides here instead: this is now the moment an org first
+        // has a wallet, and without it orgs would silently stop getting certificates.
+        await TryAutoEnrolCertificateAsync(org, cancellationToken);
+
+        return OrganizationResponse.FromEntity(org);
     }
 
     /// <summary>
@@ -166,7 +200,7 @@ public partial class OrganizationService : IOrganizationService
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
-                "Auto-enrol failed for organization {OrganizationId}; reconciliation will retry.",
+                "Auto-enrol failed for organization {OrganizationId}. The X.509 rail is best-effort and nothing retries it now the reconciliation sweep is gone (#1525) — re-run enrolment explicitly if the org needs a certificate.",
                 org.Id);
         }
     }

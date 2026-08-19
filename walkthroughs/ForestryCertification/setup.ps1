@@ -148,6 +148,7 @@ $fcAdminPassword = Get-OrgAdminPassword -Subdomain $fcSubdomain
 try {
     $fcOrg = New-SorchaOrganization `
         -TenantUrl $sorchaEnv.TenantUrl `
+        -WalletUrl $sorchaEnv.WalletUrl `
         -Name "Forestry Certification" `
         -Subdomain $fcSubdomain `
         -AdminEmail $fcAdminEmail `
@@ -182,6 +183,7 @@ $htAdminPassword = Get-OrgAdminPassword -Subdomain $htSubdomain
 try {
     $htOrg = New-SorchaOrganization `
         -TenantUrl $sorchaEnv.TenantUrl `
+        -WalletUrl $sorchaEnv.WalletUrl `
         -Name "Highland Timber Supplies" `
         -Subdomain $htSubdomain `
         -AdminEmail $htAdminEmail `
