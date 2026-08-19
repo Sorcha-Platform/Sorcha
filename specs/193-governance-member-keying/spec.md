@@ -117,7 +117,16 @@ Acceptance:
 
 ---
 
-## Decision gates — **OPEN, need Stuart**
+## Decision gates — **A / C / D SETTLED 2026-08-19; B reframed and open**
+
+| Gate | Answer |
+|---|---|
+| **A** | **A1** — the proposal carries the target's slot-100 key plus an acceptance signature by that key |
+| **B** | ⛔ **reframed** — the original question was not a real choice (see below); what remains open is what the signature commits the target to |
+| **C** | **C2** — verified in the Validator as well as the Register Service, sharing one implementation |
+| **D** | **D1** — leave already-unkeyed members; they are inert and unpromotable |
+
+## Decision gates — detail
 
 ### Gate A — How does the key reach sealed content?
 
@@ -141,21 +150,45 @@ Acceptance:
   *Elegant, and it makes consent a governance rule. But it changes `Add` semantics — an Owner could
   no longer seat anyone under the Owner override, which is how the SSR seats its first Admin.*
 
-*Recommendation: **A1**. It is the only one that seats a keyed member in a single transaction, it
-proves possession rather than trusting the proposer, and it does not change who may raise an `Add`.
+*Recommendation: **A1** (SETTLED — Stuart, 2026-08-19). It is the only one that seats a keyed member
+in a single transaction, it proves possession rather than trusting the proposer, and it does not
+change who may raise an `Add`. Note it DOES change who must take part: see Gate B.
 A2 can be added later as a self-service path without invalidating A1. A3's consent rule is
 attractive but should be argued on its own merits, not adopted because it happens to solve keying.*
 
-### Gate B — May an organisation be seated without its participation?
+### Gate B — What does the acceptance signature commit the target to?
 
-A1 and A3 both require the target to act. A2 does not.
+> **This gate was originally written as "may an organisation be seated without its participation?"
+> That is not a choice.** A1 requires a signature only the target can produce, so the target must be
+> asked first — B follows from A and cannot be picked independently. The behaviour change is real and
+> worth naming (today an Owner seats anyone unilaterally, and the target never touches the flow), but
+> it is a consequence, not a decision. Reframed to the question actually left open.
 
-- **B1 — No.** Seating an organisation that has not signed anything is what produces inert members;
-  requiring a signature makes "entitled" and "able" the same thing.
-- **B2 — Yes.** An Owner may seat a member unilaterally; the member keys itself later (A2).
+An acceptance signature has to cover *something*. What it covers decides what it can be reused for.
 
-*Recommendation: **B1**, as a consequence of A1 rather than as an independent rule. Note it is a real
-behaviour change: today an Owner can seat anyone.*
+- **B1 — Proof of possession.** The statement binds (register, key): *"this is my governance key for
+  register X."* Simple, and the target need not care what role it is being offered.
+  *But the same signature seats them at any role, at any later time — including re-seating an
+  organisation that was deliberately removed.*
+
+- **B2 — Consent to a specific seat.** The statement binds (register, subject, **role**, key):
+  *"I accept an Admin seat on register X, with this key."* Re-seating at a different role needs a
+  fresh signature, and the signature says what was agreed to rather than merely who holds a key.
+
+Either way it needs a **replay binding**, or an acceptance is valid forever. The natural one already
+exists: **`RosterSnapshotId`** — the roster head at proposal time, which proposals already carry
+(FR-011b) so that an approval cannot be counted against a roster that has since changed. An
+acceptance bound the same way is valid only against the roster it was produced for, so a removed
+organisation's old acceptance cannot be replayed to seat them again.
+
+*Recommendation: **B2 plus the RosterSnapshotId binding**. The extra fields are free — the proposal
+already knows the subject, role and snapshot — and it makes the ledger record what the organisation
+agreed to, not just that it once held a key. Statement shape, mirroring
+`GovernanceApprovalStatement`:*
+
+```
+sorcha:governance-seat-acceptance:v1 ␟ {registerId} ␟ {subjectDid} ␟ {role} ␟ {publicKey} ␟ {rosterSnapshotId}
+```
 
 ### Gate C — Where is the acceptance signature verified?
 
