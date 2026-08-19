@@ -550,6 +550,23 @@ function Connect-SorchaUser {
         [Parameter(Mandatory)][string]$OrganizationId
     )
 
+    # Throttle. The gateway allows AuthenticationPermitLimit=60 logins per minute with
+    # AuthenticationQueueLimit=0 — one per second, and anything over it is an immediate 429, not a
+    # queued wait. Walkthroughs log in in tight loops (a per-role step signs in every participant
+    # back to back), so they trip it from a standing start and the whole run dies mid-setup looking
+    # like a platform failure.
+    #
+    # One choke point, because every walkthrough authenticates through here. 1.25s spacing gives
+    # ~48/min, comfortably inside the limit, and costs nothing on runs that were never near it.
+    $minGapMs = 1250
+    if ($script:LastLoginAt) {
+        $sinceMs = ([DateTime]::UtcNow - $script:LastLoginAt).TotalMilliseconds
+        if ($sinceMs -lt $minGapMs) {
+            Start-Sleep -Milliseconds ([int]($minGapMs - $sinceMs))
+        }
+    }
+    $script:LastLoginAt = [DateTime]::UtcNow
+
     # Step 1: Login
     $loginBody = @{
         email    = $Email
