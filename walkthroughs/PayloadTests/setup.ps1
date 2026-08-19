@@ -235,12 +235,17 @@ $register = New-SorchaRegister `
     -Headers $senderAuth.Headers
 Write-WtSuccess "Register: $($register.RegisterId)"
 
-# Subscribe receiver org
+# Subscribe receiver org.
+#
+# With the SENDER's headers this is a cross-organisation write, and CallerOrganizationGate refuses
+# it (403) — an admin of one org may not subscribe another. The sysadmin is exempt from that gate,
+# which is what makes this the right caller: the subscription is a platform act, not the sender
+# acting on the receiver's behalf. Same shape as #1530.
 New-SorchaRegisterSubscription `
     -TenantUrl $env.TenantUrl `
     -OrganizationId $receiverOrg.OrganizationId `
     -RegisterId $register.RegisterId `
-    -Headers $senderAuth.Headers `
+    -Headers $sysAdmin.Headers `
     -SubscriptionType "Public"
 Write-WtInfo "Receiver org subscribed to register"
 

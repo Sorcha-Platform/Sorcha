@@ -115,6 +115,37 @@ function Invoke-SorchaApi {
         [switch]$ShowJson
     )
 
+    # The gateway rate-limits /api/auth/* as one bucket: AuthenticationPermitLimit=60 per minute
+    # with AuthenticationQueueLimit=0, so request 61 is an immediate 429 rather than a queued wait.
+    #
+    # That bucket is not just login. Registration, email verification and org selection all live
+    # under /api/auth/, and a setup that registers eight users, verifies them, then signs each one
+    # in exhausts it well before the interesting part of the run. Two full sweeps were lost reading
+    # those 429s as real results, and a throttle on Connect-SorchaUser alone did not help precisely
+    # because logins are the minority of the traffic hitting this limiter.
+    #
+    # So it goes here, at the one place every request passes through. 1.3s spacing gives ~46/min,
+    # inside the limit with margin, and costs nothing on the vast majority of calls that are not
+    # auth at all.
+    if ($Uri -match '/auth/') {
+        # 8s => ~7/min. Measured, not assumed: on n1 a burst gets 429 after 8 calls, and even 5s
+        # spacing (12/min) still lost 2 of 15. The effective ceiling is around 10/min, which matches
+        # NEITHER configured value (tenant PlatformAuthPermitLimit=500, gateway
+        # AuthenticationPermitLimit=60) — that discrepancy is worth chasing separately, but until it
+        # is, this is the rate that actually completes a run.
+        #
+        # Override with SORCHA_WT_AUTH_GAP_MS where the limit is known to be looser (local Docker
+        # defaults are 100k/min, so set it to 0 there and lose nothing).
+        $minGapMs = 8000
+        $envGap = [System.Environment]::GetEnvironmentVariable('SORCHA_WT_AUTH_GAP_MS')
+        if ($envGap -and [int]::TryParse($envGap, [ref]$null)) { $minGapMs = [int]$envGap }
+        if ($script:LastAuthCallAt) {
+            $sinceMs = ([DateTime]::UtcNow - $script:LastAuthCallAt).TotalMilliseconds
+            if ($sinceMs -lt $minGapMs) { Start-Sleep -Milliseconds ([int]($minGapMs - $sinceMs)) }
+        }
+        $script:LastAuthCallAt = [DateTime]::UtcNow
+    }
+
     $params = @{
         Uri            = $Uri
         Method         = $Method
@@ -2319,7 +2350,25 @@ function New-SorchaOrganization {
                 # org may well have. Ask New-SorchaOrgWallet instead — it queries the organisation
                 # itself and no-ops when a wallet is present.
                 $existingWallet = $null
-                if ($WalletUrl -and $AdminPassword) {
+
+                # Check with the headers we ALREADY hold before spending a login. The caller here is
+                # the sysadmin, who CallerOrganizationGate exempts, so this read works — and in the
+                # common case (the org already has its wallet) it costs one GET instead of a full
+                # authentication. That matters: an extra login per organisation across ten
+                # walkthroughs is enough to trip the auth rate limit and turn a whole run into 429s
+                # that look like failures.
+                try {
+                    $existingOrg = Invoke-SorchaApi -Method GET `
+                        -Uri "$TenantUrl/organizations/$($existing.id)" -Headers $Headers
+                    if ($existingOrg.walletAddress) {
+                        $existingWallet = $existingOrg.walletAddress
+                        # Say so. Without this the read-first path is silent, and a run that is
+                        # entirely correct reports zero org wallets — which reads as a gap.
+                        Write-WtInfo "  Org wallet already exists: $existingWallet"
+                    }
+                } catch { }
+
+                if ($WalletUrl -and -not $existingWallet -and $AdminPassword) {
                     try {
                         $adminSession = Connect-SorchaUser `
                             -TenantUrl $TenantUrl -Email $AdminEmail -Password $AdminPassword `
@@ -2333,7 +2382,7 @@ function New-SorchaOrganization {
                         Write-WtWarn "confirmed or created as $AdminEmail : $($_.Exception.Message)"
                         Write-WtWarn "Sign in as an admin of that org and call New-SorchaOrgWallet (#1525)."
                     }
-                } elseif ($WalletUrl) {
+                } elseif ($WalletUrl -and -not $existingWallet) {
                     Write-WtWarn "Organization '$Name' already existed and no admin credential was supplied,"
                     Write-WtWarn "so its wallet could not be confirmed. Sign in as an admin of that org and"
                     Write-WtWarn "call New-SorchaOrgWallet, or the org cannot issue credentials (#1525)."
