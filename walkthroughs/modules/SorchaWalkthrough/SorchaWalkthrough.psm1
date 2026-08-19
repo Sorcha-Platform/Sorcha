@@ -2329,7 +2329,12 @@ function New-SorchaOrganization {
                 try {
                     $existingOrg = Invoke-SorchaApi -Method GET `
                         -Uri "$TenantUrl/organizations/$($existing.id)" -Headers $Headers
-                    if ($existingOrg.walletAddress) { $existingWallet = $existingOrg.walletAddress }
+                    if ($existingOrg.walletAddress) {
+                        $existingWallet = $existingOrg.walletAddress
+                        # Say so. Without this the read-first path is silent, and a run that is
+                        # entirely correct reports zero org wallets — which reads as a gap.
+                        Write-WtInfo "  Org wallet already exists: $existingWallet"
+                    }
                 } catch { }
 
                 if ($WalletUrl -and -not $existingWallet -and $AdminPassword) {
