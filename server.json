@@ -45,6 +45,7 @@
     "sorcha_my_presentations",
     "sorcha_org_status",
     "sorcha_org_user_audit",
+    "sorcha_org_wallet_status",
     "sorcha_peer_status",
     "sorcha_pending_applications",
     "sorcha_platform_settings",

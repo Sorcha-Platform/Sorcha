@@ -26,6 +26,7 @@ public class OrganizationCommand : Command
         Subcommands.Add(new OrgCreateCommand(clientFactory, authService, configService));
         Subcommands.Add(new OrgUpdateCommand(clientFactory, authService, configService));
         Subcommands.Add(new OrgDeleteCommand(clientFactory, authService, configService));
+        Subcommands.Add(new OrgWalletCommand(clientFactory, authService, configService));
     }
 }
 

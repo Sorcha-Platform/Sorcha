@@ -55,12 +55,35 @@ public class OrganizationCommandsTests
         var command = new OrganizationCommand(_clientFactory, AuthService, ConfigService);
 
         // Assert
-        command.Subcommands.Should().HaveCount(5);
+        command.Subcommands.Should().HaveCount(6);
         command.Subcommands.Should().Contain(c => c.Name == "list");
         command.Subcommands.Should().Contain(c => c.Name == "get");
         command.Subcommands.Should().Contain(c => c.Name == "create");
         command.Subcommands.Should().Contain(c => c.Name == "update");
         command.Subcommands.Should().Contain(c => c.Name == "delete");
+        command.Subcommands.Should().Contain(c => c.Name == "wallet");
+    }
+
+    [Fact]
+    public void OrgWalletCommand_ExposesCreate()
+    {
+        // #1525 — the operator-facing route for the step the platform will not take on an
+        // organisation's behalf, because its recovery phrase belongs to the org admin.
+        var command = new OrgWalletCommand(_clientFactory, AuthService, ConfigService);
+
+        command.Name.Should().Be("wallet");
+        command.Subcommands.Should().Contain(c => c.Name == "create");
+    }
+
+    [Fact]
+    public void OrgWalletCreateCommand_TakesAnOrgIdAndDefaultsToEd25519()
+    {
+        var command = new OrgWalletCreateCommand(_clientFactory, AuthService, ConfigService);
+
+        command.Name.Should().Be("create");
+        command.Arguments.Should().Contain(a => a.Name == "orgId");
+        command.Options.Should().Contain(o => o.Name == "--algorithm");
+        command.Options.Should().Contain(o => o.Name == "--name");
     }
 
     [Fact]
