@@ -61,7 +61,7 @@ TDD order. T004 must be RED before T006.
   (c) is the one that proves C2 was worth doing.
 - ✅ **T012** Full suites: Register.Core, Register.Service, Validator.Service, Validator.Core.
 
-## US2 — the SSR handover (this is #1400) — T013-T015 ✅ 2026-08-19; T016 blocked on #1515
+## US2 — the SSR handover (this is #1400) — ✅ ALL GATES PASSED 2026-08-19
 
 - ✅ **T013** Deployed and re-run 2026-08-19 on a **clean-genesis** n1 (`down -v`, volumes removed,
   re-genesised on the compiled-in anchor `d75e14004364867dae55f44330330edf`). Stuart's call, and it
@@ -76,18 +76,24 @@ TDD order. T004 must be RED before T006.
   exclusion held. Sealed as **docket 12** proposal → **docket 13** carrying BOTH approvals →
   **docket 14** enactment; ownership moved `did:sorcha:genesis:a3dd941f…` →
   `did:sorcha:w:ws11qpvncpgx…`. Verified from the docket chain and the roster head, not from HTTP.
-- ⛔ **T016** T063 — **half one already passed**: the new Owner proposed `Remove(genesis)` and
-  received the **Owner override** (`votesRequired: 1, isOwnerOverride: true`), so authority moved
-  with the label. The enactment then did not seal, blocked by **#1515** (fixed in PR #1516):
-  governing the SSR pollutes its own blueprint index, so `register-governance-v1` resolved to a
-  governance *control transaction* and the validator refused the proposal with
-  `VAL_SCHEMA_003: Action 1 not found`. Re-run after the #1516 deploy; verify with
-  `check-1515.sh` FIRST, because a polluted resolution fails this gate for a reason that has nothing
-  to do with authority.
-- ⛔ **T017** Confirm the control record replicates to tiny, then re-run `rehearse.ps1 -Target n1` as
-  an AIAS regression check.
-- ⛔ **T018** Have a restore path ready before starting, and say what it is. The 2026-08-19 attempt
-  needed one and had it (`Remove` under the Owner override); do not begin without it.
+- ✅ **T016** **T063 PASSED.** The new Owner proposed `Remove(genesis)` and received the **Owner
+  override** (`votesRequired: 1`), which sealed as **docket 15** — the ceremony key is off the roster.
+  The former Owner is now refused at the API: `400 "Proposer 'did:sorcha:genesis:a3dd941f…' is not in
+  the roster"`. A clean refusal, not the 202-then-silence shape.
+  First attempt failed on **#1515** (fixed in #1516, verified live on the v2.984.1 deploy). Worth
+  keeping: the override was granted even while #1515 was live, so the failure was blueprint
+  resolution, never authority — run `scratchpad/check-1515.sh` before blaming this gate.
+- ✅ **T017** Both done. **tiny replicates byte-identically** — 16 transactions across dockets 1-15,
+  `diff` clean against n1, including the transfer (12-14) and the removal (15). ⚠ tiny had to be
+  fully cleared first (`down -v` + fresh images): its pre-re-genesis residue presented as a spliced,
+  unlinked chain and I filed it as #1519 before Stuart pointed out the node had to be cleared before
+  any assessment. Closed after the clean run. **AIAS rehearse PASSED** on the re-provisioned node —
+  approval issued a credential; both rejection paths recorded none.
+- ✅ **T018** Held throughout: `Remove` under the Owner override, which is exactly what T063 then
+  used deliberately. Also applied to the test design — T063's second half proposes a **Transfer**
+  rather than `Remove(steward)`, because if the authority check were broken a `Remove` would strip
+  the last member and leave the SSR with zero members, permanently ungovernable. Never point a live
+  test at an unrecoverable state to find out whether a guard holds.
 
 ## US3 — roster diagnosability
 
