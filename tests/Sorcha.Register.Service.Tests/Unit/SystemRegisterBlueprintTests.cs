@@ -108,7 +108,11 @@ public class SystemRegisterBlueprintTests
         result[0].BlueprintId.Should().Be("bp-1");
         result[0].Version.Should().Be(1);
         result[1].BlueprintId.Should().Be("bp-2");
-        result[1].Version.Should().Be(2);
+        // 1, not 2: Version counts publications OF THIS blueprint. It used to be a position in the
+        // combined transaction list, which is how register-governance-v1 reported v5 on a node that
+        // had published it exactly once (#1515), and what makes
+        // GET /blueprints/{id}/versions/{version} answerable at all.
+        result[1].Version.Should().Be(1);
     }
 
     [Fact]

@@ -340,6 +340,16 @@ GET /odata/Transactions?$filter=contains(SenderWallet,'1A2B') and TimeStamp gt 2
 
 > The **System Register** is a real register backed by the standard ledger infrastructure. It is bootstrapped on first startup using a pre-signed genesis block. Blueprint entries are stored as control-chain transactions on the well-known system register (ID: `aebf26362e079087571ac0932d4db973`).
 
+**What `version` means.** It is a count of how many times *that* blueprint has been published — the
+first publication is `1`. It is not a docket number and not a position in the register's transaction
+list. A blueprint published once stays at version 1 no matter how much other activity the system
+register accumulates.
+
+Only transactions that *publish* a blueprint are indexed. Governance transactions carry
+`BlueprintId = register-governance-v1` too — a proposal, an approval and an enactment are all action
+submissions against that workflow — but they publish nothing, and indexing them made the governance
+blueprint resolve to the newest governance *control transaction* rather than to itself (#1515).
+
 #### Bootstrap Mode Configuration (Feature 100)
 
 The `SystemRegister:BootstrapMode` setting controls how the system register is obtained on startup:

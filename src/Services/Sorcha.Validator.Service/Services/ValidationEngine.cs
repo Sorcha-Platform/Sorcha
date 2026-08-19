@@ -2459,6 +2459,26 @@ public class ValidationEngine : IValidationEngine
                 _logger.LogWarning(
                     "System register returned blueprint {BlueprintId} but it did not deserialize",
                     blueprintId);
+                return null;
+            }
+
+            // #1515: a governance control transaction is valid JSON, so it deserializes into a
+            // BlueprintModel without complaint — just an empty one. Returning it produced
+            // "VAL_SCHEMA_003: Action N not found", an error that names the wrong thing and sends
+            // the reader looking for a missing action in a blueprint that is in fact correct.
+            //
+            // The filter in SystemRegisterService.IsBlueprintPublication is the fix; this is the
+            // backstop, so any FUTURE way of resolving a non-blueprint fails here, loudly, naming
+            // the resolution rather than the symptom.
+            if (blueprint.Actions is null || blueprint.Actions.Count == 0)
+            {
+                _logger.LogError(
+                    "System register resolved {BlueprintId} to a payload that is not a blueprint: it "
+                    + "deserialized with no actions (id '{ResolvedId}'). Treating as unresolved. This "
+                    + "is the #1515 shape — check that the system register's blueprint lookup is not "
+                    + "returning a governance control transaction.",
+                    blueprintId, blueprint.Id ?? "(none)");
+                return null;
             }
 
             return blueprint;
