@@ -69,6 +69,125 @@ public class OrganizationServiceTests : IDisposable
             config);
     }
 
+    // ── #1525: the org admin creates the organisation's wallet ──
+
+    [Fact]
+    public async Task CreateOrganizationAsync_DoesNotProvisionAWallet()
+    {
+        // The whole point of #1525. Creating the wallet server-side generates a BIP39 recovery
+        // phrase with no human present to receive it — it is shown once and never stored, so the
+        // organisation becomes unrecoverable. A null WalletAddress is the "awaiting its wallet"
+        // state, and the org admin fills it deliberately.
+        var service = CreateService();
+        Organization? saved = null;
+        _orgRepoMock.Setup(r => r.CreateAsync(It.IsAny<Organization>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Organization o, CancellationToken _) => { saved = o; return o; });
+
+        await service.CreateOrganizationAsync(
+            new Sorcha.Tenant.Service.Models.Dtos.CreateOrganizationRequest { Name = "Acme", Subdomain = "acme" },
+            Guid.NewGuid());
+
+        saved!.WalletAddress.Should().BeNull();
+        _walletClientMock.Verify(w => w.CreateWalletAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<CancellationToken>()),
+            Times.Never,
+            "the platform must never mint an organisation's wallet — its recovery phrase belongs to the org admin");
+    }
+
+    [Fact]
+    public async Task LinkOrganizationWalletAsync_WalletOwnedByTheOrg_IsRecorded()
+    {
+        var service = CreateService();
+        var org = new Organization { Id = _testOrgId, Name = "Acme", Subdomain = "acme" };
+        _orgRepoMock.Setup(r => r.GetByIdAsync(_testOrgId, It.IsAny<CancellationToken>())).ReturnsAsync(org);
+        GivenWallet("ws11qacme", owner: _testOrgId.ToString());
+
+        var result = await service.LinkOrganizationWalletAsync(_testOrgId, "ws11qacme");
+
+        result.Should().NotBeNull();
+        org.WalletAddress.Should().Be("ws11qacme");
+        org.PublicKey.Should().Be("pk-ws11qacme");
+        org.SigningAlgorithm.Should().Be("ED25519");
+    }
+
+    [Fact]
+    public async Task LinkOrganizationWalletAsync_WalletOwnedByAnotherOrg_IsRefused()
+    {
+        // Addresses are public, so without an ownership check an admin could adopt any wallet whose
+        // address they happen to know — and the org's issuer DID would then anchor on a key they do
+        // not control.
+        var service = CreateService();
+        _orgRepoMock.Setup(r => r.GetByIdAsync(_testOrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Organization { Id = _testOrgId, Name = "Acme", Subdomain = "acme" });
+        GivenWallet("ws11qsomeoneelse", owner: Guid.NewGuid().ToString());
+
+        var act = () => service.LinkOrganizationWalletAsync(_testOrgId, "ws11qsomeoneelse");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*not owned by organisation*");
+    }
+
+    [Fact]
+    public async Task LinkOrganizationWalletAsync_UnknownWallet_IsRefused()
+    {
+        var service = CreateService();
+        _orgRepoMock.Setup(r => r.GetByIdAsync(_testOrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Organization { Id = _testOrgId, Name = "Acme", Subdomain = "acme" });
+        _walletClientMock.Setup(w => w.GetWalletAsync("ws11qnope", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((WalletInfo?)null);
+
+        var act = () => service.LinkOrganizationWalletAsync(_testOrgId, "ws11qnope");
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*does not exist*");
+    }
+
+    [Fact]
+    public async Task LinkOrganizationWalletAsync_OrgAlreadyHasAWallet_IsRefused()
+    {
+        // Replacing the canonical wallet orphans every credential issued under the old one and
+        // every governance roster entry matched against it. That is a deliberate migration, never
+        // a side effect of calling this twice.
+        var service = CreateService();
+        _orgRepoMock.Setup(r => r.GetByIdAsync(_testOrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Organization
+            {
+                Id = _testOrgId, Name = "Acme", Subdomain = "acme", WalletAddress = "ws11qexisting"
+            });
+
+        var act = () => service.LinkOrganizationWalletAsync(_testOrgId, "ws11qnew");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*already has a wallet*");
+        _walletClientMock.Verify(w => w.GetWalletAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never, "it should refuse before looking anything up");
+    }
+
+    [Fact]
+    public async Task LinkOrganizationWalletAsync_UnknownOrg_ReturnsNull()
+    {
+        var service = CreateService();
+        _orgRepoMock.Setup(r => r.GetByIdAsync(_testOrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Organization?)null);
+
+        var result = await service.LinkOrganizationWalletAsync(_testOrgId, "ws11qwhatever");
+
+        result.Should().BeNull();
+    }
+
+    private void GivenWallet(string address, string owner) =>
+        _walletClientMock.Setup(w => w.GetWalletAsync(address, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WalletInfo
+            {
+                Address = address,
+                Name = $"org-{owner}-signing",
+                PublicKey = $"pk-{address}",
+                Algorithm = "ED25519",
+                Status = "Active",
+                Owner = owner,
+                Tenant = owner
+            });
+
     // ── Helper methods ─────────────────────────────────────────
 
     private PlatformUser SeedPlatformUser(Guid id, string email, bool emailVerified = false,

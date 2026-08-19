@@ -67,16 +67,14 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
         if (existing is not null)
         {
             // The key exists, but that says nothing about whether its DID document was ever
-            // published. The eager publish below races Tenant's OrgWalletReconciliationService,
-            // which provisions the org's canonical wallet asynchronously — for a brand-new org the
-            // derive wins that race by a few seconds, the publish is skipped, and this early return
-            // meant nothing ever re-attempted it (issue #1518).
+            // published — it cannot be for an organisation whose admin has not yet created its
+            // canonical wallet, since that wallet is what the document anchors on (#1525). Publish
+            // it here so the org becomes resolvable as soon as the wallet exists, rather than only
+            // at its first signature.
             //
-            // Issuance itself was never at risk: GetActiveSigningMaterialAsync re-ensures before
-            // every signature and fails closed. But that leaves did.json 404 for the whole window
-            // between deriving a key and first signing with it, so an org can advertise an issuance
-            // key whose issuer DID does not resolve — and any consumer reading the document before
-            // the org has issued anything gets a 404.
+            // Issuance is unaffected either way: GetActiveSigningMaterialAsync re-ensures before
+            // every signature and fails closed, so a credential is never minted under an issuer DID
+            // that will not resolve.
             //
             // Best-effort and idempotent: the Tenant side no-ops on an unchanged key-version
             // fingerprint, so this is one round trip, and a failure here must not fail the lookup.

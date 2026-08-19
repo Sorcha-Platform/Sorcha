@@ -25,6 +25,29 @@ public interface IOrganizationService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Records a wallet the ORG ADMIN created as this organisation's canonical signing wallet.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The link half of create-then-link (#1525). The admin creates the wallet against the Wallet
+    /// Service directly, so the BIP39 recovery phrase goes straight from there to them and never
+    /// transits this service — it is shown once and never stored, and it is the organisation's
+    /// secret rather than the platform's.
+    /// </para>
+    /// <para>
+    /// The wallet's owner must be this organisation, or an admin could adopt a wallet they merely
+    /// know the address of. Returns <c>null</c> when the org does not exist.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// The organisation already has a wallet, or the address does not resolve to a wallet owned by it.
+    /// </exception>
+    Task<OrganizationResponse?> LinkOrganizationWalletAsync(
+        Guid organizationId,
+        string walletAddress,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets an organization by ID.
     /// </summary>
     /// <param name="id">Organization ID.</param>

@@ -147,7 +147,7 @@ public static class ServiceCollectionExtensions
             var dataSource = dataSourceBuilder.Build();
 
             // TODO(db-audit): convert to AddDbContextFactory<TenantDbContext>. Scoped lifetime
-            // forces background services (AuditCleanupService, OrgWalletReconciliationService,
+            // forces background services (AuditCleanupService,
             // CustomDomainVerificationService) to wrap each DB call in IServiceScopeFactory
             // ceremony; the factory pattern (used by Blueprint + Peer) is safer for parallel
             // and background work. Adopting it touches every consumer of TenantDbContext.
@@ -270,7 +270,14 @@ public static class ServiceCollectionExtensions
         services.AddHostedService<CustomDomainVerificationService>();
 
         // Background reconciliation for org wallet provisioning
-        services.AddHostedService<OrgWalletReconciliationService>();
+        // OrgWalletReconciliationService REMOVED (#1525). It swept every 60s for orgs with no
+        // wallet and created one server-side — generating a BIP39 recovery phrase with no human
+        // present to receive it. The phrase is shown once and never stored, so the sweep silently
+        // destroyed it and left organisations unrecoverable. It also masked the fact that the
+        // platform-admin creation path never created a wallet at all, which is what #1518 was
+        // really about. An organisation's wallet is now created by its OWN admin, deliberately,
+        // via POST /api/organizations/{id}/wallet — a null WalletAddress is the awaiting state,
+        // not something for a timer to quietly fix.
 
         return services;
     }
