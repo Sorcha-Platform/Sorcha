@@ -120,6 +120,7 @@ try {
         -Name "Sender Corp" `
         -Subdomain "payload-sender" `
         -AdminEmail $senderEmail `
+        -AdminPassword $userPassword `
         -Headers $sysAdmin.Headers
 } catch {
     if ($_.Exception.Message -match 'already taken|409|duplicate|400') {
@@ -140,6 +141,7 @@ try {
         -Name "Receiver Corp" `
         -Subdomain "payload-receiver" `
         -AdminEmail $receiverEmail `
+        -AdminPassword $userPassword `
         -Headers $sysAdmin.Headers
 } catch {
     if ($_.Exception.Message -match 'already taken|409|duplicate|400') {

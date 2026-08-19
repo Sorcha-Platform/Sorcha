@@ -123,6 +123,7 @@ try {
         -Name "Form Coverage Demo" `
         -Subdomain "form-coverage-demo" `
         -AdminEmail $secrets.submitterEmail `
+        -AdminPassword $secrets.submitterPassword `
         -Headers $sysAdmin.Headers
 } catch {
     if ($_.Exception.Message -match 'already taken|409|duplicate|400') {

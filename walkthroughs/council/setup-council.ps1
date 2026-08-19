@@ -131,21 +131,6 @@ foreach ($u in $teamMemberDefs) {
     Write-WtInfo "  $($u.name) ensured in $($u.orgSubdomain)"
 }
 
-# ── Step 4b: Each org's ADMIN creates that organisation's wallet ──
-# #1525 — the org wallet is what the organisation's issuer DID anchors on and what its governance
-# roster identity is matched against, and its recovery phrase is shown once and never stored. So it
-# is created by an administrator OF THAT ORG, not by the platform. Done here, after membership is
-# reconciled, because that is the first point an admin session exists.
-Write-WtStep "Creating organisation wallets (as each org's admin)"
-foreach ($u in $orgAdminDefs) {
-    $orgId = $orgs[$u.orgSubdomain]
-    $adminSession = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl `
-        -Email $u.email -Password $u.password -OrganizationId $orgId
-    $null = New-SorchaOrgWallet -TenantUrl $sorchaEnv.TenantUrl -WalletUrl $sorchaEnv.WalletUrl `
-        -OrganizationId $orgId -Headers $adminSession.Headers `
-        -Name "org-$($u.orgSubdomain)-signing"
-}
-
 # ── Step 5: Login as each user, create wallets, register participants ─
 Write-WtStep "Creating wallets and registering participants"
 $sessionCache = @{}
