@@ -144,6 +144,7 @@ pwsh walkthroughs/CyberEssentialsUac/run-agents.ps1
 pwsh walkthroughs/CyberEssentialsUac/run-revocation.ps1
 
 # Step 4 — HAIP selective-disclosure variant
+# Local stack only — see "Where the service token comes from" below.
 pwsh walkthroughs/CyberEssentialsUac/run-haip-sd.ps1
 ```
 
@@ -285,10 +286,18 @@ The HAIP variant demonstrates genuine OID4VCI issuance and OID4VP selective disc
 - The local override must be applied (see above) so `Haip__IssuerUrl=http://127.0.0.1`.
 - .NET SDK available (`dotnet run` is used to invoke `src/Apps/Sorcha.Agent/Sorcha.Agent.csproj`).
 
-**Service token:** the `/api/v1/offers/` and `/api/v1/verifier/requests` endpoints require a token with a `client_id` claim (`RequireService` policy). This script exchanges the persisted client credentials for a service token via `POST /api/service-auth/token` using the `client_credentials` grant before making any HAIP calls.
+> **This variant runs against a LOCAL stack only, and does not yet complete even there.** The service-token path is fixed (steps 1-4 pass), but the present step is blocked by **#1538** — F181 US6 made the verifier sign its request object with an X.509 chain (`x5c`, no embedded `jwk`) and `sorcha-agent haip present` only understands embedded-jwk, so it fail-closes. See "Where the service token comes from" below.
+
+**Service token:** exactly one of this script's privileged calls needs one. `POST /api/v1/offers` is `RequireService` (SEC-013) because it mints a credential from the org's issuance key on demand. `POST /api/v1/verifier/requests` and `GET .../result` were relaxed to *any authenticated caller* by F164 B3 (FR-008), so they no longer need a service token at all.
+
+**Where the service token comes from.** `#1397` removed `client_credentials` from the public token endpoint (it was a signing oracle) and moved the grant to `POST /api/internal/service-auth/token`, which the API Gateway deliberately does not route. So the script addresses the Tenant Service **directly** via `-TenantDirectUrl` (default `http://127.0.0.1:5450`, the port docker-compose publishes for development/bootstrap use), not via the gateway.
+
+On a **cert-only node** — F191/#1420, which n1 sets via `ServiceAuth__DisableSharedSecrets=true` — a `client_secret` is refused with an explicit 400 even from inside the network, and the caller must present a workload certificate. Giving a test harness workload cert material would hand a walkthrough a credential-minting service identity, which is the `#1397` shape wearing a different hat. So against such a node the script **skips with an explanation and exits 0** rather than failing in a way that reads like a platform fault.
+
+That trade is deliberate: what this variant proves — that withheld claims are genuinely absent from the wire — is a *protocol* property, and a protocol property does not need production topology to be meaningful. For n1 coverage use `run-agents.ps1`, `run-revocation.ps1` and `run-suspension.ps1`, none of which need a service token.
 
 **Flow:**
-1. Exchange `haip.clientId` + `haip.clientSecret` for a service token (`grant_type=client_credentials`, scope `haip:issue haip:verify`).
+1. Exchange `haip.clientId` + `haip.clientSecret` for a service token (`grant_type=client_credentials`, scope `haip:issue haip:verify`) at `POST {TenantDirectUrl}/api/internal/service-auth/token`.
 2. Create OID4VCI credential offer (`POST /api/v1/offers/`) with all 10 claims listed in `disclosablePaths` so every claim is wrapped as an SD-JWT disclosure.
 3. Agent receives the credential: `dotnet run -- haip receive --offer-uri <uri> --wallet-dir walkthroughs/CyberEssentialsUac/agent-wallet`
    - Written to: `agent-wallet/credentials/CyberEssentialsUacPosture.sdjwt`
