@@ -177,4 +177,166 @@ public class HaipCredentialMinterTests
         presResult.Claims.Should().ContainKey("councilArea");
         presResult.Claims.Should().NotContainKey("name"); // Not disclosed
     }
+    // -------------------------------------------------------------------------
+    // #1540 — the vct type claim. SD-JWT VC §3.2.2.1 makes vct the credential's
+    // SOLE type claim and REQUIRES it; HAIP spent credentialType on the `sub`
+    // string and a log line and wrote no type identifier at all, so no conformant
+    // verifier could match the credential to a requested type.
+    // -------------------------------------------------------------------------
+
+    /// <summary>Decodes the issuer-signed JWT payload of an SD-JWT VC.</summary>
+    private static JsonElement DecodePayload(string rawToken)
+    {
+        var jwt = rawToken.TrimEnd('~').Split('~')[0];
+        var payloadBytes = System.Buffers.Text.Base64Url.DecodeFromChars(jwt.Split('.')[1]);
+        return JsonSerializer.Deserialize<JsonElement>(payloadBytes);
+    }
+
+    /// <summary>The claim names carried by the token's disclosures.</summary>
+    private static List<string> DisclosedNames(string rawToken)
+    {
+        var names = new List<string>();
+        foreach (var d in rawToken.TrimEnd('~').Split('~').Skip(1))
+        {
+            if (string.IsNullOrWhiteSpace(d)) continue;
+            var arr = JsonSerializer.Deserialize<JsonElement>(System.Buffers.Text.Base64Url.DecodeFromChars(d));
+            if (arr.ValueKind == JsonValueKind.Array && arr.GetArrayLength() >= 3)
+            {
+                names.Add(arr[1].GetString()!);
+            }
+        }
+        return names;
+    }
+
+    [Fact]
+    public async Task MintCredentialAsync_Always_WritesVctAsTopLevelClaim()
+    {
+        var (issuerPrivate, _) = GenerateP256KeyPair();
+        var (_, holderPublic) = GenerateP256KeyPair();
+
+        var rawToken = await _minter.MintCredentialAsync(
+            "did:sorcha:org:issuer1",
+            CreateHolderJwk(holderPublic),
+            "CyberEssentialsUacPosture",
+            new Dictionary<string, object> { ["compliant"] = true },
+            disclosablePaths: ["compliant"],
+            signingKey: issuerPrivate,
+            algorithm: "ES256");
+
+        var payload = DecodePayload(rawToken);
+
+        payload.TryGetProperty("vct", out var vct).Should().BeTrue(
+            "vct is REQUIRED by SD-JWT VC and is the credential's only type identifier");
+        vct.GetString().Should().Be("CyberEssentialsUacPosture");
+    }
+
+    [Fact]
+    public async Task MintCredentialAsync_VctListedAsDisclosable_KeepsVctInTheClear()
+    {
+        var (issuerPrivate, _) = GenerateP256KeyPair();
+        var (_, holderPublic) = GenerateP256KeyPair();
+
+        // A holder able to withhold the type identifier would present a credential
+        // indistinguishable from the untyped ones this fix exists to stop.
+        var rawToken = await _minter.MintCredentialAsync(
+            "did:sorcha:org:issuer1",
+            CreateHolderJwk(holderPublic),
+            "LicenseCredential",
+            new Dictionary<string, object> { ["holder"] = "Alice" },
+            disclosablePaths: ["vct", "holder"],
+            signingKey: issuerPrivate,
+            algorithm: "ES256");
+
+        DecodePayload(rawToken).TryGetProperty("vct", out _).Should().BeTrue();
+        DisclosedNames(rawToken).Should().NotContain("vct").And.Contain("holder");
+    }
+
+    [Fact]
+    public async Task MintCredentialAsync_ClaimSetDeclaresConflictingVct_OfferedTypeWins()
+    {
+        var (issuerPrivate, _) = GenerateP256KeyPair();
+        var (_, holderPublic) = GenerateP256KeyPair();
+
+        // The token request was validated against the offer's type, so a credential whose declared
+        // type contradicts it would contradict the authorisation it was minted under.
+        var rawToken = await _minter.MintCredentialAsync(
+            "did:sorcha:org:issuer1",
+            CreateHolderJwk(holderPublic),
+            "OfferedType",
+            new Dictionary<string, object> { ["vct"] = "SomethingElse", ["holder"] = "Alice" },
+            disclosablePaths: null,
+            signingKey: issuerPrivate,
+            algorithm: "ES256");
+
+        DecodePayload(rawToken).GetProperty("vct").GetString().Should().Be("OfferedType");
+    }
+
+    [Fact]
+    public async Task MintCredentialAsync_Always_LeavesTheCallersClaimDictionaryUnmutated()
+    {
+        var (issuerPrivate, _) = GenerateP256KeyPair();
+        var (_, holderPublic) = GenerateP256KeyPair();
+
+        // offer.Claims belongs to a stored offer that may be read again.
+        var callerClaims = new Dictionary<string, object> { ["holder"] = "Alice" };
+
+        await _minter.MintCredentialAsync(
+            "did:sorcha:org:issuer1",
+            CreateHolderJwk(holderPublic),
+            "LicenseCredential",
+            callerClaims,
+            disclosablePaths: null,
+            signingKey: issuerPrivate,
+            algorithm: "ES256");
+
+        callerClaims.Should().NotContainKey("vct").And.HaveCount(1);
+    }
+
+    [Fact]
+    public async Task MintCredentialAsync_NullDisclosableSet_StillDisclosesEveryClaimExceptVct()
+    {
+        var (issuerPrivate, _) = GenerateP256KeyPair();
+        var (_, holderPublic) = GenerateP256KeyPair();
+
+        // SdJwtService treats a null set as "every claim is disclosable"
+        // (disclosableClaims?.ToList() ?? claims.Keys.ToList()). Excluding vct must not be done by
+        // forwarding null — that would put vct back in a disclosure — nor by collapsing the set to
+        // empty, which would silently stop disclosing anything for every caller that omits it.
+        var rawToken = await _minter.MintCredentialAsync(
+            "did:sorcha:org:issuer1",
+            CreateHolderJwk(holderPublic),
+            "LicenseCredential",
+            new Dictionary<string, object> { ["holder"] = "Alice", ["region"] = "Highland" },
+            disclosablePaths: null,
+            signingKey: issuerPrivate,
+            algorithm: "ES256");
+
+        DecodePayload(rawToken).GetProperty("vct").GetString().Should().Be("LicenseCredential");
+        DisclosedNames(rawToken).Should().BeEquivalentTo(["holder", "region"],
+            "a null set still means every claim is disclosable — except the type identifier");
+    }
+
+    [Fact]
+    public async Task MintCredentialWithExternalSignerAsync_Always_WritesVctAsTopLevelClaim()
+    {
+        // The sign-on-behalf overload is the path a real org issuance takes (Feature 120 kid-swap).
+        // It had the identical defect, so it needs its own assertion — one overload passing proves
+        // nothing about the other.
+        using var issuerKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var (_, holderPublic) = GenerateP256KeyPair();
+
+        var rawToken = await _minter.MintCredentialWithExternalSignerAsync(
+            "did:sorcha:org:issuer1",
+            CreateHolderJwk(holderPublic),
+            "CyberEssentialsUacPosture",
+            new Dictionary<string, object> { ["compliant"] = true },
+            disclosablePaths: ["vct", "compliant"],
+            externalSigner: (data, _) => Task.FromResult(
+                issuerKey.SignData(data, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation)),
+            algorithm: "ES256",
+            kid: "did:sorcha:org:issuer1#vc-issuance-1");
+
+        DecodePayload(rawToken).GetProperty("vct").GetString().Should().Be("CyberEssentialsUacPosture");
+        DisclosedNames(rawToken).Should().NotContain("vct");
+    }
 }
