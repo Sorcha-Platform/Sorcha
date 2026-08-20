@@ -29,6 +29,23 @@ public class PlatformSettingsResponse
     public string PublicOrgStatus { get; set; } = string.Empty;
 
     /// <summary>
+    /// The public organisation's signing wallet address, once it has one (#1530).
+    /// </summary>
+    public string? PublicOrgWalletAddress { get; set; }
+
+    /// <summary>
+    /// The public organisation's BIP39 recovery phrase — present ONLY on the response to the enable
+    /// that first created its wallet, and never again.
+    /// </summary>
+    /// <remarks>
+    /// It is shown once, stored nowhere, and cannot be reissued by anyone including Sorcha. Every
+    /// other organisation's phrase goes to an administrator of that organisation; the public
+    /// organisation has none, so it goes to the system administrator who enabled it. If they do not
+    /// record it, the public organisation can never be recovered.
+    /// </remarks>
+    public string[]? PublicOrgRecoveryPhrase { get; set; }
+
+    /// <summary>
     /// Timestamp of the last settings modification (UTC).
     /// </summary>
     public DateTimeOffset UpdatedAt { get; set; }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ServiceClients.Wallet;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sorcha.Tenant.Service.Data;
@@ -22,10 +23,16 @@ public class PlatformSettingsService : IPlatformSettingsService
     /// </summary>
     /// <param name="dbContext">The tenant database context.</param>
     /// <param name="logger">Logger instance.</param>
-    public PlatformSettingsService(TenantDbContext dbContext, ILogger<PlatformSettingsService> logger)
+    private readonly IWalletServiceClient? _walletClient;
+
+    public PlatformSettingsService(
+        TenantDbContext dbContext,
+        ILogger<PlatformSettingsService> logger,
+        IWalletServiceClient? walletClient = null)
     {
         _dbContext = dbContext;
         _logger = logger;
+        _walletClient = walletClient;
     }
 
     /// <inheritdoc />
@@ -42,7 +49,7 @@ public class PlatformSettingsService : IPlatformSettingsService
     }
 
     /// <inheritdoc />
-    public async Task<PlatformSettings> UpdatePublicOrgEnabledAsync(bool enabled, Guid updatedBy, CancellationToken ct = default)
+    public async Task<PublicOrgEnableResult> UpdatePublicOrgEnabledAsync(bool enabled, Guid updatedBy, CancellationToken ct = default)
     {
         var settings = await GetAsync(ct);
 
@@ -64,6 +71,46 @@ public class PlatformSettingsService : IPlatformSettingsService
             _logger.LogWarning("Public organisation {PublicOrgId} not found — skipping org status update", WellKnownIds.PublicOrgId);
         }
 
+        // #1530 — give the public organisation its OWN wallet, the first time it is enabled.
+        //
+        // Every other organisation's wallet is created by an administrator OF that organisation,
+        // because the BIP39 recovery phrase is shown once, never stored and can never be reissued
+        // (#1525). The public organisation has no administrator of its own, so nobody can do that
+        // for it — and it was previously left with no wallet at all, which is why callers ended up
+        // trying to auto-subscribe it with someone else's credentials and getting a 403.
+        //
+        // The system administrator performing this enable IS the human in the loop, so the phrase
+        // goes to them, in the response, once. First time only: re-enabling must never re-mint,
+        // because replacing the wallet would orphan anything already issued under the old one.
+        string[]? mnemonic = null;
+        if (enabled && publicOrg is not null && string.IsNullOrWhiteSpace(publicOrg.WalletAddress)
+            && _walletClient is not null)
+        {
+            var created = await _walletClient.CreatePlatformOrgWalletAsync(
+                publicOrg.Id, $"org-{publicOrg.Subdomain}-signing", "ED25519", ct);
+
+            if (created is not null)
+            {
+                publicOrg.WalletAddress = created.Address;
+                publicOrg.PublicKey = created.PublicKey;
+                publicOrg.SigningAlgorithm = created.Algorithm;
+                mnemonic = created.MnemonicWords;
+
+                _logger.LogInformation(
+                    "Public organisation wallet created on first enable: {Address}. Its recovery "
+                    + "phrase was returned to {UpdatedBy} and is stored nowhere.",
+                    created.Address, updatedBy);
+            }
+            else
+            {
+                // Not fatal — enabling must still take effect. But say so plainly: the organisation
+                // is enabled without a wallet and someone has to notice.
+                _logger.LogWarning(
+                    "Public organisation was enabled but its wallet could not be created. It has no "
+                    + "signing identity until one is; re-run the enable to try again.");
+            }
+        }
+
         await _dbContext.SaveChangesAsync(ct);
 
         _logger.LogInformation(
@@ -71,7 +118,7 @@ public class PlatformSettingsService : IPlatformSettingsService
             enabled,
             updatedBy);
 
-        return settings;
+        return new PublicOrgEnableResult(settings, publicOrg?.WalletAddress, mnemonic);
     }
 
     /// <inheritdoc />

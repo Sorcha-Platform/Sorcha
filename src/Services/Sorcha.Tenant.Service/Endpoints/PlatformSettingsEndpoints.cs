@@ -77,11 +77,19 @@ public static class PlatformSettingsEndpoints
         CancellationToken ct)
     {
         var userId = GetUserId(httpContext);
-        var settings = await settingsService.UpdatePublicOrgEnabledAsync(request.Enabled, userId, ct);
+        var result = await settingsService.UpdatePublicOrgEnabledAsync(request.Enabled, userId, ct);
         var publicOrg = await dbContext.Organizations
             .FirstOrDefaultAsync(o => o.Id == WellKnownIds.PublicOrgId, ct);
 
-        return TypedResults.Ok(MapToResponse(settings, publicOrg));
+        var response = MapToResponse(result.Settings, publicOrg);
+        response.PublicOrgWalletAddress = result.WalletAddress;
+
+        // #1530 — present ONLY on the enable that first created the wallet. Shown once, stored
+        // nowhere, impossible to reissue: this response is the only moment it exists outside the
+        // wallet itself, and the administrator reading it is the only person who will ever hold it.
+        response.PublicOrgRecoveryPhrase = result.MnemonicWords;
+
+        return TypedResults.Ok(response);
     }
 
     /// <summary>

@@ -398,6 +398,7 @@ app.MapCredentialEndpoints();
 app.MapPresentationEndpoints();
 app.MapOrgKeyEndpoints();
 app.MapIssuanceKeyEndpoints();
+app.MapPlatformOrgWalletInternalEndpoints();
 app.MapFileDownloadEndpoints();
 app.MapPersonaCryptoEndpoints();
 

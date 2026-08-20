@@ -670,6 +670,44 @@ public class WalletServiceClient : IWalletServiceClient
         }
     }
 
+    /// <inheritdoc />
+    public async Task<PlatformOrgWalletResult?> CreatePlatformOrgWalletAsync(
+        Guid organizationId,
+        string? name = null,
+        string? algorithm = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Creating platform-org wallet for organisation {OrgId}", organizationId);
+
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var body = new { organizationId, name, algorithm };
+            var response = await _httpClient.PostAsJsonAsync(
+                "/api/internal/platform-org-wallet", body, JsonOptions, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Platform-org wallet creation returned {Status} for organisation {OrgId}",
+                    response.StatusCode, organizationId);
+                return null;
+            }
+
+            return await response.Content
+                .ReadFromJsonAsync<PlatformOrgWalletResult>(SorchaJson.Options, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // Never throws: enabling the public organisation must not fail because its wallet could
+            // not be minted. The caller reports that the wallet is outstanding instead.
+            _logger.LogWarning(ex,
+                "Platform-org wallet creation failed for organisation {OrgId}", organizationId);
+            return null;
+        }
+    }
+
     // =========================================================================
     // Org Key Management Operations
     // =========================================================================

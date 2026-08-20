@@ -365,6 +365,28 @@ public interface IWalletServiceClient
         string tenant,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Creates a wallet owned by a PLATFORM organisation and returns its recovery phrase (#1530).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Deliberate, narrow exception to #1525. Organisation wallets are normally created by an
+    /// administrator OF that organisation, because the BIP39 phrase is shown once, never stored and
+    /// cannot be reissued — a server-side create hands it to nobody and the organisation becomes
+    /// unrecoverable. A platform organisation has no administrator of its own, so the platform
+    /// creates it on behalf of the system administrator who is present, and gives them the phrase.
+    /// </para>
+    /// <para>
+    /// <b>The caller MUST surface the returned phrase to that administrator.</b> Dropping it
+    /// reintroduces exactly the defect this exists to avoid, silently.
+    /// </para>
+    /// </remarks>
+    Task<PlatformOrgWalletResult?> CreatePlatformOrgWalletAsync(
+        Guid organizationId,
+        string? name = null,
+        string? algorithm = null,
+        CancellationToken cancellationToken = default);
+
     // =========================================================================
     // Org Key Management Operations
     // =========================================================================
@@ -540,6 +562,20 @@ public class CredentialIssuanceResult
 /// <summary>
 /// Wallet information returned by the Wallet Service
 /// </summary>
+/// <summary>
+/// A platform organisation's newly-created wallet and its recovery phrase (#1530).
+/// </summary>
+/// <remarks>
+/// <see cref="MnemonicWords"/> is returned ONCE and stored nowhere. It must reach the administrator
+/// who triggered the creation, or the organisation cannot ever be recovered.
+/// </remarks>
+public sealed record PlatformOrgWalletResult(
+    Guid OrganizationId,
+    string Address,
+    string PublicKey,
+    string Algorithm,
+    string[] MnemonicWords);
+
 public class WalletInfo
 {
     /// <summary>
