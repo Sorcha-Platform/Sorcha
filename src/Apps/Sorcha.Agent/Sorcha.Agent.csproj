@@ -56,6 +56,10 @@
     <ProjectReference Include="..\..\Common\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Blueprint.Models\Sorcha.Blueprint.Models.csproj" />
     <ProjectReference Include="..\..\Core\Sorcha.Blueprint.Engine\Sorcha.Blueprint.Engine.csproj" />
+    <!-- #1538 — RequestObjectValidator: the ONE implementation of OpenID4VP verifier
+         authentication (x5c leaf verify, SAN vs x509_san_dns client_id, chain to anchor).
+         Referenced rather than re-implemented so the agent and the wallet cannot drift. -->
+    <ProjectReference Include="..\..\Common\Sorcha.Verifier.Engine\Sorcha.Verifier.Engine.csproj" />
   </ItemGroup>
 
 </Project>
