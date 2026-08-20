@@ -19,18 +19,29 @@
 #     (haip-service needs Haip__IssuerUrl=http://127.0.0.1)
 #   - .NET SDK installed (sorcha-agent is run via `dotnet run`)
 #
-# SERVICE TOKEN NOTE:
-#   The /api/v1/offers/ and /api/v1/verifier/requests + /result endpoints require a token
-#   with a client_id claim (HAIP Service, Program.cs:38-40: RequireService policy =
-#   RequireAuthenticatedUser + RequireClaim("client_id")). This script uses a real
-#   client_credentials service token obtained from /api/service-auth/token using the
-#   service principal credentials persisted by setup.ps1 in state.json → haip.clientId
-#   + haip.clientSecret.
+# WHERE THIS RUNS:
+#   LOCAL STACK ONLY. POST /api/v1/offers is RequireService (SEC-013), the service token has
+#   to come from /api/internal/service-auth/token (#1397 moved it off the public route), and
+#   the API Gateway does not route /api/internal/* — so the Tenant Service is addressed
+#   directly via -TenantDirectUrl (default http://127.0.0.1:5450, published by docker-compose).
+#   A cert-only node such as n1 (F191 ServiceAuth__DisableSharedSecrets) refuses a
+#   client_secret outright, and the script SKIPS with an explanation rather than failing in a
+#   way that reads like a platform fault. The full reasoning is in the Step 1 comment.
+#
+#   Run against n1 instead: run-agents.ps1 / run-revocation.ps1 / run-suspension.ps1, which
+#   need no service token.
 
 param(
     [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
     [string]$Profile = 'gateway',
     [string]$GatewayUrl,
+    # Direct address of the Tenant Service, used ONLY to mint the HAIP service token from
+    # /api/internal/service-auth/token. That route is deliberately not published through the
+    # API Gateway (#1397), so it cannot be reached at $GatewayUrl -- it needs the service's own
+    # address. docker-compose publishes it on TENANT_PORT (default 5450) "for direct access
+    # during development/bootstrap", which is exactly this. See the Step 1 comment for why a
+    # hardened remote node cannot be targeted this way.
+    [string]$TenantDirectUrl = "http://127.0.0.1:5450",
     [switch]$ShowJson
 )
 
@@ -112,47 +123,66 @@ if (-not (Test-Path $walletDir)) {
 
 $secrets = Get-SorchaSecrets -WalkthroughName "cyber-essentials-uac"
 
-# SERVICE TOKEN — client_credentials for the service principal registered by setup.ps1. The
-# resulting token carries a client_id claim and token_type=service, satisfying the RequireService
-# policy on /api/v1/offers/ and /api/v1/verifier/requests + /result.
+# SERVICE TOKEN — client_credentials for the service principal registered by setup.ps1.
 #
-# ⚠ THIS PATH IS CLOSED FROM OUTSIDE THE NETWORK, and has been since #1397.
+# Exactly ONE of this script's three privileged calls actually needs a service token:
 #
-#   • #1397 removed client_credentials from the PUBLIC token endpoint (it was a signing oracle).
-#     The grant now lives on POST /api/internal/service-auth/token, reachable only from inside
-#     the internal network.
-#   • F191 then made service-to-service auth CERT-ONLY on n1 (ServiceAuth:DisableSharedSecrets),
-#     so even reaching the internal endpoint, a client_secret is refused with an explicit 400 —
-#     the caller must present a workload certificate.
+#   POST /api/v1/offers             RequireService (SEC-013)   <-- needs it
+#   POST /api/v1/verifier/requests  RequireAuthorization()     <-- any authenticated caller
+#   GET  .../result                 RequireAuthorization()     <-- any authenticated caller
 #
-# So an external walkthrough script cannot mint a service token at all. That is a deliberate
-# security posture, not a regression, and repointing the URL would not fix it. Skipping with an
-# explanation beats failing with a confusing 400 that reads like a platform fault (#1503) — and
-# beats inventing a fake success path (CLAUDE.md §18).
+# The verifier pair was relaxed to any-authenticated-caller by F164 B3 (FR-008). The offer
+# endpoint mints a credential from the org's issuance key on demand, which is precisely the kind
+# of oracle SEC-013 and #1397 exist to keep off a public route — so it stays RequireService and
+# this script has to hold one.
 #
-# To run this variant, it needs an in-network runner holding workload cert material. Tracked on
-# #1503.
+# WHERE that token can be minted is what scopes this variant to a local stack:
+#
+#   * #1397 removed client_credentials from the PUBLIC token endpoint (it was a signing oracle).
+#     The grant moved to POST /api/internal/service-auth/token, which the API Gateway
+#     deliberately does not route — so it is unreachable at $GatewayUrl on ANY node, local or
+#     remote. It has to be addressed at the Tenant Service directly ($TenantDirectUrl), which
+#     docker-compose publishes on TENANT_PORT (default 5450) for exactly this bootstrap use.
+#   * F191 then made service-to-service auth CERT-ONLY on n1 (docker-compose.n1.yml sets
+#     ServiceAuth__DisableSharedSecrets=true), so there a client_secret is refused with an
+#     explicit 400 even from inside the network — the caller must present a workload
+#     certificate. Handing a test harness workload cert material would give a walkthrough a
+#     credential-minting service identity, which is the #1397 shape wearing a different hat.
+#
+# So this variant runs in full against a LOCAL stack and skips with an explanation against a
+# hardened remote node. That is the right trade: what it proves — that withheld claims are
+# genuinely absent from the wire — is a PROTOCOL property, and a protocol property does not need
+# production topology to be meaningful. Skipping beats inventing a fake success path
+# (CLAUDE.md §18).
 $tokenResp = $null
+$tokenUri  = "$($TenantDirectUrl.TrimEnd('/'))/api/internal/service-auth/token"
 try {
     $encodedSecret = [Uri]::EscapeDataString($state.haip.clientSecret)
     $encodedScope  = [Uri]::EscapeDataString("haip:issue haip:verify")
     $ccBody = "grant_type=client_credentials&client_id=$($state.haip.clientId)&client_secret=$encodedSecret&scope=$encodedScope"
     $tokenResp = Invoke-SorchaApi -Method POST `
-        -Uri "$baseUrl/api/service-auth/token" `
+        -Uri $tokenUri `
         -Body $ccBody `
         -ContentType "application/x-www-form-urlencoded"
 } catch {
     Write-Host ""
     Write-WtBanner "CyberEssentialsUac HAIP/OID4VP variant — SKIPPED (cannot mint a service token)"
-    Write-WtInfo "The public client_credentials grant was closed by #1397, and F191 made s2s auth"
-    Write-WtInfo "cert-only, so no external script can obtain a service token."
-    Write-Host ""
+    Write-WtInfo "Tried: $tokenUri"
     Write-WtInfo "Server said: $($_.Exception.Message)"
     Write-Host ""
-    Write-WtInfo "This is the security posture working as designed — not a platform fault."
-    Write-WtInfo "Running it needs an in-network runner with workload cert material. See #1503."
+    Write-WtInfo "Two reasons this fails, and they need different answers:"
+    Write-WtInfo "  1. Not reachable — /api/internal/* is not routed by the API Gateway (#1397)."
+    Write-WtInfo "     Pass -TenantDirectUrl pointing at the Tenant Service itself. The local"
+    Write-WtInfo "     default is http://127.0.0.1:5450; set TENANT_PORT to change it."
+    Write-WtInfo "  2. Refused with a 400 naming DisableSharedSecrets — the node is cert-only"
+    Write-WtInfo "     (F191/#1420, which n1 sets). A client_secret cannot be used there at all,"
+    Write-WtInfo "     and giving this script a workload certificate would hand a test harness a"
+    Write-WtInfo "     credential-minting service identity. Run this variant locally instead."
     Write-Host ""
-    Write-WtInfo "The non-HAIP scenarios are unaffected and still cover the credential lifecycle:"
+    Write-WtInfo "This is the security posture working as designed — not a platform fault."
+    Write-Host ""
+    Write-WtInfo "The non-HAIP scenarios are unaffected and cover the credential lifecycle on any"
+    Write-WtInfo "node, including n1:"
     Write-WtInfo "  pwsh walkthroughs/CyberEssentialsUac/run-agents.ps1      -Profile n1"
     Write-WtInfo "  pwsh walkthroughs/CyberEssentialsUac/run-revocation.ps1  -Profile n1"
     Write-WtInfo "  pwsh walkthroughs/CyberEssentialsUac/run-suspension.ps1  -Profile n1"
