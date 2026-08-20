@@ -30,6 +30,9 @@
 #
 #   Run against n1 instead: run-agents.ps1 / run-revocation.ps1 / run-suspension.ps1, which
 #   need no service token.
+#
+#   ⚠ EVEN LOCALLY THIS DOES NOT YET COMPLETE — blocked at the present step by #1538 (the agent
+#   cannot verify an x5c-signed request object). See the Step 1 comment.
 
 param(
     [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
@@ -149,11 +152,18 @@ $secrets = Get-SorchaSecrets -WalkthroughName "cyber-essentials-uac"
 #     certificate. Handing a test harness workload cert material would give a walkthrough a
 #     credential-minting service identity, which is the #1397 shape wearing a different hat.
 #
-# So this variant runs in full against a LOCAL stack and skips with an explanation against a
-# hardened remote node. That is the right trade: what it proves — that withheld claims are
-# genuinely absent from the wire — is a PROTOCOL property, and a protocol property does not need
-# production topology to be meaningful. Skipping beats inventing a fake success path
-# (CLAUDE.md §18).
+# So the token is obtainable against a LOCAL stack, and the script skips with an explanation
+# against a hardened remote node. That is the right trade: what this variant proves — that
+# withheld claims are genuinely absent from the wire — is a PROTOCOL property, and a protocol
+# property does not need production topology to be meaningful. Skipping beats inventing a fake
+# success path (CLAUDE.md §18).
+#
+# ⚠ THE SCRIPT STILL DOES NOT COMPLETE, for an unrelated second reason found by running it:
+#   #1538 — `sorcha-agent haip present` cannot verify the request object. F181 US6 made the
+#   verifier sign it with an X.509 chain (`x5c`, no embedded `jwk`), and the agent's only
+#   verification path is embedded-jwk, so it fail-closes with "JOSE header carries no embedded
+#   'jwk' to verify against". Steps 1-4 (token, offer, OID4VCI receive, verifier request) all
+#   pass; step 5 does not. Fixing the token path was necessary but not sufficient.
 $tokenResp = $null
 $tokenUri  = "$($TenantDirectUrl.TrimEnd('/'))/api/internal/service-auth/token"
 try {

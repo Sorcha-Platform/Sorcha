@@ -286,7 +286,7 @@ The HAIP variant demonstrates genuine OID4VCI issuance and OID4VP selective disc
 - The local override must be applied (see above) so `Haip__IssuerUrl=http://127.0.0.1`.
 - .NET SDK available (`dotnet run` is used to invoke `src/Apps/Sorcha.Agent/Sorcha.Agent.csproj`).
 
-> **This variant runs against a LOCAL stack only.** See "Where the service token comes from" below.
+> **This variant runs against a LOCAL stack only, and does not yet complete even there.** The service-token path is fixed (steps 1-4 pass), but the present step is blocked by **#1538** — F181 US6 made the verifier sign its request object with an X.509 chain (`x5c`, no embedded `jwk`) and `sorcha-agent haip present` only understands embedded-jwk, so it fail-closes. See "Where the service token comes from" below.
 
 **Service token:** exactly one of this script's privileged calls needs one. `POST /api/v1/offers` is `RequireService` (SEC-013) because it mints a credential from the org's issuance key on demand. `POST /api/v1/verifier/requests` and `GET .../result` were relaxed to *any authenticated caller* by F164 B3 (FR-008), so they no longer need a service token at all.
 
