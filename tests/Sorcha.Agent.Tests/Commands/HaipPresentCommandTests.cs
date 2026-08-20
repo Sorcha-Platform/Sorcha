@@ -91,7 +91,7 @@ public class HaipPresentCommandTests
     // ---------------------------------------------------------------------
 
     [Fact]
-    public void X5cSignedRequestObject_IsAccepted_AndReturnsPayload()
+    public void ParseRequestObjectPayload_X5cSignedRequestObject_ReturnsPayload()
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         using var cert = MintCert(VerifierHost, key);
@@ -104,7 +104,7 @@ public class HaipPresentCommandTests
     }
 
     [Fact]
-    public void X5cSignedRequestObject_WithNoAnchors_ProceedsAsAuthenticButUntrusted()
+    public void ParseRequestObjectPayload_X5cSignedWithNoAnchors_ProceedsAsAuthenticButUntrusted()
     {
         // FR-027: absent anchors must NEVER block. A dev verifier self-signs, so this is the
         // ordinary local path — refusing here would break every local HAIP run.
@@ -118,7 +118,7 @@ public class HaipPresentCommandTests
     }
 
     [Fact]
-    public void X5cSignedRequestObject_ChainingToSuppliedAnchor_IsTrusted()
+    public void ParseRequestObjectPayload_ChainsToSuppliedAnchor_SatisfiesRequireTrusted()
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         using var cert = MintCert(VerifierHost, key);
@@ -140,7 +140,7 @@ public class HaipPresentCommandTests
     // ---------------------------------------------------------------------
 
     [Fact]
-    public void TamperedPayload_IsRefused_EvenWithEveryPermissiveFlag()
+    public void ParseRequestObjectPayload_TamperedPayload_IsRefusedDespiteEveryPermissiveFlag()
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         using var cert = MintCert(VerifierHost, key);
@@ -159,7 +159,7 @@ public class HaipPresentCommandTests
     }
 
     [Fact]
-    public void SanNotMatchingTheClientIdHost_IsRefused()
+    public void ParseRequestObjectPayload_SanNotMatchingClientIdHost_IsRefused()
     {
         // The certificate is for a DIFFERENT host than the client_id claims — what a substituted
         // verifier looks like. Must be a hard refusal, not a warning.
@@ -175,7 +175,7 @@ public class HaipPresentCommandTests
     }
 
     [Fact]
-    public void PinnedClientIdNotMatchingTheRequestObject_IsRefused()
+    public void ParseRequestObjectPayload_PinnedClientIdMismatch_IsRefused()
     {
         // Pinning out-of-band is what turns internal consistency into identity: the cert is genuinely
         // for verifier.sorcha.test, but the caller expected someone else.
@@ -195,7 +195,7 @@ public class HaipPresentCommandTests
     // ---------------------------------------------------------------------
 
     [Fact]
-    public void EmbeddedJwkWithoutX5c_IsRefusedByDefault()
+    public void ParseRequestObjectPayload_EmbeddedJwkWithoutX5c_IsRefusedByDefault()
     {
         // The pre-#1538 shape. A key the signer puts in its own header is self-asserted, so it
         // authenticates nobody — an unattended agent must not present against it silently.
@@ -208,7 +208,7 @@ public class HaipPresentCommandTests
     }
 
     [Fact]
-    public void EmbeddedJwkWithoutX5c_IsPermittedWithExplicitOptIn()
+    public void ParseRequestObjectPayload_EmbeddedJwkWithoutX5c_IsPermittedWithOptIn()
     {
         var jwt = SignWithEmbeddedJwk(SamplePayload());
 
@@ -219,7 +219,7 @@ public class HaipPresentCommandTests
     }
 
     [Fact]
-    public void UnsignedJsonBody_IsRefusedByDefault()
+    public void ParseRequestObjectPayload_UnsignedJsonBody_IsRefusedByDefault()
     {
         var act = () => HaipPresentCommand.ParseRequestObjectPayload(SamplePayload(), Default);
 
@@ -228,7 +228,7 @@ public class HaipPresentCommandTests
     }
 
     [Fact]
-    public void UnsignedJsonBody_IsPermittedWithExplicitOptIn()
+    public void ParseRequestObjectPayload_UnsignedJsonBody_IsPermittedWithOptIn()
     {
         var payload = HaipPresentCommand.ParseRequestObjectPayload(
             "  " + SamplePayload(), new RequestObjectTrustPolicy(AllowUnverified: true));
@@ -237,7 +237,7 @@ public class HaipPresentCommandTests
     }
 
     [Fact]
-    public void AuthenticButUntrusted_IsRefusedWhenTrustIsRequired()
+    public void ParseRequestObjectPayload_AuthenticButUntrusted_IsRefusedWhenTrustRequired()
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         using var cert = MintCert(VerifierHost, key);
@@ -255,7 +255,7 @@ public class HaipPresentCommandTests
     // ---------------------------------------------------------------------
 
     [Fact]
-    public void HtmlErrorPage_ThrowsWithPreview()
+    public void ParseRequestObjectPayload_HtmlErrorPage_ThrowsWithPreview()
     {
         var html = "<!DOCTYPE html><html><body>502 Bad Gateway</body></html>";
 
@@ -267,7 +267,7 @@ public class HaipPresentCommandTests
     }
 
     [Fact]
-    public void PlainTextError_ThrowsWithPreview()
+    public void ParseRequestObjectPayload_PlainTextError_ThrowsWithPreview()
     {
         var act = () => HaipPresentCommand.ParseRequestObjectPayload("Request not found", Default);
 
@@ -275,7 +275,7 @@ public class HaipPresentCommandTests
     }
 
     [Fact]
-    public void EmptyResponse_Throws()
+    public void ParseRequestObjectPayload_EmptyResponse_Throws()
     {
         var act = () => HaipPresentCommand.ParseRequestObjectPayload("   ", Default);
 
