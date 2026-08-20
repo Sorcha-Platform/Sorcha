@@ -548,6 +548,27 @@ $pres = Get-SorchaCredentialPresentation -CredentialType $type -CredentialId $cr
 Assert ($pres.credentialId -eq $cred.id) "presentation is built from the REVOKED credential"
 ```
 
+**Use the module helpers rather than hand-rolling the snapshot** — three shipped walkthroughs
+hand-rolled it and three got it wrong. `Get-SorchaWalletCredentialUri` builds the listing URI with
+`?status=All` (the default listing is Active-only, so a revoked credential would be absent from the
+"before" set and then read as NEW); `Get-SorchaCredentialIdSnapshot` takes the before-set;
+`Wait-SorchaNewCredential` polls for a credential of that type whose id is not in it:
+
+```powershell
+$listUri = Get-SorchaWalletCredentialUri -WalletUrl $sorchaEnv.WalletUrl -WalletAddress $addr
+$before  = Get-SorchaCredentialIdSnapshot -ListUri $listUri -Headers $h -CredentialType $vct
+# ... the action that issues ...
+$fresh   = Wait-SorchaNewCredential -ListUri $listUri -Headers $h -CredentialType $vct `
+    -ExcludeIds $before -TimeoutSeconds 60
+Assert ($null -ne $fresh) "this action issued a NEW credential and it reached the wallet"
+# then pin $fresh.id into every downstream presentation
+```
+
+`Get-SorchaCredentialIdSnapshot` **throws** on a failed read and deliberately does not default to an
+empty set: an empty before-set makes every credential look new, so the guard would go inert at exactly
+the moment the wallet read is broken. It matches on **both** `type` and `vct`, because the org listing
+returns `type` and the citizen endpoint (`/v1/wallet/credentials`) returns `vct`.
+
 **Assert the subject IS the subject before asserting anything about the result.** Selecting by type
 is fine only when any credential of that type genuinely will do.
 

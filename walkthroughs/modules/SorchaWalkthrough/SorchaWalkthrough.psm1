@@ -1767,6 +1767,117 @@ function Resolve-SorchaCollection {
     return @($Response)
 }
 
+# ============================================================================
+# Credential identity helpers — NEVER select a credential by type alone
+# ============================================================================
+#
+# A wallet ACCUMULATES credentials. It keeps one per happy-path run, and it keeps
+# revoked and suspended ones too. So "a credential of this type exists" is a vacuous
+# assertion from the second run onward, and "the credential of this type" is whichever
+# one happens to be first — usually the oldest.
+#
+# This has now produced FOUR separate wrong verdicts, three of which blamed the platform
+# for behaving correctly:
+#
+#   #1477 defect 2 — member enumeration on a bare array (see Resolve-SorchaCollection)
+#   #1483          — a false "a revoked credential is accepted" security report: the test
+#                    presented an ACTIVE credential and asserted refusal
+#   #1503          — "posture credential delivered" passed on a REVOKED credential from an
+#                    earlier run, which then failed downstream as a 400 that read as a
+#                    platform fault
+#   this sweep     — SelfBuildHouse, TradeFinance and AssuredIdentity all still selecting
+#                    first-of-type
+#
+# The rule these encode: capture the ids present BEFORE the action that issues, then require
+# a credential that is genuinely NEW, and pin THAT id everywhere downstream.
+
+function Get-SorchaWalletCredentialUri {
+    <#
+    .SYNOPSIS
+        Build the credential-listing URI for a wallet, including every status.
+    .DESCRIPTION
+        The default listing returns ACTIVE credentials only — correct holder-side behaviour,
+        but wrong for a snapshot: a revoked or pending-acceptance credential is absent from
+        it, so it would not appear in the "before" set and would then read as NEW.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$WalletUrl,
+        [Parameter(Mandatory)][string]$WalletAddress
+    )
+    "$WalletUrl/v1/wallets/$WalletAddress/credentials/?status=All"
+}
+
+function Get-SorchaCredentialIdSnapshot {
+    <#
+    .SYNOPSIS
+        The ids of every credential of a given type currently in a wallet — the "before" set.
+    .DESCRIPTION
+        Call this BEFORE the action that issues, and pass the result to
+        Wait-SorchaNewCredential as -ExcludeIds.
+
+        THROWS on a failed read, deliberately. Returning an empty set on error would make
+        every credential look new, so the guard would go inert at exactly the moment the
+        wallet read is broken — fail-open, silently, in the one case that matters.
+    .PARAMETER CredentialType
+        Matched against BOTH `type` and `vct`: the org listing returns `type`, the citizen
+        endpoint (/v1/wallet/credentials) returns `vct`.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ListUri,
+        [Parameter(Mandatory)]$Headers,
+        [Parameter(Mandatory)][string]$CredentialType
+    )
+
+    $response = Invoke-SorchaApi -Method GET -Uri $ListUri -Headers $Headers
+    @(Resolve-SorchaCollection -Response $response -PropertyName 'credentials' |
+        Where-Object { $_.type -eq $CredentialType -or $_.vct -eq $CredentialType } |
+        ForEach-Object { $_.id })
+}
+
+function Wait-SorchaNewCredential {
+    <#
+    .SYNOPSIS
+        Poll a wallet until a credential of the given type arrives that was NOT in the
+        snapshot, and return it. $null on timeout.
+    .DESCRIPTION
+        Credential delivery is asynchronous: the credential is sealed into the action
+        transaction's recipient-addressed disclosure group, replicated, and only then
+        decrypted and persisted by the recipient's InboundCredentialDetector. So the
+        /execute response is not the delivery signal — the recipient's wallet is.
+
+        Excluding the snapshot is what makes this an assertion about THIS run. Without it
+        the poll returns on the first tick with a credential some earlier run issued, and
+        the caller then pins that id into everything downstream.
+    .PARAMETER ExcludeIds
+        The ids present before issuance (from Get-SorchaCredentialIdSnapshot).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ListUri,
+        [Parameter(Mandatory)]$Headers,
+        [Parameter(Mandatory)][string]$CredentialType,
+        [string[]]$ExcludeIds = @(),
+        [int]$TimeoutSeconds = 60,
+        [int]$IntervalSeconds = 3
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $response = Invoke-SorchaApi -Method GET -Uri $ListUri -Headers $Headers
+            $fresh = @(Resolve-SorchaCollection -Response $response -PropertyName 'credentials' |
+                Where-Object { $_.type -eq $CredentialType -or $_.vct -eq $CredentialType } |
+                Where-Object { $ExcludeIds -notcontains $_.id }) |
+                Select-Object -First 1
+            if ($fresh) { return $fresh }
+        } catch {
+            # Transient read errors are expected while the docket seals; keep polling.
+        }
+        Start-Sleep -Seconds $IntervalSeconds
+    }
+    return $null
+}
+
+
 function Resolve-SorchaAsyncTransactionId {
     <#
     .SYNOPSIS
