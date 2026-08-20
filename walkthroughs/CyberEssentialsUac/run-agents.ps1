@@ -180,15 +180,14 @@ $action1Payload = @{
 # did not issue, including a revoked one, and then the failure surfaces downstream as a 400
 # that looks like a platform fault (#1503). Only a credential absent before and present
 # after was issued by this action.
-$preIssueIds = @()
-try {
-    $preIssue = Invoke-SorchaApi -Method GET `
-        -Uri "$($sorchaEnv.WalletUrl)/v1/wallets/$($state.roles.'subject-org'.walletAddress)/credentials/?status=All" `
-        -Headers $subjectSession.Headers
-    $preIssueIds = @(Resolve-SorchaCollection -Response $preIssue -PropertyName 'credentials' |
-        Where-Object { $_.type -eq "https://sorcha.dev/vc/cyber-essentials-uac/v1" } |
-        ForEach-Object { $_.id })
-} catch { }
+# NOTE: this snapshot deliberately does NOT swallow a read failure. Defaulting to an empty
+# set on error makes every credential look new, so the guard would go inert at exactly the
+# moment the wallet read is broken — fail-open, silently, in the one case that matters.
+$postureVct   = "https://sorcha.dev/vc/cyber-essentials-uac/v1"
+$subjectCreds = Get-SorchaWalletCredentialUri -WalletUrl $sorchaEnv.WalletUrl `
+    -WalletAddress $state.roles.'subject-org'.walletAddress
+$preIssueIds  = Get-SorchaCredentialIdSnapshot -ListUri $subjectCreds `
+    -Headers $subjectSession.Headers -CredentialType $postureVct
 Write-WtInfo "Wallet holds $($preIssueIds.Count) posture credential(s) before issuance"
 
 $r1 = Invoke-SorchaAction `
@@ -207,33 +206,16 @@ $r1 = Invoke-SorchaAction `
 # decrypts + persists it (PendingAcceptance) a few seconds later. The async /execute
 # response often omits issuedCredentialId, so poll the recipient wallet until the
 # credential appears (up to 45s) rather than trusting the response field.
-$walletCredUrl = "$($sorchaEnv.WalletUrl)/v1/wallets/$($state.roles.'subject-org'.walletAddress)/credentials/?status=All"
-$postureCred  = $null
-$credDeadline = (Get-Date).AddSeconds(45)
-while ((Get-Date) -lt $credDeadline) {
-    try {
-        $walletCreds = Invoke-SorchaApi -Method GET -Uri $walletCredUrl -Headers $subjectSession.Headers
-        $items = Resolve-SorchaCollection -Response $walletCreds -PropertyName 'credentials'
-        if ($items) {
-            # NEW since the snapshot, and Active. Both halves matter: dropping "new" matches a
-            # stale credential, dropping "Active" matches a revoked one this run happened to issue
-            # nothing newer than.
-            $postureCred = @($items) |
-                Where-Object { $_.type -eq "https://sorcha.dev/vc/cyber-essentials-uac/v1" } |
-                Where-Object { $preIssueIds -notcontains $_.id } |
-                Select-Object -First 1
-            if ($postureCred) { break }
-        }
-    } catch { }
-    Start-Sleep -Seconds 2
-}
+$walletCredUrl = $subjectCreds
+$postureCred = Wait-SorchaNewCredential -ListUri $walletCredUrl -Headers $subjectSession.Headers `
+    -CredentialType $postureVct -ExcludeIds $preIssueIds -TimeoutSeconds 45 -IntervalSeconds 2
 
 if (-not $postureCred) {
     Write-WtInfo "No NEW posture credential arrived within 45s. Wallet currently holds:"
     try {
         $dbg = Invoke-SorchaApi -Method GET -Uri $walletCredUrl -Headers $subjectSession.Headers
         Resolve-SorchaCollection -Response $dbg -PropertyName 'credentials' |
-            Where-Object { $_.type -eq "https://sorcha.dev/vc/cyber-essentials-uac/v1" } |
+            Where-Object { $_.type -eq $postureVct } |
             ForEach-Object { Write-WtInfo "   $($_.id)  status=$($_.status)" }
     } catch { }
     Write-WtInfo "The action may have minted one that could not be delivered — check the Blueprint"
@@ -275,7 +257,7 @@ Write-WtInfo "S1-4: Fetching CyberEssentialsUacPosture presentation from subject
 $pres = Get-SorchaCredentialPresentation `
     -WalletUrl       $sorchaEnv.WalletUrl `
     -WalletAddress   $state.roles.'subject-org'.walletAddress `
-    -CredentialType  "https://sorcha.dev/vc/cyber-essentials-uac/v1" `
+    -CredentialType  $postureVct `
     -CredentialId    $credentialIdFromResponse `
     -Token           $subjectSession.Token
 

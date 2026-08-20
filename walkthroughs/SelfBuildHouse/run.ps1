@@ -217,6 +217,19 @@ foreach ($sid in $scenariosToRun) {
     $scenarioStart = Get-Date
     $planningPath = @($scenarioData.expectedPlanningPath)
 
+    # Snapshot the self-builder's credentials of each type BEFORE the phase that issues them.
+    # This wallet accumulates one Planning and one Warrant credential per run, so selecting
+    # "first of this type" presents whichever is OLDEST — a credential from an earlier run,
+    # carrying an earlier run's claims, against this run's scenario data. That is #1503's
+    # failure shape (and #1477 defect 2, and #1483): the platform then refuses it, or accepts
+    # data nobody asserted, and the walkthrough blames the platform.
+    $sbWallet   = $wallets["self-builder"]
+    $sbToken    = $roleTokenCache["self-builder"]
+    $sbListUri  = Get-SorchaWalletCredentialUri -WalletUrl $state.walletUrl -WalletAddress $sbWallet
+    $sbHeaders  = @{ Authorization = "Bearer $sbToken" }
+    $planningBefore = Get-SorchaCredentialIdSnapshot -ListUri $sbListUri -Headers $sbHeaders `
+        -CredentialType "https://sorcha.dev/vc/planning-permission/v1"
+
     # Phase 1: Planning Permission
     $planningResult = Invoke-BlueprintScenario `
         -Phase "Planning Permission" `
@@ -235,6 +248,11 @@ foreach ($sid in $scenariosToRun) {
     if ($planningResult.Passed -and -not $isRejection -and $scenarioData.expectedWarrantPath) {
         $warrantPath = @($scenarioData.expectedWarrantPath)
 
+        # The warrant credential is issued by warrant action 4, so snapshot BEFORE the phase
+        # runs — anything of that type already present belongs to an earlier run.
+        $warrantBefore = Get-SorchaCredentialIdSnapshot -ListUri $sbListUri -Headers $sbHeaders `
+            -CredentialType "https://sorcha.dev/vc/building-warrant/v1"
+
         # Lazy credential fetcher: pulls the correct VC just-in-time per
         # action. Action 1 needs PlanningPermissionCredential; actions 5-7
         # (staged inspections) need BuildingWarrantCredential, which isn't
@@ -243,25 +261,42 @@ foreach ($sid in $scenariosToRun) {
         # The credentials are held in the self-builder's wallet, so we hit
         # the wallet API with the self-builder's own token rather than a
         # shared admin token. Authorisation stays scoped to the holder.
-        $selfBuilderWallet = $wallets["self-builder"]
+        #
+        # Each type is resolved to the credential THIS run issued (absent from the pre-phase
+        # snapshot) and then pinned by id. Resolved ids are cached because actions 5-7 all ask
+        # for the warrant credential and the delivery poll should run once, not three times.
+        $selfBuilderWallet = $sbWallet
         $walletUrl = $state.walletUrl
-        $selfBuilderToken = $roleTokenCache["self-builder"]
+        $selfBuilderToken = $sbToken
+        $resolvedCredIds = @{}
         $warrantFetcher = {
             param($actionId)
             $aid = [int]$actionId
-            if ($aid -eq 1) {
-                $p = Get-SorchaCredentialPresentation -WalletUrl $walletUrl `
-                    -WalletAddress $selfBuilderWallet `
-                    -CredentialType "https://sorcha.dev/vc/planning-permission/v1" `
-                    -Token $selfBuilderToken
-                if ($p) { return @($p) }
-            } elseif ($aid -ge 5) {
-                $p = Get-SorchaCredentialPresentation -WalletUrl $walletUrl `
-                    -WalletAddress $selfBuilderWallet `
-                    -CredentialType "https://sorcha.dev/vc/building-warrant/v1" `
-                    -Token $selfBuilderToken
-                if ($p) { return @($p) }
+
+            $credType = if ($aid -eq 1) { "https://sorcha.dev/vc/planning-permission/v1" }
+                        elseif ($aid -ge 5) { "https://sorcha.dev/vc/building-warrant/v1" }
+                        else { $null }
+            if (-not $credType) { return $null }
+
+            $exclude = if ($aid -eq 1) { $planningBefore } else { $warrantBefore }
+
+            if (-not $resolvedCredIds.ContainsKey($credType)) {
+                $fresh = Wait-SorchaNewCredential -ListUri $sbListUri -Headers $sbHeaders `
+                    -CredentialType $credType -ExcludeIds $exclude -TimeoutSeconds 60
+                if (-not $fresh) {
+                    Write-WtWarn "    No NEW $credType reached the self-builder wallet — not presenting a credential from an earlier run."
+                    return $null
+                }
+                $resolvedCredIds[$credType] = $fresh.id
+                Write-WtInfo "    Pinned $credType issued by this run: $($fresh.id)"
             }
+
+            $p = Get-SorchaCredentialPresentation -WalletUrl $walletUrl `
+                -WalletAddress $selfBuilderWallet `
+                -CredentialType $credType `
+                -CredentialId $resolvedCredIds[$credType] `
+                -Token $selfBuilderToken
+            if ($p) { return @($p) }
             return $null
         }.GetNewClosure()
 

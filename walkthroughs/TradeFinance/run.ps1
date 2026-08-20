@@ -449,6 +449,16 @@ foreach ($sid in $scenariosToRun) {
 
     $scenarioStart = Get-Date
 
+    # Snapshot the sales-mgr's invoice credentials BEFORE the phase that issues one. This
+    # wallet accumulates one per run, so "first of this type" is the OLDEST — an invoice
+    # credential carrying an earlier run's invoice number, presented against this run's
+    # scenario data. Same defect as #1503 (and #1477 defect 2, #1483).
+    $invoiceVct       = "https://sorcha.dev/vc/verified-invoice/v1"
+    $salesMgrListUri  = Get-SorchaWalletCredentialUri -WalletUrl $env.WalletUrl -WalletAddress $wallets["sales-mgr"]
+    $salesMgrHeaders  = @{ Authorization = "Bearer $($participantTokens['sales-mgr'])" }
+    $invoiceBefore    = Get-SorchaCredentialIdSnapshot -ListUri $salesMgrListUri -Headers $salesMgrHeaders `
+        -CredentialType $invoiceVct
+
     # Phase 1: Procurement-to-Pay
     if ($isDispute) {
         $procurementResult = Invoke-DisputedProcurement `
@@ -510,7 +520,9 @@ foreach ($sid in $scenariosToRun) {
                 -Uri "$($env.WalletUrl)/v1/wallets/$salesMgrWallet/credentials" `
                 -Headers $credHeaders
 
-            $invoiceCred = $creds | Where-Object { $_.type -eq "https://sorcha.dev/vc/verified-invoice/v1" } | Select-Object -First 1
+            # The invoice credential THIS run issued — absent from the pre-phase snapshot.
+            $invoiceCred = Wait-SorchaNewCredential -ListUri $salesMgrListUri -Headers $salesMgrHeaders `
+                -CredentialType $invoiceVct -ExcludeIds $invoiceBefore -TimeoutSeconds 60
 
             if ($invoiceCred) {
                 Write-WtInfo "  Found credential: $($invoiceCred.id)"
@@ -543,7 +555,16 @@ foreach ($sid in $scenariosToRun) {
             # Optional ForestProductDPPCredential — issued by the ForestryCertification
             # walkthrough to sales-mgr. When present, the financing template's calc
             # applies a +10% advance-rate uplift if sustainabilityScore >= 70.
-            $dppCred = $creds | Where-Object { $_.type -eq "https://sorcha.dev/vc/forest-product-dpp/v1" } | Select-Object -First 1
+            # The DPP credential comes from the ForestryCertification walkthrough, not from this
+            # run, so there is no "new since we started" to require — the snapshot rule that
+            # applies to the invoice above cannot apply here. Take the MOST RECENTLY ISSUED one
+            # rather than whichever the listing happens to return first: after Forestry has run
+            # more than once, first-of-type is the oldest. ($creds is the Active-only listing, so
+            # a revoked DPP is already excluded.)
+            $dppCred = $creds |
+                Where-Object { $_.type -eq "https://sorcha.dev/vc/forest-product-dpp/v1" } |
+                Sort-Object -Property issuedAt -Descending |
+                Select-Object -First 1
             if ($dppCred) {
                 Write-WtInfo "  Found DPP credential: $($dppCred.id)"
 
