@@ -198,6 +198,19 @@ Write-WtInfo "PWA will now render the waiting-card on Home"
 # ============================================================================
 Write-WtStep "Step 5: Verification Analyst verifies application (Action 2)"
 
+# The vct declared by blueprints/assured-identity.json action 2 (credentialIssuanceConfig.vct).
+$AssuredIdentityVct = "https://sorcha.dev/vc/assured-identity/v1"
+
+# Snapshot the citizen's credentials of that vct BEFORE the action that issues one. Action 2
+# is what mints it, so anything of this vct already in the wallet came from an earlier run.
+# Without this the delivery poll below returns on its FIRST tick with a previous run's
+# credential and reports success having proven nothing — the vacuous assertion #1503 was
+# filed for. It also pins that stale id into $credentialId for everything downstream.
+$citizenCredsUri = "$($state.walletUrl)/v1/wallet/credentials"
+$identityBefore = Get-SorchaCredentialIdSnapshot -ListUri $citizenCredsUri `
+    -Headers $citizenSession.Headers -CredentialType $AssuredIdentityVct
+Write-WtInfo "Citizen wallet holds $($identityBefore.Count) AssuredIdentity credential(s) before issuance"
+
 # Feature 145: the citizen's submit returns 202 and the instance advances only when the
 # InstanceProjector folds the sealed docket (a beat after the tx seals). Wait for the
 # projection to surface Action 2 as a current action before the analyst acts — the script
@@ -239,41 +252,24 @@ Write-WtSuccess "Action 2 approved — credential issuance triggered (target: So
 # ============================================================================
 Write-WtStep "Step 6: Poll Sorcha Wallet /credentials for AssuredIdentityCredential"
 
-# The vct declared by blueprints/assured-identity.json action 2 (credentialIssuanceConfig.vct).
-# Kept beside the poll it drives so the two cannot drift apart silently again.
-$AssuredIdentityVct = "https://sorcha.dev/vc/assured-identity/v1"
+# $AssuredIdentityVct is declared beside the snapshot taken before action 2, so the vct the
+# poll matches and the vct the snapshot excluded cannot drift apart.
+#
+# Match the vct the blueprint actually issues. It is a URI, and a kebab-case one:
+#   https://sorcha.dev/vc/assured-identity/v1
+# The old test `-match "AssuredIdentity"` was written when the vct was the PascalCase type
+# name, and after the VCT decoupling (#1187 — vct-only URIs) it matches NOTHING. displayLabel
+# is empty on this endpoint, so the `-or` arm never saved it either. The credential arrived
+# within seconds; the script polled the full 60 s past it and reported "did not land" for a
+# credential sitting in the response it was reading (#1427).
+#
+# Requiring an id absent from $identityBefore is what makes this an assertion about THIS run.
+$hit = Wait-SorchaNewCredential -ListUri $citizenCredsUri -Headers $citizenSession.Headers `
+    -CredentialType $AssuredIdentityVct -ExcludeIds $identityBefore `
+    -TimeoutSeconds $DeliveryTimeoutSeconds -IntervalSeconds 2
 
-$deadline = (Get-Date).AddSeconds($DeliveryTimeoutSeconds)
-$delivered = $false
-$credentialId = $null
-
-while ((Get-Date) -lt $deadline) {
-    try {
-        $snapshot = Invoke-SorchaApi -Method GET `
-            -Uri "$($state.walletUrl)/v1/wallet/credentials" `
-            -Headers $citizenSession.Headers
-        if ($snapshot.credentials -and $snapshot.credentials.Count -gt 0) {
-            # Match the vct the blueprint actually issues. It is a URI, and a kebab-case one:
-            #   https://sorcha.dev/vc/assured-identity/v1
-            # The old test `-match "AssuredIdentity"` was written when the vct was the PascalCase
-            # type name, and after the VCT decoupling (#1187 — vct-only URIs) it matches NOTHING.
-            # displayLabel is empty on this endpoint, so the `-or` arm never saved it either. The
-            # credential arrived within seconds; the script polled the full 60 s past it and reported
-            # "did not land" for a credential sitting in the response it was reading (#1427).
-            $hit = $snapshot.credentials |
-                Where-Object { $_.vct -eq $AssuredIdentityVct } |
-                Select-Object -First 1
-            if ($hit) {
-                $delivered = $true
-                $credentialId = $hit.id
-                break
-            }
-        }
-    } catch {
-        Write-WtWarn "  /credentials poll transient error: $($_.Exception.Message)"
-    }
-    Start-Sleep -Seconds 2
-}
+$delivered = [bool]$hit
+$credentialId = if ($hit) { $hit.id } else { $null }
 
 if (-not $delivered) {
     # Best-effort clear so the wallet doesn't sit in a stale waiting-state on failure.
