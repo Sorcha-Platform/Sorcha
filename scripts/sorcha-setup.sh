@@ -77,7 +77,14 @@ ask() {
     local var_name="$3"
 
     if [ "$QUIET" = true ]; then
-        eval "$var_name='$default'"
+        # A value the caller already exported WINS over the built-in default. Without this,
+        # --quiet could only ever configure localhost: it overwrote every pre-set variable, so an
+        # unattended or remote setup silently produced a .env for the wrong installation.
+        # INSTALLATION_NAME drives the JWT issuer and audiences, so a node configured as
+        # "localhost" then rejects its own tokens — and nothing says why.
+        if [ -z "${!var_name:-}" ]; then
+            eval "$var_name='$default'"
+        fi
         return
     fi
 
@@ -102,7 +109,14 @@ ask_yes_no() {
     local var_name="$3"
 
     if [ "$QUIET" = true ]; then
-        eval "$var_name='$default'"
+        # A value the caller already exported WINS over the built-in default. Without this,
+        # --quiet could only ever configure localhost: it overwrote every pre-set variable, so an
+        # unattended or remote setup silently produced a .env for the wrong installation.
+        # INSTALLATION_NAME drives the JWT issuer and audiences, so a node configured as
+        # "localhost" then rejects its own tokens — and nothing says why.
+        if [ -z "${!var_name:-}" ]; then
+            eval "$var_name='$default'"
+        fi
         return
     fi
 
@@ -293,9 +307,15 @@ check_prerequisites() {
     check_docker_installed       || missing=$((missing + 1))
     check_docker_daemon_running  || missing=$((missing + 1))
     check_docker_compose_v2      || missing=$((missing + 1))
-    check_port_available 80      || missing=$((missing + 1))
-    check_port_available 443     || missing=$((missing + 1))
-    check_port_available 8080    || missing=$((missing + 1))
+    # --config-only generates .env + certificates and starts nothing, so the ports it would
+    # eventually bind are irrelevant. Checking them anyway makes the script unusable on exactly
+    # the nodes that most need it: a real deployment has a reverse proxy (n1 runs Caddy) holding
+    # 80/443, so the check fails and setup aborts BEFORE writing any configuration.
+    if [ "$CONFIG_ONLY" = false ]; then
+        check_port_available 80      || missing=$((missing + 1))
+        check_port_available 443     || missing=$((missing + 1))
+        check_port_available 8080    || missing=$((missing + 1))
+    fi
     check_openssl_or_python      || missing=$((missing + 1))
 
     # Optional checks — never increment $missing.
