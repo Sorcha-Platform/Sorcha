@@ -618,6 +618,21 @@ correct holder-side behaviour (a wallet should not casually hand over a revoked 
 makes the adversarial case — a holder who kept the token and presents it anyway — impossible to build
 unless you ask for it explicitly.
 
+### 3b. Scenario ORDER can consume the credential the next scenario needs
+
+`run-revocation.ps1` revokes the only ACTIVE credential in the wallet, so `run-suspension.ps1` run
+after it finds nothing to suspend and fails at its first step. Nothing is broken — revocation is
+terminal by design and did exactly its job.
+
+Either run suspension **before** revocation, or re-issue with `run-agents.ps1` in between. A suite
+runner that just lists scripts in file order will hit this, and the failure lands on the *innocent*
+script.
+
+This is why the fallback was removed from `run-revocation.ps1` (PR #1536): it used to drop back to
+first-of-type when no ACTIVE credential existed, which turned a missing precondition into an
+unrecognisable *"must be in Active or Suspended state"* error one step later, blaming the revoke
+endpoint for the selection. It now says which credentials it can see and what state they are in.
+
 ### 3. Pick a credential in the state the scenario needs, not the first one
 
 A revocation scenario that revokes `Select-Object -First 1` will, on a re-run, pick an
