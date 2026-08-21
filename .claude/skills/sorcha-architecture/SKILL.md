@@ -2187,6 +2187,16 @@ verifier before showing consent.
   prefixed **`x509_san_dns:{host}`** `client_id`. Config: `Haip:VerifierCertificate` (PFX path or base64)
   + `Haip:VerifierCertificatePassword?` + `Haip:PublicHost`. Dev fallback = self-signed cert;
   **prod/staging fail-fast** when unconfigured. (`VerifierCertificate.cs`.)
+- **`sorcha-agent` side (#1538, 2026-08-21)** — the agent uses the SAME `RequestObjectValidator`
+  rather than its own check, so agent and wallet cannot drift on what counts as an authentic verifier.
+  It previously verified only against a JOSE-header embedded `jwk`; US6 emits `x5c` and no `jwk`, so
+  the check could only ever refuse and the agent's whole OID4VP present leg was unusable. Because an
+  agent has no human to render consent to, it applies a policy over the three-state verdict: hard
+  refusal always throws; `Unverifiable` throws unless `--allow-unverified-verifier`;
+  `AuthenticUntrusted` proceeds with a warning (FR-027 — and it is the ordinary local path, since a
+  dev verifier self-signs) unless `--require-trusted-verifier`. `--verifier-client-id` pins the
+  expected identity; unpinned, the client_id is read from the request object itself, which proves
+  internal consistency but **not** identity.
 - **Wallet side** — `RequestObjectValidator` (`Sorcha.Verifier.Engine`, pure BouncyCastle / WASM-safe):
   ES256 JWS verify over the x5c leaf → leaf SAN == `client_id` host → chain-walk to a trusted anchor,
   yielding a three-state `VerifierAuthState`: `TrustedListVerified` / `AuthenticUntrusted` /
