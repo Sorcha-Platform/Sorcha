@@ -34,13 +34,20 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_FILE="$PROJECT_DIR/.env"
 
 # Parse arguments
+CONFIG_ONLY=false
+
 for arg in "$@"; do
     case $arg in
         --quiet|-q) QUIET=true ;;
+        --config-only) CONFIG_ONLY=true ;;
         --help|-h)
-            echo "Usage: $0 [--quiet|-q] [--help|-h]"
-            echo "  --quiet, -q  Use all defaults without prompting"
-            echo "  --help, -h   Show this help message"
+            echo "Usage: $0 [--quiet|-q] [--config-only] [--help|-h]"
+            echo "  --quiet, -q     Use all defaults without prompting"
+            echo "  --config-only   Generate .env + certificates only; do not pull or start."
+            echo "                  For nodes that bring the stack up with their own compose"
+            echo "                  file set (n1 stacks n1/seed/ports/smtp overrides), where a"
+            echo "                  bare 'docker compose up -d' would start the WRONG stack."
+            echo "  --help, -h      Show this help message"
             exit 0
             ;;
     esac
@@ -783,9 +790,13 @@ main() {
         warn "An .env file already exists."
         ask_yes_no "Overwrite with new configuration?" "n" OVERWRITE
         if [ "$OVERWRITE" != "y" ]; then
-            info "Keeping existing .env. Starting services..."
             ensure_dev_cert
             ensure_workload_certs
+            if [ "$CONFIG_ONLY" = true ]; then
+                info "Keeping existing .env. Configuration refreshed; not starting (--config-only)."
+                exit 0
+            fi
+            info "Keeping existing .env. Starting services..."
             start_services
             wait_for_health
             print_summary
@@ -797,6 +808,22 @@ main() {
     write_env_file
     ensure_dev_cert
     ensure_workload_certs
+
+    # --config-only stops here, with .env and the F191 workload certificates in place.
+    # This is the whole reason the flag exists: cert provisioning (ensure_workload_certs)
+    # is the one step a node cannot sensibly hand-roll, and before this flag a node that
+    # starts its own compose stack had no way to reach it without also triggering a bare
+    # `docker compose up -d` against the base file. n1 grew a bespoke on-box
+    # f191-provision.sh for exactly that reason; this is the supported route instead.
+    if [ "$CONFIG_ONLY" = true ]; then
+        echo ""
+        success "Configuration complete (--config-only): .env and workload certificates are in place."
+        echo "  Bring the stack up with this node's own compose file set, e.g.:"
+        echo "    docker compose -f docker-compose.yml -f docker-compose.n1.yml \\"
+        echo "                   -f docker-compose.seed.yml -f docker-compose.ports.yml up -d"
+        exit 0
+    fi
+
     pull_images
     start_services
     if ! wait_for_health; then
