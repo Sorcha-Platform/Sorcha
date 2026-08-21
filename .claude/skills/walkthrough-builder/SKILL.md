@@ -199,6 +199,38 @@ $ops = Connect-SorchaUser -TenantUrl $env.TenantUrl -Email "ops@acme-verif.test"
 - **ANTI-PATTERN (do not do this):** `Register-SorchaPublicUser ops@… ; New-SorchaOrganization -AdminEmail ops@…` → multi-org operator → 401 on the password grant.
 - **Citizens / public submitters are the deliberate exception** — they ARE public users (`Register-SorchaPublicUser`): a citizen belongs to the public org and is late-bound into the workflow. Only *org operators* use the org-scoped path.
 
+#### An existing org does NOT adopt the admin you pass — and the auth limiter looks like a platform fault
+
+Two things bite on a **re-run** and neither bites on a clean node, which is why both survived so long.
+
+**1. `New-SorchaOrganization` reuses an existing org and does not provision its admin.** When the
+subdomain already exists the call falls into its duplicate-recovery path and returns
+`AdminDirectlyAdded = $false` — the `-AdminEmail` you passed was never given a membership. **11 of 13
+setup scripts ignored that return value**, so the admin stays single-org in the PUBLIC org and the
+failure surfaces far away as either a `403` on the first org-scoped call (#1427) or
+
+> `Connect-SorchaUser: env@x.local is single-org in 00000000-…-0002, but org <id> was requested`
+
+which reads as an auth bug. **The module now closes this itself** — `New-SorchaOrganization` calls
+`Confirm-SorchaOrgMembership` on the recovery path, so callers no longer have to remember. Use that
+helper directly if you provision an org some other way. Membership is added via
+`POST /organizations/{orgId}/users` (an org identity for an EXISTING platform user); `New-SorchaOrgUser`
+(`/users/provision`) creates a NEW platform user and 400s when one already exists.
+
+⚠ **Adoption only happens at org CREATION**, so a brand-new email fails identically against a
+pre-existing org — do not diagnose this as stale-user residue.
+
+**2. The auth rate limiter is what breaks a full-suite run (#1533).** The gateway's `authentication`
+policy is a **sliding 1-minute window partitioned per IP**, default **60**. Bulk provisioning from one
+box saturates it and every setup 429s part-way through — measured on n1: 12 logins at 2s spacing during
+suite traffic gave **8 ok / 4 refused**. It is a limiter, not a platform failure, and no amount of
+in-script pacing fixes it because the aggregate across sequential scripts is what saturates.
+
+Raise it per deploy via the `RATELIMIT_*` vars in the host `.env` (documented in `.env.example`) —
+never by loosening `docker-compose.n1.yml`, which is deliberately tight (#1437). n1 runs
+`RATELIMIT_AUTH_PERMIT=1200`. ⚠ Do NOT probe the limiter and then start a run in the same window;
+that alone turns a whole suite red.
+
 #### REQUIRED: re-login any session AFTER its wallet is created, so the JWT carries `wallet_address`
 
 This is the single most common cause of walkthrough breakage after the F136 tiered-token + F142 publish-gate work landed. **`wallet_address` is added to the JWT only at login, from the user's first active linked wallet** (`TokenService.AddWalletAddressClaimAsync`). Walkthroughs log in *first*, then create + link the wallet (`New-SorchaWallet` + `Register-SorchaParticipant -WalletAddress`) — so the cached session token has **no `wallet_address` claim**, and every endpoint that authorizes via wallet fails for that stale token. Two confirmed failure modes (triaged 2026-06-02 across ConstructionPermit / TradeFinance / PayloadTests):
