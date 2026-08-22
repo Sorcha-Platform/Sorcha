@@ -165,6 +165,7 @@
           }
         ],
         "credentialIssuanceConfig": {
+          "issuanceCondition": { "==": [{ "var": "decision" }, "approved"] },
           "credentialType": "AssuredIdentityCredential",
           "vct": "https://sorcha.dev/vc/assured-identity/v1",
           "displayName": "Assured Identity",
