@@ -30,6 +30,44 @@ public class BlueprintBuilder
     public static BlueprintBuilder Create() => new();
 
     /// <summary>
+    /// Wraps an EXISTING blueprint so a builder can continue editing it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The blueprint is wrapped, not copied: <see cref="BuildDraft"/> returns the very same
+    /// instance, so every action, data schema, route, disclosure and credential config survives
+    /// and later mutations land on the same object graph.
+    /// </para>
+    /// <para>
+    /// Issue #1547 - the AI designer rebuilt its per-message builder by copying only id, title,
+    /// description and participants, silently discarding every action. Each chat message therefore
+    /// started from a blueprint with no actions, the tools reported <c>MIN_ACTIONS</c> and
+    /// <c>Action with ID N not found</c>, and the model rebuilt from scratch. A field-by-field
+    /// reconstruction would rot the moment a property is added to <see cref="Models.Action"/>;
+    /// wrapping cannot.
+    /// </para>
+    /// </remarks>
+    public static BlueprintBuilder FromBlueprint(Models.Blueprint blueprint) => new(blueprint);
+
+    private BlueprintBuilder(Models.Blueprint blueprint)
+    {
+        ArgumentNullException.ThrowIfNull(blueprint);
+        _blueprint = blueprint;
+
+        // Rehydrate the lookups the fluent API keeps alongside the model, or AddAction would
+        // validate senders against an empty participant set.
+        foreach (var participant in blueprint.Participants)
+        {
+            _participants[participant.Id] = participant;
+        }
+
+        foreach (var action in blueprint.Actions)
+        {
+            _actions[action.Id] = action;
+        }
+    }
+
+    /// <summary>
     /// Sets the blueprint ID (optional - auto-generated if not specified)
     /// </summary>
     public BlueprintBuilder WithId(string id)
@@ -146,8 +184,19 @@ public class BlueprintBuilder
         configure(builder);
         var participant = builder.Build();
 
+        // Upsert. The dictionary always replaced by id while the list appended, so adding the
+        // same participant twice produced duplicate ids that action.sender cannot disambiguate
+        // (issue #1549).
         _participants[participantId] = participant;
-        _blueprint.Participants.Add(participant);
+        var existingParticipant = _blueprint.Participants.FindIndex(p => p.Id == participantId);
+        if (existingParticipant >= 0)
+        {
+            _blueprint.Participants[existingParticipant] = participant;
+        }
+        else
+        {
+            _blueprint.Participants.Add(participant);
+        }
 
         return this;
     }
@@ -163,8 +212,19 @@ public class BlueprintBuilder
         configure(builder);
         var action = builder.Build();
 
+        // Upsert, for the same reason as participants (issue #1549). This matters more now that
+        // FromBlueprint carries actions across messages: re-adding an action would otherwise
+        // duplicate it rather than replace it.
         _actions[actionId] = action;
-        _blueprint.Actions.Add(action);
+        var existingAction = _blueprint.Actions.FindIndex(a => a.Id == actionId);
+        if (existingAction >= 0)
+        {
+            _blueprint.Actions[existingAction] = action;
+        }
+        else
+        {
+            _blueprint.Actions.Add(action);
+        }
 
         return this;
     }
