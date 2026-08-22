@@ -312,6 +312,7 @@ Publish-time validation runs in **`Sorcha.Blueprint.Service`** (`PublishService.
 | `INVALID_CREDENTIAL_RECIPIENT` | warning | `credentialIssuanceConfig.recipientParticipantId` references an unknown participant |
 | `OPEN_CREDENTIAL_ISSUER` | warning | `credentialRequirements[].trustPolicy` is null or has no `sources` (any issuer accepted) — usually too permissive. (Pre-F135 this keyed off an empty `acceptedIssuers`, now removed.) |
 | `WARN_BP_CRED_005` | warning | An action declares `credentialIssuanceConfig` with **no `issuanceCondition`** but routes on a decision (a conditional route, or >1 route). Minting precedes routing, so the credential is minted and delivered on the reject path too (#1551). |
+| `NO_DISCLOSABLE_SET` | warning | A `credentialIssuanceConfig` has claim mappings but no `disclosable` list. A null set is **expanded to every claim name** at signing time — it does not mean "none" (#1550). Emitted by the chat `validate_blueprint`. |
 | `WARN_BP_006` | warning | An `x-credential-offer` object should declare `credential_offer_uri` in its `required` list |
 | `DUPLICATE_PARTICIPANT_ID` | error | Two participants share an `id`. `action.sender` resolves by id, so a duplicate cannot be disambiguated (#1548). |
 | `STARTING_ACTION_NO_ROUTES` | error | A starting action declares no `routes` while the blueprint has other actions — the workflow can never advance past it (#1548). |
@@ -841,6 +842,13 @@ the HAIP rail today.
 - `targetAudience: "SorchaInternal"` is **deprecated** — bypasses the register and breaks on multi-node deployments. Always prefer `SorchaLocalWallet`.
 - `usagePolicy: "LimitedUse"` requires `maxPresentations: <int>`.
 - `expiryDuration` is ISO 8601 (`P5Y`, `P365D`, `PT24H`); omit for non-expiring credentials.
+
+> **Designer surface (#1550).** `issue_credential` now **requires `vct`** (SD-JWT VC makes it the
+> credential's only type claim, so a credential without one is unmatchable), and additionally accepts
+> **`disclosable`** and **`holderKeySourceField`** — neither of which it could set before, so an
+> AI-authored credential was always fully disclosable and could never be delivered to an open,
+> late-bound recipient. `validate_blueprint` now also emits `WARN_BP_CRED_005` and
+> `NO_DISCLOSABLE_SET`, so the author is told at authoring time rather than at Go-live.
 
 Five further properties, all optional and all used by the shipped AIAS blueprint or its siblings:
 

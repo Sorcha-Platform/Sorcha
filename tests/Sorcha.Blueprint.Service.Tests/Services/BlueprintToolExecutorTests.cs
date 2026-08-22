@@ -660,6 +660,7 @@ public class BlueprintToolExecutorTests
             {
                 actionId = 1,
                 credentialType = "AssuredIdentity",
+                vct = "https://sorcha.dev/vc/assured-identity/v1",
                 recipientParticipantId = "holder",
                 claimMappings = new[]
                 {
@@ -722,6 +723,7 @@ public class BlueprintToolExecutorTests
             {
                 actionId = 1,
                 credentialType = "AssuredIdentity",
+                vct = "https://sorcha.dev/vc/assured-identity/v1",
                 recipientParticipantId = "holder",
                 claimMappings = new[]
                 {
@@ -1201,6 +1203,7 @@ public class BlueprintToolExecutorTests
         {
             actionId = 1,
             credentialType = "DriverLicense",
+            vct = "https://sorcha.dev/vc/driver-license/v1",
             recipientParticipantId = "holder",
             claimMappings = new[]
             {
@@ -1235,6 +1238,7 @@ public class BlueprintToolExecutorTests
         {
             actionId = 1,
             credentialType = "ProductPassport",
+            vct = "https://sorcha.dev/vc/product-passport/v1",
             recipientParticipantId = "holder",
             claimMappings = new[]
             {
@@ -1271,6 +1275,7 @@ public class BlueprintToolExecutorTests
         {
             actionId = 1,
             credentialType = "License",
+            vct = "https://sorcha.dev/vc/license/v1",
             recipientParticipantId = "nonexistent",
             claimMappings = new[] { new { claimName = "type", sourceField = "/type" } }
         });
@@ -1298,6 +1303,7 @@ public class BlueprintToolExecutorTests
         {
             actionId = 1,
             credentialType = "Certificate",
+            vct = "https://sorcha.dev/vc/certificate/v1",
             recipientParticipantId = "holder",
             expiryDuration = "P365D",
             usagePolicy = "SingleUse",
@@ -1327,6 +1333,7 @@ public class BlueprintToolExecutorTests
         {
             actionId = 999,
             credentialType = "License",
+            vct = "https://sorcha.dev/vc/license/v1",
             recipientParticipantId = "issuer",
             claimMappings = new[] { new { claimName = "type", sourceField = "/type" } }
         });
@@ -1393,6 +1400,7 @@ public class BlueprintToolExecutorTests
             {
                 actionId = 0,
                 credentialType = "ProductPassport",
+                vct = "https://sorcha.dev/vc/product-passport/v1",
                 recipientParticipantId = "distributor",
                 claimMappings = new[]
                 {
@@ -1858,6 +1866,7 @@ public class BlueprintToolExecutorTests
         {
             actionId = 1,
             credentialType = "Cert",
+            vct = "https://sorcha.dev/vc/cert/v1",
             recipientParticipantId = "holder",
             claimMappings = new[] { new { claimName = "a", sourceField = "/a" } }
         });
