@@ -852,7 +852,15 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
         // bare `credentialType` name. A credential with no absolute-URI vct cannot be matched to a
         // requested type by any conformant verifier (the #1540 failure, on the HAIP rail).
         var vct = root.TryGetProperty("vct", out var vctProp) ? vctProp.GetString() : null;
-        if (!string.IsNullOrWhiteSpace(vct) && !Uri.TryCreate(vct, UriKind.Absolute, out _))
+        if (string.IsNullOrWhiteSpace(vct))
+        {
+            return ToolResult.Failed(
+                Guid.NewGuid().ToString(),
+                "vct is required. Per SD-JWT VC it is the credential's ONLY type claim, so a credential " +
+                "without one cannot be matched to a requested type by any conforming verifier. Pass an " +
+                "absolute URI, e.g. 'https://sorcha.dev/vc/training-completion/v1'.");
+        }
+        if (!Uri.TryCreate(vct, UriKind.Absolute, out _))
         {
             return ToolResult.Failed(
                 Guid.NewGuid().ToString(),
@@ -866,6 +874,21 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
         // is actually minted. Without it a single decision action ALWAYS issues, so a rejection still
         // mints and delivers a credential: the fail-open defect Feature 176 exists to close. An
         // approve/reject workflow authored without this reproduces it.
+        // A null Disclosable is expanded to EVERY claim name by SdJwtService, so leaving it unset is
+        // not "disclose nothing" - it is "disclose everything" (#1550).
+        List<string>? disclosable = null;
+        if (root.TryGetProperty("disclosable", out var discProp) && discProp.ValueKind == JsonValueKind.Array)
+        {
+            disclosable = discProp.EnumerateArray()
+                .Where(e => e.ValueKind == JsonValueKind.String)
+                .Select(e => e.GetString()!)
+                .ToList();
+        }
+
+        var holderKeySourceField = root.TryGetProperty("holderKeySourceField", out var hkProp)
+            ? hkProp.GetString()
+            : null;
+
         JsonNode? issuanceCondition = null;
         if (root.TryGetProperty("issuanceCondition", out var condProp) && condProp.ValueKind != JsonValueKind.Null)
         {
@@ -891,7 +914,9 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
             RecipientParticipantId = recipientParticipantId,
             ExpiryDuration = expiryDuration,
             UsagePolicy = usagePolicy,
-            IssuanceCondition = issuanceCondition
+            IssuanceCondition = issuanceCondition,
+            Disclosable = disclosable,
+            HolderKeySourceField = holderKeySourceField
         };
 
         return ToolResult.Succeeded(
@@ -907,7 +932,11 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                 usagePolicy = usagePolicy.ToString(),
                 vct = vct ?? "(none — falls back to credentialType, not conformant)",
                 displayName = displayName ?? "(none)",
-                issuanceCondition = issuanceCondition?.ToJsonString() ?? "(none — ALWAYS issues, including on rejection)"
+                issuanceCondition = issuanceCondition?.ToJsonString() ?? "(none — ALWAYS issues, including on rejection)",
+                disclosable = disclosable is { Count: > 0 }
+                    ? string.Join(", ", disclosable)
+                    : "(none set — EVERY claim is selectively disclosable)",
+                holderKeySourceField = holderKeySourceField ?? "(none — an open/late-bound recipient cannot be delivered to)"
             },
             blueprintChanged: true);
     }
@@ -1399,6 +1428,42 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                             code = "INVALID_CREDENTIAL_RECIPIENT",
                             message = $"Action '{action.Title}' issues credential to '{issuance.RecipientParticipantId}' which is not a known participant",
                             location = $"actions[{action.Id}].credentialIssuanceConfig"
+                        });
+                    }
+
+                    // WARN_BP_CRED_005 (#1550/#1551) — mirrors the publish-time rule so the author
+                    // is told at authoring time, not at Go-live. Minting runs BEFORE routing, so an
+                    // action that models a decision and omits issuanceCondition issues to the
+                    // rejected party too; a terminal reject route does not prevent the mint.
+                    if (issuance.IssuanceCondition is null)
+                    {
+                        var decisionRoutes = action.Routes?.ToList() ?? [];
+                        var conditionalRoutes = decisionRoutes.Count(r => r.Condition is not null);
+                        if (conditionalRoutes > 0 || decisionRoutes.Count > 1)
+                        {
+                            warnings.Add(new
+                            {
+                                code = "WARN_BP_CRED_005",
+                                message = $"Action '{action.Title}' issues a credential with no issuanceCondition but " +
+                                          $"routes on a decision. Minting runs before routing, so the credential is " +
+                                          $"minted and delivered on every path — including the reject path. Add " +
+                                          $"issuanceCondition, e.g. {{\"==\": [{{\"var\": \"decision\"}}, \"approved\"]}}.",
+                                location = $"actions[{action.Id}].credentialIssuanceConfig.issuanceCondition"
+                            });
+                        }
+                    }
+
+                    // A null Disclosable is expanded to EVERY claim name at signing time, so leaving
+                    // it unset silently makes all claims disclosable rather than none (#1550).
+                    if (issuance.Disclosable is null && issuance.ClaimMappings.Any())
+                    {
+                        warnings.Add(new
+                        {
+                            code = "NO_DISCLOSABLE_SET",
+                            message = $"Action '{action.Title}' issues a credential with no 'disclosable' list, so " +
+                                      $"EVERY claim becomes selectively disclosable (a null set is expanded to all " +
+                                      $"claim names — it does not mean 'none'). List the claims a verifier should see.",
+                            location = $"actions[{action.Id}].credentialIssuanceConfig.disclosable"
                         });
                     }
 
@@ -1901,6 +1966,17 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                         },
                         recipientParticipantId = new { type = "string", description = "Participant ID who receives the credential" },
                         expiryDuration = new { type = "string", description = "ISO 8601 duration for credential validity (e.g., 'P365D' for 1 year, 'P2Y' for 2 years)" },
+                        disclosable = new
+                        {
+                            type = "array",
+                            description = "Claim names the holder may selectively disclose. OMITTING THIS MAKES EVERY CLAIM DISCLOSABLE - a null set is expanded to all claim names, it does not mean 'none'. List only the claims a verifier should be able to see.",
+                            items = new { type = "string" }
+                        },
+                        holderKeySourceField = new
+                        {
+                            type = "string",
+                            description = "JSON Pointer to the recipient's carried holder key, conventionally '/holderKeys/holderJwk'. REQUIRED when the recipient is an open/late-bound participant with no published participant record, or issuance fails closed at runtime with VAL_RUNTIME_CRED_004 and no credential is delivered. Pair it with a 'sorcha-holder-key' formatted field on the starting action."
+                        },
                         usagePolicy = new
                         {
                             type = "string",
@@ -1908,7 +1984,10 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                             description = "How many times the credential can be presented. Default: Reusable"
                         }
                     },
-                    required = new[] { "actionId", "credentialType", "claimMappings", "recipientParticipantId" }
+                    // vct is required: SD-JWT VC makes it the credential's ONLY type claim, so a
+                    // credential without one cannot be matched to a requested type by any conforming
+                    // verifier (#1550). The description said "REQUIRED in practice" and was ignored.
+                    required = new[] { "actionId", "credentialType", "vct", "claimMappings", "recipientParticipantId" }
                 }),
 
             ToolDefinition.Create(
