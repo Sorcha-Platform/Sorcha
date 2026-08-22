@@ -313,8 +313,19 @@ Publish-time validation runs in **`Sorcha.Blueprint.Service`** (`PublishService.
 | `OPEN_CREDENTIAL_ISSUER` | warning | `credentialRequirements[].trustPolicy` is null or has no `sources` (any issuer accepted) — usually too permissive. (Pre-F135 this keyed off an empty `acceptedIssuers`, now removed.) |
 | `WARN_BP_CRED_005` | warning | An action declares `credentialIssuanceConfig` with **no `issuanceCondition`** but routes on a decision (a conditional route, or >1 route). Minting precedes routing, so the credential is minted and delivered on the reject path too (#1551). |
 | `WARN_BP_006` | warning | An `x-credential-offer` object should declare `credential_offer_uri` in its `required` list |
+| `DUPLICATE_PARTICIPANT_ID` | error | Two participants share an `id`. `action.sender` resolves by id, so a duplicate cannot be disambiguated (#1548). |
+| `STARTING_ACTION_NO_ROUTES` | error | A starting action declares no `routes` while the blueprint has other actions — the workflow can never advance past it (#1548). |
+| `UNREACHABLE_ACTION` | error | An action is not reachable from any starting action by `routes` or `rejectionConfig.targetActionId` (#1548). |
+| `NO_TERMINAL_PATH` | warning | No action ends the workflow: every action routes onward and none declares an empty `nextActionIds`. Set `metadata.hasCycles = "true"` if the loop is intentional (#1548). |
 | `NO_STARTING_ACTION` | warning | No action marked `isStartingAction: true` |
 | Cycle warning | warning | Cyclic route detected — publish proceeds; set `metadata.hasCycles = "true"` for clarity |
+
+> ⚠ **The four reachability checks are gated on the blueprint using route-based routing at all** —
+> i.e. at least one action declares a non-empty `routes` array. Legacy and platform-driven blueprints
+> (`complex-sme-invoice-finance`, `register-governance-v1`) declare no routes on any action and are
+> advanced by other means; flagging them would be a false positive. Verified against all 45 shipped
+> blueprints — 0 flagged — while still catching the designer's real defect (a *partially* routed
+> blueprint: starting action with `routes: null`, everything else looping back to it).
 
 **Runtime issuance codes** (these fail a *submission*, not a publish — they surface as an `InvalidOperationException` from `ActionExecutionService` and are deliberately re-thrown rather than swallowed):
 

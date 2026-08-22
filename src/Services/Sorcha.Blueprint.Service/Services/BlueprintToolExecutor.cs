@@ -1195,6 +1195,23 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                 });
             }
 
+            // Duplicate participant ids (issue #1548/#1549). Nothing can disambiguate two
+            // participants sharing an id — action.sender resolves by id — and the designer
+            // produced exactly this when it rebuilt a draft. Checked regardless of routing style.
+            foreach (var duplicateId in draft.Participants
+                         .GroupBy(p => p.Id, StringComparer.Ordinal)
+                         .Where(g => g.Count() > 1)
+                         .Select(g => g.Key))
+            {
+                errors.Add(new
+                {
+                    code = "DUPLICATE_PARTICIPANT_ID",
+                    message = $"Participant id '{duplicateId}' is declared more than once. " +
+                              $"action.sender resolves participants by id, so a duplicate cannot be disambiguated.",
+                    location = "participants"
+                });
+            }
+
             // Check minimum actions
             if (draft.Actions.Count < 1)
             {
@@ -1238,6 +1255,92 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                     message = "No action is marked as a starting action",
                     location = "actions"
                 });
+            }
+
+            // ---- Route reachability (issue #1548) -------------------------------------------
+            // The chat validator used to answer VALID for a blueprint that cannot execute: a
+            // starting action with no routes, and every other route looping back to it. /publish
+            // then refused it, so the author's first sight of the problem was at Go-live.
+            //
+            // GATED on the blueprint actually using route-based routing. Legacy and
+            // platform-driven blueprints (complex-sme-invoice-finance, register-governance-v1)
+            // declare no routes at all and are advanced by other means; flagging them would be a
+            // false positive. Verified against all 45 shipped blueprints: 0 flagged.
+            var usesRouteBasedRouting = draft.Actions.Any(a => a.Routes?.Any() == true);
+            if (usesRouteBasedRouting && draft.Actions.Count > 0)
+            {
+                static List<Sorcha.Blueprint.Models.Route> RoutesOf(Sorcha.Blueprint.Models.Action a)
+                    => a.Routes?.ToList() ?? [];
+
+                var startingActions = draft.Actions.Where(a => a.IsStartingAction).ToList();
+
+                // A starting action with nowhere to go cannot advance the workflow. A single-action
+                // blueprint (e.g. a credential gate) is legitimately terminal, hence the count test.
+                foreach (var start in startingActions.Where(a => draft.Actions.Count > 1 && RoutesOf(a).Count == 0))
+                {
+                    errors.Add(new
+                    {
+                        code = "STARTING_ACTION_NO_ROUTES",
+                        message = $"Starting action {start.Id} ('{start.Title}') declares no routes, so the " +
+                                  $"workflow can never advance past it. Add a route to the action that follows it.",
+                        location = $"actions[{start.Id}].routes"
+                    });
+                }
+
+                if (startingActions.Count > 0)
+                {
+                    var byId = draft.Actions.ToDictionary(a => a.Id);
+                    var reachable = startingActions.Select(a => a.Id).ToHashSet();
+                    var pending = new Stack<int>(reachable);
+                    while (pending.Count > 0)
+                    {
+                        if (!byId.TryGetValue(pending.Pop(), out var current)) continue;
+
+                        var next = RoutesOf(current).SelectMany(r => r.NextActionIds).ToList();
+                        if (current.RejectionConfig is not null)
+                        {
+                            next.Add(current.RejectionConfig.TargetActionId);
+                        }
+
+                        foreach (var id in next.Where(reachable.Add))
+                        {
+                            pending.Push(id);
+                        }
+                    }
+
+                    foreach (var orphan in draft.Actions.Where(a => !reachable.Contains(a.Id)))
+                    {
+                        errors.Add(new
+                        {
+                            code = "UNREACHABLE_ACTION",
+                            message = $"Action {orphan.Id} ('{orphan.Title}') is not reachable from any starting " +
+                                      $"action by routes or rejection targets, so it can never run.",
+                            location = $"actions[{orphan.Id}]"
+                        });
+                    }
+                }
+
+                // Something must be able to END. An action with no routes is terminal by absence;
+                // a route with an empty nextActionIds is terminal by declaration. A cyclic
+                // blueprint declares itself so and is exempt.
+                var declaresCycles = draft.Metadata is not null
+                    && draft.Metadata.TryGetValue("hasCycles", out var cyclesFlag)
+                    && string.Equals(cyclesFlag, "true", StringComparison.OrdinalIgnoreCase);
+
+                var hasTerminal = draft.Actions.Any(a =>
+                    RoutesOf(a).Count == 0 || RoutesOf(a).Any(r => !r.NextActionIds.Any()));
+
+                if (!hasTerminal && !declaresCycles)
+                {
+                    warnings.Add(new
+                    {
+                        code = "NO_TERMINAL_PATH",
+                        message = "No action ends the workflow — every action routes onward and none declares " +
+                                  "an empty nextActionIds. Add a terminal route, or set metadata.hasCycles = \"true\" " +
+                                  "if the loop is intentional.",
+                        location = "actions"
+                    });
+                }
             }
 
             // Validate action participant references
