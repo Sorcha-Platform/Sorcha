@@ -748,6 +748,26 @@ Watermark states (Draft/Pending/Issued/None), stacked-cards behaviour for `crede
 - Multiple requirements are AND-combined.
 - `type` above is the canonical, **case-sensitive** VCT URI (`Sorcha.CitizenWallet.Abstractions.Constants.VctUris`, e.g. `VctUris.AssuredIdentityV1`) — for a platform-catalogued credential type it must match the issuer's `vct` exactly (`Ordinal` comparison). A missed URI/casing means the requirement silently never matches.
 
+### Alternative credentials — `anyOfGroup` (Feature 181 US2)
+
+Requirements on the same action that share an `anyOfGroup` tag are **alternatives**: presenting any
+ONE of them satisfies the action. Requirements with no tag are each independently required (AND).
+
+```jsonc
+"credentialRequirements": [
+  { "type": "https://sorcha.dev/vc/passport/v1",        "anyOfGroup": "identity-document" },
+  { "type": "https://sorcha.dev/vc/driving-licence/v1", "anyOfGroup": "identity-document" },
+  { "type": "https://sorcha.dev/vc/proof-of-address/v1" }          // no tag ⇒ ALSO required
+]
+```
+
+That maps to a DCQL `credential_sets` option. Once any group exists, the mapper emits an explicit
+required singleton set per ungrouped ask, so AND-requiredness survives the presence of
+`credential_sets` — see `RequirementDcqlMapper`.
+
+⚠ The F127 `SorchaWallet` consumer is still single-credential, so a multi-credential ask verifies on
+the HAIP rail today.
+
 ### Issuing a credential on action completion
 
 ```jsonc
