@@ -53,4 +53,19 @@ public static class ValidationWarningCodes
     /// Contract: <c>specs/107-assured-identity-v1/contracts/portrait-claim-format.md</c>.
     /// </remarks>
     public const string CredentialPortraitOversize = "WARN_CRED_PORTRAIT_OVERSIZE_001";
+
+    /// <summary>
+    /// Blueprint publish <b>warning</b> (non-blocking): an action declares a
+    /// <c>credentialIssuanceConfig</c> with no <c>issuanceCondition</c>, yet routes on a
+    /// decision (a conditional route, or more than one route). Minting runs <b>before</b>
+    /// routing, so the credential is minted <i>and delivered</i> on every path the action
+    /// can take - including a terminal reject route. A reject route stops the credential
+    /// being handed over; it does not stop it being issued.
+    /// </summary>
+    /// <remarks>
+    /// Issue #1551. Three shipped blueprints had this shape, so a declined applicant was
+    /// issued a credential. Silence it by adding an <c>issuanceCondition</c> (JSON Logic
+    /// over the submitted action data), or by removing the decision routing.
+    /// </remarks>
+    public const string UnconditionalIssuanceOnDecision = "WARN_BP_CRED_005";
 }

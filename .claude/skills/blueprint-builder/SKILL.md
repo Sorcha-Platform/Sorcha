@@ -311,6 +311,7 @@ Publish-time validation runs in **`Sorcha.Blueprint.Service`** (`PublishService.
 | `VAL_BP_CRED_004` | error | A declared `vct` is not an absolute URI (SD-JWT VC requires a URI). Emitted only by the publish path. |
 | `INVALID_CREDENTIAL_RECIPIENT` | warning | `credentialIssuanceConfig.recipientParticipantId` references an unknown participant |
 | `OPEN_CREDENTIAL_ISSUER` | warning | `credentialRequirements[].trustPolicy` is null or has no `sources` (any issuer accepted) — usually too permissive. (Pre-F135 this keyed off an empty `acceptedIssuers`, now removed.) |
+| `WARN_BP_CRED_005` | warning | An action declares `credentialIssuanceConfig` with **no `issuanceCondition`** but routes on a decision (a conditional route, or >1 route). Minting precedes routing, so the credential is minted and delivered on the reject path too (#1551). |
 | `WARN_BP_006` | warning | An `x-credential-offer` object should declare `credential_offer_uri` in its `required` list |
 | `NO_STARTING_ACTION` | warning | No action marked `isStartingAction: true` |
 | Cycle warning | warning | Cyclic route detected — publish proceeds; set `metadata.hasCycles = "true"` for clarity |
@@ -432,7 +433,40 @@ The evaluator is **json-everything's `Json.Logic`** (`src/Core/Sorcha.Blueprint.
 }
 ```
 
-**Gating credential issuance on a computed value:** there is no `condition` field on `credentialIssuanceConfig` — minting runs *before* routing, so an action that declares `credentialIssuanceConfig` **always mints when reached** (validation codes `VAL_BP_011`/`VAL_BP_012` are unrelated). To *withhold* a credential on a computed-false gate, compute the value in `calculations`, then **route-gate**: a `condition`-guarded route reaches the issuing action only when the gate is true; the default route goes to a terminal action with no issuance. (`computedCompliant` true → issue action; else → record/terminal action.) The submitted-vs-computed distinction matters for integrity: route on the *computed* value, not a submitter-supplied flag, so a payload can't claim compliance it didn't earn.
+**Gating credential issuance — use `issuanceCondition`, and know why routing is not enough.**
+
+**Minting runs *before* routing.** An action that declares `credentialIssuanceConfig` mints
+whenever that action is **reached** — a `nextActionIds: []` reject route stops the credential being
+handed onward, but the credential has already been minted **and delivered** to
+`recipientParticipantId`. Confirmed live (#1551) by an A/B of two blueprints differing only in
+`issuanceCondition`: with it a `Fail` decision issued nothing; without it, a credential landed in
+the rejected applicant's wallet. Three shipped blueprints had exactly this shape.
+
+Two different topologies, and only one of them can be fixed by routing:
+
+| Topology | How to withhold |
+|---|---|
+| The issuance config sits on the **decision action itself** (approve/reject recorded here) | **`issuanceCondition` only.** Routing cannot help — the action is reached on both paths, so the mint has already happened by the time the route is evaluated. |
+| The issuance config sits on a **separate downstream action** the false path never reaches | Route-gating works, because the issuing action is genuinely never reached. `issuanceCondition` is still worth adding as defence in depth. |
+
+```jsonc
+"credentialIssuanceConfig": {
+  "vct": "https://sorcha.dev/vc/contractor-certification/v1",
+  "issuanceCondition": { "==": [{ "var": "decision" }, "Pass"] }   // falsy ⇒ NO mint
+}
+```
+
+`issuanceCondition` (Feature 176) is JSON Logic over the **submitted action data**. Falsy ⇒ no
+credential is minted and the workflow routes onward normally. It **fails closed**: a condition that
+cannot be evaluated skips issuance.
+
+**`WARN_BP_CRED_005` catches the dangerous shape at publish time** — an action with a
+`credentialIssuanceConfig`, no `issuanceCondition`, and either a conditional route or more than one
+route. A single unconditional route is genuinely unconditional issuance and stays quiet.
+
+**Route on the *computed* value, not a submitter-supplied flag** — compute it in `calculations`
+first, so a payload cannot claim compliance it did not earn. That integrity point is independent of
+the gating question above and applies to both.
 
 A nested-var gate flowing into a route condition is exercised end-to-end by the **CyberEssentialsUac** walkthrough (`walkthroughs/CyberEssentialsUac/ce-uac-assessment-template.json`).
 

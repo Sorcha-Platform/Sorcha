@@ -3451,6 +3451,9 @@ public class PublishService(
         //   WARN_BP_CRED_002 — non-blocking warning, action does not declare an explicit
         //                      recipient disclosure group so the engine will synthesise one
         //                      at mint time. Authors can silence by adding a disclosure.
+        //   WARN_BP_CRED_005 — non-blocking warning, the action routes on a decision but declares
+        //                      no issuanceCondition, so the credential is minted on every path
+        //                      including the reject path (#1551).
         //   VAL_BP_CRED_003  — hard error, any action routed from a SorchaLocalWallet
         //                      issuance must have RejectionConfig.IsTerminal == true so the
         //                      holder's decline path seals a clean terminal rejection.
@@ -3476,6 +3479,32 @@ public class PublishService(
                     $"[{CredentialVctNotAbsoluteUriCode}] Action {action.Id} ('{action.Title}'): " +
                     $"credentialIssuanceConfig.vct '{issuance.Vct}' is not an absolute URI. The vct must be an " +
                     $"absolute URI, e.g. https://sorcha.dev/vc/{{type}}/v1.");
+            }
+
+            // WARN_BP_CRED_005 (#1551) — an action that models a DECISION but mints unconditionally.
+            // Minting runs BEFORE routing, so a credentialIssuanceConfig mints whenever its action is
+            // reached. A terminal reject route stops the credential being handed over but NOT minted
+            // and delivered, so an approve/decline action with no issuanceCondition issues to the
+            // rejected applicant too. Confirmed live on n1 by an A/B of two blueprints differing only
+            // in issuanceCondition: with it, decision=Fail issued nothing; without it, one was minted
+            // and delivered. Three shipped blueprints had this shape.
+            if (issuance.IssuanceCondition is null)
+            {
+                var decisionRoutes = action.Routes?.ToList() ?? new List<Sorcha.Blueprint.Models.Route>();
+                var conditionalRoutes = decisionRoutes.Count(r => r.Condition is not null);
+
+                // One unconditional route is genuinely unconditional issuance, not a decision.
+                if (conditionalRoutes > 0 || decisionRoutes.Count > 1)
+                {
+                    warnings.Add(
+                        $"[{Sorcha.Blueprint.Models.ValidationWarningCodes.UnconditionalIssuanceOnDecision}] " +
+                        $"Action {action.Id} ('{action.Title}'): declares credentialIssuanceConfig with no " +
+                        $"issuanceCondition, but routes on a decision ({decisionRoutes.Count} route(s), " +
+                        $"{conditionalRoutes} conditional). Minting runs BEFORE routing, so the credential is " +
+                        $"minted and delivered on every path this action can take - including the reject path. " +
+                        $"Add an issuanceCondition (JSON Logic over the submitted action data) if the credential " +
+                        $"should only be issued on some outcomes.");
+                }
             }
 
             // This block is the deprecation handler for SorchaInternal — it references the obsolete
