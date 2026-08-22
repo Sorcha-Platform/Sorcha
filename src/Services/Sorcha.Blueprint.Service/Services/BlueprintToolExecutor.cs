@@ -731,6 +731,7 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
         }
 
         // Parse accepted issuers
+        var anyOfGroup = root.TryGetProperty("anyOfGroup", out var groupProp) ? groupProp.GetString() : null;
         var acceptedIssuers = root.TryGetProperty("acceptedIssuers", out var issuersProp)
             ? issuersProp.EnumerateArray().Select(i => i.GetString()!).ToList()
             : new List<string>();
@@ -775,6 +776,7 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
         var requirement = new CredentialRequirement
         {
             Type = credentialType,
+            AnyOfGroup = string.IsNullOrWhiteSpace(anyOfGroup) ? null : anyOfGroup,
             TrustPolicy = acceptedIssuers.Count > 0
                 ? TrustPolicyExtensions.FromLegacyIssuers(acceptedIssuers)
                 : null,
@@ -796,6 +798,7 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                 actionId,
                 credentialType,
                 acceptedIssuers,
+                anyOfGroup = anyOfGroup ?? "(none — this requirement is independently required)",
                 requiredClaims = requiredClaims?.Select(c => new { c.ClaimName, c.ExpectedValue }) ?? [],
                 revocationPolicy = revocationPolicy.ToString()
             },
@@ -844,13 +847,51 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                 $"Available participants: {string.Join(", ", participantIds)}");
         }
 
+        // vct — SD-JWT VC §3.2.2.1 makes this the credential's SOLE type claim, and it is REQUIRED.
+        // Until now this tool could not set it at all, so every AI-authored blueprint fell back to the
+        // bare `credentialType` name. A credential with no absolute-URI vct cannot be matched to a
+        // requested type by any conformant verifier (the #1540 failure, on the HAIP rail).
+        var vct = root.TryGetProperty("vct", out var vctProp) ? vctProp.GetString() : null;
+        if (!string.IsNullOrWhiteSpace(vct) && !Uri.TryCreate(vct, UriKind.Absolute, out _))
+        {
+            return ToolResult.Failed(
+                Guid.NewGuid().ToString(),
+                $"vct '{vct}' is not an absolute URI. Use the canonical form, e.g. " +
+                "https://sorcha.dev/vc/{type}/v1 — a relative or bare-name vct mints an unmatchable credential.");
+        }
+
+        var displayName = root.TryGetProperty("displayName", out var dnProp) ? dnProp.GetString() : null;
+
+        // issuanceCondition — JSON Logic over the submitted action data, gating whether the credential
+        // is actually minted. Without it a single decision action ALWAYS issues, so a rejection still
+        // mints and delivers a credential: the fail-open defect Feature 176 exists to close. An
+        // approve/reject workflow authored without this reproduces it.
+        JsonNode? issuanceCondition = null;
+        if (root.TryGetProperty("issuanceCondition", out var condProp) && condProp.ValueKind != JsonValueKind.Null)
+        {
+            try
+            {
+                issuanceCondition = JsonNode.Parse(condProp.GetRawText());
+            }
+            catch (JsonException ex)
+            {
+                return ToolResult.Failed(
+                    Guid.NewGuid().ToString(),
+                    $"issuanceCondition is not valid JSON Logic: {ex.Message}. " +
+                    "Example: {\"==\": [{\"var\": \"decision\"}, \"approved\"]}");
+            }
+        }
+
         action.CredentialIssuanceConfig = new CredentialIssuanceConfig
         {
             CredentialType = credentialType,
+            Vct = vct,
+            DisplayName = displayName,
             ClaimMappings = claimMappings,
             RecipientParticipantId = recipientParticipantId,
             ExpiryDuration = expiryDuration,
-            UsagePolicy = usagePolicy
+            UsagePolicy = usagePolicy,
+            IssuanceCondition = issuanceCondition
         };
 
         return ToolResult.Succeeded(
@@ -863,7 +904,10 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                 claimCount = claimMappings.Count,
                 recipientParticipantId,
                 expiryDuration = expiryDuration ?? "none",
-                usagePolicy = usagePolicy.ToString()
+                usagePolicy = usagePolicy.ToString(),
+                vct = vct ?? "(none — falls back to credentialType, not conformant)",
+                displayName = displayName ?? "(none)",
+                issuanceCondition = issuanceCondition?.ToJsonString() ?? "(none — ALWAYS issues, including on rejection)"
             },
             blueprintChanged: true);
     }
@@ -1679,7 +1723,12 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                         {
                             type = "array",
                             items = new { type = "string" },
-                            description = "List of trusted issuer DIDs or addresses. Empty array means any issuer is accepted."
+                            description = "Trusted issuer DIDs. Becomes a did-allowlist trustPolicy source. Empty means any issuer that the register can resolve is accepted. For richer trust (x509/trustlist sources, AllOf combinator, a minimum assurance level) the blueprint must be authored directly — this tool only expresses the allowlist case."
+                        },
+                        anyOfGroup = new
+                        {
+                            type = "string",
+                            description = "Optional tag making this requirement one of several ALTERNATIVES. Requirements on the same action sharing a tag are satisfied by presenting ANY ONE of them; requirements with no tag are each independently required (AND). Use when 'a passport OR a driving licence' would do."
                         },
                         requiredClaims = new
                         {
@@ -1716,7 +1765,22 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                     properties = new
                     {
                         actionId = new { type = "integer", description = "Action ID that issues the credential" },
-                        credentialType = new { type = "string", description = "Type of credential to issue (e.g., 'TrainingCompletionCertificate', 'ApprovalAttestation')" },
+                        credentialType = new { type = "string", description = "Short readable type name (e.g., 'TrainingCompletionCertificate'). A fallback identity only — ALWAYS pass vct as well." },
+                        vct = new
+                        {
+                            type = "string",
+                            description = "REQUIRED in practice. The credential's canonical type identifier and, per SD-JWT VC, its ONLY type claim — an absolute URI, e.g. 'https://sorcha.dev/vc/training-completion/v1'. Omit it and the credential falls back to the bare credentialType, which no conforming verifier can match to a requested type."
+                        },
+                        displayName = new
+                        {
+                            type = "string",
+                            description = "Human card label shown in the wallet (e.g., 'Training Completion'). Falls back to a humanised vct when omitted."
+                        },
+                        issuanceCondition = new
+                        {
+                            type = "object",
+                            description = "JSON Logic evaluated over the SUBMITTED action data, gating whether the credential is minted. USE THIS ON ANY APPROVE/REJECT ACTION: without it the credential is issued unconditionally, so a rejection still mints and delivers one. Example: {\"==\": [{\"var\": \"decision\"}, \"approved\"]}. Fails closed — an unevaluable condition skips issuance."
+                        },
                         claimMappings = new
                         {
                             type = "array",

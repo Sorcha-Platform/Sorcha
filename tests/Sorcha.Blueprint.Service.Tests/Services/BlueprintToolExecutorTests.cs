@@ -1751,4 +1751,188 @@ public class BlueprintToolExecutorTests
     private record ValidationWarning(string code, string message, string? location);
 
     #endregion
+
+    // -------------------------------------------------------------------------
+    // Capabilities the AI author could not express until now. Each of these is a
+    // property the platform has supported for weeks while the tool layer had no
+    // parameter for it, so every AI-authored blueprint silently omitted it.
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ExecuteIssueCredential_WithVct_SetsCanonicalTypeIdentifier()
+    {
+        var builder = BlueprintBuilder.Create()
+            .WithTitle("Test")
+            .AddParticipant("issuer", p => p.Named("Issuer"))
+            .AddParticipant("holder", p => p.Named("Holder"))
+            .AddAction(1, a => a.WithTitle("Issue").SentBy("issuer"));
+
+        var args = CreateArgs(new
+        {
+            actionId = 1,
+            credentialType = "TrainingCompletion",
+            vct = "https://sorcha.dev/vc/training-completion/v1",
+            displayName = "Training Completion",
+            recipientParticipantId = "holder",
+            claimMappings = new[] { new { claimName = "course", sourceField = "/course" } }
+        });
+
+        var result = await _executor.ExecuteAsync("issue_credential", args, builder);
+
+        result.Success.Should().BeTrue();
+        var cfg = builder.BuildDraft().Actions.First(a => a.Id == 1).CredentialIssuanceConfig!;
+        cfg.Vct.Should().Be("https://sorcha.dev/vc/training-completion/v1",
+            "vct is the credential's SOLE type claim under SD-JWT VC — without it no conforming verifier can type-match it");
+        cfg.DisplayName.Should().Be("Training Completion");
+    }
+
+    [Fact]
+    public async Task ExecuteIssueCredential_RelativeVct_IsRejected()
+    {
+        var builder = BlueprintBuilder.Create()
+            .WithTitle("Test")
+            .AddParticipant("issuer", p => p.Named("Issuer"))
+            .AddParticipant("holder", p => p.Named("Holder"))
+            .AddAction(1, a => a.WithTitle("Issue").SentBy("issuer"));
+
+        // A bare name is exactly the unmatchable shape the vct parameter exists to prevent.
+        var args = CreateArgs(new
+        {
+            actionId = 1,
+            credentialType = "TrainingCompletion",
+            vct = "TrainingCompletion",
+            recipientParticipantId = "holder",
+            claimMappings = new[] { new { claimName = "course", sourceField = "/course" } }
+        });
+
+        var result = await _executor.ExecuteAsync("issue_credential", args, builder);
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("absolute URI");
+    }
+
+    [Fact]
+    public async Task ExecuteIssueCredential_WithIssuanceCondition_GatesMinting()
+    {
+        var builder = BlueprintBuilder.Create()
+            .WithTitle("Test")
+            .AddParticipant("reviewer", p => p.Named("Reviewer"))
+            .AddParticipant("applicant", p => p.Named("Applicant"))
+            .AddAction(1, a => a.WithTitle("Decide").SentBy("reviewer"));
+
+        var args = CreateArgs(new
+        {
+            actionId = 1,
+            credentialType = "ApprovalAttestation",
+            vct = "https://sorcha.dev/vc/approval/v1",
+            recipientParticipantId = "applicant",
+            claimMappings = new[] { new { claimName = "outcome", sourceField = "/decision" } },
+            issuanceCondition = new Dictionary<string, object>
+            {
+                ["=="] = new object[] { new Dictionary<string, object> { ["var"] = "decision" }, "approved" }
+            }
+        });
+
+        var result = await _executor.ExecuteAsync("issue_credential", args, builder);
+
+        result.Success.Should().BeTrue();
+        var cfg = builder.BuildDraft().Actions.First(a => a.Id == 1).CredentialIssuanceConfig!;
+        cfg.IssuanceCondition.Should().NotBeNull(
+            "without a condition an approve/reject action issues the credential even on rejection (Feature 176)");
+        cfg.IssuanceCondition!.ToJsonString().Should().Contain("decision").And.Contain("approved");
+    }
+
+    [Fact]
+    public async Task ExecuteIssueCredential_WithoutIssuanceCondition_LeavesItNull()
+    {
+        // The default must stay "always issue" — Feature 176 made the condition OPTIONAL so that
+        // existing blueprints keep their behaviour. Defaulting it to anything else would silently
+        // stop credentials being issued.
+        var builder = BlueprintBuilder.Create()
+            .WithTitle("Test")
+            .AddParticipant("issuer", p => p.Named("Issuer"))
+            .AddParticipant("holder", p => p.Named("Holder"))
+            .AddAction(1, a => a.WithTitle("Issue").SentBy("issuer"));
+
+        var args = CreateArgs(new
+        {
+            actionId = 1,
+            credentialType = "Cert",
+            recipientParticipantId = "holder",
+            claimMappings = new[] { new { claimName = "a", sourceField = "/a" } }
+        });
+
+        var result = await _executor.ExecuteAsync("issue_credential", args, builder);
+
+        result.Success.Should().BeTrue();
+        builder.BuildDraft().Actions.First(a => a.Id == 1)
+            .CredentialIssuanceConfig!.IssuanceCondition.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ExecuteRequireCredential_WithAnyOfGroup_MarksRequirementAsAlternative()
+    {
+        var builder = BlueprintBuilder.Create()
+            .WithTitle("Test")
+            .AddParticipant("citizen", p => p.Named("Citizen"))
+            .AddAction(1, a => a.WithTitle("Prove identity").SentBy("citizen"));
+
+        var args = CreateArgs(new
+        {
+            actionId = 1,
+            credentialType = "Passport",
+            anyOfGroup = "identity-document",
+            acceptedIssuers = Array.Empty<string>()
+        });
+
+        var result = await _executor.ExecuteAsync("require_credential", args, builder);
+
+        result.Success.Should().BeTrue();
+        var req = builder.BuildDraft().Actions.First(a => a.Id == 1).CredentialRequirements!.First();
+        req.AnyOfGroup.Should().Be("identity-document",
+            "requirements sharing a tag are alternatives — one of them satisfies the action");
+    }
+
+    [Fact]
+    public async Task ExecuteRequireCredential_WithoutAnyOfGroup_StaysIndependentlyRequired()
+    {
+        var builder = BlueprintBuilder.Create()
+            .WithTitle("Test")
+            .AddParticipant("citizen", p => p.Named("Citizen"))
+            .AddAction(1, a => a.WithTitle("Prove identity").SentBy("citizen"));
+
+        var args = CreateArgs(new
+        {
+            actionId = 1,
+            credentialType = "Passport",
+            acceptedIssuers = Array.Empty<string>()
+        });
+
+        var result = await _executor.ExecuteAsync("require_credential", args, builder);
+
+        result.Success.Should().BeTrue();
+        builder.BuildDraft().Actions.First(a => a.Id == 1)
+            .CredentialRequirements!.First().AnyOfGroup.Should().BeNull();
+    }
+
+    [Fact]
+    public void IssueCredentialTool_AdvertisesVctAndIssuanceCondition()
+    {
+        // The model can only use what the tool schema advertises. These two carry correctness
+        // consequences (an unmatchable credential; issuing on rejection), so their absence from
+        // the schema is the whole defect — not the prompt wording.
+        var tool = _executor.GetToolDefinitions().First(t => t.Name == "issue_credential");
+        var json = System.Text.Json.JsonSerializer.Serialize(tool.InputSchema);
+
+        json.Should().Contain("vct");
+        json.Should().Contain("issuanceCondition");
+        json.Should().Contain("displayName");
+    }
+
+    [Fact]
+    public void RequireCredentialTool_AdvertisesAnyOfGroup()
+    {
+        var tool = _executor.GetToolDefinitions().First(t => t.Name == "require_credential");
+        System.Text.Json.JsonSerializer.Serialize(tool.InputSchema).Should().Contain("anyOfGroup");
+    }
 }

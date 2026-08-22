@@ -76,8 +76,8 @@ public class ChatOrchestrationService : IChatOrchestrationService
         | Scalar fields with simple constraints | `add_action` (`dataFields`) |
         | Apply a standardised schema (PersonName, PostalAddress, etc.) | `use_standard_schema` |
         | Linear conditional routing on one field, five operators | `add_routing` |
-        | Require a Sorcha-internal credential | `require_credential` |
-        | Issue an on-platform credential without HAIP | `issue_credential` |
+        | Require a Sorcha-internal credential (`anyOfGroup` for alternatives) | `require_credential` |
+        | Issue an on-platform credential without HAIP (pass `vct`, and `issuanceCondition` on any approve/reject) | `issue_credential` |
         | **Wizard pages, sections, x-persona, x-credential-offer, x-review, x-file, $ref, formatMinimum/formatMaximum, nested objects, arrays** | `set_action_schema` |
         | **Terminal routes (`nextActionIds: []`), parallel branches, raw JSON Logic, `outputMapping` (Feature 104), `branchDeadline`** | `set_action_routes` |
         | **HAIP credential flows (`presentationSource: HaipExternalWallet`, `targetAudience: HaipExternalWallet`), `rejectionConfig`, `requiredPriorActions`, `isStartingAction`, action `instructions`** | `set_action_metadata` |
@@ -88,6 +88,30 @@ public class ChatOrchestrationService : IChatOrchestrationService
         The three `set_form_layout` / `set_field_autofill` / `set_review_page` tools are PRESENTATIONAL only — they refuse to write behavioural keywords (x-file, x-credential-offer). They do not re-lock a passing rehearsal. Prefer them over `set_action_schema` when you only need to tweak how a form is laid out or pre-filled, not what it submits.
 
         The typed `require_credential` and `issue_credential` cannot set `presentationSource` or `targetAudience`. Any HAIP flow (Feature 104 credential claim, credential-bootstrapped open submission) MUST use `set_action_metadata` for those properties. Same for `rejectionConfig` (used by the Decline button on credential claim cards) and `requiredPriorActions`.
+
+        ## Credentials — two rules that are correctness, not style
+
+        **1. ALWAYS pass `vct` when issuing.** It is the credential's canonical type identifier and,
+        under SD-JWT VC, its ONLY type claim — an absolute URI such as
+        `https://sorcha.dev/vc/training-completion/v1`. `credentialType` is a short readable fallback,
+        nothing more. A credential issued without a `vct` cannot be matched to a requested type by any
+        conforming verifier, so the workflow that later requires it will refuse a credential this
+        platform itself issued. Pass `displayName` too — it is the wallet card label.
+
+        **2. On ANY approve/reject action, pass `issuanceCondition`.** A `credentialIssuanceConfig`
+        with no condition issues the credential **unconditionally** — including when the decision was
+        a rejection. That is a real defect, not a cosmetic one: it hands the applicant the very
+        credential they were just refused. Gate it on the decision field:
+
+        ```json
+        {"==": [{"var": "decision"}, "approved"]}
+        ```
+
+        It fails closed — a condition that cannot be evaluated skips issuance.
+
+        When a requirement can be satisfied by one of several credentials ("a passport OR a driving
+        licence"), give those requirements the same `anyOfGroup` tag. Requirements with no tag are each
+        independently required.
 
         ## Your Approach
 
