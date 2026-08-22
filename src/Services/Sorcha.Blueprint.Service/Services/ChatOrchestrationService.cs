@@ -1203,30 +1203,16 @@ public class ChatOrchestrationService : IChatOrchestrationService
         return value.Length <= maxLength ? value : string.Concat(value.AsSpan(0, maxLength - 3), "...");
     }
 
+    /// <summary>
+    /// Rebuilds the per-message builder from the session's stored draft.
+    /// </summary>
+    /// <remarks>
+    /// Wraps the draft rather than copying it (issue #1547). The previous implementation copied
+    /// id, title, description and participants and dropped every action, so each message after
+    /// the first saw an empty blueprint - the designer could not iterate at all.
+    /// </remarks>
     private static BlueprintBuilder CreateBuilderFromBlueprint(BlueprintModel blueprint)
-    {
-        var builder = BlueprintBuilder.Create()
-            .WithId(blueprint.Id)
-            .WithTitle(blueprint.Title)
-            .WithDescription(blueprint.Description ?? "");
-
-        foreach (var participant in blueprint.Participants)
-        {
-            builder.AddParticipant(participant.Id, p =>
-            {
-                p.Named(participant.Name);
-                if (!string.IsNullOrEmpty(participant.Organisation))
-                {
-                    p.FromOrganisation(participant.Organisation);
-                }
-            });
-        }
-
-        // Note: Actions would need more complex reconstruction
-        // For MVP, we rebuild from scratch with tool calls
-
-        return builder;
-    }
+        => BlueprintBuilder.FromBlueprint(blueprint);
 
     private static ValidationResultDto ValidateBlueprint(BlueprintModel blueprint)
     {
