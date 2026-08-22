@@ -8,12 +8,12 @@ standards:
   - HAIP 1.0
   - OpenID4VCI
   - OpenID4VP
-last_updated: 2026-05-04
+last_updated: 2026-08-22
 ---
 
 # Sorcha Architecture
 
-Sorcha is cryptographic proof infrastructure for multi-party workflows. Every participant action is signed by a wallet they control. Every register entry is Merkle-chained to the entry before it. Every disclosure is bounded by a per-recipient symmetric key — the platform itself cannot read what it was not given the key for. The result is a system whose trust comes from evidence each party can verify independently, not from belief in a platform operator.
+Sorcha is programmable proof infrastructure for multi-party workflows. Every participant action is signed by a wallet they control. Every register entry is Merkle-chained to the entry before it. Every disclosure is bounded by a per-recipient symmetric key — the platform itself cannot read what it was not given the key for. The result is a system whose trust comes from evidence each party can verify independently, not from belief in a platform operator.
 
 This document is the architectural overview. It is the entry point for an AI agent, an integrator, or a reviewer who has not seen the codebase before. It pairs with [`STANDARDS.md`](../STANDARDS.md) (the standards-compliance source of truth) and [`docs/security-model.md`](security-model.md) (selective disclosure, post-quantum posture, honest gaps).
 
