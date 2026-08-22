@@ -1443,7 +1443,7 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                         {
                             warnings.Add(new
                             {
-                                code = "WARN_BP_CRED_005",
+                                code = Sorcha.Blueprint.Models.ValidationWarningCodes.UnconditionalIssuanceOnDecision,
                                 message = $"Action '{action.Title}' issues a credential with no issuanceCondition but " +
                                           $"routes on a decision. Minting runs before routing, so the credential is " +
                                           $"minted and delivered on every path — including the reject path. Add " +
