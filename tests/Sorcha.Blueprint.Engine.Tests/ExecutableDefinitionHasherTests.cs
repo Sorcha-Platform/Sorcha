@@ -401,6 +401,55 @@ public class ExecutableDefinitionHasherTests
         Hasher.ComputeHash(bp).Should().Be(baseline, "titles/descriptions are presentational");
     }
 
+    // -- the ORDINAL version is not part of the content address (Feature 194) ----
+
+    [Fact]
+    public void ComputeHash_ChangingTheOrdinalVersion_HashUnchanged()
+    {
+        // Feature 194 removed `version` from the hashed projection. The ordinal is a DISPLAY LABEL
+        // — assigned from in-memory insert order and re-derived on recovery — so including it in a
+        // content address is a contradiction: two blueprints that execute identically would hash
+        // differently purely because someone renumbered one.
+        //
+        // The consequence if it were still hashed: `Blueprint.Version` is a plain settable int, so
+        // an author editing it would strand every in-flight instance on the previous definition for
+        // no behavioural reason at all — the exact harm Story 4 exists to prevent — and would
+        // re-lock the F142 rehearsal gate at the same time.
+        var baseline = Hasher.ComputeHash(BaseBlueprint());
+
+        var bp = BaseBlueprint();
+        bp.Version = 47;
+
+        Hasher.ComputeHash(bp).Should().Be(baseline,
+            "the ordinal version says nothing about how the blueprint executes");
+    }
+
+    [Fact]
+    public void ComputeHash_ChangingVersionMajorMinor_HashUnchanged()
+    {
+        var baseline = Hasher.ComputeHash(BaseBlueprint());
+
+        var bp = BaseBlueprint();
+        bp.VersionMajor = 9;
+        bp.VersionMinor = 3;
+
+        Hasher.ComputeHash(bp).Should().Be(baseline, "display version components are presentational");
+    }
+
+    [Fact]
+    public void ComputeHash_ChangingTheBlueprintId_HashChanged()
+    {
+        // The counterweight to the two above: identity IS structural. Without this, "the ordinal is
+        // not hashed" could quietly become "nothing at the top level is hashed", and two different
+        // blueprints would share a pin.
+        var baseline = Hasher.ComputeHash(BaseBlueprint());
+
+        var bp = BaseBlueprint();
+        bp.Id = "a-completely-different-blueprint";
+
+        Hasher.ComputeHash(bp).Should().NotBe(baseline);
+    }
+
     // -- JSON object-key order insensitivity ------------------------------------
 
     [Fact]
