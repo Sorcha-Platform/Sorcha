@@ -82,7 +82,7 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                     Id = table.Column<string>(type: "text", nullable: false),
                     BlueprintId = table.Column<string>(type: "text", nullable: false),
                     BlueprintVersion = table.Column<int>(type: "integer", nullable: false),
-                    BlueprintExecDefHash = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false, defaultValue: ""),
+                    BlueprintExecDefHash = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     RegisterId = table.Column<string>(type: "text", nullable: false),
                     State = table.Column<int>(type: "integer", nullable: false),
                     CurrentActionIds = table.Column<string>(type: "jsonb", nullable: true),

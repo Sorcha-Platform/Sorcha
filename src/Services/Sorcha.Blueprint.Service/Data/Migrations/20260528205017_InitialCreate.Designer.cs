@@ -244,10 +244,8 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
 
                     b.Property<string>("BlueprintExecDefHash")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasDefaultValue("");
+                        .HasColumnType("character varying(64)");
 
                     b.Property<string>("BlueprintId")
                         .IsRequired()
