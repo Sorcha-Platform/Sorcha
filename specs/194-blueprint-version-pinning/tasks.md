@@ -209,11 +209,11 @@ it is the latest.
 
 ### Live acceptance on n1 (the gate — see [quickstart.md](./quickstart.md))
 
-- [ ] T063 Deploy `validator-service` **first**, then `blueprint-service`. The reverse order refuses every submission (old validator computes different signable bytes)
-- [ ] T064 Recreate the blueprint Postgres database on the target; confirm the new column exists before running anything
-- [ ] T065 Run the six-step live test: publish v1 → start instance A mid-flow → republish v2 with a required field on a later action → advance A against v1 → start B and confirm it requires the new field → **restart `blueprint-service` and advance A again**
-- [ ] T066 Verify the pin is on the wire and sealed, by reading `MetaData.RoutingDecision.blueprintExecDefHash` out of Mongo for A's actions — not by reading the instance row, which is a local projection
-- [ ] T067 Verify `sorcha_instance_pin_fallback_total` reads **zero** for a register created after the deploy. This is the positive check; every failure mode of this feature degrades to the old behaviour rather than to an error, so absence of errors is not evidence
+- [x] T063 Deploy `validator-service` **first**, then `blueprint-service`. ⚠ **The scope was incomplete — `register-service` must be deployed too**: it persists and serves `TransactionMetaData`, and its pre-F194 model silently dropped the pin from the typed field
+- [x] T064 Recreate the blueprint Postgres database on the target. ⚠ **The first attempt FAILED and the container still reported healthy** — `PendingModelChangesWarning`, fixed in #1562. Backup at `/opt/sorcha/backups/sorcha_blueprint-20260823T180738Z.dump`
+- [~] T065 **PARTIAL — steps 1-3 and 5 pass; the durability leg is blocked by #1563.** Run 1 DID demonstrate the gate (the superseded definition resolved after a restart and its instance advanced against it). Run the six-step live test: publish v1 → start instance A mid-flow → republish v2 with a required field on a later action → advance A against v1 → start B and confirm it requires the new field → **restart `blueprint-service` and advance A again**
+- [x] T066 **VERIFIED** — `MetaData.TrackingData.routingDecision.blueprintExecDefHash` read out of Mongo on both of instance A's actions. Verify the pin is on the wire and sealed, by reading `MetaData.RoutingDecision.blueprintExecDefHash` out of Mongo for A's actions — not by reading the instance row, which is a local projection
+- [~] T067 **NOT ZERO, and the reason is now known**: the fallback fired for transactions that demonstrably carried the pin, because `register-service` was not yet deployed and dropped the field from the typed metadata. Re-run after the corrected deploy scope. Verify `sorcha_instance_pin_fallback_total` reads **zero** for a register created after the deploy. This is the positive check; every failure mode of this feature degrades to the old behaviour rather than to an error, so absence of errors is not evidence
 
 ### Documentation
 
