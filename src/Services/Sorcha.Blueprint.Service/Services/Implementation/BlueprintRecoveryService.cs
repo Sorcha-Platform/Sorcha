@@ -23,6 +23,13 @@ public class BlueprintRecoveryService : BackgroundService
     private readonly IConnectionMultiplexer? _redis;
     private readonly FederationBlueprintMetrics? _metrics;
 
+    /// <summary>
+    /// Feature 194 — recovery restores every published definition, so each recovered blueprint must
+    /// be labelled with the hash a pinned instance will look it up by. The register carries the
+    /// definition, not its pin, so the hash is recomputed here from the recovered content.
+    /// </summary>
+    private readonly Sorcha.Blueprint.Engine.Implementation.ExecutableDefinitionHasher _execDefHasher = new();
+
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     /// <summary>Initialises a new instance of the <see cref="BlueprintRecoveryService"/> class.</summary>
@@ -270,6 +277,36 @@ public class BlueprintRecoveryService : BackgroundService
     /// publish time. Returns <c>false</c> (fail closed) with <paramref name="rejectReason"/> set to
     /// <c>no_provenance</c> (no sealed hash) or <c>hash_mismatch</c> (content tampered / malformed).
     /// </summary>
+    /// <summary>
+    /// Feature 194 — chooses which published definitions to restore: <b>every one of them</b>,
+    /// oldest first.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This used to be <c>GroupBy(BlueprintId).OrderByDescending(PublishedAt).First()</c> — newest
+    /// per blueprint id. Under version pinning that one expression is the most consequential line in
+    /// this file: an instance pinned to an earlier definition becomes <b>permanently unresolvable
+    /// the moment the process restarts</b>, because the only copy of its definition was discarded
+    /// here. The symptom is a transaction that never seals, with nothing in the log connecting it
+    /// back to recovery.
+    /// </para>
+    /// <para>
+    /// Oldest-first so the ordinal versions the store assigns on re-add line up with publication
+    /// order. The ordinal is only a display label, but an operator comparing "v2" across two nodes
+    /// should not be shown a disagreement.
+    /// </para>
+    /// <para>
+    /// Extracted as an internal static so the rule is testable without standing up the whole
+    /// recovery loop — the same shape as <see cref="TryVerifyProvenance"/> below.
+    /// </para>
+    /// </remarks>
+    internal static IReadOnlyList<PublishedBlueprintEntry> SelectDefinitionsToRecover(
+        IEnumerable<PublishedBlueprintEntry> published)
+    {
+        ArgumentNullException.ThrowIfNull(published);
+        return published.OrderBy(b => b.PublishedAt).ToList();
+    }
+
     internal static bool TryVerifyProvenance(string blueprintJson, string contentHash, out string? rejectReason)
     {
         if (string.IsNullOrEmpty(contentHash))
@@ -320,14 +357,10 @@ public class BlueprintRecoveryService : BackgroundService
             return (result.RegisterHeight, 0);
         }
 
-        // Dedup by BlueprintId within the response — take the latest by PublishedAt.
-        // The register may carry multiple publish events for the same blueprint id.
-        var latestPerBlueprint = result.Blueprints
-            .GroupBy(b => b.BlueprintId)
-            .Select(g => g.OrderByDescending(b => b.PublishedAt).First());
+        var allDefinitions = SelectDefinitionsToRecover(result.Blueprints);
 
         var count = 0;
-        foreach (var bp in latestPerBlueprint)
+        foreach (var bp in allDefinitions)
         {
             try
             {
@@ -346,17 +379,29 @@ public class BlueprintRecoveryService : BackgroundService
                     continue;
                 }
 
-                // Check if already in store (idempotent)
+                // Feature 194: idempotency is now per DEFINITION, not per blueprint-on-register.
+                //
+                // The old check skipped a blueprint if ANY version of it had been recovered for this
+                // register — which, once we stopped collapsing to newest-only, would have recovered
+                // exactly one definition and silently dropped the rest. Keying on the content hash
+                // also makes re-recovery genuinely idempotent: two publications with identical
+                // executable definitions (a presentational-only republish) are one definition and
+                // must not produce two entries.
+                var execDefHash = _execDefHasher.ComputeHash(blueprint);
+
                 var existing = await publishedStore.GetVersionsAsync(bp.BlueprintId);
-                if (existing.Any(e => string.Equals(e.RegisterId, registerId, StringComparison.OrdinalIgnoreCase)))
+                if (existing.Any(e =>
+                        string.Equals(e.RegisterId, registerId, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(e.ExecDefHash, execDefHash, StringComparison.Ordinal)))
                 {
-                    continue; // Already recovered
+                    continue; // this definition is already recovered
                 }
 
                 await publishedStore.AddAsync(new PublishedBlueprint
                 {
                     BlueprintId = bp.BlueprintId,
                     Blueprint = blueprint,
+                    ExecDefHash = execDefHash,
                     PublishedAt = bp.PublishedAt,
                     RegisterId = registerId
                 });
