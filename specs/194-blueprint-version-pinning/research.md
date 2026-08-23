@@ -147,11 +147,23 @@ through to the fetcher, and gets the **latest** definition. Green build, green t
 **Decision**: hoist the key format into a single shared helper both sides call, and re-key through
 it. Treat it as a cross-boundary constant, not a string.
 
-**Also in scope, and larger than the design implies**: `IBlueprintCache` is id-keyed across its whole
-interface, not in one place — `GetBlueprintAsync`, `GetOrFetchAsync`, `GetActionAsync`,
-`ExistsAsync`, `RemoveAsync` all take a bare id, `SetBlueprintAsync` derives the key from the
-blueprint it is given, and the cross-node Redis invalidation channel publishes a bare id as its
-payload. This is an interface change.
+**Correction, made during implementation: re-keying the WHOLE cache by hash was the wrong design.**
+The first attempt replaced every id-keyed method with a hash-keyed one, and it broke 40 validator
+tests. That was a design signal, not churn: **system blueprints have no instance and therefore no
+pin** — `register-governance-v1` and its siblings are resolved by id from the system register, and so
+are transactions sealed before this feature. An id-keyed tier is genuinely required.
+
+The shipped shape is **two key shapes with different meanings**, which cannot collide because one
+carries a hash segment and the other does not:
+
+| Key | Means | Written by |
+|---|---|---|
+| `…:{id}` | the current/system definition, resolved by id | the validator, when it resolves an unpinned or system blueprint |
+| `…:{id}:{hash}` | this exact definition | the Blueprint Service publish path, and the validator on a pinned fetch |
+
+`GetDefinitionAsync` / `SetDefinitionAsync` are named so that nobody reaches for the id-keyed pair by
+accident. The drift risk this decision exists to remove is unaffected: the format still has exactly
+one home, and the publish path composes through it.
 
 ---
 
@@ -168,8 +180,12 @@ file. **No production code calls any of its resolution methods.** Its sole produ
 fetches the definition with `_blueprintCache.GetBlueprintAsync(blueprintId)` — the id-keyed cache. It
 returns the version's *number* attached to the *latest* definition.
 
-**`InvalidateCache` is observably a no-op**: it clears only this type's own private dictionaries,
-which nothing reads because nothing resolves. Removing the type and the call changes no behaviour.
+**Correction, made during implementation (2026-08-23): it had ZERO callers, not one.**
+`ControlDocketProcessor` injects `IControlBlueprintVersionResolver` — the unrelated CONTROL
+resolver, which tracks governance configuration versions and is live. The earlier reading here came
+from a grep matching the field name `_versionResolver`, not the declared type. Deleting the dead
+resolver was therefore pure removal: no call site to migrate, and the follow-up issue this section
+proposed (below) does not exist, because nothing was lost.
 
 **Decision**: delete the interface, the implementation, the DI registration, the test file and the
 `ControlDocketProcessor` call.
@@ -178,12 +194,10 @@ which nothing reads because nothing resolves. Removing the type and the call cha
 is not a foundation to build on. Leaving a dormant near-miss beside the real mechanism is how the
 next person resolves the wrong one — the platform has been bitten by helper-with-no-callers before.
 
-**Deliberately NOT done here**: `ControlDocketProcessor`'s comment says "Invalidate caches if
-configuration was updated", and with this call removed nothing invalidates the *blueprint* cache on a
-configuration change. That is true today as well (the call was already a no-op), so removing it is
-not a regression — but it is a real gap and should be filed separately rather than fixed silently
-inside this feature. Note that re-keying by content hash largely dissolves it: an entry keyed by
-content is immutable by definition and never needs invalidating.
+**Superseded by the correction above.** This paragraph originally proposed filing a follow-up
+about `ControlDocketProcessor` no longer invalidating the blueprint cache on a configuration change.
+It was based on the misreading: that call is to the CONTROL resolver, it still happens, and nothing
+about it changed. No follow-up is owed.
 
 ---
 

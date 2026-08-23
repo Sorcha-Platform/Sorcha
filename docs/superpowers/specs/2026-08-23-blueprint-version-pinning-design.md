@@ -230,13 +230,37 @@ Step 6 is the one most likely to fail and the one most worth having.
 
 ## 7. Rollout
 
+> **Corrected during implementation (2026-08-23).** This section previously said both that a node
+> "needs `docker compose down -v` and re-genesis" *and* that deploy scope is two per-service
+> recreates with "no genesis window". Only the second is true, and the difference matters: see below.
+
 Pre-release, so CLAUDE.md §19 applies: **fold any schema change into each service's
 `InitialCreate`** — do not add a migration — and recreate the database. `Instance` gains a column, so
-a dev box or node that predates the change needs `docker compose down -v` and re-genesis, or the
-column will simply not appear and the failure will surface far away as a raw Postgres error.
+the **blueprint service's Postgres database** must be recreated, or the column will simply not appear
+and the failure will surface far away as a raw Postgres `42703`.
+
+**Recreating that database does NOT touch the register**, which lives in Mongo. So every submission
+sealed before this feature survives, carries no pin, and will be re-folded — which is why §5's
+pre-feature fallback is **load-bearing on day one** rather than a defensive nicety. It can be deleted
+once no un-pinned submission remains foldable on any register (in practice, after the next full
+re-genesis); the `sorcha.blueprint.instance_projection.pin_fallback` counter is what makes that a
+decision on evidence rather than on hope.
 
 Deploy scope is `blueprint-service` **and** `validator-service` (the validator's resolve signature and
 cache key change). Both are per-service recreates — no genesis window.
+
+**Order is load-bearing, and this section originally did not say so. Deploy the validator FIRST.**
+
+| Combination | Result |
+|---|---|
+| New validator, old workflow service | **Safe.** The producer omits the field; the validator's `ComputeSignableBytes` rebuild includes it as null; `WhenWritingNull` makes the canonical bytes identical, so every signature still verifies. |
+| Old validator, new workflow service | **Every submission refused.** The producer signs bytes that include the pin; the old validator's rebuild omits it, computes different bytes, and `VAL_ROUTING_002` fails. |
+
+⚠ **Expect `409 REHEARSAL_REQUIRED` on the first publish of any blueprint after the deploy.**
+Implementation removed the ordinal `version` from `ExecutableDefinitionHasher`'s projection — it
+contradicted D4 by putting a display label inside a content address — which changes every
+blueprint's hash and so invalidates every recorded F142 `RehearsalPass`. Pre-release and re-earnable.
+Do not diagnose it as a publish-gate regression.
 
 ---
 

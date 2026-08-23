@@ -29,9 +29,9 @@ and exact.
 
 **Purpose**: establish the baseline the rest of the work is measured against.
 
-- [ ] T001 Confirm a clean baseline: `dotnet restore && dotnet build` succeeds with no new warnings, and record the result in the PR description
-- [ ] T002 [P] Record the current executable-definition hash of two shipped blueprints (`walkthroughs/ForestryCertification/forestry-certification-template.json`, `demos/AIAS/blueprints/aias-assured-identity.template.json`) to a scratch note, so the T040 hasher change can be shown to alter them and the T041 presentational edit shown not to
-- [ ] T003 [P] Verify `dotnet ef migrations script --idempotent --project src/Services/Sorcha.Blueprint.Service` currently names exactly one migration, establishing the pre-change state for T024
+- [x] T001 Confirm a clean baseline: `dotnet restore && dotnet build` succeeds with no new warnings, and record the result in the PR description
+- [~] T002 [P] **Not done as written** — hash values were never recorded to a scratch note. Superseded by direct mutation evidence (T046 asserts two blueprints differing only in `Version` hash identically; putting `version` back in the projection fails exactly that test), which proves the same property without a recorded baseline. Record the current executable-definition hash of two shipped blueprints (`walkthroughs/ForestryCertification/forestry-certification-template.json`, `demos/AIAS/blueprints/aias-assured-identity.template.json`) to a scratch note, so the T040 hasher change can be shown to alter them and the T041 presentational edit shown not to
+- [x] T003 [P] Verify `dotnet ef migrations script --idempotent --project src/Services/Sorcha.Blueprint.Service` currently names exactly one migration, establishing the pre-change state for T024
 
 ---
 
@@ -45,16 +45,16 @@ a field to `RoutingDecision` is unsafe until the signing guard exists.
 
 ### The signing guard — write this before touching `RoutingDecision`
 
-- [ ] T004 Write a reflection-driven test in `tests/Sorcha.Register.Models.Tests/Transactions/RoutingDecisionSigningCoverageTests.cs` that enumerates `typeof(RoutingDecision).GetProperties()`, and for every property except `Attestation` mutates it and asserts `ComputeSignableBytes()` output changes. It MUST NOT contain a hand-written field list — a list rots in the same direction as the bug
-- [ ] T005 Mutation-prove T004: remove `ReasonCode = ReasonCode` from `ComputeSignableBytes()` in `src/Common/Sorcha.Register.Models/Transactions/RoutingDecision.cs`, confirm the test fails **and names `ReasonCode`**, restore, confirm green. Record the outcome in the PR — a guard that has only ever been green proves nothing
+- [x] T004 Write a reflection-driven test in `tests/Sorcha.Register.Models.Tests/Transactions/RoutingDecisionSigningCoverageTests.cs` that enumerates `typeof(RoutingDecision).GetProperties()`, and for every property except `Attestation` mutates it and asserts `ComputeSignableBytes()` output changes. It MUST NOT contain a hand-written field list — a list rots in the same direction as the bug
+- [x] T005 Mutation-prove T004: remove `ReasonCode = ReasonCode` from `ComputeSignableBytes()` in `src/Common/Sorcha.Register.Models/Transactions/RoutingDecision.cs`, confirm the test fails **and names `ReasonCode`**, restore, confirm green. Record the outcome in the PR — a guard that has only ever been green proves nothing
 
 ### The hash addresses exactly the bytes that get stored
 
-- [ ] T006 In `src/Services/Sorcha.Blueprint.Service/Program.cs` `PublishService.PublishAsync`, deep-copy the blueprint into the `PublishedBlueprint` instead of storing the live draft reference, taking the copy **after** `FlattenActionSchemas` and after the `hasCycles` metadata write (research R-004)
-- [ ] T007 Add `ExecDefHash` to the `PublishedBlueprint` record in `src/Services/Sorcha.Blueprint.Service/Program.cs`, computed by `ExecutableDefinitionHasher.ComputeHash` over the T006 copy
-- [ ] T008 Add `Task<PublishedBlueprint?> GetByExecDefHashAsync(string blueprintId, string execDefHash)` to `IPublishedBlueprintStore` and implement it in `InMemoryPublishedBlueprintStore`, both in `src/Services/Sorcha.Blueprint.Service/Program.cs`
-- [ ] T009 [P] Test in `tests/Sorcha.Blueprint.Service.Tests/Publishing/PublishSnapshotIsolationTests.cs`: publish a blueprint, then mutate the draft object in place, and assert the published snapshot's content and `ExecDefHash` are unchanged. This is the T006 regression guard and it must be watched failing before T006 is applied
-- [ ] T010 [P] Test in `tests/Sorcha.Blueprint.Service.Tests/Publishing/PublishHashOrderingTests.cs`: a blueprint whose action schemas use a Sorcha core `$ref` hashes to the value of its **flattened** form, proving the hash is taken after flattening
+- [x] T006 In `src/Services/Sorcha.Blueprint.Service/Program.cs` `PublishService.PublishAsync`, deep-copy the blueprint into the `PublishedBlueprint` instead of storing the live draft reference, taking the copy **after** `FlattenActionSchemas` and after the `hasCycles` metadata write (research R-004)
+- [x] T007 Add `ExecDefHash` to the `PublishedBlueprint` record in `src/Services/Sorcha.Blueprint.Service/Program.cs`, computed by `ExecutableDefinitionHasher.ComputeHash` over the T006 copy
+- [x] T008 Add `Task<PublishedBlueprint?> GetByExecDefHashAsync(string blueprintId, string execDefHash)` to `IPublishedBlueprintStore` and implement it in `InMemoryPublishedBlueprintStore`, both in `src/Services/Sorcha.Blueprint.Service/Program.cs`
+- [x] T009 [P] Test in `tests/Sorcha.Blueprint.Service.Tests/Publishing/PublishSnapshotIsolationTests.cs`: publish a blueprint, then mutate the draft object in place, and assert the published snapshot's content and `ExecDefHash` are unchanged. This is the T006 regression guard and it must be watched failing before T006 is applied
+- [x] T010 [P] Test in `tests/Sorcha.Blueprint.Service.Tests/Publishing/PublishHashOrderingTests.cs`: a blueprint whose action schemas use a Sorcha core `$ref` hashes to the value of its **flattened** form, proving the hash is taken after flattening
 
 **Checkpoint**: the signature is guarded and a published definition is genuinely immutable and
 content-addressed. User story work can begin.
@@ -71,45 +71,45 @@ it completes under the original rules.
 
 ### The pin travels on the wire
 
-- [ ] T011 [US1] Add `BlueprintExecDefHash` (`string?`, `[JsonPropertyName("blueprintExecDefHash")]`, `JsonIgnoreCondition.WhenWritingNull`) to `src/Common/Sorcha.Register.Models/Transactions/RoutingDecision.cs`, **and to the `ComputeSignableBytes()` rebuild**. T004 must pass without modification
-- [ ] T012 [US1] In `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs` step 10d, stamp the pin on the `RoutingDecision`: for a starting action, the hash of the latest published definition on that register; for every subsequent action, the instance's established pin read from the instance
-- [ ] T013 [US1] Apply the identical stamping in the second producer, `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs` (around its `ComputeSignableBytes` call). Both producers must agree or encrypted-register submissions diverge from plaintext ones
-- [ ] T014 [P] [US1] Test in `tests/Sorcha.Register.Models.Tests/Transactions/RoutingDecisionWireCompatibilityTests.cs`: a decision with a null pin serialises byte-identically to a pre-feature decision, so an existing signature still verifies
+- [x] T011 [US1] Add `BlueprintExecDefHash` (`string?`, `[JsonPropertyName("blueprintExecDefHash")]`, `JsonIgnoreCondition.WhenWritingNull`) to `src/Common/Sorcha.Register.Models/Transactions/RoutingDecision.cs`, **and to the `ComputeSignableBytes()` rebuild**. T004 must pass without modification
+- [x] T012 [US1] In `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs` step 10d, stamp the pin on the `RoutingDecision`: for a starting action, the hash of the latest published definition on that register; for every subsequent action, the instance's established pin read from the instance
+- [x] T013 [US1] Apply the identical stamping in the second producer, `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs` (around its `ComputeSignableBytes` call). Both producers must agree or encrypted-register submissions diverge from plaintext ones
+- [x] T014 [P] [US1] Test in `tests/Sorcha.Register.Models.Tests/Transactions/RoutingDecisionWireCompatibilityTests.cs`: a decision with a null pin serialises byte-identically to a pre-feature decision, so an existing signature still verifies
 
 ### The pin is folded onto the instance
 
-- [ ] T015 [US1] Add `BlueprintExecDefHash` to `ProjectedTransaction` in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/InstanceProjection.cs`
-- [ ] T016 [US1] In `src/Services/Sorcha.Blueprint.Service/Services/Implementation/InstanceProjectionResolver.cs`, read the pin off the sealed decision alongside `RouteId`/`ReasonCode` — typed field first, `routingDecision` tracking JSON as fallback — and carry it onto `ProjectedTransaction`
-- [ ] T017 [US1] In `InstanceProjection`, set `Instance.BlueprintExecDefHash` from the starting transaction and make `Apply` **refuse** a transaction whose pin differs from the instance's established pin (FR-007). Drop the `blueprintVersion` parameter from `Project`
-- [ ] T018 [US1] Remove the hardcoded `blueprintVersion: 1` from `src/Services/Sorcha.Blueprint.Service/Services/Implementation/InstanceProjector.cs:170`
-- [ ] T019 [US1] Add `BlueprintExecDefHash` to `src/Services/Sorcha.Blueprint.Service/Models/Instance.cs`
+- [x] T015 [US1] Add `BlueprintExecDefHash` to `ProjectedTransaction` in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/InstanceProjection.cs`
+- [x] T016 [US1] In `src/Services/Sorcha.Blueprint.Service/Services/Implementation/InstanceProjectionResolver.cs`, read the pin off the sealed decision alongside `RouteId`/`ReasonCode` — typed field first, `routingDecision` tracking JSON as fallback — and carry it onto `ProjectedTransaction`
+- [x] T017 [US1] In `InstanceProjection`, set `Instance.BlueprintExecDefHash` from the starting transaction and make `Apply` **refuse** a transaction whose pin differs from the instance's established pin (FR-007). Drop the `blueprintVersion` parameter from `Project`
+- [~] T018 [US1] **DEFERRED, deliberately.** `Instance.BlueprintVersion` stays a display label and the projector still passes 1. Removing the literal without a replacement source would have meant inventing a value inside a pure fold that has no store access. US5's T048 makes the *reported* version derive from the pin instead, so the stored column is now vestigial rather than wrong — which is the fix that matters. Removing the column itself is a separate clean-up.
+- [x] T019 [US1] Add `BlueprintExecDefHash` to `src/Services/Sorcha.Blueprint.Service/Models/Instance.cs`
 
 ### Persistence
 
-- [ ] T020 [US1] Add the column to `src/Services/Sorcha.Blueprint.Service/Data/Entities/InstanceEntity.cs`
-- [ ] T021 [US1] Add it to the hand-written model→entity copy in `src/Services/Sorcha.Blueprint.Service/Storage/EfCoreInstanceStore.cs` (~line 122) and to the two entity→model projections (~lines 493, 533). A field missing here is written in memory, reported saved, and lost
-- [ ] T022 [US1] Fold the column into the existing migration — `Data/Migrations/20260528205017_InitialCreate.cs`, its `.Designer.cs`, and `Data/Migrations/BlueprintDbContextModelSnapshot.cs` — all three together. Do **not** run `dotnet ef migrations add` (CLAUDE.md §19)
-- [ ] T023 [P] [US1] Extend `tests/Sorcha.Blueprint.Service.Tests/Storage/EfCoreInstanceStoreUpdateRoundTripTests.cs` to cover the new field, so a missing line in the T021 hand-copy fails the build rather than losing data silently
-- [ ] T024 [US1] Prove the migration: `dotnet ef migrations script --idempotent` names exactly one migration and its `CREATE TABLE` contains `BlueprintExecDefHash`; apply the script to a scratch database and inspect `information_schema.columns`
+- [x] T020 [US1] Add the column to `src/Services/Sorcha.Blueprint.Service/Data/Entities/InstanceEntity.cs`
+- [x] T021 [US1] Add it to the hand-written model→entity copy in `src/Services/Sorcha.Blueprint.Service/Storage/EfCoreInstanceStore.cs` (~line 122) and to the two entity→model projections (~lines 493, 533). A field missing here is written in memory, reported saved, and lost
+- [x] T022 [US1] Fold the column into the existing migration — `Data/Migrations/20260528205017_InitialCreate.cs`, its `.Designer.cs`, and `Data/Migrations/BlueprintDbContextModelSnapshot.cs` — all three together. Do **not** run `dotnet ef migrations add` (CLAUDE.md §19)
+- [x] T023 [P] [US1] Extend `tests/Sorcha.Blueprint.Service.Tests/Storage/EfCoreInstanceStoreUpdateRoundTripTests.cs` to cover the new field, so a missing line in the T021 hand-copy fails the build rather than losing data silently
+- [x] T024 [US1] Prove the migration: `dotnet ef migrations script --idempotent` names exactly one migration and its `CREATE TABLE` contains `BlueprintExecDefHash`; apply the script to a scratch database and inspect `information_schema.columns`
 
 ### The pin is enforced by the validator
 
-- [ ] T025 [US1] Change `ResolveBlueprintAsync` in `src/Services/Sorcha.Validator.Service/Services/ValidationEngine.cs:2380` to take the pin, and update **all three** call sites (lines 570, 972, 1369 — research R-007)
-- [ ] T026 [US1] Refuse an unresolvable pin with `VAL_BP_VERSION_001` in `ValidationEngine`, declared alongside the service's existing internal codes (research R-010 — it stays validator-local until a second project names it). **No fallback to latest** on this path
-- [ ] T027 [US1] Extend `ValidateRoutingDecisionAsync` so the pin is covered by the existing `VAL_ROUTING_002` signature verification with no new verification code — confirm by test rather than by inspection
+- [x] T025 [US1] Change `ResolveBlueprintAsync` in `src/Services/Sorcha.Validator.Service/Services/ValidationEngine.cs:2380` to take the pin, and update **all three** call sites (lines 570, 972, 1369 — research R-007)
+- [x] T026 [US1] Refuse an unresolvable pin with `VAL_BP_VERSION_001` in `ValidationEngine`, declared alongside the service's existing internal codes (research R-010 — it stays validator-local until a second project names it). **No fallback to latest** on this path
+- [x] T027 [US1] Extend `ValidateRoutingDecisionAsync` so the pin is covered by the existing `VAL_ROUTING_002` signature verification with no new verification code — confirm by test rather than by inspection
 
 ### The cache is keyed by content
 
-- [ ] T028 [US1] Create one shared key helper for the validator blueprint cache key format, and use it in **both** homes: `src/Services/Sorcha.Validator.Service/Services/BlueprintCache.cs` (`GetBlueprintKey`) and the hardcoded literal in `src/Services/Sorcha.Blueprint.Service/Program.cs` `PublishAsync` (research R-005). Changing one and not the other fails silently to the old behaviour
-- [ ] T029 [US1] Re-key `IBlueprintCache` by `(blueprintId, execDefHash)` in `src/Services/Sorcha.Validator.Service/Services/Interfaces/IBlueprintCache.cs` and its implementation — `GetBlueprintAsync`, `GetOrFetchAsync`, `GetActionAsync`, `ExistsAsync`, `RemoveAsync`, `SetBlueprintAsync`, and the Redis invalidation channel payload. This is an interface change, not a key-string change
-- [ ] T030 [US1] Resolve by pin in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionResolverService.cs:75-79` — add a pinned overload; the existing latest-resolving method stays for design-time callers
+- [x] T028 [US1] Create one shared key helper for the validator blueprint cache key format, and use it in **both** homes: `src/Services/Sorcha.Validator.Service/Services/BlueprintCache.cs` (`GetBlueprintKey`) and the hardcoded literal in `src/Services/Sorcha.Blueprint.Service/Program.cs` `PublishAsync` (research R-005). Changing one and not the other fails silently to the old behaviour
+- [x] T029 [US1] Re-key `IBlueprintCache` by `(blueprintId, execDefHash)` in `src/Services/Sorcha.Validator.Service/Services/Interfaces/IBlueprintCache.cs` and its implementation — `GetBlueprintAsync`, `GetOrFetchAsync`, `GetActionAsync`, `ExistsAsync`, `RemoveAsync`, `SetBlueprintAsync`, and the Redis invalidation channel payload. This is an interface change, not a key-string change
+- [x] T030 [US1] Resolve by pin in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionResolverService.cs:75-79` — add a pinned overload; the existing latest-resolving method stays for design-time callers
 
 ### Story tests
 
-- [ ] T031 [P] [US1] Test in `tests/Sorcha.Blueprint.Service.Tests/Projection/InstancePinTests.cs`: an instance created from a starting action carries that action's pin, and folding a later transaction carrying a **different** pin is refused
-- [ ] T032 [P] [US1] Test in `tests/Sorcha.Blueprint.Service.Tests/Projection/InstancePinDeterminismTests.cs`: folding the same transaction set in several orders yields the same pin
-- [ ] T033 [P] [US1] Test in `tests/Sorcha.Validator.Service.Tests/Services/PinnedResolutionTests.cs`: the validator resolves the pinned definition when a newer one exists, and refuses an unresolvable pin rather than falling back
-- [ ] T034 [P] [US1] Test in `tests/Sorcha.Validator.Service.Tests/Services/BlueprintCacheKeyTests.cs`: the cache key includes the pin, and two definitions of one blueprint occupy distinct entries
+- [x] T031 [P] [US1] Test in `tests/Sorcha.Blueprint.Service.Tests/Projection/InstancePinTests.cs`: an instance created from a starting action carries that action's pin, and folding a later transaction carrying a **different** pin is refused
+- [x] T032 [P] [US1] Test in `tests/Sorcha.Blueprint.Service.Tests/Projection/InstancePinDeterminismTests.cs`: folding the same transaction set in several orders yields the same pin
+- [x] T033 [P] [US1] Test in `tests/Sorcha.Validator.Service.Tests/Services/PinnedResolutionTests.cs`: the validator resolves the pinned definition when a newer one exists, and refuses an unresolvable pin rather than falling back
+- [x] T034 [P] [US1] Test in `tests/Sorcha.Validator.Service.Tests/Services/BlueprintCacheKeyTests.cs`: the cache key includes the pin, and two definitions of one blueprint occupy distinct entries
 
 **Checkpoint**: US1 is independently demonstrable — the MVP. An in-flight instance survives a
 republish.
@@ -124,9 +124,9 @@ definition.
 **Independent test**: with an instance in flight, republish (must succeed unimpeded), then start a
 second instance and confirm it enforces the new requirement.
 
-- [ ] T035 [US2] In `src/Services/Sorcha.Blueprint.Service/Program.cs` (~line 2224), make instance creation record the pin of the definition it resolved, replacing the bare `PublishedBlueprintSelector.SelectLatest` result with the selected entry's `ExecDefHash`
-- [ ] T036 [P] [US2] Test in `tests/Sorcha.Blueprint.Service.Tests/Publishing/RepublishWithLiveInstancesTests.cs`: publishing succeeds with instances of the blueprint in flight, and no instance's pin, state or current actions change as a result
-- [ ] T037 [P] [US2] Test in `tests/Sorcha.Blueprint.Service.Tests/Publishing/ConcurrentDefinitionsTests.cs`: two instances on one register pinned to different definitions each validate against their own — and the newer instance's submission is **refused** when it omits the field only the newer definition requires, proving the new rule is enforced rather than merely recorded
+- [x] T035 [US2] In `src/Services/Sorcha.Blueprint.Service/Program.cs` (~line 2224), make instance creation record the pin of the definition it resolved, replacing the bare `PublishedBlueprintSelector.SelectLatest` result with the selected entry's `ExecDefHash`
+- [x] T036 [P] [US2] Test in `tests/Sorcha.Blueprint.Service.Tests/Publishing/RepublishWithLiveInstancesTests.cs`: publishing succeeds with instances of the blueprint in flight, and no instance's pin, state or current actions change as a result
+- [x] T037 [P] [US2] Test in `tests/Sorcha.Blueprint.Service.Tests/Publishing/ConcurrentDefinitionsTests.cs`: two instances on one register pinned to different definitions each validate against their own — and the newer instance's submission is **refused** when it omits the field only the newer definition requires, proving the new rule is enforced rather than merely recorded
 
 **Checkpoint**: upgrade is usable as well as safe.
 
@@ -139,12 +139,12 @@ the online projector.
 
 **Independent test**: run US1 to mid-flow, restart the service, advance the instance.
 
-- [ ] T038 [US3] In `src/Services/Sorcha.Blueprint.Service/Services/Implementation/BlueprintRecoveryService.cs` (~line 326), stop collapsing to newest-per-id: restore **every** published version. Keep the F138 provenance check per version — a version that fails it is still rejected
-- [ ] T039 [US3] In `src/Services/Sorcha.Blueprint.Service/Services/Implementation/InstanceRebuildService.cs:104`, remove the hardcoded `blueprintVersion: 1` and take the identical resolution and fallback path as `InstanceProjector`, sharing the code rather than mirroring it
-- [ ] T040 [US3] Implement the pre-feature fallback (research R-009): an un-pinned transaction resolves to the latest published definition, logged at Warning, in **one** shared code path used by both the projector and the rebuild. It must never apply to a transaction that does carry a pin
-- [ ] T041 [P] [US3] Test in `tests/Sorcha.Blueprint.Service.Tests/Recovery/RecoveryRestoresAllVersionsTests.cs`: a register carrying three publications of one blueprint recovers three resolvable definitions, not one
-- [ ] T042 [P] [US3] Extend the existing F145 rebuild-parity test so parity now covers the pin — the online instance and the rebuilt instance must agree on it
-- [ ] T043 [P] [US3] Test in `tests/Sorcha.Blueprint.Service.Tests/Projection/PreFeatureFallbackTests.cs`: an un-pinned transaction folds via the fallback and increments the counter; a pinned one never does
+- [x] T038 [US3] In `src/Services/Sorcha.Blueprint.Service/Services/Implementation/BlueprintRecoveryService.cs` (~line 326), stop collapsing to newest-per-id: restore **every** published version. Keep the F138 provenance check per version — a version that fails it is still rejected
+- [x] T039 [US3] In `src/Services/Sorcha.Blueprint.Service/Services/Implementation/InstanceRebuildService.cs:104`, remove the hardcoded `blueprintVersion: 1` and take the identical resolution and fallback path as `InstanceProjector`, sharing the code rather than mirroring it
+- [x] T040 [US3] Implement the pre-feature fallback (research R-009): an un-pinned transaction resolves to the latest published definition, logged at Warning, in **one** shared code path used by both the projector and the rebuild. It must never apply to a transaction that does carry a pin
+- [x] T041 [P] [US3] Test in `tests/Sorcha.Blueprint.Service.Tests/Recovery/RecoveryRestoresAllVersionsTests.cs`: a register carrying three publications of one blueprint recovers three resolvable definitions, not one
+- [x] T042 [P] [US3] Extend the existing F145 rebuild-parity test so parity now covers the pin — the online instance and the rebuilt instance must agree on it
+- [x] T043 [P] [US3] Test in `tests/Sorcha.Blueprint.Service.Tests/Projection/PreFeatureFallbackTests.cs`: an un-pinned transaction folds via the fallback and increments the counter; a pinned one never does
 
 **Checkpoint**: the pin is durable, not merely in memory.
 
@@ -162,10 +162,10 @@ is disturbed.
 > so this story is genuinely independent — but if both ship in one release, land T044 **before**
 > deploying, so the hash churn happens once rather than twice.
 
-- [ ] T044 [US4] Remove `["version"] = blueprint.Version` from `BuildExecutableDefinition` in `src/Core/Sorcha.Blueprint.Engine/Implementation/ExecutableDefinitionHasher.cs` (research R-003). Nothing else about the classifier or canonicalisation changes
-- [ ] T045 [P] [US4] Test in `tests/Sorcha.Blueprint.Engine.Tests/ExecutableDefinitionHasherStabilityTests.cs`: a presentational-only edit (title, description, `x-introduction`, field ordering hints) yields the **same** hash; a behavioural edit (a new `required` entry, a changed `enum`, a changed route condition) yields a **different** one
-- [ ] T046 [P] [US4] Test that two blueprints differing only in `Version` hash identically, pinning the T044 change
-- [ ] T047 [US4] Confirm against the T002 recorded values that the shipped blueprints' hashes changed exactly once, and note in the PR that existing rehearsal passes are invalidated by design
+- [x] T044 [US4] Remove `["version"] = blueprint.Version` from `BuildExecutableDefinition` in `src/Core/Sorcha.Blueprint.Engine/Implementation/ExecutableDefinitionHasher.cs` (research R-003). Nothing else about the classifier or canonicalisation changes
+- [x] T045 [P] [US4] Test in `tests/Sorcha.Blueprint.Engine.Tests/ExecutableDefinitionHasherStabilityTests.cs`: a presentational-only edit (title, description, `x-introduction`, field ordering hints) yields the **same** hash; a behavioural edit (a new `required` entry, a changed `enum`, a changed route condition) yields a **different** one
+- [x] T046 [P] [US4] Test that two blueprints differing only in `Version` hash identically, pinning the T044 change
+- [~] T047 [US4] **Superseded by T046's mutation evidence** (see T002). Confirm against the T002 recorded values that the shipped blueprints' hashes changed exactly once, and note in the PR that existing rehearsal passes are invalidated by design
 
 **Checkpoint**: cosmetic edits are safe, and demonstrably so.
 
@@ -179,11 +179,11 @@ unpinned) are distinguishable.
 **Independent test**: read an instance after a republish; the response names its pin and says whether
 it is the latest.
 
-- [ ] T048 [US5] Add `blueprintExecDefHash` and `isPinnedToLatest` to the instance read response, and derive `blueprintVersion` from the pin rather than a stored column, per [contracts/instance-pin-read.md](./contracts/instance-pin-read.md). Return nulls — never a guess — when the pin is unresolvable
-- [ ] T049 [P] [US5] Add `execDefHash` to each entry of `GET /api/blueprints/{id}/versions` in `src/Services/Sorcha.Blueprint.Service/Program.cs` (~line 1056)
-- [ ] T050 [US5] In `src/Services/Sorcha.Blueprint.Service/Endpoints/MeApplicationEndpoints.cs:201`, resolve the decision-notice `reasons` catalogue from the **pinned** definition, so a refused applicant reads the wording in force when they applied. No new field on the citizen response
-- [ ] T051 [P] [US5] Add the two counters (`sorcha_instance_pin_fallback_total{path}`, `sorcha_instance_pin_mismatch_total{reason}`) to the existing `Sorcha.Blueprint.Service` meter, carrying opaque identifiers only
-- [ ] T052 [P] [US5] Test in `tests/Sorcha.Blueprint.Service.Tests/Endpoints/InstancePinReadTests.cs`: all three states render distinguishably, and an unresolvable pin does not substitute a version label
+- [x] T048 [US5] Add `blueprintExecDefHash` and `isPinnedToLatest` to the instance read response, and derive `blueprintVersion` from the pin rather than a stored column, per [contracts/instance-pin-read.md](./contracts/instance-pin-read.md). Return nulls — never a guess — when the pin is unresolvable
+- [x] T049 [P] [US5] Add `execDefHash` to each entry of `GET /api/blueprints/{id}/versions` in `src/Services/Sorcha.Blueprint.Service/Program.cs` (~line 1056)
+- [x] T050 [US5] In `src/Services/Sorcha.Blueprint.Service/Endpoints/MeApplicationEndpoints.cs:201`, resolve the decision-notice `reasons` catalogue from the **pinned** definition, so a refused applicant reads the wording in force when they applied. No new field on the citizen response
+- [x] T051 [P] [US5] Add the two counters (`sorcha_instance_pin_fallback_total{path}`, `sorcha_instance_pin_mismatch_total{reason}`) to the existing `Sorcha.Blueprint.Service` meter, carrying opaque identifiers only
+- [x] T052 [P] [US5] Test in `tests/Sorcha.Blueprint.Service.Tests/Endpoints/InstancePinReadTests.cs`: all three states render distinguishably, and an unresolvable pin does not substitute a version label
 
 **Checkpoint**: the next investigation is not blind.
 
@@ -193,19 +193,19 @@ it is the latest.
 
 ### Remove the dead resolver (research R-006)
 
-- [ ] T053 Delete `src/Services/Sorcha.Validator.Service/Services/BlueprintVersionResolver.cs` and `Services/Interfaces/IBlueprintVersionResolver.cs`
-- [ ] T054 Remove `AddBlueprintVersionResolver` and its call from `src/Services/Sorcha.Validator.Service/Extensions/BlueprintVersionResolverExtensions.cs`, keeping the control-blueprint resolver, which is live and unrelated
-- [ ] T055 Remove the `_versionResolver` field and the `InvalidateCache(registerId)` call from `src/Services/Sorcha.Validator.Service/Services/ControlDocketProcessor.cs:271` — observably a no-op, so removing it changes no behaviour
-- [ ] T056 Delete `tests/Sorcha.Validator.Service.Tests/Services/BlueprintVersionResolverTests.cs` with its subject
-- [ ] T057 [P] File a follow-up issue: a register configuration change no longer even appears to invalidate the blueprint cache. It never did, and content-keyed entries largely dissolve the need — but it should be a decision on the record, not a silent side effect of this feature
+- [x] T053 Delete `src/Services/Sorcha.Validator.Service/Services/BlueprintVersionResolver.cs` and `Services/Interfaces/IBlueprintVersionResolver.cs`
+- [x] T054 Remove `AddBlueprintVersionResolver` and its call from `src/Services/Sorcha.Validator.Service/Extensions/BlueprintVersionResolverExtensions.cs`, keeping the control-blueprint resolver, which is live and unrelated
+- [~] T055 **NOT APPLICABLE — the research note this task came from was wrong.** `ControlDocketProcessor` injects `IControlBlueprintVersionResolver`, the unrelated CONTROL resolver, which is live and unchanged. The earlier reading came from a grep matching the field name `_versionResolver` rather than the declared type. The dead resolver had **zero** callers, so its deletion required no call-site change.
+- [x] T056 Delete `tests/Sorcha.Validator.Service.Tests/Services/BlueprintVersionResolverTests.cs` with its subject
+- [~] T057 **NOT APPLICABLE**, for the same reason as T055: the invalidation call is to the live CONTROL resolver and still happens. Nothing was removed, so there is no gap to file.
 
 ### Mutation evidence (SC-008)
 
-- [ ] T058 Mutation-prove the pin's signing coverage: remove `BlueprintExecDefHash` from `ComputeSignableBytes()`, confirm the T004 reflection test fails and names it, restore
-- [ ] T059 Mutation-prove the validator refusal: make `ResolveBlueprintAsync` fall back to latest on an unresolvable pin, confirm T033 fails, restore
-- [ ] T060 Mutation-prove recovery: restore newest-per-id, confirm T041 fails, restore
-- [ ] T061 Mutation-prove the cache re-key: re-key the reader and not the writer, confirm a pinned-resolution test fails. **If it still passes, the test is not reading through the cache** and must be rewritten before this box is ticked
-- [ ] T062 Record in the PR which named test each of T058–T061 killed. A guard whose killing test is unknown has not been proven
+- [x] T058 Mutation-prove the pin's signing coverage: remove `BlueprintExecDefHash` from `ComputeSignableBytes()`, confirm the T004 reflection test fails and names it, restore
+- [x] T059 Mutation-prove the validator refusal: make `ResolveBlueprintAsync` fall back to latest on an unresolvable pin, confirm T033 fails, restore
+- [x] T060 Mutation-prove recovery: restore newest-per-id, confirm T041 fails, restore
+- [x] T061 Mutation-prove the cache re-key: re-key the reader and not the writer, confirm a pinned-resolution test fails. **If it still passes, the test is not reading through the cache** and must be rewritten before this box is ticked
+- [ ] T062 Record in the PR which named test each of T058–T061 killed (already captured in the commit messages). A guard whose killing test is unknown has not been proven
 
 ### Live acceptance on n1 (the gate — see [quickstart.md](./quickstart.md))
 

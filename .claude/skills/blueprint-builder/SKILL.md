@@ -1114,6 +1114,35 @@ Uses JSON-e expressions (`$eval`, `$if`, `$flattenDeep`) in the `template` field
 }
 ```
 
+### Republishing: in-flight instances keep the definition they started on (Feature 194)
+
+Republishing a blueprint to a register it is already on is accepted and creates a **new definition
+alongside the old one**. It does **not** change any instance that is already running.
+
+- **An in-progress instance runs the definition it started on, for its whole life.** A participant
+  is never presented with an action, schema or routing rule that did not exist when they joined.
+  This is a hard platform rule, not a per-upgrade choice, and migrating a running instance forward
+  is explicitly out of scope.
+- **You can republish at any time.** An upgrade is never blocked, delayed or warned against because
+  instances are live — long-running workflows may never have a quiet moment.
+- **Instances started after the republish get the new definition**, and enforce it.
+- **A presentational-only republish changes nothing at all.** Relabelling a field, rewording a
+  description or reordering questions produces the *same* executable definition, so no new pin, no
+  new definition to keep alive, and the F142 `RehearsalPass` stays valid. Behavioural edits — a new
+  `required` entry, a changed `enum`, a changed route condition, a changed `credentialIssuanceConfig`
+  — do create a new definition and need a fresh rehearsal.
+- **The ordinal `version` is a display label only.** Nothing resolves a definition by it. The
+  identity is the executable-definition hash (`execDefHash`), now returned on
+  `GET /api/blueprints/{id}/versions`.
+
+`GET /api/instances/{instanceId}/definition` answers "which definition is this instance running, and
+is it still the latest?" — reporting three distinguishable states: pinned and resolvable, pinned but
+unresolvable on this node (the stuck-instance state), and unpinned (predates the feature).
+
+> **Where multi-party sign-off before an upgrade is wanted, author it as a governance blueprint** and
+> publish only once that workflow completes. The platform deliberately has no built-in gate on
+> upgrading, and one should not be added — the primitive already exists.
+
 ## Action Execution
 
 ```

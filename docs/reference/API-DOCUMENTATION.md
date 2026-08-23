@@ -1271,11 +1271,55 @@ POST /api/blueprints/{id}/publish
   "publishedBlueprint": {
     "blueprintId": "bp-123",
     "version": 1,
+    "execDefHash": "9f2c…",
     "publishedAt": "2025-11-17T11:00:00Z"
   },
   "errors": []
 }
 ```
+
+### Feature 194 — blueprint version pinning
+
+Republishing a blueprint to a register it is already on creates a **new definition alongside the old
+one**. Instances already in flight keep running the definition they started on; instances started
+afterwards get the new one. An upgrade is never blocked because instances are live.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/blueprints/{id}/definitions/{execDefHash}` | The exact published definition identified by its executable-definition hash — the definition a running instance is pinned to. **404 is a refusal**: callers must never fall back to the latest definition. Immutable, cached permanently. |
+| GET | `/api/instances/{instanceId}/definition` | Which definition this instance is running, and whether it is still the latest. |
+
+`GET /api/blueprints/{id}/versions` entries gain `execDefHash`.
+
+**`/api/instances/{instanceId}/definition` response:**
+```json
+{
+  "instanceId": "…",
+  "blueprintId": "bp-123",
+  "blueprintExecDefHash": "9f2c…",
+  "blueprintVersion": 1,
+  "isPinnedToLatest": false,
+  "pinState": "pinned"
+}
+```
+
+Three states, deliberately distinguishable — an operator needs to tell "on the older rules by
+design" from "cannot advance here":
+
+| `pinState` | Meaning | `blueprintVersion` / `isPinnedToLatest` |
+|---|---|---|
+| `pinned` | Pinned and resolvable. `blueprintVersion` is **derived from the pin**, so the label and the pin cannot disagree. | populated |
+| `unresolvable` | Pinned, but this node cannot produce that definition (failed to replicate, or evicted). The instance cannot advance here. | **null** — never guessed |
+| `unpinned` | The instance's transactions predate the feature. | **null** |
+
+**The ordinal `version` is a display label only.** It is assigned from insert order and re-derived on
+recovery; nothing resolves a definition by it.
+
+**Validation:** a transaction whose pin cannot be resolved is refused with `VAL_BP_VERSION_001`. The
+validator does not fall back to the latest definition.
+
+**Deployment note:** deploy `validator-service` **before** `blueprint-service`. New validator + old
+producer is safe; the reverse refuses every submission.
 
 ### File Chunks (Feature 085)
 
