@@ -48,16 +48,56 @@ function Try-Action {
       building the transaction) OR as a 202 whose transaction never seals (the validator's own
       schema check). Both are refusals; only the shape differs, so both are captured.
     #>
-    param([hashtable]$Args)
+    # NOT $Args — that is a reserved automatic variable in PowerShell, and binding to it silently
+    # arrives as System.Object[] rather than the hashtable you passed. Same family as the
+    # walkthrough-builder skill's "use $agentArgs, not $args".
+    param([hashtable]$ActionArgs)
     try {
-        $r = Invoke-SorchaAction @Args
+        $r = Invoke-SorchaAction @ActionArgs
         return [pscustomobject]@{ Accepted = $true; Response = $r; Error = $null }
     } catch {
-        return [pscustomobject]@{ Accepted = $false; Response = $null; Error = $_.Exception.Message }
+        # Capture the BODY, not just the status line. "400 (Bad Request)" is not a diagnosis — the
+        # body distinguishes a schema refusal (the thing under test) from a cadence miss ("Action N
+        # is not a current action"), and those call for opposite conclusions.
+        $body = ''
+        try {
+            $resp = $_.Exception.Response
+            if ($resp) {
+                $reader = New-Object IO.StreamReader($resp.GetResponseStream())
+                $body = $reader.ReadToEnd()
+            }
+        } catch { }
+        if (-not $body -and $_.ErrorDetails) { $body = $_.ErrorDetails.Message }
+        return [pscustomobject]@{
+            Accepted = $false; Response = $null
+            Error = ($_.Exception.Message + ' | body: ' + $body)
+        }
     }
 }
 
+
+function Wait-ForAction {
+    <#
+      Gate on the PROJECTION, not the seal. Invoke-SorchaAction's -WaitForSeal returns as soon as
+      the transaction is sealed, but the instance does not list the next action until the
+      InstanceProjector has folded that docket — a beat later, and longer cross-node. Submitting in
+      that window returns 400 "Action N is not a current action", which is indistinguishable at the
+      status line from the schema refusal this test is actually looking for.
+    #>
+    param([string]$InstanceId, [int]$ActionId, [hashtable]$Headers, [int]$TimeoutSeconds = 120)
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $i = Invoke-SorchaApi -Method GET -Uri "$bp/instances/$InstanceId" -Headers $Headers
+            if ($i.currentActionIds -contains $ActionId) { return $true }
+        } catch { }
+        Start-Sleep -Seconds 2
+    }
+    return $false
+}
+
 $bp = $state.blueprintUrl
+$registerIdForGate = $state.registerId
 $registerId = $state.registerId
 
 Write-Host ""
@@ -65,8 +105,8 @@ Write-Host "=== Feature 194 live acceptance ===" -ForegroundColor Cyan
 Write-Host "Gateway  : $($state.gatewayUrl)"
 Write-Host "Register : $registerId"
 
-$officer = Connect-SorchaUser -TenantUrl $state.tenantUrl -Email $state.officer.email -Password $state.officer.password
-$applicant = Connect-SorchaUser -TenantUrl $state.tenantUrl -Email $state.applicant.email -Password $state.applicant.password
+$officer = Connect-SorchaUser -TenantUrl $state.tenantUrl -Email $state.officer.email -Password $state.officer.password -OrganizationId $state.organizationId
+$applicant = Connect-SorchaUser -TenantUrl $state.tenantUrl -Email $state.applicant.email -Password $state.applicant.password -OrganizationId '00000000-0000-0000-0000-000000000002'
 
 # The applicant is an OPEN participant and must NOT appear in the wallet map — a baked-in wallet
 # defeats late binding and rejects every real submitter.
@@ -82,7 +122,7 @@ $v1 = Publish-SorchaBlueprint -BlueprintUrl $bp `
 $blueprintId = $v1.BlueprintId
 Write-Host "  blueprint $blueprintId"
 
-$versions = Invoke-SorchaApi -Method GET -Uri "$bp/api/blueprints/$blueprintId/versions" -Headers $officer.Headers
+$versions = Invoke-SorchaApi -Method GET -Uri "$bp/blueprints/$blueprintId/versions" -Headers $officer.Headers
 $v1Hash = ($versions | Sort-Object version | Select-Object -Last 1).execDefHash
 Check '1' 'v1 published and carries an executable-definition hash' ([bool]$v1Hash) "execDefHash=$v1Hash"
 
@@ -90,7 +130,7 @@ Check '1' 'v1 published and carries an executable-definition hash' ([bool]$v1Has
 # STEP 2 — start instance A and leave it mid-flow
 # ---------------------------------------------------------------------------------------------
 Write-Host "`n[2] Start instance A, execute action 1, leave it mid-flow" -ForegroundColor Cyan
-$instA = Invoke-SorchaApi -Method POST -Uri "$bp/api/instances/" -Headers $applicant.Headers -Body @{
+$instA = Invoke-SorchaApi -Method POST -Uri "$bp/instances/" -Headers $applicant.Headers -Body @{
     blueprintId = $blueprintId; registerId = $registerId; tenantId = $state.organizationId
 }
 $instanceA = $instA.id
@@ -99,11 +139,11 @@ Write-Host "  instance A $instanceA"
 $a1 = Try-Action @{
     BlueprintUrl = $bp; InstanceId = $instanceA; ActionId = '1'; BlueprintId = $blueprintId
     SenderWallet = $state.applicant.wallet; RegisterId = $registerId; Token = $applicant.Token
-    PayloadData  = @{ projectName = 'Riverside Depot' }; WaitForSeal = $true
+    PayloadData  = @{ projectName = 'Riverside Depot' }; WaitForSeal = $true; WaitForSealTimeoutSeconds = 180
 }
 Check '2' 'instance A action 1 accepted and sealed' $a1.Accepted $a1.Error
 
-$pinA = Invoke-SorchaApi -Method GET -Uri "$bp/api/instances/$instanceA/definition" -Headers $applicant.Headers
+$pinA = Invoke-SorchaApi -Method GET -Uri "$bp/instances/$instanceA/definition" -Headers $applicant.Headers
 Check '2' 'instance A is pinned to v1' ($pinA.blueprintExecDefHash -eq $v1Hash) `
     "pinState=$($pinA.pinState) pin=$($pinA.blueprintExecDefHash) expected=$v1Hash"
 Check '2' 'instance A reports itself pinned to the latest (nothing republished yet)' `
@@ -124,10 +164,10 @@ foreach ($p in $v2Model.participants) {
     if ($walletMap.ContainsKey($p.id)) { $p | Add-Member -NotePropertyName walletAddress -NotePropertyValue $walletMap[$p.id] -Force }
 }
 
-Invoke-SorchaApi -Method PUT -Uri "$bp/api/blueprints/$blueprintId" -Headers $officer.Headers `
+Invoke-SorchaApi -Method PUT -Uri "$bp/blueprints/$blueprintId" -Headers $officer.Headers `
     -Body ($v2Model | ConvertTo-Json -Depth 40 | ConvertFrom-Json -AsHashtable) | Out-Null
 
-$v2 = Invoke-SorchaApi -Method POST -Uri "$bp/api/blueprints/$blueprintId/publish" -Headers $officer.Headers -Body @{
+$v2 = Invoke-SorchaApi -Method POST -Uri "$bp/blueprints/$blueprintId/publish" -Headers $officer.Headers -Body @{
     registerId = $registerId
     override   = @{ confirm = $true; reason = 'F194 acceptance: scripted republish, no UI rehearsal.' }
 }
@@ -135,7 +175,7 @@ $v2Hash = $v2.execDefHash
 Check '3' 'republish accepted while an instance is in flight' ([bool]$v2Hash) "execDefHash=$v2Hash"
 Check '3' 'v2 is a DIFFERENT definition from v1' ($v2Hash -ne $v1Hash) "v1=$v1Hash v2=$v2Hash"
 
-$pinAAfter = Invoke-SorchaApi -Method GET -Uri "$bp/api/instances/$instanceA/definition" -Headers $applicant.Headers
+$pinAAfter = Invoke-SorchaApi -Method GET -Uri "$bp/instances/$instanceA/definition" -Headers $applicant.Headers
 Check '3' 'instance A''s pin is UNCHANGED by the republish' ($pinAAfter.blueprintExecDefHash -eq $v1Hash) `
     "pin=$($pinAAfter.blueprintExecDefHash)"
 Check '3' 'instance A now reports it is NOT on the latest definition' `
@@ -145,6 +185,8 @@ Check '3' 'instance A now reports it is NOT on the latest definition' `
 # STEP 4 — advance A against v1's schema, WITHOUT the new required field
 # ---------------------------------------------------------------------------------------------
 Write-Host "`n[4] Advance instance A — v1's rules, no complianceRef" -ForegroundColor Cyan
+$readyA2 = Wait-ForAction -InstanceId $instanceA -ActionId 2 -Headers $officer.Headers
+Check '4' 'action 2 became current on instance A (projector folded action 1)' $readyA2
 $a2 = Try-Action @{
     BlueprintUrl = $bp; InstanceId = $instanceA; ActionId = '2'; BlueprintId = $blueprintId
     SenderWallet = $state.officer.wallet; RegisterId = $registerId; Token = $officer.Token
@@ -157,7 +199,7 @@ Check '4' 'THE FEATURE: instance A advances under v1 WITHOUT the field v2 added'
 # STEP 5 — a NEW instance is governed by v2, and v2 is genuinely ENFORCED
 # ---------------------------------------------------------------------------------------------
 Write-Host "`n[5] Start instance B — must be pinned to v2 and must REQUIRE the new field" -ForegroundColor Cyan
-$instB = Invoke-SorchaApi -Method POST -Uri "$bp/api/instances/" -Headers $applicant.Headers -Body @{
+$instB = Invoke-SorchaApi -Method POST -Uri "$bp/instances/" -Headers $applicant.Headers -Body @{
     blueprintId = $blueprintId; registerId = $registerId; tenantId = $state.organizationId
 }
 $instanceB = $instB.id
@@ -166,13 +208,16 @@ Write-Host "  instance B $instanceB"
 $b1 = Try-Action @{
     BlueprintUrl = $bp; InstanceId = $instanceB; ActionId = '1'; BlueprintId = $blueprintId
     SenderWallet = $state.applicant.wallet; RegisterId = $registerId; Token = $applicant.Token
-    PayloadData  = @{ projectName = 'Hillfoot Yard' }; WaitForSeal = $true
+    PayloadData  = @{ projectName = 'Hillfoot Yard' }; WaitForSeal = $true; WaitForSealTimeoutSeconds = 180
 }
 Check '5' 'instance B action 1 accepted and sealed' $b1.Accepted $b1.Error
 
-$pinB = Invoke-SorchaApi -Method GET -Uri "$bp/api/instances/$instanceB/definition" -Headers $applicant.Headers
+$pinB = Invoke-SorchaApi -Method GET -Uri "$bp/instances/$instanceB/definition" -Headers $applicant.Headers
 Check '5' 'instance B is pinned to v2' ($pinB.blueprintExecDefHash -eq $v2Hash) `
     "pin=$($pinB.blueprintExecDefHash) expected=$v2Hash"
+
+$readyB2 = Wait-ForAction -InstanceId $instanceB -ActionId 2 -Headers $officer.Headers
+Check '5' 'action 2 became current on instance B (projector folded action 1)' $readyB2
 
 # The counterfactual. Without this, "B is pinned to v2" is only a recorded value — this is what
 # proves v2's rules are ENFORCED against B rather than merely noted.
@@ -215,13 +260,15 @@ if ($SkipRestart) {
 
 # Re-login: the restart drops nothing server-side, but a fresh token removes any doubt about
 # token age being the reason a later call behaves differently.
-$officer = Connect-SorchaUser -TenantUrl $state.tenantUrl -Email $state.officer.email -Password $state.officer.password
+$officer = Connect-SorchaUser -TenantUrl $state.tenantUrl -Email $state.officer.email -Password $state.officer.password -OrganizationId $state.organizationId
 
-$pinAfterRestart = Invoke-SorchaApi -Method GET -Uri "$bp/api/instances/$instanceA/definition" -Headers $officer.Headers
+$pinAfterRestart = Invoke-SorchaApi -Method GET -Uri "$bp/instances/$instanceA/definition" -Headers $officer.Headers
 Check '6' 'instance A STILL resolves its v1 definition after the restart' `
     ($pinAfterRestart.pinState -eq 'pinned' -and $pinAfterRestart.blueprintExecDefHash -eq $v1Hash) `
     "pinState=$($pinAfterRestart.pinState) pin=$($pinAfterRestart.blueprintExecDefHash)"
 
+$readyA3 = Wait-ForAction -InstanceId $instanceA -ActionId 3 -Headers $officer.Headers
+Check '6' 'action 3 became current on instance A' $readyA3
 $a3 = Try-Action @{
     BlueprintUrl = $bp; InstanceId = $instanceA; ActionId = '3'; BlueprintId = $blueprintId
     SenderWallet = $state.officer.wallet; RegisterId = $registerId; Token = $officer.Token

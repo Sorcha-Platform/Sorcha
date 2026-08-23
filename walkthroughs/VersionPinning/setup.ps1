@@ -49,7 +49,8 @@ $sub = "vpin-$stamp"
 $officerEmail = "officer@$sub.test"
 $password = 'Vpin_Test_2026!'
 
-$admin = Connect-SorchaAdmin -TenantUrl $sorchaEnv.TenantUrl
+$admin = Connect-SorchaAdmin -TenantUrl $sorchaEnv.TenantUrl `
+    -AdminEmail 'admin@sorcha.local' -AdminPassword 'Dev_Pass_2025!'
 
 # The org's own admin creates the org wallet (#1525) — pass -WalletUrl so New-SorchaOrganization
 # does it while it still holds an admin session.
@@ -69,11 +70,11 @@ $orgId = $org.OrganizationId
 Write-Host "  org $orgId"
 
 # Log in AS the officer. Single-org, so the password grant returns a token directly.
-$officer = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl -Email $officerEmail -Password $password
+$officer = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl -Email $officerEmail -Password $password -OrganizationId $orgId
 
 Write-Host "`n[2/6] Officer wallet" -ForegroundColor Cyan
 $officerWallet = New-SorchaWallet -WalletUrl $sorchaEnv.WalletUrl -Headers $officer.Headers `
-    -Algorithm 'ED25519' -Name "pinning-officer-$stamp"
+    -Algorithm 'ED25519' -Name "pinning-officer-$stamp" -FetchPublicKey
 Write-Host "  wallet $($officerWallet.Address)"
 
 Register-SorchaParticipant -TenantUrl $sorchaEnv.TenantUrl -WalletUrl $sorchaEnv.WalletUrl `
@@ -83,7 +84,7 @@ Register-SorchaParticipant -TenantUrl $sorchaEnv.TenantUrl -WalletUrl $sorchaEnv
 # RE-LOGIN. wallet_address is added to the JWT only at login, from the first active linked wallet.
 # Without this the F142 publish HARD gate refuses with "you do not hold a publish-governance role",
 # which reads as a permissions problem and is actually a stale token.
-$officer = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl -Email $officerEmail -Password $password
+$officer = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl -Email $officerEmail -Password $password -OrganizationId $orgId
 $ownerWallet = (Decode-SorchaJwt $officer.Token).wallet_address
 if (-not $ownerWallet) { throw "Officer token carries no wallet_address claim after re-login." }
 Write-Host "  token wallet_address $ownerWallet"
@@ -120,18 +121,21 @@ if ($pub -and $pub.PSObject.Properties['transactionId'] -and $pub.transactionId)
 Write-Host "  participant sealed"
 
 Write-Host "`n[6/6] Applicant (public citizen — late-bound at runtime)" -ForegroundColor Cyan
+$publicOrgId = '00000000-0000-0000-0000-000000000002'
 $applicantEmail = "applicant-$stamp@vpin.test"
-Register-SorchaPublicUser -TenantUrl $sorchaEnv.TenantUrl -Email $applicantEmail `
-    -Password $password -DisplayName 'Pinning Applicant' | Out-Null
-Confirm-SorchaUserEmail -TenantUrl $sorchaEnv.TenantUrl -Headers $admin.Headers -Email $applicantEmail | Out-Null
-$applicant = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl -Email $applicantEmail -Password $password
+$applicantUser = Register-SorchaPublicUser -TenantUrl $sorchaEnv.TenantUrl -Email $applicantEmail `
+    -Password $password -DisplayName 'Pinning Applicant'
+$applicantUserId = if ($applicantUser -is [string]) { $applicantUser } else { $applicantUser.UserId }
+Confirm-SorchaUserEmail -TenantUrl $sorchaEnv.TenantUrl -Headers $admin.Headers `
+    -OrganizationId $publicOrgId -UserId $applicantUserId | Out-Null
+$applicant = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl -Email $applicantEmail -Password $password -OrganizationId $publicOrgId
 
 $applicantWallet = New-SorchaWallet -WalletUrl $sorchaEnv.WalletUrl -Headers $applicant.Headers `
     -Algorithm 'ED25519' -Name "pinning-applicant-$stamp"
 Register-SorchaParticipant -TenantUrl $sorchaEnv.TenantUrl -WalletUrl $sorchaEnv.WalletUrl `
-    -Headers $applicant.Headers -OrganizationId '00000000-0000-0000-0000-000000000002' `
+    -Headers $applicant.Headers -OrganizationId $publicOrgId `
     -WalletAddress $applicantWallet.Address -DisplayName 'Pinning Applicant' | Out-Null
-$applicant = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl -Email $applicantEmail -Password $password
+$applicant = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl -Email $applicantEmail -Password $password -OrganizationId $publicOrgId
 Write-Host "  applicant wallet $($applicantWallet.Address)"
 
 $state = [ordered]@{
