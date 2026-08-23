@@ -95,6 +95,62 @@ public class BlueprintServiceClient : IBlueprintServiceClient
         }
     }
 
+    /// <inheritdoc/>
+    public async Task<string?> GetBlueprintDefinitionAsync(
+        string blueprintId,
+        string execDefHash,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(blueprintId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(execDefHash);
+
+        try
+        {
+            _logger.LogDebug(
+                "Getting pinned definition {ExecDefHash} of blueprint {BlueprintId}",
+                execDefHash, blueprintId);
+
+            await SetAuthHeaderAsync(cancellationToken);
+            var response = await _httpClient.GetAsync(
+                $"api/blueprints/{Uri.EscapeDataString(blueprintId)}/definitions/{Uri.EscapeDataString(execDefHash)}",
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    // Not an error condition worth shouting about here — the caller decides what an
+                    // unresolvable pin means, and for the validator it is a typed refusal.
+                    _logger.LogDebug(
+                        "Pinned definition {ExecDefHash} of blueprint {BlueprintId} not found",
+                        execDefHash, blueprintId);
+                    return null;
+                }
+
+                _logger.LogWarning(
+                    "Failed to get pinned definition {ExecDefHash} of blueprint {BlueprintId}: {StatusCode}",
+                    execDefHash, blueprintId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadAsStringAsync(cancellationToken);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex,
+                "HTTP error getting pinned definition {ExecDefHash} of blueprint {BlueprintId}",
+                execDefHash, blueprintId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to get pinned definition {ExecDefHash} of blueprint {BlueprintId}",
+                execDefHash, blueprintId);
+            return null;
+        }
+    }
+
     public async Task<bool> ValidatePayloadAsync(
         string blueprintId,
         string actionId,

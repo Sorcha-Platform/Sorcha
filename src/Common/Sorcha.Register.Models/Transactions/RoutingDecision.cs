@@ -61,6 +61,31 @@ public class RoutingDecision
     public string? ReasonCode { get; set; }
 
     /// <summary>
+    /// Gets or sets the executable-definition hash of the blueprint definition this action was
+    /// executed against — the instance's <i>pin</i> (Feature 194).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Under Feature 145 an instance is a deterministic projection of the sealed ledger, so which
+    /// definition it runs cannot be a per-node lookup: a value two nodes cannot both derive from
+    /// sealed transactions is a value they can diverge on. Carrying it here makes it a sealed fact.
+    /// </para>
+    /// <para>
+    /// Set to the <b>latest</b> published definition's hash on a starting action — that is the
+    /// moment the instance's definition is chosen — and to the <b>instance's established pin</b> on
+    /// every action thereafter. A subsequent action claiming a different hash is refused: a sender
+    /// must not be able to move a running instance onto another definition by asserting one.
+    /// </para>
+    /// <para>
+    /// Nullable, and omitted from the wire when null, so a transaction sealed before Feature 194
+    /// deserialises cleanly and its original signature still verifies. New code never writes null.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("blueprintExecDefHash")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BlueprintExecDefHash { get; set; }
+
+    /// <summary>
     /// Gets or sets the trust attestation for this decision (Entity 2 / FR-009).
     /// </summary>
     [JsonPropertyName("attestation")]
@@ -84,6 +109,7 @@ public class RoutingDecision
             NextActions = NextActions,
             RouteId = RouteId,
             ReasonCode = ReasonCode,
+            BlueprintExecDefHash = BlueprintExecDefHash,
             Attestation = null,
         };
         return JsonSerializer.SerializeToUtf8Bytes(signable, RegisterSerializationOptions.Canonical);

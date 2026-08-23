@@ -163,6 +163,20 @@ public sealed class InstanceProjector : BackgroundService
         var instanceId = resolved.InstanceId;
         var projected = resolved.Tx;
 
+        // Feature 194: a transaction carrying no pin predates the feature. It still folds — via the
+        // documented fallback, taken IDENTICALLY here and in InstanceRebuildService so FR-003 parity
+        // holds — but it is counted, because this counter is how an operator tells "pinning is
+        // working" from "pinning is silently not happening". Every failure mode of this feature
+        // degrades to the old behaviour rather than to an error, so the zero reading is the proof.
+        if (string.IsNullOrWhiteSpace(projected.BlueprintExecDefHash))
+        {
+            _metrics.RecordPinFallback("projector");
+            _logger.LogWarning(
+                "InstanceProjector: transaction {TxId} for instance {InstanceId} carries no blueprint " +
+                "definition pin; folding via the pre-Feature-194 fallback (latest definition).",
+                txId, instanceId);
+        }
+
         var existing = await instanceStore.GetAsync(instanceId, ct);
         if (existing is null)
         {
@@ -174,16 +188,34 @@ public sealed class InstanceProjector : BackgroundService
             await instanceStore.CreateAsync(created, ct);
             _metrics.RecordFolded();
             _logger.LogInformation(
-                "InstanceProjector: created instance {InstanceId} (blueprint {BlueprintId}) at action(s) {Actions}",
-                instanceId, blueprintId, string.Join(",", created.CurrentActionIds));
+                "InstanceProjector: created instance {InstanceId} (blueprint {BlueprintId}) pinned to {ExecDefHash} at action(s) {Actions}",
+                instanceId, blueprintId,
+                string.IsNullOrEmpty(created.BlueprintExecDefHash) ? "(unpinned)" : created.BlueprintExecDefHash,
+                string.Join(",", created.CurrentActionIds));
             await reactionDispatcher.DispatchAsync(created, tx, ct);
             return;
         }
 
-        var advanced = InstanceProjection.Apply(existing, projected);
-        if (!advanced)
+        var outcome = InstanceProjection.Apply(existing, projected);
+
+        if (outcome == FoldOutcome.AlreadyApplied)
         {
             _metrics.RecordSkippedIdempotent();
+            return;
+        }
+
+        if (outcome == FoldOutcome.RefusedForeignDefinition)
+        {
+            // The sender claimed a definition other than the one this instance runs. Refusing is the
+            // point of the feature: accepting it would move a running instance onto another
+            // definition — exactly what a participant must not be able to do — and would let two
+            // nodes reach different answers from the same ledger.
+            _metrics.RecordPinMismatch();
+            _logger.LogError(
+                "InstanceProjector: REFUSED transaction {TxId} for instance {InstanceId} — it claims " +
+                "blueprint definition {ClaimedHash} but the instance is pinned to {PinnedHash}. The " +
+                "instance has NOT advanced.",
+                txId, instanceId, projected.BlueprintExecDefHash, existing.BlueprintExecDefHash);
             return;
         }
 

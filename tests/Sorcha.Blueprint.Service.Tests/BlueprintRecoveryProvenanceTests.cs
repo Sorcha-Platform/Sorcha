@@ -54,3 +54,68 @@ public sealed class BlueprintRecoveryProvenanceTests
         reason.Should().Be("hash_mismatch");
     }
 }
+
+/// <summary>
+/// Feature 194 — recovery must restore <b>every</b> published definition, not the newest per
+/// blueprint id.
+/// </summary>
+/// <remarks>
+/// The rule this guards is one expression, and getting it wrong is invisible until a restart: an
+/// instance pinned to an earlier definition becomes permanently unresolvable, because the only copy
+/// of its definition was discarded during recovery. The symptom is a transaction that never seals,
+/// with nothing in the log pointing back here. Step 6 of the live acceptance test exists for exactly
+/// this failure.
+/// </remarks>
+public sealed class BlueprintRecoverySelectsAllDefinitionsTests
+{
+    private static PublishedBlueprintEntry Entry(string blueprintId, int minutesAgo) => new()
+    {
+        BlueprintId = blueprintId,
+        BlueprintJson = """{"title":"Permit","participants":[],"actions":[]}""",
+        PublishedAt = DateTimeOffset.UtcNow.AddMinutes(-minutesAgo),
+    };
+
+    [Fact]
+    public void EveryPublishedDefinitionOfABlueprint_IsSelectedForRecovery()
+    {
+        // Three publications of ONE blueprint. The pre-Feature-194 rule collapsed these to one.
+        var published = new[] { Entry("bp-1", 30), Entry("bp-1", 20), Entry("bp-1", 10) };
+
+        var selected = BlueprintRecoveryService.SelectDefinitionsToRecover(published);
+
+        selected.Should().HaveCount(3,
+            "an instance pinned to any of these must still resolve its definition after a restart");
+    }
+
+    [Fact]
+    public void DefinitionsAreSelectedOldestFirst_SoOrdinalsMatchPublicationOrder()
+    {
+        var oldest = Entry("bp-1", 30);
+        var middle = Entry("bp-1", 20);
+        var newest = Entry("bp-1", 10);
+
+        // Supplied newest-first, to prove the ordering is imposed rather than inherited.
+        var selected = BlueprintRecoveryService.SelectDefinitionsToRecover([newest, middle, oldest]);
+
+        selected.Select(e => e.PublishedAt).Should().BeInAscendingOrder();
+        selected[0].PublishedAt.Should().Be(oldest.PublishedAt);
+    }
+
+    [Fact]
+    public void DefinitionsOfSeveralBlueprints_AreAllSelected()
+    {
+        var published = new[] { Entry("bp-1", 30), Entry("bp-2", 25), Entry("bp-1", 10), Entry("bp-2", 5) };
+
+        var selected = BlueprintRecoveryService.SelectDefinitionsToRecover(published);
+
+        selected.Should().HaveCount(4);
+        selected.Count(e => e.BlueprintId == "bp-1").Should().Be(2);
+        selected.Count(e => e.BlueprintId == "bp-2").Should().Be(2);
+    }
+
+    [Fact]
+    public void NoPublishedBlueprints_SelectsNothing()
+    {
+        BlueprintRecoveryService.SelectDefinitionsToRecover([]).Should().BeEmpty();
+    }
+}

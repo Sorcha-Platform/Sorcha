@@ -78,8 +78,18 @@ public class ExecutableDefinitionHasher
         var root = new JsonObject
         {
             // Structural identity. Title/Description deliberately excluded (presentational).
+            //
+            // Feature 194 removed `["version"] = blueprint.Version` from this projection. The
+            // ordinal is a DISPLAY LABEL — assigned from in-memory insert order and re-derived on
+            // recovery — so putting it inside a content address is a contradiction: two blueprints
+            // that execute identically would hash differently purely because someone renumbered
+            // one. `Blueprint.Version` is a plain settable int, so an author editing it would have
+            // stranded every in-flight instance on the previous definition for no behavioural
+            // reason, and re-locked the F142 rehearsal gate at the same time.
+            //
+            // It never bit only because republishing does not bump it: the store assigns
+            // PublishedBlueprint.Version, a different property on a different type.
             ["id"] = blueprint.Id,
-            ["version"] = blueprint.Version,
             ["participants"] = BuildParticipants(blueprint.Participants),
             ["actions"] = BuildActions(blueprint.Actions),
         };

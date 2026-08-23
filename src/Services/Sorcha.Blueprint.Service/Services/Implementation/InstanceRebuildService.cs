@@ -153,6 +153,15 @@ public sealed class InstanceRebuildService : IInstanceRebuildService
         if (rebuilt.State != materialized.State)
             return $"state differs (rebuilt={rebuilt.State}, materialized={materialized.State})";
 
+        // Feature 194. Checked FIRST among the value comparisons, because a pin divergence is the
+        // most consequential kind: the two views would run the instance against different blueprint
+        // definitions, and every other field could still agree while they did so.
+        if (!string.Equals(rebuilt.BlueprintExecDefHash, materialized.BlueprintExecDefHash, StringComparison.Ordinal))
+        {
+            return "pinned blueprint definition differs " +
+                   $"(rebuilt={Describe(rebuilt.BlueprintExecDefHash)}, materialized={Describe(materialized.BlueprintExecDefHash)})";
+        }
+
         var rebuiltActions = rebuilt.CurrentActionIds.OrderBy(x => x).ToList();
         var materializedActions = materialized.CurrentActionIds.OrderBy(x => x).ToList();
         if (!rebuiltActions.SequenceEqual(materializedActions))
@@ -172,4 +181,7 @@ public sealed class InstanceRebuildService : IInstanceRebuildService
 
         return null;
     }
+
+    private static string Describe(string? execDefHash) =>
+        string.IsNullOrWhiteSpace(execDefHash) ? "(unpinned)" : execDefHash;
 }

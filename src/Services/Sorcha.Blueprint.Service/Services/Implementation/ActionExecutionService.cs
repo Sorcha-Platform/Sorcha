@@ -1287,6 +1287,10 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                 .ToList(),
             RouteId = routingResult.MatchedRouteId,
             ReasonCode = ResolveDecisionReasonCode(actionDef, routingResult.MatchedRouteId, mergedData),
+            // Feature 194: the definition this action was executed against. Read from the instance,
+            // never re-derived as "latest" — that is what makes an in-flight instance survive a
+            // republish. Inside ComputeSignableBytes below, so the sender signs it.
+            BlueprintExecDefHash = ResolveInstancePin(instance, actionId),
             Attestation = new Attestation { Kind = AttestationKind.SenderSigned },
         };
         var routingSignResult = await _walletClient.SignTransactionAsync(
@@ -1761,6 +1765,10 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             NextActions = routingResult.NextActions
                 .Select(n => new ActionRef { ActionId = n.ActionId, BranchKey = n.BranchId })
                 .ToList(),
+            // Feature 194: a presentation outcome advances the same instance as any other action, so
+            // it carries the same pin. Omitting it here would leave one advancement path unpinned —
+            // and the projector would then refuse it as a foreign decision.
+            BlueprintExecDefHash = ResolveInstancePin(instance, completedActionId),
             Attestation = new Attestation { Kind = AttestationKind.SenderSigned },
         };
         var routingSignResult = await _walletClient.SignTransactionAsync(
@@ -1772,6 +1780,39 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             "US6: built presentation routing decision for instance {InstanceId} action {ActionId} → {NextCount} next action(s)",
             instanceId, completedActionId, routingDecision.NextActions.Count);
         return routingDecision;
+    }
+
+    /// <summary>
+    /// Feature 194 — the executable-definition hash to stamp on this action's routing decision:
+    /// the instance's pin, established when the instance was created.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// There is deliberately <b>no</b> "resolve the latest definition" branch here. Choosing a
+    /// definition happens once, at instance creation; re-deriving it per action is precisely the
+    /// defect this feature removes, and it would silently move an in-flight instance onto a newly
+    /// published definition the moment anyone republished.
+    /// </para>
+    /// <para>
+    /// An empty pin means the instance predates Feature 194 (or was created on a node with no
+    /// published version resolvable). It is carried through as null so the decision serialises
+    /// exactly as a pre-feature one would, and the fold takes the documented fallback — but it is
+    /// logged, because an unpinned instance running on a pinned platform is worth an operator
+    /// seeing rather than inferring.
+    /// </para>
+    /// </remarks>
+    private string? ResolveInstancePin(Instance instance, int actionId)
+    {
+        if (!string.IsNullOrWhiteSpace(instance.BlueprintExecDefHash))
+        {
+            return instance.BlueprintExecDefHash;
+        }
+
+        _logger.LogWarning(
+            "Instance {InstanceId} has no pinned blueprint definition; action {ActionId} will be " +
+            "carried unpinned and folded via the pre-Feature-194 fallback (blueprint {BlueprintId}).",
+            instance.Id, actionId, instance.BlueprintId);
+        return null;
     }
 
     /// <summary>

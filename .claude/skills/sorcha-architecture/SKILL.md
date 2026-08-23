@@ -2423,6 +2423,87 @@ Metrics: `sorcha_provenance_check_total{layer,status}` and
 on, the second usually means missing evidence.
 
 
+## Blueprint version pinning — an instance runs the definition it started on (Feature 194)
+
+Republishing a blueprint to a register it is already on used to be accepted, increment a version, and
+**silently replace the executable definition for every instance of that id, including ones in
+flight**. Confirmed live on n1: three versions on one register, all accepted, no error anywhere. An
+instance mid-flow was then validated against actions and schemas it never saw.
+
+### The pin is a sealed ledger fact, not a lookup
+
+Under F145 an instance is a deterministic projection of the sealed ledger, so which definition it
+runs **cannot** be resolved per-node at fold time: a value two nodes cannot both derive from sealed
+transactions is a value they can diverge on. The pin therefore rides `RoutingDecision`
+(`Sorcha.Register.Models`), which already travels on every forward-routing action transaction, is
+sender-signed, and is verified by `VAL_ROUTING_002`.
+
+```
+RoutingDecision { completedActionId, nextActions[], routeId?, reasonCode?,
+                  blueprintExecDefHash?,   // Feature 194 — the pin
+                  attestation }
+```
+
+⚠ **`ComputeSignableBytes()` rebuilds the decision FIELD BY FIELD.** A property added to the record
+and not to that rebuild **rides the wire unauthenticated while appearing signed** — the transaction
+signature covers only `{TxId}:{PayloadHash}`, so it does not cover this. F189 lost `ValidatorEntry`
+to exactly this shape. The guard is `RoutingDecisionSigningCoverageTests`, which is
+**reflection-driven and fails on a property type it cannot mutate rather than skipping it**. Per-field
+tests exist too and are fine, but they are a hand-written list: every one of them stays green when a
+new uncovered property is added, which is the only case that matters.
+
+### Which value is the pin, and why not the ordinal
+
+The **executable-definition hash** (`ExecutableDefinitionHasher`, F142), never the ordinal `Version`.
+The ordinal is assigned from in-memory insert order (`versions.Count + 1`) and re-derived on
+recovery, so it does not reliably denote the same definition twice. F194 additionally **removed the
+ordinal from the hashed projection** — it was inside the content address, which is a contradiction
+and a latent way for an author to strand every in-flight instance by renumbering a draft.
+
+Because the hasher already ignores presentational keywords (F142 `FormKeywordClassifier`), a
+relabelling republish yields the **same** pin: no new definition, no instance moved, rehearsal pass
+still valid.
+
+### The lifecycle
+
+| Stage | Behaviour |
+|---|---|
+| **Publish** | `PublishService.PublishAsync` takes a **deep copy** after `$ref` flattening, hashes *that*, and stores it as `PublishedBlueprint.ExecDefHash`. The copy matters: the store used to hold the live draft reference, so "immutable snapshot" was false and hashed content could change under its own hash. |
+| **Instance creation** | Pins to the **latest PUBLISHED** definition — never the draft. A draft pin would name a definition no validator can resolve. |
+| **Every action** | `ActionExecutionService` (and `EncryptionBackgroundService`, the encrypted-register producer) stamp the **instance's** pin, never a re-derived "latest". |
+| **Fold** | `InstanceProjectionResolver` reads it off the sealed decision; `InstanceProjection.Apply` returns `FoldOutcome.RefusedForeignDefinition` for a transaction claiming a different pin. Null is accepted as the pre-feature case, counted, never treated as a mismatch. |
+| **Validator** | `ResolveBlueprintAsync(blueprintId, execDefHash, ct)` at all **three** call sites. An unresolvable pin is `VAL_BP_VERSION_001` — **never a fallback to latest**, which would reintroduce the defect silently. |
+| **Cache** | Two key shapes, deliberately: `…:{id}` for system/unpinned resolution (system blueprints have no instance and no pin) and `…:{id}:{hash}` for a pinned definition. Format lives once, in `Sorcha.Blueprint.Models.BlueprintCacheKey`, used by the validator's cache AND the Blueprint Service's publish path. |
+| **Recovery** | `BlueprintRecoveryService` restores **every** published definition, oldest-first, deduped by content hash. It used to keep newest-per-id — under pinning that strands an instance permanently at the first restart. |
+
+### Surfaces
+
+- `GET /api/blueprints/{id}/definitions/{execDefHash}` — the pinned definition (404 = refusal).
+- `GET /api/instances/{instanceId}/definition` — `pinState` ∈ `pinned` | `unresolvable` | `unpinned`,
+  plus the hash, the version **derived from the pin**, and `isPinnedToLatest`. Nothing is guessed:
+  an unresolvable pin returns null for version and `isPinnedToLatest`, because that state IS the
+  diagnosis and a plausible substitute would read as healthy.
+- `GET /api/blueprints/{id}/versions` entries carry `execDefHash`.
+- F186 `/api/me/applications` resolves decision-notice wording from the **pinned** definition.
+
+Metrics on `Sorcha.Blueprint.Instances`: `…instance_projection.pin_fallback{path}` and
+`…instance_projection.pin_mismatch`.
+
+### Two things that will bite
+
+- **Deploy `validator-service` BEFORE `blueprint-service`.** New validator + old producer is safe (a
+  null pin is omitted from the wire, so canonical bytes are unchanged); the reverse **refuses every
+  submission**, because the old rebuild computes different signable bytes.
+- **Every failure mode of this feature degrades to the OLD BEHAVIOUR, not to an error.** A cache
+  re-keyed on one side only, a producer that stops stamping, a pin dropped from a copy list — all of
+  them silently resolve "latest" again, with a green suite. The acceptance check is therefore the
+  positive one: `pin_fallback` reading **zero** on a register created after the deploy.
+
+Spec / plan / research: `specs/194-blueprint-version-pinning/`. Design:
+`docs/superpowers/specs/2026-08-23-blueprint-version-pinning-design.md`. Issue #1559.
+
+---
+
 ## Register governance: what signs what (Feature 189)
 
 Getting the signing key wrong here fails **silently at the wrong layer** — the transaction is
