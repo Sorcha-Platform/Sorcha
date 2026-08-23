@@ -42,9 +42,21 @@ new validator code and no new plumbing.
 
 **The trap, confirmed present**: `ComputeSignableBytes()` is a hand-written field-by-field rebuild
 (`RoutingDecision.cs:79-90`) listing four properties. Its own XML doc already warns that an omitted
-field "rides the wire unauthenticated while appearing signed". **There is no test guarding it
-today** — the only references to the method are its five production call sites, none in a test
-project. F189 lost `ValidatorEntry` to this exact shape.
+field "rides the wire unauthenticated while appearing signed". F189 lost `ValidatorEntry` to this
+exact shape.
+
+> **Correction to an earlier draft of this note, which said there was no test guarding it.** There
+> are two: `RoutingDecisionTests.ComputeSignableBytes_IncludesRouteId_…` and
+> `…_IncludesReasonCode_…`. They are correct and they stay. But they are a **hand-written list**, and
+> a hand-written list rots in the same direction as the bug — the developer who forgets the rebuild
+> is the developer who forgets to add the matching test. **Every one of them stays green when a new,
+> uncovered property is added**, which is the only case that matters here. So the gap is real; it is
+> narrower and more specific than "unguarded".
+
+**The discriminating mutation** is therefore *not* "remove an existing field" — the hand-written
+tests catch that too. It is **"add a new property and omit it from the rebuild"**: the reflection
+guard must fail while every hand-written test stays green. That is the mutation that proves this
+guard earns its place, and it is run as part of T011.
 
 **Consequence for the plan**: the reflection-driven guard is not optional and is not merely for the
 new field. It is the first thing to write, it protects four existing fields as well as the new one,

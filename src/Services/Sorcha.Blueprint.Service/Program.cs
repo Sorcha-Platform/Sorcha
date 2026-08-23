@@ -2706,6 +2706,18 @@ public interface IPublishedBlueprintStore
     Task<IEnumerable<PublishedBlueprint>> GetVersionsAsync(string blueprintId);
     Task<IEnumerable<PublishedBlueprint>> GetByRegisterAsync(string registerId);
 
+    /// <summary>
+    /// Feature 194 — resolves the one definition an instance is pinned to.
+    /// </summary>
+    /// <remarks>
+    /// This is the resolution the execution path must use. <see cref="GetVersionAsync"/> resolves by
+    /// ordinal, which is assigned from insert order and re-derived on recovery, so it cannot be
+    /// relied on to denote the same definition twice.
+    /// </remarks>
+    /// <returns>The pinned definition, or <c>null</c> if this node cannot resolve it — which the
+    /// caller MUST treat as a refusal, never as licence to fall back to the latest.</returns>
+    Task<PublishedBlueprint?> GetByExecDefHashAsync(string blueprintId, string execDefHash);
+
     /// <summary>Feature 154 (catalogue) — the latest published version of every blueprint.</summary>
     Task<IEnumerable<PublishedBlueprint>> GetAllLatestAsync();
 }
@@ -2825,6 +2837,27 @@ public class InMemoryPublishedBlueprintStore : IPublishedBlueprintStore
             return Task.FromResult(versions.AsEnumerable());
         }
         return Task.FromResult(Enumerable.Empty<PublishedBlueprint>());
+    }
+
+    /// <inheritdoc/>
+    public Task<PublishedBlueprint?> GetByExecDefHashAsync(string blueprintId, string execDefHash)
+    {
+        if (string.IsNullOrWhiteSpace(execDefHash) || !_published.TryGetValue(blueprintId, out var versions))
+        {
+            return Task.FromResult<PublishedBlueprint?>(null);
+        }
+
+        // Several publications can share one hash (a presentational-only republish produces the
+        // same executable definition). They are the same definition by construction, so the newest
+        // is as good as any — but resolve deterministically so two nodes agree on which row they
+        // report, and so the ordinal an operator is shown is stable between reads.
+        var match = versions
+            .Where(v => v.Blueprint is not null
+                        && string.Equals(v.ExecDefHash, execDefHash, StringComparison.Ordinal))
+            .OrderByDescending(v => v.Version)
+            .FirstOrDefault();
+
+        return Task.FromResult(match);
     }
 
     public Task<IEnumerable<PublishedBlueprint>> GetByRegisterAsync(string registerId)
@@ -2951,7 +2984,8 @@ public class PublishService(
     Sorcha.ServiceClients.Register.IRegisterServiceClient? registerClient = null,
     StackExchange.Redis.IConnectionMultiplexer? redis = null,
     Sorcha.Blueprint.Service.Services.ISchemaRefResolver? schemaRefResolver = null,
-    ILogger<PublishService>? logger = null) : IPublishService
+    ILogger<PublishService>? logger = null,
+    Sorcha.Blueprint.Engine.Implementation.ExecutableDefinitionHasher? execDefHasher = null) : IPublishService
 {
     private readonly IBlueprintStore _blueprintStore = blueprintStore;
     private readonly IPublishedBlueprintStore _publishedStore = publishedStore;
@@ -2959,6 +2993,11 @@ public class PublishService(
     private readonly StackExchange.Redis.IConnectionMultiplexer? _redis = redis;
     private readonly Sorcha.Blueprint.Service.Services.ISchemaRefResolver? _schemaRefResolver = schemaRefResolver;
     private readonly ILogger<PublishService>? _logger = logger;
+
+    // Feature 194: the executable-definition hash is the pin an instance runs against, so it must be
+    // computed here — the one place that knows the exact bytes being stored, cached and pushed.
+    private readonly Sorcha.Blueprint.Engine.Implementation.ExecutableDefinitionHasher _execDefHasher =
+        execDefHasher ?? new Sorcha.Blueprint.Engine.Implementation.ExecutableDefinitionHasher();
 
     /// <summary>
     /// Walks every action's <c>DataSchemas</c> and replaces each
@@ -3102,16 +3141,42 @@ public class PublishService(
             blueprint.Metadata["hasCycles"] = "true";
         }
 
+        // Feature 194: take a genuine DEEP COPY for the published snapshot, and compute the
+        // executable-definition hash over it.
+        //
+        // This used to store `blueprint` — the very object `_blueprintStore.GetAsync` returned,
+        // which for the in-memory store IS the stored draft. The "immutable snapshot" comment was
+        // therefore false: FlattenActionSchemas mutates it in place, the hasCycles write above
+        // mutates it again, and any later in-place edit of the draft would silently rewrite this
+        // published version too. That is fatal to content-addressing — a pin is a promise that an
+        // identifier always denotes the same bytes, and it is void if the bytes can change under it.
+        //
+        // The round trip through JSON is both the copy and the canonical bytes: `blueprintJson` is
+        // what is pushed to the register below, so the stored copy, the hash and the ledger record
+        // are provably the same content. Order is load-bearing — this must run AFTER $ref flattening
+        // and AFTER the hasCycles write, or the hash addresses a definition nothing ever stores.
+        var blueprintJson = System.Text.Json.JsonSerializer.Serialize(blueprint);
+        var snapshot = System.Text.Json.JsonSerializer.Deserialize<BlueprintModel>(blueprintJson)
+            ?? throw new InvalidOperationException(
+                $"Blueprint {blueprintId} could not be round-tripped for publication.");
+
+        var execDefHash = _execDefHasher.ComputeHash(snapshot);
+
         // Create published version (immutable snapshot)
         var published = new PublishedBlueprint
         {
             BlueprintId = blueprint.Id,
-            Blueprint = blueprint,
+            Blueprint = snapshot,
+            ExecDefHash = execDefHash,
             PublishedAt = DateTimeOffset.UtcNow,
             RegisterId = registerId
         };
 
         await _publishedStore.AddAsync(published);
+
+        _logger?.LogInformation(
+            "Blueprint {BlueprintId} published to register {RegisterId} as version {Version} with executable-definition hash {ExecDefHash}",
+            blueprintId, registerId, published.Version, execDefHash);
 
         // Populate Validator's blueprint cache in Redis so transactions referencing this blueprint pass validation
         if (_redis is not null)
@@ -3119,12 +3184,17 @@ public class PublishService(
             try
             {
                 var db = _redis.GetDatabase();
-                var cacheKey = $"sorcha:validator:blueprint:{blueprintId}";
-                var blueprintJson = System.Text.Json.JsonSerializer.Serialize(blueprint, new System.Text.Json.JsonSerializerOptions
+                // Feature 194: the cache is keyed by (blueprintId, execDefHash) so several
+                // definitions of one blueprint coexist and a pinned instance resolves its own.
+                // The format has ONE home — BlueprintCacheKey — because it previously lived here as
+                // a literal AND in the validator's BlueprintCache, and re-keying one side alone
+                // makes every lookup miss and silently fall through to the latest definition.
+                var cacheKey = Sorcha.Blueprint.Models.BlueprintCacheKey.For(blueprintId, execDefHash);
+                var cachedJson = System.Text.Json.JsonSerializer.Serialize(snapshot, new System.Text.Json.JsonSerializerOptions
                 {
                     PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
                 });
-                await db.StringSetAsync(cacheKey, blueprintJson);
+                await db.StringSetAsync(cacheKey, cachedJson);
                 _logger?.LogInformation("Blueprint {BlueprintId} cached in Redis for Validator (key: {CacheKey}, no expiry — immutable)", blueprintId, cacheKey);
             }
             catch (Exception ex)
@@ -3134,10 +3204,11 @@ public class PublishService(
             }
         }
 
-        // Publish to the register
+        // Publish to the register. Reuses the exact bytes the snapshot was built from and the hash
+        // was computed over, so the ledger record, the in-memory snapshot and the pin cannot
+        // disagree about what was published.
         if (_registerClient is not null)
         {
-            var blueprintJson = System.Text.Json.JsonSerializer.Serialize(blueprint);
             await _registerClient.PublishBlueprintToRegisterAsync(
                 registerId, blueprintId, blueprintJson, "system");
         }
@@ -3982,8 +4053,27 @@ public record PagedResult<T>
 public record PublishedBlueprint
 {
     public string BlueprintId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The ordinal version. <b>Display label only</b> (Feature 194 / D4): it is assigned from
+    /// in-memory insert order and re-derived on recovery, so it is not a stable identifier and
+    /// nothing may resolve a definition by it. Use <see cref="ExecDefHash"/> for that.
+    /// </summary>
     public int Version { get; set; }
+
     public BlueprintModel Blueprint { get; init; } = null!;
+
+    /// <summary>
+    /// The executable-definition hash — the content address of this definition, and the value an
+    /// instance is pinned to (Feature 194). Computed at publish over exactly the bytes stored here.
+    /// </summary>
+    /// <remarks>
+    /// Two publications whose executable definitions are identical (a presentational-only
+    /// republish) share this value, which is what stops a relabelled field stranding running
+    /// instances on an older definition for no reason.
+    /// </remarks>
+    public string ExecDefHash { get; init; } = string.Empty;
+
     public DateTimeOffset PublishedAt { get; set; }
     public string? RegisterId { get; init; }
 }
