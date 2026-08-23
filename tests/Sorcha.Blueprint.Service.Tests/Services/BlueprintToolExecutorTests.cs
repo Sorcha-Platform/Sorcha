@@ -1377,6 +1377,7 @@ public class BlueprintToolExecutorTests
                 title = "Manufacture Product",
                 sender = "manufacturer",
                 isStartingAction = true,
+                routeToNext = "distributor",
                 dataFields = new[]
                 {
                     new { name = "productName", type = "string" },
@@ -1386,10 +1387,10 @@ public class BlueprintToolExecutorTests
             }), builder);
 
         await _executor.ExecuteAsync("add_action",
-            CreateArgs(new { id = 1, title = "Distribute Product", sender = "distributor" }), builder);
+            CreateArgs(new { id = 1, title = "Distribute Product", sender = "distributor", routeToNext = "retailer" }), builder);
 
         await _executor.ExecuteAsync("add_action",
-            CreateArgs(new { id = 2, title = "Retail Product", sender = "retailer" }), builder);
+            CreateArgs(new { id = 2, title = "Retail Product", sender = "retailer", routeToNext = "consumer" }), builder);
 
         await _executor.ExecuteAsync("add_action",
             CreateArgs(new { id = 3, title = "Consumer Verify", sender = "consumer" }), builder);
