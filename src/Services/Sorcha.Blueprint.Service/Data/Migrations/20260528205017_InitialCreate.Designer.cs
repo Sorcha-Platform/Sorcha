@@ -242,6 +242,13 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                     b.Property<string>("ActiveBranches")
                         .HasColumnType("jsonb");
 
+                    b.Property<string>("BlueprintExecDefHash")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasDefaultValue("");
+
                     b.Property<string>("BlueprintId")
                         .IsRequired()
                         .HasColumnType("text");

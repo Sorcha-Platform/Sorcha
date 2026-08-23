@@ -78,7 +78,12 @@ public static class InstanceProjectionResolver
             // the transaction in the clear and are inside RoutingDecision.ComputeSignableBytes, so
             // they are signed and every node folding this transaction records the same pair.
             RouteId: decision?.RouteId,
-            ReasonCode: decision?.ReasonCode);
+            ReasonCode: decision?.ReasonCode,
+            // Feature 194: the definition this action was executed against. Same signed source, so
+            // every node folding this transaction agrees on which definition the instance runs —
+            // which is the whole reason the pin had to become a sealed fact rather than a per-node
+            // lookup. Null on a transaction sealed before Feature 194.
+            BlueprintExecDefHash: decision?.BlueprintExecDefHash);
 
         return new ResolvedProjection(blueprintId, instanceId, ResolveTenantId(tx), projected);
     }

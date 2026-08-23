@@ -566,10 +566,27 @@ public class ValidationEngine : IValidationEngine
                     transaction.TransactionId, transaction.Metadata["Type"]);
             }
 
-            // Get the blueprint
-            var blueprint = await ResolveBlueprintAsync(transaction.BlueprintId!, ct);
+            // Get the blueprint — the definition this transaction's INSTANCE is pinned to
+            // (Feature 194), not whichever definition happens to be latest.
+            var carriedPin = ReadCarriedExecDefHash(transaction);
+            var blueprint = await ResolveBlueprintAsync(transaction.BlueprintId!, carriedPin, ct);
             if (blueprint == null)
             {
+                // Distinguish "no such blueprint" from "this node cannot produce the DEFINITION the
+                // instance is pinned to". They need different operator responses — the first is a
+                // missing blueprint, the second is a definition that failed to replicate or was
+                // evicted, and reporting both as VAL_SCHEMA_001 would send an investigation after
+                // the wrong thing.
+                if (!string.IsNullOrWhiteSpace(carriedPin))
+                {
+                    errors.Add(CreateError("VAL_BP_VERSION_001",
+                        $"Blueprint '{transaction.BlueprintId}' definition '{carriedPin}' — the definition this "
+                        + "instance is pinned to — could not be resolved on this node. The transaction is "
+                        + "refused; it is NOT validated against a different definition.",
+                        ValidationErrorCategory.Blueprint, "routingDecision.blueprintExecDefHash", true));
+                    return CreateFailureResult(transaction, sw.Elapsed, errors);
+                }
+
                 errors.Add(CreateError("VAL_SCHEMA_001",
                     $"Blueprint '{transaction.BlueprintId}' not found",
                     ValidationErrorCategory.Blueprint, "BlueprintId", true));
@@ -969,11 +986,24 @@ public class ValidationEngine : IValidationEngine
         }
 
         // ---- VAL_ROUTING_001: structural successor check against the published route graph ----
-        var blueprint = await ResolveBlueprintAsync(transaction.BlueprintId!, ct);
+        // Feature 194: check the decision against the ROUTE GRAPH OF THE DEFINITION IT CLAIMS. Using
+        // the latest definition here would judge an in-flight instance's routing against a graph it
+        // never ran on — the same defect one layer up.
+        var blueprint = await ResolveBlueprintAsync(
+            transaction.BlueprintId!, decision.BlueprintExecDefHash, ct);
         if (blueprint is null)
         {
             // Schema/conformance validation already flags a missing blueprint; surface a routing
             // error too so the decision is never trusted without its route graph.
+            if (!string.IsNullOrWhiteSpace(decision.BlueprintExecDefHash))
+            {
+                errors.Add(CreateError("VAL_BP_VERSION_001",
+                    $"Cannot verify routing decision: blueprint '{transaction.BlueprintId}' definition "
+                    + $"'{decision.BlueprintExecDefHash}' could not be resolved on this node.",
+                    ValidationErrorCategory.Blueprint, "routingDecision.blueprintExecDefHash", isFatal: true));
+                return CreateFailureResult(transaction, sw.Elapsed, errors);
+            }
+
             errors.Add(CreateError("VAL_ROUTING_001",
                 $"Cannot verify routing decision: blueprint '{transaction.BlueprintId}' not found",
                 ValidationErrorCategory.Blueprint, "routingDecision"));
@@ -1366,7 +1396,8 @@ public class ValidationEngine : IValidationEngine
             BlueprintModel? blueprint;
             using (RuleTelemetry.TimeRule("VAL_BP_RESOLVE"))
             {
-                blueprint = await ResolveBlueprintAsync(transaction.BlueprintId!, ct);
+                blueprint = await ResolveBlueprintAsync(
+                    transaction.BlueprintId!, ReadCarriedExecDefHash(transaction), ct);
             }
             if (blueprint == null)
             {
@@ -2374,12 +2405,124 @@ public class ValidationEngine : IValidationEngine
     }
 
     /// <summary>
-    /// Resolves a blueprint by ID, checking cache first then falling back to BlueprintFetcher.
-    /// On successful fetch, the blueprint is cached for subsequent lookups.
+    /// Feature 194 — reads the definition pin off the transaction's carried routing decision.
     /// </summary>
-    private async Task<BlueprintModel?> ResolveBlueprintAsync(string blueprintId, CancellationToken ct)
+    /// <remarks>
+    /// Read from the same signed JSON <c>ValidateRoutingDecisionAsync</c> verifies, so the pin used
+    /// to choose the definition is the pin the signature covers. Returns null for a transaction that
+    /// carries no decision (genesis, governance, participant, lifecycle) or none pinned
+    /// (pre-Feature-194) — both take the latest-definition path, which is correct for them.
+    /// </remarks>
+    private string? ReadCarriedExecDefHash(Transaction transaction)
     {
-        // Try cache first (L1 → L2)
+        if (transaction.Metadata is null
+            || !transaction.Metadata.TryGetValue("routingDecision", out var decisionJson)
+            || string.IsNullOrWhiteSpace(decisionJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            var decision = JsonSerializer.Deserialize<Sorcha.Register.Models.RoutingDecision>(
+                decisionJson, Sorcha.Register.Models.RegisterSerializationOptions.Canonical);
+            return decision?.BlueprintExecDefHash;
+        }
+        catch (JsonException)
+        {
+            // A malformed decision is reported by VAL_ROUTING_002 with its own typed error. Here it
+            // simply yields no pin; resolution falls back to latest and the transaction is refused
+            // by the routing check regardless, so this cannot become a way to dodge the pin.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Resolves the blueprint definition a transaction must be validated against (Feature 194).
+    /// </summary>
+    /// <param name="blueprintId">The blueprint id.</param>
+    /// <param name="execDefHash">
+    /// The executable-definition hash carried on the transaction's signed routing decision — the
+    /// instance's pin. Null only for a transaction sealed before Feature 194.
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <remarks>
+    /// <para>
+    /// <b>A non-null pin that resolves to nothing returns null — it never falls back to the latest
+    /// definition.</b> Falling back would reintroduce the exact defect this feature removes, and
+    /// would do it silently: the transaction would validate cleanly against rules the instance never
+    /// ran under. The caller turns null into a typed refusal.
+    /// </para>
+    /// <para>
+    /// A null pin takes the pre-Feature-194 path (latest definition), logged so the fallback is
+    /// visible rather than inferred.
+    /// </para>
+    /// </remarks>
+    private async Task<BlueprintModel?> ResolveBlueprintAsync(
+        string blueprintId, string? execDefHash, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(execDefHash))
+        {
+            return await ResolvePinnedBlueprintAsync(blueprintId, execDefHash, ct);
+        }
+
+        _logger.LogWarning(
+            "Transaction for blueprint {BlueprintId} carries no definition pin; resolving the LATEST " +
+            "definition via the pre-Feature-194 fallback.",
+            blueprintId);
+
+        return await ResolveLatestBlueprintAsync(blueprintId, ct);
+    }
+
+    /// <summary>
+    /// Resolves exactly one definition by its content hash. Cache first (keyed by content, so an
+    /// entry can never be the wrong definition), then the Blueprint Service's by-hash endpoint.
+    /// </summary>
+    private async Task<BlueprintModel?> ResolvePinnedBlueprintAsync(
+        string blueprintId, string execDefHash, CancellationToken ct)
+    {
+        var cached = await _blueprintCache.GetDefinitionAsync(blueprintId, execDefHash, ct);
+        if (cached != null)
+            return cached;
+
+        if (_blueprintFetcher != null)
+        {
+            try
+            {
+                var fetched = await _blueprintFetcher.FetchBlueprintByHashAsync(blueprintId, execDefHash, ct);
+                if (fetched != null)
+                {
+                    await _blueprintCache.SetDefinitionAsync(fetched, execDefHash, ct: ct);
+                    return fetched;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to fetch pinned definition {ExecDefHash} of blueprint {BlueprintId}",
+                    execDefHash, blueprintId);
+            }
+        }
+
+        // Deliberately NO fallback to latest, and no system-register arm: system blueprints are
+        // resolved by id (they carry no instance pin), and a pinned lookup that reaches here means
+        // this node genuinely cannot produce the definition the instance runs.
+        _logger.LogError(
+            "Pinned definition {ExecDefHash} of blueprint {BlueprintId} is UNRESOLVABLE on this node. " +
+            "The transaction will be refused rather than validated against a different definition.",
+            execDefHash, blueprintId);
+        return null;
+    }
+
+    /// <summary>
+    /// The pre-Feature-194 resolution: latest definition by id, with the Blueprint Service and then
+    /// the system register as fallbacks. Reached only by a transaction carrying no pin.
+    /// </summary>
+    private async Task<BlueprintModel?> ResolveLatestBlueprintAsync(string blueprintId, CancellationToken ct)
+    {
+        // Try cache first (L1 → L2), keyed by id. Correct here and only here: this path serves
+        // blueprints that have no instance and therefore no pin — the platform's own system
+        // blueprints — plus transactions sealed before Feature 194.
         var blueprint = await _blueprintCache.GetBlueprintAsync(blueprintId, ct);
         if (blueprint != null)
             return blueprint;
@@ -2396,7 +2539,6 @@ public class ValidationEngine : IValidationEngine
                 blueprint = await _blueprintFetcher.FetchBlueprintAsync(blueprintId, ct);
                 if (blueprint != null)
                 {
-                    // Populate cache for future lookups
                     await _blueprintCache.SetBlueprintAsync(blueprint, ct: ct);
                     _logger.LogInformation(
                         "Blueprint {BlueprintId} fetched and cached from Blueprint Service",

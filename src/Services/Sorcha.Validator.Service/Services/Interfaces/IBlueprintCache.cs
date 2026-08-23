@@ -13,13 +13,57 @@ namespace Sorcha.Validator.Service.Services.Interfaces;
 public interface IBlueprintCache
 {
     /// <summary>
-    /// Get a blueprint by ID, fetching from source if not cached
+    /// Get the current definition of a blueprint by ID.
     /// </summary>
+    /// <remarks>
+    /// <b>Feature 194 — this answers "the current one", which is NOT what a running instance needs.</b>
+    /// It remains correct for blueprints that have no instance and therefore no pin: the platform's
+    /// own system blueprints (<c>register-governance-v1</c> and siblings, resolved from the system
+    /// register) and transactions sealed before Feature 194. For anything instance-scoped, use
+    /// <see cref="GetDefinitionAsync"/> — resolving by id there silently returns the wrong rules
+    /// after a republish, which is the entire defect Feature 194 removes.
+    /// </remarks>
     /// <param name="blueprintId">Blueprint ID</param>
     /// <param name="ct">Cancellation token</param>
     /// <returns>Blueprint or null if not found</returns>
     Task<BlueprintModel?> GetBlueprintAsync(
         string blueprintId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Feature 194 — get ONE specific definition of a blueprint by its executable-definition hash:
+    /// the definition a running instance is pinned to.
+    /// </summary>
+    /// <remarks>
+    /// Keyed by content via <see cref="Sorcha.Blueprint.Models.BlueprintCacheKey"/>, the single home
+    /// of that format — the Blueprint Service's publish path composes the same key through it. If
+    /// the reader and the writer ever disagree, every lookup misses and falls through to the latest
+    /// definition, which is not an error and is not logged as one: pinning would simply, silently,
+    /// stop working.
+    /// <para>
+    /// A content-addressed entry is immutable, so it never goes stale and never needs refreshing.
+    /// </para>
+    /// </remarks>
+    /// <param name="blueprintId">Blueprint ID</param>
+    /// <param name="execDefHash">The executable-definition hash (the pin)</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>The pinned definition, or null if not cached.</returns>
+    Task<BlueprintModel?> GetDefinitionAsync(
+        string blueprintId,
+        string execDefHash,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Feature 194 — cache one specific definition under its executable-definition hash.
+    /// </summary>
+    /// <param name="blueprint">The definition to cache.</param>
+    /// <param name="execDefHash">The executable-definition hash this blueprint IS.</param>
+    /// <param name="ttl">Optional custom TTL.</param>
+    /// <param name="ct">Cancellation token</param>
+    Task SetDefinitionAsync(
+        BlueprintModel blueprint,
+        string execDefHash,
+        TimeSpan? ttl = null,
         CancellationToken ct = default);
 
     /// <summary>

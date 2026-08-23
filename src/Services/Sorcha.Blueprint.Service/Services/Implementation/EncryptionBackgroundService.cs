@@ -188,12 +188,28 @@ public sealed class EncryptionBackgroundService : BackgroundService
             // RoutingDecision every node's InstanceProjector folds — replacing the legacy singular
             // nextActionId hint. Without this, encrypted-register actions carried NO routing decision
             // at all (only the now-removed nextActionId), so the decision never reached the seal.
+            // Feature 194: the encrypted path must stamp the same pin as the plaintext one, or an
+            // encrypted register's instances would be unpinned and every action on them would fold
+            // through the pre-feature fallback — i.e. keep the old "always latest" behaviour on
+            // exactly the registers that carry the most sensitive workflows.
+            var pinnedExecDefHash = string.IsNullOrWhiteSpace(instance.BlueprintExecDefHash)
+                ? null
+                : instance.BlueprintExecDefHash;
+            if (pinnedExecDefHash is null)
+            {
+                _logger.LogWarning(
+                    "Instance {InstanceId} has no pinned blueprint definition; encrypted action {ActionId} " +
+                    "will be carried unpinned and folded via the pre-Feature-194 fallback.",
+                    workItem.InstanceId, workItem.ActionId);
+            }
+
             var routingDecision = new Sorcha.Register.Models.RoutingDecision
             {
                 CompletedActionId = workItem.ActionId,
                 NextActions = workItem.RoutingResult.NextActions
                     .Select(n => new Sorcha.Register.Models.ActionRef { ActionId = n.ActionId, BranchKey = n.BranchId })
                     .ToList(),
+                BlueprintExecDefHash = pinnedExecDefHash,
                 Attestation = new Sorcha.Register.Models.Attestation
                 {
                     Kind = Sorcha.Register.Models.AttestationKind.SenderSigned,

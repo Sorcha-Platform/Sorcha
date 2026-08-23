@@ -1076,6 +1076,32 @@ blueprintGroup.MapGet("/{id}/versions/{version}", async (string id, int version,
 .WithDescription("Retrieve a specific published version of a blueprint (immutable)")
 .CacheOutput(policy => policy.Expire(TimeSpan.FromDays(365)).Tag("published")); // Cache permanently - immutable
 
+// <summary>
+// Feature 194 — get one published DEFINITION by its executable-definition hash (the pin).
+// </summary>
+// <remarks>
+// This is how a running instance's definition is resolved. The by-ordinal sibling above cannot
+// serve that purpose: the ordinal is assigned from insert order and re-derived on recovery, so it
+// does not reliably denote the same definition twice. The response body is the blueprint itself
+// (not the PublishedBlueprint envelope) because the validator deserialises it straight into its
+// blueprint model.
+//
+// Content-addressed, therefore immutable — cached permanently, like the by-ordinal endpoint.
+// </remarks>
+blueprintGroup.MapGet("/{id}/definitions/{execDefHash}", async (
+    string id, string execDefHash, IPublishedBlueprintStore store) =>
+{
+    var published = await store.GetByExecDefHashAsync(id, execDefHash);
+    return published is not null ? Results.Ok(published.Blueprint) : Results.NotFound();
+})
+.WithName("GetBlueprintDefinitionByHash")
+.WithSummary("Get a pinned blueprint definition")
+.WithDescription(
+    "Retrieve the exact published definition identified by its executable-definition hash — the "
+    + "definition a running instance is pinned to. Returns 404 when this node cannot resolve it; "
+    + "callers MUST treat that as a refusal and never fall back to the latest definition.")
+.CacheOutput(policy => policy.Expire(TimeSpan.FromDays(365)).Tag("published"));
+
 // ===========================
 // Rehearsal Endpoints (Feature 142 — Blueprint Design Lifecycle, US2)
 // ===========================
@@ -2332,12 +2358,42 @@ instancesGroup.MapPost("/", async (
             participantWallets[p.Id] = p.WalletAddress!;
         }
 
+        // Feature 194: choose the definition this instance will run for its whole life.
+        //
+        // The pin MUST be a PUBLISHED definition's hash, never the draft's. The validator resolves
+        // published definitions, so pinning to a draft — which may differ from anything ever
+        // published — would produce an instance whose every action refers to a definition no node
+        // can resolve. This is also why the pin is taken from the published store even when the
+        // draft store answered above: what runs is what was published, not what is in an editor.
+        var latestPublished = PublishedBlueprintSelector.SelectLatest(
+            await publishedBlueprintStore.GetVersionsAsync(request.BlueprintId));
+
+        var pinnedExecDefHash = latestPublished?.ExecDefHash ?? string.Empty;
+        if (latestPublished is not null)
+        {
+            resolvedVersion = latestPublished.Version;
+        }
+        else
+        {
+            // No published version on this node. The blueprint is pushed to the register a few
+            // lines above by the owner, and recovery will surface it later, so the instance is
+            // still viable — but it starts unpinned and folds through the pre-feature fallback.
+            // Say so loudly: a silent empty pin is indistinguishable from the defect this feature
+            // exists to remove.
+            logger.LogWarning(
+                "Instance for blueprint {BlueprintId} on register {RegisterId} is being created with NO " +
+                "pinned definition — no published version is resolvable on this node. It will fall back " +
+                "to the latest definition when folded.",
+                request.BlueprintId, request.RegisterId);
+        }
+
         // Create instance
         var instance = new Sorcha.Blueprint.Service.Models.Instance
         {
             Id = Guid.NewGuid().ToString(),
             BlueprintId = request.BlueprintId,
             BlueprintVersion = resolvedVersion,
+            BlueprintExecDefHash = pinnedExecDefHash,
             RegisterId = request.RegisterId,
             CurrentActionIds = startingActions,
             ParticipantWallets = participantWallets,

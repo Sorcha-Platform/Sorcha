@@ -21,6 +21,25 @@ public interface IBlueprintServiceClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets one specific published <b>definition</b> of a blueprint by its executable-definition
+    /// hash — the definition a running instance is pinned to (Feature 194).
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="GetBlueprintAsync"/>, which answers "the current one". A pinned
+    /// instance must resolve the definition it started on even after the blueprint has been
+    /// republished, so resolving by id here would silently return the wrong rules — which is the
+    /// defect Feature 194 removes. A null result is a refusal, never licence to fall back to latest.
+    /// </remarks>
+    /// <param name="blueprintId">Blueprint ID.</param>
+    /// <param name="execDefHash">The executable-definition hash (the pin).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The pinned blueprint definition as JSON, or null if this node cannot resolve it.</returns>
+    Task<string?> GetBlueprintDefinitionAsync(
+        string blueprintId,
+        string execDefHash,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Validates a transaction payload against blueprint schema
     /// </summary>
     /// <param name="blueprintId">Blueprint ID</param>

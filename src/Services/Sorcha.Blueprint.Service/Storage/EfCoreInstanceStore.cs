@@ -120,6 +120,7 @@ public class EfCoreInstanceStore : IInstanceStore
         // Map updated model back to entity
         entity.BlueprintId = instance.BlueprintId;
         entity.BlueprintVersion = instance.BlueprintVersion;
+        entity.BlueprintExecDefHash = instance.BlueprintExecDefHash;
         entity.RegisterId = instance.RegisterId;
         entity.State = instance.State;
         entity.CurrentActionIds = SerializeJson(instance.CurrentActionIds);
@@ -491,6 +492,7 @@ public class EfCoreInstanceStore : IInstanceStore
             Id = instance.Id,
             BlueprintId = instance.BlueprintId,
             BlueprintVersion = instance.BlueprintVersion,
+            BlueprintExecDefHash = instance.BlueprintExecDefHash,
             RegisterId = instance.RegisterId,
             State = instance.State,
             CurrentActionIds = SerializeJson(instance.CurrentActionIds),
@@ -531,6 +533,7 @@ public class EfCoreInstanceStore : IInstanceStore
                 Id = entity.Id,
                 BlueprintId = entity.BlueprintId,
                 BlueprintVersion = entity.BlueprintVersion,
+                BlueprintExecDefHash = entity.BlueprintExecDefHash ?? string.Empty,
                 RegisterId = entity.RegisterId,
                 TenantId = tenantId,
                 State = entity.State,

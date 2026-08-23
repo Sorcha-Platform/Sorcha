@@ -108,6 +108,7 @@ public class EfCoreInstanceStoreUpdateRoundTripTests
         Id = id,
         BlueprintId = "bp-original",
         BlueprintVersion = 1,
+        BlueprintExecDefHash = "1111111111111111111111111111111111111111111111111111111111111111",
         RegisterId = "reg-original",
         TenantId = "tenant-1",
         State = InstanceState.Active,
@@ -157,6 +158,38 @@ public class EfCoreInstanceStoreUpdateRoundTripTests
         i.LastAppliedTxId = "tx-second";
         i.DecisionRouteId = "route-refuse";
         i.DecisionReasonCode = "DOC_UNREADABLE";
+        // Feature 194. Must differ from the seed or the guard is vacuous for this field — and a
+        // dropped pin is the worst possible field to lose here: the instance would read back
+        // unpinned and every subsequent action would silently resolve the LATEST definition, which
+        // is exactly the defect the feature removes, restored by an omission in a copy list.
+        i.BlueprintExecDefHash = "2222222222222222222222222222222222222222222222222222222222222222";
+    }
+
+    [Fact]
+    public async Task UpdateAsync_PersistsThePinnedBlueprintDefinition()
+    {
+        var store = CreateStore(nameof(UpdateAsync_PersistsThePinnedBlueprintDefinition) + Guid.NewGuid());
+        var created = await store.CreateAsync(SeedInstance("inst-pin"));
+
+        created.BlueprintExecDefHash = "3333333333333333333333333333333333333333333333333333333333333333";
+        await store.UpdateAsync(created);
+
+        var reread = await store.GetAsync("inst-pin");
+        reread!.BlueprintExecDefHash.Should()
+            .Be("3333333333333333333333333333333333333333333333333333333333333333");
+    }
+
+    [Fact]
+    public async Task CreateAsync_PersistsThePinnedBlueprintDefinition()
+    {
+        // The create path matters as much as the update path: the pin is established once, at
+        // creation, so losing it there means the instance is unpinned for its whole life.
+        var store = CreateStore(nameof(CreateAsync_PersistsThePinnedBlueprintDefinition) + Guid.NewGuid());
+        await store.CreateAsync(SeedInstance("inst-pin-create"));
+
+        var reread = await store.GetAsync("inst-pin-create");
+        reread!.BlueprintExecDefHash.Should()
+            .Be("1111111111111111111111111111111111111111111111111111111111111111");
     }
 
     [Fact]
@@ -280,12 +313,12 @@ public class EfCoreInstanceStoreUpdateRoundTripTests
             ParticipantBindings: new Dictionary<string, string>());
 
         var first = await store.GetAsync("inst-replay");
-        InstanceProjection.Apply(first!, tx).Should().BeTrue("the first fold must advance");
+        InstanceProjection.Apply(first!, tx).Should().Be(FoldOutcome.Advanced, "the first fold must advance");
         await store.UpdateAsync(first!);
 
         // Second delivery of the SAME transaction, read fresh from the store as the projector does.
         var second = await store.GetAsync("inst-replay");
-        InstanceProjection.Apply(second!, tx).Should().BeFalse(
+        InstanceProjection.Apply(second!, tx).Should().Be(FoldOutcome.AlreadyApplied,
             "a redelivered docket:confirmed must be recognised as already folded");
 
         second!.CompletedActionCount.Should().Be(1,
