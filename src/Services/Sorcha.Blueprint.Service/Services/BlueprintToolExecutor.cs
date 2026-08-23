@@ -1291,11 +1291,36 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
             // starting action with no routes, and every other route looping back to it. /publish
             // then refused it, so the author's first sight of the problem was at Go-live.
             //
-            // GATED on the blueprint actually using route-based routing. Legacy and
-            // platform-driven blueprints (complex-sme-invoice-finance, register-governance-v1)
-            // declare no routes at all and are advanced by other means; flagging them would be a
-            // false positive. Verified against all 45 shipped blueprints: 0 flagged.
+            // The reachability graph below is GATED on the blueprint actually using route-based
+            // routing, because legacy and platform-driven blueprints (complex-sme-invoice-finance,
+            // register-governance-v1) declare no routes and are advanced by other means.
+            //
+            // ⚠ That gate had a hole, found by a live designer run: a multi-action blueprint with
+            // NO routes anywhere skipped every check and validated clean — then PUBLISHED, because
+            // the publish path reports unreachability only as a warning. A workflow that cannot
+            // advance past its starting action reached a register. Corpus-testing the rule against
+            // 45 shipped blueprints could not surface this, because none of them had that shape.
+            //
+            // So zero-route is checked FIRST and explicitly, rather than silently exempted.
             var usesRouteBasedRouting = draft.Actions.Any(a => a.Routes?.Any() == true);
+
+            // add_action's routeToNext parameter populates Action.Participants (a Condition list),
+            // NOT Routes — it is the legacy participant-based model, and the chat tools still offer
+            // it. A blueprint routed that way is coherent, so it must not trip the check below.
+            var usesParticipantRouting = draft.Actions.Any(a => a.Participants?.Any() == true);
+
+            if (!usesRouteBasedRouting && !usesParticipantRouting && draft.Actions.Count > 1)
+            {
+                errors.Add(new
+                {
+                    code = "NO_ROUTING_DEFINED",
+                    message = $"The blueprint has {draft.Actions.Count} actions but declares no routes on any of " +
+                              $"them, so nothing can advance past the starting action. Add routes linking each " +
+                              $"action to the next, ending with an empty nextActionIds to finish the workflow.",
+                    location = "actions"
+                });
+            }
+
             if (usesRouteBasedRouting && draft.Actions.Count > 0)
             {
                 static List<Sorcha.Blueprint.Models.Route> RoutesOf(Sorcha.Blueprint.Models.Action a)

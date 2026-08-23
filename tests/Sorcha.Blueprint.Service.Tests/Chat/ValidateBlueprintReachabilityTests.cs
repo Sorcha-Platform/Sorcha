@@ -123,19 +123,68 @@ public class ValidateBlueprintReachabilityTests
     // ---- the negatives, which matter more than the positives ---------------------------------
 
     [Fact]
-    public async Task LegacyBlueprintWithNoRoutesAtAll_IsNotFlagged()
+    public async Task MultiActionBlueprintWithNoRoutesAtAll_IsAnError()
     {
-        // complex-sme-invoice-finance and register-governance-v1 are advanced by other means and
-        // declare no routes on any action. Flagging them would be a false positive, and the rule
-        // is gated on the blueprint using route-based routing at all.
+        // ⚠ This test previously asserted the OPPOSITE — that a route-less multi-action blueprint
+        // is "legacy" and must not be flagged. That assertion encoded a hole, found by a live
+        // designer run: the model called no routing tool at all, the reachability gate skipped
+        // every check, validate reported "no errors, no warnings", and the blueprint then
+        // PUBLISHED (the publish path reports unreachability only as a warning). A workflow that
+        // cannot advance past its starting action reached a register.
+        //
+        // Corpus-testing the rule against 45 shipped blueprints could not have caught this: none
+        // of them had that shape. Only running the designer did.
         var json = await ValidateAsync(Bp(
             A(1, "alpha", starting: true),
             A(2, "beta"),
             A(3, "alpha")));
 
-        json.Should().NotContain("STARTING_ACTION_NO_ROUTES");
+        json.Should().Contain("NO_ROUTING_DEFINED",
+            "nothing can advance past the starting action, so the workflow cannot run");
+        json.Should().Contain("\"isValid\":false");
+
+        // The reachability GRAPH checks stay quiet — there is no graph to walk, and reporting
+        // every action as unreachable would bury the one message that explains the problem.
         json.Should().NotContain("UNREACHABLE_ACTION");
         json.Should().NotContain("NO_TERMINAL_PATH");
+    }
+
+    [Fact]
+    public async Task ParticipantRoutedBlueprint_IsNotFlagged()
+    {
+        // add_action's routeToNext populates Action.Participants (the legacy Condition model), not
+        // Routes. The chat tools still offer it, so a blueprint routed that way is coherent and
+        // must not be reported as having no routing.
+        var bp = Bp(A(1, "alpha", starting: true), A(2, "beta"));
+        bp.Actions[0].Participants = [new Condition("beta", true)];
+
+        var json = await ValidateAsync(bp);
+
+        json.Should().NotContain("NO_ROUTING_DEFINED");
+    }
+
+    [Fact]
+    public async Task SingleActionBlueprintWithNoRoutes_IsNotFlagged()
+    {
+        // A one-action credential gate is legitimately terminal and needs no routes at all.
+        var json = await ValidateAsync(Bp(A(1, "alpha", starting: true)));
+
+        json.Should().NotContain("NO_ROUTING_DEFINED");
+        json.Should().NotContain("UNREACHABLE_ACTION");
+        json.Should().NotContain("NO_TERMINAL_PATH");
+    }
+
+    [Fact]
+    public async Task PartiallyRoutedBlueprint_StillGetsTheGraphChecks()
+    {
+        // One route anywhere means the author IS using route-based routing, so the graph checks
+        // apply and NO_ROUTING_DEFINED must not fire instead of them.
+        var json = await ValidateAsync(Bp(
+            A(1, "alpha", starting: true),
+            A(2, "beta", routes: [Terminal()])));
+
+        json.Should().NotContain("NO_ROUTING_DEFINED");
+        json.Should().Contain("STARTING_ACTION_NO_ROUTES");
     }
 
     [Fact]

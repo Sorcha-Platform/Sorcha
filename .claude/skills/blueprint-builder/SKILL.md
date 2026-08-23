@@ -314,6 +314,7 @@ Publish-time validation runs in **`Sorcha.Blueprint.Service`** (`PublishService.
 | `WARN_BP_CRED_005` | warning | An action declares `credentialIssuanceConfig` with **no `issuanceCondition`** but routes on a decision (a conditional route, or >1 route). Minting precedes routing, so the credential is minted and delivered on the reject path too (#1551). |
 | `NO_DISCLOSABLE_SET` | warning | A `credentialIssuanceConfig` has claim mappings but no `disclosable` list. A null set is **expanded to every claim name** at signing time — it does not mean "none" (#1550). Emitted by the chat `validate_blueprint`. |
 | `WARN_BP_006` | warning | An `x-credential-offer` object should declare `credential_offer_uri` in its `required` list |
+| `NO_ROUTING_DEFINED` | error | A multi-action blueprint declares **no routing of any kind** — no `routes` and no legacy `participants` conditions — so nothing can advance past the starting action. |
 | `DUPLICATE_PARTICIPANT_ID` | error | Two participants share an `id`. `action.sender` resolves by id, so a duplicate cannot be disambiguated (#1548). |
 | `STARTING_ACTION_NO_ROUTES` | error | A starting action declares no `routes` while the blueprint has other actions — the workflow can never advance past it (#1548). |
 | `UNREACHABLE_ACTION` | error | An action is not reachable from any starting action by `routes` or `rejectionConfig.targetActionId` (#1548). |
@@ -321,6 +322,12 @@ Publish-time validation runs in **`Sorcha.Blueprint.Service`** (`PublishService.
 | `NO_STARTING_ACTION` | warning | No action marked `isStartingAction: true` |
 | Cycle warning | warning | Cyclic route detected — publish proceeds; set `metadata.hasCycles = "true"` for clarity |
 
+> ⚠ **`NO_ROUTING_DEFINED` is checked FIRST and is not subject to the gate below.** A live designer
+> run produced a multi-action blueprint with **no routing at all**; the gate skipped every check, the
+> validator reported "no errors, no warnings", and it then **published** — the publish path reports
+> unreachability only as a warning. Corpus-testing the rule against 45 shipped blueprints could not
+> have caught it, because none had that shape.
+>
 > ⚠ **The four reachability checks are gated on the blueprint using route-based routing at all** —
 > i.e. at least one action declares a non-empty `routes` array. Legacy and platform-driven blueprints
 > (`complex-sme-invoice-finance`, `register-governance-v1`) declare no routes on any action and are
