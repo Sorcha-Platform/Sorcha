@@ -64,6 +64,22 @@ public static class InstanceReadEndpoints
             .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound);
 
+        group.MapGet("/{instanceId}/definition", GetInstanceDefinition)
+            .WithName("GetInstanceDefinition")
+            .WithSummary("Get the blueprint definition this instance is pinned to")
+            .WithDescription(
+                "Feature 194. Reports which executable definition the instance is running and "
+                + "whether that is still the blueprint's latest — the question an operator has to "
+                + "answer when an application behaves differently from a newer one on the same "
+                + "blueprint. Three states are distinguishable and none is guessed: pinned and "
+                + "resolvable (hash + version + isPinnedToLatest); pinned but UNRESOLVABLE on this "
+                + "node (hash present, version and isPinnedToLatest null — the stuck-instance state); "
+                + "and unpinned, meaning the instance predates the feature (hash null). Same "
+                + "participant gate as GET /{instanceId}.")
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status404NotFound);
+
         group.MapGet("/{instanceId}/state", GetInstanceState)
             .WithName("GetInstanceState")
             .WithSummary("Get accumulated state")
@@ -165,6 +181,98 @@ public static class InstanceReadEndpoints
         }
 
         return Results.Ok(instance);
+    }
+
+    /// <summary>
+    /// Feature 194 — reports the blueprint definition this instance is pinned to.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The defect this feature fixes was entirely invisible from outside: a republish silently moved
+    /// every in-flight instance onto new rules. A pin that is correct but unreportable would leave
+    /// the next investigation exactly as blind, so this endpoint is part of the feature rather than
+    /// a follow-up.
+    /// </para>
+    /// <para>
+    /// <b>Nothing here is guessed.</b> When the pin cannot be resolved on this node, the version
+    /// label and <c>isPinnedToLatest</c> come back null rather than falling back to the latest
+    /// definition's values — that state IS the diagnosis (a definition that failed to replicate, or
+    /// was evicted), and substituting a plausible answer would hide it.
+    /// </para>
+    /// </remarks>
+    internal static async Task<IResult> GetInstanceDefinition(
+        HttpContext httpContext,
+        string instanceId,
+        IInstanceStore instanceStore,
+        IBlueprintStore blueprintStore,
+        IPublishedBlueprintStore publishedStore,
+        IWalletServiceClient walletClient,
+        ILogger<InstanceReadEndpointsLogCategory> logger,
+        CancellationToken cancellationToken)
+    {
+        var instance = await instanceStore.GetAsync(instanceId, cancellationToken);
+        if (instance == null)
+        {
+            return Results.NotFound(new { error = "Instance not found" });
+        }
+
+        var blueprint = await blueprintStore.GetAsync(instance.BlueprintId);
+        if (!await IsPermittedAsync(httpContext, instance, blueprint, walletClient, logger, cancellationToken))
+        {
+            return Forbidden();
+        }
+
+        var pin = instance.BlueprintExecDefHash;
+
+        if (string.IsNullOrWhiteSpace(pin))
+        {
+            // Unpinned: this instance's transactions predate Feature 194. Deliberately
+            // distinguishable from "pinned but unresolvable" — they need different responses from an
+            // operator, and collapsing them would hide the one failure mode worth seeing.
+            return Results.Ok(new
+            {
+                instanceId,
+                blueprintId = instance.BlueprintId,
+                blueprintExecDefHash = (string?)null,
+                blueprintVersion = (int?)null,
+                isPinnedToLatest = (bool?)null,
+                pinState = "unpinned",
+            });
+        }
+
+        var pinned = await publishedStore.GetByExecDefHashAsync(instance.BlueprintId, pin);
+        if (pinned is null)
+        {
+            logger.LogWarning(
+                "Instance {InstanceId} is pinned to definition {ExecDefHash} of blueprint {BlueprintId}, "
+                + "which cannot be resolved on this node — the instance cannot advance here.",
+                instanceId, pin, instance.BlueprintId);
+
+            return Results.Ok(new
+            {
+                instanceId,
+                blueprintId = instance.BlueprintId,
+                blueprintExecDefHash = pin,
+                blueprintVersion = (int?)null,
+                isPinnedToLatest = (bool?)null,
+                pinState = "unresolvable",
+            });
+        }
+
+        var latest = PublishedBlueprintSelector
+            .SelectLatest(await publishedStore.GetVersionsAsync(instance.BlueprintId))?.ExecDefHash;
+
+        return Results.Ok(new
+        {
+            instanceId,
+            blueprintId = instance.BlueprintId,
+            blueprintExecDefHash = pin,
+            // Derived from the pin, never from the stored column — FR-019: the label and the pin
+            // cannot disagree if only one of them is a source.
+            blueprintVersion = (int?)pinned.Version,
+            isPinnedToLatest = latest is null ? (bool?)null : string.Equals(latest, pin, StringComparison.Ordinal),
+            pinState = "pinned",
+        });
     }
 
     /// <summary>
