@@ -1,0 +1,10 @@
+# Feature 195 — paths permitted to call BlueprintPublicationId.Compute / ComputeFromDefinition.
+#
+# ONE PRODUCER: the Register Service mints a definition's publication id. Everything else reads the
+# value it returns. This list may only SHRINK — never add an entry to make a build pass.
+#
+# Recovery is the one legitimate non-producer: it VERIFIES rather than mints, recomputing the id from
+# the bytes it received and comparing to the transaction's own id. That check is what makes the
+# identity self-anchoring, so forbidding it would remove the property the feature adds.
+#
+# Currently empty: the producer lands in T011.
