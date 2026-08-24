@@ -163,7 +163,7 @@ published definition, submit, and confirm the draft had no effect. Closes #1567.
 - [x] T055 [P] Update `.claude/skills/sorcha-architecture/SKILL.md` — replace the "what F194 does NOT yet deliver" block with the delivered identity model
 - [x] T056 [P] Update `docs/reference/API-DOCUMENTATION.md` for the changed endpoints, and confirm every touched Minimal API endpoint has `.WithSummary()` and `.WithDescription()` (constitution III)
 - [x] T057 [P] Add XML docs to every new public type and member (`BlueprintCanonicalJson`, `BlueprintPublicationId`, the changed interfaces), recording the *why* — these are exactly the values that acquire two homes when the reason is not written down
-- [ ] T058 Extend `walkthroughs/VersionPinning/run-acceptance.ps1` with the quickstart checks, including the two vacuous-prone ones: presentational republish **paired** with a behavioural one, and a **deliberate** identical publish to a second register
+- [x] T058 Extend `walkthroughs/VersionPinning/run-acceptance.ps1` with the quickstart checks, including the two vacuous-prone ones: presentational republish **paired** with a behavioural one, and a **deliberate** identical publish to a second register
 - [ ] T059 Run the full live acceptance per [quickstart.md](./quickstart.md) on a **re-genesised** node. Deploy order: `validator-service` → `blueprint-service` → **`register-service`**. Assert `pin_fallback` reads **zero** — the positive check
 - [ ] T060 Update `.specify/MASTER-TASKS.md` with the outcome, including anything found live that the design did not have. F194 found five such things; expect some
 - [ ] T061 Close #1563, #1566, #1567, #1568, #1570 with the live evidence, not with the merge
