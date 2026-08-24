@@ -295,7 +295,17 @@ If your blueprint asks the user for a name, date of birth, email, or postal addr
 
 Publish-time validation runs in **`Sorcha.Blueprint.Service`** (`PublishService.ValidateBlueprint`) — **not** `Sorcha.Validator.Service` (that service does transaction-chain validation, the `VAL_*` runtime codes). Errors block publication; warnings publish but surface in the response.
 
-> **Two validation surfaces, one table.** The coded errors below are emitted in full by the AI-chat `validate_blueprint` tool (`BlueprintToolExecutor`). The HTTP `/publish` path enforces the structural rules (`VAL_BP_010/011/012`, `WARN_BP_006`, recipient + cycle checks, plus the credential codes `VAL_BP_CRED_001/003`) but emits some as plain-text messages, and currently does **not** enforce `INVALID_TITLE` / `INVALID_DESCRIPTION` (title/description length) — those fire only in the chat tool. Reconciling the two surfaces is a tracked follow-up; until then treat the chat tool as the stricter gate.
+> **Two validation surfaces, and NEITHER is a superset.** The coded errors below are emitted in full by the AI-chat `validate_blueprint` tool (`BlueprintToolExecutor`). The HTTP `/publish` path enforces the structural rules (`VAL_BP_010/011/012`, `WARN_BP_006`, recipient + cycle checks, plus the credential codes `VAL_BP_CRED_001/003`) but emits some as plain-text messages, and does **not** enforce `INVALID_TITLE` / `INVALID_DESCRIPTION`, `NO_ROUTING_DEFINED`, `STARTING_ACTION_NO_ROUTES`, `NO_TERMINAL_PATH` or `DUPLICATE_PARTICIPANT_ID` — those fire only in the chat tool.
+>
+> ⚠ **This note used to say "treat the chat tool as the stricter gate". That was wrong** (verified 2026-08-24). The publish path is stricter on the credential and output-mapping rules, and **weaker on reachability** — and not merely in severity. They are two different *algorithms* under one name:
+>
+> | | Publish (`Program.cs:3824-3852`) | Chat (`BlueprintToolExecutor.cs:1346-1375`) |
+> |---|---|---|
+> | Algorithm | union of **every** action's route targets, including targets of actions that are themselves unreachable | BFS from starting actions |
+> | Detached cycle `{A→B, B→A}`, neither a starting action | **passes** | flagged |
+> | Severity | warning | error |
+>
+> So a blueprint that can never advance past its starting action publishes. **#1558 covers only the severity**; promoting the publish rule to an error without fixing the traversal still leaves detached cycles publishable. Reconciling the two surfaces onto one rule set with one severity table is designed in `docs/superpowers/specs/2026-08-24-blueprint-lifecycle-design.md` (stage 2).
 
 | Code | Severity | Trigger |
 |------|----------|---------|
@@ -1131,9 +1141,42 @@ alongside the old one**. It does **not** change any instance that is already run
   new definition to keep alive, and the F142 `RehearsalPass` stays valid. Behavioural edits — a new
   `required` entry, a changed `enum`, a changed route condition, a changed `credentialIssuanceConfig`
   — do create a new definition and need a fresh rehearsal.
-- **The ordinal `version` is a display label only.** Nothing resolves a definition by it. The
-  identity is the executable-definition hash (`execDefHash`), now returned on
+- **The ordinal `version` is a display label** and nothing on the *execution* path resolves a
+  definition by it. The identity is the executable-definition hash (`execDefHash`), now returned on
   `GET /api/blueprints/{id}/versions`.
+
+> ⚠ **Three live traps in this feature as shipped — verified 2026-08-24, all silent.** Read before
+> relying on any of the above. Full detail + the agreed remedy:
+> `docs/superpowers/specs/2026-08-24-blueprint-lifecycle-current-state-FINDINGS.md` (§8, §9, §10)
+> and `…-blueprint-lifecycle-design.md`.
+>
+> 1. **The pin does not cover the whole executable definition.** `ExecutableDefinitionHasher`
+>    (`ExecutableDefinitionHasher.cs:78-96`, `:126`, `:170`) is a hand-written field-by-field
+>    projection that **omits** `Action.RejectionConfig` (a real routing edge — `ValidationEngine.cs:1035`,
+>    `:1582`), `Action.Participants` (legacy routing, live at `RoutingEngine.cs:246`),
+>    `Action.RequiredActionData`, `Route.BranchDeadline`, `Route.DecisionNotice`,
+>    `Blueprint.PresentationConfig` and `Blueprint.InstanceReference`. A probe asserting
+>    "behavioural edit ⇒ new hash" failed **9 of 9**. Compounding: a hash tie resolves with
+>    `OrderByDescending(Version).First()` (`Program.cs:2904`) on a comment claiming colliding entries
+>    are "the same definition by construction" — **false** — so for those fields a pinned instance is
+>    silently handed the **newest** definition. Editing any of them is not covered by pinning today.
+> 2. **The pin is enforced at seal, not at submit.** `IActionResolverService.GetBlueprintAsync`
+>    takes no pin, resolves **draft-first**, and caches under a bare `blueprint:{id}` key. So the
+>    engine validates the payload, runs calculations and computes the route against one definition,
+>    then signs a `RoutingDecision` labelled with the instance's pin. Where the two disagree you get
+>    **202 and no seal, forever** — with no error anywhere.
+> 3. **`Publish-SorchaBlueprint` always mints a new blueprint id and cannot republish** (use
+>    `PUT /blueprints/{id}` then `POST /publish`), and **the republish itself is currently dropped on
+>    the ledger** — `blueprint-publish-{registerId}-{blueprintId}` is version-blind, so every
+>    republish dedupes to the same transaction: `200` returned, success logged, **no transaction
+>    written** (#1563). Later definitions live only in the publishing node's memory; after a restart
+>    a pinned instance reports `pinState=unresolvable`. The agreed fix is Option D — the publication
+>    transaction *is* the definition's identity.
+
+Amending is **not** versioning today: `BlueprintFromPublishedEndpoint.cs:152` mints a new
+`blueprintId`, so an amendment never appears in `GET /blueprints/{id}/versions` and its source is
+selected by the **ordinal** (`:116`) — a value re-derived from insert order on every recovery, so
+amending "v2" before and after a restart may clone different definitions.
 
 `GET /api/instances/{instanceId}/definition` answers "which definition is this instance running, and
 is it still the latest?" — reporting three distinguishable states: pinned and resolvable, pinned but

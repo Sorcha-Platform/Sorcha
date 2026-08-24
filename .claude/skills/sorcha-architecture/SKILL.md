@@ -2499,6 +2499,39 @@ Metrics on `Sorcha.Blueprint.Instances`: `…instance_projection.pin_fallback{pa
   them silently resolve "latest" again, with a green suite. The acceptance check is therefore the
   positive one: `pin_fallback` reading **zero** on a register created after the deploy.
 
+### ⚠ What F194 does NOT yet deliver — three gaps found 2026-08-24, all silent
+
+An investigation of the whole lifecycle (`docs/superpowers/specs/2026-08-24-blueprint-lifecycle-current-state-FINDINGS.md`)
+verified three gaps in the shipped feature. **Do not rely on the pin covering an edit without
+checking these first.**
+
+1. **The pin does not cover the executable definition** (FINDINGS §8, proven by a probe that failed
+   **9 of 9**). `ExecutableDefinitionHasher.BuildExecutableDefinition` (`:78-96`, `BuildActions:126`,
+   `BuildRoutes:170`) is a hand-written projection **omitting** `Action.RejectionConfig` (a
+   structural successor the validator reads at `ValidationEngine.cs:1035` and `:1582`),
+   `Action.Participants` (legacy routing, live at `RoutingEngine.cs:246` — a blueprint routed that
+   way has **zero routing coverage in its pin**), `Action.RequiredActionData`, `Route.BranchDeadline`,
+   `Route.DecisionNotice`, `Blueprint.PresentationConfig`, `Blueprint.InstanceReference`. Compounding:
+   `GetByExecDefHashAsync` (`Blueprint/Program.cs:2904`) breaks a hash tie with
+   `OrderByDescending(Version).First()` on a comment asserting colliding entries are "the same
+   definition by construction" — **false for exactly those fields**, so a pinned instance is handed
+   the *newest* definition. F142 could tolerate this (soft gate); F194 cannot (validator-enforced).
+2. **The pin is enforced at seal, not at submit** (FINDINGS §9). `IActionResolverService.GetBlueprintAsync`
+   takes **no pin**, resolves **draft-first**, and caches under a bare `blueprint:{id}` key plus a
+   static action-index cache keyed the same way. The engine validates, calculates and routes against
+   one definition (`ActionExecutionService.cs:238`) then signs a decision labelled with another
+   (`:1293`/`:1771`). Disagreement ⇒ **202 and never seals**. F194 research R-007 listed this call
+   site; it did not land.
+3. **#1563 — only the FIRST definition per blueprint id reaches the ledger.** Republishes dedupe to
+   the version-blind txId and are silently dropped, so a superseded pin is `unresolvable` after a
+   restart. **Decision taken 2026-08-24: Option D** — the publication transaction *is* the
+   definition's identity (`publicationTxId = SHA-256("sorcha:blueprint-publication:v1" ␟ registerId ␟
+   blueprintId ␟ canonicalDefinitionJson)`, register-scoped, domain-tagged, key-sorted canonical
+   form, computed by **one owner**: the Register Service). The anchor and the pin become one value,
+   `RoutingDecision.BlueprintExecDefHash` becomes a definition **txId**, and gap 1 stops being
+   load-bearing. Design + the prerequisite two-publish-path collapse:
+   `docs/superpowers/specs/2026-08-24-blueprint-lifecycle-design.md`.
+
 Spec / plan / research: `specs/194-blueprint-version-pinning/`. Design:
 `docs/superpowers/specs/2026-08-23-blueprint-version-pinning-design.md`. Issue #1559.
 
