@@ -1033,6 +1033,7 @@ blueprintGroup.MapPost("/{id}/publish", async (
             registerId = body.RegisterId,
             publishedAt = result.PublishedBlueprint.PublishedAt,
             overridden,
+            alreadyPublished = result.AlreadyPublished,
             warnings = result.Warnings
         });
     }
@@ -1045,7 +1046,8 @@ blueprintGroup.MapPost("/{id}/publish", async (
             execDefHash = result.PublishedBlueprint.ExecDefHash,
         registerId = body.RegisterId,
         publishedAt = result.PublishedBlueprint.PublishedAt,
-        overridden
+        overridden,
+            alreadyPublished = result.AlreadyPublished
     });
 })
 .WithName("PublishBlueprint")
@@ -3300,7 +3302,7 @@ public class PublishService(
             }
         }
 
-        return PublishResult.Success(published, warnings.ToArray());
+        return PublishResult.Success(published, warnings.ToArray(), publication.AlreadyPublished);
     }
 
     private (List<string> Errors, List<string> Warnings) ValidateBlueprint(BlueprintModel blueprint)
@@ -4193,11 +4195,25 @@ public record PublishResult
     public string[] Errors { get; init; } = [];
     public string[] Warnings { get; init; } = [];
 
-    public static PublishResult Success(PublishedBlueprint published, string[]? warnings = null) => new()
+    /// <summary>
+    /// Feature 195 — the register recognised this content as ALREADY published, so the call was an
+    /// idempotent no-op rather than a real publish.
+    /// </summary>
+    /// <remarks>
+    /// The Register Service has always returned this discriminator; it stopped here, at the log
+    /// line, and never reached the caller. That is the same shape as #1563 itself: the endpoint
+    /// answers 200 either way, so a caller that cannot tell the two apart records success for a
+    /// publish that wrote nothing. Being distinguishable is the point of the flag, and a flag only
+    /// the server can see is not distinguishable.
+    /// </remarks>
+    public bool AlreadyPublished { get; init; }
+
+    public static PublishResult Success(PublishedBlueprint published, string[]? warnings = null, bool alreadyPublished = false) => new()
     {
         IsSuccess = true,
         PublishedBlueprint = published,
-        Warnings = warnings ?? []
+        Warnings = warnings ?? [],
+        AlreadyPublished = alreadyPublished
     };
 
     public static PublishResult Failed(params string[] errors) => new()

@@ -259,8 +259,14 @@ public static class InstanceReadEndpoints
             });
         }
 
+        // The pin is a PUBLICATION TRANSACTION id (Feature 195), so "latest" has to be the latest
+        // publication id too. Reading ExecDefHash here compared two different value spaces: the
+        // comparison could never be true, so `isPinnedToLatest` was hard-wired false for every
+        // pinned instance — and false is a PLAUSIBLE answer, so nothing ever looked wrong. The
+        // paired assertions in walkthroughs/VersionPinning/run-acceptance.ps1 (one expecting true
+        // before a republish, one expecting false after) are what surfaced it.
         var latest = PublishedBlueprintSelector
-            .SelectLatest(await publishedStore.GetVersionsAsync(instance.BlueprintId))?.ExecDefHash;
+            .SelectLatest(await publishedStore.GetVersionsAsync(instance.BlueprintId))?.PublicationTxId;
 
         return Results.Ok(new
         {
