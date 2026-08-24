@@ -1607,7 +1607,13 @@ function Publish-SorchaBlueprint {
     # Generate unique ID. Use Add-Member -Force so this is robust whether
     # the template carries a placeholder `id` or omits it entirely (most
     # templates do — the id is generated here per-publish).
-    $timestamp = Get-Date -Format "yyyyMMddHHmmss"
+    # MILLISECOND resolution, deliberately. A second-resolution stamp collides whenever a setup
+    # publishes two blueprints with the same prefix inside one second — the blueprint id is the
+    # PRIMARY KEY of BlueprintDrafts, so the second insert fails with a DbUpdateException and the
+    # endpoint returns a bare 500. That is exactly what TradeFinance did the moment the suite ran
+    # with a shorter auth gap: it was latent for as long as the throttle happened to space the
+    # calls out, and the failure names neither the id nor the collision.
+    $timestamp = Get-Date -Format "yyyyMMddHHmmssfff"
     $blueprint | Add-Member -NotePropertyName "id" -NotePropertyValue "$IdPrefix-$timestamp" -Force
 
     # Create blueprint
