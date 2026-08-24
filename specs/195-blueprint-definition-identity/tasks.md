@@ -166,7 +166,7 @@ published definition, submit, and confirm the draft had no effect. Closes #1567.
 - [x] T058 Extend `walkthroughs/VersionPinning/run-acceptance.ps1` with the quickstart checks, including the two vacuous-prone ones: presentational republish **paired** with a behavioural one, and a **deliberate** identical publish to a second register
 - [x] T059 Run the full live acceptance per [quickstart.md](./quickstart.md) on a **re-genesised** node. Deploy order: `validator-service` → `blueprint-service` → **`register-service`**. Assert `pin_fallback` reads **zero** — the positive check
 - [x] T060 Update `.specify/MASTER-TASKS.md` with the outcome, including anything found live that the design did not have. F194 found five such things; expect some
-- [ ] T061 Close #1563, #1566, #1567, #1568, #1570 with the live evidence, not with the merge
+- [x] T061 Close #1563, #1566, #1567, #1568, #1570 with the live evidence, not with the merge — all five closed on run output (2026-08-24); PR #1574. #1572 filed and fixed, #1573 filed and deliberately left
 
 ---
 
