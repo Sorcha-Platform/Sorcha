@@ -424,17 +424,9 @@ public class ExecutableDefinitionHasherTests
             "the ordinal version says nothing about how the blueprint executes");
     }
 
-    [Fact]
-    public void ComputeHash_ChangingVersionMajorMinor_HashUnchanged()
-    {
-        var baseline = Hasher.ComputeHash(BaseBlueprint());
-
-        var bp = BaseBlueprint();
-        bp.VersionMajor = 9;
-        bp.VersionMinor = 3;
-
-        Hasher.ComputeHash(bp).Should().Be(baseline, "display version components are presentational");
-    }
+    // Feature 195 — the VersionMajor/VersionMinor test is DELETED with the fields it covered.
+    // Both were written by two call sites and read by nothing; a test asserting that a dead field
+    // does not affect the hash proves only that the field is dead.
 
     [Fact]
     public void ComputeHash_ChangingTheBlueprintId_HashChanged()

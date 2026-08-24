@@ -54,8 +54,6 @@ public class ExecutableDefinitionCoverageTests
             "Title",                // display
             "Description",          // display
             "Version",              // ordinal display label; removed from the hash by F194
-            "VersionMajor",         // dead
-            "VersionMinor",         // dead
             "CreatedAt",            // provenance, not behaviour
             "UpdatedAt",            // provenance, not behaviour
             "OrganizationId",       // ownership, enforced outside the definition

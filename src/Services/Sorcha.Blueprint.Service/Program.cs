@@ -1028,6 +1028,7 @@ blueprintGroup.MapPost("/{id}/publish", async (
             // Feature 194: the definition just published, by content. `version` is a display label
             // (insert order, re-derived on recovery); this is what an instance is pinned to and what
             // a caller needs if it wants to name this exact definition later.
+            publicationTxId = result.PublishedBlueprint.PublicationTxId,
             execDefHash = result.PublishedBlueprint.ExecDefHash,
             registerId = body.RegisterId,
             publishedAt = result.PublishedBlueprint.PublishedAt,
@@ -1040,7 +1041,8 @@ blueprintGroup.MapPost("/{id}/publish", async (
     {
         blueprintId = result.PublishedBlueprint!.BlueprintId,
         version = result.PublishedBlueprint.Version,
-        execDefHash = result.PublishedBlueprint.ExecDefHash,
+        publicationTxId = result.PublishedBlueprint.PublicationTxId,
+            execDefHash = result.PublishedBlueprint.ExecDefHash,
         registerId = body.RegisterId,
         publishedAt = result.PublishedBlueprint.PublishedAt,
         overridden

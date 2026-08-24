@@ -154,3 +154,39 @@ The classification test failed three times on my own lists before it went green 
 misnamed as `Blueprint`, and two `Route` entries (`FallbackMessage`, `Severity`, …) that belong to the
 nested `DecisionNotice` type rather than to `Route`. Each was a claim about the model that reflection
 disproved immediately.
+
+---
+
+## Phase 6 — the amend loop (T053)
+
+The guards fired on their own, without a mutation being needed, and that is the record worth keeping.
+
+| Change made | Guard that caught the consequence |
+|---|---|
+| Deleted `Blueprint.VersionMajor` / `VersionMinor` (wholly dead — written by two call sites, read by nothing) | **`GoldenVector_ModelWireShapeIsFrozen`** — the ledger-contract guard, firing for the first time on a real change |
+| Same | `NoClassifiedProperty_HasBeenRemovedFromTheModel` — the classification list still named them |
+| Same | `EveryBlueprint_UsesOnlyPropertiesTheModelsStillBind` — one shipped corpus file still declared them |
+| Amend now keeps the blueprint id | `FromPublished_..._Returns201...` asserted the id must DIFFER — the test encoded the fork |
+
+**The golden vector's first real firing is the argument for having built it.** Deleting two unused
+properties is about as innocuous as a change gets: it compiled cleanly, and nothing else in ~4,300
+tests noticed. But the properties were still *serialized*, so removing them changed the canonical
+bytes of every definition and therefore every publication id on every register. Regenerating the
+constant is correct here — the removal is intended and a wipe is authorised — and the reason is
+recorded beside it, because regenerating it to make a red test go green *without knowing what moved
+it* is precisely the failure it exists to prevent.
+
+### ⚠ A self-inflicted bug worth recording, because the shape recurs
+
+The amend endpoint 404'd on every request after the change. The cause was **two of my own edit
+scripts targeting the same anchor**: the first did a broad `public int Version` → `public string
+PublicationTxId` rename, which consumed the text the second script's block replacement was matching
+on. The property ended up renamed but still carrying `[JsonPropertyName("version")]` and
+`[Range(1, int.MaxValue)]`, so `publicationTxId` never bound, the lookup ran with an empty string,
+and `[Range]` on a string does not fail validation.
+
+Diagnosis took four rounds of printing state — store contents, register ids, null checks, and finally
+a direct call to the resolver with the endpoint's own arguments, which succeeded and proved the
+endpoint was not receiving what the test sent. **The lesson is the same one as the earlier regex
+over-reach: a scripted edit that silently matches nothing is indistinguishable from one that worked,
+so assert on the result, not on the script running.**

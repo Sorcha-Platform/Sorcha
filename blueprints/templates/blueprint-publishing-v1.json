@@ -16,8 +16,6 @@
     "title": "Blueprint Publishing Workflow",
     "description": "Governance workflow for publishing blueprints to the system register with semantic versioning, review, and signed publication.",
     "version": 1,
-    "versionMajor": 1,
-    "versionMinor": 0,
     "instructions": {
       "overview": "## Blueprint Publishing\n\nThis workflow governs the publication of blueprints to the Sorcha system register.\n\n### Version Types\n- **Major version** (structural): Changes to actions, routes, schemas, or participants\n- **Minor version** (documentation): Changes to instructions, help text, or translations only\n\n### Process\n1. Author submits a blueprint draft\n2. System classifies the change type (structural vs documentation)\n3. Reviewer examines and approves or rejects\n4. Publisher signs and commits to the system register",
       "locale": "en-GB",

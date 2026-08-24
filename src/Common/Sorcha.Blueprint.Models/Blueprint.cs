@@ -101,18 +101,15 @@ public class Blueprint : IEquatable<Blueprint>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public BlueprintPresentationConfig? PresentationConfig { get; set; }
 
-    /// <summary>
-    /// Semantic major version number (structural changes increment this).
-    /// Use VersionMajor.VersionMinor for display (e.g., "v2.1").
-    /// </summary>
-    [JsonPropertyName("versionMajor")]
-    public int VersionMajor { get; set; } = 1;
-
-    /// <summary>
-    /// Semantic minor version number (documentation-only changes increment this; resets on major bump).
-    /// </summary>
-    [JsonPropertyName("versionMinor")]
-    public int VersionMinor { get; set; } = 0;
+    // Feature 195 — VersionMajor / VersionMinor DELETED.
+    //
+    // Both were wholly dead: written by the amend clone and the designer properties panel, read by
+    // nothing. A field that only ever gets written is not a version scheme, it is a place for a
+    // future reader to draw a wrong conclusion from.
+    //
+    // Note this is also a change to the LEDGER CONTRACT — removing a serialized property changes the
+    // canonical bytes of every definition and therefore every publication id. The golden vector in
+    // Sorcha.Blueprint.Models.Tests catches exactly that, which is what it is for.
 
     /// <summary>
     /// Instructions container with overview, per-action/per-participant guidance,

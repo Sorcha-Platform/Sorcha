@@ -41,8 +41,23 @@ public class BlueprintCanonicalJsonGoldenVectorTests
     /// Changes if any <c>[JsonPropertyName]</c> or null-handling attribute on the blueprint object
     /// graph changes — the ledger-contract guard.
     /// </summary>
+    /// <remarks>
+    /// <b>Changed once, deliberately, on 2026-08-24</b> (was
+    /// <c>b6ebf9bc4a15c6ac6f6e8ad3913b77f94016542f7854fb0e4a9f794649696425</c>) when
+    /// <c>Blueprint.VersionMajor</c> and <c>VersionMinor</c> were deleted. Both were wholly dead —
+    /// written by two call sites, read by nothing — but they were still SERIALIZED, so removing them
+    /// changed the canonical bytes of every definition and therefore every publication id.
+    /// <para>
+    /// That is the guard firing on the first real thing it was built for, and the shape of the
+    /// hazard is worth keeping in view: deleting two unused properties is about as innocuous as a
+    /// change gets, it compiled cleanly, and nothing else in 4300 tests noticed. Regenerating this
+    /// constant is correct HERE because the removal is intended and the platform is pre-release with
+    /// a register wipe authorised. Regenerating it to make a red test go green, without knowing which
+    /// change moved it, is the failure mode this constant exists to prevent.
+    /// </para>
+    /// </remarks>
     private const string ExpectedModelRoundTripId =
-        "b6ebf9bc4a15c6ac6f6e8ad3913b77f94016542f7854fb0e4a9f794649696425";
+        "5003664cdabb9128244d9e85c7fc92581eb89c2f78cab591a6055e2374013af4";
 
     [Fact]
     public void GoldenVector_CanonicaliserIsFrozen()

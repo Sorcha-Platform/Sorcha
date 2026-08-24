@@ -147,13 +147,13 @@ published definition, submit, and confirm the draft had no effect. Closes #1567.
 
 **Goal:** one upgrade path, and version labels that mean the same thing every time. Closes #1568.
 
-- [ ] T047 [US4] In `src/Services/Sorcha.Blueprint.Service/Endpoints/BlueprintFromPublishedEndpoint.cs:152`, keep the **same** `blueprintId` on the clone instead of minting a GUID, so an amendment is a version of its blueprint and appears in its version history
-- [ ] T048 [US4] Change the amend source selector at `:116` from `GetVersionAsync(blueprintId, version)` to selection by `publicationTxId`, and update the request contract
-- [ ] T049 [US4] Retain the `x-source-*` lineage metadata at `:163-166` for the designer rail's "Amending vN" display, with the version key carrying the publication id
-- [ ] T050 [US4] Derive `PublishedBlueprint.Version` on read from ledger order (oldest first) instead of storing `versions.Count + 1`, and add `publicationTxId` to `GET /api/blueprints/{id}/versions` entries
-- [ ] T051 [P] [US4] Delete `Blueprint.VersionMajor` (`:106`) and `Blueprint.VersionMinor` (`:112`) and their writers in the amend clone and the designer properties panel — both are wholly dead
-- [ ] T052 [P] [US4] `tests/Sorcha.Blueprint.Service.Tests` — an amendment appears in its blueprint's version history; ordinal labels are identical across a simulated restart; selecting a source by publication id is stable where selecting by ordinal was not
-- [ ] T053 [US4] Mutation-test: restore ordinal-based amend selection (kills the source-stability test); restore the GUID mint (kills the version-history test). Record in `mutations.md`
+- [x] T047 [US4] In `src/Services/Sorcha.Blueprint.Service/Endpoints/BlueprintFromPublishedEndpoint.cs:152`, keep the **same** `blueprintId` on the clone instead of minting a GUID, so an amendment is a version of its blueprint and appears in its version history
+- [x] T048 [US4] Change the amend source selector at `:116` from `GetVersionAsync(blueprintId, version)` to selection by `publicationTxId`, and update the request contract
+- [x] T049 [US4] Retain the `x-source-*` lineage metadata at `:163-166` for the designer rail's "Amending vN" display, with the version key carrying the publication id
+- [x] T050 [US4] Derive `PublishedBlueprint.Version` on read from ledger order (oldest first) instead of storing `versions.Count + 1`, and add `publicationTxId` to `GET /api/blueprints/{id}/versions` entries
+- [x] T051 [P] [US4] Delete `Blueprint.VersionMajor` (`:106`) and `Blueprint.VersionMinor` (`:112`) and their writers in the amend clone and the designer properties panel — both are wholly dead
+- [x] T052 [P] [US4] `tests/Sorcha.Blueprint.Service.Tests` — an amendment appears in its blueprint's version history; ordinal labels are identical across a simulated restart; selecting a source by publication id is stable where selecting by ordinal was not
+- [x] T053 [US4] Mutation-test: restore ordinal-based amend selection (kills the source-stability test); restore the GUID mint (kills the version-history test). Record in `mutations.md`
 
 ---
 
