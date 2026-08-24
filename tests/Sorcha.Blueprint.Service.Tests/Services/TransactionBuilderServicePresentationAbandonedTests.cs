@@ -30,7 +30,7 @@ public class TransactionBuilderServicePresentationAbandonedTests
         var id = Guid.NewGuid();
         var built = await _service.BuildPresentationAbandonedAsync(
             new BlueprintModel { Id = "bp", Title = "t", Description = "d", Version = 1, Participants = [], Actions = [] },
-            new Instance { Id = Guid.NewGuid().ToString(), BlueprintId = "bp", BlueprintVersion = 1, RegisterId = "reg-1", TenantId = "t" },
+            new Instance { Id = Guid.NewGuid().ToString(), BlueprintId = "bp", BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", BlueprintVersion = 1, RegisterId = "reg-1", TenantId = "t" },
             new ActionModel { Id = 3, BlueprintId = "bp" },
             presentationRequestId: id,
             consumerName: "haip",

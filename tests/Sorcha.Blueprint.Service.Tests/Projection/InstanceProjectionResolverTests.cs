@@ -41,10 +41,20 @@ public class InstanceProjectionResolverTests
         },
     };
 
+    /// <summary>
+    /// Feature 195 — a decision carries the definition it was computed against. Binding resolution
+    /// reads the blueprint through that pin, so a decision without one resolves no blueprint-derived
+    /// seed at all (correctly: guessing a definition could bind a participant to a wallet the
+    /// instance's own definition never named).
+    /// </summary>
+    private const string TestDefinitionPin =
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
     private static RoutingDecision Decision(int completed, params int[] next) => new()
     {
         CompletedActionId = completed,
         NextActions = next.Select(n => new ActionRef { ActionId = n }).ToList(),
+        BlueprintDefinitionTxId = TestDefinitionPin,
         Attestation = new Attestation { Kind = AttestationKind.SenderSigned },
     };
 
@@ -133,7 +143,7 @@ public class InstanceProjectionResolverTests
         };
 
         var mock = new Mock<IActionResolverService>();
-        mock.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>()))
+        mock.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
         mock.Setup(r => r.GetActionDefinition(blueprint, It.IsAny<string>()))
             .Returns((Sorcha.Blueprint.Models.Blueprint bp, string id) => bp.Actions.FirstOrDefault(a => a.Id.ToString() == id));
@@ -340,7 +350,7 @@ public class InstanceProjectionResolverTests
         };
 
         var mock = new Mock<IActionResolverService>();
-        mock.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>()))
+        mock.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
         mock.Setup(r => r.GetActionDefinition(blueprint, It.IsAny<string>()))
             .Returns((Sorcha.Blueprint.Models.Blueprint bp, string id) => bp.Actions.FirstOrDefault(a => a.Id.ToString() == id));
@@ -432,7 +442,7 @@ public class InstanceProjectionResolverTests
             ],
         };
         var mock = new Mock<IActionResolverService>();
-        mock.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        mock.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
         mock.Setup(r => r.GetActionDefinition(blueprint, It.IsAny<string>()))
             .Returns((Sorcha.Blueprint.Models.Blueprint bp, string id) => bp.Actions.FirstOrDefault(a => a.Id.ToString() == id));
 
@@ -480,7 +490,7 @@ public class InstanceProjectionResolverTests
             ],
         };
         var mock = new Mock<IActionResolverService>();
-        mock.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        mock.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
         mock.Setup(r => r.GetActionDefinition(blueprint, It.IsAny<string>()))
             .Returns((Sorcha.Blueprint.Models.Blueprint bp, string id) => bp.Actions.FirstOrDefault(a => a.Id.ToString() == id));
 

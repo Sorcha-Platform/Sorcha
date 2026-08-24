@@ -171,7 +171,7 @@ public sealed class ReactionDispatcher : IReactionDispatcher
         if (decision is null || string.IsNullOrEmpty(decision.RouteId))
             return;   // Pre-Feature-184 transaction, or an action that routed nowhere by name.
 
-        var blueprint = await _actionResolver.GetBlueprintAsync(instance.BlueprintId, ct);
+        var blueprint = await _actionResolver.GetBlueprintAsync(instance.BlueprintId, instance.BlueprintDefinitionTxId, ct);
         if (blueprint is null)
         {
             _logger.LogDebug(

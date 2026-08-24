@@ -222,7 +222,7 @@ public static class InstanceReadEndpoints
             return Forbidden();
         }
 
-        var pin = instance.BlueprintExecDefHash;
+        var pin = instance.BlueprintDefinitionTxId;
 
         if (string.IsNullOrWhiteSpace(pin))
         {
@@ -233,7 +233,7 @@ public static class InstanceReadEndpoints
             {
                 instanceId,
                 blueprintId = instance.BlueprintId,
-                blueprintExecDefHash = (string?)null,
+                blueprintDefinitionTxId = (string?)null,
                 blueprintVersion = (int?)null,
                 isPinnedToLatest = (bool?)null,
                 pinState = "unpinned",
@@ -252,7 +252,7 @@ public static class InstanceReadEndpoints
             {
                 instanceId,
                 blueprintId = instance.BlueprintId,
-                blueprintExecDefHash = pin,
+                blueprintDefinitionTxId = pin,
                 blueprintVersion = (int?)null,
                 isPinnedToLatest = (bool?)null,
                 pinState = "unresolvable",
@@ -266,7 +266,7 @@ public static class InstanceReadEndpoints
         {
             instanceId,
             blueprintId = instance.BlueprintId,
-            blueprintExecDefHash = pin,
+            blueprintDefinitionTxId = pin,
             // Derived from the pin, never from the stored column — FR-019: the label and the pin
             // cannot disagree if only one of them is a source.
             blueprintVersion = (int?)pinned.Version,

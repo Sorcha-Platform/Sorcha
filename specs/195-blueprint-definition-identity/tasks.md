@@ -91,34 +91,34 @@ published definition, submit, and confirm the draft had no effect. Closes #1567.
 
 ### The pin becomes a publication id
 
-- [ ] T023 [US2] Rename `RoutingDecision.BlueprintExecDefHash` → `BlueprintDefinitionTxId` (`blueprintDefinitionTxId`) in `src/Common/Sorcha.Register.Models/Transactions/RoutingDecision.cs`, **including the field-by-field rebuild in `ComputeSignableBytes()` at `:112`**. A property omitted there rides the wire unauthenticated while appearing signed
-- [ ] T024 [US2] Confirm `RoutingDecisionSigningCoverageTests` still passes and still discriminates — it is reflection-driven and must fail on a property it cannot mutate
-- [ ] T025 [US2] Rename `Instance.BlueprintExecDefHash` → `BlueprintDefinitionTxId` in `src/Services/Sorcha.Blueprint.Service/Models/Instance.cs:52` and in `EfCoreInstanceStore.UpdateAsync`'s hand-written model→entity copy list — a field missing from that list is written in memory, reported saved, and lost
-- [ ] T026 [US2] Fold the schema change into the Blueprint `InitialCreate` migration per CLAUDE.md §19 (amend `InitialCreate.cs`, its `.Designer.cs` and `*ModelSnapshot.cs` together), then verify with `dotnet ef migrations has-pending-model-changes` — writing them is not enough if what you write is not what EF would generate
+- [x] T023 [US2] Rename `RoutingDecision.BlueprintExecDefHash` → `BlueprintDefinitionTxId` (`blueprintDefinitionTxId`) in `src/Common/Sorcha.Register.Models/Transactions/RoutingDecision.cs`, **including the field-by-field rebuild in `ComputeSignableBytes()` at `:112`**. A property omitted there rides the wire unauthenticated while appearing signed
+- [x] T024 [US2] Confirm `RoutingDecisionSigningCoverageTests` still passes and still discriminates — it is reflection-driven and must fail on a property it cannot mutate
+- [x] T025 [US2] Rename `Instance.BlueprintExecDefHash` → `BlueprintDefinitionTxId` in `src/Services/Sorcha.Blueprint.Service/Models/Instance.cs:52` and in `EfCoreInstanceStore.UpdateAsync`'s hand-written model→entity copy list — a field missing from that list is written in memory, reported saved, and lost
+- [x] T026 [US2] Fold the schema change into the Blueprint `InitialCreate` migration per CLAUDE.md §19 (amend `InitialCreate.cs`, its `.Designer.cs` and `*ModelSnapshot.cs` together), then verify with `dotnet ef migrations has-pending-model-changes` — writing them is not enough if what you write is not what EF would generate
 
 ### Resolution at submit
 
-- [ ] T027 [US2] Change `IActionResolverService.GetBlueprintAsync` (`src/Services/Sorcha.Blueprint.Service/Services/Interfaces/IActionResolverService.cs:19`) to take the pin as a **required** parameter. Optional preserves the defect for every caller that omits it — which is how it survived F194
-- [ ] T028 [US2] In `ActionResolverService.cs:45-104`: remove the draft store from the execution path, resolve by publication id, and add the pin to the distributed cache key at `:54`
-- [ ] T029 [US2] Add the pin to the **static** `_actionIndexCache` at `ActionResolverService.cs:30`, or remove the cache. It is process-wide, so a bare-id key serves the wrong definition to a *different instance* than the one that populated it
-- [ ] T030 [US2] Update `ActionExecutionService.ExecuteAsync:238` to pass `instance.BlueprintDefinitionTxId`, and confirm the pin stamped at `:1293`/`:1771` is now the same definition that was resolved
+- [x] T027 [US2] Change `IActionResolverService.GetBlueprintAsync` (`src/Services/Sorcha.Blueprint.Service/Services/Interfaces/IActionResolverService.cs:19`) to take the pin as a **required** parameter. Optional preserves the defect for every caller that omits it — which is how it survived F194
+- [x] T028 [US2] In `ActionResolverService.cs:45-104`: remove the draft store from the execution path, resolve by publication id, and add the pin to the distributed cache key at `:54`
+- [x] T029 [US2] Add the pin to the **static** `_actionIndexCache` at `ActionResolverService.cs:30`, or remove the cache. It is process-wide, so a bare-id key serves the wrong definition to a *different instance* than the one that populated it
+- [x] T030 [US2] Update `ActionExecutionService.ExecuteAsync:238` to pass `instance.BlueprintDefinitionTxId`, and confirm the pin stamped at `:1293`/`:1771` is now the same definition that was resolved
 
 ### Anchor and instance creation
 
-- [ ] T031 [US2] Replace `ComputeBlueprintPublishTxId(...)` at `ActionExecutionService.cs:459` with a read of `instance.BlueprintDefinitionTxId`. **Keep** `WaitForTransactionConfirmationAsync` — it is a genuine precondition and now asserts something stronger (the exact definition, not merely the blueprint)
-- [ ] T032 [P] [US2] Delete `ActionExecutionService.ComputeBlueprintPublishTxId:2989`, its second caller at `src/Services/Sorcha.Blueprint.Service/Program.cs:1622`, and the formula's fifth copy at `tests/Sorcha.Blueprint.Service.Tests/Services/ActionExecutionServiceTests.cs:1265-1277`
-- [ ] T033 [US2] In `POST /api/instances` (`src/Services/Sorcha.Blueprint.Service/Program.cs:2244-2415`): resolve the definition **once** and use it for both initialisation (`:2346-2365`) and the pin (`:2372-2376`). Today it initialises from the draft and pins the latest published
+- [x] T031 [US2] Replace `ComputeBlueprintPublishTxId(...)` at `ActionExecutionService.cs:459` with a read of `instance.BlueprintDefinitionTxId`. **Keep** `WaitForTransactionConfirmationAsync` — it is a genuine precondition and now asserts something stronger (the exact definition, not merely the blueprint)
+- [x] T032 [P] [US2] Delete `ActionExecutionService.ComputeBlueprintPublishTxId:2989`, its second caller at `src/Services/Sorcha.Blueprint.Service/Program.cs:1622`, and the formula's fifth copy at `tests/Sorcha.Blueprint.Service.Tests/Services/ActionExecutionServiceTests.cs:1265-1277`
+- [x] T033 [US2] In `POST /api/instances` (`src/Services/Sorcha.Blueprint.Service/Program.cs:2244-2415`): resolve the definition **once** and use it for both initialisation (`:2346-2365`) and the pin (`:2372-2376`). Today it initialises from the draft and pins the latest published
 
 ### Validator
 
-- [ ] T034 [US2] Add the register fallback arm to `ValidationEngine.ResolvePinnedBlueprintAsync:2482-2516` — cache → Blueprint Service → **read transaction `{pin}` from the register** → refuse. Keep the explicit no-fallback-to-latest refusal
-- [ ] T035 [P] [US2] Rename `IBlueprintFetcher.FetchBlueprintByHashAsync` → `FetchBlueprintByPublicationAsync` and its endpoint path segment, so the name does not lie about what the parameter denotes
-- [ ] T036 [P] [US2] Rename the `execDefHash` parameter on `BlueprintCacheKey.For` to `publicationTxId` (`src/Common/Sorcha.Blueprint.Models/BlueprintCacheKey.cs`). Key **shape** is unchanged; the by-id tier stays — system blueprints have no instance and therefore no pin
+- [x] T034 [US2] Add the register fallback arm to `ValidationEngine.ResolvePinnedBlueprintAsync:2482-2516` — cache → Blueprint Service → **read transaction `{pin}` from the register** → refuse. Keep the explicit no-fallback-to-latest refusal
+- [x] T035 [P] [US2] Rename `IBlueprintFetcher.FetchBlueprintByHashAsync` → `FetchBlueprintByPublicationAsync` and its endpoint path segment, so the name does not lie about what the parameter denotes
+- [x] T036 [P] [US2] Rename the `execDefHash` parameter on `BlueprintCacheKey.For` to `publicationTxId` (`src/Common/Sorcha.Blueprint.Models/BlueprintCacheKey.cs`). Key **shape** is unchanged; the by-id tier stays — system blueprints have no instance and therefore no pin
 
 ### Tests
 
-- [ ] T037 [P] [US2] `tests/Sorcha.Blueprint.Service.Tests` — a submission is validated/calculated/routed by the instance's definition while a divergent draft exists; two instances on different definitions are each judged by their own; an unresolvable pin refuses with a diagnosable reason
-- [ ] T038 [P] [US2] `tests/Sorcha.Validator.Service.Tests` — the register fallback arm resolves a definition absent from cache and Blueprint Service; an unresolvable pin still refuses and **never** falls back to latest; an unpinned (system) blueprint still resolves by id
+- [x] T037 [P] [US2] `tests/Sorcha.Blueprint.Service.Tests` — a submission is validated/calculated/routed by the instance's definition while a divergent draft exists; two instances on different definitions are each judged by their own; an unresolvable pin refuses with a diagnosable reason
+- [x] T038 [P] [US2] `tests/Sorcha.Validator.Service.Tests` — the register fallback arm resolves a definition absent from cache and Blueprint Service; an unresolvable pin still refuses and **never** falls back to latest; an unpinned (system) blueprint still resolves by id
 - [ ] T039 [US2] Mutation-test: make the pin parameter optional (kills the submit-path test); drop the pin from either cache key (kills the cross-instance isolation test); let the validator fall back to latest (kills the pinned-refusal test); reinstate draft-first resolution (kills the divergent-draft test). Record in `mutations.md`
 
 **Checkpoint:** the participant-facing guarantee is true. Both P1 stories delivered.

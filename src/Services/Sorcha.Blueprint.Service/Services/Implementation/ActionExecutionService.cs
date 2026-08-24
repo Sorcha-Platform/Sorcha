@@ -235,7 +235,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         }
 
         // 2. Get the blueprint
-        var blueprint = await _actionResolver.GetBlueprintAsync(instance.BlueprintId, cancellationToken);
+        var blueprint = await _actionResolver.GetBlueprintAsync(instance.BlueprintId, instance.BlueprintDefinitionTxId, cancellationToken);
         if (blueprint == null)
         {
             throw new InvalidOperationException($"Blueprint {instance.BlueprintId} not found");
@@ -451,19 +451,34 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             accumulatedState = accumulatedState with { PreviousTransactionId = instance.LastTransactionId };
         }
 
-        // 5c. For starting actions with no prior transactions, chain from the blueprint
-        // publish TX. Each instance forks from the blueprint publish TX by design — the
-        // validator allows multiple children of Control transactions.
+        // 5c. A starting action with no prior transaction chains from the transaction that PUBLISHED
+        // the definition this instance runs (Feature 195). Each instance forks from it by design —
+        // the validator permits multiple children of a Control-typed predecessor.
+        //
+        // READ from the instance's pin, never recomputed. Anchor and pin became one value because
+        // they are one fact: the derivation this replaced had FOUR homes and was version-blind, so
+        // every republish deduped into a single, silently-dropped transaction (#1563).
+        //
+        // The confirmation wait is retained deliberately. It is a genuine PRECONDITION — this
+        // definition is really sealed on this register — and under pinning it asserts something
+        // stronger than before: the exact definition, not merely the blueprint.
         if (string.IsNullOrEmpty(accumulatedState.PreviousTransactionId) && actionDef.IsStartingAction)
         {
-            var blueprintTxId = ComputeBlueprintPublishTxId(instance.RegisterId, instance.BlueprintId);
-            await WaitForTransactionConfirmationAsync(instance.RegisterId, blueprintTxId, cancellationToken);
+            var definitionTxId = instance.BlueprintDefinitionTxId;
+            if (string.IsNullOrWhiteSpace(definitionTxId))
+            {
+                throw new InvalidOperationException(
+                    $"Instance {instanceId} carries no definition pin, so its starting action has " +
+                    "nothing to chain from. Refusing rather than guessing a definition.");
+            }
+
+            await WaitForTransactionConfirmationAsync(instance.RegisterId, definitionTxId, cancellationToken);
 
             _logger.LogInformation(
-                "Action 0 for instance {InstanceId}: PrevTxId set to blueprint publish TX {BlueprintTxId}",
-                instanceId, blueprintTxId);
+                "Action 0 for instance {InstanceId}: PrevTxId set to its definition's publication {DefinitionTxId}",
+                instanceId, definitionTxId);
 
-            accumulatedState = accumulatedState with { PreviousTransactionId = blueprintTxId };
+            accumulatedState = accumulatedState with { PreviousTransactionId = definitionTxId };
         }
 
         // 5d. Starting action participant binding — bind sender wallet to participant role.
@@ -1290,7 +1305,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             // Feature 194: the definition this action was executed against. Read from the instance,
             // never re-derived as "latest" — that is what makes an in-flight instance survive a
             // republish. Inside ComputeSignableBytes below, so the sender signs it.
-            BlueprintExecDefHash = ResolveInstancePin(instance, actionId),
+            BlueprintDefinitionTxId = ResolveInstancePin(instance, actionId),
             Attestation = new Attestation { Kind = AttestationKind.SenderSigned },
         };
         var routingSignResult = await _walletClient.SignTransactionAsync(
@@ -1445,7 +1460,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         }
 
         // 2. Get the blueprint
-        var blueprint = await _actionResolver.GetBlueprintAsync(instance.BlueprintId, cancellationToken);
+        var blueprint = await _actionResolver.GetBlueprintAsync(instance.BlueprintId, instance.BlueprintDefinitionTxId, cancellationToken);
         if (blueprint == null)
         {
             throw new InvalidOperationException($"Blueprint {instance.BlueprintId} not found");
@@ -1637,7 +1652,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             return;
         }
 
-        var blueprint = await _actionResolver.GetBlueprintAsync(instance.BlueprintId, cancellationToken)
+        var blueprint = await _actionResolver.GetBlueprintAsync(instance.BlueprintId, instance.BlueprintDefinitionTxId, cancellationToken)
             ?? throw new InvalidOperationException($"Blueprint {instance.BlueprintId} not found");
 
         var actionDef = _actionResolver.GetActionDefinition(blueprint, completedActionId.ToString())
@@ -1723,7 +1738,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             return null;
         }
 
-        var blueprint = await _actionResolver.GetBlueprintAsync(instance.BlueprintId, cancellationToken);
+        var blueprint = await _actionResolver.GetBlueprintAsync(instance.BlueprintId, instance.BlueprintDefinitionTxId, cancellationToken);
         if (blueprint is null)
         {
             _logger.LogWarning(
@@ -1768,7 +1783,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             // Feature 194: a presentation outcome advances the same instance as any other action, so
             // it carries the same pin. Omitting it here would leave one advancement path unpinned —
             // and the projector would then refuse it as a foreign decision.
-            BlueprintExecDefHash = ResolveInstancePin(instance, completedActionId),
+            BlueprintDefinitionTxId = ResolveInstancePin(instance, completedActionId),
             Attestation = new Attestation { Kind = AttestationKind.SenderSigned },
         };
         var routingSignResult = await _walletClient.SignTransactionAsync(
@@ -1803,9 +1818,9 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
     /// </remarks>
     private string? ResolveInstancePin(Instance instance, int actionId)
     {
-        if (!string.IsNullOrWhiteSpace(instance.BlueprintExecDefHash))
+        if (!string.IsNullOrWhiteSpace(instance.BlueprintDefinitionTxId))
         {
-            return instance.BlueprintExecDefHash;
+            return instance.BlueprintDefinitionTxId;
         }
 
         _logger.LogWarning(
@@ -2978,18 +2993,6 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
     {
         var keySource = $"instance:{instanceId}:action:{actionId}:wallet:{senderWallet}:prevTx:{lastTransactionId ?? "none"}";
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(keySource));
-        return Convert.ToHexStringLower(hash);
-    }
-
-    /// <summary>
-    /// Computes the deterministic TX ID for a blueprint publish transaction.
-    /// This is the same formula used by the Register Service when publishing blueprints:
-    /// SHA-256("blueprint-publish-{registerId}-{blueprintId}") as lowercase hex.
-    /// </summary>
-    public static string ComputeBlueprintPublishTxId(string registerId, string blueprintId)
-    {
-        var txIdSource = Encoding.UTF8.GetBytes($"blueprint-publish-{registerId}-{blueprintId}");
-        var hash = SHA256.HashData(txIdSource);
         return Convert.ToHexStringLower(hash);
     }
 

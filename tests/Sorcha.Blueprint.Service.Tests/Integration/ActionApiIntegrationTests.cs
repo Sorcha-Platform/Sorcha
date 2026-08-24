@@ -10,6 +10,12 @@ using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 using ActionModel = Sorcha.Blueprint.Models.Action;
 using ParticipantModel = Sorcha.Blueprint.Models.Participant;
 
+using Microsoft.Extensions.DependencyInjection;
+
+using Sorcha.Blueprint.Service.Models;
+
+using Sorcha.Blueprint.Service.Storage;
+
 namespace Sorcha.Blueprint.Service.Tests.Integration;
 
 /// <summary>
@@ -92,9 +98,12 @@ public class ActionApiIntegrationTests : IClassFixture<BlueprintServiceWebApplic
         // Arrange
         var blueprint = await CreateAndPublishBlueprint();
 
+        var seededInstanceId = "instance-0";
+        await SeedInstanceAsync(seededInstanceId, blueprint.Id, "register-001");
         var submissionRequest = new ActionSubmissionRequest
         {
             BlueprintId = blueprint.Id,
+            InstanceId = seededInstanceId,
             ActionId = "1", // Action ID 1 = Submit Loan Application
             SenderWallet = "wallet-applicant",
             RegisterAddress = "register-001",
@@ -126,9 +135,12 @@ public class ActionApiIntegrationTests : IClassFixture<BlueprintServiceWebApplic
         var blueprint = await CreateAndPublishBlueprint();
 
         var fileContent = "This is a test file content"u8.ToArray();
+        var seededInstanceId1 = "instance-1";
+        await SeedInstanceAsync(seededInstanceId1, blueprint.Id, "register-001");
         var submissionRequest = new ActionSubmissionRequest
         {
             BlueprintId = blueprint.Id,
+            InstanceId = seededInstanceId1,
             ActionId = "1", // Action ID 1 = Submit Loan Application
             SenderWallet = "wallet-applicant",
             RegisterAddress = "register-001",
@@ -165,6 +177,7 @@ public class ActionApiIntegrationTests : IClassFixture<BlueprintServiceWebApplic
         var submissionRequest = new ActionSubmissionRequest
         {
             BlueprintId = "non-existent-blueprint",
+            InstanceId = "instance-that-does-not-exist",
             ActionId = "1",
             SenderWallet = "wallet-applicant",
             RegisterAddress = "register-001",
@@ -184,9 +197,12 @@ public class ActionApiIntegrationTests : IClassFixture<BlueprintServiceWebApplic
         // Arrange
         var blueprint = await CreateAndPublishBlueprint();
 
+        var seededInstanceId3 = "instance-3";
+        await SeedInstanceAsync(seededInstanceId3, blueprint.Id, "register-001");
         var submissionRequest = new ActionSubmissionRequest
         {
             BlueprintId = blueprint.Id,
+            InstanceId = seededInstanceId3,
             ActionId = "999", // Non-existent action ID
             SenderWallet = "wallet-applicant",
             RegisterAddress = "register-001",
@@ -215,6 +231,7 @@ public class ActionApiIntegrationTests : IClassFixture<BlueprintServiceWebApplic
         // Submit multiple actions with unique InstanceId to avoid idempotency-key collisions
         for (int i = 0; i < 5; i++)
         {
+            await SeedInstanceAsync($"instance-paginated-{i}", blueprint.Id, "register-001");
             var request = new ActionSubmissionRequest
             {
                 BlueprintId = blueprint.Id,
@@ -284,9 +301,12 @@ public class ActionApiIntegrationTests : IClassFixture<BlueprintServiceWebApplic
         var register = "register-details-test";
         var blueprint = await CreateAndPublishBlueprint();
 
+        var seededInstanceId4 = "instance-4";
+        await SeedInstanceAsync(seededInstanceId4, blueprint.Id, "register-001");
         var submissionRequest = new ActionSubmissionRequest
         {
             BlueprintId = blueprint.Id,
+            InstanceId = seededInstanceId4,
             ActionId = "1",
             SenderWallet = wallet,
             RegisterAddress = register,
@@ -341,9 +361,12 @@ public class ActionApiIntegrationTests : IClassFixture<BlueprintServiceWebApplic
         var blueprint = await CreateAndPublishBlueprint();
 
         // Submit an action first
+        var seededInstanceId5 = "instance-5";
+        await SeedInstanceAsync(seededInstanceId5, blueprint.Id, "register-001");
         var submissionRequest = new ActionSubmissionRequest
         {
             BlueprintId = blueprint.Id,
+            InstanceId = seededInstanceId5,
             ActionId = "1",
             SenderWallet = wallet,
             RegisterAddress = register,
@@ -406,9 +429,12 @@ public class ActionApiIntegrationTests : IClassFixture<BlueprintServiceWebApplic
         var blueprint = await CreateAndPublishBlueprint();
 
         var fileContent = "Test file content for integration test"u8.ToArray();
+        var seededInstanceId6 = "instance-6";
+        await SeedInstanceAsync(seededInstanceId6, blueprint.Id, "register-001");
         var submissionRequest = new ActionSubmissionRequest
         {
             BlueprintId = blueprint.Id,
+            InstanceId = seededInstanceId6,
             ActionId = "1",
             SenderWallet = wallet,
             RegisterAddress = register,
@@ -513,6 +539,41 @@ public class ActionApiIntegrationTests : IClassFixture<BlueprintServiceWebApplic
         publishResponse.EnsureSuccessStatusCode();
 
         return created;
+    }
+
+    /// <summary>
+    /// Seeds an instance with the definition pin the publish above assigned (Feature 195).
+    /// </summary>
+    /// <remarks>
+    /// These tests used to POST actions against instance ids that were never created — the endpoint
+    /// tolerated it because it resolved the blueprint by id alone. It cannot now, and should not: an
+    /// action with no instance has no pin, and with no pin there is no way to know which definition
+    /// to validate the payload against. Falling back to "latest" is exactly the defect this feature
+    /// removes, so the endpoint refuses and the fixture supplies a real instance instead.
+    /// </remarks>
+    private async Task SeedInstanceAsync(string instanceId, string blueprintId, string registerId)
+    {
+        using var scope = _factory.Services.CreateScope();
+
+        var published = await scope.ServiceProvider
+            .GetRequiredService<IPublishedBlueprintStore>()
+            .GetVersionsAsync(blueprintId);
+
+        var definition = published.LastOrDefault()
+            ?? throw new InvalidOperationException(
+                $"Blueprint {blueprintId} was not published, so there is no definition to pin to.");
+
+        await scope.ServiceProvider.GetRequiredService<IInstanceStore>().CreateAsync(new Instance
+        {
+            Id = instanceId,
+            BlueprintId = blueprintId,
+            BlueprintVersion = definition.Version,
+            BlueprintDefinitionTxId = definition.PublicationTxId,
+            RegisterId = registerId,
+            State = InstanceState.Active,
+            TenantId = "test-tenant",
+            CurrentActionIds = definition.Blueprint.Actions.Select(a => a.Id).ToList(),
+        });
     }
 
     #endregion

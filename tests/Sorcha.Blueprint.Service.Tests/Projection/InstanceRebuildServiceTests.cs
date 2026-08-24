@@ -54,7 +54,7 @@ public class InstanceRebuildServiceTests
                 new ActionModel { Id = 3, Title = "Issue", Sender = "p3" },
             ],
         };
-        _actionResolver.Setup(r => r.GetBlueprintAsync(BlueprintId, It.IsAny<CancellationToken>()))
+        _actionResolver.Setup(r => r.GetBlueprintAsync(BlueprintId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
         _actionResolver.Setup(r => r.GetActionDefinition(It.IsAny<BlueprintModel>(), It.IsAny<string>()))
             .Returns((BlueprintModel bp, string id) => bp.Actions.FirstOrDefault(a => a.Id.ToString() == id));
@@ -77,6 +77,7 @@ public class InstanceRebuildServiceTests
                 RoutingDecision = new RoutingDecision
                 {
                     CompletedActionId = completedActionId,
+                    BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
                     NextActions = next.Select(n => new ActionRef { ActionId = n }).ToList(),
                     Attestation = new Attestation { Kind = AttestationKind.SenderSigned, Signature = "sig" },
                 },
@@ -148,6 +149,7 @@ public class InstanceRebuildServiceTests
         {
             Id = InstanceId,
             BlueprintId = BlueprintId,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: an instance must carry its definition pin, or execution has nothing to resolve or chain from
             BlueprintVersion = 1,
             RegisterId = RegisterId,
             TenantId = "tenant-1",
@@ -170,6 +172,7 @@ public class InstanceRebuildServiceTests
         {
             Id = InstanceId,
             BlueprintId = BlueprintId,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: an instance must carry its definition pin, or execution has nothing to resolve or chain from
             BlueprintVersion = 1,
             RegisterId = RegisterId,
             TenantId = "tenant-1",

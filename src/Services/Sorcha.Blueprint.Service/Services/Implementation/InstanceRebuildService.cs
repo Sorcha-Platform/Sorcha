@@ -156,10 +156,10 @@ public sealed class InstanceRebuildService : IInstanceRebuildService
         // Feature 194. Checked FIRST among the value comparisons, because a pin divergence is the
         // most consequential kind: the two views would run the instance against different blueprint
         // definitions, and every other field could still agree while they did so.
-        if (!string.Equals(rebuilt.BlueprintExecDefHash, materialized.BlueprintExecDefHash, StringComparison.Ordinal))
+        if (!string.Equals(rebuilt.BlueprintDefinitionTxId, materialized.BlueprintDefinitionTxId, StringComparison.Ordinal))
         {
             return "pinned blueprint definition differs " +
-                   $"(rebuilt={Describe(rebuilt.BlueprintExecDefHash)}, materialized={Describe(materialized.BlueprintExecDefHash)})";
+                   $"(rebuilt={Describe(rebuilt.BlueprintDefinitionTxId)}, materialized={Describe(materialized.BlueprintDefinitionTxId)})";
         }
 
         var rebuiltActions = rebuilt.CurrentActionIds.OrderBy(x => x).ToList();

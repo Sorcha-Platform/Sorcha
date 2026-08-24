@@ -28,7 +28,7 @@ public class Instance
     /// <b>Display label only</b> — do not resolve a definition by it. It is assigned from in-memory
     /// insert order and re-derived on recovery, and two of the paths that write it hardcode 1. The
     /// authoritative answer to "which definition is this instance running" is
-    /// <see cref="BlueprintExecDefHash"/> (Feature 194).
+    /// <see cref="BlueprintDefinitionTxId"/> (Feature 194).
     /// </remarks>
     public required int BlueprintVersion { get; init; }
 
@@ -49,7 +49,7 @@ public class Instance
     /// of that fallback is counted so the fallback can eventually be removed on evidence.
     /// </para>
     /// </remarks>
-    public string BlueprintExecDefHash { get; set; } = string.Empty;
+    public string BlueprintDefinitionTxId { get; set; } = string.Empty;
 
     /// <summary>
     /// The register where transactions are stored

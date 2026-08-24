@@ -1488,6 +1488,7 @@ actionsGroup.MapPost("/", async (
     Sorcha.ServiceClients.Wallet.IWalletServiceClient walletClient,
     Sorcha.ServiceClients.Register.IRegisterServiceClient registerClient,
     Sorcha.Blueprint.Service.Storage.IActionStore actionStore,
+    Sorcha.Blueprint.Service.Storage.IInstanceStore instanceStore,
     Sorcha.Cryptography.Interfaces.IHashProvider hashProvider,
     Sorcha.Blueprint.Engine.Interfaces.IDisclosureProcessor disclosureProcessor,
     Sorcha.Blueprint.Service.Endpoints.FileUploadSessionStore fileSessionStore) =>
@@ -1557,8 +1558,20 @@ actionsGroup.MapPost("/", async (
             return Results.Conflict(new { error = "Duplicate submission", transactionHash = existingTxHash });
         }
 
-        // 1. Get blueprint
-        var blueprint = await actionResolver.GetBlueprintAsync(request.BlueprintId);
+        // 1. Get the definition THIS INSTANCE is pinned to (Feature 195).
+        //
+        // Resolving by blueprint id alone would validate the submission against whatever definition
+        // this node happens to hold latest — which is the defect version pinning exists to remove,
+        // and it fails silently: the payload is checked against rules the instance never agreed to
+        // run, and the routing decision is then labelled with the instance's actual pin.
+        var pinnedInstance = await instanceStore.GetAsync(request.InstanceId);
+        if (pinnedInstance == null)
+        {
+            return Results.BadRequest(new { error = $"Instance {request.InstanceId} not found" });
+        }
+
+        var blueprint = await actionResolver.GetBlueprintAsync(
+            request.BlueprintId, pinnedInstance.BlueprintDefinitionTxId);
         if (blueprint == null)
         {
             return Results.BadRequest(new { error = "Blueprint not found" });
@@ -1617,11 +1630,12 @@ actionsGroup.MapPost("/", async (
         var previousTxId = request.PreviousTransactionHash;
         if (string.IsNullOrEmpty(previousTxId))
         {
-            // Action 0: chain from the blueprint publish transaction
-            previousTxId = Sorcha.Blueprint.Service.Services.Implementation.ActionExecutionService
-                .ComputeBlueprintPublishTxId(request.RegisterAddress, request.BlueprintId);
+            // Action 0 chains from the transaction that PUBLISHED the definition this instance
+            // runs (Feature 195). Read from the instance's pin, never recomputed: anchor and pin are
+            // one value because they are one fact, and the formula this replaced had four homes.
+            previousTxId = pinnedInstance.BlueprintDefinitionTxId;
             logger.LogInformation(
-                "Action 0 for blueprint {BlueprintId}: PrevTxId set to blueprint publish TX {TxId}",
+                "Action 0 for blueprint {BlueprintId}: PrevTxId set to its definition's publication {TxId}",
                 request.BlueprintId, previousTxId);
         }
 
@@ -2320,17 +2334,22 @@ instancesGroup.MapPost("/", async (
             participantWallets[p.Id] = p.WalletAddress!;
         }
 
-        // Feature 194: choose the definition this instance will run for its whole life.
+        // Feature 194/195: choose the definition this instance will run for its whole life.
         //
-        // The pin MUST be a PUBLISHED definition's hash, never the draft's. The validator resolves
-        // published definitions, so pinning to a draft — which may differ from anything ever
-        // published — would produce an instance whose every action refers to a definition no node
-        // can resolve. This is also why the pin is taken from the published store even when the
-        // draft store answered above: what runs is what was published, not what is in an editor.
+        // The pin MUST be a PUBLISHED definition, never the draft. The validator and the engine both
+        // resolve published definitions, so pinning to a draft — which may differ from anything ever
+        // published — would produce an instance whose every action refers to a definition no node can
+        // resolve. That is why the pin is taken from the published store even when the draft store
+        // answered above: what runs is what was published, not what is in an editor.
+        //
+        // Feature 195 makes the pin the PUBLICATION TRANSACTION ID rather than an executable-
+        // definition hash. It names a ledger fact, so any node holding the register can resolve it —
+        // and the starting action chains from that very transaction, which is why anchor and pin are
+        // now one value.
         var latestPublished = PublishedBlueprintSelector.SelectLatest(
             await publishedBlueprintStore.GetVersionsAsync(request.BlueprintId));
 
-        var pinnedExecDefHash = latestPublished?.ExecDefHash ?? string.Empty;
+        var pinnedExecDefHash = latestPublished?.PublicationTxId ?? string.Empty;
         if (latestPublished is not null)
         {
             resolvedVersion = latestPublished.Version;
@@ -2349,13 +2368,38 @@ instancesGroup.MapPost("/", async (
                 request.BlueprintId, request.RegisterId);
         }
 
+        // Feature 195 (FR-009) — INITIALISE FROM THE DEFINITION WE PIN.
+        //
+        // The starting actions, participant wallets and title above were derived from whatever the
+        // draft store answered with. Pinning a different definition than the instance was set up from
+        // is how an instance could be born already inconsistent: its current-action set and
+        // pre-bound wallets from one definition, every subsequent action validated against another.
+        // One definition, used for both.
+        if (latestPublished?.Blueprint is { } pinnedDefinition)
+        {
+            blueprint = pinnedDefinition;
+
+            startingActions = pinnedDefinition.Actions
+                .Where(a => a.IsStartingAction)
+                .Select(a => a.Id)
+                .ToList();
+            if (startingActions.Count == 0 && pinnedDefinition.Actions.Count > 0)
+            {
+                startingActions = [pinnedDefinition.Actions.First().Id];
+            }
+
+            participantWallets = pinnedDefinition.Participants
+                .Where(pp => !string.IsNullOrEmpty(pp.WalletAddress))
+                .ToDictionary(pp => pp.Id, pp => pp.WalletAddress!);
+        }
+
         // Create instance
         var instance = new Sorcha.Blueprint.Service.Models.Instance
         {
             Id = Guid.NewGuid().ToString(),
             BlueprintId = request.BlueprintId,
             BlueprintVersion = resolvedVersion,
-            BlueprintExecDefHash = pinnedExecDefHash,
+            BlueprintDefinitionTxId = pinnedExecDefHash,
             RegisterId = request.RegisterId,
             CurrentActionIds = startingActions,
             ParticipantWallets = participantWallets,

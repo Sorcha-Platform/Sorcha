@@ -19,3 +19,8 @@ src/Services/Sorcha.Register.Service/Services/SystemRegisterService.cs
 # compares to the transaction's own id. Recomputing is the whole point — a node that trusted the id
 # it was handed would be verifying nothing.
 src/Services/Sorcha.Blueprint.Service/Services/Implementation/BlueprintRecoveryService.cs
+
+# VERIFIER, not producer. The validator's last-resort arm reads a definition straight off the
+# register and recomputes its id to check the payload against the transaction that carried it. This
+# is an untrusted read; trusting the id it was handed would be verifying nothing.
+src/Services/Sorcha.Validator.Service/Services/ValidationEngine.cs

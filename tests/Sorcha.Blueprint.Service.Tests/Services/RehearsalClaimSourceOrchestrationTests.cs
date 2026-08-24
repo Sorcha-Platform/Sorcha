@@ -26,6 +26,8 @@ using ActionModel = Sorcha.Blueprint.Models.Action;
 using ParticipantModel = Sorcha.Blueprint.Models.Participant;
 using RouteModel = Sorcha.Blueprint.Models.Route;
 
+using Sorcha.Blueprint.Models.Canonical;
+
 namespace Sorcha.Blueprint.Service.Tests.Services;
 
 /// <summary>
@@ -117,10 +119,18 @@ public class RehearsalClaimSourceOrchestrationTests
         _publishService
             .Setup(p => p.ValidateAsync(BlueprintId))
             .ReturnsAsync(new BlueprintValidationResult(BlueprintId, "Title", true, [], []));
+        // Feature 195 — a real publish assigns the definition's identity, and the rehearsal instance
+        // is pinned to it. A stand-in returning no PublicationTxId models a publish that cannot
+        // happen, and the rehearsal then fails exactly as a real unpinned instance would.
         _publishService
             .Setup(p => p.PublishAsync(It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync((string id, string reg) =>
-                PublishResult.Success(new PublishedBlueprint { BlueprintId = id, RegisterId = reg }));
+                PublishResult.Success(new PublishedBlueprint
+                {
+                    BlueprintId = id,
+                    RegisterId = reg,
+                    PublicationTxId = BlueprintPublicationId.Compute(reg, id, "{}")
+                }));
 
         _blueprintStore
             .Setup(s => s.GetAsync(BlueprintId))
@@ -143,7 +153,7 @@ public class RehearsalClaimSourceOrchestrationTests
         var blueprint = ClaimSourceBlueprint();
         var action = blueprint.Actions!.First();
 
-        _actionResolver.Setup(x => x.GetBlueprintAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _actionResolver.Setup(x => x.GetBlueprintAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
         _actionResolver.Setup(x => x.GetActionDefinition(It.IsAny<BlueprintModel>(), "1"))
             .Returns(action);

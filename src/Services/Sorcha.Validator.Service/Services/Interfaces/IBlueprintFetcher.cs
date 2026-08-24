@@ -32,12 +32,12 @@ public interface IBlueprintFetcher
     /// in-flight instance against rules it never agreed to — silently.
     /// </remarks>
     /// <param name="blueprintId">Blueprint ID.</param>
-    /// <param name="execDefHash">The executable-definition hash (the pin).</param>
+    /// <param name="definitionTxId">The executable-definition hash (the pin).</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The pinned definition, or null when it cannot be resolved (a refusal).</returns>
-    Task<BlueprintModel?> FetchBlueprintByHashAsync(
+    Task<BlueprintModel?> FetchBlueprintByPublicationAsync(
         string blueprintId,
-        string execDefHash,
+        string definitionTxId,
         CancellationToken ct = default);
 
     /// <summary>

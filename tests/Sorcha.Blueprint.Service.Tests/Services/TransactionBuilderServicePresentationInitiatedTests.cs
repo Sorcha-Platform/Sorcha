@@ -46,6 +46,7 @@ public class TransactionBuilderServicePresentationInitiatedTests
     {
         Id = Guid.NewGuid().ToString(),
         BlueprintId = "bp-111-test",
+        BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: execution resolves and chains by the pin
         BlueprintVersion = 1,
         RegisterId = "reg-unit-test",
         TenantId = "tenant-unit-test"

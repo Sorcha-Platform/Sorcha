@@ -47,7 +47,7 @@ public sealed class InstancePinReadTests
 
         var body = Body(result);
         Value<string>(body, "pinState").Should().Be("pinned");
-        Value<string>(body, "blueprintExecDefHash").Should().Be(PinV1);
+        Value<string>(body, "blueprintDefinitionTxId").Should().Be(PinV1);
         Value<int?>(body, "blueprintVersion").Should().Be(1);
         Value<bool?>(body, "isPinnedToLatest").Should().BeTrue();
     }
@@ -79,7 +79,7 @@ public sealed class InstancePinReadTests
 
         var body = Body(result);
         Value<string>(body, "pinState").Should().Be("unresolvable");
-        Value<string>(body, "blueprintExecDefHash").Should().Be(PinV1);
+        Value<string>(body, "blueprintDefinitionTxId").Should().Be(PinV1);
         Value<int?>(body, "blueprintVersion").Should().BeNull();
         Value<bool?>(body, "isPinnedToLatest").Should().BeNull();
     }
@@ -95,7 +95,7 @@ public sealed class InstancePinReadTests
 
         var body = Body(result);
         Value<string>(body, "pinState").Should().Be("unpinned");
-        Value<string>(body, "blueprintExecDefHash").Should().BeNull();
+        Value<string>(body, "blueprintDefinitionTxId").Should().BeNull();
         Value<int?>(body, "blueprintVersion").Should().BeNull();
         Value<bool?>(body, "isPinnedToLatest").Should().BeNull();
     }
@@ -124,7 +124,7 @@ public sealed class InstancePinReadTests
         Id = "inst-1",
         BlueprintId = "bp-1",
         BlueprintVersion = 1,
-        BlueprintExecDefHash = execDefHash,
+        BlueprintDefinitionTxId = execDefHash,
         RegisterId = "reg-1",
         TenantId = "tenant-1",
         State = InstanceState.Active,

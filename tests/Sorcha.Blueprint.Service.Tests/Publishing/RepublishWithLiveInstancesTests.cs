@@ -40,7 +40,7 @@ public class RepublishWithLiveInstancesTests
             new ProjectedTransaction(
                 TxId: "tx1", PreviousTransactionId: null, CompletedActionId: 1,
                 NextActionIds: [2], ParticipantBindings: new Dictionary<string, string>(),
-                BlueprintExecDefHash: pinnedToV1),
+                BlueprintDefinitionTxId: pinnedToV1),
         ])!;
 
         var stateBefore = live.State;
@@ -55,7 +55,7 @@ public class RepublishWithLiveInstancesTests
             "an upgrade must never be blocked, warned against, or delayed because instances are live");
         v2.PublishedBlueprint!.ExecDefHash.Should().NotBe(pinnedToV1);
 
-        live.BlueprintExecDefHash.Should().Be(pinnedToV1, "the pin is immutable");
+        live.BlueprintDefinitionTxId.Should().Be(pinnedToV1, "the pin is immutable");
         live.State.Should().Be(stateBefore);
         live.CurrentActionIds.Should().Equal(actionsBefore);
     }

@@ -23,10 +23,18 @@ namespace Sorcha.Blueprint.Service.Tests.Integration;
 /// </summary>
 public class ServiceLayerIntegrationTests
 {
+
+    /// <summary>
+    /// A stand-in definition pin (Feature 195). Publishing assigns a real publication id;
+    /// these tests only need a stable, non-empty one, because the resolver now REQUIRES a pin
+    /// rather than falling back to whatever definition this node holds latest.
+    /// </summary>
+    private const string TestDefinitionPin = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     private readonly IActionResolverService _actionResolver;
     private readonly IPayloadResolverService _payloadResolver;
     private readonly ITransactionBuilderService _transactionBuilder;
     private readonly Mock<IBlueprintStore> _mockBlueprintStore;
+    private readonly Mock<IPublishedBlueprintStore> _mockPublishedStore;
     private readonly Mock<IWalletServiceClient> _mockWalletClient;
     private readonly Mock<IRegisterServiceClient> _mockRegisterClient;
     private readonly IDistributedCache _cache;
@@ -39,6 +47,7 @@ public class ServiceLayerIntegrationTests
 
         // Setup mock blueprint store
         _mockBlueprintStore = new Mock<IBlueprintStore>();
+        _mockPublishedStore = new Mock<IPublishedBlueprintStore>();
 
         // Setup mock service clients
         _mockWalletClient = new Mock<IWalletServiceClient>();
@@ -54,7 +63,7 @@ public class ServiceLayerIntegrationTests
         var actionResolverLogger = Mock.Of<ILogger<ActionResolverService>>();
         _actionResolver = new ActionResolverService(
             _mockBlueprintStore.Object,
-            Mock.Of<IPublishedBlueprintStore>(),
+            _mockPublishedStore.Object,
             _cache,
             actionResolverLogger);
 
@@ -106,11 +115,19 @@ public class ServiceLayerIntegrationTests
             }
         };
 
-        _mockBlueprintStore.Setup(x => x.GetAsync("loan-application-bp"))
-            .ReturnsAsync(blueprint);
+        _mockPublishedStore.Setup(x => x.GetVersionsAsync("loan-application-bp"))
+            .ReturnsAsync(new[]
+            {
+                new PublishedBlueprint
+                {
+                    BlueprintId = "loan-application-bp",
+                    PublicationTxId = TestDefinitionPin,
+                    Blueprint = blueprint
+                }
+            });
 
         // Act 1: Resolve the blueprint and action
-        var resolvedBlueprint = await _actionResolver.GetBlueprintAsync("loan-application-bp");
+        var resolvedBlueprint = await _actionResolver.GetBlueprintAsync("loan-application-bp", TestDefinitionPin);
         var action = _actionResolver.GetActionDefinition(resolvedBlueprint!, "1");
 
         // Assert 1: Blueprint and action resolved
@@ -177,18 +194,27 @@ public class ServiceLayerIntegrationTests
             Title = "Cached Blueprint"
         };
 
-        _mockBlueprintStore.Setup(x => x.GetAsync("cached-bp"))
-            .ReturnsAsync(blueprint);
+        _mockPublishedStore.Setup(x => x.GetVersionsAsync("cached-bp"))
+            .ReturnsAsync(new[]
+            {
+                new PublishedBlueprint
+                {
+                    BlueprintId = "cached-bp",
+                    PublicationTxId = TestDefinitionPin,
+                    Blueprint = blueprint
+                }
+            });
 
         // Act: Get blueprint twice
-        var first = await _actionResolver.GetBlueprintAsync("cached-bp");
-        var second = await _actionResolver.GetBlueprintAsync("cached-bp");
+        var first = await _actionResolver.GetBlueprintAsync("cached-bp", TestDefinitionPin);
+        var second = await _actionResolver.GetBlueprintAsync("cached-bp", TestDefinitionPin);
 
         // Assert: Store was only called once (second call used cache)
         first.Should().NotBeNull();
         second.Should().NotBeNull();
         first!.Title.Should().Be(second!.Title);
-        _mockBlueprintStore.Verify(x => x.GetAsync("cached-bp"), Times.Once);
+        _mockPublishedStore.Verify(x => x.GetVersionsAsync("cached-bp"), Times.Once,
+            "the second call is served from the definition-keyed cache");
     }
 
     [Fact]
@@ -328,11 +354,19 @@ public class ServiceLayerIntegrationTests
             }
         };
 
-        _mockBlueprintStore.Setup(x => x.GetAsync("purchase-order-workflow"))
-            .ReturnsAsync(blueprint);
+        _mockPublishedStore.Setup(x => x.GetVersionsAsync("purchase-order-workflow"))
+            .ReturnsAsync(new[]
+            {
+                new PublishedBlueprint
+                {
+                    BlueprintId = "purchase-order-workflow",
+                    PublicationTxId = TestDefinitionPin,
+                    Blueprint = blueprint
+                }
+            });
 
         // Step 1: Buyer creates order
-        var resolvedBp = await _actionResolver.GetBlueprintAsync("purchase-order-workflow");
+        var resolvedBp = await _actionResolver.GetBlueprintAsync("purchase-order-workflow", TestDefinitionPin);
         var createOrderAction = _actionResolver.GetActionDefinition(resolvedBp!, "1");
         var wallets = await _actionResolver.ResolveParticipantWalletsAsync(
             resolvedBp!,

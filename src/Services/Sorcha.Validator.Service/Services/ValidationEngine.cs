@@ -23,6 +23,8 @@ using ActionModel = Sorcha.Blueprint.Models.Action;
 using Sorcha.Blueprint.Models;
 using Sorcha.Blueprint.Models.Schemas;
 
+using System.Buffers.Text;
+using Sorcha.Blueprint.Models.Canonical;
 namespace Sorcha.Validator.Service.Services;
 
 /// <summary>
@@ -569,7 +571,8 @@ public class ValidationEngine : IValidationEngine
             // Get the blueprint — the definition this transaction's INSTANCE is pinned to
             // (Feature 194), not whichever definition happens to be latest.
             var carriedPin = ReadCarriedExecDefHash(transaction);
-            var blueprint = await ResolveBlueprintAsync(transaction.BlueprintId!, carriedPin, ct);
+            var blueprint = await ResolveBlueprintAsync(
+                transaction.BlueprintId!, carriedPin, transaction.RegisterId, ct);
             if (blueprint == null)
             {
                 // Distinguish "no such blueprint" from "this node cannot produce the DEFINITION the
@@ -583,7 +586,7 @@ public class ValidationEngine : IValidationEngine
                         $"Blueprint '{transaction.BlueprintId}' definition '{carriedPin}' — the definition this "
                         + "instance is pinned to — could not be resolved on this node. The transaction is "
                         + "refused; it is NOT validated against a different definition.",
-                        ValidationErrorCategory.Blueprint, "routingDecision.blueprintExecDefHash", true));
+                        ValidationErrorCategory.Blueprint, "routingDecision.blueprintDefinitionTxId", true));
                     return CreateFailureResult(transaction, sw.Elapsed, errors);
                 }
 
@@ -990,17 +993,17 @@ public class ValidationEngine : IValidationEngine
         // the latest definition here would judge an in-flight instance's routing against a graph it
         // never ran on — the same defect one layer up.
         var blueprint = await ResolveBlueprintAsync(
-            transaction.BlueprintId!, decision.BlueprintExecDefHash, ct);
+            transaction.BlueprintId!, decision.BlueprintDefinitionTxId, transaction.RegisterId, ct);
         if (blueprint is null)
         {
             // Schema/conformance validation already flags a missing blueprint; surface a routing
             // error too so the decision is never trusted without its route graph.
-            if (!string.IsNullOrWhiteSpace(decision.BlueprintExecDefHash))
+            if (!string.IsNullOrWhiteSpace(decision.BlueprintDefinitionTxId))
             {
                 errors.Add(CreateError("VAL_BP_VERSION_001",
                     $"Cannot verify routing decision: blueprint '{transaction.BlueprintId}' definition "
-                    + $"'{decision.BlueprintExecDefHash}' could not be resolved on this node.",
-                    ValidationErrorCategory.Blueprint, "routingDecision.blueprintExecDefHash", isFatal: true));
+                    + $"'{decision.BlueprintDefinitionTxId}' could not be resolved on this node.",
+                    ValidationErrorCategory.Blueprint, "routingDecision.blueprintDefinitionTxId", isFatal: true));
                 return CreateFailureResult(transaction, sw.Elapsed, errors);
             }
 
@@ -1397,7 +1400,7 @@ public class ValidationEngine : IValidationEngine
             using (RuleTelemetry.TimeRule("VAL_BP_RESOLVE"))
             {
                 blueprint = await ResolveBlueprintAsync(
-                    transaction.BlueprintId!, ReadCarriedExecDefHash(transaction), ct);
+                    transaction.BlueprintId!, ReadCarriedExecDefHash(transaction), transaction.RegisterId, ct);
             }
             if (blueprint == null)
             {
@@ -2426,7 +2429,7 @@ public class ValidationEngine : IValidationEngine
         {
             var decision = JsonSerializer.Deserialize<Sorcha.Register.Models.RoutingDecision>(
                 decisionJson, Sorcha.Register.Models.RegisterSerializationOptions.Canonical);
-            return decision?.BlueprintExecDefHash;
+            return decision?.BlueprintDefinitionTxId;
         }
         catch (JsonException)
         {
@@ -2459,11 +2462,11 @@ public class ValidationEngine : IValidationEngine
     /// </para>
     /// </remarks>
     private async Task<BlueprintModel?> ResolveBlueprintAsync(
-        string blueprintId, string? execDefHash, CancellationToken ct)
+        string blueprintId, string? definitionTxId, string registerId, CancellationToken ct)
     {
-        if (!string.IsNullOrWhiteSpace(execDefHash))
+        if (!string.IsNullOrWhiteSpace(definitionTxId))
         {
-            return await ResolvePinnedBlueprintAsync(blueprintId, execDefHash, ct);
+            return await ResolvePinnedBlueprintAsync(blueprintId, definitionTxId, registerId, ct);
         }
 
         _logger.LogWarning(
@@ -2479,9 +2482,9 @@ public class ValidationEngine : IValidationEngine
     /// entry can never be the wrong definition), then the Blueprint Service's by-hash endpoint.
     /// </summary>
     private async Task<BlueprintModel?> ResolvePinnedBlueprintAsync(
-        string blueprintId, string execDefHash, CancellationToken ct)
+        string blueprintId, string definitionTxId, string registerId, CancellationToken ct)
     {
-        var cached = await _blueprintCache.GetDefinitionAsync(blueprintId, execDefHash, ct);
+        var cached = await _blueprintCache.GetDefinitionAsync(blueprintId, definitionTxId, ct);
         if (cached != null)
             return cached;
 
@@ -2489,28 +2492,88 @@ public class ValidationEngine : IValidationEngine
         {
             try
             {
-                var fetched = await _blueprintFetcher.FetchBlueprintByHashAsync(blueprintId, execDefHash, ct);
+                var fetched = await _blueprintFetcher.FetchBlueprintByPublicationAsync(blueprintId, definitionTxId, ct);
                 if (fetched != null)
                 {
-                    await _blueprintCache.SetDefinitionAsync(fetched, execDefHash, ct: ct);
+                    await _blueprintCache.SetDefinitionAsync(fetched, definitionTxId, ct: ct);
                     return fetched;
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex,
-                    "Failed to fetch pinned definition {ExecDefHash} of blueprint {BlueprintId}",
-                    execDefHash, blueprintId);
+                    "Failed to fetch pinned definition {DefinitionTxId} of blueprint {BlueprintId}",
+                    definitionTxId, blueprintId);
             }
+        }
+
+        // Feature 195 — LAST RESORT: read the definition straight off the register.
+        //
+        // This arm did not exist before, and could not have. The pin used to be a hash of a
+        // hand-written projection of the blueprint: a value that named no ledger fact, so a node that
+        // held the register but had never cached the definition simply could not produce it. The pin
+        // is now the id of the transaction that PUBLISHED the definition, so every node holding the
+        // register can resolve it — which is what makes "pinState=unresolvable" unreachable for any
+        // definition the register actually holds (issue #1563's downstream symptom).
+        //
+        // The payload is verified against the transaction's own id before use: the id IS the digest
+        // of the canonical definition, so a tampered payload cannot match the transaction carrying
+        // it. Verification here is not optional politeness — this is an untrusted read.
+        try
+        {
+            var tx = await _registerClient.GetTransactionAsync(registerId, definitionTxId, ct);
+            var payload = tx?.Payloads?.FirstOrDefault()?.Data;
+
+            if (!string.IsNullOrEmpty(payload))
+            {
+                string definitionJson;
+                try
+                {
+                    definitionJson = Encoding.UTF8.GetString(Base64Url.DecodeFromChars(payload.AsSpan()));
+                }
+                catch (FormatException)
+                {
+                    definitionJson = payload;   // already plain text
+                }
+
+                var recomputed = BlueprintPublicationId.ComputeFromDefinition(
+                    registerId, blueprintId, definitionJson);
+
+                if (!string.Equals(recomputed, definitionTxId, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogError(
+                        "Definition {DefinitionTxId} of blueprint {BlueprintId} read from register " +
+                        "{RegisterId} does not reproduce its own transaction id (recomputed {Recomputed}). " +
+                        "Refusing: the payload does not match the transaction that carried it.",
+                        definitionTxId, blueprintId, registerId, recomputed);
+                    return null;
+                }
+
+                var fromLedger = JsonSerializer.Deserialize<BlueprintModel>(definitionJson);
+                if (fromLedger is not null)
+                {
+                    await _blueprintCache.SetDefinitionAsync(fromLedger, definitionTxId, ct: ct);
+                    _logger.LogInformation(
+                        "Definition {DefinitionTxId} of blueprint {BlueprintId} resolved from the register ledger",
+                        definitionTxId, blueprintId);
+                    return fromLedger;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to read definition {DefinitionTxId} of blueprint {BlueprintId} from register {RegisterId}",
+                definitionTxId, blueprintId, registerId);
         }
 
         // Deliberately NO fallback to latest, and no system-register arm: system blueprints are
         // resolved by id (they carry no instance pin), and a pinned lookup that reaches here means
         // this node genuinely cannot produce the definition the instance runs.
         _logger.LogError(
-            "Pinned definition {ExecDefHash} of blueprint {BlueprintId} is UNRESOLVABLE on this node. " +
+            "Pinned definition {DefinitionTxId} of blueprint {BlueprintId} is UNRESOLVABLE on this node. " +
             "The transaction will be refused rather than validated against a different definition.",
-            execDefHash, blueprintId);
+            definitionTxId, blueprintId);
         return null;
     }
 

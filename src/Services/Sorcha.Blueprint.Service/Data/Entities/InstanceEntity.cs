@@ -34,7 +34,7 @@ public class InstanceEntity
     /// instance whose transactions predate the feature.
     /// </summary>
     [MaxLength(64)]
-    public string BlueprintExecDefHash { get; set; } = string.Empty;
+    public string BlueprintDefinitionTxId { get; set; } = string.Empty;
 
     /// <summary>
     /// Identifier of the register this instance operates on.
