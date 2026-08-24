@@ -162,13 +162,28 @@ Flattening is not an optimisation: the ledger copy is what a recovering or valid
 that has the catalogue and a node that does not would execute different definitions from the same
 bytes.
 
-**Gap (expanded from FINDINGS §13 — new).** The two paths differ in more than flattening:
-`PublishService` serializes the ledger payload with **default (PascalCase)** options
-(`Blueprint/Program.cs:3203`) while caching the *same* definition for the validator in **camelCase**
-(`:3253-3256`); the instance-creation path serializes in **camelCase** (`:2306-2310`). Under content
-addressing, casing alone yields two different definition ids for one blueprint. So the collapse of
-the two paths must pin **three** things — which path writes, flattening, and the naming policy —
-not two.
+**Gap (FINDINGS §13).** `PublishService` serializes a **deep-copied, `$ref`-flattened** snapshot
+(`Blueprint/Program.cs:3203-3205`, pushed at `:3269-3271`); the instance-creation branch serializes
+the **draft as it stands, unflattened**, with its own options (`:2306-2318`). Two different shapes of
+one blueprint, and which one reaches the ledger depends on which path ran.
+
+> **Retracted 2026-08-24 (same day).** An earlier revision of this document claimed the two paths
+> also differ in property **casing** — that `PublishService` writes PascalCase because it uses
+> default `JsonSerializerOptions`. **That is wrong.** Every property on the serialized
+> `Blueprint`/`Action`/`Route`/`Participant` graph carries an explicit `[JsonPropertyName("…")]` in
+> camelCase, and an attribute beats the naming policy — so default options emit camelCase, and the
+> `PropertyNamingPolicy = CamelCase` on the instance-creation path is a **no-op**. Both paths emit
+> identical bytes for an identical model. (Verified across all 30 files in
+> `Sorcha.Blueprint.Models`: the only unattributed types — `SchemaLayoutInfo`, `XReviewExtension`,
+> `BlueprintPageDefinition` — are `SchemaLayoutParser` outputs that never reach the wire.) The error
+> was inferring the wire shape from the serializer options without checking the model for attributes.
+>
+> **What survives the retraction, and matters more:** the wire shape is pinned by *attributes on the
+> model*, which means **every `[JsonPropertyName]` on the blueprint graph becomes part of the ledger
+> contract** the moment the definition is content-addressed. Renaming one — a refactor with no
+> compile-time consequence and no test that would notice — silently changes **every** definition id
+> on every register. That belongs in the guarded set (below), and it is a stronger reason for the
+> canonicaliser than the divergence I thought I had found.
 
 **This collapse is a prerequisite of D, in the same change.** Content-addressing without it trades a
 silent drop for a silent fork: two shapes of one blueprint would both land under different ids and
@@ -288,13 +303,35 @@ changed**:
 
 Ordered by what would silently break if skipped.
 
-1. **The canonicaliser** — one home, RFC 8785-style key-sorted, one naming policy (camelCase), with
-   a serialize → parse → serialize → compare round-trip guard. D's entire identity rests on it, and
-   the current code already contains three different serializer configurations for the same content.
+1. **The canonicaliser** — one home, one round-trip guard (serialize → parse → serialize → compare).
+   D's entire identity rests on it. **Everything that can vary in a serialization is part of the
+   identity**, so each must be chosen once, in one place, and guarded:
 
-2. **The publication rule** — one writer (`PublishService.PublishAsync`), flattened payload, one
-   naming policy, and the dedupe predicate ("identical canonical bytes ⇒ identical id ⇒ idempotent
-   no-op"). Written as a contract test, not prose.
+   **Canonicalisation is parse → re-serialize with fixed options, and that shape already normalises
+   three of the six for free.** Escaping and whitespace do not survive a parse (`&` and `&`
+   parse to the same string), which is why the producer's encoder cannot affect the id so long as
+   the hash is taken *after* the Register's re-serialization. What does survive a parse is the list
+   below marked "not pinned" — and property order is the one that matters.
+
+   | Degree of freedom | Survives a parse? | Status today |
+   |---|---|---|
+   | Property **names/casing** | yes | pinned by `[JsonPropertyName]` on the model — but see the warning below |
+   | Property **order** | **yes** | **NOT pinned** — `BlueprintContentHash` re-serializes a parsed `JsonDocument`, which preserves input order. This is the one real gap. |
+   | **Number** representation (`1` vs `1.0` vs `1e0`) | **yes** — STJ writes a parsed number from its raw text | **NOT pinned**; low risk (values come from a typed model) but state it |
+   | Duplicate keys | resolved at parse (last wins) | fine; a canonicaliser should reject rather than silently pick |
+   | Insignificant **whitespace** | no | normalised by the parse |
+   | String **escaping** | no | normalised by the parse — `BlueprintContentHash`'s relaxed encoder vs the publish paths' default encoder is therefore **not** a divergence |
+   | **Null** properties (omit vs emit) | yes | pinned per-property by `JsonIgnoreCondition` on the model — same contract hazard as names |
+
+   ⚠ **Property names being pinned by attributes is not the same as being safe.** It makes every
+   `[JsonPropertyName]` on the blueprint graph part of the ledger contract: renaming one is a
+   refactor with no compile-time consequence and no test that would notice, and it silently changes
+   **every** definition id on **every** register. Guard it — a golden-vector test over a fixed
+   blueprint fixture asserting a known id, which fails on any change to any of the six rows above.
+
+2. **The publication rule** — one writer (`PublishService.PublishAsync`), `$ref`-flattened payload,
+   and the dedupe predicate ("identical canonical bytes ⇒ identical id ⇒ idempotent no-op"). Written
+   as a contract test, not prose.
 
 3. **`PublishedBlueprint.PublicationTxId`** — the field whose absence created the whole problem.
    Recorded from the Register Service's response; never computed locally.
@@ -359,7 +396,7 @@ All filed / updated 2026-08-24.
 | **#1567** *(new)* | The execution path resolves without the pin (FINDINGS §9, §12) — the engine validates one definition and signs a decision labelled with another. |
 | **#1568** *(new)* | Amend mints a new blueprint id (FINDINGS §10) — two unrelated upgrade paths; source selected by the unstable ordinal. |
 | **#1569** *(new)* | `GET /registers/{id}/blueprints/published` is `AllowAnonymous`, returns full definitions, comment claims metadata only (FINDINGS §15). |
-| **#1570** *(new)* | The two publish paths differ in property **casing** as well as `$ref` flattening — masked by #1563, a silent fork the moment it is fixed. |
+| **#1570** *(new)* | Two publish paths reach the register with different payloads — flattened snapshot vs unflattened draft. Masked by #1563, a silent fork the moment it is fixed. *(The casing half of this was retracted same-day — see stage 3.)* |
 
 **Sequencing.** #1570 must land *with* #1563, not after it. #1558 and #1569 are independent and
 shippable now. #1566 sequences after #1563 (D reduces its severity) but can ship independently if
