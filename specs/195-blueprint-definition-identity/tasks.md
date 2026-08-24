@@ -21,8 +21,8 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 Record the pre-change test baseline per project (`Sorcha.Blueprint.Models.Tests`, `Sorcha.Blueprint.Engine.Tests`, `Sorcha.Blueprint.Service.Tests`, `Sorcha.Validator.Service.Tests`, `Sorcha.Register.Service.Tests`) into `specs/195-blueprint-definition-identity/baseline.md`, so a later count change is attributable rather than assumed
-- [ ] T002 [P] Run `dotnet ef migrations has-pending-model-changes` for the Blueprint context and record the result in `specs/195-blueprint-definition-identity/baseline.md` — F194 lost a deploy to skipping this, and the container reports HEALTHY when migrations fail
+- [x] T001 Record the pre-change test baseline per project (`Sorcha.Blueprint.Models.Tests`, `Sorcha.Blueprint.Engine.Tests`, `Sorcha.Blueprint.Service.Tests`, `Sorcha.Validator.Service.Tests`, `Sorcha.Register.Service.Tests`) into `specs/195-blueprint-definition-identity/baseline.md`, so a later count change is attributable rather than assumed
+- [x] T002 [P] Run `dotnet ef migrations has-pending-model-changes` for the Blueprint context and record the result in `specs/195-blueprint-definition-identity/baseline.md` — F194 lost a deploy to skipping this, and the container reports HEALTHY when migrations fail
 
 ---
 
