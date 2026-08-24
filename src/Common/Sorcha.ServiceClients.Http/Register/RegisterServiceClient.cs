@@ -885,7 +885,7 @@ public class RegisterServiceClient : IRegisterServiceClient
         }
     }
 
-    public async Task<bool> PublishBlueprintToRegisterAsync(
+    public async Task<BlueprintPublicationResult?> PublishBlueprintToRegisterAsync(
         string registerId,
         string blueprintId,
         string blueprintJson,
@@ -919,13 +919,36 @@ public class RegisterServiceClient : IRegisterServiceClient
                 _logger.LogWarning(
                     "Failed to publish blueprint {BlueprintId} to register {RegisterId}: {StatusCode} - {Error}",
                     blueprintId, registerId, response.StatusCode, error);
-                return false;
+                return null;
+            }
+
+            // Feature 195 — read the identity the register assigned. Do NOT recompute it: the
+            // Register Service is the one producer, and a second one would compute a plausible id
+            // that disagrees with the ledger's.
+            var body = await response.Content.ReadFromJsonAsync<PublishBlueprintApiResponse>(
+                JsonOptions, cancellationToken);
+
+            if (body is null || string.IsNullOrWhiteSpace(body.TxId))
+            {
+                // A 2xx carrying no id is a broken contract, not a success. Treating it as one is how
+                // #1563 stayed invisible for as long as it did.
+                _logger.LogError(
+                    "Register accepted blueprint {BlueprintId} for register {RegisterId} but returned no " +
+                    "publication id; treating as a failure rather than recording an unknown identity",
+                    blueprintId, registerId);
+                return null;
             }
 
             _logger.LogInformation(
-                "Successfully published blueprint {BlueprintId} to register {RegisterId}",
-                blueprintId, registerId);
-            return true;
+                "Blueprint {BlueprintId} published to register {RegisterId} as {PublicationTxId} " +
+                "(alreadyPublished: {AlreadyPublished})",
+                blueprintId, registerId, body.TxId, body.AlreadyPublished);
+
+            return new BlueprintPublicationResult
+            {
+                PublicationTxId = body.TxId,
+                AlreadyPublished = body.AlreadyPublished
+            };
         }
         catch (HttpRequestException ex)
         {
@@ -933,7 +956,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 ex,
                 "HTTP error publishing blueprint {BlueprintId} to register {RegisterId}",
                 blueprintId, registerId);
-            return false;
+            return null;
         }
         catch (Exception ex)
         {
@@ -941,8 +964,15 @@ public class RegisterServiceClient : IRegisterServiceClient
                 ex,
                 "Failed to publish blueprint {BlueprintId} to register {RegisterId}",
                 blueprintId, registerId);
-            return false;
+            return null;
         }
+    }
+
+    /// <summary>Wire shape of the register's publish response (Feature 195).</summary>
+    private sealed class PublishBlueprintApiResponse
+    {
+        public string TxId { get; set; } = string.Empty;
+        public bool AlreadyPublished { get; set; }
     }
 
     // =========================================================================

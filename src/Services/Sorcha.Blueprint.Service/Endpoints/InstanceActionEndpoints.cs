@@ -100,7 +100,7 @@ public static class InstanceActionEndpoints
         // readable by someone who is not yet a participant — see IsOpenStartingAction. Ordering is
         // deliberate: a caller who fails the gate gets 403 whether or not the blueprint/action
         // exists, so a non-participant still cannot probe for which actions are present (#1183).
-        var blueprint = await actionResolver.GetBlueprintAsync(instance.BlueprintId, cancellationToken);
+        var blueprint = await actionResolver.GetBlueprintAsync(instance.BlueprintId, instance.BlueprintDefinitionTxId, cancellationToken);
         var action = blueprint is null
             ? null
             : actionResolver.GetActionDefinition(blueprint, actionId.ToString());

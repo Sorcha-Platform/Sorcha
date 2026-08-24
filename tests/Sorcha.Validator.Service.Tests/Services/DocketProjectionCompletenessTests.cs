@@ -117,6 +117,7 @@ public class DocketProjectionCompletenessTests
         var routingDecision = new RoutingDecision
         {
             CompletedActionId = 3,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions = [new ActionRef { ActionId = 4 }],
             RouteId = "route-approve",
             ReasonCode = "approved"

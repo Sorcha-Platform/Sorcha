@@ -141,6 +141,7 @@ public class EncryptionBackgroundServiceTests
             {
                 Id = "inst-1",
                 BlueprintId = "bp-1",
+                BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: an instance must carry its definition pin, or execution has nothing to resolve or chain from
                 BlueprintVersion = 1,
                 RegisterId = "reg-1",
                 TenantId = "tenant-1",
@@ -148,7 +149,7 @@ public class EncryptionBackgroundServiceTests
                 ParticipantWallets = new Dictionary<string, string> { ["p1"] = "wallet-sender-001" }
             });
 
-        _actionResolver.Setup(a => a.GetBlueprintAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _actionResolver.Setup(a => a.GetBlueprintAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Blueprint.Models.Blueprint
             {
                 Title = "Test Blueprint",

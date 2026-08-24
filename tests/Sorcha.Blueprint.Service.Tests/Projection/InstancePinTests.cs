@@ -25,7 +25,7 @@ public class InstancePinTests
     private static ProjectedTransaction Tx(
         string id, string? prev, int completed, int[] next, string? pin)
         => new(id, prev, completed, next, NoBindings,
-               IsRejection: false, RouteId: null, ReasonCode: null, BlueprintExecDefHash: pin);
+               IsRejection: false, RouteId: null, ReasonCode: null, BlueprintDefinitionTxId: pin);
 
     [Fact]
     public void TheStartingAction_EstablishesThePin()
@@ -35,7 +35,7 @@ public class InstancePinTests
             Tx("tx1", null, 1, [2], DefinitionA),
         ])!;
 
-        instance.BlueprintExecDefHash.Should().Be(DefinitionA);
+        instance.BlueprintDefinitionTxId.Should().Be(DefinitionA);
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class InstancePinTests
             Tx("tx3", "tx2", 3, [], DefinitionA),
         ])!;
 
-        instance.BlueprintExecDefHash.Should().Be(DefinitionA);
+        instance.BlueprintDefinitionTxId.Should().Be(DefinitionA);
         instance.State.Should().Be(InstanceState.Completed);
     }
 
@@ -66,7 +66,7 @@ public class InstancePinTests
         var outcome = InstanceProjection.Apply(instance, Tx("tx2", "tx1", 2, [3], DefinitionB));
 
         outcome.Should().Be(FoldOutcome.RefusedForeignDefinition);
-        instance.BlueprintExecDefHash.Should().Be(DefinitionA, "the pin is immutable");
+        instance.BlueprintDefinitionTxId.Should().Be(DefinitionA, "the pin is immutable");
         instance.CurrentActionIds.Should().Equal([2],
             "the refused transaction must not advance the instance");
         instance.CompletedActionCount.Should().Be(1);
@@ -85,7 +85,7 @@ public class InstancePinTests
             Tx("tx2", "tx1", 2, [3], DefinitionB),
         ])!;
 
-        instance.BlueprintExecDefHash.Should().Be(DefinitionA);
+        instance.BlueprintDefinitionTxId.Should().Be(DefinitionA);
         instance.CurrentActionIds.Should().Equal(2);
         instance.CompletedActionCount.Should().Be(1);
     }
@@ -104,7 +104,7 @@ public class InstancePinTests
         var outcome = InstanceProjection.Apply(instance, Tx("tx2", "tx1", 2, [3], pin: null));
 
         outcome.Should().Be(FoldOutcome.Advanced);
-        instance.BlueprintExecDefHash.Should().Be(DefinitionA, "an unpinned transaction must not erase the pin");
+        instance.BlueprintDefinitionTxId.Should().Be(DefinitionA, "an unpinned transaction must not erase the pin");
         instance.CurrentActionIds.Should().Equal(3);
     }
 
@@ -117,7 +117,7 @@ public class InstancePinTests
             Tx("tx2", "tx1", 2, [], pin: null),
         ])!;
 
-        instance.BlueprintExecDefHash.Should().BeEmpty(
+        instance.BlueprintDefinitionTxId.Should().BeEmpty(
             "an empty pin is how an operator tells a pre-feature instance from a pinned one");
         instance.State.Should().Be(InstanceState.Completed);
     }
@@ -130,12 +130,12 @@ public class InstancePinTests
         [
             Tx("tx1", null, 1, [2], pin: null),
         ])!;
-        instance.BlueprintExecDefHash.Should().BeEmpty();
+        instance.BlueprintDefinitionTxId.Should().BeEmpty();
 
         InstanceProjection.Apply(instance, Tx("tx2", "tx1", 2, [3], DefinitionA))
             .Should().Be(FoldOutcome.Advanced);
 
-        instance.BlueprintExecDefHash.Should().Be(DefinitionA);
+        instance.BlueprintDefinitionTxId.Should().Be(DefinitionA);
     }
 
     [Fact]
@@ -155,9 +155,9 @@ public class InstancePinTests
         var shuffled = InstanceProjection.Project("inst-1", "reg", "bp", 1, "tenant",
             [chain[1], chain[2], chain[0]])!;
 
-        forward.BlueprintExecDefHash.Should().Be(DefinitionA);
-        reversed.BlueprintExecDefHash.Should().Be(forward.BlueprintExecDefHash);
-        shuffled.BlueprintExecDefHash.Should().Be(forward.BlueprintExecDefHash);
+        forward.BlueprintDefinitionTxId.Should().Be(DefinitionA);
+        reversed.BlueprintDefinitionTxId.Should().Be(forward.BlueprintDefinitionTxId);
+        shuffled.BlueprintDefinitionTxId.Should().Be(forward.BlueprintDefinitionTxId);
     }
 
     [Fact]

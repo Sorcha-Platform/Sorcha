@@ -1028,10 +1028,12 @@ blueprintGroup.MapPost("/{id}/publish", async (
             // Feature 194: the definition just published, by content. `version` is a display label
             // (insert order, re-derived on recovery); this is what an instance is pinned to and what
             // a caller needs if it wants to name this exact definition later.
+            publicationTxId = result.PublishedBlueprint.PublicationTxId,
             execDefHash = result.PublishedBlueprint.ExecDefHash,
             registerId = body.RegisterId,
             publishedAt = result.PublishedBlueprint.PublishedAt,
             overridden,
+            alreadyPublished = result.AlreadyPublished,
             warnings = result.Warnings
         });
     }
@@ -1040,10 +1042,12 @@ blueprintGroup.MapPost("/{id}/publish", async (
     {
         blueprintId = result.PublishedBlueprint!.BlueprintId,
         version = result.PublishedBlueprint.Version,
-        execDefHash = result.PublishedBlueprint.ExecDefHash,
+        publicationTxId = result.PublishedBlueprint.PublicationTxId,
+            execDefHash = result.PublishedBlueprint.ExecDefHash,
         registerId = body.RegisterId,
         publishedAt = result.PublishedBlueprint.PublishedAt,
-        overridden
+        overridden,
+            alreadyPublished = result.AlreadyPublished
     });
 })
 .WithName("PublishBlueprint")
@@ -1093,16 +1097,16 @@ blueprintGroup.MapGet("/{id}/versions/{version}", async (string id, int version,
 //
 // Content-addressed, therefore immutable — cached permanently, like the by-ordinal endpoint.
 // </remarks>
-blueprintGroup.MapGet("/{id}/definitions/{execDefHash}", async (
-    string id, string execDefHash, IPublishedBlueprintStore store) =>
+blueprintGroup.MapGet("/{id}/definitions/{publicationTxId}", async (
+    string id, string publicationTxId, IPublishedBlueprintStore store) =>
 {
-    var published = await store.GetByExecDefHashAsync(id, execDefHash);
+    var published = await store.GetByPublicationAsync(id, publicationTxId);
     return published is not null ? Results.Ok(published.Blueprint) : Results.NotFound();
 })
-.WithName("GetBlueprintDefinitionByHash")
+.WithName("GetBlueprintDefinition")
 .WithSummary("Get a pinned blueprint definition")
 .WithDescription(
-    "Retrieve the exact published definition identified by its executable-definition hash — the "
+    "Retrieve the exact published definition identified by the transaction that published it — the "
     + "definition a running instance is pinned to. Returns 404 when this node cannot resolve it; "
     + "callers MUST treat that as a refusal and never fall back to the latest definition.")
 .CacheOutput(policy => policy.Expire(TimeSpan.FromDays(365)).Tag("published"));
@@ -1488,6 +1492,7 @@ actionsGroup.MapPost("/", async (
     Sorcha.ServiceClients.Wallet.IWalletServiceClient walletClient,
     Sorcha.ServiceClients.Register.IRegisterServiceClient registerClient,
     Sorcha.Blueprint.Service.Storage.IActionStore actionStore,
+    Sorcha.Blueprint.Service.Storage.IInstanceStore instanceStore,
     Sorcha.Cryptography.Interfaces.IHashProvider hashProvider,
     Sorcha.Blueprint.Engine.Interfaces.IDisclosureProcessor disclosureProcessor,
     Sorcha.Blueprint.Service.Endpoints.FileUploadSessionStore fileSessionStore) =>
@@ -1557,8 +1562,20 @@ actionsGroup.MapPost("/", async (
             return Results.Conflict(new { error = "Duplicate submission", transactionHash = existingTxHash });
         }
 
-        // 1. Get blueprint
-        var blueprint = await actionResolver.GetBlueprintAsync(request.BlueprintId);
+        // 1. Get the definition THIS INSTANCE is pinned to (Feature 195).
+        //
+        // Resolving by blueprint id alone would validate the submission against whatever definition
+        // this node happens to hold latest — which is the defect version pinning exists to remove,
+        // and it fails silently: the payload is checked against rules the instance never agreed to
+        // run, and the routing decision is then labelled with the instance's actual pin.
+        var pinnedInstance = await instanceStore.GetAsync(request.InstanceId);
+        if (pinnedInstance == null)
+        {
+            return Results.BadRequest(new { error = $"Instance {request.InstanceId} not found" });
+        }
+
+        var blueprint = await actionResolver.GetBlueprintAsync(
+            request.BlueprintId, pinnedInstance.BlueprintDefinitionTxId);
         if (blueprint == null)
         {
             return Results.BadRequest(new { error = "Blueprint not found" });
@@ -1617,11 +1634,12 @@ actionsGroup.MapPost("/", async (
         var previousTxId = request.PreviousTransactionHash;
         if (string.IsNullOrEmpty(previousTxId))
         {
-            // Action 0: chain from the blueprint publish transaction
-            previousTxId = Sorcha.Blueprint.Service.Services.Implementation.ActionExecutionService
-                .ComputeBlueprintPublishTxId(request.RegisterAddress, request.BlueprintId);
+            // Action 0 chains from the transaction that PUBLISHED the definition this instance
+            // runs (Feature 195). Read from the instance's pin, never recomputed: anchor and pin are
+            // one value because they are one fact, and the formula this replaced had four homes.
+            previousTxId = pinnedInstance.BlueprintDefinitionTxId;
             logger.LogInformation(
-                "Action 0 for blueprint {BlueprintId}: PrevTxId set to blueprint publish TX {TxId}",
+                "Action 0 for blueprint {BlueprintId}: PrevTxId set to its definition's publication {TxId}",
                 request.BlueprintId, previousTxId);
         }
 
@@ -2281,68 +2299,25 @@ instancesGroup.MapPost("/", async (
                 statusCode: StatusCodes.Status409Conflict);
         }
 
-        // Ensure the blueprint publish transaction exists on the register. Action 0 chains
-        // from this TX, so it must exist before any actions execute. Feature 137 (C1): ONLY
-        // the register owner publishes — a replica must never (re)publish onto a register it
-        // does not own (the publish tx already arrived via replication). The Register Service
-        // endpoint is idempotent, so the owner can safely call it on every instance creation.
-        var isOwner = false;
-        try
-        {
-            var relationship = await registerClient.GetLocalRelationshipAsync(request.RegisterId);
-            isOwner = relationship?.IsOwner == true;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex,
-                "Could not resolve local relationship for register {RegisterId}; treating as non-owner (skipping publish)",
-                request.RegisterId);
-        }
+        // Feature 195 — instance creation does NOT publish.
+        //
+        // This block used to push the blueprint to the register on the owner node, "so action 0 has
+        // something to chain from". It pushed the DRAFT, unflattened, with its own serializer
+        // options, while PublishService pushes a $ref-flattened deep-copied snapshot — two different
+        // shapes of one blueprint reaching the ledger depending on which path ran (#1570).
+        //
+        // The divergence was invisible only because the old publish txId was version-blind, so the
+        // second push deduped into the first and was silently discarded. Content-addressing the
+        // publication unmasks it: both shapes would land under different ids and recovery would
+        // faithfully restore BOTH as distinct definitions — a silent fork replacing a silent drop,
+        // and worse, because a forked definition looks healthy.
+        //
+        // There is now ONE writer: POST /api/blueprints/{id}/publish. An instance is created against
+        // a definition that has already been published, and pins to it; the starting action chains
+        // from that definition's own publication transaction, read from the instance's pin rather
+        // than recomputed. Nothing here needs to write to the ledger.
 
-        if (isOwner)
-        {
-            try
-            {
-                var blueprintJson = System.Text.Json.JsonSerializer.Serialize(blueprint, new System.Text.Json.JsonSerializerOptions
-                {
-                    PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
-                    WriteIndented = false
-                });
-
-                var published = await registerClient.PublishBlueprintToRegisterAsync(
-                    request.RegisterId,
-                    request.BlueprintId,
-                    blueprintJson,
-                    request.TenantId ?? "system");
-
-                if (!published)
-                {
-                    logger.LogWarning(
-                        "Failed to publish blueprint {BlueprintId} to register {RegisterId} during instance creation",
-                        request.BlueprintId, request.RegisterId);
-                }
-                else
-                {
-                    logger.LogInformation(
-                        "Blueprint {BlueprintId} published to register {RegisterId} for instance creation",
-                        request.BlueprintId, request.RegisterId);
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex,
-                    "Non-fatal: Could not publish blueprint {BlueprintId} to register {RegisterId}",
-                    request.BlueprintId, request.RegisterId);
-            }
-        }
-        else
-        {
-            logger.LogDebug(
-                "Skipping blueprint publish for register {RegisterId}: this node is not the owner (replica path)",
-                request.RegisterId);
-        }
-
-        // Find starting actions
+        // Find starting actions        // Find starting actions
         var startingActions = blueprint.Actions
             .Where(a => a.IsStartingAction)
             .Select(a => a.Id)
@@ -2363,17 +2338,22 @@ instancesGroup.MapPost("/", async (
             participantWallets[p.Id] = p.WalletAddress!;
         }
 
-        // Feature 194: choose the definition this instance will run for its whole life.
+        // Feature 194/195: choose the definition this instance will run for its whole life.
         //
-        // The pin MUST be a PUBLISHED definition's hash, never the draft's. The validator resolves
-        // published definitions, so pinning to a draft — which may differ from anything ever
-        // published — would produce an instance whose every action refers to a definition no node
-        // can resolve. This is also why the pin is taken from the published store even when the
-        // draft store answered above: what runs is what was published, not what is in an editor.
+        // The pin MUST be a PUBLISHED definition, never the draft. The validator and the engine both
+        // resolve published definitions, so pinning to a draft — which may differ from anything ever
+        // published — would produce an instance whose every action refers to a definition no node can
+        // resolve. That is why the pin is taken from the published store even when the draft store
+        // answered above: what runs is what was published, not what is in an editor.
+        //
+        // Feature 195 makes the pin the PUBLICATION TRANSACTION ID rather than an executable-
+        // definition hash. It names a ledger fact, so any node holding the register can resolve it —
+        // and the starting action chains from that very transaction, which is why anchor and pin are
+        // now one value.
         var latestPublished = PublishedBlueprintSelector.SelectLatest(
             await publishedBlueprintStore.GetVersionsAsync(request.BlueprintId));
 
-        var pinnedExecDefHash = latestPublished?.ExecDefHash ?? string.Empty;
+        var pinnedExecDefHash = latestPublished?.PublicationTxId ?? string.Empty;
         if (latestPublished is not null)
         {
             resolvedVersion = latestPublished.Version;
@@ -2392,13 +2372,38 @@ instancesGroup.MapPost("/", async (
                 request.BlueprintId, request.RegisterId);
         }
 
+        // Feature 195 (FR-009) — INITIALISE FROM THE DEFINITION WE PIN.
+        //
+        // The starting actions, participant wallets and title above were derived from whatever the
+        // draft store answered with. Pinning a different definition than the instance was set up from
+        // is how an instance could be born already inconsistent: its current-action set and
+        // pre-bound wallets from one definition, every subsequent action validated against another.
+        // One definition, used for both.
+        if (latestPublished?.Blueprint is { } pinnedDefinition)
+        {
+            blueprint = pinnedDefinition;
+
+            startingActions = pinnedDefinition.Actions
+                .Where(a => a.IsStartingAction)
+                .Select(a => a.Id)
+                .ToList();
+            if (startingActions.Count == 0 && pinnedDefinition.Actions.Count > 0)
+            {
+                startingActions = [pinnedDefinition.Actions.First().Id];
+            }
+
+            participantWallets = pinnedDefinition.Participants
+                .Where(pp => !string.IsNullOrEmpty(pp.WalletAddress))
+                .ToDictionary(pp => pp.Id, pp => pp.WalletAddress!);
+        }
+
         // Create instance
         var instance = new Sorcha.Blueprint.Service.Models.Instance
         {
             Id = Guid.NewGuid().ToString(),
             BlueprintId = request.BlueprintId,
             BlueprintVersion = resolvedVersion,
-            BlueprintExecDefHash = pinnedExecDefHash,
+            BlueprintDefinitionTxId = pinnedExecDefHash,
             RegisterId = request.RegisterId,
             CurrentActionIds = startingActions,
             ParticipantWallets = participantWallets,
@@ -2777,7 +2782,7 @@ public interface IPublishedBlueprintStore
     /// </remarks>
     /// <returns>The pinned definition, or <c>null</c> if this node cannot resolve it — which the
     /// caller MUST treat as a refusal, never as licence to fall back to the latest.</returns>
-    Task<PublishedBlueprint?> GetByExecDefHashAsync(string blueprintId, string execDefHash);
+    Task<PublishedBlueprint?> GetByPublicationAsync(string blueprintId, string execDefHash);
 
     /// <summary>Feature 154 (catalogue) — the latest published version of every blueprint.</summary>
     Task<IEnumerable<PublishedBlueprint>> GetAllLatestAsync();
@@ -2901,22 +2906,27 @@ public class InMemoryPublishedBlueprintStore : IPublishedBlueprintStore
     }
 
     /// <inheritdoc/>
-    public Task<PublishedBlueprint?> GetByExecDefHashAsync(string blueprintId, string execDefHash)
+    public Task<PublishedBlueprint?> GetByPublicationAsync(string blueprintId, string publicationTxId)
     {
-        if (string.IsNullOrWhiteSpace(execDefHash) || !_published.TryGetValue(blueprintId, out var versions))
+        if (string.IsNullOrWhiteSpace(publicationTxId) || !_published.TryGetValue(blueprintId, out var versions))
         {
             return Task.FromResult<PublishedBlueprint?>(null);
         }
 
-        // Several publications can share one hash (a presentational-only republish produces the
-        // same executable definition). They are the same definition by construction, so the newest
-        // is as good as any — but resolve deterministically so two nodes agree on which row they
-        // report, and so the ordinal an operator is shown is stable between reads.
+        // Feature 195 — NO TIE-BREAK. A publication id identifies exactly one publication, so there
+        // is nothing to break a tie between.
+        //
+        // What was here resolved by ExecDefHash and, on a collision, took the highest ordinal —
+        // justified by a comment claiming colliding entries were "the same definition by
+        // construction". That premise was FALSE: the executable-definition projection omitted nine
+        // execution-affecting fields, so two publications sharing a hash could differ in rejection
+        // routing, legacy participant routing, branch deadlines, decision-notice wording,
+        // presentation config and instance references. For exactly those fields a pinned instance
+        // was handed the NEWEST definition — the defect version pinning exists to remove,
+        // reappearing inside its own resolution path.
         var match = versions
-            .Where(v => v.Blueprint is not null
-                        && string.Equals(v.ExecDefHash, execDefHash, StringComparison.Ordinal))
-            .OrderByDescending(v => v.Version)
-            .FirstOrDefault();
+            .FirstOrDefault(v => v.Blueprint is not null
+                                 && string.Equals(v.PublicationTxId, publicationTxId, StringComparison.OrdinalIgnoreCase));
 
         return Task.FromResult(match);
     }
@@ -3223,11 +3233,37 @@ public class PublishService(
 
         var execDefHash = _execDefHasher.ComputeHash(snapshot);
 
-        // Create published version (immutable snapshot)
+        // Feature 195 — the LEDGER FIRST, because the ledger assigns the identity.
+        //
+        // This ordering is load-bearing. The register is the one producer of a definition's
+        // publication id, so the local store cannot record a definition until the register has said
+        // what that definition IS. It also fixes a quieter problem in the old order: the published
+        // store was written before the ledger push, so a failed push left a definition that existed
+        // locally and nowhere else — resolvable on this node, unresolvable on every other, and
+        // indistinguishable from a healthy publish until something needed it.
+        if (_registerClient is null)
+        {
+            return PublishResult.Failed(
+                "Cannot publish: no register client is configured, so no definition identity can be assigned.");
+        }
+
+        var publication = await _registerClient.PublishBlueprintToRegisterAsync(
+            registerId, blueprintId, blueprintJson, "system");
+
+        if (publication is null)
+        {
+            return PublishResult.Failed(
+                $"Register did not accept blueprint {blueprintId} for register {registerId}. " +
+                "Nothing was recorded locally — a definition that exists only on this node is worse " +
+                "than a failed publish, because it looks resolvable here and is not resolvable anywhere else.");
+        }
+
+        // Create published version (immutable snapshot), carrying the identity the register assigned.
         var published = new PublishedBlueprint
         {
             BlueprintId = blueprint.Id,
             Blueprint = snapshot,
+            PublicationTxId = publication.PublicationTxId,
             ExecDefHash = execDefHash,
             PublishedAt = DateTimeOffset.UtcNow,
             RegisterId = registerId
@@ -3236,8 +3272,9 @@ public class PublishService(
         await _publishedStore.AddAsync(published);
 
         _logger?.LogInformation(
-            "Blueprint {BlueprintId} published to register {RegisterId} as version {Version} with executable-definition hash {ExecDefHash}",
-            blueprintId, registerId, published.Version, execDefHash);
+            "Blueprint {BlueprintId} published to register {RegisterId} as {PublicationTxId} " +
+            "(execDefHash {ExecDefHash}, alreadyPublished: {AlreadyPublished})",
+            blueprintId, registerId, publication.PublicationTxId, execDefHash, publication.AlreadyPublished);
 
         // Populate Validator's blueprint cache in Redis so transactions referencing this blueprint pass validation
         if (_redis is not null)
@@ -3265,16 +3302,7 @@ public class PublishService(
             }
         }
 
-        // Publish to the register. Reuses the exact bytes the snapshot was built from and the hash
-        // was computed over, so the ledger record, the in-memory snapshot and the pin cannot
-        // disagree about what was published.
-        if (_registerClient is not null)
-        {
-            await _registerClient.PublishBlueprintToRegisterAsync(
-                registerId, blueprintId, blueprintJson, "system");
-        }
-
-        return PublishResult.Success(published, warnings.ToArray());
+        return PublishResult.Success(published, warnings.ToArray(), publication.AlreadyPublished);
     }
 
     private (List<string> Errors, List<string> Warnings) ValidateBlueprint(BlueprintModel blueprint)
@@ -4125,6 +4153,24 @@ public record PublishedBlueprint
     public BlueprintModel Blueprint { get; init; } = null!;
 
     /// <summary>
+    /// The publication transaction id — <b>this definition's identity</b> (Feature 195).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Recorded from the Register Service's publish response. It is <b>never computed here</b>: that
+    /// service is the one producer, and a second one would mint a plausible id that disagrees with the
+    /// ledger's (gated by <c>scripts/check-publication-id-owner.ps1</c>).
+    /// </para>
+    /// <para>
+    /// The absence of this field is what created issue #1563. With no record of the id a definition
+    /// was published as, the anchor a starting action chains from had to be RECOMPUTED from
+    /// <c>(registerId, blueprintId)</c> — a formula that grew four homes and, being version-blind,
+    /// deduped every republish into one silently-dropped transaction.
+    /// </para>
+    /// </remarks>
+    public string PublicationTxId { get; init; } = string.Empty;
+
+    /// <summary>
     /// The executable-definition hash — the content address of this definition, and the value an
     /// instance is pinned to (Feature 194). Computed at publish over exactly the bytes stored here.
     /// </summary>
@@ -4149,11 +4195,25 @@ public record PublishResult
     public string[] Errors { get; init; } = [];
     public string[] Warnings { get; init; } = [];
 
-    public static PublishResult Success(PublishedBlueprint published, string[]? warnings = null) => new()
+    /// <summary>
+    /// Feature 195 — the register recognised this content as ALREADY published, so the call was an
+    /// idempotent no-op rather than a real publish.
+    /// </summary>
+    /// <remarks>
+    /// The Register Service has always returned this discriminator; it stopped here, at the log
+    /// line, and never reached the caller. That is the same shape as #1563 itself: the endpoint
+    /// answers 200 either way, so a caller that cannot tell the two apart records success for a
+    /// publish that wrote nothing. Being distinguishable is the point of the flag, and a flag only
+    /// the server can see is not distinguishable.
+    /// </remarks>
+    public bool AlreadyPublished { get; init; }
+
+    public static PublishResult Success(PublishedBlueprint published, string[]? warnings = null, bool alreadyPublished = false) => new()
     {
         IsSuccess = true,
         PublishedBlueprint = published,
-        Warnings = warnings ?? []
+        Warnings = warnings ?? [],
+        AlreadyPublished = alreadyPublished
     };
 
     public static PublishResult Failed(params string[] errors) => new()

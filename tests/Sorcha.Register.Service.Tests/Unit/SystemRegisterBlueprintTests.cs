@@ -14,6 +14,7 @@ using Sorcha.Register.Models.Constants;
 using Sorcha.Register.Service.Services;
 using Sorcha.ServiceClients.SystemWallet;
 using Sorcha.ServiceClients.Validator;
+using Sorcha.Blueprint.Models.Canonical;
 using Xunit;
 
 namespace Sorcha.Register.Service.Tests.Unit;
@@ -271,16 +272,19 @@ public class SystemRegisterBlueprintTests
     }
 
     [Fact]
-    public async Task PublishBlueprintAsync_SealsCanonicalContentHash_SoRecoveryProvenancePasses()
+    public async Task PublishBlueprintAsync_UsesThePublicationIdAsTheTransactionId_SoRecoveryProvenancePasses()
     {
-        // Feature 138 US4 / SSR provenance: a seeded system blueprint MUST carry the same canonical
-        // contentHash in its control-tx TrackingData that the normal publish path seals. Without it,
-        // BlueprintRecoveryService rejects the blueprint with "no_provenance" on every restart, so the
-        // genesis system blueprints never re-enter the published store (the in-memory store is empty
-        // after a restart and recovery is its only repopulation path).
+        // Feature 195 — the system register is a register, and a blueprint published to it is a
+        // definition like any other. Its transaction id must therefore BE the publication id of the
+        // canonical definition, because that is what recovery recomputes and compares against.
+        //
+        // Was Feature 138 US4, which asserted a separately-sealed `contentHash` in TrackingData.
+        // Corrected rather than deleted: the property is unchanged — a seeded system blueprint must
+        // survive recovery, or the genesis blueprints never re-enter the published store after a
+        // restart and governance stops resolving (the #1466 shape). What changed is that the digest
+        // and the identity are now one value, so there is no sibling field left to disagree.
         const string blueprintStr = """{"title":"Register Creation","actions":[]}""";
         var blueprintJson = JsonSerializer.Deserialize<JsonElement>(blueprintStr);
-        var expectedContentHash = Sorcha.ServiceClients.Register.BlueprintContentHash.Compute(blueprintStr);
 
         _mockSigningService
             .Setup(s => s.SignAsync(
@@ -310,10 +314,20 @@ public class SystemRegisterBlueprintTests
             new Dictionary<string, string> { ["seedReason"] = "bootstrap" });
 
         captured.Should().NotBeNull();
-        captured!.Metadata.Should().ContainKey("contentHash");
-        captured.Metadata["contentHash"].Should().Be(
-            expectedContentHash,
-            "the recovery path recomputes BlueprintContentHash.Compute and compares against this value");
+
+        // Exactly what BlueprintRecoveryService.TryVerifyProvenance recomputes.
+        var expected = BlueprintPublicationId.ComputeFromDefinition(
+            SystemRegisterConstants.SystemRegisterId, "register-creation-v1", blueprintStr);
+
+        captured!.TransactionId.Should().Be(
+            expected,
+            "recovery recomputes the publication id from the bytes it receives and compares it to " +
+            "the transaction's own id — a system blueprint whose id is derived any other way fails " +
+            "provenance on every restart");
+
+        captured.Metadata.Should().NotContainKey("contentHash",
+            "the transaction id IS the digest now; a sibling field would be a second source of truth " +
+            "that could disagree with it");
     }
 
     [Fact]

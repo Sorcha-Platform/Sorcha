@@ -47,7 +47,7 @@ public sealed class InstancePinReadTests
 
         var body = Body(result);
         Value<string>(body, "pinState").Should().Be("pinned");
-        Value<string>(body, "blueprintExecDefHash").Should().Be(PinV1);
+        Value<string>(body, "blueprintDefinitionTxId").Should().Be(PinV1);
         Value<int?>(body, "blueprintVersion").Should().Be(1);
         Value<bool?>(body, "isPinnedToLatest").Should().BeTrue();
     }
@@ -79,7 +79,7 @@ public sealed class InstancePinReadTests
 
         var body = Body(result);
         Value<string>(body, "pinState").Should().Be("unresolvable");
-        Value<string>(body, "blueprintExecDefHash").Should().Be(PinV1);
+        Value<string>(body, "blueprintDefinitionTxId").Should().Be(PinV1);
         Value<int?>(body, "blueprintVersion").Should().BeNull();
         Value<bool?>(body, "isPinnedToLatest").Should().BeNull();
     }
@@ -90,12 +90,12 @@ public sealed class InstancePinReadTests
         // Both lack a version label; only one of them is a problem. Reporting them identically
         // would make a pre-Feature-194 instance indistinguishable from a stuck one.
         var result = await GetDefinition(
-            InstanceWith(execDefHash: string.Empty),
+            InstanceWith(publicationTxId: string.Empty),
             published: [Published(PinV1, version: 1)]);
 
         var body = Body(result);
         Value<string>(body, "pinState").Should().Be("unpinned");
-        Value<string>(body, "blueprintExecDefHash").Should().BeNull();
+        Value<string>(body, "blueprintDefinitionTxId").Should().BeNull();
         Value<int?>(body, "blueprintVersion").Should().BeNull();
         Value<bool?>(body, "isPinnedToLatest").Should().BeNull();
     }
@@ -119,12 +119,12 @@ public sealed class InstancePinReadTests
     // Fixtures
     // ---------------------------------------------------------------------------------------
 
-    private static Instance InstanceWith(string execDefHash) => new()
+    private static Instance InstanceWith(string publicationTxId) => new()
     {
         Id = "inst-1",
         BlueprintId = "bp-1",
         BlueprintVersion = 1,
-        BlueprintExecDefHash = execDefHash,
+        BlueprintDefinitionTxId = publicationTxId,
         RegisterId = "reg-1",
         TenantId = "tenant-1",
         State = InstanceState.Active,
@@ -133,10 +133,27 @@ public sealed class InstancePinReadTests
         CompletedActionCount = 1,
     };
 
-    private static PublishedBlueprint Published(string execDefHash, int version) => new()
+    /// <summary>
+    /// A published definition whose IDENTITY and whose BEHAVIOURAL SIGNATURE are deliberately
+    /// DIFFERENT values.
+    /// </summary>
+    /// <remarks>
+    /// This fixture used to assign the same string to both, and that is exactly why a real defect
+    /// survived here: <c>isPinnedToLatest</c> compared the pin (a publication transaction id)
+    /// against the latest definition's <c>ExecDefHash</c> — two different value spaces, so the
+    /// comparison could never be true in production. With one value standing in for both, the
+    /// wrong field read matched anyway and every assertion below passed. The live run on n1 is
+    /// what caught it.
+    /// <para>
+    /// So: never let a fixture use one value for two fields whose AGREEMENT is the thing under
+    /// test. A test that cannot tell the two apart cannot test the join between them.
+    /// </para>
+    /// </remarks>
+    private static PublishedBlueprint Published(string publicationTxId, int version) => new()
     {
         BlueprintId = "bp-1",
-        ExecDefHash = execDefHash,
+        PublicationTxId = publicationTxId,
+        ExecDefHash = $"execdef{version:D2}00000000000000000000000000000000000000000000000000000000",
         Version = version,
         RegisterId = "reg-1",
         Blueprint = new BlueprintModel { Id = "bp-1", Title = "T", Description = "Desc." },
@@ -147,9 +164,13 @@ public sealed class InstancePinReadTests
     {
         var mock = new Mock<IPublishedBlueprintStore>();
         mock.Setup(s => s.GetVersionsAsync("bp-1")).ReturnsAsync(published);
-        mock.Setup(s => s.GetByExecDefHashAsync("bp-1", It.IsAny<string>()))
-            .ReturnsAsync((string _, string hash) =>
-                published.FirstOrDefault(p => p.ExecDefHash == hash));
+        // Resolve BY PUBLICATION ID, which is what the real store does. This stub matched on
+        // ExecDefHash and got away with it only because the fixture gave both fields the same
+        // value — a stub that resolves on a different key than production is a test that proves
+        // the production lookup works when it does not.
+        mock.Setup(s => s.GetByPublicationAsync("bp-1", It.IsAny<string>()))
+            .ReturnsAsync((string _, string publicationTxId) =>
+                published.FirstOrDefault(p => p.PublicationTxId == publicationTxId));
         return mock.Object;
     }
 

@@ -569,6 +569,7 @@ public class RehearsalOrchestrationServiceTests
     {
         Id = "inst-1",
         BlueprintId = BlueprintId,
+        BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: execution resolves and chains by the pin
         BlueprintVersion = 1,
         TenantId = OrgId,
         RegisterId = SandboxRegisterId,
@@ -592,6 +593,7 @@ public class RehearsalOrchestrationServiceTests
             {
                 Id = "inst-1",
                 BlueprintId = BlueprintId,
+                BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: an instance must carry its definition pin, or execution has nothing to resolve or chain from
                 BlueprintVersion = 1,
                 TenantId = OrgId,
                 RegisterId = SandboxRegisterId,

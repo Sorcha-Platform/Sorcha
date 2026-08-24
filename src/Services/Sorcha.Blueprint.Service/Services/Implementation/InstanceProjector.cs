@@ -168,7 +168,7 @@ public sealed class InstanceProjector : BackgroundService
         // holds — but it is counted, because this counter is how an operator tells "pinning is
         // working" from "pinning is silently not happening". Every failure mode of this feature
         // degrades to the old behaviour rather than to an error, so the zero reading is the proof.
-        if (string.IsNullOrWhiteSpace(projected.BlueprintExecDefHash))
+        if (string.IsNullOrWhiteSpace(projected.BlueprintDefinitionTxId))
         {
             _metrics.RecordPinFallback("projector");
             _logger.LogWarning(
@@ -190,7 +190,7 @@ public sealed class InstanceProjector : BackgroundService
             _logger.LogInformation(
                 "InstanceProjector: created instance {InstanceId} (blueprint {BlueprintId}) pinned to {ExecDefHash} at action(s) {Actions}",
                 instanceId, blueprintId,
-                string.IsNullOrEmpty(created.BlueprintExecDefHash) ? "(unpinned)" : created.BlueprintExecDefHash,
+                string.IsNullOrEmpty(created.BlueprintDefinitionTxId) ? "(unpinned)" : created.BlueprintDefinitionTxId,
                 string.Join(",", created.CurrentActionIds));
             await reactionDispatcher.DispatchAsync(created, tx, ct);
             return;
@@ -215,7 +215,7 @@ public sealed class InstanceProjector : BackgroundService
                 "InstanceProjector: REFUSED transaction {TxId} for instance {InstanceId} — it claims " +
                 "blueprint definition {ClaimedHash} but the instance is pinned to {PinnedHash}. The " +
                 "instance has NOT advanced.",
-                txId, instanceId, projected.BlueprintExecDefHash, existing.BlueprintExecDefHash);
+                txId, instanceId, projected.BlueprintDefinitionTxId, existing.BlueprintDefinitionTxId);
             return;
         }
 

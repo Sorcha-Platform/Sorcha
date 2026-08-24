@@ -2499,38 +2499,59 @@ Metrics on `Sorcha.Blueprint.Instances`: `…instance_projection.pin_fallback{pa
   them silently resolve "latest" again, with a green suite. The acceptance check is therefore the
   positive one: `pin_fallback` reading **zero** on a register created after the deploy.
 
-### ⚠ What F194 does NOT yet deliver — three gaps found 2026-08-24, all silent
+### Feature 195 — the publication transaction IS the definition's identity
 
-An investigation of the whole lifecycle (`docs/superpowers/specs/2026-08-24-blueprint-lifecycle-current-state-FINDINGS.md`)
-verified three gaps in the shipped feature. **Do not rely on the pin covering an edit without
-checking these first.**
+F194's three gaps are closed. The shape of the fix matters more than the fix, because each gap was a
+*silent* one.
 
-1. **The pin does not cover the executable definition** (FINDINGS §8, proven by a probe that failed
-   **9 of 9**). `ExecutableDefinitionHasher.BuildExecutableDefinition` (`:78-96`, `BuildActions:126`,
-   `BuildRoutes:170`) is a hand-written projection **omitting** `Action.RejectionConfig` (a
-   structural successor the validator reads at `ValidationEngine.cs:1035` and `:1582`),
-   `Action.Participants` (legacy routing, live at `RoutingEngine.cs:246` — a blueprint routed that
-   way has **zero routing coverage in its pin**), `Action.RequiredActionData`, `Route.BranchDeadline`,
-   `Route.DecisionNotice`, `Blueprint.PresentationConfig`, `Blueprint.InstanceReference`. Compounding:
-   `GetByExecDefHashAsync` (`Blueprint/Program.cs:2904`) breaks a hash tie with
-   `OrderByDescending(Version).First()` on a comment asserting colliding entries are "the same
-   definition by construction" — **false for exactly those fields**, so a pinned instance is handed
-   the *newest* definition. F142 could tolerate this (soft gate); F194 cannot (validator-enforced).
-2. **The pin is enforced at seal, not at submit** (FINDINGS §9). `IActionResolverService.GetBlueprintAsync`
-   takes **no pin**, resolves **draft-first**, and caches under a bare `blueprint:{id}` key plus a
-   static action-index cache keyed the same way. The engine validates, calculates and routes against
-   one definition (`ActionExecutionService.cs:238`) then signs a decision labelled with another
-   (`:1293`/`:1771`). Disagreement ⇒ **202 and never seals**. F194 research R-007 listed this call
-   site; it did not land.
-3. **#1563 — only the FIRST definition per blueprint id reaches the ledger.** Republishes dedupe to
-   the version-blind txId and are silently dropped, so a superseded pin is `unresolvable` after a
-   restart. **Decision taken 2026-08-24: Option D** — the publication transaction *is* the
-   definition's identity (`publicationTxId = SHA-256("sorcha:blueprint-publication:v1" ␟ registerId ␟
-   blueprintId ␟ canonicalDefinitionJson)`, register-scoped, domain-tagged, key-sorted canonical
-   form, computed by **one owner**: the Register Service). The anchor and the pin become one value,
-   `RoutingDecision.BlueprintExecDefHash` becomes a definition **txId**, and gap 1 stops being
-   load-bearing. Design + the prerequisite two-publish-path collapse:
-   `docs/superpowers/specs/2026-08-24-blueprint-lifecycle-design.md`.
+```
+publicationTxId = SHA-256( "sorcha:blueprint-publication:v1" ␟ registerId ␟ blueprintId ␟ canonicalJson )
+```
+
+- **Register-scoped** — a definition published to two registers is byte-identical *by construction*,
+  so without `registerId` one id would name two ledger facts.
+- **Domain-tagged** — `InstanceIdentity.Derive` is already `SHA-256(registerId ␟ blueprintId ␟ …)`
+  with the same `0x1F` separator. Untagged, the two are the same preimage construction sharing their
+  first two fields.
+- **Canonical means key-sorted.** `RegisterSerializationOptions.Canonical` and the former
+  `BlueprintContentHash` both preserve input key order, so both address the *serializer's output*
+  rather than the content. `Sorcha.Blueprint.Models.Canonical.BlueprintCanonicalJson` is the one home.
+  Only what survives a parse can vary: whitespace and escaping do not, key order does.
+- **ONE PRODUCER — the Register Service.** Everything else *reads* the value it returns:
+  `PublishedBlueprint.PublicationTxId` records it, recovery reads real transaction ids, instance
+  creation reads the store, a starting action reads the instance's pin. Enforced by
+  `scripts/check-publication-id-owner.ps1`; recovery and the validator are allowlisted as
+  **verifiers**, which recompute to check a payload against the transaction's own id.
+
+**Anchor ≡ pin.** `ActionExecutionService.ComputeBlueprintPublishTxId` and its call sites are deleted;
+a starting action chains from the transaction that published its instance's definition, read rather
+than computed. The `WaitForTransactionConfirmationAsync` precondition is retained and now asserts
+something stronger — the exact definition, not merely the blueprint.
+
+**Resolution is by pin on the execution path too.** `IActionResolverService.GetBlueprintAsync`
+requires it, both caches carry it, and the draft store is off that path entirely. The validator gains
+a last-resort arm that could not have existed before: **read the definition straight off the
+register** by its publication id, verifying the payload against the transaction's own id. That makes
+`pinState=unresolvable` unreachable for any definition the register actually holds.
+
+**`execDefHash` keeps a narrower job**: *did behaviour change?* — the F142 rehearsal-gate key. It no
+longer identifies a definition. Its coverage gap (nine execution-affecting fields, including
+`RejectionConfig` and legacy `Action.Participants` routing) is fixed, and guarded by
+`ExecutableDefinitionCoverageTests`, which **fails the build on any blueprint-graph property nobody
+has classified** — there is no default, because both defaults are wrong in different directions.
+
+⚠ **Every serialized property on the blueprint graph is now LEDGER CONTRACT.** Renaming a
+`[JsonPropertyName]`, or deleting a dead-but-serialized property, changes the canonical bytes of every
+definition and therefore every publication id. `GoldenVector_ModelWireShapeIsFrozen` is the only guard
+that catches it — and it did, the first time it mattered, when two wholly dead version fields were
+removed.
+
+**Amending is versioning** (#1568): the clone keeps the same `blueprintId` and selects its source by
+`publicationTxId`, not by the unstable ordinal.
+
+Spec / plan / research: `specs/195-blueprint-definition-identity/`. Design:
+`docs/superpowers/specs/2026-08-24-blueprint-lifecycle-design.md`. Investigation:
+`…-blueprint-lifecycle-current-state-FINDINGS.md`. Issues #1563, #1566, #1567, #1568, #1570.
 
 Spec / plan / research: `specs/194-blueprint-version-pinning/`. Design:
 `docs/superpowers/specs/2026-08-23-blueprint-version-pinning-design.md`. Issue #1559.

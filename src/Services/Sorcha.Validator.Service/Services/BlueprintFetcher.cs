@@ -104,19 +104,19 @@ public class BlueprintFetcher : IBlueprintFetcher
     }
 
     /// <inheritdoc/>
-    public async Task<BlueprintModel?> FetchBlueprintByHashAsync(
+    public async Task<BlueprintModel?> FetchBlueprintByPublicationAsync(
         string blueprintId,
-        string execDefHash,
+        string definitionTxId,
         CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(blueprintId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(execDefHash);
+        ArgumentException.ThrowIfNullOrWhiteSpace(definitionTxId);
 
         var sw = Stopwatch.StartNew();
 
         try
         {
-            var blueprintJson = await _blueprintClient.GetBlueprintDefinitionAsync(blueprintId, execDefHash, ct);
+            var blueprintJson = await _blueprintClient.GetBlueprintDefinitionAsync(blueprintId, definitionTxId, ct);
 
             if (string.IsNullOrEmpty(blueprintJson))
             {
@@ -124,9 +124,9 @@ public class BlueprintFetcher : IBlueprintFetcher
                 // instance cannot advance on this node, and the operator-visible symptom is a
                 // transaction that never seals — which says nothing about the cause on its own.
                 _logger.LogWarning(
-                    "Pinned definition {ExecDefHash} of blueprint {BlueprintId} could not be resolved " +
+                    "Pinned definition {DefinitionTxId} of blueprint {BlueprintId} could not be resolved " +
                     "from the Blueprint Service. An instance pinned to it cannot advance on this node.",
-                    execDefHash, blueprintId);
+                    definitionTxId, blueprintId);
                 Interlocked.Increment(ref _totalFailures);
                 return null;
             }
@@ -135,8 +135,8 @@ public class BlueprintFetcher : IBlueprintFetcher
             if (blueprint is null)
             {
                 _logger.LogWarning(
-                    "Failed to deserialize pinned definition {ExecDefHash} of blueprint {BlueprintId}",
-                    execDefHash, blueprintId);
+                    "Failed to deserialize pinned definition {DefinitionTxId} of blueprint {BlueprintId}",
+                    definitionTxId, blueprintId);
                 Interlocked.Increment(ref _totalFailures);
                 return null;
             }
@@ -147,8 +147,8 @@ public class BlueprintFetcher : IBlueprintFetcher
             _lastFetchedAt = DateTimeOffset.UtcNow;
 
             _logger.LogInformation(
-                "Fetched pinned definition {ExecDefHash} of blueprint {BlueprintId} in {ElapsedMs}ms",
-                execDefHash, blueprintId, sw.ElapsedMilliseconds);
+                "Fetched pinned definition {DefinitionTxId} of blueprint {BlueprintId} in {ElapsedMs}ms",
+                definitionTxId, blueprintId, sw.ElapsedMilliseconds);
 
             return blueprint;
         }
@@ -156,8 +156,8 @@ public class BlueprintFetcher : IBlueprintFetcher
         {
             Interlocked.Increment(ref _totalFailures);
             _logger.LogError(ex,
-                "Error fetching pinned definition {ExecDefHash} of blueprint {BlueprintId}",
-                execDefHash, blueprintId);
+                "Error fetching pinned definition {DefinitionTxId} of blueprint {BlueprintId}",
+                definitionTxId, blueprintId);
             return null;
         }
     }

@@ -26,7 +26,7 @@ public class PublishGuardrailTests
     {
         _blueprintStore = new Mock<IBlueprintStore>();
         _publishedStore = new Mock<IPublishedBlueprintStore>();
-        _sut = new PublishService(_blueprintStore.Object, _publishedStore.Object);
+        _sut = new PublishService(_blueprintStore.Object, _publishedStore.Object, FakePublishingRegister.Client());
     }
 
     // ----- Feature 103 T041: publish-time SchemaRefResolver wiring -----
@@ -68,7 +68,7 @@ public class PublishGuardrailTests
         var sut = new PublishService(
             blueprintStore.Object,
             publishedStore.Object,
-            registerClient: null,
+            registerClient: FakePublishingRegister.Client(),
             redis: null,
             schemaRefResolver: resolver,
             logger: null);
@@ -114,7 +114,7 @@ public class PublishGuardrailTests
         var sut = new PublishService(
             blueprintStore.Object,
             publishedStore.Object,
-            registerClient: null,
+            registerClient: FakePublishingRegister.Client(),
             redis: null,
             schemaRefResolver: resolver,
             logger: null);
@@ -143,7 +143,7 @@ public class PublishGuardrailTests
         var sut = new PublishService(
             blueprintStore.Object,
             publishedStore.Object,
-            registerClient: null,
+            registerClient: FakePublishingRegister.Client(),
             redis: null,
             schemaRefResolver: resolver,
             logger: null);

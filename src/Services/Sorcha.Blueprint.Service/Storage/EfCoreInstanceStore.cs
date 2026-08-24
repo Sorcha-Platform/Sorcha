@@ -120,7 +120,7 @@ public class EfCoreInstanceStore : IInstanceStore
         // Map updated model back to entity
         entity.BlueprintId = instance.BlueprintId;
         entity.BlueprintVersion = instance.BlueprintVersion;
-        entity.BlueprintExecDefHash = instance.BlueprintExecDefHash;
+        entity.BlueprintDefinitionTxId = instance.BlueprintDefinitionTxId;
         entity.RegisterId = instance.RegisterId;
         entity.State = instance.State;
         entity.CurrentActionIds = SerializeJson(instance.CurrentActionIds);
@@ -286,12 +286,21 @@ public class EfCoreInstanceStore : IInstanceStore
         actionResolver = scope.ServiceProvider.GetService<IActionResolverService>();
         if (actionResolver != null)
         {
-            var blueprintIds = matchingInstances.Select(i => i.BlueprintId).Distinct();
-            foreach (var bpId in blueprintIds)
+            // Feature 195 — keyed by (blueprintId, pin). Two instances of one blueprint can be
+            // running DIFFERENT definitions, and this cache feeds the decision-notice wording each
+            // applicant is shown (F186). Keyed by blueprint id alone it would show one applicant the
+            // reason text from another applicant's definition.
+            foreach (var pinned in matchingInstances
+                .Select(i => (i.BlueprintId, i.BlueprintDefinitionTxId))
+                .Distinct())
             {
-                if (!blueprintCache.ContainsKey(bpId))
+                var key = $"{pinned.BlueprintId}:{pinned.BlueprintDefinitionTxId}";
+                if (!blueprintCache.ContainsKey(key))
                 {
-                    blueprintCache[bpId] = await actionResolver.GetBlueprintAsync(bpId, cancellationToken);
+                    blueprintCache[key] = string.IsNullOrWhiteSpace(pinned.BlueprintDefinitionTxId)
+                        ? null   // pre-feature instance: no pin, so no definition to resolve
+                        : await actionResolver.GetBlueprintAsync(
+                            pinned.BlueprintId, pinned.BlueprintDefinitionTxId, cancellationToken);
                 }
             }
         }
@@ -299,7 +308,7 @@ public class EfCoreInstanceStore : IInstanceStore
         var summaries = matchingInstances
             .SelectMany(instance =>
             {
-                blueprintCache.TryGetValue(instance.BlueprintId, out var blueprint);
+                blueprintCache.TryGetValue($"{instance.BlueprintId}:{instance.BlueprintDefinitionTxId}", out var blueprint);
 
                 // Only surface actions this wallet is actually the sender of — not every current
                 // action of an instance the wallet merely participates in (the citizen-sees-the-
@@ -404,18 +413,25 @@ public class EfCoreInstanceStore : IInstanceStore
         var actionResolver = scope.ServiceProvider.GetService<IActionResolverService>();
         if (actionResolver != null)
         {
-            foreach (var bpId in matchingInstances.Select(i => i.BlueprintId).Distinct())
+            // Feature 195 — keyed by (blueprintId, pin); see the sibling loop above.
+            foreach (var pinned in matchingInstances
+                .Select(i => (i.BlueprintId, i.BlueprintDefinitionTxId))
+                .Distinct())
             {
-                if (!blueprintCache.ContainsKey(bpId))
+                var key = $"{pinned.BlueprintId}:{pinned.BlueprintDefinitionTxId}";
+                if (!blueprintCache.ContainsKey(key))
                 {
-                    blueprintCache[bpId] = await actionResolver.GetBlueprintAsync(bpId, cancellationToken);
+                    blueprintCache[key] = string.IsNullOrWhiteSpace(pinned.BlueprintDefinitionTxId)
+                        ? null
+                        : await actionResolver.GetBlueprintAsync(
+                            pinned.BlueprintId, pinned.BlueprintDefinitionTxId, cancellationToken);
                 }
             }
         }
 
         return matchingInstances.Sum(instance =>
         {
-            blueprintCache.TryGetValue(instance.BlueprintId, out var blueprint);
+            blueprintCache.TryGetValue($"{instance.BlueprintId}:{instance.BlueprintDefinitionTxId}", out var blueprint);
             return instance.CurrentActionIds.Count(actionId =>
                 IsActionForWallet(blueprint, actionResolver, instance, actionId, walletAddress));
         });
@@ -492,7 +508,7 @@ public class EfCoreInstanceStore : IInstanceStore
             Id = instance.Id,
             BlueprintId = instance.BlueprintId,
             BlueprintVersion = instance.BlueprintVersion,
-            BlueprintExecDefHash = instance.BlueprintExecDefHash,
+            BlueprintDefinitionTxId = instance.BlueprintDefinitionTxId,
             RegisterId = instance.RegisterId,
             State = instance.State,
             CurrentActionIds = SerializeJson(instance.CurrentActionIds),
@@ -533,7 +549,7 @@ public class EfCoreInstanceStore : IInstanceStore
                 Id = entity.Id,
                 BlueprintId = entity.BlueprintId,
                 BlueprintVersion = entity.BlueprintVersion,
-                BlueprintExecDefHash = entity.BlueprintExecDefHash ?? string.Empty,
+                BlueprintDefinitionTxId = entity.BlueprintDefinitionTxId ?? string.Empty,
                 RegisterId = entity.RegisterId,
                 TenantId = tenantId,
                 State = entity.State,

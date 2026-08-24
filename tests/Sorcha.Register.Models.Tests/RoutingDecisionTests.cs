@@ -20,6 +20,7 @@ public class RoutingDecisionTests
         var decision = new RoutingDecision
         {
             CompletedActionId = 1,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions =
             [
                 new ActionRef { ActionId = 2 },
@@ -47,6 +48,7 @@ public class RoutingDecisionTests
         var decision = new RoutingDecision
         {
             CompletedActionId = 5,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions = [new ActionRef { ActionId = 6 }],
             Attestation = new Attestation { Kind = AttestationKind.SenderSigned, Signature = "abc" },
         };
@@ -70,6 +72,7 @@ public class RoutingDecisionTests
         var decision = new RoutingDecision
         {
             CompletedActionId = 1,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions =
             [
                 new ActionRef { ActionId = 10, BranchKey = "a" },
@@ -91,11 +94,13 @@ public class RoutingDecisionTests
         var withoutAttestation = new RoutingDecision
         {
             CompletedActionId = 7,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions = [new ActionRef { ActionId = 8 }],
         };
         var withAttestation = new RoutingDecision
         {
             CompletedActionId = 7,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions = [new ActionRef { ActionId = 8 }],
             Attestation = new Attestation { Kind = AttestationKind.SenderSigned, Signature = "deadbeef" },
         };
@@ -117,11 +122,13 @@ public class RoutingDecisionTests
         var a = new RoutingDecision
         {
             CompletedActionId = 1,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions = [new ActionRef { ActionId = 2 }, new ActionRef { ActionId = 3 }],
         };
         var b = new RoutingDecision
         {
             CompletedActionId = 1,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions = [new ActionRef { ActionId = 2 }, new ActionRef { ActionId = 3 }],
         };
 
@@ -151,6 +158,7 @@ public class RoutingDecisionTests
         var decision = new RoutingDecision
         {
             CompletedActionId = 2,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions = [],
             RouteId = "rejected-terminal",
             ReasonCode = "postcode-not-found",
@@ -212,8 +220,8 @@ public class RoutingDecisionTests
     [Fact]
     public void ComputeSignableBytes_IncludesTheBlueprintPin_SoAnInstanceCannotBeMovedOntoAnotherDefinition()
     {
-        var a = new RoutingDecision { CompletedActionId = 2, NextActions = [], BlueprintExecDefHash = new string('a', 64) };
-        var b = new RoutingDecision { CompletedActionId = 2, NextActions = [], BlueprintExecDefHash = new string('b', 64) };
+        var a = new RoutingDecision { CompletedActionId = 2, NextActions = [], BlueprintDefinitionTxId = new string('a', 64) };
+        var b = new RoutingDecision { CompletedActionId = 2, NextActions = [], BlueprintDefinitionTxId = new string('b', 64) };
 
         // Were the pin omitted from the rebuild, these would be byte-identical — and a sender could
         // rewrite which definition their action claims to have run against, with a signature that
@@ -231,10 +239,10 @@ public class RoutingDecisionTests
         const string legacyJson = """{"completedActionId":2,"nextActions":[]}""";
 
         var legacy = JsonSerializer.Deserialize<RoutingDecision>(legacyJson, RegisterSerializationOptions.Canonical)!;
-        Assert.Null(legacy.BlueprintExecDefHash);
+        Assert.Null(legacy.BlueprintDefinitionTxId);
 
         var reserialised = JsonSerializer.Serialize(legacy, RegisterSerializationOptions.Canonical);
-        Assert.DoesNotContain("blueprintExecDefHash", reserialised);
+        Assert.DoesNotContain("blueprintDefinitionTxId", reserialised);
 
         var freshWithNullPin = new RoutingDecision { CompletedActionId = 2, NextActions = [] };
         Assert.Equal(legacy.ComputeSignableBytes(), freshWithNullPin.ComputeSignableBytes());
@@ -247,14 +255,14 @@ public class RoutingDecisionTests
         {
             CompletedActionId = 1,
             NextActions = [new ActionRef { ActionId = 2 }],
-            BlueprintExecDefHash = "9f2c00112233445566778899aabbccddeeff00112233445566778899aabbccdd",
+            BlueprintDefinitionTxId = "9f2c00112233445566778899aabbccddeeff00112233445566778899aabbccdd",
             Attestation = new Attestation { Kind = AttestationKind.SenderSigned, Signature = "c2ln" },
         };
 
         var json = JsonSerializer.Serialize(decision, RegisterSerializationOptions.Canonical);
         var round = JsonSerializer.Deserialize<RoutingDecision>(json, RegisterSerializationOptions.Canonical)!;
 
-        Assert.Contains("\"blueprintExecDefHash\":", json);
-        Assert.Equal(decision.BlueprintExecDefHash, round.BlueprintExecDefHash);
+        Assert.Contains("\"blueprintDefinitionTxId\":", json);
+        Assert.Equal(decision.BlueprintDefinitionTxId, round.BlueprintDefinitionTxId);
     }
 }

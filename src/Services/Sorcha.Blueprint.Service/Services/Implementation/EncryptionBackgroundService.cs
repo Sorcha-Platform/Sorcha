@@ -170,7 +170,7 @@ public sealed class EncryptionBackgroundService : BackgroundService
             var instanceStore = scope.ServiceProvider.GetRequiredService<Sorcha.Blueprint.Service.Storage.IInstanceStore>();
             var instance = await instanceStore.GetAsync(workItem.InstanceId)
                 ?? throw new InvalidOperationException($"Instance {workItem.InstanceId} not found");
-            var blueprint = await actionResolver.GetBlueprintAsync(instance.BlueprintId, ct)
+            var blueprint = await actionResolver.GetBlueprintAsync(instance.BlueprintId, instance.BlueprintDefinitionTxId, ct)
                 ?? throw new InvalidOperationException($"Blueprint {instance.BlueprintId} not found");
             var actionDef = actionResolver.GetActionDefinition(blueprint, workItem.ActionId.ToString())
                 ?? throw new InvalidOperationException($"Action {workItem.ActionId} not found in blueprint {instance.BlueprintId}");
@@ -192,9 +192,9 @@ public sealed class EncryptionBackgroundService : BackgroundService
             // encrypted register's instances would be unpinned and every action on them would fold
             // through the pre-feature fallback — i.e. keep the old "always latest" behaviour on
             // exactly the registers that carry the most sensitive workflows.
-            var pinnedExecDefHash = string.IsNullOrWhiteSpace(instance.BlueprintExecDefHash)
+            var pinnedExecDefHash = string.IsNullOrWhiteSpace(instance.BlueprintDefinitionTxId)
                 ? null
-                : instance.BlueprintExecDefHash;
+                : instance.BlueprintDefinitionTxId;
             if (pinnedExecDefHash is null)
             {
                 _logger.LogWarning(
@@ -209,7 +209,7 @@ public sealed class EncryptionBackgroundService : BackgroundService
                 NextActions = workItem.RoutingResult.NextActions
                     .Select(n => new Sorcha.Register.Models.ActionRef { ActionId = n.ActionId, BranchKey = n.BranchId })
                     .ToList(),
-                BlueprintExecDefHash = pinnedExecDefHash,
+                BlueprintDefinitionTxId = pinnedExecDefHash,
                 Attestation = new Sorcha.Register.Models.Attestation
                 {
                     Kind = Sorcha.Register.Models.AttestationKind.SenderSigned,

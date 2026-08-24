@@ -25,12 +25,17 @@ public class PublishServiceTests
         _mockRegisterClient = new Mock<IRegisterServiceClient>();
     }
 
+    /// <summary>
+    /// Feature 195 — publishing requires a register client, because the register is what ASSIGNS a
+    /// definition's identity. The default is a stand-in that computes the genuine publication id
+    /// rather than a placeholder, so a test asserting on identity gets production's answer.
+    /// </summary>
     private PublishService CreateService(IRegisterServiceClient? registerClient = null)
     {
         return new PublishService(
             _mockBlueprintStore.Object,
             _mockPublishedStore.Object,
-            registerClient);
+            registerClient ?? FakePublishingRegister.Client());
     }
 
     #region ValidateAsync
@@ -155,7 +160,7 @@ public class PublishServiceTests
         _mockRegisterClient
             .Setup(c => c.PublishBlueprintToRegisterAsync(
                 "reg-1", "bp-1", It.IsAny<string>(), "system", default))
-            .ReturnsAsync(true);
+            .ReturnsAsync(new BlueprintPublicationResult { PublicationTxId = "tx-publication-1" });
         var service = CreateService(_mockRegisterClient.Object);
 
         var result = await service.PublishAsync("bp-1", "reg-1");

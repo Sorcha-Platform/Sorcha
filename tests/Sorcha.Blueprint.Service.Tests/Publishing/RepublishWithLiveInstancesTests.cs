@@ -28,7 +28,7 @@ public class RepublishWithLiveInstancesTests
         var publishedStore = new InMemoryPublishedBlueprintStore();
         var blueprint = CreateBlueprint();
         await draftStore.AddAsync(blueprint);
-        var service = new PublishService(draftStore, publishedStore);
+        var service = new PublishService(draftStore, publishedStore, FakePublishingRegister.Client());
 
         var v1 = await service.PublishAsync(blueprint.Id, "register-1");
         var pinnedToV1 = v1.PublishedBlueprint!.ExecDefHash;
@@ -40,7 +40,7 @@ public class RepublishWithLiveInstancesTests
             new ProjectedTransaction(
                 TxId: "tx1", PreviousTransactionId: null, CompletedActionId: 1,
                 NextActionIds: [2], ParticipantBindings: new Dictionary<string, string>(),
-                BlueprintExecDefHash: pinnedToV1),
+                BlueprintDefinitionTxId: pinnedToV1),
         ])!;
 
         var stateBefore = live.State;
@@ -55,7 +55,7 @@ public class RepublishWithLiveInstancesTests
             "an upgrade must never be blocked, warned against, or delayed because instances are live");
         v2.PublishedBlueprint!.ExecDefHash.Should().NotBe(pinnedToV1);
 
-        live.BlueprintExecDefHash.Should().Be(pinnedToV1, "the pin is immutable");
+        live.BlueprintDefinitionTxId.Should().Be(pinnedToV1, "the pin is immutable");
         live.State.Should().Be(stateBefore);
         live.CurrentActionIds.Should().Equal(actionsBefore);
     }
@@ -69,7 +69,7 @@ public class RepublishWithLiveInstancesTests
         var publishedStore = new InMemoryPublishedBlueprintStore();
         var blueprint = CreateBlueprint();
         await draftStore.AddAsync(blueprint);
-        var service = new PublishService(draftStore, publishedStore);
+        var service = new PublishService(draftStore, publishedStore, FakePublishingRegister.Client());
 
         var v1 = await service.PublishAsync(blueprint.Id, "register-1");
 
@@ -77,10 +77,10 @@ public class RepublishWithLiveInstancesTests
         draft!.Actions.Add(new ActionModel { Id = 3, Title = "Extra step", Sender = "p2" });
         var v2 = await service.PublishAsync(blueprint.Id, "register-1");
 
-        var resolvedV1 = await publishedStore.GetByExecDefHashAsync(
-            blueprint.Id, v1.PublishedBlueprint!.ExecDefHash);
-        var resolvedV2 = await publishedStore.GetByExecDefHashAsync(
-            blueprint.Id, v2.PublishedBlueprint!.ExecDefHash);
+        var resolvedV1 = await publishedStore.GetByPublicationAsync(
+            blueprint.Id, v1.PublishedBlueprint!.PublicationTxId);
+        var resolvedV2 = await publishedStore.GetByPublicationAsync(
+            blueprint.Id, v2.PublishedBlueprint!.PublicationTxId);
 
         resolvedV1.Should().NotBeNull();
         resolvedV2.Should().NotBeNull();

@@ -693,5 +693,5 @@ _(This revision number is for CLAUDE.md itself; it is unrelated to the platform'
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/174-aias-assured-identity/plan.md`
+`specs/195-blueprint-definition-identity/plan.md`
 <!-- SPECKIT END -->

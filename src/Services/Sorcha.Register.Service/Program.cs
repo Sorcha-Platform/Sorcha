@@ -2007,27 +2007,74 @@ app.MapPost("/api/registers/{registerId}/blueprints/publish", async (
     var existingEntry = await systemRegister.GetBlueprintAsync(request.BlueprintId);
     long systemVersion = existingEntry?.Version ?? 1;
 
-    // Submit a Control transaction to the validator for validation and docket creation.
-    // All transactions must go through the validator — never write directly to the register.
+    // Feature 195 — the publication transaction IS the definition's identity.
     //
-    // CRITICAL: Compute payload hash using the same canonical serialization the Validator uses.
-    // The Validator re-serializes transaction.Payload with CanonicalJsonOptions before hashing,
-    // so we must hash the same canonical form — NOT the raw request JSON string.
-    var controlRecordElement = System.Text.Json.JsonDocument.Parse(request.BlueprintJson).RootElement;
+    // The payload written to the ledger is the CANONICAL form of the definition (object keys
+    // recursively sorted; see Sorcha.Blueprint.Models.Canonical.BlueprintCanonicalJson). Publishing
+    // the canonical bytes rather than the request's bytes is what makes the whole scheme cohere:
+    //
+    //   * the transaction id is the hash of exactly the bytes stored, so verification is
+    //     SELF-ANCHORING — a tampered payload cannot match its own transaction id, and no separately
+    //     sealed `contentHash` is needed (it is removed below);
+    //   * the Validator re-serializes transaction.Payload with its own canonical options before
+    //     hashing, and re-serializing an already-canonical document reproduces it byte for byte, so
+    //     the payload hash it recomputes still matches the one computed here.
+    //
+    // A malformed definition, or one carrying duplicate object keys, is refused here rather than
+    // resolved — last-wins would be a silent choice about which of two definitions was published,
+    // baked into an immutable record.
+    string canonicalJson;
+    try
+    {
+        canonicalJson = Sorcha.Blueprint.Models.Canonical.BlueprintCanonicalJson
+            .Canonicalise(request.BlueprintJson);
+    }
+    catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException)
+    {
+        return Results.Problem(
+            title: "Blueprint definition could not be canonicalised",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    var controlRecordElement = System.Text.Json.JsonDocument.Parse(canonicalJson).RootElement;
     var canonicalJsonOptions = new System.Text.Json.JsonSerializerOptions
     {
         WriteIndented = false,
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
-    var canonicalJson = System.Text.Json.JsonSerializer.Serialize(controlRecordElement, canonicalJsonOptions);
-    var blueprintBytes = System.Text.Encoding.UTF8.GetBytes(canonicalJson);
+    var validatorCanonicalJson = System.Text.Json.JsonSerializer.Serialize(controlRecordElement, canonicalJsonOptions);
+    var blueprintBytes = System.Text.Encoding.UTF8.GetBytes(validatorCanonicalJson);
     var payloadHash = hashProvider.ComputeHash(blueprintBytes, Sorcha.Cryptography.Enums.HashType.SHA256);
     var payloadHashHex = Convert.ToHexString(payloadHash).ToLowerInvariant();
 
-    // Deterministic TxId so re-publishing the same blueprint is idempotent
-    var txIdSource = System.Text.Encoding.UTF8.GetBytes($"blueprint-publish-{registerId}-{request.BlueprintId}");
-    var txIdHash = hashProvider.ComputeHash(txIdSource, Sorcha.Cryptography.Enums.HashType.SHA256);
-    var txId = Convert.ToHexString(txIdHash).ToLowerInvariant();
+    // THE definition's identity. This service is the ONE producer — every other component reads the
+    // value returned below (gated by scripts/check-publication-id-owner.ps1).
+    //
+    // The id this replaced was SHA-256("blueprint-publish-{registerId}-{blueprintId}") — VERSION
+    // BLIND, so every republish deduped to one transaction and was silently dropped with a 200 and
+    // a success log (issue #1563). It also had four homes, because the published-blueprint store
+    // never recorded the transaction id it was published as.
+    var txId = Sorcha.Blueprint.Models.Canonical.BlueprintPublicationId
+        .Compute(registerId, request.BlueprintId, canonicalJson);
+
+    // Identical content yields an identical id, so a republish of an unchanged definition is a
+    // genuine no-op — but it must be DISTINGUISHABLE from a real publish. Indistinguishability is
+    // precisely how #1563 stayed invisible: the endpoint answered 200 and the caller logged success
+    // while nothing was written.
+    var alreadyPublished = await repository.GetTransactionAsync(registerId, txId) is not null;
+    if (alreadyPublished)
+    {
+        return Results.Ok(new
+        {
+            blueprintId = request.BlueprintId,
+            registerId,
+            txId,
+            version = systemVersion,
+            submitted = false,
+            alreadyPublished = true
+        });
+    }
 
     // Chain linking: Blueprint publish PrevTxId = latest Control TX on this register.
     // All transactions except genesis must chain from a predecessor. Blueprint publish
@@ -2076,11 +2123,12 @@ app.MapPost("/api/registers/{registerId}/blueprints/publish", async (
             // Retained for legacy log/audit consumers that already scan TrackingData. Safe to keep.
             ["transactionType"] = "BlueprintPublish",
             ["publishedBy"] = request.PublishedBy,
-            ["SystemWalletAddress"] = signResult.WalletAddress,
-            // Feature 138 US4 — seal the canonical content hash so recovering nodes can verify the
-            // blueprint they receive against a sealed digest rather than trusting the transport.
-            // payloadHashHex is already SHA-256 over the canonical blueprint JSON (see above).
-            ["contentHash"] = payloadHashHex
+            ["SystemWalletAddress"] = signResult.WalletAddress
+            // Feature 195 — `contentHash` REMOVED. Feature 138 US4 sealed it so a recovering node
+            // could verify a blueprint against a sealed digest rather than trusting the transport.
+            // The transaction id is now itself the digest of the canonical payload, so that check
+            // becomes recompute-the-id-and-compare-to-the-transaction's-own-id: self-anchoring, one
+            // fewer sealed field, and impossible for the two to disagree.
         }
     };
 
@@ -2099,7 +2147,8 @@ app.MapPost("/api/registers/{registerId}/blueprints/publish", async (
         registerId,
         txId,
         version = systemVersion,
-        submitted = true
+        submitted = true,
+        alreadyPublished = false
     });
 })
 .WithTags("Blueprints")
@@ -2163,19 +2212,17 @@ app.MapGet("/api/registers/{registerId}/blueprints/published", async (
             blueprintJson = rawPayload;
         }
 
-        // Feature 138 US4 — the canonical content hash sealed at publish time. Sourced from the
-        // sealed transaction metadata (NOT recomputed from blueprintJson here), so a recovering node
-        // comparing its own recomputed hash against this value detects tampering in transit.
-        var contentHash = tx.MetaData?.TrackingData?.GetValueOrDefault("contentHash", "") ?? "";
-
+        // Feature 195 — the separately-sealed `contentHash` is gone. `transactionId` IS the digest
+        // of the canonical definition, so a recovering node verifies by recomputing the publication
+        // id from the bytes it received and comparing to the transaction's own id. Self-anchoring:
+        // unlike a sibling field, an id cannot disagree with the content it identifies.
         return new
         {
             blueprintId,
             transactionId = tx.TxId,
             publishedBy,
             publishedAt = tx.TimeStamp,
-            blueprintJson,
-            contentHash
+            blueprintJson
         };
     }).ToList();
 

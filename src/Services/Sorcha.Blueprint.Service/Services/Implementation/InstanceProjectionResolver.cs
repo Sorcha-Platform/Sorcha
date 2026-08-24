@@ -65,8 +65,12 @@ public static class InstanceProjectionResolver
             ? decision.NextActions.Select(a => a.ActionId).ToList()
             : new List<int>();
 
+        // Feature 195 — resolve the bindings against the definition THIS transaction was executed
+        // against, carried on its own signed routing decision. A transaction that carries no pin is
+        // pre-feature: bindings are then best-effort and simply do not resolve from the blueprint.
         var bindings = await ResolveParticipantBindingsAsync(
-            blueprintId, completedActionId, nextActionIds, tx, actionResolver, logger, ct);
+            blueprintId, decision?.BlueprintDefinitionTxId, completedActionId, nextActionIds,
+            tx, actionResolver, logger, ct);
 
         var projected = new ProjectedTransaction(
             TxId: tx.TxId,
@@ -83,7 +87,7 @@ public static class InstanceProjectionResolver
             // every node folding this transaction agrees on which definition the instance runs —
             // which is the whole reason the pin had to become a sealed fact rather than a per-node
             // lookup. Null on a transaction sealed before Feature 194.
-            BlueprintExecDefHash: decision?.BlueprintExecDefHash);
+            BlueprintDefinitionTxId: decision?.BlueprintDefinitionTxId);
 
         return new ResolvedProjection(blueprintId, instanceId, ResolveTenantId(tx), projected);
     }
@@ -128,6 +132,7 @@ public static class InstanceProjectionResolver
     /// </summary>
     public static async Task<IReadOnlyDictionary<string, string>> ResolveParticipantBindingsAsync(
         string blueprintId,
+        string? definitionTxId,
         int completedActionId,
         IReadOnlyList<int> nextActionIds,
         TransactionModel tx,
@@ -138,7 +143,15 @@ public static class InstanceProjectionResolver
         var bindings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         try
         {
-            var bp = await actionResolver.GetBlueprintAsync(blueprintId, ct);
+            // No pin means a pre-Feature-194 transaction. The blueprint-derived seed is one of three
+            // binding sources and the least authoritative, so skipping it degrades gracefully — the
+            // sender-signature and hand-off sources still resolve. Guessing a definition here would
+            // be worse: it could bind a participant to a wallet the instance's own definition never
+            // named.
+            if (string.IsNullOrWhiteSpace(definitionTxId))
+                return bindings;
+
+            var bp = await actionResolver.GetBlueprintAsync(blueprintId, definitionTxId, ct);
             if (bp is null)
                 return bindings;
 

@@ -1145,39 +1145,39 @@ alongside the old one**. It does **not** change any instance that is already run
   definition by it. The identity is the executable-definition hash (`execDefHash`), now returned on
   `GET /api/blueprints/{id}/versions`.
 
-> ⚠ **Three live traps in this feature as shipped — verified 2026-08-24, all silent.** Read before
-> relying on any of the above. Full detail + the agreed remedy:
-> `docs/superpowers/specs/2026-08-24-blueprint-lifecycle-current-state-FINDINGS.md` (§8, §9, §10)
-> and `…-blueprint-lifecycle-design.md`.
+> ✅ **Feature 195 closed all three traps that used to be recorded here** (issue #1563 and siblings).
+> What changed, because the shape of the fix matters more than the fix:
 >
-> 1. **The pin does not cover the whole executable definition.** `ExecutableDefinitionHasher`
->    (`ExecutableDefinitionHasher.cs:78-96`, `:126`, `:170`) is a hand-written field-by-field
->    projection that **omits** `Action.RejectionConfig` (a real routing edge — `ValidationEngine.cs:1035`,
->    `:1582`), `Action.Participants` (legacy routing, live at `RoutingEngine.cs:246`),
->    `Action.RequiredActionData`, `Route.BranchDeadline`, `Route.DecisionNotice`,
->    `Blueprint.PresentationConfig` and `Blueprint.InstanceReference`. A probe asserting
->    "behavioural edit ⇒ new hash" failed **9 of 9**. Compounding: a hash tie resolves with
->    `OrderByDescending(Version).First()` (`Program.cs:2904`) on a comment claiming colliding entries
->    are "the same definition by construction" — **false** — so for those fields a pinned instance is
->    silently handed the **newest** definition. Editing any of them is not covered by pinning today.
-> 2. **The pin is enforced at seal, not at submit.** `IActionResolverService.GetBlueprintAsync`
->    takes no pin, resolves **draft-first**, and caches under a bare `blueprint:{id}` key. So the
->    engine validates the payload, runs calculations and computes the route against one definition,
->    then signs a `RoutingDecision` labelled with the instance's pin. Where the two disagree you get
->    **202 and no seal, forever** — with no error anywhere.
-> 3. **`Publish-SorchaBlueprint` always mints a new blueprint id and cannot republish** (use
->    `PUT /blueprints/{id}` then `POST /publish`), and **the republish itself is currently dropped on
->    the ledger** — `blueprint-publish-{registerId}-{blueprintId}` is version-blind, so every
->    republish dedupes to the same transaction: `200` returned, success logged, **no transaction
->    written** (#1563). Later definitions live only in the publishing node's memory; after a restart
->    a pinned instance reports `pinState=unresolvable`. The agreed fix is Option D — the publication
->    transaction *is* the definition's identity.
+> 1. **A definition's identity is now the transaction that published it.** The publish txId was
+>    `SHA-256("blueprint-publish-{registerId}-{blueprintId}")` — **version-blind**, so every republish
+>    deduped to the same transaction and was silently dropped: `200` returned, success logged, no
+>    transaction written. It is now
+>    `SHA-256("sorcha:blueprint-publication:v1" ␟ registerId ␟ blueprintId ␟ canonicalJson)`,
+>    register-scoped and content-addressed. **Anchor and pin are one value** — a starting action
+>    chains from the very transaction that published the definition its instance runs — so the
+>    formula that used to live in four places is gone rather than relocated.
+> 2. **The pin is resolved at submit, not only at seal.** `IActionResolverService.GetBlueprintAsync`
+>    now REQUIRES the pin, and the draft store is off the execution path entirely. It used to resolve
+>    draft-first, so a submission could be validated, calculated and routed against unpublished
+>    work-in-progress and then labelled with the instance's actual pin — 202 and never sealing, with
+>    no error anywhere.
+> 3. **The behavioural signature covers what it claims to.** Nine execution-affecting fields were
+>    missing from `ExecutableDefinitionHasher` — `RejectionConfig`, legacy `Action.Participants`
+>    routing, `RequiredActionData`, `BranchDeadline`, `DecisionNotice`, `PresentationConfig`,
+>    `InstanceReference` and more. Its job is now narrower and explicit: it answers *"did behaviour
+>    change?"* for the F142 rehearsal gate, and **does not identify a definition**.
+>
+> **What this means when authoring.** A behavioural republish and a presentational one now do
+> different things, both correctly: both write a new publication (so a relabel ships), but only a
+> behavioural edit moves `execDefHash` and so only that costs a fresh rehearsal. `Publish-SorchaBlueprint`
+> still mints a new blueprint id and cannot republish — use `PUT /blueprints/{id}` then `POST /publish`.
 
-Amending is **not** versioning today: `BlueprintFromPublishedEndpoint.cs:152` mints a new
-`blueprintId`, so an amendment never appears in `GET /blueprints/{id}/versions` and its source is
-selected by the **ordinal** (`:116`) — a value re-derived from insert order on every recovery, so
-amending "v2" before and after a restart may clone different definitions.
-
+Amending **is** versioning now (#1568): `POST /api/blueprints/from-published` keeps the **same**
+`blueprintId`, so an amendment is a new version of its blueprint and appears in
+`GET /blueprints/{id}/versions`. It used to mint a fresh GUID — a fork that was invisible to the
+source blueprint's history — and it selected its source by the **ordinal**, which is assigned from
+insert order and re-derived on recovery, so amending "v2" could clone different definitions before
+and after a restart. The request now takes `publicationTxId`.
 `GET /api/instances/{instanceId}/definition` answers "which definition is this instance running, and
 is it still the latest?" — reporting three distinguishable states: pinned and resolvable, pinned but
 unresolvable on this node (the stuck-instance state), and unpinned (predates the feature).

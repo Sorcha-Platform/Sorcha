@@ -53,7 +53,7 @@ public class AiasDeviceRegistrationBlueprintTests
         var blueprintStore = new Mock<IBlueprintStore>();
         var publishedStore = new Mock<IPublishedBlueprintStore>();
         blueprintStore.Setup(s => s.GetAsync(blueprint.Id)).ReturnsAsync(blueprint);
-        return new PublishService(blueprintStore.Object, publishedStore.Object);
+        return new PublishService(blueprintStore.Object, publishedStore.Object, FakePublishingRegister.Client());
     }
 
     [Fact]

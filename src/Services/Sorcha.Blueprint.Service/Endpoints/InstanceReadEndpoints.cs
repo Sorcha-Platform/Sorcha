@@ -222,7 +222,7 @@ public static class InstanceReadEndpoints
             return Forbidden();
         }
 
-        var pin = instance.BlueprintExecDefHash;
+        var pin = instance.BlueprintDefinitionTxId;
 
         if (string.IsNullOrWhiteSpace(pin))
         {
@@ -233,14 +233,14 @@ public static class InstanceReadEndpoints
             {
                 instanceId,
                 blueprintId = instance.BlueprintId,
-                blueprintExecDefHash = (string?)null,
+                blueprintDefinitionTxId = (string?)null,
                 blueprintVersion = (int?)null,
                 isPinnedToLatest = (bool?)null,
                 pinState = "unpinned",
             });
         }
 
-        var pinned = await publishedStore.GetByExecDefHashAsync(instance.BlueprintId, pin);
+        var pinned = await publishedStore.GetByPublicationAsync(instance.BlueprintId, pin);
         if (pinned is null)
         {
             logger.LogWarning(
@@ -252,21 +252,27 @@ public static class InstanceReadEndpoints
             {
                 instanceId,
                 blueprintId = instance.BlueprintId,
-                blueprintExecDefHash = pin,
+                blueprintDefinitionTxId = pin,
                 blueprintVersion = (int?)null,
                 isPinnedToLatest = (bool?)null,
                 pinState = "unresolvable",
             });
         }
 
+        // The pin is a PUBLICATION TRANSACTION id (Feature 195), so "latest" has to be the latest
+        // publication id too. Reading ExecDefHash here compared two different value spaces: the
+        // comparison could never be true, so `isPinnedToLatest` was hard-wired false for every
+        // pinned instance — and false is a PLAUSIBLE answer, so nothing ever looked wrong. The
+        // paired assertions in walkthroughs/VersionPinning/run-acceptance.ps1 (one expecting true
+        // before a republish, one expecting false after) are what surfaced it.
         var latest = PublishedBlueprintSelector
-            .SelectLatest(await publishedStore.GetVersionsAsync(instance.BlueprintId))?.ExecDefHash;
+            .SelectLatest(await publishedStore.GetVersionsAsync(instance.BlueprintId))?.PublicationTxId;
 
         return Results.Ok(new
         {
             instanceId,
             blueprintId = instance.BlueprintId,
-            blueprintExecDefHash = pin,
+            blueprintDefinitionTxId = pin,
             // Derived from the pin, never from the stored column — FR-019: the label and the pin
             // cannot disagree if only one of them is a source.
             blueprintVersion = (int?)pinned.Version,

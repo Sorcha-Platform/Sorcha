@@ -44,18 +44,19 @@ public static class BlueprintCacheKey
     /// Composes the cache key for one executable definition of a blueprint.
     /// </summary>
     /// <param name="blueprintId">The blueprint identifier.</param>
-    /// <param name="execDefHash">
-    /// The executable-definition hash — the pin. Required: an id-only key cannot distinguish two
-    /// definitions of one blueprint, which is the whole point of the feature.
+    /// <param name="definitionTxId">
+    /// The pin — the id of the transaction that published this definition (Feature 195). Required:
+    /// an id-only key cannot distinguish two definitions of one blueprint, which is the whole point
+    /// of the feature.
     /// </param>
     /// <param name="prefix">The key prefix. Defaults to <see cref="DefaultPrefix"/>.</param>
     /// <returns>The Redis key.</returns>
-    public static string For(string blueprintId, string execDefHash, string prefix = DefaultPrefix)
+    public static string For(string blueprintId, string definitionTxId, string prefix = DefaultPrefix)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(blueprintId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(execDefHash);
+        ArgumentException.ThrowIfNullOrWhiteSpace(definitionTxId);
 
-        return $"{prefix}{blueprintId}:{execDefHash}";
+        return $"{prefix}{blueprintId}:{definitionTxId}";
     }
 
     /// <summary>

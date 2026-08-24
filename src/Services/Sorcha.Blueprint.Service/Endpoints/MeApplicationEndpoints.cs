@@ -230,10 +230,10 @@ public static class MeApplicationEndpoints
 
             Sorcha.Blueprint.Models.Blueprint? blueprint = null;
 
-            if (!string.IsNullOrWhiteSpace(instance.BlueprintExecDefHash))
+            if (!string.IsNullOrWhiteSpace(instance.BlueprintDefinitionTxId))
             {
-                blueprint = (await publishedStore.GetByExecDefHashAsync(
-                    instance.BlueprintId, instance.BlueprintExecDefHash))?.Blueprint;
+                blueprint = (await publishedStore.GetByPublicationAsync(
+                    instance.BlueprintId, instance.BlueprintDefinitionTxId))?.Blueprint;
             }
 
             blueprint ??= await blueprintStore.GetAsync(instance.BlueprintId);
@@ -252,9 +252,9 @@ public static class MeApplicationEndpoints
     /// definitions must not share an entry — that is the whole point.
     /// </summary>
     private static string DefinitionKey(Instance instance) =>
-        string.IsNullOrWhiteSpace(instance.BlueprintExecDefHash)
+        string.IsNullOrWhiteSpace(instance.BlueprintDefinitionTxId)
             ? instance.BlueprintId
-            : $"{instance.BlueprintId}:{instance.BlueprintExecDefHash}";
+            : $"{instance.BlueprintId}:{instance.BlueprintDefinitionTxId}";
 
     private static Sorcha.Blueprint.Models.Blueprint? Lookup(
         Dictionary<string, Sorcha.Blueprint.Models.Blueprint> blueprints, Instance instance) =>

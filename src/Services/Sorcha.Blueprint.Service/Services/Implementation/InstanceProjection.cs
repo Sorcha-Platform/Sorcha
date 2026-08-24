@@ -35,7 +35,7 @@ public sealed record ProjectedTransaction(
     bool IsRejection = false,
     string? RouteId = null,
     string? ReasonCode = null,
-    string? BlueprintExecDefHash = null);
+    string? BlueprintDefinitionTxId = null);
 
 /// <summary>
 /// The result of folding one sealed transaction into an instance (Feature 194 made this a
@@ -177,14 +177,14 @@ public static class InstanceProjection
         ArgumentNullException.ThrowIfNull(instance);
         ArgumentNullException.ThrowIfNull(tx);
 
-        if (string.IsNullOrWhiteSpace(tx.BlueprintExecDefHash))
+        if (string.IsNullOrWhiteSpace(tx.BlueprintDefinitionTxId))
             return true;
 
-        if (string.IsNullOrWhiteSpace(instance.BlueprintExecDefHash))
+        if (string.IsNullOrWhiteSpace(instance.BlueprintDefinitionTxId))
             return true; // not yet pinned — this transaction establishes the pin
 
         return string.Equals(
-            instance.BlueprintExecDefHash, tx.BlueprintExecDefHash, StringComparison.Ordinal);
+            instance.BlueprintDefinitionTxId, tx.BlueprintDefinitionTxId, StringComparison.Ordinal);
     }
 
     private static void ApplyInPlace(Instance instance, ProjectedTransaction tx)
@@ -196,10 +196,10 @@ public static class InstanceProjection
         // Assigned only when currently empty — the OPPOSITE of the Feature 186 decision fields
         // below, which are assigned unconditionally so a later transaction clears a stale reason.
         // A pin is not a per-transaction fact; it is the instance's identity for its whole life.
-        if (string.IsNullOrWhiteSpace(instance.BlueprintExecDefHash)
-            && !string.IsNullOrWhiteSpace(tx.BlueprintExecDefHash))
+        if (string.IsNullOrWhiteSpace(instance.BlueprintDefinitionTxId)
+            && !string.IsNullOrWhiteSpace(tx.BlueprintDefinitionTxId))
         {
-            instance.BlueprintExecDefHash = tx.BlueprintExecDefHash;
+            instance.BlueprintDefinitionTxId = tx.BlueprintDefinitionTxId;
         }
 
         // Advance control state: remove the completed action, add the full next-action set

@@ -169,7 +169,7 @@ public sealed class MeApplicationEndpointsTests
     private static IPublishedBlueprintStore EmptyPublishedStore()
     {
         var mock = new Mock<IPublishedBlueprintStore>();
-        mock.Setup(s => s.GetByExecDefHashAsync(It.IsAny<string>(), It.IsAny<string>()))
+        mock.Setup(s => s.GetByPublicationAsync(It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync((PublishedBlueprint?)null);
         mock.Setup(s => s.GetVersionsAsync(It.IsAny<string>()))
             .ReturnsAsync(Enumerable.Empty<PublishedBlueprint>());

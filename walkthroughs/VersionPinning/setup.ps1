@@ -49,7 +49,20 @@ $sub = "vpin-$stamp"
 $officerEmail = "officer@$sub.test"
 $password = 'Vpin_Test_2026!'
 
-$admin = Connect-SorchaAdmin -TenantUrl $sorchaEnv.TenantUrl
+# Connect-SorchaAdmin takes the seed admin's credentials — both are mandatory. The `platform`
+# entry in walkthroughs/.secrets/passwords.json is where every other walkthrough reads them from;
+# this one has no secrets entry of its own because it provisions its users inline.
+$platform = Get-SorchaSecrets -WalkthroughName 'platform'
+$admin = Connect-SorchaAdmin -TenantUrl $sorchaEnv.TenantUrl `
+    -AdminEmail $platform.adminEmail -AdminPassword $platform.adminPassword
+
+# The Public org is DISABLED after a fresh database init, so self-registration 403s with
+# "Self-registration is not enabled for this organization" — which reads as a permissions problem
+# and is a missing setup step. Invisible on a standing node, immediate on a re-genesised one.
+Invoke-SorchaApi -Method PUT -Uri "$($sorchaEnv.TenantUrl)/platform/settings/public-org" `
+    -Body @{ enabled = $true } -Headers $admin.Headers | Out-Null
+Write-Host "  public org enabled for self-registration"
+
 
 # The org's own admin creates the org wallet (#1525) — pass -WalletUrl so New-SorchaOrganization
 # does it while it still holds an admin session.
@@ -69,11 +82,13 @@ $orgId = $org.OrganizationId
 Write-Host "  org $orgId"
 
 # Log in AS the officer. Single-org, so the password grant returns a token directly.
-$officer = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl -Email $officerEmail -Password $password
+$officer = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl -Email $officerEmail -Password $password -OrganizationId $orgId
 
 Write-Host "`n[2/6] Officer wallet" -ForegroundColor Cyan
+# -FetchPublicKey is required: without it the returned wallet carries an empty PublicKey, and the
+# participant publish below fails on a parameter binding rather than on anything meaningful.
 $officerWallet = New-SorchaWallet -WalletUrl $sorchaEnv.WalletUrl -Headers $officer.Headers `
-    -Algorithm 'ED25519' -Name "pinning-officer-$stamp"
+    -Algorithm 'ED25519' -Name "pinning-officer-$stamp" -FetchPublicKey
 Write-Host "  wallet $($officerWallet.Address)"
 
 Register-SorchaParticipant -TenantUrl $sorchaEnv.TenantUrl -WalletUrl $sorchaEnv.WalletUrl `
@@ -83,7 +98,7 @@ Register-SorchaParticipant -TenantUrl $sorchaEnv.TenantUrl -WalletUrl $sorchaEnv
 # RE-LOGIN. wallet_address is added to the JWT only at login, from the first active linked wallet.
 # Without this the F142 publish HARD gate refuses with "you do not hold a publish-governance role",
 # which reads as a permissions problem and is actually a stale token.
-$officer = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl -Email $officerEmail -Password $password
+$officer = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl -Email $officerEmail -Password $password -OrganizationId $orgId
 $ownerWallet = (Decode-SorchaJwt $officer.Token).wallet_address
 if (-not $ownerWallet) { throw "Officer token carries no wallet_address claim after re-login." }
 Write-Host "  token wallet_address $ownerWallet"
@@ -120,18 +135,26 @@ if ($pub -and $pub.PSObject.Properties['transactionId'] -and $pub.transactionId)
 Write-Host "  participant sealed"
 
 Write-Host "`n[6/6] Applicant (public citizen — late-bound at runtime)" -ForegroundColor Cyan
+# The well-known Public org. A citizen belongs to it and is late-bound into the workflow;
+# Connect-SorchaUser needs the org explicitly, so it cannot be left implicit.
+$publicOrgId = '00000000-0000-0000-0000-000000000002'
+
 $applicantEmail = "applicant-$stamp@vpin.test"
-Register-SorchaPublicUser -TenantUrl $sorchaEnv.TenantUrl -Email $applicantEmail `
-    -Password $password -DisplayName 'Pinning Applicant' | Out-Null
-Confirm-SorchaUserEmail -TenantUrl $sorchaEnv.TenantUrl -Headers $admin.Headers -Email $applicantEmail | Out-Null
-$applicant = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl -Email $applicantEmail -Password $password
+# Register-SorchaPublicUser RETURNS the new userId, and Confirm-SorchaUserEmail takes -UserId
+# (plus the org) — not -Email. Discarding the id here costs the verification step.
+$applicantUserId = Register-SorchaPublicUser -TenantUrl $sorchaEnv.TenantUrl -Email $applicantEmail `
+    -Password $password -DisplayName 'Pinning Applicant'
+if (-not $applicantUserId) { throw "Public registration returned no userId for $applicantEmail." }
+Confirm-SorchaUserEmail -TenantUrl $sorchaEnv.TenantUrl -Headers $admin.Headers `
+    -OrganizationId $publicOrgId -UserId $applicantUserId | Out-Null
+$applicant = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl -Email $applicantEmail -Password $password -OrganizationId $publicOrgId
 
 $applicantWallet = New-SorchaWallet -WalletUrl $sorchaEnv.WalletUrl -Headers $applicant.Headers `
     -Algorithm 'ED25519' -Name "pinning-applicant-$stamp"
 Register-SorchaParticipant -TenantUrl $sorchaEnv.TenantUrl -WalletUrl $sorchaEnv.WalletUrl `
     -Headers $applicant.Headers -OrganizationId '00000000-0000-0000-0000-000000000002' `
     -WalletAddress $applicantWallet.Address -DisplayName 'Pinning Applicant' | Out-Null
-$applicant = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl -Email $applicantEmail -Password $password
+$applicant = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl -Email $applicantEmail -Password $password -OrganizationId $publicOrgId
 Write-Host "  applicant wallet $($applicantWallet.Address)"
 
 $state = [ordered]@{
@@ -143,8 +166,8 @@ $state = [ordered]@{
     organizationId = $orgId
     registerId     = $registerId
     stamp          = $stamp
-    officer        = @{ email = $officerEmail; password = $password; wallet = $ownerWallet }
-    applicant      = @{ email = $applicantEmail; password = $password; wallet = $applicantWallet.Address }
+    officer        = @{ email = $officerEmail; password = $password; wallet = $ownerWallet; organizationId = $orgId }
+    applicant      = @{ email = $applicantEmail; password = $password; wallet = $applicantWallet.Address; organizationId = $publicOrgId }
 }
 $state | ConvertTo-Json -Depth 10 | Set-Content $statePath -Encoding utf8
 

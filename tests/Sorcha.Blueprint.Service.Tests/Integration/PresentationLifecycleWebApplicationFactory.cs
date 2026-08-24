@@ -110,7 +110,7 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
             .Setup(r => r.PublishBlueprintToRegisterAsync(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync(new BlueprintPublicationResult { PublicationTxId = "tx-publication-1" });
         // Feature 142 — the test principal (org_id ...456) must hold a publish-governance role on
         // the target register so the publish endpoint's server-side governance hard gate (FR-027)
         // passes. This factory replaces the base IRegisterServiceClient mock, so the roster default

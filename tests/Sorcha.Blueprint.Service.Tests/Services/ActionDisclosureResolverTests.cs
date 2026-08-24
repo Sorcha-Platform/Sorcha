@@ -71,6 +71,7 @@ public class ActionDisclosureResolverTests
     {
         Id = InstanceId,
         BlueprintId = "bp-1",
+        BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: execution resolves and chains by the pin
         BlueprintVersion = 1,
         RegisterId = RegisterId,
         TenantId = "t-1",

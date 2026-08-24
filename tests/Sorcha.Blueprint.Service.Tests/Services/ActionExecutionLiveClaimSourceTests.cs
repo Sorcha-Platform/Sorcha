@@ -95,7 +95,7 @@ public class ActionExecutionLiveClaimSourceTests
 
     private static Instance TestInstance() => new()
     {
-        Id = "inst-1", BlueprintId = "bp-1", BlueprintVersion = 1, RegisterId = "reg-1",
+        Id = "inst-1", BlueprintId = "bp-1", BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", BlueprintVersion = 1, RegisterId = "reg-1",
         TenantId = "t-1", State = InstanceState.Active, CurrentActionIds = [1],
         ParticipantWallets = new Dictionary<string, string> { ["citizen"] = "wallet-citizen" },
     };
@@ -161,7 +161,7 @@ public class ActionExecutionLiveClaimSourceTests
         var action = blueprint.Actions!.First();
 
         _instanceStore.Setup(x => x.GetAsync("inst-1", It.IsAny<CancellationToken>())).ReturnsAsync(TestInstance());
-        _actionResolver.Setup(x => x.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        _actionResolver.Setup(x => x.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
         _actionResolver.Setup(x => x.GetActionDefinition(blueprint, "1")).Returns(action);
         _actionStore.Setup(s => s.GetByIdempotencyKeyAsync(It.IsAny<string>())).ReturnsAsync((string?)null);
 
