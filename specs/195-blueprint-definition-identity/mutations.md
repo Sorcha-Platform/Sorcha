@@ -63,3 +63,32 @@ untouched draft is genuinely idempotent, while any edit produces a new publicati
 Had the fixture not pinned them, the golden vector would have been **flaky rather than frozen**, and
 the most likely response to a random failure is to regenerate the constant — which would have quietly
 destroyed the only guard protecting the ledger contract.
+
+---
+
+## T010 — the ownership gate, and a hole found in the gate itself
+
+| Mutation | Outcome |
+|---|---|
+| Add a single-line illegal caller under `src/` | flagged, with path and line |
+| Remove it | back to green |
+| Add a **multi-line** illegal caller (`Type` on one line, `.Compute(` on the next) | **initially NOT flagged** |
+
+⚠ **The gate's first version scanned line by line, and the very first real call it had to catch was
+split across two lines:**
+
+```csharp
+var txId = Sorcha.Blueprint.Models.Canonical.BlueprintPublicationId
+    .Compute(registerId, request.BlueprintId, canonicalJson);
+```
+
+It reported `OK` with the allowlist entry marked *stale* — i.e. it claimed the producer did not call
+the producer. **A gate a line break defeats is worse than no gate, because it reports success.**
+
+Fixed to scan whole-file with line comments blanked in place (so reported line numbers stay true) and
+line numbers derived from the match offset. Re-verified against both the single-line and multi-line
+probes.
+
+The lesson generalises to the gates this one was modelled on: a grep-shaped rule must be tested
+against the formatting real code actually uses, not only against the formatting the test author
+happens to write.

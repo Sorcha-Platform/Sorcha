@@ -7,4 +7,4 @@
 # the bytes it received and comparing to the transaction's own id. That check is what makes the
 # identity self-anchoring, so forbidding it would remove the property the feature adds.
 #
-# Currently empty: the producer lands in T011.
+src/Services/Sorcha.Register.Service/Program.cs

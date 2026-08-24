@@ -84,21 +84,29 @@ foreach ($file in $files) {
 
     $rel = $file.FullName.Substring($repo.Length + 1)
 
-    # Strip line comments so illustrative prose in XML docs is not a call site. Block comments are
-    # not stripped — a commented-out call is dead code that should be deleted, not allowlisted.
+    # Scan the WHOLE FILE, not line by line.
+    #
+    # A line-by-line scan misses the very first real call this gate had to catch:
+    #
+    #     var txId = Sorcha.Blueprint.Models.Canonical.BlueprintPublicationId
+    #         .Compute(registerId, request.BlueprintId, canonicalJson);
+    #
+    # A gate that a line break defeats is worse than no gate, because it reports OK.
+    #
+    # Line comments are blanked first (preserving line count, so reported line numbers stay true) so
+    # illustrative prose in XML docs is not a call site. Block comments are deliberately NOT stripped:
+    # a commented-out call is dead code to delete, not something to hide from the gate.
     $lines = Get-Content -LiteralPath $file.FullName
-    $index = 0
-    foreach ($line in $lines) {
-        $index++
-        $code = $line -replace '//.*$', ''
-        if ($code -notmatch $pattern) { continue }
+    $stripped = ($lines | ForEach-Object { $_ -replace '//.*$', '' }) -join "`n"
 
+    foreach ($m in [regex]::Matches($stripped, $pattern)) {
         if ($allowed.Contains($rel)) {
             [void]$seenAllowed.Add($rel)
             continue
         }
 
-        $violations.Add("$rel($index): $($line.Trim())")
+        $lineNo = ($stripped.Substring(0, $m.Index) -split "`n").Count
+        $violations.Add("$rel($lineNo): $($m.Value -replace '\s+', ' ')")
     }
 }
 
