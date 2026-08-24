@@ -72,6 +72,32 @@ function Try-Action {
 $bp = $state.blueprintUrl
 $registerId = $state.registerId
 
+function Wait-Inbox {
+    <#
+      The MANDATORY gate between actors (Feature 145). `-WaitForSeal` waits for the SEAL; the
+      instance advances a beat LATER, when the InstanceProjector folds the sealed docket. Submit
+      the next actor's action before that fold and you get
+
+          400 { "error": "Action N is not a current action for instance ..." }
+
+      which at the status line is indistinguishable from a schema refusal - and that is not
+      hypothetical here: in one run it made "instance B is REFUSED the v1-shaped payload" pass
+      VACUOUSLY (B was merely too early to accept anything), and in the next run the same check
+      failed because the fold happened to land in time. Invoke-SorchaAction's built-in cadence
+      retry is 15x1s, which is not enough on n1.
+
+      Returns whether the action actually became current, so a gate that gives up is visible
+      rather than silently followed by a submission that was always going to 400.
+    #>
+    param([string]$InstanceId, [int]$ActionId, [hashtable]$Headers, [int]$TimeoutSeconds = 180)
+    try {
+        Wait-SorchaActorReady -Mode AwaitingInbox -InstanceId $InstanceId -ActionId $ActionId `
+            -RegisterId $registerId -Headers $Headers -GatewayUrl $state.gatewayUrl `
+            -TimeoutSeconds $TimeoutSeconds | Out-Null
+        return $true
+    } catch { return $false }
+}
+
 Write-Host ""
 Write-Host "=== Feature 194 live acceptance ===" -ForegroundColor Cyan
 Write-Host "Gateway  : $($state.gatewayUrl)"
@@ -117,7 +143,7 @@ Write-Host "  instance A $instanceA"
 $a1 = Try-Action @{
     BlueprintUrl = $bp; InstanceId = $instanceA; ActionId = '1'; BlueprintId = $blueprintId
     SenderWallet = $state.applicant.wallet; RegisterId = $registerId; Token = $applicant.Token
-    PayloadData  = @{ projectName = 'Riverside Depot' }; WaitForSeal = $true
+    PayloadData  = @{ projectName = 'Riverside Depot' }; WaitForSeal = $true; WaitForSealTimeoutSeconds = 300
 }
 Check '2' 'instance A action 1 accepted and sealed' $a1.Accepted $a1.Error
 
@@ -165,11 +191,14 @@ Check '3' 'instance A now reports it is NOT on the latest definition' `
 # STEP 4 — advance A against v1's schema, WITHOUT the new required field
 # ---------------------------------------------------------------------------------------------
 Write-Host "`n[4] Advance instance A — v1's rules, no complianceRef" -ForegroundColor Cyan
+Check '4' 'action 2 became current on instance A (the projector folded action 1)' `
+    (Wait-Inbox -InstanceId $instanceA -ActionId 2 -Headers $officer.Headers) `
+    'the fold never happened, so anything below this measures cadence, not the feature'
 $a2 = Try-Action @{
     BlueprintUrl = $bp; InstanceId = $instanceA; ActionId = '2'; BlueprintId = $blueprintId
     SenderWallet = $state.officer.wallet; RegisterId = $registerId; Token = $officer.Token
     PayloadData  = @{ reviewNote = 'Reviewed under the rules in force when the applicant applied.' }
-    WaitForSeal  = $true
+    WaitForSeal  = $true; WaitForSealTimeoutSeconds = 300
 }
 Check '4' 'THE FEATURE: instance A advances under v1 WITHOUT the field v2 added' $a2.Accepted $a2.Error
 
@@ -186,7 +215,7 @@ Write-Host "  instance B $instanceB"
 $b1 = Try-Action @{
     BlueprintUrl = $bp; InstanceId = $instanceB; ActionId = '1'; BlueprintId = $blueprintId
     SenderWallet = $state.applicant.wallet; RegisterId = $registerId; Token = $applicant.Token
-    PayloadData  = @{ projectName = 'Hillfoot Yard' }; WaitForSeal = $true
+    PayloadData  = @{ projectName = 'Hillfoot Yard' }; WaitForSeal = $true; WaitForSealTimeoutSeconds = 300
 }
 Check '5' 'instance B action 1 accepted and sealed' $b1.Accepted $b1.Error
 
@@ -196,18 +225,28 @@ Check '5' 'instance B is pinned to v2' ($pinB.blueprintDefinitionTxId -eq $v2Pub
 
 # The counterfactual. Without this, "B is pinned to v2" is only a recorded value — this is what
 # proves v2's rules are ENFORCED against B rather than merely noted.
+Check '5' 'action 2 became current on instance B (so a refusal below is about the SCHEMA)' `
+    (Wait-Inbox -InstanceId $instanceB -ActionId 2 -Headers $officer.Headers) `
+    'without this the next check passes vacuously - too-early and refused look identical'
 $b2Bad = Try-Action @{
     BlueprintUrl = $bp; InstanceId = $instanceB; ActionId = '2'; BlueprintId = $blueprintId
     SenderWallet = $state.officer.wallet; RegisterId = $registerId; Token = $officer.Token
-    PayloadData  = @{ reviewNote = 'Missing the field v2 requires.' }; WaitForSeal = $true
+    PayloadData  = @{ reviewNote = 'Missing the field v2 requires.' }; WaitForSeal = $true; WaitForSealTimeoutSeconds = 300
 }
+# KNOWN BLOCKED by #1573 — and the distinction matters, so it is recorded rather than removed.
+# This is the counterfactual that gives "instance B is pinned to v2" its meaning: a pin nobody
+# enforces is a recorded value, not a rule. It fails on an encrypted register because NO schema
+# validation happens there at all — ActionExecutionService gates on Action.DataSchemas while
+# ExecutionEngine validates Action.Form.Schema, which blueprints never populate, so validation
+# passes vacuously; and the Validator skips schema checks on encrypted payloads precisely because
+# it trusts that pre-validation. Nothing to do with pinning, and NOT introduced by Feature 195.
 Check '5' 'instance B is REFUSED the v1-shaped payload (v2 is enforced, not just recorded)' `
-    (-not $b2Bad.Accepted) "the submission was accepted — v2's required field is not being enforced"
+    (-not $b2Bad.Accepted) "the submission was accepted - see #1573: no schema validation runs on an encrypted register, so required-field constraints are not enforced by anyone"
 
 $b2Good = Try-Action @{
     BlueprintUrl = $bp; InstanceId = $instanceB; ActionId = '2'; BlueprintId = $blueprintId
     SenderWallet = $state.officer.wallet; RegisterId = $registerId; Token = $officer.Token
-    PayloadData  = @{ reviewNote = 'Reviewed.'; complianceRef = 'CR-2026-0001' }; WaitForSeal = $true
+    PayloadData  = @{ reviewNote = 'Reviewed.'; complianceRef = 'CR-2026-0001' }; WaitForSeal = $true; WaitForSealTimeoutSeconds = 300
 }
 Check '5' 'instance B advances once the v2 field is supplied' $b2Good.Accepted $b2Good.Error
 
@@ -246,10 +285,13 @@ Check '6' 'instance A STILL resolves its v1 definition after the restart' `
     ($pinAfterRestart.pinState -eq 'pinned' -and $pinAfterRestart.blueprintDefinitionTxId -eq $v1Pub) `
     "pinState=$($pinAfterRestart.pinState) pin=$($pinAfterRestart.blueprintDefinitionTxId) expected=$v1Pub"
 
+Check '6' 'action 3 became current on instance A' `
+    (Wait-Inbox -InstanceId $instanceA -ActionId 3 -Headers $officer.Headers) `
+    'the fold never happened'
 $a3 = Try-Action @{
     BlueprintUrl = $bp; InstanceId = $instanceA; ActionId = '3'; BlueprintId = $blueprintId
     SenderWallet = $state.officer.wallet; RegisterId = $registerId; Token = $officer.Token
-    PayloadData  = @{ outcome = 'approved' }; WaitForSeal = $true
+    PayloadData  = @{ outcome = 'approved' }; WaitForSeal = $true; WaitForSealTimeoutSeconds = 300
 }
 Check '6' 'THE GATE: instance A advances against v1 AFTER a restart' $a3.Accepted $a3.Error
 
