@@ -2281,68 +2281,25 @@ instancesGroup.MapPost("/", async (
                 statusCode: StatusCodes.Status409Conflict);
         }
 
-        // Ensure the blueprint publish transaction exists on the register. Action 0 chains
-        // from this TX, so it must exist before any actions execute. Feature 137 (C1): ONLY
-        // the register owner publishes — a replica must never (re)publish onto a register it
-        // does not own (the publish tx already arrived via replication). The Register Service
-        // endpoint is idempotent, so the owner can safely call it on every instance creation.
-        var isOwner = false;
-        try
-        {
-            var relationship = await registerClient.GetLocalRelationshipAsync(request.RegisterId);
-            isOwner = relationship?.IsOwner == true;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex,
-                "Could not resolve local relationship for register {RegisterId}; treating as non-owner (skipping publish)",
-                request.RegisterId);
-        }
+        // Feature 195 — instance creation does NOT publish.
+        //
+        // This block used to push the blueprint to the register on the owner node, "so action 0 has
+        // something to chain from". It pushed the DRAFT, unflattened, with its own serializer
+        // options, while PublishService pushes a $ref-flattened deep-copied snapshot — two different
+        // shapes of one blueprint reaching the ledger depending on which path ran (#1570).
+        //
+        // The divergence was invisible only because the old publish txId was version-blind, so the
+        // second push deduped into the first and was silently discarded. Content-addressing the
+        // publication unmasks it: both shapes would land under different ids and recovery would
+        // faithfully restore BOTH as distinct definitions — a silent fork replacing a silent drop,
+        // and worse, because a forked definition looks healthy.
+        //
+        // There is now ONE writer: POST /api/blueprints/{id}/publish. An instance is created against
+        // a definition that has already been published, and pins to it; the starting action chains
+        // from that definition's own publication transaction, read from the instance's pin rather
+        // than recomputed. Nothing here needs to write to the ledger.
 
-        if (isOwner)
-        {
-            try
-            {
-                var blueprintJson = System.Text.Json.JsonSerializer.Serialize(blueprint, new System.Text.Json.JsonSerializerOptions
-                {
-                    PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
-                    WriteIndented = false
-                });
-
-                var published = await registerClient.PublishBlueprintToRegisterAsync(
-                    request.RegisterId,
-                    request.BlueprintId,
-                    blueprintJson,
-                    request.TenantId ?? "system");
-
-                if (!published)
-                {
-                    logger.LogWarning(
-                        "Failed to publish blueprint {BlueprintId} to register {RegisterId} during instance creation",
-                        request.BlueprintId, request.RegisterId);
-                }
-                else
-                {
-                    logger.LogInformation(
-                        "Blueprint {BlueprintId} published to register {RegisterId} for instance creation",
-                        request.BlueprintId, request.RegisterId);
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex,
-                    "Non-fatal: Could not publish blueprint {BlueprintId} to register {RegisterId}",
-                    request.BlueprintId, request.RegisterId);
-            }
-        }
-        else
-        {
-            logger.LogDebug(
-                "Skipping blueprint publish for register {RegisterId}: this node is not the owner (replica path)",
-                request.RegisterId);
-        }
-
-        // Find starting actions
+        // Find starting actions        // Find starting actions
         var startingActions = blueprint.Actions
             .Where(a => a.IsStartingAction)
             .Select(a => a.Id)
@@ -3223,11 +3180,37 @@ public class PublishService(
 
         var execDefHash = _execDefHasher.ComputeHash(snapshot);
 
-        // Create published version (immutable snapshot)
+        // Feature 195 — the LEDGER FIRST, because the ledger assigns the identity.
+        //
+        // This ordering is load-bearing. The register is the one producer of a definition's
+        // publication id, so the local store cannot record a definition until the register has said
+        // what that definition IS. It also fixes a quieter problem in the old order: the published
+        // store was written before the ledger push, so a failed push left a definition that existed
+        // locally and nowhere else — resolvable on this node, unresolvable on every other, and
+        // indistinguishable from a healthy publish until something needed it.
+        if (_registerClient is null)
+        {
+            return PublishResult.Failed(
+                "Cannot publish: no register client is configured, so no definition identity can be assigned.");
+        }
+
+        var publication = await _registerClient.PublishBlueprintToRegisterAsync(
+            registerId, blueprintId, blueprintJson, "system");
+
+        if (publication is null)
+        {
+            return PublishResult.Failed(
+                $"Register did not accept blueprint {blueprintId} for register {registerId}. " +
+                "Nothing was recorded locally — a definition that exists only on this node is worse " +
+                "than a failed publish, because it looks resolvable here and is not resolvable anywhere else.");
+        }
+
+        // Create published version (immutable snapshot), carrying the identity the register assigned.
         var published = new PublishedBlueprint
         {
             BlueprintId = blueprint.Id,
             Blueprint = snapshot,
+            PublicationTxId = publication.PublicationTxId,
             ExecDefHash = execDefHash,
             PublishedAt = DateTimeOffset.UtcNow,
             RegisterId = registerId
@@ -3236,8 +3219,9 @@ public class PublishService(
         await _publishedStore.AddAsync(published);
 
         _logger?.LogInformation(
-            "Blueprint {BlueprintId} published to register {RegisterId} as version {Version} with executable-definition hash {ExecDefHash}",
-            blueprintId, registerId, published.Version, execDefHash);
+            "Blueprint {BlueprintId} published to register {RegisterId} as {PublicationTxId} " +
+            "(execDefHash {ExecDefHash}, alreadyPublished: {AlreadyPublished})",
+            blueprintId, registerId, publication.PublicationTxId, execDefHash, publication.AlreadyPublished);
 
         // Populate Validator's blueprint cache in Redis so transactions referencing this blueprint pass validation
         if (_redis is not null)
@@ -3263,15 +3247,6 @@ public class PublishService(
                 // Non-fatal: Validator will fail with VAL_SCHEMA_001 but publishing itself succeeded
                 _logger?.LogWarning(ex, "Failed to cache blueprint {BlueprintId} in Redis for Validator", blueprintId);
             }
-        }
-
-        // Publish to the register. Reuses the exact bytes the snapshot was built from and the hash
-        // was computed over, so the ledger record, the in-memory snapshot and the pin cannot
-        // disagree about what was published.
-        if (_registerClient is not null)
-        {
-            await _registerClient.PublishBlueprintToRegisterAsync(
-                registerId, blueprintId, blueprintJson, "system");
         }
 
         return PublishResult.Success(published, warnings.ToArray());
@@ -4123,6 +4098,24 @@ public record PublishedBlueprint
     public int Version { get; set; }
 
     public BlueprintModel Blueprint { get; init; } = null!;
+
+    /// <summary>
+    /// The publication transaction id — <b>this definition's identity</b> (Feature 195).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Recorded from the Register Service's publish response. It is <b>never computed here</b>: that
+    /// service is the one producer, and a second one would mint a plausible id that disagrees with the
+    /// ledger's (gated by <c>scripts/check-publication-id-owner.ps1</c>).
+    /// </para>
+    /// <para>
+    /// The absence of this field is what created issue #1563. With no record of the id a definition
+    /// was published as, the anchor a starting action chains from had to be RECOMPUTED from
+    /// <c>(registerId, blueprintId)</c> — a formula that grew four homes and, being version-blind,
+    /// deduped every republish into one silently-dropped transaction.
+    /// </para>
+    /// </remarks>
+    public string PublicationTxId { get; init; } = string.Empty;
 
     /// <summary>
     /// The executable-definition hash — the content address of this definition, and the value an

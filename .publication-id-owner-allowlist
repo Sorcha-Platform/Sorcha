@@ -7,4 +7,15 @@
 # the bytes it received and comparing to the transaction's own id. That check is what makes the
 # identity self-anchoring, so forbidding it would remove the property the feature adds.
 #
+# THE PRODUCER — the per-register publish endpoint.
 src/Services/Sorcha.Register.Service/Program.cs
+
+# THE PRODUCER — the system register is a register, and a blueprint published to it is a definition
+# like any other. Same canonical form, same construction, so recovery needs ONE verification rule
+# rather than a second one for system blueprints.
+src/Services/Sorcha.Register.Service/Services/SystemRegisterService.cs
+
+# VERIFIER, not producer. Recovery recomputes a definition's id from the bytes it received and
+# compares to the transaction's own id. Recomputing is the whole point — a node that trusted the id
+# it was handed would be verifying nothing.
+src/Services/Sorcha.Blueprint.Service/Services/Implementation/BlueprintRecoveryService.cs

@@ -46,7 +46,7 @@ public class PublishSnapshotIsolationTests
         await draftStore.AddAsync(blueprint);
         var blueprintId = blueprint.Id;
 
-        var service = new PublishService(draftStore, publishedStore);
+        var service = new PublishService(draftStore, publishedStore, FakePublishingRegister.Client());
         var result = await service.PublishAsync(blueprintId, "register-1");
         result.IsSuccess.Should().BeTrue(because: "the fixture blueprint is valid");
 
@@ -79,7 +79,7 @@ public class PublishSnapshotIsolationTests
         var blueprint = CreateBlueprint();
         await draftStore.AddAsync(blueprint);
 
-        var service = new PublishService(draftStore, publishedStore);
+        var service = new PublishService(draftStore, publishedStore, FakePublishingRegister.Client());
         var result = await service.PublishAsync(blueprint.Id, "register-1");
 
         var stored = result.PublishedBlueprint!;
@@ -94,7 +94,7 @@ public class PublishSnapshotIsolationTests
         var blueprint = CreateBlueprint();
         await draftStore.AddAsync(blueprint);
         var blueprintId = blueprint.Id;
-        var service = new PublishService(draftStore, publishedStore);
+        var service = new PublishService(draftStore, publishedStore, FakePublishingRegister.Client());
 
         var v1 = await service.PublishAsync(blueprintId, "register-1");
 
@@ -123,7 +123,7 @@ public class PublishSnapshotIsolationTests
         var publishedStore = new InMemoryPublishedBlueprintStore();
         var blueprint = CreateBlueprint();
         await draftStore.AddAsync(blueprint);
-        await new PublishService(draftStore, publishedStore).PublishAsync(blueprint.Id, "register-1");
+        await new PublishService(draftStore, publishedStore, FakePublishingRegister.Client()).PublishAsync(blueprint.Id, "register-1");
 
         var resolved = await publishedStore.GetByExecDefHashAsync(blueprint.Id, new string('f', 64));
 
@@ -138,7 +138,7 @@ public class PublishSnapshotIsolationTests
         var publishedStore = new InMemoryPublishedBlueprintStore();
         var blueprint = CreateBlueprint();
         await draftStore.AddAsync(blueprint);
-        var service = new PublishService(draftStore, publishedStore);
+        var service = new PublishService(draftStore, publishedStore, FakePublishingRegister.Client());
 
         var v1 = await service.PublishAsync(blueprint.Id, "register-1");
 
@@ -196,7 +196,7 @@ public class PublishHashOrderingTests
         var service = new PublishService(
             draftStore,
             publishedStore,
-            registerClient: null,
+            registerClient: FakePublishingRegister.Client(),
             redis: null,
             schemaRefResolver: new MarkerRewritingRefResolver());
 

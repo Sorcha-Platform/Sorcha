@@ -53,26 +53,26 @@ instance still resolves and advances. Closes #1563 and #1570.
 
 ### Producer
 
-- [ ] T011 [US1] Replace the inline txId derivation in `src/Services/Sorcha.Register.Service/Program.cs:2018` with `BlueprintPublicationId.Compute` over the canonicalised request payload. This is the sole producer
-- [ ] T012 [US1] Add the `alreadyPublished` discriminator to the publish response (contracts/blueprint-definitions.openapi.yaml) — identical content is an idempotent no-op that still returns 200, but must be **distinguishable** from a real publish. Indistinguishability is how #1563 stayed invisible
-- [ ] T013 [US1] Remove the `contentHash` metadata key from the publish transaction in `src/Services/Sorcha.Register.Service/Program.cs` — absorbed, since the transaction id is itself the digest (data-model.md)
-- [ ] T014 [P] [US1] Delete `src/Common/Sorcha.ServiceClients.Http/Register/BlueprintContentHash.cs` and its references
+- [x] T011 [US1] Replace the inline txId derivation in `src/Services/Sorcha.Register.Service/Program.cs:2018` with `BlueprintPublicationId.Compute` over the canonicalised request payload. This is the sole producer
+- [x] T012 [US1] Add the `alreadyPublished` discriminator to the publish response (contracts/blueprint-definitions.openapi.yaml) — identical content is an idempotent no-op that still returns 200, but must be **distinguishable** from a real publish. Indistinguishability is how #1563 stayed invisible
+- [x] T013 [US1] Remove the `contentHash` metadata key from the publish transaction in `src/Services/Sorcha.Register.Service/Program.cs` — absorbed, since the transaction id is itself the digest (data-model.md)
+- [x] T014 [P] [US1] Delete `src/Common/Sorcha.ServiceClients.Http/Register/BlueprintContentHash.cs` and its references
 
 ### One writer
 
-- [ ] T015 [US1] Delete the instance-creation publish branch at `src/Services/Sorcha.Blueprint.Service/Program.cs:2305-2318`. It pushes the **unflattened draft** where `PublishService` pushes a flattened deep-copied snapshot — two shapes of one blueprint, invisible today only because the version-blind id dedupes the second away (#1570)
-- [ ] T016 [US1] Add `PublicationTxId` to `PublishedBlueprint` (`src/Services/Sorcha.Blueprint.Service/Program.cs:4114`), populated in `PublishAsync` from the Register Service's response. **Never computed locally** — this absence is what created the whole problem (research R-004)
-- [ ] T017 [US1] Change `IRegisterServiceClient.PublishBlueprintToRegisterAsync` to return the txId and `alreadyPublished` rather than `bool`, in `src/Common/Sorcha.ServiceClients.Http/Register/`
+- [x] T015 [US1] Delete the instance-creation publish branch at `src/Services/Sorcha.Blueprint.Service/Program.cs:2305-2318`. It pushes the **unflattened draft** where `PublishService` pushes a flattened deep-copied snapshot — two shapes of one blueprint, invisible today only because the version-blind id dedupes the second away (#1570)
+- [x] T016 [US1] Add `PublicationTxId` to `PublishedBlueprint` (`src/Services/Sorcha.Blueprint.Service/Program.cs:4114`), populated in `PublishAsync` from the Register Service's response. **Never computed locally** — this absence is what created the whole problem (research R-004)
+- [x] T017 [US1] Change `IRegisterServiceClient.PublishBlueprintToRegisterAsync` to return the txId and `alreadyPublished` rather than `bool`, in `src/Common/Sorcha.ServiceClients.Http/Register/`
 
 ### Recovery
 
-- [ ] T018 [US1] Change `BlueprintRecoveryService` dedupe from the recomputed `execDefHash` to `PublicationTxId`, and replace `TryVerifyProvenance` with recompute-and-compare against the transaction's own id — self-anchoring, so a tampered payload cannot match its own id
-- [ ] T019 [US1] Remove `contentHash` from `PublishedBlueprintEntry` and the recovery endpoint's projection in `src/Services/Sorcha.Register.Service/Program.cs:2117-2190`
+- [x] T018 [US1] Change `BlueprintRecoveryService` dedupe from the recomputed `execDefHash` to `PublicationTxId`, and replace `TryVerifyProvenance` with recompute-and-compare against the transaction's own id — self-anchoring, so a tampered payload cannot match its own id
+- [x] T019 [US1] Remove `contentHash` from `PublishedBlueprintEntry` and the recovery endpoint's projection in `src/Services/Sorcha.Register.Service/Program.cs:2117-2190`
 
 ### Tests
 
-- [ ] T020 [P] [US1] `tests/Sorcha.Register.Service.Tests` — publish produces the expected id; identical republish is idempotent with `alreadyPublished: true` and writes no second transaction; **behaviourally different republish writes a second transaction** (the check that fails today)
-- [ ] T021 [P] [US1] `tests/Sorcha.Blueprint.Service.Tests` — recovery restores every definition on a register, deduped by publication id, and rejects a payload whose recomputed id does not match its transaction id
+- [x] T020 [P] [US1] `tests/Sorcha.Register.Service.Tests` — publish produces the expected id; identical republish is idempotent with `alreadyPublished: true` and writes no second transaction; **behaviourally different republish writes a second transaction** (the check that fails today)
+- [x] T021 [P] [US1] `tests/Sorcha.Blueprint.Service.Tests` — recovery restores every definition on a register, deduped by publication id, and rejects a payload whose recomputed id does not match its transaction id
 - [ ] T022 [US1] Mutation-test: restore the version-blind txId (must kill the second-transaction test); drop the recovery id verification (must kill the tamper test); reinstate the instance-creation publish branch (must kill a single-writer test). Record in `mutations.md`
 
 **Checkpoint:** a republished definition reaches the ledger and survives a restart. Deliverable alone.

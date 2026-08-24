@@ -8,6 +8,8 @@ using Sorcha.Register.Core.Events;
 using Sorcha.ServiceClients.Register;
 using StackExchange.Redis;
 
+using Sorcha.Blueprint.Models.Canonical;
+
 namespace Sorcha.Blueprint.Service.Services.Implementation;
 
 /// <summary>
@@ -307,9 +309,36 @@ public class BlueprintRecoveryService : BackgroundService
         return published.OrderBy(b => b.PublishedAt).ToList();
     }
 
-    internal static bool TryVerifyProvenance(string blueprintJson, string contentHash, out string? rejectReason)
+    /// <summary>
+    /// Verifies a recovered definition against the transaction that published it (Feature 195).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Self-anchoring.</b> A definition's identity IS the digest of its canonical bytes, so
+    /// verification is "recompute the publication id from what arrived and compare it to the
+    /// transaction's own id". This replaced a comparison against a separately-sealed
+    /// <c>contentHash</c> sibling field — and the difference is not cosmetic: two fields can
+    /// disagree, an id and the content it identifies cannot.
+    /// </para>
+    /// <para>
+    /// <b>This is a verification, not a mint</b>, which is why this file is allowlisted by
+    /// <c>scripts/check-publication-id-owner.ps1</c> while the Register Service remains the one
+    /// producer. Recomputing here is the whole point: a node that trusted the id it was handed would
+    /// be verifying nothing.
+    /// </para>
+    /// <para>
+    /// Fails closed on every path — an unparseable definition, one carrying duplicate object keys,
+    /// or one whose recomputed id does not match is rejected rather than recovered.
+    /// </para>
+    /// </remarks>
+    internal static bool TryVerifyProvenance(
+        string registerId,
+        string blueprintId,
+        string blueprintJson,
+        string publicationTxId,
+        out string? rejectReason)
     {
-        if (string.IsNullOrEmpty(contentHash))
+        if (string.IsNullOrWhiteSpace(publicationTxId))
         {
             rejectReason = "no_provenance";
             return false;
@@ -318,15 +347,15 @@ public class BlueprintRecoveryService : BackgroundService
         string recomputed;
         try
         {
-            recomputed = BlueprintContentHash.Compute(blueprintJson);
+            recomputed = BlueprintPublicationId.ComputeFromDefinition(registerId, blueprintId, blueprintJson);
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or ArgumentException)
         {
             rejectReason = "hash_mismatch";
             return false;
         }
 
-        if (!string.Equals(recomputed, contentHash, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(recomputed, publicationTxId, StringComparison.OrdinalIgnoreCase))
         {
             rejectReason = "hash_mismatch";
             return false;
@@ -367,10 +396,12 @@ public class BlueprintRecoveryService : BackgroundService
                 var blueprint = JsonSerializer.Deserialize<Sorcha.Blueprint.Models.Blueprint>(bp.BlueprintJson);
                 if (blueprint is null) continue;
 
-                // Feature 138 US4 — verify provenance against the sealed content hash BEFORE storing.
-                // A blueprint arrives over an untrusted channel; we trust it only if its canonical hash
-                // matches the digest sealed in the publish control transaction. Fail closed.
-                if (!TryVerifyProvenance(bp.BlueprintJson, bp.ContentHash, out var rejectReason))
+                // Feature 195 — verify provenance against the transaction's OWN id BEFORE storing.
+                // A blueprint arrives over an untrusted channel; we trust it only if the publication
+                // id recomputed from the bytes we received equals the id of the transaction that
+                // carried them. Fail closed.
+                if (!TryVerifyProvenance(registerId, bp.BlueprintId, bp.BlueprintJson, bp.TransactionId,
+                        out var rejectReason))
                 {
                     _logger.LogWarning(
                         "Rejecting blueprint {BlueprintId} from register {RegisterId}: provenance check failed ({Reason})",
@@ -379,28 +410,30 @@ public class BlueprintRecoveryService : BackgroundService
                     continue;
                 }
 
-                // Feature 194: idempotency is now per DEFINITION, not per blueprint-on-register.
+                // Feature 195: idempotency is keyed on the PUBLICATION, not on the executable
+                // definition.
                 //
-                // The old check skipped a blueprint if ANY version of it had been recovered for this
-                // register — which, once we stopped collapsing to newest-only, would have recovered
-                // exactly one definition and silently dropped the rest. Keying on the content hash
-                // also makes re-recovery genuinely idempotent: two publications with identical
-                // executable definitions (a presentational-only republish) are one definition and
-                // must not produce two entries.
+                // Feature 194 keyed it on the exec-def hash, which collapsed two publications that
+                // shared one executable definition — a presentational-only republish — into a single
+                // entry. Under content addressing those are two distinct publications with two
+                // distinct identities, and an instance may be pinned to EITHER, so dropping one
+                // strands it. The exec-def hash keeps its own (narrower) job: answering whether
+                // behaviour changed, for the rehearsal gate.
                 var execDefHash = _execDefHasher.ComputeHash(blueprint);
 
                 var existing = await publishedStore.GetVersionsAsync(bp.BlueprintId);
                 if (existing.Any(e =>
                         string.Equals(e.RegisterId, registerId, StringComparison.OrdinalIgnoreCase)
-                        && string.Equals(e.ExecDefHash, execDefHash, StringComparison.Ordinal)))
+                        && string.Equals(e.PublicationTxId, bp.TransactionId, StringComparison.OrdinalIgnoreCase)))
                 {
-                    continue; // this definition is already recovered
+                    continue; // this publication is already recovered
                 }
 
                 await publishedStore.AddAsync(new PublishedBlueprint
                 {
                     BlueprintId = bp.BlueprintId,
                     Blueprint = blueprint,
+                    PublicationTxId = bp.TransactionId,
                     ExecDefHash = execDefHash,
                     PublishedAt = bp.PublishedAt,
                     RegisterId = registerId

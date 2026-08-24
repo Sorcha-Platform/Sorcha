@@ -28,7 +28,7 @@ public class RepublishWithLiveInstancesTests
         var publishedStore = new InMemoryPublishedBlueprintStore();
         var blueprint = CreateBlueprint();
         await draftStore.AddAsync(blueprint);
-        var service = new PublishService(draftStore, publishedStore);
+        var service = new PublishService(draftStore, publishedStore, FakePublishingRegister.Client());
 
         var v1 = await service.PublishAsync(blueprint.Id, "register-1");
         var pinnedToV1 = v1.PublishedBlueprint!.ExecDefHash;
@@ -69,7 +69,7 @@ public class RepublishWithLiveInstancesTests
         var publishedStore = new InMemoryPublishedBlueprintStore();
         var blueprint = CreateBlueprint();
         await draftStore.AddAsync(blueprint);
-        var service = new PublishService(draftStore, publishedStore);
+        var service = new PublishService(draftStore, publishedStore, FakePublishingRegister.Client());
 
         var v1 = await service.PublishAsync(blueprint.Id, "register-1");
 

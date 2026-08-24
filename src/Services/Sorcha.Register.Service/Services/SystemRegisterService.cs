@@ -244,19 +244,34 @@ public class SystemRegisterService
 
         _logger.LogInformation("Publishing blueprint {BlueprintId} to system register", blueprintId);
 
-        // Serialize to canonical JSON for deterministic hashing
-        var canonicalJson = JsonSerializer.Serialize(blueprintJson, CanonicalJsonOptions);
+        // Feature 195 — the system register is a register, and a blueprint published to it is a
+        // definition like any other. It therefore uses the SAME canonical form and the SAME identity
+        // construction as the per-register publish path.
+        //
+        // This matters for more than tidiness: recovery verifies a definition by recomputing its
+        // publication id from the bytes it received and comparing to the transaction's own id. Had
+        // the system register kept its timestamp-derived id and a separately-sealed `contentHash`,
+        // recovery would have needed a SECOND verification rule — precisely the two-rules-one-name
+        // shape this feature exists to remove — and seeded system blueprints would otherwise fail the
+        // new check on every restart.
+        var canonicalJson = Sorcha.Blueprint.Models.Canonical.BlueprintCanonicalJson
+            .Canonicalise(JsonSerializer.Serialize(blueprintJson, CanonicalJsonOptions));
         var blueprintBytes = Encoding.UTF8.GetBytes(canonicalJson);
 
         // Compute payload hash
         var payloadHash = _hashProvider.ComputeHash(blueprintBytes, Sorcha.Cryptography.Enums.HashType.SHA256);
         var payloadHashHex = Convert.ToHexString(payloadHash).ToLowerInvariant();
 
-        // Generate deterministic transaction ID: SHA-256 of "blueprint-{blueprintId}-{timestamp}"
+        // The definition's identity. Replaces SHA-256("blueprint-{blueprintId}-{unixMillis}"), which
+        // minted a fresh id for byte-identical content on every call — so re-seeding an unchanged
+        // system blueprint wrote a new transaction each time, and nothing could tell the two apart.
+        var txId = Sorcha.Blueprint.Models.Canonical.BlueprintPublicationId
+            .Compute(SystemRegisterConstants.SystemRegisterId, blueprintId, canonicalJson);
+
+        // Recorded on the submission and the entry. No longer part of the transaction id: an
+        // identity derived from the clock mints a fresh id for byte-identical content, so re-seeding
+        // an unchanged system blueprint wrote a new transaction every time.
         var timestamp = DateTimeOffset.UtcNow;
-        var txIdSource = Encoding.UTF8.GetBytes($"blueprint-{blueprintId}-{timestamp.ToUnixTimeMilliseconds()}");
-        var txIdHash = _hashProvider.ComputeHash(txIdSource, Sorcha.Cryptography.Enums.HashType.SHA256);
-        var txId = Convert.ToHexString(txIdHash).ToLowerInvariant();
 
         // Find previous transaction for chain linking
         string? previousTxId = await GetLatestTransactionIdAsync(cancellationToken);
@@ -284,13 +299,11 @@ public class SystemRegisterService
             ["transactionType"] = BlueprintPublishTransactionType,
             ["BlueprintId"] = blueprintId,
             ["publishedBy"] = publishedBy,
-            ["SystemWalletAddress"] = signResult.WalletAddress,
-            // Feature 138 US4 — seal the canonical content hash the BlueprintRecoveryService recomputes
-            // and compares on recovery. The normal (user) publish path writes this; without it here the
-            // seeded system blueprints fail provenance ("no_provenance") on every restart and never
-            // re-enter the (in-memory) published store. Use the shared helper so producer and consumer
-            // hash the identical canonical form by construction.
-            ["contentHash"] = BlueprintContentHash.Compute(canonicalJson)
+            ["SystemWalletAddress"] = signResult.WalletAddress
+            // Feature 195 — `contentHash` REMOVED. F138 US4 sealed it here so seeded system
+            // blueprints would not fail recovery's provenance check with "no_provenance". The
+            // transaction id above IS now the digest of the canonical definition, so recovery
+            // verifies against the id itself and this sibling field has nothing left to add.
         };
 
         // Merge additional metadata if provided
