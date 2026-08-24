@@ -119,7 +119,7 @@ published definition, submit, and confirm the draft had no effect. Closes #1567.
 
 - [x] T037 [P] [US2] `tests/Sorcha.Blueprint.Service.Tests` — a submission is validated/calculated/routed by the instance's definition while a divergent draft exists; two instances on different definitions are each judged by their own; an unresolvable pin refuses with a diagnosable reason
 - [x] T038 [P] [US2] `tests/Sorcha.Validator.Service.Tests` — the register fallback arm resolves a definition absent from cache and Blueprint Service; an unresolvable pin still refuses and **never** falls back to latest; an unpinned (system) blueprint still resolves by id
-- [ ] T039 [US2] Mutation-test: make the pin parameter optional (kills the submit-path test); drop the pin from either cache key (kills the cross-instance isolation test); let the validator fall back to latest (kills the pinned-refusal test); reinstate draft-first resolution (kills the divergent-draft test). Record in `mutations.md`
+- [x] T039 [US2] Mutation-test: make the pin parameter optional (kills the submit-path test); drop the pin from either cache key (kills the cross-instance isolation test); let the validator fall back to latest (kills the pinned-refusal test); reinstate draft-first resolution (kills the divergent-draft test). Record in `mutations.md`
 
 **Checkpoint:** the participant-facing guarantee is true. Both P1 stories delivered.
 
@@ -133,13 +133,13 @@ published definition, submit, and confirm the draft had no effect. Closes #1567.
 > Severity is reduced by Phase 3 — the publication id already covers the whole definition, so this is
 > now about the **rehearsal** direction, which is F142's original tolerance.
 
-- [ ] T040 [US3] Write the failing reflection guard `tests/Sorcha.Blueprint.Engine.Tests/ExecutableDefinitionCoverageTests.cs` — walk `Blueprint`/`Action`/`Route`/`Participant` properties against an explicit presentational deny-list and **fail on a property it cannot classify**
-- [ ] T041 [US3] Add the omitted execution-affecting fields to `ExecutableDefinitionHasher.BuildExecutableDefinition` (`:78-96`), `BuildActions` (`:126`) and `BuildRoutes` (`:170`): `Action.RejectionConfig`, `Action.Participants`, `Action.RequiredActionData`, `Route.BranchDeadline`, `Route.DecisionNotice`, `Blueprint.PresentationConfig`, `Blueprint.InstanceReference`
-- [ ] T042 [US3] Keep `Action.AdditionalRecipients` **out** of the projection and record why inline — it is inert (readers are `McpServer/Tools/Designer/BlueprintGetTool.cs` display and a doc comment). It failed the original probe and was nearly written up as a disclosure defect
-- [ ] T043 [US3] Delete the `OrderByDescending(v => v.Version).First()` tie-break in `GetByExecDefHashAsync` (`src/Services/Sorcha.Blueprint.Service/Program.cs:2904`) and rename the method to `GetByPublicationAsync`. Its justifying comment's premise is false, and a publication id has nothing to tie-break
-- [ ] T044 [US3] Narrow `ExecutableDefinitionHasher`'s documented job to the F142 rehearsal gate, in its XML docs — it is no longer an identity
-- [ ] T045 [P] [US3] `tests/Sorcha.Blueprint.Engine.Tests` — each of the seven newly-covered fields changes the signature; a relabel/reword/reorder does **not**. Both directions
-- [ ] T046 [US3] Mutation-test: **add a property to `Blueprint`/`Action`/`Route` and omit it from the projection.** T040 must fail and **every hand-written test in `ExecutableDefinitionHasherTests.cs` must stay green** — that contrast is the entire argument for reflection over a list. Record in `mutations.md`
+- [x] T040 [US3] Write the failing reflection guard `tests/Sorcha.Blueprint.Engine.Tests/ExecutableDefinitionCoverageTests.cs` — walk `Blueprint`/`Action`/`Route`/`Participant` properties against an explicit presentational deny-list and **fail on a property it cannot classify**
+- [x] T041 [US3] Add the omitted execution-affecting fields to `ExecutableDefinitionHasher.BuildExecutableDefinition` (`:78-96`), `BuildActions` (`:126`) and `BuildRoutes` (`:170`): `Action.RejectionConfig`, `Action.Participants`, `Action.RequiredActionData`, `Route.BranchDeadline`, `Route.DecisionNotice`, `Blueprint.PresentationConfig`, `Blueprint.InstanceReference`
+- [x] T042 [US3] Keep `Action.AdditionalRecipients` **out** of the projection and record why inline — it is inert (readers are `McpServer/Tools/Designer/BlueprintGetTool.cs` display and a doc comment). It failed the original probe and was nearly written up as a disclosure defect
+- [x] T043 [US3] Delete the `OrderByDescending(v => v.Version).First()` tie-break in `GetByExecDefHashAsync` (`src/Services/Sorcha.Blueprint.Service/Program.cs:2904`) and rename the method to `GetByPublicationAsync`. Its justifying comment's premise is false, and a publication id has nothing to tie-break
+- [x] T044 [US3] Narrow `ExecutableDefinitionHasher`'s documented job to the F142 rehearsal gate, in its XML docs — it is no longer an identity
+- [x] T045 [P] [US3] `tests/Sorcha.Blueprint.Engine.Tests` — each of the seven newly-covered fields changes the signature; a relabel/reword/reorder does **not**. Both directions
+- [x] T046 [US3] Mutation-test: **add a property to `Blueprint`/`Action`/`Route` and omit it from the projection.** T040 must fail and **every hand-written test in `ExecutableDefinitionHasherTests.cs` must stay green** — that contrast is the entire argument for reflection over a list. Record in `mutations.md`
 
 ---
 

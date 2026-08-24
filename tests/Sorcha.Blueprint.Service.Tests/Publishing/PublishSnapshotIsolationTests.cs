@@ -87,7 +87,7 @@ public class PublishSnapshotIsolationTests
     }
 
     [Fact]
-    public async Task GetByExecDefHash_ResolvesThePinnedDefinition_AndNothingElse()
+    public async Task GetByPublication_ResolvesThePinnedDefinition_AndNothingElse()
     {
         var draftStore = new InMemoryBlueprintStore();
         var publishedStore = new InMemoryPublishedBlueprintStore();
@@ -106,8 +106,8 @@ public class PublishSnapshotIsolationTests
         v2.PublishedBlueprint!.ExecDefHash.Should().NotBe(v1.PublishedBlueprint!.ExecDefHash,
             because: "adding an action changes the executable definition");
 
-        var resolvedV1 = await publishedStore.GetByExecDefHashAsync(blueprintId, v1.PublishedBlueprint.ExecDefHash);
-        var resolvedV2 = await publishedStore.GetByExecDefHashAsync(blueprintId, v2.PublishedBlueprint.ExecDefHash);
+        var resolvedV1 = await publishedStore.GetByPublicationAsync(blueprintId, v1.PublishedBlueprint.PublicationTxId);
+        var resolvedV2 = await publishedStore.GetByPublicationAsync(blueprintId, v2.PublishedBlueprint.PublicationTxId);
 
         resolvedV1!.Blueprint.Actions.Should().HaveCount(1,
             because: "an instance pinned to the first definition must still resolve the first definition");
@@ -115,7 +115,7 @@ public class PublishSnapshotIsolationTests
     }
 
     [Fact]
-    public async Task GetByExecDefHash_ReturnsNull_ForAnUnknownHash()
+    public async Task GetByPublication_ReturnsNull_ForAnUnknownPublication()
     {
         // Null is a refusal signal. The caller must never read it as licence to fall back to latest —
         // that is the defect this feature exists to remove.
@@ -125,7 +125,7 @@ public class PublishSnapshotIsolationTests
         await draftStore.AddAsync(blueprint);
         await new PublishService(draftStore, publishedStore, FakePublishingRegister.Client()).PublishAsync(blueprint.Id, "register-1");
 
-        var resolved = await publishedStore.GetByExecDefHashAsync(blueprint.Id, new string('f', 64));
+        var resolved = await publishedStore.GetByPublicationAsync(blueprint.Id, new string('f', 64));
 
         resolved.Should().BeNull();
     }

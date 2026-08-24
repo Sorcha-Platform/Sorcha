@@ -77,10 +77,10 @@ public class RepublishWithLiveInstancesTests
         draft!.Actions.Add(new ActionModel { Id = 3, Title = "Extra step", Sender = "p2" });
         var v2 = await service.PublishAsync(blueprint.Id, "register-1");
 
-        var resolvedV1 = await publishedStore.GetByExecDefHashAsync(
-            blueprint.Id, v1.PublishedBlueprint!.ExecDefHash);
-        var resolvedV2 = await publishedStore.GetByExecDefHashAsync(
-            blueprint.Id, v2.PublishedBlueprint!.ExecDefHash);
+        var resolvedV1 = await publishedStore.GetByPublicationAsync(
+            blueprint.Id, v1.PublishedBlueprint!.PublicationTxId);
+        var resolvedV2 = await publishedStore.GetByPublicationAsync(
+            blueprint.Id, v2.PublishedBlueprint!.PublicationTxId);
 
         resolvedV1.Should().NotBeNull();
         resolvedV2.Should().NotBeNull();

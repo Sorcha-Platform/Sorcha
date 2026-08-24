@@ -114,3 +114,43 @@ The third kills exactly one test, and that test did not exist before this featur
 reordering that puts the ledger write ahead of the local store: without it, a refused publish leaves
 a definition resolvable on one node and nowhere else — which is not a degraded mode, it is a
 definition that looks healthy and is not.
+
+---
+
+## Phase 5 — behavioural signature coverage (T046)
+
+Suite under test: `Sorcha.Blueprint.Engine.Tests`, 649 tests, green before and after.
+
+| Mutation | Killed | Notes |
+|---|---|---|
+| Omit `RejectionConfig` from the projection (the flagship omission) | `RejectionConfig_ChangesTheSignature` — and **only** that | one omission, one named failure |
+| **Add `Action.MutationProbe` to the model and omit it from the projection** | `EveryProperty_IsClassified(Action)` — the reflection guard | **every hand-written test in `ExecutableDefinitionHasherTests` stayed green** |
+
+The second row is the entire argument for reflection over a list, executed rather than asserted. A
+property added to the model and forgotten in the hand-written projection does not fail to compile and
+does not fail any per-field test — the projection simply stops covering it, silently. Only a guard
+that enumerates the model can see it.
+
+### ⚠ A guard I wrote, ran, and then removed
+
+The first version of the coverage half mutated **every** classified property by reflection and
+required behavioural ones to move the signature. It reported **52 failures**, and they were not
+findings: for collection and complex properties the generic mutator produced values that serialise
+identically to the baseline (an empty list where the baseline held null), so the signature legitimately
+did not move.
+
+Replaced with concrete, hand-authored edits for the nine properties #1566 was actually raised about,
+plus the presentational counter-direction. **A guard that cannot distinguish its own artefacts from
+real findings is worse than a narrower one that can** — it trains the reader to discount its output,
+which is how a real failure gets waved through.
+
+What survives the narrowing is the division of labour worth keeping: **reflection guarantees
+completeness** (no property escapes classification), **hand-authored edits guarantee correctness**
+(each classification is implemented). Neither alone is sufficient.
+
+### Findings from writing the guard
+
+The classification test failed three times on my own lists before it went green — `Action.BlueprintId`
+misnamed as `Blueprint`, and two `Route` entries (`FallbackMessage`, `Severity`, …) that belong to the
+nested `DecisionNotice` type rather than to `Route`. Each was a claim about the model that reflection
+disproved immediately.

@@ -232,7 +232,7 @@ public static class MeApplicationEndpoints
 
             if (!string.IsNullOrWhiteSpace(instance.BlueprintDefinitionTxId))
             {
-                blueprint = (await publishedStore.GetByExecDefHashAsync(
+                blueprint = (await publishedStore.GetByPublicationAsync(
                     instance.BlueprintId, instance.BlueprintDefinitionTxId))?.Blueprint;
             }
 

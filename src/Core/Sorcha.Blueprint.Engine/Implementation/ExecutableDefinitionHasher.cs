@@ -47,6 +47,30 @@ namespace Sorcha.Blueprint.Engine.Implementation;
 /// APIs — so it is WASM-safe and produces identical results on the client and the server.
 /// </para>
 /// </remarks>
+/// <summary>
+/// The BEHAVIOURAL SIGNATURE of a blueprint — "did this republish change how the workflow runs?"
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>This value does NOT identify a definition (Feature 195).</b> That is the publication
+/// transaction id, which addresses the whole published definition and names a ledger fact any node
+/// can resolve. This hash addresses a deliberately NARROWER projection — the parts that affect
+/// execution — and several publications may legitimately share one.
+/// </para>
+/// <para>
+/// It has exactly one job: deciding whether a recorded Feature 142 <c>RehearsalPass</c> survives a
+/// republish. A relabelled field must not cost a designer a fresh rehearsal; a changed
+/// <c>required</c> entry must.
+/// </para>
+/// <para>
+/// <b>Its meaning was widened once before, and that was the bug.</b> Feature 194 promoted this hash
+/// to the instance pin without widening its coverage, so nine execution-affecting fields sat outside
+/// a value the validator then enforced. Coverage is now guarded by
+/// <c>ExecutableDefinitionCoverageTests</c>, which fails on any property of the blueprint graph that
+/// nobody has classified — there is no default, because both defaults are wrong in different
+/// directions.
+/// </para>
+/// </remarks>
 public class ExecutableDefinitionHasher
 {
     private static readonly JsonSerializerOptions ModelSerializerOptions = new()
@@ -92,6 +116,18 @@ public class ExecutableDefinitionHasher
             ["id"] = blueprint.Id,
             ["participants"] = BuildParticipants(blueprint.Participants),
             ["actions"] = BuildActions(blueprint.Actions),
+
+            // Feature 195 (#1566) — three blueprint-level omissions, each execution-affecting.
+            // A probe found them together with six more on Action/Route; every one produced an
+            // IDENTICAL signature for a behaviourally different definition.
+            ["dataSchemas"] = BuildDataSchemas(blueprint.DataSchemas),
+            // PresentationLifecycleService.ResolveConfig reads this: validity window, abandonment
+            // recording, outcome detail level.
+            ["presentationConfig"] = SerialiseModel(blueprint.PresentationConfig),
+            // Generates the instance's PUBLIC metadata — its human-readable reference.
+            ["instanceReference"] = SerialiseModel(blueprint.InstanceReference),
+            // Carries hasCycles, written by the publish path and read at execution.
+            ["metadata"] = SerialiseModel(blueprint.Metadata),
         };
 
         return root;
@@ -142,6 +178,21 @@ public class ExecutableDefinitionHasher
                 ["credentialRequirements"] = SerialiseModel(a.CredentialRequirements),
                 ["credentialIssuanceConfig"] = SerialiseModel(a.CredentialIssuanceConfig),
                 ["routes"] = BuildRoutes(a.Routes),
+
+                // Feature 195 (#1566) — omissions on Action.
+                //
+                // RejectionConfig is a real ROUTING EDGE, not decoration: the validator reads
+                // TargetActionId as a structural successor in VAL_ROUTING_001 and in VAL_BP_003
+                // reachability, and IsTerminal decides whether rejection ends the workflow.
+                ["rejectionConfig"] = SerialiseModel(a.RejectionConfig),
+                // The LEGACY condition-based routing model, still live in RoutingEngine. A blueprint
+                // routed this way previously had ZERO routing coverage in its signature.
+                ["participants"] = SerialiseModel(a.Participants),
+                // The validation fallback used when an action declares no dataSchemas.
+                ["requiredActionData"] = SerialiseModel(a.RequiredActionData),
+                ["target"] = a.Target,
+                ["condition"] = SerialiseModel(a.Condition),
+                ["notification"] = SerialiseModel(a.Notification),
                 ["dataSchemas"] = BuildDataSchemas(a.DataSchemas),
             };
             arr.Add(obj);
@@ -189,6 +240,13 @@ public class ExecutableDefinitionHasher
                 ["isDefault"] = r.IsDefault,
                 ["condition"] = r.Condition?.DeepClone(),
                 ["outputMapping"] = SerialiseModel(r.OutputMapping),
+
+                // Feature 195 (#1566) — omissions on Route.
+                ["branchDeadline"] = r.BranchDeadline,
+                // F184/F186: the citizen-facing outcome catalogue. F186 resolves the wording FROM
+                // THE PINNED DEFINITION, so two definitions differing only here give a refused
+                // applicant different reasons.
+                ["x-decision-notice"] = SerialiseModel(r.DecisionNotice),
             };
             arr.Add(obj);
         }

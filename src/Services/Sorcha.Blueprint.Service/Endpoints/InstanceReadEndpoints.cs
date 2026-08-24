@@ -240,7 +240,7 @@ public static class InstanceReadEndpoints
             });
         }
 
-        var pinned = await publishedStore.GetByExecDefHashAsync(instance.BlueprintId, pin);
+        var pinned = await publishedStore.GetByPublicationAsync(instance.BlueprintId, pin);
         if (pinned is null)
         {
             logger.LogWarning(

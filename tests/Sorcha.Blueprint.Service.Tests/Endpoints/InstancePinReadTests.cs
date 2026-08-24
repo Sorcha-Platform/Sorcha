@@ -147,7 +147,7 @@ public sealed class InstancePinReadTests
     {
         var mock = new Mock<IPublishedBlueprintStore>();
         mock.Setup(s => s.GetVersionsAsync("bp-1")).ReturnsAsync(published);
-        mock.Setup(s => s.GetByExecDefHashAsync("bp-1", It.IsAny<string>()))
+        mock.Setup(s => s.GetByPublicationAsync("bp-1", It.IsAny<string>()))
             .ReturnsAsync((string _, string hash) =>
                 published.FirstOrDefault(p => p.ExecDefHash == hash));
         return mock.Object;

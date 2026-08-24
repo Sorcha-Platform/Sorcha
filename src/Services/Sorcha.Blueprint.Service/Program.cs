@@ -1093,16 +1093,16 @@ blueprintGroup.MapGet("/{id}/versions/{version}", async (string id, int version,
 //
 // Content-addressed, therefore immutable — cached permanently, like the by-ordinal endpoint.
 // </remarks>
-blueprintGroup.MapGet("/{id}/definitions/{execDefHash}", async (
-    string id, string execDefHash, IPublishedBlueprintStore store) =>
+blueprintGroup.MapGet("/{id}/definitions/{publicationTxId}", async (
+    string id, string publicationTxId, IPublishedBlueprintStore store) =>
 {
-    var published = await store.GetByExecDefHashAsync(id, execDefHash);
+    var published = await store.GetByPublicationAsync(id, publicationTxId);
     return published is not null ? Results.Ok(published.Blueprint) : Results.NotFound();
 })
-.WithName("GetBlueprintDefinitionByHash")
+.WithName("GetBlueprintDefinition")
 .WithSummary("Get a pinned blueprint definition")
 .WithDescription(
-    "Retrieve the exact published definition identified by its executable-definition hash — the "
+    "Retrieve the exact published definition identified by the transaction that published it — the "
     + "definition a running instance is pinned to. Returns 404 when this node cannot resolve it; "
     + "callers MUST treat that as a refusal and never fall back to the latest definition.")
 .CacheOutput(policy => policy.Expire(TimeSpan.FromDays(365)).Tag("published"));
@@ -2778,7 +2778,7 @@ public interface IPublishedBlueprintStore
     /// </remarks>
     /// <returns>The pinned definition, or <c>null</c> if this node cannot resolve it — which the
     /// caller MUST treat as a refusal, never as licence to fall back to the latest.</returns>
-    Task<PublishedBlueprint?> GetByExecDefHashAsync(string blueprintId, string execDefHash);
+    Task<PublishedBlueprint?> GetByPublicationAsync(string blueprintId, string execDefHash);
 
     /// <summary>Feature 154 (catalogue) — the latest published version of every blueprint.</summary>
     Task<IEnumerable<PublishedBlueprint>> GetAllLatestAsync();
@@ -2902,22 +2902,27 @@ public class InMemoryPublishedBlueprintStore : IPublishedBlueprintStore
     }
 
     /// <inheritdoc/>
-    public Task<PublishedBlueprint?> GetByExecDefHashAsync(string blueprintId, string execDefHash)
+    public Task<PublishedBlueprint?> GetByPublicationAsync(string blueprintId, string publicationTxId)
     {
-        if (string.IsNullOrWhiteSpace(execDefHash) || !_published.TryGetValue(blueprintId, out var versions))
+        if (string.IsNullOrWhiteSpace(publicationTxId) || !_published.TryGetValue(blueprintId, out var versions))
         {
             return Task.FromResult<PublishedBlueprint?>(null);
         }
 
-        // Several publications can share one hash (a presentational-only republish produces the
-        // same executable definition). They are the same definition by construction, so the newest
-        // is as good as any — but resolve deterministically so two nodes agree on which row they
-        // report, and so the ordinal an operator is shown is stable between reads.
+        // Feature 195 — NO TIE-BREAK. A publication id identifies exactly one publication, so there
+        // is nothing to break a tie between.
+        //
+        // What was here resolved by ExecDefHash and, on a collision, took the highest ordinal —
+        // justified by a comment claiming colliding entries were "the same definition by
+        // construction". That premise was FALSE: the executable-definition projection omitted nine
+        // execution-affecting fields, so two publications sharing a hash could differ in rejection
+        // routing, legacy participant routing, branch deadlines, decision-notice wording,
+        // presentation config and instance references. For exactly those fields a pinned instance
+        // was handed the NEWEST definition — the defect version pinning exists to remove,
+        // reappearing inside its own resolution path.
         var match = versions
-            .Where(v => v.Blueprint is not null
-                        && string.Equals(v.ExecDefHash, execDefHash, StringComparison.Ordinal))
-            .OrderByDescending(v => v.Version)
-            .FirstOrDefault();
+            .FirstOrDefault(v => v.Blueprint is not null
+                                 && string.Equals(v.PublicationTxId, publicationTxId, StringComparison.OrdinalIgnoreCase));
 
         return Task.FromResult(match);
     }
