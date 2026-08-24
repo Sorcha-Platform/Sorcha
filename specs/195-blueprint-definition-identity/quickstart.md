@@ -117,8 +117,14 @@ buys.
 
 **Assert `pin_fallback` reads ZERO** across the entire run.
 
+⚠ **Corrected by the live run (T059): there is no `/metrics` endpoint.** Neither the gateway nor
+blueprint-service serves one (both 404). The counter is an OpenTelemetry meter exported over OTLP,
+not a Prometheus scrape target. It is incremented at exactly ONE site and unconditionally paired
+with a log line there, so read the log — that is a genuine read of the same event, not an
+absence-of-errors argument, because every increment emits exactly one such line:
+
 ```bash
-curl -s http://localhost:<port>/metrics | grep pin_fallback
+docker logs sorcha-blueprint-service 2>&1 | grep -c 'pre-Feature-194 fallback'   # must be 0
 ```
 
 This is the acceptance signal, not the absence of exceptions. Every failure mode of this feature

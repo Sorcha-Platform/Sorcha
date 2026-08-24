@@ -190,3 +190,182 @@ a direct call to the resolver with the endpoint's own arguments, which succeeded
 endpoint was not receiving what the test sent. **The lesson is the same one as the earlier regex
 over-reach: a scripted edit that silently matches nothing is indistinguishable from one that worked,
 so assert on the result, not on the script running.**
+
+---
+
+## T059 — the live run on a re-genesised n1 (2026-08-24)
+
+Deployed to n1 as locally-built `:f195` images (branch `195-blueprint-definition-identity`, which is
+master `f91da69fd` plus this feature). Every other service kept the image already on the box, so the
+only variable in the run was Feature 195. Full `down -v`, volumes removed by name, genesis re-ingested
+from the compiled-in anchor `cb1817467b2e87c2e5ae494a8eeac456`; docket 0 sealed with `nTx=1`, zero
+`VAL_TIME_002`, migrations applied (read from the log, not the health status).
+
+**Deploy order stopped being a risk, and that is worth knowing before the next one.** It is
+load-bearing for a *rolling* upgrade, because the `RoutingDecision` field rename sits inside
+`ComputeSignableBytes` and old and new producers refuse each other — but a re-genesis brings all three
+services up together on an empty ledger, so the mixed-version window never exists.
+
+### The result
+
+| Harness | Result |
+|---|---|
+| `run-f195-acceptance.ps1` (this feature) | **16 / 16** |
+| `run-acceptance.ps1` (Feature 194 baseline) | **19 / 21** — both failures traced to #1573, below |
+| `pin_fallback` — the positive check | **ZERO**, with `pin_mismatch` and unresolvable-pin also zero |
+
+The #1563 check is green on a real register: a behavioural republish moved the ledger's publication
+count from 1 to 2. Before this feature it stayed at 1 while the endpoint answered 200 and the caller
+logged success. Both vacuity-prone checks discriminate — the presentational republish left
+`execDefHash` unchanged *while* the paired behavioural one moved it, and the two registers received
+byte-identical definitions (asserted before comparing ids) and got different identities.
+
+The only validator refusals on the node across the whole run were six `VAL_BP_003`, every one of them
+the harness re-submitting an action the instance had already advanced past — a consequence of #1573,
+not of this feature.
+
+### The positive check could not be read the way the design says
+
+`quickstart.md` says `curl <gateway>/metrics | grep pin_fallback`. **There is no `/metrics` endpoint** —
+not on the gateway (404), not on blueprint-service (404). The counter is an OpenTelemetry meter
+exported over OTLP, not a Prometheus scrape target.
+
+It is incremented at exactly one site, unconditionally paired with a log line, so the equivalent read
+is the log:
+
+```bash
+docker logs sorcha-blueprint-service 2>&1 | grep -c 'pre-Feature-194 fallback'   # must be 0
+```
+
+That is a genuine read of the same event rather than an absence-of-errors argument: every increment
+emits exactly one such line. The doc should be corrected, not the platform.
+
+### Finding 1 — neither harness had ever run
+
+The single largest finding, and it invalidates the assumption that F194's harness was a working
+baseline. Both scripts were parse-checked only, and each of these is fatal on first contact:
+
+| Defect | How it presents |
+|---|---|
+| Every URL carried a doubled `/api` | `BlueprintUrl`/`RegisterUrl` already end in `/api`. Proven: `/api/blueprints` gives 401, `/api/api/blueprints` gives 404 |
+| `param([hashtable]$Args)` in `Try-Action` | PowerShell's automatic `$args` wins the binding; the cast throws on EVERY call, and that wrapper fronts every action submission |
+| Four mandatory-parameter mismatches | `Connect-SorchaAdmin`, `Connect-SorchaUser`, `New-SorchaWallet` (`-FetchPublicKey`), `Confirm-SorchaUserEmail` — each aborts setup |
+| Public org disabled after a fresh DB init | self-registration 403s with "Self-registration is not enabled for this organization" — reads as permissions, is a missing setup step. It must be enabled BEFORE the register is created, or `New-SorchaRegister`'s public-org auto-subscribe 403s too |
+| The step-6 restart used a SHORTER compose `-f` list than the node was brought up with | silently reverts blueprint-service to whatever `image:` the base files name — a restart meant to prove recovery would deploy a *different build of the service under test* and still report a clean pass |
+| `(pipeline).Count` under StrictMode | throws when nothing matches, so the summary blew up on precisely the run where every check passed |
+
+**The transferable one is the compose `-f` list.** It is the only defect here that would have produced
+a green, plausible, wrong result rather than a crash. A restart that swaps the artefact under test is
+not a restart.
+
+### Finding 2 — `isPinnedToLatest` compared two different value spaces (#1563, fixed)
+
+A seam bug of the standard shape: both sides correct, the join unverified, degrading to a *plausible*
+value rather than an error.
+
+Under Feature 195 an instance is pinned to the **publication transaction id**. `InstanceReadEndpoints`
+computed "latest" as the latest definition's **`ExecDefHash`** and compared the two. The comparison
+could never be true, so `isPinnedToLatest` was hard-wired `false` for every pinned instance — and
+`false` is exactly what a superseded instance *should* report, so nothing looked wrong.
+
+**`InstancePinReadTests` asserted both `true` and `false` and passed throughout.** Its fixture assigned
+the *same string* to `PublicationTxId` and `ExecDefHash`, and its `IPublishedBlueprintStore` stub
+resolved on `ExecDefHash` while the real store resolves on `PublicationTxId`. With one value standing
+in for two, the wrong field read matched anyway.
+
+> **A fixture that cannot tell two fields apart cannot test the join between them.** When the thing
+> under test is that two values AGREE, the fixture must give them deliberately different values — and
+> a stub must resolve on the key production resolves on.
+
+Both were corrected. Mutation check: re-introducing the `ExecDefHash` read now fails exactly one test,
+the intended one.
+
+Only the *paired* live assertions caught it — one expecting `true` before a republish, one expecting
+`false` after. The `false` half had been passing vacuously all along.
+
+### Finding 3 — `alreadyPublished` never reached the caller (#1563, fixed)
+
+The Register Service has always returned the discriminator; it stopped at the blueprint-service log
+line. That is the shape of #1563 itself — the endpoint answers 200 either way, so a caller that cannot
+distinguish an idempotent no-op from a real publish records success for a publish that wrote nothing.
+**A flag only the server can see is not a discriminator.** Now carried on `PublishResult` and returned
+on both response shapes of `POST /api/blueprints/{id}/publish`.
+
+### Finding 4 — a blueprint draft is orphaned from its organisation on the first save (#1572, fixed)
+
+Pre-existing; F195 touches none of the code involved. The owning organisation lives on the **row**; the
+model is rebuilt from the stored **document**. Nothing verified they agree, and they stopped agreeing on
+the first `PUT`: no client echoes `organizationId` in a body, so the column was nulled and the
+re-serialized content dropped it with it. Every later org-scoped read and write then answered 404 for
+the org that owns the draft. `OwnerId` was already immutable-after-creation for exactly this reason;
+`OrganizationId` was not, and it is the one the reads filter on.
+
+Fixed here because it blocked the acceptance — the presentational-republish step needs GET-then-PUT.
+
+### Finding 5 — no schema validation runs on an encrypted register (#1573, deliberately NOT fixed)
+
+The most serious finding, and out of scope on purpose.
+
+`ActionExecutionService` gates on `Action.DataSchemas`; `ExecutionEngine.ValidateAsync` validates
+`Action.Form.Schema`. Blueprints declare `dataSchemas` and never `form`, and `Form` defaults to a
+layout-only control whose `Schema` is null — so validation returns `Valid()` for every payload. The
+Validator then skips schema checks on encrypted payloads *because it trusts that pre-validation*,
+saying so in a comment. Net effect: on a Normal (encrypted) register, **nothing validates action
+payloads at all**.
+
+Proven with a case that has nothing to do with pinning — action 1's schema is identical in every
+definition of the blueprint:
+
+```
+POST /api/instances/{id}/actions/1/execute   payload = {}   ->  202, and it SEALED
+```
+
+This is why `run-acceptance.ps1` step 5's counterfactual fails: "instance B is pinned to v2" is only
+meaningful if v2 is *enforced*, and a pin nobody enforces is a recorded value, not a rule. The check is
+annotated as known-blocked rather than removed, because deleting it would delete the evidence.
+
+Not fixed on this branch: switching schema validation on for every encrypted-register submission is a
+behaviour change with real blast radius, and that is a scoping decision, not a drive-by.
+
+### An observation, not a defect — the pinned-definition cache is written twice
+
+The publish path writes the definition to Redis under `(blueprintId, execDefHash)`; the validator looks
+it up under `(blueprintId, publicationTxId)`. So the publish-time key is never read, the first lookup
+per definition misses and fetches from the Blueprint Service, and the read-through then caches it under
+the key that *is* read. All four keys are present on n1 for a two-definition blueprint, which is how
+this was spotted.
+
+Correctness is unaffected — the definition resolves, and `pin_fallback` is zero — so this is a tidiness
+and one-round-trip issue, recorded rather than filed.
+
+### Quickstart step 8 (replica node, SC-009) — NOT EXECUTED
+
+`tiny` was cleared (`down -v`, volumes removed by name, `.env` preserved because its ports are
+non-default), redeployed on the same `:f195` images, and **replicated n1's re-genesised system register
+byte-for-byte** — `dockets=1 sealed=1 txs=1`, matching n1, with 16/16 containers healthy. So the F195
+build is replication-compatible.
+
+But SC-009 asks for an instance to run on a node that only *replicated* a register and never published
+to it, and that needs cross-node federation provisioning the VersionPinning harness does not have: an
+**advertised** register on n1, a public-org subscription on tiny, and an org/user/participant
+provisioned on tiny's (now empty) tenant database. The registers this run created are n1-local, not
+advertised, and encrypted. The system register would have been the cheap substitute, but on a freshly
+re-genesised node it holds only its genesis transaction — no blueprint publications to resolve.
+
+Recorded as outstanding rather than quietly dropped: the validator's read-the-definition-off-the-register
+arm is exercised on n1 (every pinned lookup misses the publish-time cache key and fetches), but the
+"never published here" property specifically is unproven.
+
+### What the two harnesses now do differently
+
+- Publication counts are read **off the ledger** and **polled**, because a publish returns before its
+  transaction seals. Reading once turns "not sealed yet" into a false FAIL on the check that matters most.
+- An explicit `AwaitingInbox` gate before every actor switch, scored as its own check. `-WaitForSeal`
+  waits for the seal; the instance advances a beat later when the projector folds. Two consecutive runs
+  of the same code disagreed with each other before this was added — one of them scoring a **vacuous
+  PASS** on the enforcement counterfactual because B was merely too early to accept anything.
+- Seal waits 90s to 300s: a docket-write 409 puts the docket builder on a ~10-minute retry, so 90s times
+  out on transactions that do seal.
+- The response **body** is captured on the first attempt. That single change turned "400 (Bad Request)"
+  into `VAL_BP_003: Action 2 is not reachable from action 2` and identified three separate causes in one
+  run instead of three.
