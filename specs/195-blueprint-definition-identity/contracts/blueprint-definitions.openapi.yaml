@@ -1,0 +1,290 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Contract — Feature 195, Blueprint Definition Identity.
+# Only the endpoints whose SHAPE or SEMANTICS change. Endpoints listed with no schema change are
+# recorded because what their fields DENOTE changes, which is the kind of drift this feature exists
+# to stop.
+
+openapi: 3.1.0
+info:
+  title: Blueprint Definition Identity (Feature 195)
+  version: "1.0.0"
+  description: |
+    A blueprint definition is identified by the transaction that published it. This document covers
+    the endpoints affected by that change.
+
+    Two conventions apply throughout:
+
+      * A definition that cannot be resolved is REFUSED. No endpoint may substitute another
+        definition, and in particular never the most recent one.
+      * The ordinal `version` is a display label derived from ledger order. No request parameter
+        anywhere selects a definition by it.
+
+paths:
+
+  /api/registers/{registerId}/blueprints/publish:
+    post:
+      tags: [Register]
+      summary: Publish a blueprint definition to a register
+      description: |
+        **Changed.** The transaction id is now the definition's identity:
+
+            SHA-256("sorcha:blueprint-publication:v1" 0x1F registerId 0x1F blueprintId 0x1F canonicalJson)
+
+        Previously it was `SHA-256("blueprint-publish-{registerId}-{blueprintId}")` — version-blind,
+        so every republish deduped to one transaction and was silently dropped (#1563).
+
+        Republishing byte-identical content is still idempotent and still returns 200, but now
+        *correctly*: identical content yields the same id. Content that differs in any way yields a
+        new id and a new record alongside the existing one.
+
+        **This is the sole producer of a publication id.** No other service computes one.
+
+        The payload MUST be the `$ref`-flattened definition — the ledger copy is what a recovering or
+        validating node executes, and an unflattened one needs the publisher's schema catalogue.
+      operationId: publishBlueprintToRegister
+      parameters:
+        - name: registerId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [blueprintId, blueprintJson, publishedBy]
+              properties:
+                blueprintId: { type: string }
+                blueprintJson:
+                  type: string
+                  description: The $ref-flattened definition.
+                publishedBy: { type: string }
+      responses:
+        "200":
+          description: |
+            Published, or recognised as an existing identical publication.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [blueprintId, registerId, txId, submitted, alreadyPublished]
+                properties:
+                  blueprintId: { type: string }
+                  registerId: { type: string }
+                  txId:
+                    type: string
+                    description: The publication id — this definition's identity.
+                  submitted: { type: boolean }
+                  alreadyPublished:
+                    type: boolean
+                    description: |
+                      **New.** True when identical content was already published to this register, so
+                      no new record was created. Previously indistinguishable from a real publish —
+                      which is how #1563 stayed invisible.
+              examples:
+                newDefinition:
+                  value:
+                    blueprintId: "3f2a…"
+                    registerId: "b21d…"
+                    txId: "9c41…"
+                    submitted: true
+                    alreadyPublished: false
+                identicalRepublish:
+                  value:
+                    blueprintId: "3f2a…"
+                    registerId: "b21d…"
+                    txId: "9c41…"
+                    submitted: false
+                    alreadyPublished: true
+        "400":
+          description: Malformed definition, or a document containing duplicate object keys.
+        "502":
+          description: Validator rejected the publication transaction.
+
+  /api/blueprints/{blueprintId}/definitions/{publicationTxId}:
+    get:
+      tags: [Blueprint]
+      summary: Get one definition by its publication id
+      description: |
+        **Changed:** path segment was the executable-definition hash; it is now the publication id.
+
+        404 is a **refusal**, not an invitation to fall back — no caller may respond to it by
+        resolving the latest definition.
+      operationId: getBlueprintDefinition
+      parameters:
+        - name: blueprintId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: publicationTxId
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[0-9a-f]{64}$" }
+      responses:
+        "200":
+          description: The definition.
+          content:
+            application/json:
+              schema: { type: object, description: The flattened blueprint definition. }
+        "404":
+          description: This node does not hold that definition. Refusal.
+
+  /api/blueprints/{blueprintId}/versions:
+    get:
+      tags: [Blueprint]
+      summary: List the definitions of a blueprint
+      description: |
+        **Changed.** Entries carry `publicationTxId`. `version` is a display label **derived from
+        ledger order** and is stable across restarts; previously it was assigned from in-memory
+        insert order and re-derived on every recovery.
+
+        `execDefHash` is retained but its meaning is narrowed: it answers "did behaviour change"
+        for the rehearsal gate, and several entries may share one. It is **not** an identity and
+        nothing resolves by it.
+
+        Amendments of this blueprint now appear here (#1568); previously an amendment minted a new
+        blueprint id and was invisible to this endpoint.
+      operationId: listBlueprintVersions
+      parameters:
+        - name: blueprintId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Definitions, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [publicationTxId, version, registerId, publishedAt, execDefHash]
+                  properties:
+                    publicationTxId:
+                      type: string
+                      description: The definition's identity.
+                    version:
+                      type: integer
+                      description: Display label, derived from ledger order. Never a selector.
+                    registerId: { type: string }
+                    publishedAt: { type: string, format: date-time }
+                    execDefHash:
+                      type: string
+                      description: Behavioural signature. Shared by presentationally-different definitions.
+
+  /api/instances/{instanceId}/definition:
+    get:
+      tags: [Blueprint]
+      summary: Which definition is this instance running?
+      description: |
+        **Changed:** reports the publication id rather than the executable-definition hash.
+
+        `pinState: unresolvable` should become unreachable for any definition the register holds,
+        because the validator can now read the definition from the register by its publication id.
+        A non-zero count of this state after the feature ships is a defect, not a degraded mode.
+      operationId: getInstanceDefinition
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The instance's definition state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pinState]
+                properties:
+                  pinState:
+                    type: string
+                    enum: [pinned, unresolvable, unpinned]
+                  publicationTxId:
+                    type: [string, "null"]
+                  version:
+                    type: [integer, "null"]
+                    description: Null when unresolvable — that state IS the diagnosis, and a plausible substitute would read as healthy.
+                  isPinnedToLatest:
+                    type: [boolean, "null"]
+
+  /api/blueprints/from-published:
+    post:
+      tags: [Blueprint]
+      summary: Amend a published definition
+      description: |
+        **Changed twice.**
+
+        1. The source is selected by `publicationTxId`, not by ordinal `version`. The ordinal was
+           re-derived from insert order on every recovery, so amending "v2" before and after a
+           restart could clone different definitions.
+        2. The clone keeps the **same** `blueprintId`. Previously it minted a new GUID, making
+           amendment a fork that never appeared in the blueprint's version history — two unrelated
+           upgrade paths with no stated relationship (#1568).
+      operationId: amendPublishedBlueprint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [blueprintId, publicationTxId]
+              properties:
+                blueprintId: { type: string }
+                publicationTxId:
+                  type: string
+                  description: The definition to amend. Replaces the former `version` ordinal.
+      responses:
+        "200":
+          description: A draft of the same blueprint, seeded from that definition.
+        "404":
+          description: No such definition.
+
+  /api/registers/{registerId}/blueprints/published:
+    get:
+      tags: [Register]
+      summary: Every definition a register holds (recovery)
+      description: |
+        **Semantics changed, shape unchanged.** Previously returned at most one definition per
+        blueprint id, because only the first ever reached the ledger. Now returns every definition.
+
+        `contentHash` is **removed**: the transaction id is itself the digest of the canonical
+        definition, so a recovering node verifies by recomputing the publication id from the bytes it
+        received and comparing to the transaction's own id. Self-anchoring — a tampered payload
+        cannot match its own id.
+
+        Authorization is unchanged **and known to be wrong** — tracked separately as #1569, which is
+        out of scope for this feature.
+      operationId: getPublishedBlueprints
+      parameters:
+        - name: registerId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Every definition on the register, oldest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  registerId: { type: string }
+                  registerHeight: { type: integer, format: int64 }
+                  blueprints:
+                    type: array
+                    items:
+                      type: object
+                      required: [blueprintId, transactionId, blueprintJson, publishedAt]
+                      properties:
+                        blueprintId: { type: string }
+                        transactionId:
+                          type: string
+                          description: The publication id. Verify the payload against this.
+                        blueprintJson: { type: string }
+                        publishedBy: { type: string }
+                        publishedAt: { type: string, format: date-time }
