@@ -18,7 +18,10 @@
 param(
     [string]$StatePath = (Join-Path $PSScriptRoot 'state.json'),
     [switch]$SkipRestart,
-    [string]$SshTarget = 'sorcha@51.105.7.135'
+    [string]$SshTarget = 'sorcha@51.105.7.135',
+    # Compose -f list used to recreate blueprint-service in step 6. It must match how the target
+    # node was brought up, or the restart quietly swaps the image out from under the test.
+    [string]$ComposeFiles = '-f docker-compose.yml -f docker-compose.n1.yml -f docker-compose.seed.yml -f docker-compose.smtp.yml -f docker-compose.ports.yml'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -48,12 +51,21 @@ function Try-Action {
       building the transaction) OR as a 202 whose transaction never seals (the validator's own
       schema check). Both are refusals; only the shape differs, so both are captured.
     #>
-    param([hashtable]$Args)
+    # NOT $Args. PowerShell's automatic $args wins the binding, so a parameter of that name
+    # receives an Object[] and the cast to hashtable throws on EVERY call — which, since this
+    # wrapper fronts every action submission, means the script could never run at all.
+    param([hashtable]$ActionArgs)
     try {
-        $r = Invoke-SorchaAction @Args
+        $r = Invoke-SorchaAction @ActionArgs
         return [pscustomobject]@{ Accepted = $true; Response = $r; Error = $null }
     } catch {
-        return [pscustomobject]@{ Accepted = $false; Response = $null; Error = $_.Exception.Message }
+        # A status line is not a diagnosis. "400 (Bad Request)" is the SAME text for a schema
+        # refusal and for a submission that merely arrived before the projector folded the previous
+        # seal, and those mean opposite things. Capture the body on the first attempt or you will
+        # re-run the whole thing to get it.
+        $body = ''
+        if ($_.ErrorDetails -and $_.ErrorDetails.Message) { $body = " body=$($_.ErrorDetails.Message)" }
+        return [pscustomobject]@{ Accepted = $false; Response = $null; Error = "$($_.Exception.Message)$body" }
     }
 }
 
@@ -65,8 +77,8 @@ Write-Host "=== Feature 194 live acceptance ===" -ForegroundColor Cyan
 Write-Host "Gateway  : $($state.gatewayUrl)"
 Write-Host "Register : $registerId"
 
-$officer = Connect-SorchaUser -TenantUrl $state.tenantUrl -Email $state.officer.email -Password $state.officer.password
-$applicant = Connect-SorchaUser -TenantUrl $state.tenantUrl -Email $state.applicant.email -Password $state.applicant.password
+$officer = Connect-SorchaUser -TenantUrl $state.tenantUrl -Email $state.officer.email -Password $state.officer.password -OrganizationId $state.officer.organizationId
+$applicant = Connect-SorchaUser -TenantUrl $state.tenantUrl -Email $state.applicant.email -Password $state.applicant.password -OrganizationId $state.applicant.organizationId
 
 # The applicant is an OPEN participant and must NOT appear in the wallet map — a baked-in wallet
 # defeats late binding and rejects every real submitter.
@@ -82,15 +94,21 @@ $v1 = Publish-SorchaBlueprint -BlueprintUrl $bp `
 $blueprintId = $v1.BlueprintId
 Write-Host "  blueprint $blueprintId"
 
-$versions = Invoke-SorchaApi -Method GET -Uri "$bp/api/blueprints/$blueprintId/versions" -Headers $officer.Headers
-$v1Hash = ($versions | Sort-Object version | Select-Object -Last 1).execDefHash
+$versions = Invoke-SorchaApi -Method GET -Uri "$bp/blueprints/$blueprintId/versions" -Headers $officer.Headers
+$v1Entry = $versions | Sort-Object version | Select-Object -Last 1
+$v1Hash = $v1Entry.execDefHash
+# Feature 195: an instance is pinned to the PUBLICATION TRANSACTION, not to the behavioural hash.
+# The two are different value spaces and several publications may share one execDefHash, so the
+# pin assertions below must compare publication ids or they compare nothing.
+$v1Pub = $v1Entry.publicationTxId
 Check '1' 'v1 published and carries an executable-definition hash' ([bool]$v1Hash) "execDefHash=$v1Hash"
+Check '1' 'v1 carries a publication transaction id (its identity)' ([bool]$v1Pub) "publicationTxId=$v1Pub"
 
 # ---------------------------------------------------------------------------------------------
 # STEP 2 — start instance A and leave it mid-flow
 # ---------------------------------------------------------------------------------------------
 Write-Host "`n[2] Start instance A, execute action 1, leave it mid-flow" -ForegroundColor Cyan
-$instA = Invoke-SorchaApi -Method POST -Uri "$bp/api/instances/" -Headers $applicant.Headers -Body @{
+$instA = Invoke-SorchaApi -Method POST -Uri "$bp/instances/" -Headers $applicant.Headers -Body @{
     blueprintId = $blueprintId; registerId = $registerId; tenantId = $state.organizationId
 }
 $instanceA = $instA.id
@@ -103,9 +121,9 @@ $a1 = Try-Action @{
 }
 Check '2' 'instance A action 1 accepted and sealed' $a1.Accepted $a1.Error
 
-$pinA = Invoke-SorchaApi -Method GET -Uri "$bp/api/instances/$instanceA/definition" -Headers $applicant.Headers
-Check '2' 'instance A is pinned to v1' ($pinA.blueprintExecDefHash -eq $v1Hash) `
-    "pinState=$($pinA.pinState) pin=$($pinA.blueprintExecDefHash) expected=$v1Hash"
+$pinA = Invoke-SorchaApi -Method GET -Uri "$bp/instances/$instanceA/definition" -Headers $applicant.Headers
+Check '2' 'instance A is pinned to v1' ($pinA.blueprintDefinitionTxId -eq $v1Pub) `
+    "pinState=$($pinA.pinState) pin=$($pinA.blueprintDefinitionTxId) expected=$v1Pub"
 Check '2' 'instance A reports itself pinned to the latest (nothing republished yet)' `
     ($pinA.isPinnedToLatest -eq $true) "isPinnedToLatest=$($pinA.isPinnedToLatest)"
 
@@ -124,20 +142,22 @@ foreach ($p in $v2Model.participants) {
     if ($walletMap.ContainsKey($p.id)) { $p | Add-Member -NotePropertyName walletAddress -NotePropertyValue $walletMap[$p.id] -Force }
 }
 
-Invoke-SorchaApi -Method PUT -Uri "$bp/api/blueprints/$blueprintId" -Headers $officer.Headers `
+Invoke-SorchaApi -Method PUT -Uri "$bp/blueprints/$blueprintId" -Headers $officer.Headers `
     -Body ($v2Model | ConvertTo-Json -Depth 40 | ConvertFrom-Json -AsHashtable) | Out-Null
 
-$v2 = Invoke-SorchaApi -Method POST -Uri "$bp/api/blueprints/$blueprintId/publish" -Headers $officer.Headers -Body @{
+$v2 = Invoke-SorchaApi -Method POST -Uri "$bp/blueprints/$blueprintId/publish" -Headers $officer.Headers -Body @{
     registerId = $registerId
     override   = @{ confirm = $true; reason = 'F194 acceptance: scripted republish, no UI rehearsal.' }
 }
 $v2Hash = $v2.execDefHash
+$v2Pub = $v2.publicationTxId
 Check '3' 'republish accepted while an instance is in flight' ([bool]$v2Hash) "execDefHash=$v2Hash"
-Check '3' 'v2 is a DIFFERENT definition from v1' ($v2Hash -ne $v1Hash) "v1=$v1Hash v2=$v2Hash"
+Check '3' 'v2 is a DIFFERENT definition from v1' ($v2Pub -ne $v1Pub) "v1=$v1Pub v2=$v2Pub"
+Check '3' 'v2 is BEHAVIOURALLY different from v1' ($v2Hash -ne $v1Hash) "v1=$v1Hash v2=$v2Hash"
 
-$pinAAfter = Invoke-SorchaApi -Method GET -Uri "$bp/api/instances/$instanceA/definition" -Headers $applicant.Headers
-Check '3' 'instance A''s pin is UNCHANGED by the republish' ($pinAAfter.blueprintExecDefHash -eq $v1Hash) `
-    "pin=$($pinAAfter.blueprintExecDefHash)"
+$pinAAfter = Invoke-SorchaApi -Method GET -Uri "$bp/instances/$instanceA/definition" -Headers $applicant.Headers
+Check '3' 'instance A''s pin is UNCHANGED by the republish' ($pinAAfter.blueprintDefinitionTxId -eq $v1Pub) `
+    "pin=$($pinAAfter.blueprintDefinitionTxId) expected=$v1Pub"
 Check '3' 'instance A now reports it is NOT on the latest definition' `
     ($pinAAfter.isPinnedToLatest -eq $false) "isPinnedToLatest=$($pinAAfter.isPinnedToLatest)"
 
@@ -157,7 +177,7 @@ Check '4' 'THE FEATURE: instance A advances under v1 WITHOUT the field v2 added'
 # STEP 5 — a NEW instance is governed by v2, and v2 is genuinely ENFORCED
 # ---------------------------------------------------------------------------------------------
 Write-Host "`n[5] Start instance B — must be pinned to v2 and must REQUIRE the new field" -ForegroundColor Cyan
-$instB = Invoke-SorchaApi -Method POST -Uri "$bp/api/instances/" -Headers $applicant.Headers -Body @{
+$instB = Invoke-SorchaApi -Method POST -Uri "$bp/instances/" -Headers $applicant.Headers -Body @{
     blueprintId = $blueprintId; registerId = $registerId; tenantId = $state.organizationId
 }
 $instanceB = $instB.id
@@ -170,9 +190,9 @@ $b1 = Try-Action @{
 }
 Check '5' 'instance B action 1 accepted and sealed' $b1.Accepted $b1.Error
 
-$pinB = Invoke-SorchaApi -Method GET -Uri "$bp/api/instances/$instanceB/definition" -Headers $applicant.Headers
-Check '5' 'instance B is pinned to v2' ($pinB.blueprintExecDefHash -eq $v2Hash) `
-    "pin=$($pinB.blueprintExecDefHash) expected=$v2Hash"
+$pinB = Invoke-SorchaApi -Method GET -Uri "$bp/instances/$instanceB/definition" -Headers $applicant.Headers
+Check '5' 'instance B is pinned to v2' ($pinB.blueprintDefinitionTxId -eq $v2Pub) `
+    "pin=$($pinB.blueprintDefinitionTxId) expected=$v2Pub"
 
 # The counterfactual. Without this, "B is pinned to v2" is only a recorded value — this is what
 # proves v2's rules are ENFORCED against B rather than merely noted.
@@ -199,7 +219,11 @@ if ($SkipRestart) {
     Write-Host "  -SkipRestart set; NOT restarting. Step 6 proves nothing without it." -ForegroundColor Yellow
     Check '6' 'blueprint-service restarted before the final advance' $false 'SKIPPED by -SkipRestart'
 } else {
-    $composeCmd = 'cd /opt/sorcha && docker compose -f docker-compose.yml -f docker-compose.n1.yml -f docker-compose.ports.yml up -d --force-recreate --no-deps blueprint-service'
+    # The -f list MUST match the one the node was brought up with. Recreating a service with a
+    # SHORTER list silently reverts it to whatever `image:` the base files name — so a restart
+    # meant to prove recovery would instead deploy a different build of the service under test,
+    # and step 6 would be measuring the wrong binary while reporting a clean pass.
+    $composeCmd = "cd /opt/sorcha && docker compose $ComposeFiles up -d --force-recreate --no-deps blueprint-service"
     Write-Host "  restarting..." -ForegroundColor DarkGray
     & ssh -o ConnectTimeout=15 $SshTarget $composeCmd 2>&1 | Select-Object -Last 3 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
 
@@ -215,12 +239,12 @@ if ($SkipRestart) {
 
 # Re-login: the restart drops nothing server-side, but a fresh token removes any doubt about
 # token age being the reason a later call behaves differently.
-$officer = Connect-SorchaUser -TenantUrl $state.tenantUrl -Email $state.officer.email -Password $state.officer.password
+$officer = Connect-SorchaUser -TenantUrl $state.tenantUrl -Email $state.officer.email -Password $state.officer.password -OrganizationId $state.officer.organizationId
 
-$pinAfterRestart = Invoke-SorchaApi -Method GET -Uri "$bp/api/instances/$instanceA/definition" -Headers $officer.Headers
+$pinAfterRestart = Invoke-SorchaApi -Method GET -Uri "$bp/instances/$instanceA/definition" -Headers $officer.Headers
 Check '6' 'instance A STILL resolves its v1 definition after the restart' `
-    ($pinAfterRestart.pinState -eq 'pinned' -and $pinAfterRestart.blueprintExecDefHash -eq $v1Hash) `
-    "pinState=$($pinAfterRestart.pinState) pin=$($pinAfterRestart.blueprintExecDefHash)"
+    ($pinAfterRestart.pinState -eq 'pinned' -and $pinAfterRestart.blueprintDefinitionTxId -eq $v1Pub) `
+    "pinState=$($pinAfterRestart.pinState) pin=$($pinAfterRestart.blueprintDefinitionTxId) expected=$v1Pub"
 
 $a3 = Try-Action @{
     BlueprintUrl = $bp; InstanceId = $instanceA; ActionId = '3'; BlueprintId = $blueprintId
@@ -234,8 +258,11 @@ Check '6' 'THE GATE: instance A advances against v1 AFTER a restart' $a3.Accepte
 # ---------------------------------------------------------------------------------------------
 Write-Host ""
 Write-Host "=== Result ===" -ForegroundColor Cyan
-$pass = ($script:Results | Where-Object { $_.Ok }).Count
-$fail = ($script:Results | Where-Object { -not $_.Ok }).Count
+# @() around each pipeline: with StrictMode a pipeline that matches NOTHING yields $null, and
+# $null.Count throws. That makes the summary blow up on precisely the run where every check
+# passed — the one you most want a clean report from.
+$pass = @($script:Results | Where-Object { $_.Ok }).Count
+$fail = @($script:Results | Where-Object { -not $_.Ok }).Count
 $script:Results | Where-Object { -not $_.Ok } | ForEach-Object {
     Write-Host ("  FAILED [step {0}] {1}" -f $_.Phase, $_.What) -ForegroundColor Red
 }
@@ -245,6 +272,7 @@ Write-Host ""
 Write-Host "  instance A (v1): $instanceA"
 Write-Host "  instance B (v2): $instanceB"
 Write-Host "  blueprint      : $blueprintId"
+Write-Host "  v1 / v2 pin    : $v1Pub / $v2Pub"
 Write-Host "  v1 / v2 hash   : $v1Hash / $v2Hash"
 Write-Host ""
 Write-Host "  Remember: absence of errors is NOT evidence here. Confirm pin_fallback reads zero." -ForegroundColor Yellow
