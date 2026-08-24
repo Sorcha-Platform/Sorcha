@@ -92,3 +92,25 @@ probes.
 The lesson generalises to the gates this one was modelled on: a grep-shaped rule must be tested
 against the formatting real code actually uses, not only against the formatting the test author
 happens to write.
+
+---
+
+## Phase 3 — a published definition survives (T022)
+
+Suite under test: `Sorcha.Blueprint.Service.Tests`, 1233 tests, green before and after.
+
+| Mutation | Discriminating test(s) killed |
+|---|---|
+| **Version-blind identity** — drop the canonical content from the preimage, reintroducing the #1563 defect exactly | `PublishAsync_BehaviouralRepublish_GetsADistinctIdentity`, `PublishAsync_PresentationalRepublish_NewIdentity_SameExecutableDefinition`, `RunRecoveryAsync_TwoDifferentDefinitionsOfOneBlueprint_RecoverBoth`, `TryVerifyProvenance_TamperedContent_Rejected` |
+| **Recovery verifies nothing** — `TryVerifyProvenance` returns true unconditionally | all 7 provenance tests |
+| **Store despite ledger refusal** — record locally even when the register returned nothing | `PublishAsync_RegisterRefuses_StoresNothingLocally` |
+
+Worth noting about the first: it kills **four** tests across three classes, including a recovery test
+that never mentions identity. That is the shape of the original defect — a version-blind id does not
+fail where it is computed, it fails wherever something later needed two definitions to be
+distinguishable. Before this feature, nothing failed at all.
+
+The third kills exactly one test, and that test did not exist before this feature. It guards the
+reordering that puts the ledger write ahead of the local store: without it, a refused publish leaves
+a definition resolvable on one node and nowhere else — which is not a degraded mode, it is a
+definition that looks healthy and is not.

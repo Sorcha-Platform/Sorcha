@@ -73,7 +73,7 @@ instance still resolves and advances. Closes #1563 and #1570.
 
 - [x] T020 [P] [US1] `tests/Sorcha.Register.Service.Tests` — publish produces the expected id; identical republish is idempotent with `alreadyPublished: true` and writes no second transaction; **behaviourally different republish writes a second transaction** (the check that fails today)
 - [x] T021 [P] [US1] `tests/Sorcha.Blueprint.Service.Tests` — recovery restores every definition on a register, deduped by publication id, and rejects a payload whose recomputed id does not match its transaction id
-- [ ] T022 [US1] Mutation-test: restore the version-blind txId (must kill the second-transaction test); drop the recovery id verification (must kill the tamper test); reinstate the instance-creation publish branch (must kill a single-writer test). Record in `mutations.md`
+- [x] T022 [US1] Mutation-test: restore the version-blind txId (must kill the second-transaction test); drop the recovery id verification (must kill the tamper test); reinstate the instance-creation publish branch (must kill a single-writer test). Record in `mutations.md`
 
 **Checkpoint:** a republished definition reaches the ledger and survives a restart. Deliverable alone.
 
