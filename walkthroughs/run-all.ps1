@@ -6,8 +6,8 @@
     Runs the Sorcha walkthrough suite and reports a verdict per step.
 
 .DESCRIPTION
-    The CORE suite is the sixteen steps that are actually maintained and that constitute the
-    platform's end-to-end regression check. It is what "16/16" refers to in MASTER-TASKS and in the
+    The CORE suite is the eighteen steps that are actually maintained and that constitute the
+    platform's end-to-end regression check. It is what "18/18" refers to in MASTER-TASKS and in the
     node-state notes.
 
     Four things this runner has to get right, each of which has produced a WRONG verdict before:
@@ -46,7 +46,7 @@
     Deploy-anywhere override, e.g. http://tiny:8090. Takes precedence over -Profile.
 
 .PARAMETER Suite
-    'core' (default) — the sixteen maintained steps.
+    'core' (default) — the eighteen maintained steps.
     'legacy' — the older foundation/single-org walkthroughs, which are NOT part of the regression
                baseline and are not all currently maintained.
     'all' — both.
@@ -128,6 +128,12 @@ $core = @(
     @{ W = 'CyberEssentialsUac';    Label = 'revocation';  Script = 'run-revocation.ps1';      Kind = 'runp' }
     @{ W = 'CredentialLifecycle';   Label = 'setup';       Script = 'setup.ps1';               Kind = 'setup' }
     @{ W = 'CredentialLifecycle';   Label = 'conformance'; Script = 'run-conformance.ps1';     Kind = 'runp' }
+    # EncryptionAtRest reads the node's MongoDB directly (ssh + docker exec), so it is the only
+    # step that needs more than the gateway. Against -Profile n1 it derives the ssh host itself;
+    # against a local Docker stack it uses docker here. It goes LAST because it promotes its own
+    # register one-way and therefore provisions a fresh one on every run.
+    @{ W = 'EncryptionAtRest';      Label = 'setup';       Script = 'setup.ps1';               Kind = 'setup' }
+    @{ W = 'EncryptionAtRest';      Label = 'conformance'; Script = 'run-conformance.ps1';     Kind = 'runp' }
 )
 
 # NOT part of the regression baseline. Kept so the scripts stay reachable, not because they are
