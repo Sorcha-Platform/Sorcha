@@ -26,6 +26,7 @@ public class DocketBuildTriggerNextActionIdTests
         var decision = new RoutingDecision
         {
             CompletedActionId = 1,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions = [new ActionRef { ActionId = 2 }, new ActionRef { ActionId = 3 }],
             Attestation = new Attestation { Kind = AttestationKind.SenderSigned, Signature = "sig" },
         };
@@ -67,6 +68,7 @@ public class DocketBuildTriggerNextActionIdTests
         var decision = new RoutingDecision
         {
             CompletedActionId = 5,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions = [],
             Attestation = new Attestation { Kind = AttestationKind.SenderSigned, Signature = "sig" },
         };

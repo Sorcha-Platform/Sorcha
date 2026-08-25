@@ -110,9 +110,9 @@ public class InstanceProjectionTests
         ])!;
         var countBefore = instance.CompletedActionCount;
 
-        var advanced = InstanceProjection.Apply(instance, Tx("tx1", null, 1, [2]));
+        var outcome = InstanceProjection.Apply(instance, Tx("tx1", null, 1, [2]));
 
-        advanced.Should().BeFalse();
+        outcome.Should().Be(FoldOutcome.AlreadyApplied);
         instance.CompletedActionCount.Should().Be(countBefore);
     }
 
@@ -124,9 +124,9 @@ public class InstanceProjectionTests
             Tx("tx1", null, 1, [2]),
         ])!;
 
-        var advanced = InstanceProjection.Apply(instance, Tx("tx2", "tx1", 2, [3]));
+        var outcome = InstanceProjection.Apply(instance, Tx("tx2", "tx1", 2, [3]));
 
-        advanced.Should().BeTrue();
+        outcome.Should().Be(FoldOutcome.Advanced);
         instance.CurrentActionIds.Should().Equal(3);
         instance.LastAppliedTxId.Should().Be("tx2");
         instance.CompletedActionCount.Should().Be(2);

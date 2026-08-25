@@ -260,15 +260,20 @@ public interface IRegisterServiceClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Publishes a blueprint to a register
+    /// Publishes a blueprint definition to a register and returns the identity the register assigned
+    /// it (Feature 195).
     /// </summary>
     /// <param name="registerId">Target register ID</param>
     /// <param name="blueprintId">Blueprint ID</param>
-    /// <param name="blueprintJson">Serialized blueprint JSON</param>
+    /// <param name="blueprintJson">Serialized blueprint JSON — MUST be the $ref-flattened definition</param>
     /// <param name="publishedBy">Publisher identity</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>True if published successfully</returns>
-    Task<bool> PublishBlueprintToRegisterAsync(
+    /// <returns>
+    /// The outcome, or <c>null</c> when the publish failed. The caller RECORDS
+    /// <see cref="BlueprintPublicationResult.PublicationTxId"/>; it must never recompute it — the
+    /// Register Service is the one producer of that value.
+    /// </returns>
+    Task<BlueprintPublicationResult?> PublishBlueprintToRegisterAsync(
         string registerId,
         string blueprintId,
         string blueprintJson,
@@ -998,7 +1003,15 @@ public class PublishedBlueprintEntry
 {
     /// <summary>Identifier of the blueprint.</summary>
     public string BlueprintId { get; set; } = string.Empty;
-    /// <summary>Identifier of the transaction.</summary>
+    /// <summary>
+    /// The publication transaction id — <b>this definition's identity</b> (Feature 195).
+    /// </summary>
+    /// <remarks>
+    /// It is also the digest of the canonical definition, so a recovering node verifies provenance by
+    /// recomputing the publication id from <see cref="BlueprintJson"/> and comparing it to this
+    /// value. Self-anchoring: unlike the separately-sealed <c>contentHash</c> it replaced, an id
+    /// cannot disagree with the content it identifies.
+    /// </remarks>
     public string TransactionId { get; set; } = string.Empty;
     /// <summary>The published by.</summary>
     public string PublishedBy { get; set; } = string.Empty;
@@ -1006,12 +1019,29 @@ public class PublishedBlueprintEntry
     public DateTimeOffset PublishedAt { get; set; }
     /// <summary>The blueprint json.</summary>
     public string BlueprintJson { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// The outcome of publishing a blueprint definition to a register (Feature 195).
+/// </summary>
+public class BlueprintPublicationResult
+{
     /// <summary>
-    /// Feature 138 US4 — the canonical SHA-256 (lowercase hex) of the blueprint JSON, sealed in the
-    /// publish control transaction. A recovering node recomputes the canonical hash of
-    /// <see cref="BlueprintJson"/> and rejects the entry if it does not match this digest (tampered)
-    /// or if this digest is absent (no verifiable provenance). Computed by
-    /// <see cref="BlueprintContentHash.Compute(string)"/>.
+    /// The definition's identity, assigned by the Register Service — the id of the transaction that
+    /// published it. Callers RECORD this; recomputing it locally is what
+    /// <c>scripts/check-publication-id-owner.ps1</c> forbids.
     /// </summary>
-    public string ContentHash { get; set; } = string.Empty;
+    public string PublicationTxId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// True when this exact definition was already on the register, so no new transaction was
+    /// written.
+    /// </summary>
+    /// <remarks>
+    /// Identical content yields an identical id, so republishing an unchanged definition is a genuine
+    /// no-op — but it must be <b>distinguishable</b> from a real publish. Before Feature 195 it was
+    /// not: a republish deduped to a version-blind transaction id and was silently dropped while the
+    /// endpoint answered 200 and the caller logged success (issue #1563).
+    /// </remarks>
+    public bool AlreadyPublished { get; set; }
 }

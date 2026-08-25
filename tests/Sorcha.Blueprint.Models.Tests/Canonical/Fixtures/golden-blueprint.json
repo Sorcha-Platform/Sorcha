@@ -1,0 +1,130 @@
+{
+  "title": "Golden Vector Blueprint",
+  "id": "golden-vector-blueprint",
+  "version": 3,
+  "description": "A deliberately broad fixture. Its keys are authored OUT OF ALPHABETICAL ORDER on purpose, and it carries nested objects, arrays, unicode, and characters an escaping-sensitive serializer would treat differently (& < > + é —). Do not tidy it.",
+  "metadata": {
+    "hasCycles": "false",
+    "category": "test-fixture"
+  },
+  "organizationId": "8f14e45f-ceea-467a-9575-1f4b0e4e0f2a",
+  "createdAt": "2026-08-24T00:00:00+00:00",
+  "updatedAt": "2026-08-24T00:00:00+00:00",
+  "participants": [
+    {
+      "name": "Applicant & Co <public>",
+      "id": "applicant",
+      "organisation": "Public"
+    },
+    {
+      "id": "reviewer",
+      "walletAddress": "ws1qexampleaddressvalue0000000000",
+      "name": "Review Officer",
+      "organisation": "Council"
+    }
+  ],
+  "instanceReference": {
+    "prefix": "GV",
+    "components": [
+      { "field": "/projectName", "transform": "FirstWord", "chars": 3 }
+    ]
+  },
+  "presentationConfig": {
+    "recordAbandonment": true,
+    "outcomeDetailLevel": "Verbose",
+    "presentationValidityWindowSeconds": 900
+  },
+  "actions": [
+    {
+      "title": "Submit application",
+      "id": 0,
+      "sender": "applicant",
+      "isStartingAction": true,
+      "dataSchemas": [
+        {
+          "type": "object",
+          "required": ["projectName", "amount"],
+          "properties": {
+            "projectName": { "type": "string", "minLength": 1, "title": "Project name" },
+            "amount": { "type": "number", "minimum": 0 },
+            "note": { "type": "string", "maxLength": 600 }
+          }
+        }
+      ],
+      "calculations": {
+        "requiresReview": { ">": [{ "var": "amount" }, 10000] }
+      },
+      "disclosures": [
+        { "participantAddress": "applicant", "dataPointers": ["/*"] },
+        { "participantAddress": "reviewer", "dataPointers": ["/projectName", "/amount"] }
+      ],
+      "routes": [
+        {
+          "nextActionIds": [1],
+          "id": "to-review",
+          "isDefault": true,
+          "branchDeadline": "P7D",
+          "description": "Always route to review"
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "title": "Review decision",
+      "sender": "reviewer",
+      "requiredPriorActions": [0],
+      "dataSchemas": [
+        {
+          "type": "object",
+          "required": ["decision"],
+          "properties": {
+            "decision": { "type": "string", "enum": ["approved", "rejected"] },
+            "reasonCode": { "type": "string", "enum": ["not-eligible", "incomplete"] }
+          }
+        }
+      ],
+      "rejectionConfig": {
+        "targetActionId": 0,
+        "targetParticipantId": "applicant",
+        "requireReason": true,
+        "isTerminal": false
+      },
+      "routes": [
+        {
+          "id": "approved",
+          "nextActionIds": [],
+          "condition": { "==": [{ "var": "decision" }, "approved"] },
+          "description": "Approved — workflow complete"
+        },
+        {
+          "id": "rejected",
+          "nextActionIds": [],
+          "isDefault": true,
+          "x-decision-notice": {
+            "recipientParticipantId": "applicant",
+            "reasonCodeField": "/reasonCode",
+            "title": "Your application was not approved",
+            "severity": "Warning",
+            "reasons": {
+              "not-eligible": "You were not eligible for this scheme.",
+              "incomplete": "Your application was incomplete."
+            },
+            "fallbackMessage": "Your application was not approved."
+          }
+        }
+      ],
+      "credentialIssuanceConfig": {
+        "vct": "https://sorcha.dev/vc/golden-vector/v1",
+        "displayName": "Golden Vector Credential",
+        "recipientParticipantId": "applicant",
+        "targetAudience": "SorchaLocalWallet",
+        "issuanceCondition": { "==": [{ "var": "decision" }, "approved"] },
+        "claimMappings": [
+          { "claimName": "projectName", "sourceField": "/0/payload/projectName" }
+        ],
+        "disclosable": ["projectName"],
+        "expiryDuration": "P5Y"
+      }
+    }
+  ]
+}

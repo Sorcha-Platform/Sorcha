@@ -2170,8 +2170,10 @@ verify half).
   a caller-supplied key; the server resolves the org P-256 key itself and **re-issues the internal
   tenant-root cert with auditable history** (`ITrustProvider.ReissueInternalCertAsync` supersede). Doubles
   as the **backfill** action for pre-existing orgs.
-- **Auto-enrol** — best-effort server-side hook after wallet provisioning (org creation +
-  `OrgWalletReconciliationService` ride-along), **not an API**. Failure never fails org creation.
+- **Auto-enrol** — best-effort server-side hook riding on `POST /api/organizations/{id}/wallet`, the
+  moment an org first has a wallet (#1525), **not an API**. Failure never fails the link. It used to
+  ride on server-side provisioning at org creation and on the `OrgWalletReconciliationService` sweep;
+  both are gone, because they minted org wallets with nobody present to receive the recovery phrase.
 - **Admin UI** — certificates panel in `OrgSettings.razor` backed by `IOrgCertificateAdminService`.
   `Organization.WalletAddress` is now exposed on `OrganizationResponse`.
 
@@ -2185,6 +2187,16 @@ verifier before showing consent.
   prefixed **`x509_san_dns:{host}`** `client_id`. Config: `Haip:VerifierCertificate` (PFX path or base64)
   + `Haip:VerifierCertificatePassword?` + `Haip:PublicHost`. Dev fallback = self-signed cert;
   **prod/staging fail-fast** when unconfigured. (`VerifierCertificate.cs`.)
+- **`sorcha-agent` side (#1538, 2026-08-21)** — the agent uses the SAME `RequestObjectValidator`
+  rather than its own check, so agent and wallet cannot drift on what counts as an authentic verifier.
+  It previously verified only against a JOSE-header embedded `jwk`; US6 emits `x5c` and no `jwk`, so
+  the check could only ever refuse and the agent's whole OID4VP present leg was unusable. Because an
+  agent has no human to render consent to, it applies a policy over the three-state verdict: hard
+  refusal always throws; `Unverifiable` throws unless `--allow-unverified-verifier`;
+  `AuthenticUntrusted` proceeds with a warning (FR-027 — and it is the ordinary local path, since a
+  dev verifier self-signs) unless `--require-trusted-verifier`. `--verifier-client-id` pins the
+  expected identity; unpinned, the client_id is read from the request object itself, which proves
+  internal consistency but **not** identity.
 - **Wallet side** — `RequestObjectValidator` (`Sorcha.Verifier.Engine`, pure BouncyCastle / WASM-safe):
   ES256 JWS verify over the x5c leaf → leaf SAN == `client_id` host → chain-walk to a trusted anchor,
   yielding a three-state `VerifierAuthState`: `TrustedListVerified` / `AuthenticUntrusted` /
@@ -2410,6 +2422,141 @@ Metrics: `sorcha_provenance_check_total{layer,status}` and
 `failed` and `unverified` must stay distinguishable — the first is an integrity signal worth alerting
 on, the second usually means missing evidence.
 
+
+## Blueprint version pinning — an instance runs the definition it started on (Feature 194)
+
+Republishing a blueprint to a register it is already on used to be accepted, increment a version, and
+**silently replace the executable definition for every instance of that id, including ones in
+flight**. Confirmed live on n1: three versions on one register, all accepted, no error anywhere. An
+instance mid-flow was then validated against actions and schemas it never saw.
+
+### The pin is a sealed ledger fact, not a lookup
+
+Under F145 an instance is a deterministic projection of the sealed ledger, so which definition it
+runs **cannot** be resolved per-node at fold time: a value two nodes cannot both derive from sealed
+transactions is a value they can diverge on. The pin therefore rides `RoutingDecision`
+(`Sorcha.Register.Models`), which already travels on every forward-routing action transaction, is
+sender-signed, and is verified by `VAL_ROUTING_002`.
+
+```
+RoutingDecision { completedActionId, nextActions[], routeId?, reasonCode?,
+                  blueprintExecDefHash?,   // Feature 194 — the pin
+                  attestation }
+```
+
+⚠ **`ComputeSignableBytes()` rebuilds the decision FIELD BY FIELD.** A property added to the record
+and not to that rebuild **rides the wire unauthenticated while appearing signed** — the transaction
+signature covers only `{TxId}:{PayloadHash}`, so it does not cover this. F189 lost `ValidatorEntry`
+to exactly this shape. The guard is `RoutingDecisionSigningCoverageTests`, which is
+**reflection-driven and fails on a property type it cannot mutate rather than skipping it**. Per-field
+tests exist too and are fine, but they are a hand-written list: every one of them stays green when a
+new uncovered property is added, which is the only case that matters.
+
+### Which value is the pin, and why not the ordinal
+
+The **executable-definition hash** (`ExecutableDefinitionHasher`, F142), never the ordinal `Version`.
+The ordinal is assigned from in-memory insert order (`versions.Count + 1`) and re-derived on
+recovery, so it does not reliably denote the same definition twice. F194 additionally **removed the
+ordinal from the hashed projection** — it was inside the content address, which is a contradiction
+and a latent way for an author to strand every in-flight instance by renumbering a draft.
+
+Because the hasher already ignores presentational keywords (F142 `FormKeywordClassifier`), a
+relabelling republish yields the **same** pin: no new definition, no instance moved, rehearsal pass
+still valid.
+
+### The lifecycle
+
+| Stage | Behaviour |
+|---|---|
+| **Publish** | `PublishService.PublishAsync` takes a **deep copy** after `$ref` flattening, hashes *that*, and stores it as `PublishedBlueprint.ExecDefHash`. The copy matters: the store used to hold the live draft reference, so "immutable snapshot" was false and hashed content could change under its own hash. |
+| **Instance creation** | Pins to the **latest PUBLISHED** definition — never the draft. A draft pin would name a definition no validator can resolve. |
+| **Every action** | `ActionExecutionService` (and `EncryptionBackgroundService`, the encrypted-register producer) stamp the **instance's** pin, never a re-derived "latest". |
+| **Fold** | `InstanceProjectionResolver` reads it off the sealed decision; `InstanceProjection.Apply` returns `FoldOutcome.RefusedForeignDefinition` for a transaction claiming a different pin. Null is accepted as the pre-feature case, counted, never treated as a mismatch. |
+| **Validator** | `ResolveBlueprintAsync(blueprintId, execDefHash, ct)` at all **three** call sites. An unresolvable pin is `VAL_BP_VERSION_001` — **never a fallback to latest**, which would reintroduce the defect silently. |
+| **Cache** | Two key shapes, deliberately: `…:{id}` for system/unpinned resolution (system blueprints have no instance and no pin) and `…:{id}:{hash}` for a pinned definition. Format lives once, in `Sorcha.Blueprint.Models.BlueprintCacheKey`, used by the validator's cache AND the Blueprint Service's publish path. |
+| **Recovery** | `BlueprintRecoveryService` restores **every** published definition, oldest-first, deduped by content hash. It used to keep newest-per-id — under pinning that strands an instance permanently at the first restart. |
+
+### Surfaces
+
+- `GET /api/blueprints/{id}/definitions/{execDefHash}` — the pinned definition (404 = refusal).
+- `GET /api/instances/{instanceId}/definition` — `pinState` ∈ `pinned` | `unresolvable` | `unpinned`,
+  plus the hash, the version **derived from the pin**, and `isPinnedToLatest`. Nothing is guessed:
+  an unresolvable pin returns null for version and `isPinnedToLatest`, because that state IS the
+  diagnosis and a plausible substitute would read as healthy.
+- `GET /api/blueprints/{id}/versions` entries carry `execDefHash`.
+- F186 `/api/me/applications` resolves decision-notice wording from the **pinned** definition.
+
+Metrics on `Sorcha.Blueprint.Instances`: `…instance_projection.pin_fallback{path}` and
+`…instance_projection.pin_mismatch`.
+
+### Two things that will bite
+
+- **Deploy `validator-service` BEFORE `blueprint-service`.** New validator + old producer is safe (a
+  null pin is omitted from the wire, so canonical bytes are unchanged); the reverse **refuses every
+  submission**, because the old rebuild computes different signable bytes.
+- **Every failure mode of this feature degrades to the OLD BEHAVIOUR, not to an error.** A cache
+  re-keyed on one side only, a producer that stops stamping, a pin dropped from a copy list — all of
+  them silently resolve "latest" again, with a green suite. The acceptance check is therefore the
+  positive one: `pin_fallback` reading **zero** on a register created after the deploy.
+
+### Feature 195 — the publication transaction IS the definition's identity
+
+F194's three gaps are closed. The shape of the fix matters more than the fix, because each gap was a
+*silent* one.
+
+```
+publicationTxId = SHA-256( "sorcha:blueprint-publication:v1" ␟ registerId ␟ blueprintId ␟ canonicalJson )
+```
+
+- **Register-scoped** — a definition published to two registers is byte-identical *by construction*,
+  so without `registerId` one id would name two ledger facts.
+- **Domain-tagged** — `InstanceIdentity.Derive` is already `SHA-256(registerId ␟ blueprintId ␟ …)`
+  with the same `0x1F` separator. Untagged, the two are the same preimage construction sharing their
+  first two fields.
+- **Canonical means key-sorted.** `RegisterSerializationOptions.Canonical` and the former
+  `BlueprintContentHash` both preserve input key order, so both address the *serializer's output*
+  rather than the content. `Sorcha.Blueprint.Models.Canonical.BlueprintCanonicalJson` is the one home.
+  Only what survives a parse can vary: whitespace and escaping do not, key order does.
+- **ONE PRODUCER — the Register Service.** Everything else *reads* the value it returns:
+  `PublishedBlueprint.PublicationTxId` records it, recovery reads real transaction ids, instance
+  creation reads the store, a starting action reads the instance's pin. Enforced by
+  `scripts/check-publication-id-owner.ps1`; recovery and the validator are allowlisted as
+  **verifiers**, which recompute to check a payload against the transaction's own id.
+
+**Anchor ≡ pin.** `ActionExecutionService.ComputeBlueprintPublishTxId` and its call sites are deleted;
+a starting action chains from the transaction that published its instance's definition, read rather
+than computed. The `WaitForTransactionConfirmationAsync` precondition is retained and now asserts
+something stronger — the exact definition, not merely the blueprint.
+
+**Resolution is by pin on the execution path too.** `IActionResolverService.GetBlueprintAsync`
+requires it, both caches carry it, and the draft store is off that path entirely. The validator gains
+a last-resort arm that could not have existed before: **read the definition straight off the
+register** by its publication id, verifying the payload against the transaction's own id. That makes
+`pinState=unresolvable` unreachable for any definition the register actually holds.
+
+**`execDefHash` keeps a narrower job**: *did behaviour change?* — the F142 rehearsal-gate key. It no
+longer identifies a definition. Its coverage gap (nine execution-affecting fields, including
+`RejectionConfig` and legacy `Action.Participants` routing) is fixed, and guarded by
+`ExecutableDefinitionCoverageTests`, which **fails the build on any blueprint-graph property nobody
+has classified** — there is no default, because both defaults are wrong in different directions.
+
+⚠ **Every serialized property on the blueprint graph is now LEDGER CONTRACT.** Renaming a
+`[JsonPropertyName]`, or deleting a dead-but-serialized property, changes the canonical bytes of every
+definition and therefore every publication id. `GoldenVector_ModelWireShapeIsFrozen` is the only guard
+that catches it — and it did, the first time it mattered, when two wholly dead version fields were
+removed.
+
+**Amending is versioning** (#1568): the clone keeps the same `blueprintId` and selects its source by
+`publicationTxId`, not by the unstable ordinal.
+
+Spec / plan / research: `specs/195-blueprint-definition-identity/`. Design:
+`docs/superpowers/specs/2026-08-24-blueprint-lifecycle-design.md`. Investigation:
+`…-blueprint-lifecycle-current-state-FINDINGS.md`. Issues #1563, #1566, #1567, #1568, #1570.
+
+Spec / plan / research: `specs/194-blueprint-version-pinning/`. Design:
+`docs/superpowers/specs/2026-08-23-blueprint-version-pinning-design.md`. Issue #1559.
+
+---
 
 ## Register governance: what signs what (Feature 189)
 

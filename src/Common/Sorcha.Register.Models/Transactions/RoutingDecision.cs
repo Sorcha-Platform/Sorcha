@@ -61,6 +61,39 @@ public class RoutingDecision
     public string? ReasonCode { get; set; }
 
     /// <summary>
+    /// Gets or sets the id of the transaction that PUBLISHED the blueprint definition this action was
+    /// executed against — the instance's <i>pin</i> (Feature 194, retyped by Feature 195).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Under Feature 145 an instance is a deterministic projection of the sealed ledger, so which
+    /// definition it runs cannot be a per-node lookup: a value two nodes cannot both derive from
+    /// sealed transactions is a value they can diverge on. Carrying it here makes it a sealed fact.
+    /// </para>
+    /// <para>
+    /// <b>Feature 195 changed what this value IS.</b> It was the executable-definition hash — a
+    /// content address over a hand-written projection of the blueprint, which omitted several fields
+    /// that genuinely affect execution, so definitions that differed behaviourally could share a pin.
+    /// It is now the publication transaction id, which addresses the WHOLE definition and names a
+    /// ledger fact: any node holding the register can resolve it, and the starting action chains from
+    /// that very transaction. Anchor and pin became one value because they are one fact.
+    /// </para>
+    /// <para>
+    /// Set to the definition the instance was created against on a starting action — that is the
+    /// moment the instance's definition is chosen — and to the <b>instance's established pin</b> on
+    /// every action thereafter. A subsequent action claiming a different definition is refused: a
+    /// sender must not be able to move a running instance onto another definition by asserting one.
+    /// </para>
+    /// <para>
+    /// Nullable, and omitted from the wire when null, so a transaction sealed before Feature 194
+    /// deserialises cleanly and its original signature still verifies. New code never writes null.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("blueprintDefinitionTxId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BlueprintDefinitionTxId { get; set; }
+
+    /// <summary>
     /// Gets or sets the trust attestation for this decision (Entity 2 / FR-009).
     /// </summary>
     [JsonPropertyName("attestation")]
@@ -84,6 +117,7 @@ public class RoutingDecision
             NextActions = NextActions,
             RouteId = RouteId,
             ReasonCode = ReasonCode,
+            BlueprintDefinitionTxId = BlueprintDefinitionTxId,
             Attestation = null,
         };
         return JsonSerializer.SerializeToUtf8Bytes(signable, RegisterSerializationOptions.Canonical);

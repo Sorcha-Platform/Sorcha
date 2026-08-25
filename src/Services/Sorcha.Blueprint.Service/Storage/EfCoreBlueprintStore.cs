@@ -118,6 +118,16 @@ public class EfCoreBlueprintStore : IBlueprintStore
             return null;
         }
 
+        // The owning organisation survives an update that does not mention it. A PUT body carries
+        // the document, not the row's ownership, so taking `blueprint.OrganizationId` at face value
+        // silently nulls the column on the FIRST save and orphans the draft: every later org-scoped
+        // GET and PUT then answers 404 for the org that owns it. OwnerId was already treated as
+        // immutable for exactly this reason; OrganizationId was not, and it is the one the reads
+        // filter on.
+        blueprint.OrganizationId ??= !string.IsNullOrEmpty(entity.OrganizationId)
+            ? entity.OrganizationId
+            : (string.IsNullOrEmpty(entity.OwnerId) ? null : entity.OwnerId);
+
         entity.Name = blueprint.Title;
         entity.Description = blueprint.Description;
         entity.Content = JsonSerializer.Serialize(blueprint, SerializerOptions);
@@ -156,6 +166,21 @@ public class EfCoreBlueprintStore : IBlueprintStore
         try
         {
             var blueprint = JsonSerializer.Deserialize<BlueprintModel>(entity.Content, SerializerOptions);
+
+            // The owning organisation is a property of the ROW, not of the document. Taking it from
+            // the serialized content alone loses it the first time a client saves the draft back,
+            // because no client echoes `organizationId` in a PUT body — and the org is what every
+            // org-scoped read and write is authorised against. Re-attaching it here restores the
+            // invariant for reads, for the ownership check in BlueprintService.UpdateAsync, and for
+            // any row already orphaned by that path (OwnerId is written once at creation and is
+            // never overwritten, so it is the durable fallback).
+            if (blueprint is not null && string.IsNullOrEmpty(blueprint.OrganizationId))
+            {
+                blueprint.OrganizationId = !string.IsNullOrEmpty(entity.OrganizationId)
+                    ? entity.OrganizationId
+                    : (string.IsNullOrEmpty(entity.OwnerId) ? null : entity.OwnerId);
+            }
+
             return blueprint;
         }
         catch (JsonException ex)

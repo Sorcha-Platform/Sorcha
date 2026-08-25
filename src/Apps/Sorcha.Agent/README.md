@@ -122,7 +122,7 @@ sorcha-agent haip present --request-uri <uri> --credential VerifiedIdentityCrede
 
 Executes the OID4VP `direct_post` flow:
 1. Loads the specified credential from the wallet
-2. Fetches the authorization request object from the request URI
+2. Fetches the authorization request object and **authenticates the verifier** (below)
 3. Builds a selective disclosure presentation with only the specified claims
 4. Signs a KB-JWT (Key Binding JWT) with the holder key, binding nonce and audience
 5. Submits the `vp_token` via `direct_post` to the verifier's response URI
@@ -133,6 +133,34 @@ Executes the OID4VP `direct_post` flow:
 | `--credential` | Yes | - | Credential type to present (e.g., `VerifiedIdentityCredential`) |
 | `--disclose` | Yes | - | Comma-separated claim names to disclose |
 | `--wallet-dir` | No | `./wallet` | Directory for keys and credentials |
+| `--verifier-client-id` | No | from the request object | Expected `x509_san_dns:{host}` client_id to pin |
+| `--verifier-anchor` | No | none | Trusted root (PEM or DER) the verifier chain must reach. Repeatable |
+| `--require-trusted-verifier` | No | off | Refuse unless the chain reaches an anchor |
+| `--allow-unverified-verifier` | No | off | Proceed even when the verifier cannot be authenticated |
+
+#### Verifier authentication (issue #1538)
+
+Since Feature 181 US6 the verifier signs its request object with an **X.509 certificate** and an
+`x5c` chain — there is no embedded `jwk`. The agent authenticates it with the same
+`RequestObjectValidator` the citizen wallet uses: ES256 verify against the `x5c` leaf, leaf SAN
+dNSName matched to the `x509_san_dns:` client_id host, then a chain walk to any supplied anchor.
+
+Because an agent has no human to render a consent decision to, it applies a policy over the
+three-state verdict:
+
+| Verdict | Behaviour |
+|---------|-----------|
+| Tampered signature, or SAN not matching the client_id host | **Refused always** — no flag overrides it |
+| Cannot authenticate (no `x5c`, unsupported alg, unsigned body) | Refused unless `--allow-unverified-verifier` |
+| Authentic, but chains to no supplied anchor | Proceeds with a warning (FR-027: absent anchors never block), or refused with `--require-trusted-verifier` |
+| Authentic and chains to an anchor | Proceeds |
+
+Without `--verifier-client-id` the expected client_id is read from the request object itself, which
+proves internal consistency but **not identity** — the agent warns when it does this. Pin it, or
+supply an anchor, to get a real trust decision.
+
+> The former `--verifier-jwk-thumbprint` option is **removed**. It pinned a key in a header the
+> platform no longer emits, so after US6 it could only ever refuse.
 
 ### Exit Codes (HAIP commands)
 

@@ -4,6 +4,7 @@
 #pragma warning disable ASPDEPR002 // WithOpenApi is deprecated; using it for co-located endpoint examples until transformer API stabilizes
 
 using System.Security.Claims;
+using Sorcha.ServiceClients.Auth;
 
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
@@ -31,6 +32,34 @@ public static class OrganizationEndpoints
         var group = app.MapGroup("/api/organizations")
             .WithTags("Organizations")
             .RequireAuthorization();
+
+        // #1525 — the ORG ADMIN records the wallet they created for their own organisation.
+        //
+        // Deliberately NOT .RequireCallerOrganization(): that gate exempts platform SystemAdmins, and
+        // this is the one endpoint where that override must not apply. The wallet's recovery phrase
+        // belongs to the organisation, so a platform admin provisioning it on their behalf is the
+        // exact failure being designed out — the phrase would be shown to the wrong person, or, as
+        // before, to nobody at all. The handler compares the caller's org to the route itself.
+        group.MapPost("/{organizationId:guid}/wallet", LinkOrganizationWallet)
+            .WithName("LinkOrganizationWallet")
+            .WithSummary("Record the wallet this organisation's admin created as its signing wallet")
+            .WithDescription(
+                "Second half of create-then-link. The org admin first creates a wallet against the "
+                + "Wallet Service (POST /api/v1/wallets) with the organisation as owner, which returns "
+                + "the BIP39 recovery phrase ONCE — it is never stored and cannot be recovered, and it "
+                + "is the organisation's secret, not the platform's. This endpoint then records that "
+                + "wallet as the organisation's canonical signing wallet, after verifying the "
+                + "organisation owns it. Callable only by an administrator OF THAT organisation: a "
+                + "platform admin cannot do it on their behalf, because they would be holding a secret "
+                + "that is not theirs. Returns 409 if the organisation already has a wallet — "
+                + "replacing it would orphan every credential issued under the old one.")
+            .RequireAuthorization(AuthorizationPolicies.RequireAdministrator)
+            .Produces<OrganizationResponse>()
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict);
 
         // Organization CRUD
         group.MapPost("/", CreateOrganization)
@@ -582,6 +611,60 @@ public static class OrganizationEndpoints
         return TypedResults.Ok();
     }
 
+    /// <summary>Records the wallet an organisation's own admin created (#1525).</summary>
+    private static async Task<IResult> LinkOrganizationWallet(
+        Guid organizationId,
+        LinkOrganizationWalletRequest request,
+        IOrganizationService organizationService,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        // Same-org check, done here rather than via RequireCallerOrganization because that gate
+        // exempts platform SystemAdmins and this endpoint must not honour that exemption.
+        var callerOrgId = user.FindFirstValue(TokenClaimConstants.OrgId)
+            ?? user.FindFirstValue("organization_id");
+
+        if (!Guid.TryParse(callerOrgId, out var callerOrg) || callerOrg != organizationId)
+        {
+            return Results.Problem(
+                title: "Not your organisation",
+                detail: "An organisation's signing wallet must be created by an administrator of that "
+                      + "organisation. Its recovery phrase is shown once and never stored, so whoever "
+                      + "creates it is the only person who will ever hold it — which makes this the "
+                      + "organisation's own step, not one the platform can take on its behalf.",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        if (string.IsNullOrWhiteSpace(request?.WalletAddress))
+        {
+            return Results.Problem(
+                title: "walletAddress is required",
+                detail: "Create the wallet first via POST /api/v1/wallets with this organisation as "
+                      + "owner, record the recovery phrase it returns, then supply its address here.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        try
+        {
+            var updated = await organizationService.LinkOrganizationWalletAsync(
+                organizationId, request.WalletAddress, cancellationToken);
+
+            return updated is null
+                ? Results.NotFound(new { error = $"Organization {organizationId} not found" })
+                : Results.Ok(updated);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("already has a wallet", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.Problem(title: "Organisation already has a wallet", detail: ex.Message,
+                statusCode: StatusCodes.Status409Conflict);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.Problem(title: "Wallet cannot be linked", detail: ex.Message,
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+    }
+
     private static async Task<Results<Created<OrganizationResponse>, Conflict<ProblemDetails>, ValidationProblem>> CreateOrganization(
         CreateOrganizationRequest request,
         IOrganizationService organizationService,
@@ -903,3 +986,10 @@ public record SubdomainValidationResponse
     /// </summary>
     public string? ErrorMessage { get; init; }
 }
+
+/// <summary>Body of <c>POST /api/organizations/{organizationId}/wallet</c> (#1525).</summary>
+/// <param name="WalletAddress">
+/// Address of the wallet the org admin created against the Wallet Service, with this organisation
+/// as owner. Only the address travels here — the recovery phrase never leaves the admin.
+/// </param>
+public sealed record LinkOrganizationWalletRequest(string WalletAddress);

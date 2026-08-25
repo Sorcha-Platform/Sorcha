@@ -25,7 +25,7 @@ public class CycleDetectionTests
     {
         _mockBlueprintStore = new Mock<IBlueprintStore>();
         _mockPublishedStore = new Mock<IPublishedBlueprintStore>();
-        _publishService = new PublishService(_mockBlueprintStore.Object, _mockPublishedStore.Object);
+        _publishService = new PublishService(_mockBlueprintStore.Object, _mockPublishedStore.Object, FakePublishingRegister.Client());
     }
 
     [Fact]

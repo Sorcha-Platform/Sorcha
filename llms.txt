@@ -1,5 +1,5 @@
 # Sorcha
-> Cryptographic proof infrastructure for multi-party workflows. Every action is wallet-signed, every record is Merkle-chained, every disclosure is cryptographically bounded. Built for AI systems that need verified data inputs to make automated decisions.
+> Programmable proof infrastructure for multi-party workflows. Every action is wallet-signed, every record is Merkle-chained, every disclosure is cryptographically bounded. Built for AI systems that need verified data inputs to make automated decisions.
 
 ## Capabilities
 - Verifiable credentials: SD-JWT VC (`dc+sd-jwt`) and ISO 18013-5 mdoc issuance, presentation, and revocation, per W3C Verifiable Credentials Data Model 2.0
@@ -9,7 +9,8 @@
 - Post-quantum cryptography: ML-DSA (FIPS 204) signatures and ML-KEM (FIPS 203) key encapsulation as core; classical co-key at the HAIP wire boundary per HAIP 1.0
 - Selective disclosure: JSON Pointer paths with per-recipient symmetric key wrapping; the platform cannot read data it was not given the key for (architectural, not policy)
 - DID resolution: did:sorcha (org/holder), did:key, did:jwk, plus offline resolution for did:ethr / did:pkh
-- MCP server: 36 tools across admin, designer, and participant slices for AI-driven workflow automation
+- Blueprint workflows: multi-party processes declared as JSON — participants, actions, JSON Schema payloads, JSON Logic routing, credential issuance and requirement rules — published to a register as a signed transaction and executed by the workflow engine; an AI-assisted designer authors them from natural language
+- MCP server: 65 tools across admin, citizen, designer, and participant slices for AI-driven workflow automation
 - Multi-tenant authentication: OAuth 2.0 / JWT Bearer with tiered token audiences (consumer / platform / service), role-based access control, and platform-org topology
 
 ## Standards

@@ -165,7 +165,7 @@ public static class WalletServiceExtensions
             // IMPORTANT: Do NOT pass connection string again - it will use the registered NpgsqlDataSource
             // TODO(db-audit): convert to AddDbContextFactory<WalletDbContext>. Same rationale
             // as TenantDbContext (see ServiceCollectionExtensions.cs). Wallet has background
-            // services (NotificationDigestWorker, OrgWalletReconciliationService consumers)
+            // services (NotificationDigestWorker and friends)
             // that benefit from per-operation contexts. Adopting the factory touches every
             // consumer of WalletDbContext.
             services.AddDbContext<WalletDbContext>((serviceProvider, options) =>

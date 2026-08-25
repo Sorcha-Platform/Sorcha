@@ -110,16 +110,15 @@ public static class IssuanceKeyEndpoints
             return Results.Ok(new { provisioned = false, organizationId = orgId });
         }
 
-        // #1518: this endpoint's contract is "make this org ready to issue", so it waits for the
-        // issuer DID document to actually be published rather than reporting success on a publish
-        // that was silently skipped. For a brand-new org the canonical wallet the document anchors
-        // on is provisioned asynchronously by Tenant a few seconds later, and derivation wins that
-        // race — so without this, a caller that provisions an org and then reads its did.json gets
-        // a 404 and no indication anything was left undone.
+        // #1518: report whether the issuer DID document is actually published, rather than a bare
+        // 200 that says nothing. It will NOT be, for a brand-new org, because the canonical wallet
+        // it anchors on is provisioned by Tenant's 60-second reconciliation sweep — see #1525, where
+        // the real fix is for an admin to create the org's wallet deliberately (and receive its
+        // recovery phrase) instead of a timer doing it silently.
         //
-        // Only here. The credential-mint path calls GetOrDeriveAsync directly and must not wait.
+        // Deliberately does not wait: #1523 tried, sat for 15s, and still lost the race.
         var didPublished = await service
-            .PublishDidDocumentWaitingForWalletAsync(orgId, ct)
+            .PublishDidDocumentAsync(orgId, ct)
             .ConfigureAwait(false);
 
         return Results.Ok(new EnsureIssuanceKeyResponse(

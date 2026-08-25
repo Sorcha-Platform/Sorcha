@@ -75,6 +75,7 @@ Write-WtStep "Step 3: Create Ping Labs (local) and Pong Corp (n1)"
 # (no invitation required).
 $pingOrg = New-SorchaOrganization `
     -TenantUrl $localEnv.TenantUrl `
+    -WalletUrl $localEnv.WalletUrl `
     -Name "Ping Labs" `
     -Subdomain "ping-labs" `
     -AdminEmail $secrets.adminEmail `
@@ -83,6 +84,7 @@ $pingOrg = New-SorchaOrganization `
 
 $pongOrg = New-SorchaOrganization `
     -TenantUrl $n1Env.TenantUrl `
+    -WalletUrl $n1Env.WalletUrl `
     -Name "Pong Corp" `
     -Subdomain "pong-corp" `
     -AdminEmail $secrets.adminEmail `

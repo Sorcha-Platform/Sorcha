@@ -15,6 +15,7 @@ public class InMemoryInstanceStoreTests
     {
         Id = id,
         BlueprintId = "bp-1",
+        BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: execution resolves and chains by the pin
         BlueprintVersion = 1,
         RegisterId = "reg-1",
         TenantId = "tenant-1"
@@ -48,6 +49,7 @@ public class InMemoryInstanceStoreTests
         {
             Id = "",
             BlueprintId = "bp",
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: an instance must carry its definition pin, or execution has nothing to resolve or chain from
             BlueprintVersion = 1,
             RegisterId = "reg",
             TenantId = "t"
@@ -124,9 +126,9 @@ public class InMemoryInstanceStoreTests
     [Fact]
     public async Task GetByBlueprintAsync_FiltersCorrectly()
     {
-        await _store.CreateAsync(new Instance { Id = "i1", BlueprintId = "bp-A", BlueprintVersion = 1, RegisterId = "r", TenantId = "t" });
-        await _store.CreateAsync(new Instance { Id = "i2", BlueprintId = "bp-B", BlueprintVersion = 1, RegisterId = "r", TenantId = "t" });
-        await _store.CreateAsync(new Instance { Id = "i3", BlueprintId = "bp-A", BlueprintVersion = 1, RegisterId = "r", TenantId = "t" });
+        await _store.CreateAsync(new Instance { Id = "i1", BlueprintId = "bp-A", BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", BlueprintVersion = 1, RegisterId = "r", TenantId = "t" });
+        await _store.CreateAsync(new Instance { Id = "i2", BlueprintId = "bp-B", BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", BlueprintVersion = 1, RegisterId = "r", TenantId = "t" });
+        await _store.CreateAsync(new Instance { Id = "i3", BlueprintId = "bp-A", BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", BlueprintVersion = 1, RegisterId = "r", TenantId = "t" });
 
         var result = (await _store.GetByBlueprintAsync("bp-A")).ToList();
 
@@ -137,8 +139,8 @@ public class InMemoryInstanceStoreTests
     [Fact]
     public async Task GetByBlueprintAsync_WithStateFilter_FiltersCorrectly()
     {
-        var active = new Instance { Id = "i1", BlueprintId = "bp-1", BlueprintVersion = 1, RegisterId = "r", TenantId = "t", State = InstanceState.Active };
-        var completed = new Instance { Id = "i2", BlueprintId = "bp-1", BlueprintVersion = 1, RegisterId = "r", TenantId = "t", State = InstanceState.Completed };
+        var active = new Instance { Id = "i1", BlueprintId = "bp-1", BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", BlueprintVersion = 1, RegisterId = "r", TenantId = "t", State = InstanceState.Active };
+        var completed = new Instance { Id = "i2", BlueprintId = "bp-1", BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", BlueprintVersion = 1, RegisterId = "r", TenantId = "t", State = InstanceState.Completed };
         await _store.CreateAsync(active);
         await _store.CreateAsync(completed);
 
@@ -151,8 +153,8 @@ public class InMemoryInstanceStoreTests
     [Fact]
     public async Task GetByRegisterAsync_FiltersCorrectly()
     {
-        await _store.CreateAsync(new Instance { Id = "i1", BlueprintId = "bp", BlueprintVersion = 1, RegisterId = "reg-A", TenantId = "t" });
-        await _store.CreateAsync(new Instance { Id = "i2", BlueprintId = "bp", BlueprintVersion = 1, RegisterId = "reg-B", TenantId = "t" });
+        await _store.CreateAsync(new Instance { Id = "i1", BlueprintId = "bp", BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", BlueprintVersion = 1, RegisterId = "reg-A", TenantId = "t" });
+        await _store.CreateAsync(new Instance { Id = "i2", BlueprintId = "bp", BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", BlueprintVersion = 1, RegisterId = "reg-B", TenantId = "t" });
 
         var result = (await _store.GetByRegisterAsync("reg-A")).ToList();
 

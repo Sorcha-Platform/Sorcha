@@ -89,6 +89,7 @@ $assessorAdminDisplayName = "Assessor Operator"
 
 $assessorOrg   = New-SorchaOrganization `
     -TenantUrl         $sorchaEnv.TenantUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
     -Headers           $sysAdmin.Headers `
     -Name              "CE Assessor" `
     -Subdomain         "ce-assessor" `
@@ -105,6 +106,7 @@ $subjectAdminDisplayName = "Subject Operator"
 
 $subjectOrg   = New-SorchaOrganization `
     -TenantUrl         $sorchaEnv.TenantUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
     -Headers           $sysAdmin.Headers `
     -Name              "CE Subject Org" `
     -Subdomain         "ce-subject" `
@@ -121,6 +123,7 @@ $insurerAdminDisplayName = "Insurer Operator"
 
 $insurerOrg   = New-SorchaOrganization `
     -TenantUrl         $sorchaEnv.TenantUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
     -Headers           $sysAdmin.Headers `
     -Name              "CE Insurer" `
     -Subdomain         "ce-insurer" `

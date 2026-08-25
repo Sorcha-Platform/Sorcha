@@ -176,7 +176,7 @@ public static class BootstrapEndpoints
             {
                 logger.LogWarning(walletEx,
                     "Failed to provision wallet for organization {OrgId} during bootstrap. " +
-                    "Wallet will be provisioned by the reconciliation service.",
+                    "The org admin must create it via POST /api/organizations/{id}/wallet (#1525).",
                     organization.Id);
             }
 

@@ -405,7 +405,7 @@ public class ActionExecutionServiceEncryptionTests
             .ReturnsAsync(instance);
 
         _mockActionResolver
-            .Setup(x => x.GetBlueprintAsync(instance.BlueprintId, It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetBlueprintAsync(instance.BlueprintId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         _mockActionResolver
@@ -551,6 +551,7 @@ public class ActionExecutionServiceEncryptionTests
         {
             Id = instanceId,
             BlueprintId = blueprintId,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: an instance must carry its definition pin, or execution has nothing to resolve or chain from
             BlueprintVersion = 1,
             RegisterId = "register-1",
             TenantId = "test-tenant",

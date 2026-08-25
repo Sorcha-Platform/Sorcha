@@ -48,6 +48,7 @@ public sealed class InstanceActionEndpointsTests
         {
             Id = instanceId,
             BlueprintId = blueprintId,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: execution resolves and chains by the pin
             BlueprintVersion = 1,
             RegisterId = "reg-1",
             TenantId = "default",
@@ -168,7 +169,7 @@ public sealed class InstanceActionEndpointsTests
         instanceStore.Setup(s => s.GetAsync("inst-1", It.IsAny<CancellationToken>())).ReturnsAsync(instance);
 
         var resolver = new Mock<IActionResolverService>();
-        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
         resolver.Setup(r => r.GetActionDefinition(blueprint, "1")).Returns(action);
 
         var walletClient = WalletClientReturning(PlatformUserId, CitizenWallet);
@@ -193,7 +194,7 @@ public sealed class InstanceActionEndpointsTests
         instanceStore.Setup(s => s.GetAsync("inst-1", It.IsAny<CancellationToken>())).ReturnsAsync(instance);
 
         var resolver = new Mock<IActionResolverService>();
-        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
         resolver.Setup(r => r.GetActionDefinition(blueprint, "1")).Returns(action);
 
         var walletClient = WalletClientReturning(PlatformUserId, CitizenWallet);
@@ -250,7 +251,7 @@ public sealed class InstanceActionEndpointsTests
         // non-participant costs one extra (cached) blueprint lookup where it previously cost none —
         // the resolver is no longer strict-with-no-calls here. The gate's verdict is unchanged.
         var resolver = new Mock<IActionResolverService>();
-        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
         resolver.Setup(r => r.GetActionDefinition(blueprint, "1")).Returns(action);
 
         var walletClient = new Mock<IWalletServiceClient>(MockBehavior.Strict);
@@ -287,7 +288,7 @@ public sealed class InstanceActionEndpointsTests
         instanceStore.Setup(s => s.GetAsync("inst-1", It.IsAny<CancellationToken>())).ReturnsAsync(instance);
 
         var resolver = new Mock<IActionResolverService>();
-        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
         resolver.Setup(r => r.GetActionDefinition(blueprint, "1")).Returns(action);
 
         var result = await InvokeAsync(
@@ -319,7 +320,7 @@ public sealed class InstanceActionEndpointsTests
         instanceStore.Setup(s => s.GetAsync("inst-1", It.IsAny<CancellationToken>())).ReturnsAsync(instance);
 
         var resolver = new Mock<IActionResolverService>();
-        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
         resolver.Setup(r => r.GetActionDefinition(blueprint, "1")).Returns(action);
 
         var result = await InvokeAsync(
@@ -348,7 +349,7 @@ public sealed class InstanceActionEndpointsTests
         instanceStore.Setup(s => s.GetAsync("inst-1", It.IsAny<CancellationToken>())).ReturnsAsync(instance);
 
         var resolver = new Mock<IActionResolverService>();
-        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
         resolver.Setup(r => r.GetActionDefinition(blueprint, "99")).Returns((Sorcha.Blueprint.Models.Action?)null);
 
         var result = await InvokeAsync(
@@ -381,7 +382,7 @@ public sealed class InstanceActionEndpointsTests
         // Non-strict since #1183: the blueprint is now resolved before the gate decides (see the
         // comment on GetInstanceActionSchema_WalletNotAParticipant_ReturnsForbidden).
         var resolver = new Mock<IActionResolverService>();
-        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
         resolver.Setup(r => r.GetActionDefinition(blueprint, "1")).Returns(action);
 
         var walletClient = WalletClientReturningNothing();
@@ -407,7 +408,7 @@ public sealed class InstanceActionEndpointsTests
         instanceStore.Setup(s => s.GetAsync("inst-1", It.IsAny<CancellationToken>())).ReturnsAsync(instance);
 
         var resolver = new Mock<IActionResolverService>();
-        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
         resolver.Setup(r => r.GetActionDefinition(blueprint, "1")).Returns(action);
 
         var walletClient = WalletClientReturning(PlatformUserId, CitizenWallet);
@@ -433,7 +434,7 @@ public sealed class InstanceActionEndpointsTests
         instanceStore.Setup(s => s.GetAsync("inst-1", It.IsAny<CancellationToken>())).ReturnsAsync(instance);
 
         var resolver = new Mock<IActionResolverService>();
-        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
         resolver.Setup(r => r.GetActionDefinition(blueprint, "1")).Returns(action);
 
         var walletClient = WalletClientReturning(PlatformUserId, CitizenWallet, secondWallet);
@@ -468,7 +469,7 @@ public sealed class InstanceActionEndpointsTests
         instanceStore.Setup(s => s.GetAsync("inst-1", It.IsAny<CancellationToken>())).ReturnsAsync(instance);
 
         var resolver = new Mock<IActionResolverService>();
-        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
         resolver.Setup(r => r.GetActionDefinition(blueprint, "1")).Returns((Sorcha.Blueprint.Models.Action?)null);
 
         var walletClient = new Mock<IWalletServiceClient>(MockBehavior.Strict);

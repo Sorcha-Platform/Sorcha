@@ -1271,11 +1271,73 @@ POST /api/blueprints/{id}/publish
   "publishedBlueprint": {
     "blueprintId": "bp-123",
     "version": 1,
+    "publicationTxId": "9c41…",
+    "execDefHash": "9f2c…",
     "publishedAt": "2025-11-17T11:00:00Z"
   },
   "errors": []
 }
 ```
+
+### Features 194 / 195 — blueprint version pinning and definition identity
+
+Republishing a blueprint to a register it is already on creates a **new definition alongside the old
+one**. Instances already in flight keep running the definition they started on; instances started
+afterwards get the new one. An upgrade is never blocked because instances are live.
+
+**A definition is identified by the transaction that published it** (Feature 195):
+
+```
+publicationTxId = SHA-256("sorcha:blueprint-publication:v1" ␟ registerId ␟ blueprintId ␟ canonicalJson)
+```
+
+It is register-scoped and content-addressed, so republishing byte-identical content is an idempotent
+no-op while any change writes a new record. The **Register Service is the sole producer** — every
+other component records the value it returns. The same transaction is what a starting action chains
+from, so anchor and pin are one value.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/registers/{registerId}/blueprints/publish` | Publish a definition. Response carries `txId` (its identity) and `alreadyPublished`, which distinguishes an idempotent no-op from a real publish — indistinguishability is how #1563 stayed invisible. |
+| GET | `/api/blueprints/{id}/definitions/{publicationTxId}` | The exact published definition a running instance is pinned to. **404 is a refusal**: callers must never fall back to the latest definition. Immutable, cached permanently. |
+| GET | `/api/instances/{instanceId}/definition` | Which definition this instance is running, and whether it is still the latest. |
+
+`GET /api/blueprints/{id}/versions` entries carry `publicationTxId` (the identity) and `execDefHash`.
+
+⚠ **`execDefHash` is NOT an identity.** It is the *behavioural signature* — it answers "did this
+republish change how the workflow runs?", which decides whether a recorded Feature 142 `RehearsalPass`
+survives. Several publications may legitimately share one: a presentational-only republish writes a
+new definition (so a relabel ships) while leaving `execDefHash` unchanged (so no re-rehearsal).
+
+**`/api/instances/{instanceId}/definition` response:**
+```json
+{
+  "instanceId": "…",
+  "blueprintId": "bp-123",
+  "blueprintExecDefHash": "9f2c…",
+  "blueprintVersion": 1,
+  "isPinnedToLatest": false,
+  "pinState": "pinned"
+}
+```
+
+Three states, deliberately distinguishable — an operator needs to tell "on the older rules by
+design" from "cannot advance here":
+
+| `pinState` | Meaning | `blueprintVersion` / `isPinnedToLatest` |
+|---|---|---|
+| `pinned` | Pinned and resolvable. `blueprintVersion` is **derived from the pin**, so the label and the pin cannot disagree. | populated |
+| `unresolvable` | Pinned, but this node cannot produce that definition (failed to replicate, or evicted). The instance cannot advance here. | **null** — never guessed |
+| `unpinned` | The instance's transactions predate the feature. | **null** |
+
+**The ordinal `version` is a display label only.** It is assigned from insert order and re-derived on
+recovery; nothing resolves a definition by it.
+
+**Validation:** a transaction whose pin cannot be resolved is refused with `VAL_BP_VERSION_001`. The
+validator does not fall back to the latest definition.
+
+**Deployment note:** deploy `validator-service` **before** `blueprint-service`. New validator + old
+producer is safe; the reverse refuses every submission.
 
 ### File Chunks (Feature 085)
 
@@ -1301,7 +1363,7 @@ The staged designer workspace (Describe → Understand → Rehearse → Go live)
 | POST | `/api/blueprints/{id}/rehearsals/{rehearsalId}/role` | Switch the currently acting participant role. |
 | POST | `/api/blueprints/{id}/rehearsals/{rehearsalId}/steps` | Submit the current step's payload as the acting role. Terminal success records a `RehearsalPass` for the exec-def hash. |
 | POST | `/api/blueprints/{id}/publish` | CHANGED — now gated by governance (HARD) + rehearsal (SOFT). |
-| POST | `/api/blueprints/from-published` | NEW — clone a published version back to a fresh draft for amend. |
+| POST | `/api/blueprints/from-published` | Amend a published definition. Feature 195: the draft keeps the **same** `blueprintId`, so an amendment is a new version of that blueprint rather than a fork. |
 
 **Read register response — new `advertise` + `sandbox` fields.**
 `GET /api/registers/{id}` now carries the `advertise` flag and a computed `sandbox` flag (true when the register's metadata has `sandbox=true`). The Go-live picker excludes sandbox registers.
@@ -1325,7 +1387,17 @@ Responses:
 
 Override paths write a `PublishOverride` audit row (`OverriddenByPlatformUserId`, `OverriddenAt`, `RegisterId`, `ExecDefHash`, optional `Reason`). Observability: counters `rehearsal_run_total`, `publish_override_total`, `sandbox_provision_total` and histogram `rehearsal_duration_seconds` on the `Sorcha.Blueprint.Designer` meter.
 
-**`POST /api/blueprints/from-published` (new).** Request body `{ "publishedBlueprintId": "…" }` or `{ "sourceBlueprintId": "…", "version": 3 }`. Returns the new draft `Blueprint` with lineage keys (`x-source-register`, `x-source-blueprint-id`, `x-source-version`) on its `Metadata` so the designer can rehydrate the amend context.
+**`POST /api/blueprints/from-published`.** Request body
+`{ "registerId": "…", "blueprintId": "…", "publicationTxId": "…" }`. Returns
+`{ draftBlueprintId, sourcePublicationTxId, registerId }`, and the draft carries lineage keys
+(`x-source-register`, `x-source-blueprint-id`, `x-source-version`) on its `Metadata` so the designer
+can rehydrate the amend context.
+
+⚠ Two Feature 195 changes here. The draft keeps the **same `blueprintId`** — it used to mint a fresh
+GUID, which made an amendment invisible to the source blueprint's version history and left the
+platform with two unrelated upgrade paths. And the source is selected by **`publicationTxId`**, not by
+an ordinal `version`: the ordinal is assigned from in-memory insert order and re-derived on every
+recovery, so amending "v2" could clone different definitions before and after a restart.
 
 **Auth (all of the above):** JWT Bearer required. Rehearsal endpoints require `CanManageBlueprints`; publish requires `CanPublishBlueprints` AND the governance gate; `from-published` requires `CanManageBlueprints`.
 

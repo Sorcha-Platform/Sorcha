@@ -295,7 +295,17 @@ If your blueprint asks the user for a name, date of birth, email, or postal addr
 
 Publish-time validation runs in **`Sorcha.Blueprint.Service`** (`PublishService.ValidateBlueprint`) — **not** `Sorcha.Validator.Service` (that service does transaction-chain validation, the `VAL_*` runtime codes). Errors block publication; warnings publish but surface in the response.
 
-> **Two validation surfaces, one table.** The coded errors below are emitted in full by the AI-chat `validate_blueprint` tool (`BlueprintToolExecutor`). The HTTP `/publish` path enforces the structural rules (`VAL_BP_010/011/012`, `WARN_BP_006`, recipient + cycle checks, plus the credential codes `VAL_BP_CRED_001/003`) but emits some as plain-text messages, and currently does **not** enforce `INVALID_TITLE` / `INVALID_DESCRIPTION` (title/description length) — those fire only in the chat tool. Reconciling the two surfaces is a tracked follow-up; until then treat the chat tool as the stricter gate.
+> **Two validation surfaces, and NEITHER is a superset.** The coded errors below are emitted in full by the AI-chat `validate_blueprint` tool (`BlueprintToolExecutor`). The HTTP `/publish` path enforces the structural rules (`VAL_BP_010/011/012`, `WARN_BP_006`, recipient + cycle checks, plus the credential codes `VAL_BP_CRED_001/003`) but emits some as plain-text messages, and does **not** enforce `INVALID_TITLE` / `INVALID_DESCRIPTION`, `NO_ROUTING_DEFINED`, `STARTING_ACTION_NO_ROUTES`, `NO_TERMINAL_PATH` or `DUPLICATE_PARTICIPANT_ID` — those fire only in the chat tool.
+>
+> ⚠ **This note used to say "treat the chat tool as the stricter gate". That was wrong** (verified 2026-08-24). The publish path is stricter on the credential and output-mapping rules, and **weaker on reachability** — and not merely in severity. They are two different *algorithms* under one name:
+>
+> | | Publish (`Program.cs:3824-3852`) | Chat (`BlueprintToolExecutor.cs:1346-1375`) |
+> |---|---|---|
+> | Algorithm | union of **every** action's route targets, including targets of actions that are themselves unreachable | BFS from starting actions |
+> | Detached cycle `{A→B, B→A}`, neither a starting action | **passes** | flagged |
+> | Severity | warning | error |
+>
+> So a blueprint that can never advance past its starting action publishes. **#1558 covers only the severity**; promoting the publish rule to an error without fixing the traversal still leaves detached cycles publishable. Reconciling the two surfaces onto one rule set with one severity table is designed in `docs/superpowers/specs/2026-08-24-blueprint-lifecycle-design.md` (stage 2).
 
 | Code | Severity | Trigger |
 |------|----------|---------|
@@ -311,9 +321,29 @@ Publish-time validation runs in **`Sorcha.Blueprint.Service`** (`PublishService.
 | `VAL_BP_CRED_004` | error | A declared `vct` is not an absolute URI (SD-JWT VC requires a URI). Emitted only by the publish path. |
 | `INVALID_CREDENTIAL_RECIPIENT` | warning | `credentialIssuanceConfig.recipientParticipantId` references an unknown participant |
 | `OPEN_CREDENTIAL_ISSUER` | warning | `credentialRequirements[].trustPolicy` is null or has no `sources` (any issuer accepted) — usually too permissive. (Pre-F135 this keyed off an empty `acceptedIssuers`, now removed.) |
+| `WARN_BP_CRED_005` | warning | An action declares `credentialIssuanceConfig` with **no `issuanceCondition`** but routes on a decision (a conditional route, or >1 route). Minting precedes routing, so the credential is minted and delivered on the reject path too (#1551). |
+| `NO_DISCLOSABLE_SET` | warning | A `credentialIssuanceConfig` has claim mappings but no `disclosable` list. A null set is **expanded to every claim name** at signing time — it does not mean "none" (#1550). Emitted by the chat `validate_blueprint`. |
 | `WARN_BP_006` | warning | An `x-credential-offer` object should declare `credential_offer_uri` in its `required` list |
+| `NO_ROUTING_DEFINED` | error | A multi-action blueprint declares **no routing of any kind** — no `routes` and no legacy `participants` conditions — so nothing can advance past the starting action. |
+| `DUPLICATE_PARTICIPANT_ID` | error | Two participants share an `id`. `action.sender` resolves by id, so a duplicate cannot be disambiguated (#1548). |
+| `STARTING_ACTION_NO_ROUTES` | error | A starting action declares no `routes` while the blueprint has other actions — the workflow can never advance past it (#1548). |
+| `UNREACHABLE_ACTION` | error | An action is not reachable from any starting action by `routes` or `rejectionConfig.targetActionId` (#1548). |
+| `NO_TERMINAL_PATH` | warning | No action ends the workflow: every action routes onward and none declares an empty `nextActionIds`. Set `metadata.hasCycles = "true"` if the loop is intentional (#1548). |
 | `NO_STARTING_ACTION` | warning | No action marked `isStartingAction: true` |
 | Cycle warning | warning | Cyclic route detected — publish proceeds; set `metadata.hasCycles = "true"` for clarity |
+
+> ⚠ **`NO_ROUTING_DEFINED` is checked FIRST and is not subject to the gate below.** A live designer
+> run produced a multi-action blueprint with **no routing at all**; the gate skipped every check, the
+> validator reported "no errors, no warnings", and it then **published** — the publish path reports
+> unreachability only as a warning. Corpus-testing the rule against 45 shipped blueprints could not
+> have caught it, because none had that shape.
+>
+> ⚠ **The four reachability checks are gated on the blueprint using route-based routing at all** —
+> i.e. at least one action declares a non-empty `routes` array. Legacy and platform-driven blueprints
+> (`complex-sme-invoice-finance`, `register-governance-v1`) declare no routes on any action and are
+> advanced by other means; flagging them would be a false positive. Verified against all 45 shipped
+> blueprints — 0 flagged — while still catching the designer's real defect (a *partially* routed
+> blueprint: starting action with `routes: null`, everything else looping back to it).
 
 **Runtime issuance codes** (these fail a *submission*, not a publish — they surface as an `InvalidOperationException` from `ActionExecutionService` and are deliberately re-thrown rather than swallowed):
 
@@ -432,7 +462,40 @@ The evaluator is **json-everything's `Json.Logic`** (`src/Core/Sorcha.Blueprint.
 }
 ```
 
-**Gating credential issuance on a computed value:** there is no `condition` field on `credentialIssuanceConfig` — minting runs *before* routing, so an action that declares `credentialIssuanceConfig` **always mints when reached** (validation codes `VAL_BP_011`/`VAL_BP_012` are unrelated). To *withhold* a credential on a computed-false gate, compute the value in `calculations`, then **route-gate**: a `condition`-guarded route reaches the issuing action only when the gate is true; the default route goes to a terminal action with no issuance. (`computedCompliant` true → issue action; else → record/terminal action.) The submitted-vs-computed distinction matters for integrity: route on the *computed* value, not a submitter-supplied flag, so a payload can't claim compliance it didn't earn.
+**Gating credential issuance — use `issuanceCondition`, and know why routing is not enough.**
+
+**Minting runs *before* routing.** An action that declares `credentialIssuanceConfig` mints
+whenever that action is **reached** — a `nextActionIds: []` reject route stops the credential being
+handed onward, but the credential has already been minted **and delivered** to
+`recipientParticipantId`. Confirmed live (#1551) by an A/B of two blueprints differing only in
+`issuanceCondition`: with it a `Fail` decision issued nothing; without it, a credential landed in
+the rejected applicant's wallet. Three shipped blueprints had exactly this shape.
+
+Two different topologies, and only one of them can be fixed by routing:
+
+| Topology | How to withhold |
+|---|---|
+| The issuance config sits on the **decision action itself** (approve/reject recorded here) | **`issuanceCondition` only.** Routing cannot help — the action is reached on both paths, so the mint has already happened by the time the route is evaluated. |
+| The issuance config sits on a **separate downstream action** the false path never reaches | Route-gating works, because the issuing action is genuinely never reached. `issuanceCondition` is still worth adding as defence in depth. |
+
+```jsonc
+"credentialIssuanceConfig": {
+  "vct": "https://sorcha.dev/vc/contractor-certification/v1",
+  "issuanceCondition": { "==": [{ "var": "decision" }, "Pass"] }   // falsy ⇒ NO mint
+}
+```
+
+`issuanceCondition` (Feature 176) is JSON Logic over the **submitted action data**. Falsy ⇒ no
+credential is minted and the workflow routes onward normally. It **fails closed**: a condition that
+cannot be evaluated skips issuance.
+
+**`WARN_BP_CRED_005` catches the dangerous shape at publish time** — an action with a
+`credentialIssuanceConfig`, no `issuanceCondition`, and either a conditional route or more than one
+route. A single unconditional route is genuinely unconditional issuance and stays quiet.
+
+**Route on the *computed* value, not a submitter-supplied flag** — compute it in `calculations`
+first, so a payload cannot claim compliance it did not earn. That integrity point is independent of
+the gating question above and applies to both.
 
 A nested-var gate flowing into a route condition is exercised end-to-end by the **CyberEssentialsUac** walkthrough (`walkthroughs/CyberEssentialsUac/ce-uac-assessment-template.json`).
 
@@ -748,6 +811,26 @@ Watermark states (Draft/Pending/Issued/None), stacked-cards behaviour for `crede
 - Multiple requirements are AND-combined.
 - `type` above is the canonical, **case-sensitive** VCT URI (`Sorcha.CitizenWallet.Abstractions.Constants.VctUris`, e.g. `VctUris.AssuredIdentityV1`) — for a platform-catalogued credential type it must match the issuer's `vct` exactly (`Ordinal` comparison). A missed URI/casing means the requirement silently never matches.
 
+### Alternative credentials — `anyOfGroup` (Feature 181 US2)
+
+Requirements on the same action that share an `anyOfGroup` tag are **alternatives**: presenting any
+ONE of them satisfies the action. Requirements with no tag are each independently required (AND).
+
+```jsonc
+"credentialRequirements": [
+  { "type": "https://sorcha.dev/vc/passport/v1",        "anyOfGroup": "identity-document" },
+  { "type": "https://sorcha.dev/vc/driving-licence/v1", "anyOfGroup": "identity-document" },
+  { "type": "https://sorcha.dev/vc/proof-of-address/v1" }          // no tag ⇒ ALSO required
+]
+```
+
+That maps to a DCQL `credential_sets` option. Once any group exists, the mapper emits an explicit
+required singleton set per ungrouped ask, so AND-requiredness survives the presence of
+`credential_sets` — see `RequirementDcqlMapper`.
+
+⚠ The F127 `SorchaWallet` consumer is still single-credential, so a multi-credential ask verifies on
+the HAIP rail today.
+
 ### Issuing a credential on action completion
 
 ```jsonc
@@ -776,6 +859,13 @@ Watermark states (Draft/Pending/Issued/None), stacked-cards behaviour for `crede
 - `targetAudience: "SorchaInternal"` is **deprecated** — bypasses the register and breaks on multi-node deployments. Always prefer `SorchaLocalWallet`.
 - `usagePolicy: "LimitedUse"` requires `maxPresentations: <int>`.
 - `expiryDuration` is ISO 8601 (`P5Y`, `P365D`, `PT24H`); omit for non-expiring credentials.
+
+> **Designer surface (#1550).** `issue_credential` now **requires `vct`** (SD-JWT VC makes it the
+> credential's only type claim, so a credential without one is unmatchable), and additionally accepts
+> **`disclosable`** and **`holderKeySourceField`** — neither of which it could set before, so an
+> AI-authored credential was always fully disclosable and could never be delivered to an open,
+> late-bound recipient. `validate_blueprint` now also emits `WARN_BP_CRED_005` and
+> `NO_DISCLOSABLE_SET`, so the author is told at authoring time rather than at Go-live.
 
 Five further properties, all optional and all used by the shipped AIAS blueprint or its siblings:
 
@@ -1033,6 +1123,68 @@ Uses JSON-e expressions (`$eval`, `$if`, `$flattenDeep`) in the `template` field
   "warnings": ["Cyclic route detected: action 0 → action 1 → action 0. This blueprint will loop indefinitely unless routing conditions provide a termination path."]
 }
 ```
+
+### Republishing: in-flight instances keep the definition they started on (Feature 194)
+
+Republishing a blueprint to a register it is already on is accepted and creates a **new definition
+alongside the old one**. It does **not** change any instance that is already running.
+
+- **An in-progress instance runs the definition it started on, for its whole life.** A participant
+  is never presented with an action, schema or routing rule that did not exist when they joined.
+  This is a hard platform rule, not a per-upgrade choice, and migrating a running instance forward
+  is explicitly out of scope.
+- **You can republish at any time.** An upgrade is never blocked, delayed or warned against because
+  instances are live — long-running workflows may never have a quiet moment.
+- **Instances started after the republish get the new definition**, and enforce it.
+- **A presentational-only republish changes nothing at all.** Relabelling a field, rewording a
+  description or reordering questions produces the *same* executable definition, so no new pin, no
+  new definition to keep alive, and the F142 `RehearsalPass` stays valid. Behavioural edits — a new
+  `required` entry, a changed `enum`, a changed route condition, a changed `credentialIssuanceConfig`
+  — do create a new definition and need a fresh rehearsal.
+- **The ordinal `version` is a display label** and nothing on the *execution* path resolves a
+  definition by it. The identity is the executable-definition hash (`execDefHash`), now returned on
+  `GET /api/blueprints/{id}/versions`.
+
+> ✅ **Feature 195 closed all three traps that used to be recorded here** (issue #1563 and siblings).
+> What changed, because the shape of the fix matters more than the fix:
+>
+> 1. **A definition's identity is now the transaction that published it.** The publish txId was
+>    `SHA-256("blueprint-publish-{registerId}-{blueprintId}")` — **version-blind**, so every republish
+>    deduped to the same transaction and was silently dropped: `200` returned, success logged, no
+>    transaction written. It is now
+>    `SHA-256("sorcha:blueprint-publication:v1" ␟ registerId ␟ blueprintId ␟ canonicalJson)`,
+>    register-scoped and content-addressed. **Anchor and pin are one value** — a starting action
+>    chains from the very transaction that published the definition its instance runs — so the
+>    formula that used to live in four places is gone rather than relocated.
+> 2. **The pin is resolved at submit, not only at seal.** `IActionResolverService.GetBlueprintAsync`
+>    now REQUIRES the pin, and the draft store is off the execution path entirely. It used to resolve
+>    draft-first, so a submission could be validated, calculated and routed against unpublished
+>    work-in-progress and then labelled with the instance's actual pin — 202 and never sealing, with
+>    no error anywhere.
+> 3. **The behavioural signature covers what it claims to.** Nine execution-affecting fields were
+>    missing from `ExecutableDefinitionHasher` — `RejectionConfig`, legacy `Action.Participants`
+>    routing, `RequiredActionData`, `BranchDeadline`, `DecisionNotice`, `PresentationConfig`,
+>    `InstanceReference` and more. Its job is now narrower and explicit: it answers *"did behaviour
+>    change?"* for the F142 rehearsal gate, and **does not identify a definition**.
+>
+> **What this means when authoring.** A behavioural republish and a presentational one now do
+> different things, both correctly: both write a new publication (so a relabel ships), but only a
+> behavioural edit moves `execDefHash` and so only that costs a fresh rehearsal. `Publish-SorchaBlueprint`
+> still mints a new blueprint id and cannot republish — use `PUT /blueprints/{id}` then `POST /publish`.
+
+Amending **is** versioning now (#1568): `POST /api/blueprints/from-published` keeps the **same**
+`blueprintId`, so an amendment is a new version of its blueprint and appears in
+`GET /blueprints/{id}/versions`. It used to mint a fresh GUID — a fork that was invisible to the
+source blueprint's history — and it selected its source by the **ordinal**, which is assigned from
+insert order and re-derived on recovery, so amending "v2" could clone different definitions before
+and after a restart. The request now takes `publicationTxId`.
+`GET /api/instances/{instanceId}/definition` answers "which definition is this instance running, and
+is it still the latest?" — reporting three distinguishable states: pinned and resolvable, pinned but
+unresolvable on this node (the stuck-instance state), and unpinned (predates the feature).
+
+> **Where multi-party sign-off before an upgrade is wanted, author it as a governance blueprint** and
+> publish only once that workflow completes. The platform deliberately has no built-in gate on
+> upgrading, and one should not be added — the primitive already exists.
 
 ## Action Execution
 

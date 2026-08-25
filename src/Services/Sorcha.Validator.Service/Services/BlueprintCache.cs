@@ -133,6 +133,23 @@ public class BlueprintCache : IBlueprintCache
     private string GetBlueprintKey(string blueprintId) =>
         $"{_config.KeyPrefix}{blueprintId}";
 
+    /// <summary>
+    /// Feature 194 — the key for ONE definition, composed through
+    /// <see cref="Sorcha.Blueprint.Models.BlueprintCacheKey"/>, which is also what the Blueprint
+    /// Service's publish path uses. The format must have exactly one home: a reader and a writer
+    /// that disagree produce a permanent cache miss, and a cache miss is not an error, so pinning
+    /// would silently degrade to "latest" with nothing to see.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately a DIFFERENT key shape from <see cref="GetBlueprintKey"/> rather than a
+    /// replacement for it. The two mean different things — "the current definition of this
+    /// blueprint" versus "this exact definition" — and both are needed: system blueprints have no
+    /// instance and therefore no pin. They cannot collide, because one carries a hash segment and
+    /// the other does not.
+    /// </remarks>
+    private string GetDefinitionKey(string blueprintId, string execDefHash) =>
+        Sorcha.Blueprint.Models.BlueprintCacheKey.For(blueprintId, execDefHash, _config.KeyPrefix);
+
     private string GetRegisterIndexKey(string registerId) =>
         $"{_config.KeyPrefix}index:{registerId}";
 
@@ -185,6 +202,94 @@ public class BlueprintCache : IBlueprintCache
             Interlocked.Increment(ref _totalMisses);
             RecordLatency(sw.Elapsed.TotalMilliseconds);
             return null;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<BlueprintModel?> GetDefinitionAsync(
+        string blueprintId,
+        string execDefHash,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(blueprintId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(execDefHash);
+
+        var cacheKey = GetDefinitionKey(blueprintId, execDefHash);
+        var sw = Stopwatch.StartNew();
+
+        try
+        {
+            if (_config.EnableLocalCache && TryGetFromLocalCache(cacheKey, out var local))
+            {
+                Interlocked.Increment(ref _totalHits);
+                Interlocked.Increment(ref _localCacheHits);
+                RecordLatency(sw.Elapsed.TotalMilliseconds);
+                return local;
+            }
+
+            BlueprintModel? blueprint = await _pipeline.ExecuteAsync(async token =>
+            {
+                var json = await _database.StringGetAsync(cacheKey);
+                return json.IsNullOrEmpty
+                    ? null
+                    : JsonSerializer.Deserialize<BlueprintModel>(json.ToString(), _jsonOptions);
+            }, ct);
+
+            if (blueprint != null)
+            {
+                Interlocked.Increment(ref _totalHits);
+                Interlocked.Increment(ref _redisCacheHits);
+                if (_config.EnableLocalCache)
+                    SetInLocalCache(cacheKey, blueprint);
+            }
+            else
+            {
+                Interlocked.Increment(ref _totalMisses);
+            }
+
+            RecordLatency(sw.Elapsed.TotalMilliseconds);
+            return blueprint;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to get definition {ExecDefHash} of blueprint {BlueprintId} from cache",
+                execDefHash, blueprintId);
+            Interlocked.Increment(ref _totalMisses);
+            RecordLatency(sw.Elapsed.TotalMilliseconds);
+            return null;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task SetDefinitionAsync(
+        BlueprintModel blueprint,
+        string execDefHash,
+        TimeSpan? ttl = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(blueprint);
+        ArgumentException.ThrowIfNullOrWhiteSpace(blueprint.Id);
+        ArgumentException.ThrowIfNullOrWhiteSpace(execDefHash);
+
+        var cacheKey = GetDefinitionKey(blueprint.Id, execDefHash);
+
+        try
+        {
+            await _pipeline.ExecuteAsync(async token =>
+            {
+                var json = JsonSerializer.Serialize(blueprint, _jsonOptions);
+                await _database.StringSetAsync(cacheKey, json, ttl ?? _config.DefaultTtl);
+            }, ct);
+
+            if (_config.EnableLocalCache)
+                SetInLocalCache(cacheKey, blueprint);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to cache definition {ExecDefHash} of blueprint {BlueprintId}",
+                execDefHash, blueprint.Id);
         }
     }
 

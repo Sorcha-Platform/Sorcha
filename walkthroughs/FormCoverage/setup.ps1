@@ -119,9 +119,11 @@ Write-WtStep "Step 3: Create Form Coverage Demo Organization"
 try {
     $demoOrg = New-SorchaOrganization `
         -TenantUrl $env.TenantUrl `
+        -WalletUrl $env.WalletUrl `
         -Name "Form Coverage Demo" `
         -Subdomain "form-coverage-demo" `
         -AdminEmail $secrets.submitterEmail `
+        -AdminPassword $secrets.submitterPassword `
         -Headers $sysAdmin.Headers
 } catch {
     if ($_.Exception.Message -match 'already taken|409|duplicate|400') {

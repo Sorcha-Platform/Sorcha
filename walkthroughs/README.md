@@ -311,18 +311,69 @@ See `walkthroughs/council/README.md` and `walkthroughs/council/setup-council.ps1
 
 ---
 
-## run-all.ps1
+## run-all.ps1 — the regression suite
 
-Runs the canonical walkthroughs in dependency order:
+The **core** suite is eighteen steps and is the platform's end-to-end regression check. It is what
+"18/18" means in `MASTER-TASKS.md` and in the node-state notes.
 
 ```powershell
-pwsh walkthroughs/run-all.ps1                    # Run everything
-pwsh walkthroughs/run-all.ps1 -SkipAdvanced      # Skip DistributedRegister + PerformanceBenchmark
-pwsh walkthroughs/run-all.ps1 -OnlySetup         # Run setup.ps1 only (create resources, skip execution)
-pwsh walkthroughs/run-all.ps1 -Profile direct    # Use direct service ports instead of API Gateway
+pwsh walkthroughs/run-all.ps1 -Profile n1                  # the eighteen-step core suite against n1
+pwsh walkthroughs/run-all.ps1 -Profile n1 -AuthGapMs 1000  # faster, where RATELIMIT_* is raised
+pwsh walkthroughs/run-all.ps1 -GatewayUrl http://tiny:8090 # any node, no profile needed
+pwsh walkthroughs/run-all.ps1 -Profile n1 -StartAt 9       # resume after fixing one step
+pwsh walkthroughs/run-all.ps1 -Suite legacy                # the older, unmaintained walkthroughs
+pwsh walkthroughs/run-all.ps1 -OnlySetup                   # provision only
 ```
 
-Newer walkthroughs (`HealthDeclaration`, `PayloadTests`, `ForestryCertification`, `PropertyInspection`, `TradeFinance`, `PingPongN1`) can be run individually; not all are wired into `run-all.ps1` yet.
+Every step writes a transcript to `walkthroughs/.run-logs/` (gitignored) plus a `summary.json`.
+Nothing aborts on the first failure.
+
+> **`EncryptionAtRest` is the one step that needs more than the gateway.** It reads the node's
+> MongoDB directly over `ssh` + `docker exec`, because the claim it settles — that a Normal
+> register stores field *values* as ciphertext — cannot be established from anything the API
+> returns. Against `-Profile n1` it derives the ssh host itself; against a local Docker stack it
+> uses `docker` on this machine. It runs last because it promotes its own register one-way and so
+> provisions a fresh one every time.
+
+### Four things the runner has to get right — each has produced a wrong verdict before
+
+1. **An exit code is not a verdict.** `ConstructionPermit/run-agents.ps1` prints `ERROR (exit 1)`
+   for every agent and still exits 0; `TradeFinance/setup.ps1` has printed a raw HTTP 500 and
+   exited 0. A run once scored a step PASS with all five agents dead against the wrong host. Steps
+   are judged on the exit code **and** on failure markers found in the transcript.
+2. **ConstructionPermit and SelfBuildHouse use `run.ps1 -Scenario all`, NOT `run-agents.ps1`.** The
+   agent launchers hard-code `actors/*.json` whose `gatewayUrl` is literally `http://localhost`,
+   and only three of ConstructionPermit's five actors have a `-remote` variant — so they cannot
+   target a remote node at all. The scenario runners read their URLs from `state.json`. That is
+   where "3/3" comes from. `CyberEssentialsUac/run-agents.ps1` is safe despite the name: it spawns
+   no agents and drives the API itself.
+3. **`Sorcha.Agent` is pre-built** before any agent-spawning step. Five concurrent `dotnet run`
+   invocations race to build the same assembly and all of them die on the file lock — reported as
+   `The build failed` inside each agent's own log, while the launcher still exits 0.
+4. **Order is load-bearing, twice.** ConstructionPermit runs first because its setup enables the
+   Public org node-wide and three of the seven walkthroughs never enable it themselves (on a fresh
+   database the difference is a wall of 403s that read as permissions problems). And
+   `run-suspension` must precede `run-revocation`, because revocation is terminal by design and
+   consumes the only ACTIVE credential — suspension then fails on the innocent script.
+
+### The suite passing is not the whole verdict
+
+Features 194/195 degrade to the **old behaviour** rather than to an error, so the positive check is
+the counter, and no walkthrough can see it:
+
+```bash
+docker logs sorcha-blueprint-service 2>&1 | grep -c 'pre-Feature-194 fallback'   # expect 0
+```
+
+A rejection scenario currently makes that non-zero — see **#1576**.
+
+### `-AuthGapMs`
+
+The shared module throttles every `/auth/` call, defaulting to 8s because that suits the shipped
+rate limits. A node with `RATELIMIT_AUTH_PERMIT` raised (n1 runs 1200/min) can go far lower.
+⚠ Lowering it compresses the timeline and **has surfaced latent races the slow default hid** — the
+second-resolution blueprint-id collision (PR #1577) was found exactly this way. That is a feature,
+but expect it to find things.
 
 ---
 
@@ -455,7 +506,7 @@ walkthroughs/
 3. Add `setup.ps1` — import module, bootstrap orgs/users/wallets, create register, publish blueprint, save `state.json`
 4. Add `run.ps1` — import module, load `state.json`, authenticate users, execute scenarios, report pass/fail
 5. Add secrets entry to `initialize-secrets.ps1`
-6. Add entry to `run-all.ps1` walkthroughs array (if part of the canonical run)
+6. Add entry to the `$core` array in `run-all.ps1` (if part of the regression suite), choosing `Kind`: `setup` (receives the target + -Force), `run` (reads URLs from state.json), or `runp` (needs the target passed explicitly)
 7. Update this README
 
 ### config.json template

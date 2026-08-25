@@ -251,6 +251,7 @@
           }
         ],
         "credentialIssuanceConfig": {
+          "issuanceCondition": { "==": [{ "var": "decision" }, "approve"] },
           "credentialType": "ForestProductDPPCredential",
           "vct": "https://sorcha.dev/vc/forest-product-dpp/v1",
           "displayName": "Forest Product DPP",

@@ -1,0 +1,69 @@
+{
+  "id": "encryption-at-rest",
+  "title": "Encryption At Rest Conformance",
+  "description": "Two-action workflow whose only job is to carry distinctive sentinel VALUES into a sealed transaction payload, so what the node actually stored can be read back out of MongoDB and checked. Action 1 is executed twice against the same register — once while it is in DevMode and once after promotion — so the two halves differ in exactly one variable.",
+  "version": 1,
+  "metadata": { "category": "conformance" },
+  "participants": [
+    {
+      "id": "applicant",
+      "name": "Applicant",
+      "description": "Submits the sentinel-bearing application. Sender of the starting action, therefore late-bound at runtime; its key is nonetheless published on the register so it resolves as a disclosure recipient."
+    },
+    {
+      "id": "officer",
+      "name": "Officer",
+      "description": "Reviews. Published on the register, so at least one recipient key always resolves — see the note on the fail-open below."
+    }
+  ],
+  "actions": [
+    {
+      "id": 1,
+      "title": "Submit Application",
+      "sender": "applicant",
+      "isStartingAction": true,
+      "dataSchemas": [
+        {
+          "type": "object",
+          "properties": {
+            "caseReference": { "type": "string", "minLength": 1, "title": "Case reference" },
+            "applicantFullName": { "type": "string", "minLength": 1, "title": "Full name" },
+            "nationalInsuranceNumber": { "type": "string", "minLength": 1, "title": "National insurance number" },
+            "medicalNotes": { "type": "string", "minLength": 1, "title": "Medical notes" }
+          },
+          "required": ["caseReference", "applicantFullName", "nationalInsuranceNumber", "medicalNotes"]
+        }
+      ],
+      "disclosures": [
+        { "participantAddress": "applicant", "dataPointers": ["/*"] },
+        { "participantAddress": "officer", "dataPointers": ["/*"] }
+      ],
+      "routes": [
+        { "id": "to-review", "nextActionIds": [2], "isDefault": true }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Review Application",
+      "sender": "officer",
+      "requiredPriorActions": [1],
+      "dataSchemas": [
+        {
+          "type": "object",
+          "properties": {
+            "reviewerNotes": { "type": "string", "minLength": 1, "title": "Reviewer notes" },
+            "decision": { "type": "string", "enum": ["approved", "declined"], "title": "Decision" }
+          },
+          "required": ["reviewerNotes", "decision"]
+        }
+      ],
+      "disclosures": [
+        { "participantAddress": "officer", "dataPointers": ["/*"] },
+        { "participantAddress": "applicant", "dataPointers": ["/*"] }
+      ],
+      "routes": [
+        { "id": "complete", "nextActionIds": [], "isDefault": true }
+      ]
+    }
+  ]
+}

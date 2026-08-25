@@ -32,7 +32,7 @@ public class TransactionBuilderServicePresentationOutcomeTests
     };
     private static Instance MakeInst() => new()
     {
-        Id = Guid.NewGuid().ToString(), BlueprintId = "bp-1", BlueprintVersion = 1,
+        Id = Guid.NewGuid().ToString(), BlueprintId = "bp-1", BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", BlueprintVersion = 1,
         RegisterId = "reg-1", TenantId = "t"
     };
     private static ActionModel MakeAct() => new() { Id = 3, BlueprintId = "bp-1" };

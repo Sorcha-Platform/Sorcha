@@ -231,21 +231,53 @@ Registers are created in **DevMode** by default, where all transaction payloads 
 
 ### Disabling DevMode
 
-DevMode can be disabled via the CLI. This is an **irreversible** operation:
+DevMode is disabled by submitting a crypto-policy control transaction. This is an **irreversible**
+operation — validators reject a policy update that re-enables DevMode.
 
-```bash
-sorcha register devmode disable --register-id <id>
+```http
+POST /api/registers/{registerId}/disable-dev-mode
 ```
 
-Once disabled:
-- All new transactions use field-level encryption
+> There is **no `sorcha register devmode disable` CLI command.** This document used to promise one;
+> it has never existed in `RegisterCommands.cs` (#1579). Use the endpoint above, or
+> `run.ps1 -DisableDevMode`, which calls it.
+
+The promotion is **asynchronous**. A `200` means the control transaction was *submitted*; each node
+flips its own `devMode` only once that transaction seals into a docket. Poll
+`GET /api/registers/{registerId}` until `devMode` is `false` rather than assuming the response means
+it has taken effect.
+
+Once it has sealed:
+- All **new** transactions use field-level encryption
 - Each field is encrypted to only the participants listed in its disclosure rules
 - Undisclosed fields appear as encrypted blobs to unauthorised participants
 - The same blueprint, same workflow, same actions run identically -- the only difference is payload encryption
 
+**Promotion is not retrospective.** Payloads already sealed while the register was in DevMode remain
+plaintext on the ledger permanently, because the ledger is immutable. Promoting a register protects
+what it stores *next*, not what it already holds.
+
 ### Verification
 
-The walkthrough's `run.ps1` script supports a `--DisableDevMode` flag that disables DevMode on both registers before executing scenarios, and a `--VerifyFLE` flag that verifies encrypted payloads are unreadable by non-disclosed participants.
+`run.ps1 -DisableDevMode` performs the promotion and **fails the step** if the register has not
+actually left DevMode within 180 seconds.
+
+`run.ps1 -VerifyFLE` demonstrates **role-based disclosure**: it reads the register as different
+role-holders and prints which fields each is shown. That is not evidence about encryption at rest —
+it asks the API what it is willing to show, so a filter bug or an unpromoted register would produce
+the same output.
+
+The claim that a Normal register stores field **values** as ciphertext is settled by reading the
+stored bytes out of MongoDB, in `walkthroughs/EncryptionAtRest/`:
+
+```bash
+pwsh walkthroughs/EncryptionAtRest/setup.ps1 -Profile n1 -Force
+pwsh walkthroughs/EncryptionAtRest/run-conformance.ps1 -Profile n1
+```
+
+That check promotes a register mid-run and requires the same probe to **find** a known value while
+the register is in DevMode and **fail to find it** afterwards. The pairing is the point: an absence
+on its own is equally the result of a probe looking in the wrong place.
 
 ---
 

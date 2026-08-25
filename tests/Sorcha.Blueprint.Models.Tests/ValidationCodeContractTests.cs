@@ -39,6 +39,7 @@ public sealed class ValidationCodeContractTests
     [InlineData(nameof(ValidationWarningCodes.ReviewLayoutUnknown), "WARN_BP_REVIEW_001")]
     [InlineData(nameof(ValidationWarningCodes.CredentialPortraitOversize), "WARN_CRED_PORTRAIT_OVERSIZE_001")]
     [InlineData(nameof(ValidationWarningCodes.SorchaLocalWalletImplicitDisclosure), "WARN_BP_CRED_002")]
+    [InlineData(nameof(ValidationWarningCodes.UnconditionalIssuanceOnDecision), "WARN_BP_CRED_005")]
     public void WarningCode_HasPinnedWireValue(string name, string expected)
     {
         ConstantValue(typeof(ValidationWarningCodes), name).Should().Be(expected);

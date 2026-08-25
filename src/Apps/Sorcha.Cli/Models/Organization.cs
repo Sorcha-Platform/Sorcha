@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
+using System.Text.Json.Serialization;
+
 namespace Sorcha.Cli.Models;
 
 /// <summary>
@@ -147,4 +149,17 @@ public class UpdateOrganizationRequest
     /// Updated branding configuration.
     /// </summary>
     public BrandingConfiguration? Branding { get; set; }
+}
+
+/// <summary>
+/// Body of <c>POST /api/organizations/{organizationId}/wallet</c> (#1525).
+/// </summary>
+/// <remarks>
+/// Only the address travels — the recovery phrase stays with the admin who created the wallet.
+/// </remarks>
+public class LinkOrganizationWalletRequest
+{
+    /// <summary>Address of the wallet created with this organisation as owner.</summary>
+    [JsonPropertyName("walletAddress")]
+    public string WalletAddress { get; set; } = string.Empty;
 }

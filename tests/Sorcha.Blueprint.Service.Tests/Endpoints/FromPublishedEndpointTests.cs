@@ -46,7 +46,7 @@ public class FromPublishedEndpointTests : IClassFixture<BlueprintServiceWebAppli
     }
 
     [Fact]
-    public async Task FromPublished_KnownVersion_Returns201AndNewDraftIdWithLineage()
+    public async Task FromPublished_KnownDefinition_Returns201AndSameBlueprintIdWithLineage()
     {
         // Arrange — create + publish a source blueprint so the endpoint has something to clone.
         var source = await CreateAndPublishSourceAsync("from-pub-known", "registers-known-source");
@@ -58,17 +58,20 @@ public class FromPublishedEndpointTests : IClassFixture<BlueprintServiceWebAppli
             {
                 registerId = source.RegisterId,
                 blueprintId = source.BlueprintId,
-                version = source.Version,
+                publicationTxId = source.PublicationTxId,
             });
 
-        // Assert — 201 + lineage on a NEW draft.
+        // Assert — 201 + lineage.
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         var body = await response.Content.ReadFromJsonAsync<CloneResponseDto>();
         body.Should().NotBeNull();
         body!.DraftBlueprintId.Should().NotBeNullOrWhiteSpace();
-        body.DraftBlueprintId.Should().NotBe(source.BlueprintId,
-            "the amend flow MUST yield a fresh draft id distinct from the published source.");
-        body.SourceVersion.Should().Be(source.Version);
+        body.DraftBlueprintId.Should().Be(source.BlueprintId,
+            "Feature 195 (#1568) — amending produces a new VERSION of the same blueprint, not a fork. " +
+            "This assertion previously required a DIFFERENT id, which is what made an amendment " +
+            "invisible to the source blueprint's version history and left the platform with two " +
+            "unrelated upgrade paths.");
+        body.SourcePublicationTxId.Should().Be(source.PublicationTxId);
         body.RegisterId.Should().Be(source.RegisterId);
 
         // The draft persisted on the draft store carries the lineage metadata so the designer can
@@ -83,7 +86,7 @@ public class FromPublishedEndpointTests : IClassFixture<BlueprintServiceWebAppli
         draft.Metadata.Should().ContainKey(SourceBlueprintMetadataKey)
             .WhoseValue.Should().Be(source.BlueprintId);
         draft.Metadata.Should().ContainKey(SourceVersionMetadataKey)
-            .WhoseValue.Should().Be(source.Version.ToString());
+            .WhoseValue.Should().Be(source.PublicationTxId);
     }
 
     [Fact]
@@ -118,7 +121,7 @@ public class FromPublishedEndpointTests : IClassFixture<BlueprintServiceWebAppli
         {
             var response = await _client.PostAsJsonAsync(
                 "/api/blueprints/from-published",
-                new { registerId = source.RegisterId, blueprintId = source.BlueprintId, version = source.Version });
+                new { registerId = source.RegisterId, blueprintId = source.BlueprintId, publicationTxId = source.PublicationTxId });
 
             response.StatusCode.Should().Be(HttpStatusCode.Forbidden,
                 "the source-register governance check MUST refuse callers without a publish-governance role.");
@@ -155,7 +158,7 @@ public class FromPublishedEndpointTests : IClassFixture<BlueprintServiceWebAppli
             {
                 registerId = "registers-unknown-from-pub",
                 blueprintId = $"missing-{Guid.NewGuid():N}",
-                version = 1,
+                publicationTxId = "unknown-publication",
             });
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound,
@@ -169,7 +172,7 @@ public class FromPublishedEndpointTests : IClassFixture<BlueprintServiceWebAppli
 
         var response = await _client.PostAsJsonAsync(
             "/api/blueprints/from-published",
-            new { registerId = source.RegisterId, blueprintId = source.BlueprintId, version = source.Version });
+            new { registerId = source.RegisterId, blueprintId = source.BlueprintId, publicationTxId = source.PublicationTxId });
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         var body = await response.Content.ReadFromJsonAsync<CloneResponseDto>();
@@ -198,7 +201,7 @@ public class FromPublishedEndpointTests : IClassFixture<BlueprintServiceWebAppli
         {
             title = $"{titleSeed}-{Guid.NewGuid():N}",
             description = "Amend-loop source blueprint.",
-            version = 1,
+            publicationTxId = "unknown-publication",
             participants = new object[]
             {
                 new { id = "applicant", name = "Applicant" },
@@ -266,15 +269,16 @@ public class FromPublishedEndpointTests : IClassFixture<BlueprintServiceWebAppli
             new { registerId });
         publishResponse.EnsureSuccessStatusCode();
         var publishBody = await publishResponse.Content.ReadFromJsonAsync<JsonElement>();
-        var version = publishBody.GetProperty("version").GetInt32();
+        // Feature 195 — the amend picker selects by PUBLICATION ID, not by ordinal.
+        var publicationTxId = publishBody.GetProperty("publicationTxId").GetString()!;
 
-        return new PublishedSource(created.Id, version, registerId, (string)blueprint.title);
+        return new PublishedSource(created.Id, publicationTxId, registerId, (string)blueprint.title);
     }
 
-    private sealed record PublishedSource(string BlueprintId, int Version, string RegisterId, string Title);
+    private sealed record PublishedSource(string BlueprintId, string PublicationTxId, string RegisterId, string Title);
 
     private sealed record CloneResponseDto(
         string DraftBlueprintId,
-        int SourceVersion,
+        string SourcePublicationTxId,
         string RegisterId);
 }

@@ -115,6 +115,37 @@ function Invoke-SorchaApi {
         [switch]$ShowJson
     )
 
+    # The gateway rate-limits /api/auth/* as one bucket: AuthenticationPermitLimit=60 per minute
+    # with AuthenticationQueueLimit=0, so request 61 is an immediate 429 rather than a queued wait.
+    #
+    # That bucket is not just login. Registration, email verification and org selection all live
+    # under /api/auth/, and a setup that registers eight users, verifies them, then signs each one
+    # in exhausts it well before the interesting part of the run. Two full sweeps were lost reading
+    # those 429s as real results, and a throttle on Connect-SorchaUser alone did not help precisely
+    # because logins are the minority of the traffic hitting this limiter.
+    #
+    # So it goes here, at the one place every request passes through. 1.3s spacing gives ~46/min,
+    # inside the limit with margin, and costs nothing on the vast majority of calls that are not
+    # auth at all.
+    if ($Uri -match '/auth/') {
+        # 8s => ~7/min. Measured, not assumed: on n1 a burst gets 429 after 8 calls, and even 5s
+        # spacing (12/min) still lost 2 of 15. The effective ceiling is around 10/min, which matches
+        # NEITHER configured value (tenant PlatformAuthPermitLimit=500, gateway
+        # AuthenticationPermitLimit=60) — that discrepancy is worth chasing separately, but until it
+        # is, this is the rate that actually completes a run.
+        #
+        # Override with SORCHA_WT_AUTH_GAP_MS where the limit is known to be looser (local Docker
+        # defaults are 100k/min, so set it to 0 there and lose nothing).
+        $minGapMs = 8000
+        $envGap = [System.Environment]::GetEnvironmentVariable('SORCHA_WT_AUTH_GAP_MS')
+        if ($envGap -and [int]::TryParse($envGap, [ref]$null)) { $minGapMs = [int]$envGap }
+        if ($script:LastAuthCallAt) {
+            $sinceMs = ([DateTime]::UtcNow - $script:LastAuthCallAt).TotalMilliseconds
+            if ($sinceMs -lt $minGapMs) { Start-Sleep -Milliseconds ([int]($minGapMs - $sinceMs)) }
+        }
+        $script:LastAuthCallAt = [DateTime]::UtcNow
+    }
+
     $params = @{
         Uri            = $Uri
         Method         = $Method
@@ -693,6 +724,61 @@ function Get-OrCreateUser {
 # ============================================================================
 # New-SorchaOrgUser — provision an org-scoped password user (spec 136)
 # ============================================================================
+
+function Confirm-SorchaOrgMembership {
+    <#
+    .SYNOPSIS
+        Ensure $Email is a member of $OrganizationId, adding them if not. Idempotent.
+    .DESCRIPTION
+        The gap this closes: New-SorchaOrganization's duplicate-recovery path returns an org that
+        SOMEONE ELSE created, so the -AdminEmail passed to that call was never provisioned into it.
+        The module documented that ("callers must ensure membership themselves") and 11 of 13 setup
+        scripts never did — because on a clean node every org is created fresh and the recovery path
+        never runs. It only bites on a re-run, and then it is silent until either the first
+        org-scoped call 403s (#1427) or Connect-SorchaUser refuses with
+        "<email> is single-org in 00000000-...-0002, but org <id> was requested".
+
+        Making the caller responsible for something the caller cannot see going wrong is what made
+        this unlearnable, so the check moved here — to the one place that knows the org was reused.
+
+        Membership is added via POST /organizations/{orgId}/users (an org-scoped identity for an
+        EXISTING PlatformUser — no password, no invitation) rather than
+        /users/provision, which creates a NEW platform user and 400s when one already exists.
+    .RETURNS
+        $true when the user was already a member, $false when a membership was added.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$OrganizationId,
+        [Parameter(Mandatory)][string]$Email,
+        [Parameter(Mandatory)][hashtable]$Headers,
+        [string]$DisplayName,
+        [string[]]$Roles = @("Administrator", "Consumer")
+    )
+
+    try {
+        $existingUsers = Invoke-SorchaApi -Method GET `
+            -Uri "$TenantUrl/organizations/$OrganizationId/users?includeInactive=true" `
+            -Headers $Headers
+        $match = @($existingUsers.users) | Where-Object { $_.email -eq $Email } | Select-Object -First 1
+        if ($match) { return $true }
+    } catch {
+        # A failed read must not be treated as "not a member" — adding a membership that already
+        # exists is harmless, but claiming success on an unreadable org is not. Fall through and
+        # attempt the add, which is itself idempotent (409/400 => already there).
+        Write-WtWarn "  Could not read members of org $OrganizationId — attempting the add anyway"
+    }
+
+    Write-WtWarn "  $Email is not a member of org $OrganizationId (the org already existed) — adding"
+    $null = Get-OrCreateUser `
+        -TenantUrl $TenantUrl `
+        -OrganizationId $OrganizationId `
+        -Email $Email `
+        -DisplayName ($DisplayName ? $DisplayName : $Email) `
+        -Headers $Headers `
+        -Roles $Roles
+    return $false
+}
 
 function New-SorchaOrgUser {
     <#
@@ -1534,7 +1620,13 @@ function Publish-SorchaBlueprint {
     # Generate unique ID. Use Add-Member -Force so this is robust whether
     # the template carries a placeholder `id` or omits it entirely (most
     # templates do — the id is generated here per-publish).
-    $timestamp = Get-Date -Format "yyyyMMddHHmmss"
+    # MILLISECOND resolution, deliberately. A second-resolution stamp collides whenever a setup
+    # publishes two blueprints with the same prefix inside one second — the blueprint id is the
+    # PRIMARY KEY of BlueprintDrafts, so the second insert fails with a DbUpdateException and the
+    # endpoint returns a bare 500. That is exactly what TradeFinance did the moment the suite ran
+    # with a shorter auth gap: it was latent for as long as the throttle happened to space the
+    # calls out, and the failure names neither the id nor the collision.
+    $timestamp = Get-Date -Format "yyyyMMddHHmmssfff"
     $blueprint | Add-Member -NotePropertyName "id" -NotePropertyValue "$IdPrefix-$timestamp" -Force
 
     # Create blueprint
@@ -1748,6 +1840,117 @@ function Resolve-SorchaCollection {
 
     return @($Response)
 }
+
+# ============================================================================
+# Credential identity helpers — NEVER select a credential by type alone
+# ============================================================================
+#
+# A wallet ACCUMULATES credentials. It keeps one per happy-path run, and it keeps
+# revoked and suspended ones too. So "a credential of this type exists" is a vacuous
+# assertion from the second run onward, and "the credential of this type" is whichever
+# one happens to be first — usually the oldest.
+#
+# This has now produced FOUR separate wrong verdicts, three of which blamed the platform
+# for behaving correctly:
+#
+#   #1477 defect 2 — member enumeration on a bare array (see Resolve-SorchaCollection)
+#   #1483          — a false "a revoked credential is accepted" security report: the test
+#                    presented an ACTIVE credential and asserted refusal
+#   #1503          — "posture credential delivered" passed on a REVOKED credential from an
+#                    earlier run, which then failed downstream as a 400 that read as a
+#                    platform fault
+#   this sweep     — SelfBuildHouse, TradeFinance and AssuredIdentity all still selecting
+#                    first-of-type
+#
+# The rule these encode: capture the ids present BEFORE the action that issues, then require
+# a credential that is genuinely NEW, and pin THAT id everywhere downstream.
+
+function Get-SorchaWalletCredentialUri {
+    <#
+    .SYNOPSIS
+        Build the credential-listing URI for a wallet, including every status.
+    .DESCRIPTION
+        The default listing returns ACTIVE credentials only — correct holder-side behaviour,
+        but wrong for a snapshot: a revoked or pending-acceptance credential is absent from
+        it, so it would not appear in the "before" set and would then read as NEW.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$WalletUrl,
+        [Parameter(Mandatory)][string]$WalletAddress
+    )
+    "$WalletUrl/v1/wallets/$WalletAddress/credentials/?status=All"
+}
+
+function Get-SorchaCredentialIdSnapshot {
+    <#
+    .SYNOPSIS
+        The ids of every credential of a given type currently in a wallet — the "before" set.
+    .DESCRIPTION
+        Call this BEFORE the action that issues, and pass the result to
+        Wait-SorchaNewCredential as -ExcludeIds.
+
+        THROWS on a failed read, deliberately. Returning an empty set on error would make
+        every credential look new, so the guard would go inert at exactly the moment the
+        wallet read is broken — fail-open, silently, in the one case that matters.
+    .PARAMETER CredentialType
+        Matched against BOTH `type` and `vct`: the org listing returns `type`, the citizen
+        endpoint (/v1/wallet/credentials) returns `vct`.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ListUri,
+        [Parameter(Mandatory)]$Headers,
+        [Parameter(Mandatory)][string]$CredentialType
+    )
+
+    $response = Invoke-SorchaApi -Method GET -Uri $ListUri -Headers $Headers
+    @(Resolve-SorchaCollection -Response $response -PropertyName 'credentials' |
+        Where-Object { $_.type -eq $CredentialType -or $_.vct -eq $CredentialType } |
+        ForEach-Object { $_.id })
+}
+
+function Wait-SorchaNewCredential {
+    <#
+    .SYNOPSIS
+        Poll a wallet until a credential of the given type arrives that was NOT in the
+        snapshot, and return it. $null on timeout.
+    .DESCRIPTION
+        Credential delivery is asynchronous: the credential is sealed into the action
+        transaction's recipient-addressed disclosure group, replicated, and only then
+        decrypted and persisted by the recipient's InboundCredentialDetector. So the
+        /execute response is not the delivery signal — the recipient's wallet is.
+
+        Excluding the snapshot is what makes this an assertion about THIS run. Without it
+        the poll returns on the first tick with a credential some earlier run issued, and
+        the caller then pins that id into everything downstream.
+    .PARAMETER ExcludeIds
+        The ids present before issuance (from Get-SorchaCredentialIdSnapshot).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ListUri,
+        [Parameter(Mandatory)]$Headers,
+        [Parameter(Mandatory)][string]$CredentialType,
+        [string[]]$ExcludeIds = @(),
+        [int]$TimeoutSeconds = 60,
+        [int]$IntervalSeconds = 3
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $response = Invoke-SorchaApi -Method GET -Uri $ListUri -Headers $Headers
+            $fresh = @(Resolve-SorchaCollection -Response $response -PropertyName 'credentials' |
+                Where-Object { $_.type -eq $CredentialType -or $_.vct -eq $CredentialType } |
+                Where-Object { $ExcludeIds -notcontains $_.id }) |
+                Select-Object -First 1
+            if ($fresh) { return $fresh }
+        } catch {
+            # Transient read errors are expected while the docket seals; keep polling.
+        }
+        Start-Sleep -Seconds $IntervalSeconds
+    }
+    return $null
+}
+
 
 function Resolve-SorchaAsyncTransactionId {
     <#
@@ -2107,6 +2310,121 @@ function Get-SorchaCredentialPresentation {
 # New-SorchaOrganization — Create org via Platform Admin API
 # ============================================================================
 
+function Invoke-SorchaOrgWalletStep {
+    <#
+    .SYNOPSIS
+        Internal: perform the org-wallet step during New-SorchaOrganization, as the org admin.
+    .DESCRIPTION
+        Returns the wallet address, or $null when the step was not applicable. Throws when the
+        caller asked for it (-WalletUrl) and it genuinely failed — a silently-skipped org wallet is
+        what #1518 was, surfacing much later as an issuer DID that does not resolve.
+    #>
+    param(
+        [string]$TenantUrl,
+        [string]$WalletUrl,
+        [string]$OrganizationId,
+        [string]$Subdomain,
+        [string]$AdminEmail,
+        [string]$AdminPassword,
+        [bool]$AdminDirectlyAdded
+    )
+
+    if (-not $WalletUrl) { return $null }
+
+    if (-not $AdminDirectlyAdded -or -not $AdminPassword) {
+        # The admin was invited rather than provisioned, so there is no session to act as. Say so:
+        # the org has no wallet and cannot issue until someone signs in and creates one.
+        Write-WtWarn "Org $OrganizationId has no admin session available, so its wallet was not created."
+        Write-WtWarn "Sign in as an admin of that org and call New-SorchaOrgWallet (#1525)."
+        return $null
+    }
+
+    $adminSession = Connect-SorchaUser `
+        -TenantUrl $TenantUrl -Email $AdminEmail -Password $AdminPassword `
+        -OrganizationId $OrganizationId
+
+    $result = New-SorchaOrgWallet `
+        -TenantUrl $TenantUrl -WalletUrl $WalletUrl `
+        -OrganizationId $OrganizationId -Headers $adminSession.Headers `
+        -Name "org-$Subdomain-signing"
+
+    return $result.WalletAddress
+}
+
+function New-SorchaOrgWallet {
+    <#
+    .SYNOPSIS
+        Create the ORGANISATION's signing wallet, as its own admin (#1525).
+    .DESCRIPTION
+        The step that used to be missing everywhere, and the reason walkthroughs quietly depended on
+        a background sweep. An organisation's canonical wallet is what its issuer DID anchors on and
+        what its governance roster identity is matched against — and its BIP39 recovery phrase is
+        shown ONCE and never stored. So it is created deliberately, by an administrator OF THAT
+        ORGANISATION, who is then the only person holding the phrase. The platform will not do it:
+        a service-to-service create generates a phrase with nobody present to receive it.
+
+        Create-then-link, so the phrase never transits the Tenant Service:
+          1. POST {WalletUrl}/v1/wallets with organizationId  -> address + mnemonicWords
+          2. POST {TenantUrl}/organizations/{id}/wallet       -> records it as the org's wallet
+
+        Idempotent: if the organisation already has a wallet this returns it and creates nothing,
+        because replacing the canonical wallet would orphan every credential issued under the old one.
+
+        Headers MUST be the ORG ADMIN's session — a platform admin is refused by design.
+    .RETURNS
+        Hashtable with WalletAddress, Mnemonic (empty when the wallet already existed), Created.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$WalletUrl,
+        [Parameter(Mandatory)][string]$OrganizationId,
+        [Parameter(Mandatory)][hashtable]$Headers,
+        [string]$Algorithm = "ED25519",
+        [string]$Name
+    )
+
+    if (-not $Name) { $Name = "org-$OrganizationId-signing" }
+
+    # Already done? Ask the org, not our own bookkeeping.
+    try {
+        $org = Invoke-SorchaApi -Method GET `
+            -Uri "$TenantUrl/organizations/$OrganizationId" -Headers $Headers
+        if ($org.walletAddress) {
+            Write-WtInfo "  Org wallet already exists: $($org.walletAddress)"
+            return @{ WalletAddress = $org.walletAddress; Mnemonic = ""; Created = $false }
+        }
+    } catch {
+        # Fall through and attempt creation; the link step reports anything genuinely wrong.
+    }
+
+    Write-WtStep "Org admin creates the organisation's wallet"
+
+    $created = Invoke-SorchaApi -Method POST `
+        -Uri "$WalletUrl/v1/wallets" -Headers $Headers `
+        -Body @{
+            name           = $Name
+            algorithm      = $Algorithm
+            organizationId = $OrganizationId
+        }
+
+    $address  = $created.wallet.address
+    $mnemonic = ($created.mnemonicWords -join " ")
+
+    if (-not $address) { throw "Wallet creation returned no address for organisation $OrganizationId." }
+
+    # Shown once, never stored. Walkthroughs do not need to keep it, but printing it is what a real
+    # org admin sees and is the point of the step existing at all.
+    Write-WtWarn "  ORG RECOVERY MNEMONIC (shown once, never stored): $mnemonic"
+
+    $linked = Invoke-SorchaApi -Method POST `
+        -Uri "$TenantUrl/organizations/$OrganizationId/wallet" -Headers $Headers `
+        -Body @{ walletAddress = $address }
+
+    Write-WtSuccess "  Org wallet created and linked: $address"
+
+    return @{ WalletAddress = $address; Mnemonic = $mnemonic; Created = $true }
+}
+
 function New-SorchaOrganization {
     <#
     .SYNOPSIS
@@ -2131,7 +2449,17 @@ function New-SorchaOrganization {
         [string]$AdminDisplayName,
         # Mark the provisioned admin verified (bypasses the email loop). Requires the installation
         # to enable Platform:AllowAdminVerifiedUserCreation (dev/n1 do; production does not).
-        [switch]$AdminEmailVerified
+        [switch]$AdminEmailVerified,
+
+        # Supply this and the organisation's OWN wallet is created as part of provisioning, by
+        # signing in as its admin (#1525). Required for any org that issues credentials, owns a
+        # register or takes part in governance: the org wallet is what its issuer DID anchors on
+        # and what its governance roster identity is matched against.
+        #
+        # It is done here rather than left to the caller because it must happen, and because the
+        # platform will not do it for them — the recovery phrase is shown once and belongs to the
+        # org admin, so a human (or a script acting as that admin) has to be the one to take it.
+        [string]$WalletUrl
     )
 
     $body = @{
@@ -2154,9 +2482,17 @@ function New-SorchaOrganization {
 
         if ($response.success) {
             Write-WtSuccess "Organization '$Name' created: $($response.organizationId)"
+
+            $orgWalletAddress = Invoke-SorchaOrgWalletStep `
+                -TenantUrl $TenantUrl -WalletUrl $WalletUrl `
+                -OrganizationId "$($response.organizationId)" -Subdomain $Subdomain `
+                -AdminEmail $AdminEmail -AdminPassword $AdminPassword `
+                -AdminDirectlyAdded ([bool]$response.adminDirectlyAdded)
+
             return @{
-                OrganizationId    = $response.organizationId
+                OrganizationId     = $response.organizationId
                 AdminDirectlyAdded = $response.adminDirectlyAdded
+                WalletAddress      = $orgWalletAddress
             }
         } else {
             throw "Organization creation failed: $($response.error)"
@@ -2187,15 +2523,74 @@ function New-SorchaOrganization {
             $existing = $orgs.items | Where-Object { $_.subdomain -eq $Subdomain } | Select-Object -First 1
             if ($existing) {
                 Write-WtSuccess "Found existing org: $($existing.id)"
+
+                # The org already existed, so THIS call did not provision its admin. Ensure the
+                # membership here rather than leaving it to the caller: 11 of 13 setup scripts
+                # never did, and the stranding is invisible until a later 403 or a
+                # Connect-SorchaUser refusal that names the PUBLIC org and looks like an auth bug.
+                if ($AdminEmail) {
+                    try {
+                        $null = Confirm-SorchaOrgMembership `
+                            -TenantUrl $TenantUrl -OrganizationId "$($existing.id)" `
+                            -Email $AdminEmail -DisplayName $AdminDisplayName -Headers $Headers
+                    } catch {
+                        Write-WtWarn "  Could not ensure $AdminEmail is a member of $($existing.id): $($_.Exception.Message)"
+                    }
+                }
                 # AdminDirectlyAdded = $false, and that is the whole point of reporting it: this path
                 # recovers an org that someone else created, so the -AdminEmail passed to THIS call
                 # was never provisioned into it. Saying $true here (as it used to) told callers the
                 # admin was ready when they had no membership at all, and the first org-scoped call
                 # they made 403'd with nothing to connect it to (#1427). Callers must ensure
                 # membership themselves — see New-SorchaOrgUser.
+                # The org already existed, so THIS call did not provision its admin. Do NOT infer the
+                # wallet state from the platform list: OrganizationSummaryResponse does not project
+                # walletAddress, so reading it here always yields null and warns about a wallet the
+                # org may well have. Ask New-SorchaOrgWallet instead — it queries the organisation
+                # itself and no-ops when a wallet is present.
+                $existingWallet = $null
+
+                # Check with the headers we ALREADY hold before spending a login. The caller here is
+                # the sysadmin, who CallerOrganizationGate exempts, so this read works — and in the
+                # common case (the org already has its wallet) it costs one GET instead of a full
+                # authentication. That matters: an extra login per organisation across ten
+                # walkthroughs is enough to trip the auth rate limit and turn a whole run into 429s
+                # that look like failures.
+                try {
+                    $existingOrg = Invoke-SorchaApi -Method GET `
+                        -Uri "$TenantUrl/organizations/$($existing.id)" -Headers $Headers
+                    if ($existingOrg.walletAddress) {
+                        $existingWallet = $existingOrg.walletAddress
+                        # Say so. Without this the read-first path is silent, and a run that is
+                        # entirely correct reports zero org wallets — which reads as a gap.
+                        Write-WtInfo "  Org wallet already exists: $existingWallet"
+                    }
+                } catch { }
+
+                if ($WalletUrl -and -not $existingWallet -and $AdminPassword) {
+                    try {
+                        $adminSession = Connect-SorchaUser `
+                            -TenantUrl $TenantUrl -Email $AdminEmail -Password $AdminPassword `
+                            -OrganizationId "$($existing.id)"
+                        $existingWallet = (New-SorchaOrgWallet `
+                            -TenantUrl $TenantUrl -WalletUrl $WalletUrl `
+                            -OrganizationId "$($existing.id)" -Headers $adminSession.Headers `
+                            -Name "org-$Subdomain-signing").WalletAddress
+                    } catch {
+                        Write-WtWarn "Organization '$Name' already existed and its wallet could not be"
+                        Write-WtWarn "confirmed or created as $AdminEmail : $($_.Exception.Message)"
+                        Write-WtWarn "Sign in as an admin of that org and call New-SorchaOrgWallet (#1525)."
+                    }
+                } elseif ($WalletUrl -and -not $existingWallet) {
+                    Write-WtWarn "Organization '$Name' already existed and no admin credential was supplied,"
+                    Write-WtWarn "so its wallet could not be confirmed. Sign in as an admin of that org and"
+                    Write-WtWarn "call New-SorchaOrgWallet, or the org cannot issue credentials (#1525)."
+                }
+
                 return @{
-                    OrganizationId    = "$($existing.id)"
+                    OrganizationId     = "$($existing.id)"
                     AdminDirectlyAdded = $false
+                    WalletAddress      = $existingWallet
                 }
             }
             throw "Organization '$Name' looked like a duplicate but could not be found by subdomain"

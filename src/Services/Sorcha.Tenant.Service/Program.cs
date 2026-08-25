@@ -222,12 +222,8 @@ app.UseSanitizedExceptionHandling();
 
 // F191 US3 (#1420): make a retired-secrets deployment diagnosable from startup logs — with the
 // flag on, every secret-presenting service-auth request is refused platform-wide.
-if (app.Configuration.GetValue<bool>(Sorcha.WorkloadIdentity.WorkloadIdentityConfig.DisableSharedSecrets))
-{
-    app.Logger.LogWarning(
-        "ServiceAuth:DisableSharedSecrets is ENABLED — shared-secret service authentication is disabled; " +
-        "only workload-certificate credentials mint service tokens (F191/#1420)");
-}
+Sorcha.Tenant.Service.ServiceAuth.ServiceAuthStartupDiagnostics
+    .LogSharedSecretPosture(app.Logger, app.Configuration);
 
 // Feature 146 — fail closed at startup if no at-rest secret-protection key can be resolved
 // (resolves the singleton, which runs TenantSecretKeyResolver.ResolveProtectionKey()).

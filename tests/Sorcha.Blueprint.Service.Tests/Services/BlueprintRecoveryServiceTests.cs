@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Implementation;
+using Sorcha.Blueprint.Models.Canonical;
 using Sorcha.ServiceClients.Register;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 
@@ -87,11 +88,15 @@ public class BlueprintRecoveryServiceTests
                     new PublishedBlueprintEntry
                     {
                         BlueprintId = "bp-1",
-                        TransactionId = "tx-1",
+                        // Feature 195 — the transaction id IS the definition's identity, so it must
+                        // be the publication id of this very JSON on this very register or recovery
+                        // rejects it. A placeholder like "tx-1" would fail provenance, which is the
+                        // check doing its job.
+                        TransactionId = BlueprintPublicationId.ComputeFromDefinition(
+                            "reg-1", "bp-1", blueprintJson),
                         PublishedBy = "user-1",
                         PublishedAt = DateTimeOffset.UtcNow,
-                        BlueprintJson = blueprintJson,
-                        ContentHash = BlueprintContentHash.Compute(blueprintJson)
+                        BlueprintJson = blueprintJson
                     }
                 ]
             });
@@ -173,15 +178,26 @@ public class BlueprintRecoveryServiceTests
                     new PublishedBlueprintEntry
                     {
                         BlueprintId = "bp-1",
-                        TransactionId = "tx-1",
+                        TransactionId = BlueprintPublicationId.ComputeFromDefinition(
+                            "reg-1", "bp-1", blueprintJson),
                         PublishedAt = DateTimeOffset.UtcNow,
-                        BlueprintJson = blueprintJson,
-                        ContentHash = BlueprintContentHash.Compute(blueprintJson)
+                        BlueprintJson = blueprintJson
                     }
                 ]
             });
 
-        // Simulate blueprint already recovered for this register
+        // Simulate this PUBLICATION already recovered for this register.
+        //
+        // Feature 194 changed the idempotency key from "this blueprint id on this register" to "this
+        // executable definition on this register". Feature 195 narrows it once more, to "this
+        // PUBLICATION" — because two publications can share an executable definition (a
+        // presentational-only republish) while being distinct, independently pinnable definitions,
+        // and dropping one strands any instance pinned to it.
+        //
+        // So the pre-existing entry must carry the publication id it represents; an entry with an
+        // empty id genuinely IS a different (unidentified) publication.
+        var recoveredDefinition = JsonSerializer.Deserialize<Sorcha.Blueprint.Models.Blueprint>(blueprintJson)!;
+
         _mockPublishedStore
             .Setup(s => s.GetVersionsAsync("bp-1"))
             .ReturnsAsync(new[]
@@ -190,7 +206,9 @@ public class BlueprintRecoveryServiceTests
                 {
                     BlueprintId = "bp-1",
                     RegisterId = "reg-1",
-                    Blueprint = CreateMinimalBlueprint("bp-1")
+                    PublicationTxId = BlueprintPublicationId.ComputeFromDefinition(
+                        "reg-1", "bp-1", blueprintJson),
+                    Blueprint = recoveredDefinition
                 }
             });
 
@@ -205,14 +223,24 @@ public class BlueprintRecoveryServiceTests
     }
 
     [Fact]
-    public async Task RunRecoveryAsync_DuplicateBlueprintIds_OnlyProcessesNewest()
+    public async Task RunRecoveryAsync_TwoPublicationsOfTheSameDefinition_RecoverOnce()
     {
+        // Feature 194 REPLACED this test's predecessor, which asserted "only the newest version is
+        // added". That assertion encoded the defect: collapsing to newest-per-id is precisely what
+        // strands an instance pinned to an earlier definition once the process restarts.
+        //
+        // What is true now is narrower and content-based: two publications whose EXECUTABLE
+        // DEFINITIONS are identical (a presentational-only republish) are one definition, and
+        // recover once. The sibling test below covers the case that actually changed.
         var older = DateTimeOffset.UtcNow.AddHours(-2);
         var newer = DateTimeOffset.UtcNow;
-        // Serialize once — the blueprint model has per-instance default fields, so a fresh
-        // serialization would not match the sealed ContentHash computed from a different instance.
+        // Serialize once — the blueprint model has per-instance default fields (CreatedAt/UpdatedAt
+        // default to UtcNow), so a fresh serialization would be a DIFFERENT definition.
         var dupJson = JsonSerializer.Serialize(CreateMinimalBlueprint("bp-dup"));
-        var dupHash = BlueprintContentHash.Compute(dupJson);
+        // Feature 195 — identical content on one register is identical IDENTITY. The two entries
+        // below are therefore literally the same publication arriving twice, which is a stronger
+        // statement of the property under test than "two publications sharing an exec-def hash".
+        var dupTxId = BlueprintPublicationId.ComputeFromDefinition("reg-1", "bp-dup", dupJson);
 
         _mockRegisterClient
             .Setup(c => c.GetInternalRegistersAsync(It.IsAny<CancellationToken>()))
@@ -228,40 +256,98 @@ public class BlueprintRecoveryServiceTests
                 [
                     new PublishedBlueprintEntry
                     {
-                        BlueprintId = "bp-dup",
-                        TransactionId = "tx-old",
-                        PublishedAt = older,
-                        BlueprintJson = dupJson,
-                        ContentHash = dupHash
+                        BlueprintId = "bp-dup", TransactionId = dupTxId,
+                        PublishedAt = older, BlueprintJson = dupJson
                     },
                     new PublishedBlueprintEntry
                     {
-                        BlueprintId = "bp-dup",
-                        TransactionId = "tx-new",
-                        PublishedAt = newer,
-                        BlueprintJson = dupJson,
-                        ContentHash = dupHash
+                        BlueprintId = "bp-dup", TransactionId = dupTxId,
+                        PublishedAt = newer, BlueprintJson = dupJson
                     }
                 ]
             });
 
+        // A STATEFUL store stand-in. The previous fixture returned a fixed empty list from
+        // GetVersionsAsync no matter what had been added, so the recovery loop's own idempotency
+        // check could never see its first write — the test could not have observed dedup at all.
+        var stored = new List<PublishedBlueprint>();
         _mockPublishedStore
             .Setup(s => s.GetVersionsAsync("bp-dup"))
-            .ReturnsAsync(Enumerable.Empty<PublishedBlueprint>());
-
+            .ReturnsAsync(() => stored.ToList());
         _mockPublishedStore
             .Setup(s => s.AddAsync(It.IsAny<PublishedBlueprint>()))
-            .ReturnsAsync((PublishedBlueprint pb) => pb);
+            .ReturnsAsync((PublishedBlueprint pb) => { stored.Add(pb); return pb; });
 
         var service = CreateService();
         await service.RunRecoveryAsync(CancellationToken.None);
 
-        // Only the newest version should be added
-        _mockPublishedStore.Verify(
-            s => s.AddAsync(It.IsAny<PublishedBlueprint>()),
-            Times.Once);
-
+        stored.Should().HaveCount(1,
+            "two publications of an identical executable definition are ONE definition");
         _recoveryState.RegisterStates["reg-1"].RecoveredBlueprintCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task RunRecoveryAsync_TwoDifferentDefinitionsOfOneBlueprint_RecoverBoth()
+    {
+        // THE Feature 194 recovery guarantee, and the one that makes step 6 of the live acceptance
+        // test pass: an instance pinned to the FIRST definition must still resolve it after the
+        // service restarts. Recover only the newest and that instance is permanently stuck, with the
+        // symptom appearing as a transaction that never seals.
+        var v1Json = JsonSerializer.Serialize(CreateMinimalBlueprint("bp-two"));
+
+        var v2Model = CreateMinimalBlueprint("bp-two");
+        // A BEHAVIOURAL change — a second action the first definition does not have.
+        v2Model.Actions.Add(new Sorcha.Blueprint.Models.Action
+        {
+            Id = 2, Title = "Review", Sender = "p2"
+        });
+        var v2Json = JsonSerializer.Serialize(v2Model);
+
+        _mockRegisterClient
+            .Setup(c => c.GetInternalRegistersAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new InternalRegisterInfo { Id = "reg-1", Name = "R1", Height = 4 }]);
+
+        _mockRegisterClient
+            .Setup(c => c.GetPublishedBlueprintsAsync("reg-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PublishedBlueprintsResponse
+            {
+                RegisterId = "reg-1",
+                RegisterHeight = 4,
+                Blueprints =
+                [
+                    new PublishedBlueprintEntry
+                    {
+                        BlueprintId = "bp-two",
+                        TransactionId = BlueprintPublicationId.ComputeFromDefinition("reg-1", "bp-two", v1Json),
+                        PublishedAt = DateTimeOffset.UtcNow.AddHours(-2),
+                        BlueprintJson = v1Json
+                    },
+                    new PublishedBlueprintEntry
+                    {
+                        BlueprintId = "bp-two",
+                        TransactionId = BlueprintPublicationId.ComputeFromDefinition("reg-1", "bp-two", v2Json),
+                        PublishedAt = DateTimeOffset.UtcNow,
+                        BlueprintJson = v2Json
+                    }
+                ]
+            });
+
+        var stored = new List<PublishedBlueprint>();
+        _mockPublishedStore
+            .Setup(s => s.GetVersionsAsync("bp-two"))
+            .ReturnsAsync(() => stored.ToList());
+        _mockPublishedStore
+            .Setup(s => s.AddAsync(It.IsAny<PublishedBlueprint>()))
+            .ReturnsAsync((PublishedBlueprint pb) => { stored.Add(pb); return pb; });
+
+        var service = CreateService();
+        await service.RunRecoveryAsync(CancellationToken.None);
+
+        stored.Should().HaveCount(2,
+            "an instance pinned to EITHER definition must resolve it after a restart");
+        stored.Select(p => p.ExecDefHash).Distinct().Should().HaveCount(2);
+        stored.Should().AllSatisfy(p => p.ExecDefHash.Should().NotBeNullOrWhiteSpace(
+            "a recovered definition with no hash can never be resolved by a pinned instance"));
     }
 
     #endregion
@@ -312,7 +398,6 @@ public class BlueprintRecoveryServiceTests
     public async Task RunRecoveryAsync_InvalidBlueprintJson_SkipsAndContinues()
     {
         var goodJson = JsonSerializer.Serialize(CreateMinimalBlueprint("bp-good"));
-        var goodHash = BlueprintContentHash.Compute(goodJson);
 
         _mockRegisterClient
             .Setup(c => c.GetInternalRegistersAsync(It.IsAny<CancellationToken>()))
@@ -336,10 +421,10 @@ public class BlueprintRecoveryServiceTests
                     new PublishedBlueprintEntry
                     {
                         BlueprintId = "bp-good",
-                        TransactionId = "tx-2",
+                        TransactionId = BlueprintPublicationId.ComputeFromDefinition(
+                            "reg-1", "bp-good", goodJson),
                         PublishedAt = DateTimeOffset.UtcNow.AddMinutes(-1),
-                        BlueprintJson = goodJson,
-                        ContentHash = goodHash
+                        BlueprintJson = goodJson
                     }
                 ]
             });
@@ -520,10 +605,10 @@ public class BlueprintRecoveryServiceTests
                     new PublishedBlueprintEntry
                     {
                         BlueprintId = "bp-1",
-                        TransactionId = "tx-1",
+                        TransactionId = BlueprintPublicationId.ComputeFromDefinition(
+                            "reg-new", "bp-1", blueprintJson),
                         PublishedAt = DateTimeOffset.UtcNow,
-                        BlueprintJson = blueprintJson,
-                        ContentHash = BlueprintContentHash.Compute(blueprintJson)
+                        BlueprintJson = blueprintJson
                     }
                 ]
             });

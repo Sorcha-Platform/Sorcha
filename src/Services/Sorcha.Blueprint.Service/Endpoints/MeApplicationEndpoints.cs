@@ -86,6 +86,7 @@ public static class MeApplicationEndpoints
         HttpContext httpContext,
         IInstanceStore instanceStore,
         IBlueprintStore blueprintStore,
+        IPublishedBlueprintStore publishedStore,
         IWalletServiceClient walletClient,
         ILogger<MeApplicationEndpointsLogCategory> logger,
         InstanceState? status,
@@ -134,10 +135,10 @@ public static class MeApplicationEndpoints
         var pageItems = ordered.Skip((resolvedPage - 1) * resolvedPageSize).Take(resolvedPageSize).ToList();
 
         // One blueprint fetch per distinct blueprint on the page, not per row.
-        var blueprints = await LoadBlueprintsAsync(pageItems, blueprintStore);
+        var blueprints = await LoadBlueprintsAsync(pageItems, blueprintStore, publishedStore);
 
         var rows = pageItems
-            .Select(i => MyApplicationProjector.Project(i, Lookup(blueprints, i.BlueprintId), callerWallets))
+            .Select(i => MyApplicationProjector.Project(i, Lookup(blueprints, i), callerWallets))
             .ToList();
 
         return Results.Ok(new MyApplicationPage<MyApplicationSummary>(
@@ -153,6 +154,7 @@ public static class MeApplicationEndpoints
         string instanceId,
         IInstanceStore instanceStore,
         IBlueprintStore blueprintStore,
+        IPublishedBlueprintStore publishedStore,
         IWalletServiceClient walletClient,
         ILogger<MeApplicationEndpointsLogCategory> logger,
         CancellationToken cancellationToken)
@@ -177,9 +179,12 @@ public static class MeApplicationEndpoints
         var callerWallets = await ParticipantWalletResolver.ResolveUserWalletAddressesAsync(
             httpContext, walletClient, logger, cancellationToken);
 
-        var blueprint = await blueprintStore.GetAsync(instance.BlueprintId);
+        // Feature 194: the same pinned resolution as the list — a refused applicant must read the
+        // wording that was in force when their application was decided, not the wording of a
+        // workflow republished afterwards.
+        var loaded = await LoadBlueprintsAsync([instance], blueprintStore, publishedStore);
 
-        return Results.Ok(MyApplicationProjector.ProjectDetail(instance, blueprint, callerWallets));
+        return Results.Ok(MyApplicationProjector.ProjectDetail(instance, Lookup(loaded, instance), callerWallets));
     }
 
     /// <summary>
@@ -189,26 +194,69 @@ public static class MeApplicationEndpoints
     private static IResult NotFound() =>
         Results.Problem("Application not found.", statusCode: StatusCodes.Status404NotFound);
 
+    /// <summary>
+    /// Loads the blueprint each instance is actually running, keyed by
+    /// <c>(blueprintId, pinned definition)</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Feature 194. The citizen-facing wording of a decision notice is resolved on read from the
+    /// blueprint's <c>reasons</c> catalogue, so resolving the LATEST definition here would show a
+    /// refused applicant the wording of a workflow that was published after they applied — possibly
+    /// naming a reason that did not exist when their application was decided. The record on the
+    /// ledger would say one thing and the citizen would be told another.
+    /// </para>
+    /// <para>
+    /// The pinned definition is preferred and the draft store is the fallback, in that order: an
+    /// unpinned instance predates the feature, and a definition absent from this node is expected in
+    /// a federated deployment — the projector degrades to the blueprint id rather than dropping the
+    /// row, so a miss loses wording, never an application.
+    /// </para>
+    /// </remarks>
     private static async Task<Dictionary<string, Sorcha.Blueprint.Models.Blueprint>> LoadBlueprintsAsync(
-        IReadOnlyList<Instance> instances, IBlueprintStore blueprintStore)
+        IReadOnlyList<Instance> instances,
+        IBlueprintStore blueprintStore,
+        IPublishedBlueprintStore publishedStore)
     {
         var result = new Dictionary<string, Sorcha.Blueprint.Models.Blueprint>(StringComparer.Ordinal);
 
-        foreach (var blueprintId in instances.Select(i => i.BlueprintId).Distinct(StringComparer.Ordinal))
+        foreach (var instance in instances)
         {
-            // A blueprint absent from this node is expected in a federated deployment; the projector
-            // degrades to the id rather than dropping the row.
-            var blueprint = await blueprintStore.GetAsync(blueprintId);
+            var key = DefinitionKey(instance);
+            if (result.ContainsKey(key))
+            {
+                continue;
+            }
+
+            Sorcha.Blueprint.Models.Blueprint? blueprint = null;
+
+            if (!string.IsNullOrWhiteSpace(instance.BlueprintDefinitionTxId))
+            {
+                blueprint = (await publishedStore.GetByPublicationAsync(
+                    instance.BlueprintId, instance.BlueprintDefinitionTxId))?.Blueprint;
+            }
+
+            blueprint ??= await blueprintStore.GetAsync(instance.BlueprintId);
+
             if (blueprint is not null)
             {
-                result[blueprintId] = blueprint;
+                result[key] = blueprint;
             }
         }
 
         return result;
     }
 
+    /// <summary>
+    /// The cache key for a loaded definition. Two instances of one blueprint pinned to DIFFERENT
+    /// definitions must not share an entry — that is the whole point.
+    /// </summary>
+    private static string DefinitionKey(Instance instance) =>
+        string.IsNullOrWhiteSpace(instance.BlueprintDefinitionTxId)
+            ? instance.BlueprintId
+            : $"{instance.BlueprintId}:{instance.BlueprintDefinitionTxId}";
+
     private static Sorcha.Blueprint.Models.Blueprint? Lookup(
-        Dictionary<string, Sorcha.Blueprint.Models.Blueprint> blueprints, string blueprintId) =>
-        blueprints.TryGetValue(blueprintId, out var blueprint) ? blueprint : null;
+        Dictionary<string, Sorcha.Blueprint.Models.Blueprint> blueprints, Instance instance) =>
+        blueprints.TryGetValue(DefinitionKey(instance), out var blueprint) ? blueprint : null;
 }

@@ -373,7 +373,7 @@ public class ActionExecutionServiceTests
             .ReturnsAsync(instance);
 
         _mockActionResolver
-            .Setup(x => x.GetBlueprintAsync("non-existent-bp", It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetBlueprintAsync("non-existent-bp", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((BlueprintModel?)null);
 
         // Act & Assert
@@ -397,7 +397,7 @@ public class ActionExecutionServiceTests
             .ReturnsAsync(instance);
 
         _mockActionResolver
-            .Setup(x => x.GetBlueprintAsync("blueprint-1", It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetBlueprintAsync("blueprint-1", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         _mockActionResolver
@@ -428,7 +428,7 @@ public class ActionExecutionServiceTests
             .ReturnsAsync(instance);
 
         _mockActionResolver
-            .Setup(x => x.GetBlueprintAsync("blueprint-1", It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetBlueprintAsync("blueprint-1", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         _mockActionResolver
@@ -468,7 +468,7 @@ public class ActionExecutionServiceTests
             .Setup(x => x.GetAsync(instanceId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(instance);
         _mockActionResolver
-            .Setup(x => x.GetBlueprintAsync("blueprint-1", It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetBlueprintAsync("blueprint-1", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
         _mockActionResolver
             .Setup(x => x.GetActionDefinition(blueprint, "1"))
@@ -860,7 +860,7 @@ public class ActionExecutionServiceTests
             .ReturnsAsync(instance);
 
         _mockActionResolver
-            .Setup(x => x.GetBlueprintAsync("blueprint-1", It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetBlueprintAsync("blueprint-1", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         _mockActionResolver
@@ -889,7 +889,7 @@ public class ActionExecutionServiceTests
             .ReturnsAsync(instance);
 
         _mockActionResolver
-            .Setup(x => x.GetBlueprintAsync("blueprint-1", It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetBlueprintAsync("blueprint-1", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         _mockActionResolver
@@ -1145,7 +1145,7 @@ public class ActionExecutionServiceTests
             .ReturnsAsync(instance);
 
         _mockActionResolver
-            .Setup(x => x.GetBlueprintAsync("blueprint-1", It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetBlueprintAsync("blueprint-1", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         _mockActionResolver
@@ -1206,7 +1206,7 @@ public class ActionExecutionServiceTests
             .ReturnsAsync(instance);
 
         _mockActionResolver
-            .Setup(x => x.GetBlueprintAsync("blueprint-1", It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetBlueprintAsync("blueprint-1", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         _mockActionResolver
@@ -1229,55 +1229,23 @@ public class ActionExecutionServiceTests
 
     #endregion
 
-    #region PrevTxId Chain Linking Tests
+    #region PrevTxId Chain Linking
 
-    [Fact]
-    public void ComputeBlueprintPublishTxId_ReturnsConsistentHash()
-    {
-        // Arrange
-        var registerId = "register-1";
-        var blueprintId = "blueprint-1";
-
-        // Act
-        var txId1 = ActionExecutionService.ComputeBlueprintPublishTxId(registerId, blueprintId);
-        var txId2 = ActionExecutionService.ComputeBlueprintPublishTxId(registerId, blueprintId);
-
-        // Assert
-        txId1.Should().Be(txId2, "same inputs should produce the same deterministic TX ID");
-        txId1.Should().HaveLength(64, "TX ID should be a 64-character hex SHA-256 hash");
-        txId1.Should().MatchRegex("^[0-9a-f]{64}$", "TX ID should be lowercase hex");
-    }
-
-    [Fact]
-    public void ComputeBlueprintPublishTxId_DifferentInputs_ProduceDifferentHashes()
-    {
-        // Act
-        var txId1 = ActionExecutionService.ComputeBlueprintPublishTxId("register-1", "blueprint-1");
-        var txId2 = ActionExecutionService.ComputeBlueprintPublishTxId("register-2", "blueprint-1");
-        var txId3 = ActionExecutionService.ComputeBlueprintPublishTxId("register-1", "blueprint-2");
-
-        // Assert
-        txId1.Should().NotBe(txId2, "different register IDs should produce different TX IDs");
-        txId1.Should().NotBe(txId3, "different blueprint IDs should produce different TX IDs");
-    }
-
-    [Fact]
-    public void ComputeBlueprintPublishTxId_MatchesRegisterServiceFormula()
-    {
-        // The Register Service uses the same formula: SHA-256("blueprint-publish-{registerId}-{blueprintId}")
-        // Verify our implementation matches by computing manually
-        var registerId = "test-register";
-        var blueprintId = "test-blueprint";
-        var source = System.Text.Encoding.UTF8.GetBytes($"blueprint-publish-{registerId}-{blueprintId}");
-        var hash = System.Security.Cryptography.SHA256.HashData(source);
-        var expected = Convert.ToHexStringLower(hash);
-
-        // Act
-        var actual = ActionExecutionService.ComputeBlueprintPublishTxId(registerId, blueprintId);
-
-        // Assert
-        actual.Should().Be(expected, "formula must match the Register Service implementation");
-    }
+    // Feature 195 — the three ComputeBlueprintPublishTxId tests that lived here are DELETED with the
+    // method they guarded.
+    //
+    // Worth recording why, because the third one is instructive: it existed to prove the Blueprint
+    // Service's copy of the anchor formula matched the Register Service's, and it did so by
+    // hand-writing the formula a FIFTH time. A guard that restates what it guards can only ever
+    // confirm that two copies agree — it cannot notice that the value should not have been computed
+    // in two places at all, nor that the formula was version-blind and therefore deduped every
+    // republish into one silently-dropped transaction (#1563).
+    //
+    // The anchor is now READ from the instance's pin, so there is no formula, no second home, and
+    // nothing for such a test to assert. What replaced it is coverage of the behaviour that matters:
+    // a starting action chains from its own definition's publication (Publishing/PublicationIdentityTests
+    // and the resolution tests), and the ownership gate at scripts/check-publication-id-owner.ps1
+    // forbids a second producer outright.
 
     #endregion
 
@@ -1482,7 +1450,7 @@ public class ActionExecutionServiceTests
             .ReturnsAsync(instance);
 
         _mockActionResolver
-            .Setup(x => x.GetBlueprintAsync(instance.BlueprintId, It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetBlueprintAsync(instance.BlueprintId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         _mockActionResolver
@@ -1552,6 +1520,7 @@ public class ActionExecutionServiceTests
         {
             Id = instanceId,
             BlueprintId = blueprintId,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: an instance must carry its definition pin, or execution has nothing to resolve or chain from
             BlueprintVersion = 1,
             RegisterId = "register-1",
             TenantId = "test-tenant",

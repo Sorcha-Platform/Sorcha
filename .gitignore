@@ -280,6 +280,7 @@ walkthroughs/COMPLIANCE-REPORT.md
 # after a run. Same class of runtime artefact, same treatment.
 walkthroughs/**/council-state.json
 walkthroughs/**/logs/
+walkthroughs/.run-logs/
 
 # Performance benchmark test results
 walkthroughs/PerformanceBenchmark/results/*.json

@@ -119,9 +119,11 @@ Write-WtStep "Step 4: Create Acme Verification Co."
 
 $verificationOrg = New-SorchaOrganization `
     -TenantUrl $sorchaEnv.TenantUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
     -Name "Acme Verification Co." `
     -Subdomain "acme-verification" `
     -AdminEmail $verificationAdminEmail `
+    -AdminPassword $verificationAdminPassword `
     -Headers $sysAdmin.Headers `
     -Description "Issues Assured Identity credentials to citizens"
 
@@ -230,15 +232,29 @@ $verificationAnalystPassword = $secrets.DefaultPassword
 
 # Tier 3 user provisioned single-org-direct so they avoid the multi-org
 # OAuth-grant flow. Consumer role = no authoring rights; only action execution.
-$verificationAnalystUser = New-SorchaOrgUser `
-    -TenantUrl $sorchaEnv.TenantUrl `
-    -OrganizationId $verificationOrgId `
-    -Email $verificationAnalystEmail `
-    -Password $verificationAnalystPassword `
-    -DisplayName "Verification Analyst" `
-    -Headers $sysAdmin.Headers `
-    -Roles @("Consumer") `
-    -EmailVerified
+# /users/provision creates a NEW org-scoped platform user and 400s when one already exists, so a
+# RE-RUN of this setup aborts here on an account it provisioned itself. The password is
+# deterministic, so the existing account is exactly the one wanted — swallow the duplicate and fall
+# through to the login below. (The return value is not used; only the session is.)
+try {
+    $null = New-SorchaOrgUser `
+        -TenantUrl $sorchaEnv.TenantUrl `
+        -OrganizationId $verificationOrgId `
+        -Email $verificationAnalystEmail `
+        -Password $verificationAnalystPassword `
+        -DisplayName "Verification Analyst" `
+        -Headers $sysAdmin.Headers `
+        -Roles @("Consumer") `
+        -EmailVerified
+} catch {
+    $detail = ''
+    if ($_.ErrorDetails -and $_.ErrorDetails.Message) { $detail = $_.ErrorDetails.Message }
+    if ($detail -match 'already exists') {
+        Write-WtWarn "Verification analyst already exists - reusing the existing account"
+    } else {
+        throw
+    }
+}
 
 $verificationAnalystSession = Connect-SorchaUser `
     -TenantUrl $sorchaEnv.TenantUrl `
@@ -416,9 +432,11 @@ if ($licensingPublicUser) {
 
 $licensingOrg = New-SorchaOrganization `
     -TenantUrl $sorchaEnv.TenantUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
     -Name "Acme Licensing Co." `
     -Subdomain "acme-licensing" `
     -AdminEmail $licensingAdminEmail `
+    -AdminPassword $licensingAdminPassword `
     -Headers $sysAdmin.Headers `
     -Description "Issues Driving Licence credentials to citizens holding an AssuredIdentityCredential"
 $licensingOrgId = $licensingOrg.OrganizationId

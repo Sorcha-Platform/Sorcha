@@ -203,9 +203,11 @@ foreach ($def in $orgDefs) {
     $adminUser = $userDefs | Where-Object { $_.role -eq $def.adminRole } | Select-Object -First 1
     $result = New-SorchaOrganization `
         -TenantUrl $env.TenantUrl `
+        -WalletUrl $env.WalletUrl `
         -Name $def.name `
         -Subdomain $def.subdomain `
         -AdminEmail $adminUser.email `
+        -AdminPassword $adminUser.password `
         -Headers $sysAdmin.Headers `
         -Description $def.desc
     $orgs[$def.subdomain] = $result.OrganizationId

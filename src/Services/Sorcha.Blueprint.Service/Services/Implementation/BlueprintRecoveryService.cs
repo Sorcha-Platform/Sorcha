@@ -8,6 +8,8 @@ using Sorcha.Register.Core.Events;
 using Sorcha.ServiceClients.Register;
 using StackExchange.Redis;
 
+using Sorcha.Blueprint.Models.Canonical;
+
 namespace Sorcha.Blueprint.Service.Services.Implementation;
 
 /// <summary>
@@ -22,6 +24,13 @@ public class BlueprintRecoveryService : BackgroundService
     private readonly ILogger<BlueprintRecoveryService> _logger;
     private readonly IConnectionMultiplexer? _redis;
     private readonly FederationBlueprintMetrics? _metrics;
+
+    /// <summary>
+    /// Feature 194 — recovery restores every published definition, so each recovered blueprint must
+    /// be labelled with the hash a pinned instance will look it up by. The register carries the
+    /// definition, not its pin, so the hash is recomputed here from the recovered content.
+    /// </summary>
+    private readonly Sorcha.Blueprint.Engine.Implementation.ExecutableDefinitionHasher _execDefHasher = new();
 
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
@@ -270,9 +279,66 @@ public class BlueprintRecoveryService : BackgroundService
     /// publish time. Returns <c>false</c> (fail closed) with <paramref name="rejectReason"/> set to
     /// <c>no_provenance</c> (no sealed hash) or <c>hash_mismatch</c> (content tampered / malformed).
     /// </summary>
-    internal static bool TryVerifyProvenance(string blueprintJson, string contentHash, out string? rejectReason)
+    /// <summary>
+    /// Feature 194 — chooses which published definitions to restore: <b>every one of them</b>,
+    /// oldest first.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This used to be <c>GroupBy(BlueprintId).OrderByDescending(PublishedAt).First()</c> — newest
+    /// per blueprint id. Under version pinning that one expression is the most consequential line in
+    /// this file: an instance pinned to an earlier definition becomes <b>permanently unresolvable
+    /// the moment the process restarts</b>, because the only copy of its definition was discarded
+    /// here. The symptom is a transaction that never seals, with nothing in the log connecting it
+    /// back to recovery.
+    /// </para>
+    /// <para>
+    /// Oldest-first so the ordinal versions the store assigns on re-add line up with publication
+    /// order. The ordinal is only a display label, but an operator comparing "v2" across two nodes
+    /// should not be shown a disagreement.
+    /// </para>
+    /// <para>
+    /// Extracted as an internal static so the rule is testable without standing up the whole
+    /// recovery loop — the same shape as <see cref="TryVerifyProvenance"/> below.
+    /// </para>
+    /// </remarks>
+    internal static IReadOnlyList<PublishedBlueprintEntry> SelectDefinitionsToRecover(
+        IEnumerable<PublishedBlueprintEntry> published)
     {
-        if (string.IsNullOrEmpty(contentHash))
+        ArgumentNullException.ThrowIfNull(published);
+        return published.OrderBy(b => b.PublishedAt).ToList();
+    }
+
+    /// <summary>
+    /// Verifies a recovered definition against the transaction that published it (Feature 195).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Self-anchoring.</b> A definition's identity IS the digest of its canonical bytes, so
+    /// verification is "recompute the publication id from what arrived and compare it to the
+    /// transaction's own id". This replaced a comparison against a separately-sealed
+    /// <c>contentHash</c> sibling field — and the difference is not cosmetic: two fields can
+    /// disagree, an id and the content it identifies cannot.
+    /// </para>
+    /// <para>
+    /// <b>This is a verification, not a mint</b>, which is why this file is allowlisted by
+    /// <c>scripts/check-publication-id-owner.ps1</c> while the Register Service remains the one
+    /// producer. Recomputing here is the whole point: a node that trusted the id it was handed would
+    /// be verifying nothing.
+    /// </para>
+    /// <para>
+    /// Fails closed on every path — an unparseable definition, one carrying duplicate object keys,
+    /// or one whose recomputed id does not match is rejected rather than recovered.
+    /// </para>
+    /// </remarks>
+    internal static bool TryVerifyProvenance(
+        string registerId,
+        string blueprintId,
+        string blueprintJson,
+        string publicationTxId,
+        out string? rejectReason)
+    {
+        if (string.IsNullOrWhiteSpace(publicationTxId))
         {
             rejectReason = "no_provenance";
             return false;
@@ -281,15 +347,15 @@ public class BlueprintRecoveryService : BackgroundService
         string recomputed;
         try
         {
-            recomputed = BlueprintContentHash.Compute(blueprintJson);
+            recomputed = BlueprintPublicationId.ComputeFromDefinition(registerId, blueprintId, blueprintJson);
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or ArgumentException)
         {
             rejectReason = "hash_mismatch";
             return false;
         }
 
-        if (!string.Equals(recomputed, contentHash, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(recomputed, publicationTxId, StringComparison.OrdinalIgnoreCase))
         {
             rejectReason = "hash_mismatch";
             return false;
@@ -320,24 +386,22 @@ public class BlueprintRecoveryService : BackgroundService
             return (result.RegisterHeight, 0);
         }
 
-        // Dedup by BlueprintId within the response — take the latest by PublishedAt.
-        // The register may carry multiple publish events for the same blueprint id.
-        var latestPerBlueprint = result.Blueprints
-            .GroupBy(b => b.BlueprintId)
-            .Select(g => g.OrderByDescending(b => b.PublishedAt).First());
+        var allDefinitions = SelectDefinitionsToRecover(result.Blueprints);
 
         var count = 0;
-        foreach (var bp in latestPerBlueprint)
+        foreach (var bp in allDefinitions)
         {
             try
             {
                 var blueprint = JsonSerializer.Deserialize<Sorcha.Blueprint.Models.Blueprint>(bp.BlueprintJson);
                 if (blueprint is null) continue;
 
-                // Feature 138 US4 — verify provenance against the sealed content hash BEFORE storing.
-                // A blueprint arrives over an untrusted channel; we trust it only if its canonical hash
-                // matches the digest sealed in the publish control transaction. Fail closed.
-                if (!TryVerifyProvenance(bp.BlueprintJson, bp.ContentHash, out var rejectReason))
+                // Feature 195 — verify provenance against the transaction's OWN id BEFORE storing.
+                // A blueprint arrives over an untrusted channel; we trust it only if the publication
+                // id recomputed from the bytes we received equals the id of the transaction that
+                // carried them. Fail closed.
+                if (!TryVerifyProvenance(registerId, bp.BlueprintId, bp.BlueprintJson, bp.TransactionId,
+                        out var rejectReason))
                 {
                     _logger.LogWarning(
                         "Rejecting blueprint {BlueprintId} from register {RegisterId}: provenance check failed ({Reason})",
@@ -346,17 +410,31 @@ public class BlueprintRecoveryService : BackgroundService
                     continue;
                 }
 
-                // Check if already in store (idempotent)
+                // Feature 195: idempotency is keyed on the PUBLICATION, not on the executable
+                // definition.
+                //
+                // Feature 194 keyed it on the exec-def hash, which collapsed two publications that
+                // shared one executable definition — a presentational-only republish — into a single
+                // entry. Under content addressing those are two distinct publications with two
+                // distinct identities, and an instance may be pinned to EITHER, so dropping one
+                // strands it. The exec-def hash keeps its own (narrower) job: answering whether
+                // behaviour changed, for the rehearsal gate.
+                var execDefHash = _execDefHasher.ComputeHash(blueprint);
+
                 var existing = await publishedStore.GetVersionsAsync(bp.BlueprintId);
-                if (existing.Any(e => string.Equals(e.RegisterId, registerId, StringComparison.OrdinalIgnoreCase)))
+                if (existing.Any(e =>
+                        string.Equals(e.RegisterId, registerId, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(e.PublicationTxId, bp.TransactionId, StringComparison.OrdinalIgnoreCase)))
                 {
-                    continue; // Already recovered
+                    continue; // this publication is already recovered
                 }
 
                 await publishedStore.AddAsync(new PublishedBlueprint
                 {
                     BlueprintId = bp.BlueprintId,
                     Blueprint = blueprint,
+                    PublicationTxId = bp.TransactionId,
+                    ExecDefHash = execDefHash,
                     PublishedAt = bp.PublishedAt,
                     RegisterId = registerId
                 });

@@ -121,9 +121,11 @@ Write-WtStep "Step 3: Create Demo Clinic Organization"
 try {
     $clinicOrg = New-SorchaOrganization `
         -TenantUrl $env.TenantUrl `
+        -WalletUrl $env.WalletUrl `
         -Name "Demo Clinic" `
         -Subdomain "health-demo" `
         -AdminEmail $secrets.patientEmail `
+        -AdminPassword $secrets.patientPassword `
         -Headers $sysAdmin.Headers
 } catch {
     if ($_.Exception.Message -match 'already taken|409|duplicate|400') {
@@ -174,6 +176,19 @@ $patientParticipant = Register-SorchaParticipant `
     -DisplayName "Patient" `
     -Headers $patientAuth.Headers
 Write-WtSuccess "Patient: $($patientWallet.Address)"
+
+# Re-login so the JWT carries wallet_address. It is added at LOGIN from the user's first active
+# linked wallet, and this session was created BEFORE that wallet existed — so without this the
+# token has no wallet_address, and the F142 publish gate refuses with
+# "You do not hold a publish-governance role (Owner, Admin, or Designer) on the target register."
+# even though this patient IS the register's roster owner. The register creation and the blueprint
+# publish below both run as this session.
+$patientAuth = Connect-SorchaUser `
+    -TenantUrl $env.TenantUrl `
+    -Email $secrets.patientEmail `
+    -Password $secrets.patientPassword `
+    -OrganizationId $clinicOrg.OrganizationId
+Write-WtInfo "Patient session refreshed (wallet_address claim now present)"
 
 $clinicianAuth = Connect-SorchaUser `
     -TenantUrl $env.TenantUrl `

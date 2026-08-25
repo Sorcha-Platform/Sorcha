@@ -129,7 +129,7 @@ public class SystemRegisterCreateCommand : Command
         // master ExtKey. The resulting public key goes into the genesis
         // validator roster and the validator-service signs dockets with
         // the same key derived through the same chain at runtime.
-        var derivedPrivateKeyBytes = masterExtKey.Derive(new KeyPath("m/44'/0'/0'/0/102")).PrivateKey.ToBytes();
+        var derivedPrivateKeyBytes = masterExtKey.Derive(new KeyPath(SorchaDerivationPaths.DocketSigningPath)).PrivateKey.ToBytes();
 
         // Generate ED25519 keypair from derived 32-byte seed
         var keyResult = await crypto.GenerateKeySetAsync(network, seed: derivedPrivateKeyBytes, cancellationToken: ct);
@@ -145,7 +145,7 @@ public class SystemRegisterCreateCommand : Command
 
         // Also derive the register-control key (m/44'/0'/0'/0/101) for signing the genesis transaction.
         // Same direct-master chain as docket-signing — derive off the master ExtKey directly.
-        var controlPrivateKeyBytes = masterExtKey.Derive(new KeyPath("m/44'/0'/0'/0/101")).PrivateKey.ToBytes();
+        var controlPrivateKeyBytes = masterExtKey.Derive(new KeyPath(SorchaDerivationPaths.RegisterControlPath)).PrivateKey.ToBytes();
         var controlKeyResult = await crypto.GenerateKeySetAsync(network, seed: controlPrivateKeyBytes, cancellationToken: ct);
         if (!controlKeyResult.IsSuccess)
         {

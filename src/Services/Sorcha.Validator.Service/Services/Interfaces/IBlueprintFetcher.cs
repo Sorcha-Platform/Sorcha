@@ -22,6 +22,25 @@ public interface IBlueprintFetcher
         CancellationToken ct = default);
 
     /// <summary>
+    /// Fetches one specific published definition by its executable-definition hash — the definition
+    /// a running instance is pinned to (Feature 194).
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="FetchBlueprintAsync"/> on purpose. That method answers "the current
+    /// definition"; this one answers "the definition this instance started on", and after a
+    /// republish those are different blueprints. Substituting one for the other would resolve an
+    /// in-flight instance against rules it never agreed to — silently.
+    /// </remarks>
+    /// <param name="blueprintId">Blueprint ID.</param>
+    /// <param name="definitionTxId">The executable-definition hash (the pin).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The pinned definition, or null when it cannot be resolved (a refusal).</returns>
+    Task<BlueprintModel?> FetchBlueprintByPublicationAsync(
+        string blueprintId,
+        string definitionTxId,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Validates a transaction payload against a blueprint action schema.
     /// </summary>
     /// <param name="blueprintId">Blueprint ID</param>

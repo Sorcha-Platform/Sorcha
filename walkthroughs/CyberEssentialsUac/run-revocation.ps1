@@ -132,16 +132,26 @@ $walletCreds = Invoke-SorchaApi `
 # non-deterministic across runs: this wallet gains one posture credential per happy-path run and
 # keeps the revoked ones, so a re-run can pick an already-revoked credential and then fail at S3-2
 # with "must be in Active or Suspended state to revoke".
+# There is deliberately NO "otherwise take the first one" fallback: that is the very failure
+# this comment describes. Falling back to a revoked credential turns a missing precondition
+# into an unrecognisable "must be in Active or Suspended state" error one step later, blaming
+# the revoke endpoint for the selection.
 $cred = $null
+$ofType = @()
 if ($walletCreds) {
     $ofType = @($walletCreds) | Where-Object { $_.type -eq "https://sorcha.dev/vc/cyber-essentials-uac/v1" }
     $cred = $ofType | Where-Object { $_.status -eq 'active' } | Select-Object -First 1
-    if (-not $cred) { $cred = $ofType | Select-Object -First 1 }
 }
 
 if (-not $cred) {
-    Write-WtFail "No CyberEssentialsUacPosture credential found in subject-org wallet."
-    Write-WtFail "Run run-agents.ps1 first to complete the happy-path scenario and issue the credential."
+    if ($ofType.Count -gt 0) {
+        Write-WtFail "No ACTIVE CyberEssentialsUacPosture credential in the subject-org wallet — this scenario needs one to revoke."
+        Write-WtFail "The wallet holds $($ofType.Count) of that type, all in a non-active state:"
+        $ofType | ForEach-Object { Write-WtFail "   $($_.id)  status=$($_.status)" }
+    } else {
+        Write-WtFail "No CyberEssentialsUacPosture credential found in subject-org wallet."
+    }
+    Write-WtFail "Run run-agents.ps1 first to complete the happy-path scenario and issue a fresh credential."
     exit 1
 }
 

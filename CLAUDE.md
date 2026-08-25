@@ -503,6 +503,90 @@ app.UseSanitizedExceptionHandling();
   only the HTTP response body is sanitized. Every response carries a `traceId` extension an operator
   can correlate against that log line.
 
+### 21. An organisation's wallet is created by its OWN admin (#1525)
+
+The platform does **not** create an organisation's canonical signing wallet. Its BIP39 recovery
+phrase is **shown once and never stored**, so a service-to-service create generates a phrase with no
+human present to receive it and the organisation can never be recovered. It is also not the
+platform's secret to hold — it belongs to the org admin.
+
+```csharp
+// DON'T — this is what was removed. Owner would be the org, phrase discarded, org unrecoverable.
+var wallet = await _walletClient.CreateWalletAsync(name, "ED25519", org.Id.ToString(), org.Id.ToString());
+org.WalletAddress = wallet.Address;
+```
+
+**Create-then-link**, so the phrase never transits the Tenant Service:
+
+1. The org admin calls `POST /api/v1/wallets` with `organizationId` — the **organisation** becomes
+   the owner, and `mnemonicWords` is returned once, to them.
+2. `POST /api/organizations/{id}/wallet` records it, after verifying the org owns that wallet.
+
+- **A null `Organization.WalletAddress` is the "awaiting its wallet" state**, not a fault to be
+  quietly repaired. `OrgWalletReconciliationService` — a 60s sweep that silently minted org wallets
+  and discarded their phrases — is **deleted**; do not reintroduce anything like it.
+- **A platform SystemAdmin is refused** at both endpoints. This is the deliberate exception to their
+  usual cross-org reach, and `CallerOrganizationGate` is therefore *not* used on the link endpoint —
+  it exempts SystemAdmins by design. The handler compares the caller's org to the route itself.
+- **Ownership is verified** (addresses are public, so otherwise an admin could adopt any wallet whose
+  address they know) and **a second link is refused** — replacing the canonical wallet orphans every
+  credential issued under the old one and every governance roster entry matched against it.
+- **Ordering matters downstream.** The org wallet is what `did:sorcha:org:{address}` anchors on, so
+  it must exist *before* the F083 master key. Without it there is nothing to anchor a DID document
+  to and `GET /orgs/{id}/did.json` 404s — that was #1518, which looked like a timing race and was a
+  missing step.
+- Walkthroughs: pass `-WalletUrl` to `New-SorchaOrganization`, or call `New-SorchaOrgWallet` once an
+  admin session exists. See the **`walkthrough-builder`** skill.
+
+---
+
+### 22. A published definition's identity is its publication transaction (Feature 195)
+
+A blueprint definition is identified by the transaction that published it — **not** by a version
+number, not by a separately-computed content hash, and not by the behavioural `execDefHash`.
+
+```csharp
+using Sorcha.Blueprint.Models.Canonical;
+
+// The ONE producer. Register Service only.
+var txId = BlueprintPublicationId.Compute(registerId, blueprintId, canonicalJson);
+```
+
+`publicationTxId = SHA-256("sorcha:blueprint-publication:v1" ␟ registerId ␟ blueprintId ␟ canonicalJson)`
+— register-scoped, domain-tagged, and RFC-8785 key-sorted.
+
+- **Exactly one producer: the Register Service.** Every other component *reads the value it returns*
+  and must never recompute it. Enforced by `scripts/check-publication-id-owner.ps1`
+  (CI: `publication-id-owner-gate`), whose allowlist holds four call sites — two producers and two
+  *verifiers*. This replaced an id with **four independent homes**, which is why a republish could be
+  silently deduped away (#1563): the id was version-blind *and* doubled as the starting-action anchor,
+  so the obvious one-line fix broke chaining. Anchor and pin are now the same value, so that
+  coupling no longer exists.
+- **Verification is self-anchoring, so there is no sealed `contentHash`.** The bytes written to the
+  ledger are the canonical form, and the transaction id is their digest — a recovering node
+  recomputes the id from what it received and compares it to the transaction's own id. Unlike a
+  sibling field, an id cannot disagree with the content it identifies. **Do not reintroduce a
+  separately-sealed digest.**
+- **Do not confuse it with `execDefHash`.** They answer different questions and live in different
+  value spaces. `publicationTxId` **identifies** a definition; `execDefHash` is the *behavioural
+  signature* — a deliberately narrower projection (presentational `title` / `description` / `x-*`
+  excluded) whose only job is deciding whether an F142 `RehearsalPass` survives a republish. Several
+  publications may legitimately share one `execDefHash`; the same definition on two registers has the
+  same `execDefHash` and two different ids. **An instance is pinned to the publication id.** Comparing
+  one against the other silently yields a plausible-but-wrong answer rather than an error — that is
+  exactly how `isPinnedToLatest` shipped hard-wired to `false`, with a green unit test whose fixture
+  gave both fields the same string.
+- **Every serialized property on the blueprint graph is LEDGER CONTRACT.** Adding, removing or
+  renaming one changes the canonical bytes and therefore *every publication id on every register* —
+  including properties that are dead. `BlueprintCanonicalJsonGoldenVectorTests` exists to catch this
+  and has already fired on a change that compiled cleanly and broke nothing else in ~4,300 tests.
+  Regenerating the vector is correct only when you know what moved it and the move is intended.
+- **Coverage of the behavioural signature is reflective, not a list.** `ExecutableDefinitionCoverageTests`
+  fails on any property nobody has classified, because both defaults are wrong in different
+  directions. Adding a property means classifying it.
+
+---
+
 ---
 
 ## Key Documentation
@@ -650,11 +734,11 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 
 ---
 
-**This guide — revision 3.1 | Updated: 2026-07-21** | Built with .NET 10 and .NET Aspire
+**This guide — revision 3.2 | Updated: 2026-08-24** | Built with .NET 10 and .NET Aspire
 _(This revision number is for CLAUDE.md itself; it is unrelated to the platform's build-derived `2.x` version — see §14.)_
 
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/174-aias-assured-identity/plan.md`
+`specs/195-blueprint-definition-identity/plan.md`
 <!-- SPECKIT END -->
