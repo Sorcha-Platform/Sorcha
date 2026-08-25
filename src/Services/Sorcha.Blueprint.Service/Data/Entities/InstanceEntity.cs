@@ -24,9 +24,17 @@ public class InstanceEntity
     public string BlueprintId { get; set; } = default!;
 
     /// <summary>
-    /// Version of the blueprint at the time of instance creation.
+    /// Version of the blueprint at the time of instance creation. Display label only — see
+    /// <see cref="Sorcha.Blueprint.Service.Models.Instance.BlueprintVersion"/>.
     /// </summary>
     public int BlueprintVersion { get; set; }
+
+    /// <summary>
+    /// Feature 194 — the executable-definition hash this instance is pinned to. Empty for an
+    /// instance whose transactions predate the feature.
+    /// </summary>
+    [MaxLength(64)]
+    public string BlueprintDefinitionTxId { get; set; } = string.Empty;
 
     /// <summary>
     /// Identifier of the register this instance operates on.

@@ -599,6 +599,20 @@ so it is the source of truth; treat the bitstring as a cache that must be rebuil
 
 ## Common Pitfalls
 
+- **`vct` is REQUIRED, and it must NOT be selectively disclosable.** SD-JWT VC §3.2.2.1 makes it the
+  credential's SOLE type claim (there is no `type` claim in the profile). HAIP shipped without it for
+  months (#1540): `credentialType` reached `HaipCredentialMinter` and was spent on the `sub` string
+  and a log line, so the issued payload was `_sd, _sd_alg, cnf, exp, iat, iss, sub` — **no type
+  identifier at all**. No conformant verifier could match it to a requested type, and Sorcha's own
+  refused it: `vct '(none)' is not among the requested type(s)`. Both mint overloads had it; the fix
+  is one shared helper so they cannot drift.
+  ⚠ **A null disclosure set does NOT mean "disclose nothing".** `SdJwtService.CreateTokenCoreAsync`
+  reads `disclosableClaims?.ToList() ?? claims.Keys.ToList()` — **null makes EVERY claim disclosable**,
+  `vct` included. So "strip vct from the disclosure set" must EXPAND null to the caller's own claim
+  names before removing it; forwarding null puts the type identifier back in a disclosure and
+  reproduces the defect, and collapsing it to empty silently stops disclosing anything.
+
+
 - **Do not** use Data Integrity Proofs / JSON-LD canonicalisation. Sorcha chose SD-JWT VC. `DataIntegrityProof`, `eddsa-rdfc-2022`, and RDF canonicalisation are **not** in the codebase and should not be added.
 - **Do not** hand-roll `publicKeyMultibase` — call `Multicodec.ToMultibasePublicKey(algorithm, keyBytes)`. Feature 093 exists because someone did this wrong before.
 - **Do not** use `Newtonsoft.Json`. All VC serialisation is `System.Text.Json` with `JsonDefaults.Api` on the wire (see `CLAUDE.md` § Critical Pattern 4 — JsonSchema.Net expects `JsonElement`).

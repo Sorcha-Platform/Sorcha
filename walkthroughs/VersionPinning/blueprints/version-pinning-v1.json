@@ -1,0 +1,79 @@
+{
+  "id": "version-pinning",
+  "title": "Version Pinning Acceptance",
+  "description": "Three-action workflow used to prove that an in-flight instance keeps the definition it started on across a behavioural republish (Feature 194).",
+  "version": 1,
+  "metadata": { "category": "acceptance" },
+  "participants": [
+    { "id": "applicant", "name": "Applicant", "description": "Submits the application. Open participant — late-bound at runtime." },
+    { "id": "officer", "name": "Officer", "description": "Reviews and finalises." }
+  ],
+  "actions": [
+    {
+      "id": 1,
+      "title": "Apply",
+      "sender": "applicant",
+      "isStartingAction": true,
+      "dataSchemas": [
+        {
+          "type": "object",
+          "properties": {
+            "projectName": { "type": "string", "minLength": 1, "title": "Project name" }
+          },
+          "required": ["projectName"]
+        }
+      ],
+      "disclosures": [
+        { "participantAddress": "applicant", "dataPointers": ["/*"] },
+        { "participantAddress": "officer", "dataPointers": ["/*"] }
+      ],
+      "routes": [
+        { "id": "to-review", "nextActionIds": [2], "isDefault": true }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Review",
+      "sender": "officer",
+      "requiredPriorActions": [1],
+      "dataSchemas": [
+        {
+          "type": "object",
+          "properties": {
+            "reviewNote": { "type": "string", "minLength": 1, "title": "Review note" }
+          },
+          "required": ["reviewNote"]
+        }
+      ],
+      "disclosures": [
+        { "participantAddress": "officer", "dataPointers": ["/*"] },
+        { "participantAddress": "applicant", "dataPointers": ["/*"] }
+      ],
+      "routes": [
+        { "id": "to-finalise", "nextActionIds": [3], "isDefault": true }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Finalise",
+      "sender": "officer",
+      "requiredPriorActions": [2],
+      "dataSchemas": [
+        {
+          "type": "object",
+          "properties": {
+            "outcome": { "type": "string", "enum": ["approved", "declined"], "title": "Outcome" }
+          },
+          "required": ["outcome"]
+        }
+      ],
+      "disclosures": [
+        { "participantAddress": "officer", "dataPointers": ["/*"] },
+        { "participantAddress": "applicant", "dataPointers": ["/*"] }
+      ],
+      "routes": [
+        { "id": "complete", "nextActionIds": [], "isDefault": true }
+      ]
+    }
+  ]
+}

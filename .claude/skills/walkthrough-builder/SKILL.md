@@ -199,6 +199,38 @@ $ops = Connect-SorchaUser -TenantUrl $env.TenantUrl -Email "ops@acme-verif.test"
 - **ANTI-PATTERN (do not do this):** `Register-SorchaPublicUser ops@… ; New-SorchaOrganization -AdminEmail ops@…` → multi-org operator → 401 on the password grant.
 - **Citizens / public submitters are the deliberate exception** — they ARE public users (`Register-SorchaPublicUser`): a citizen belongs to the public org and is late-bound into the workflow. Only *org operators* use the org-scoped path.
 
+#### An existing org does NOT adopt the admin you pass — and the auth limiter looks like a platform fault
+
+Two things bite on a **re-run** and neither bites on a clean node, which is why both survived so long.
+
+**1. `New-SorchaOrganization` reuses an existing org and does not provision its admin.** When the
+subdomain already exists the call falls into its duplicate-recovery path and returns
+`AdminDirectlyAdded = $false` — the `-AdminEmail` you passed was never given a membership. **11 of 13
+setup scripts ignored that return value**, so the admin stays single-org in the PUBLIC org and the
+failure surfaces far away as either a `403` on the first org-scoped call (#1427) or
+
+> `Connect-SorchaUser: env@x.local is single-org in 00000000-…-0002, but org <id> was requested`
+
+which reads as an auth bug. **The module now closes this itself** — `New-SorchaOrganization` calls
+`Confirm-SorchaOrgMembership` on the recovery path, so callers no longer have to remember. Use that
+helper directly if you provision an org some other way. Membership is added via
+`POST /organizations/{orgId}/users` (an org identity for an EXISTING platform user); `New-SorchaOrgUser`
+(`/users/provision`) creates a NEW platform user and 400s when one already exists.
+
+⚠ **Adoption only happens at org CREATION**, so a brand-new email fails identically against a
+pre-existing org — do not diagnose this as stale-user residue.
+
+**2. The auth rate limiter is what breaks a full-suite run (#1533).** The gateway's `authentication`
+policy is a **sliding 1-minute window partitioned per IP**, default **60**. Bulk provisioning from one
+box saturates it and every setup 429s part-way through — measured on n1: 12 logins at 2s spacing during
+suite traffic gave **8 ok / 4 refused**. It is a limiter, not a platform failure, and no amount of
+in-script pacing fixes it because the aggregate across sequential scripts is what saturates.
+
+Raise it per deploy via the `RATELIMIT_*` vars in the host `.env` (documented in `.env.example`) —
+never by loosening `docker-compose.n1.yml`, which is deliberately tight (#1437). n1 runs
+`RATELIMIT_AUTH_PERMIT=1200`. ⚠ Do NOT probe the limiter and then start a run in the same window;
+that alone turns a whole suite red.
+
 #### REQUIRED: re-login any session AFTER its wallet is created, so the JWT carries `wallet_address`
 
 This is the single most common cause of walkthrough breakage after the F136 tiered-token + F142 publish-gate work landed. **`wallet_address` is added to the JWT only at login, from the user's first active linked wallet** (`TokenService.AddWalletAddressClaimAsync`). Walkthroughs log in *first*, then create + link the wallet (`New-SorchaWallet` + `Register-SorchaParticipant -WalletAddress`) — so the cached session token has **no `wallet_address` claim**, and every endpoint that authorizes via wallet fails for that stale token. Two confirmed failure modes (triaged 2026-06-02 across ConstructionPermit / TradeFinance / PayloadTests):
@@ -548,6 +580,27 @@ $pres = Get-SorchaCredentialPresentation -CredentialType $type -CredentialId $cr
 Assert ($pres.credentialId -eq $cred.id) "presentation is built from the REVOKED credential"
 ```
 
+**Use the module helpers rather than hand-rolling the snapshot** — three shipped walkthroughs
+hand-rolled it and three got it wrong. `Get-SorchaWalletCredentialUri` builds the listing URI with
+`?status=All` (the default listing is Active-only, so a revoked credential would be absent from the
+"before" set and then read as NEW); `Get-SorchaCredentialIdSnapshot` takes the before-set;
+`Wait-SorchaNewCredential` polls for a credential of that type whose id is not in it:
+
+```powershell
+$listUri = Get-SorchaWalletCredentialUri -WalletUrl $sorchaEnv.WalletUrl -WalletAddress $addr
+$before  = Get-SorchaCredentialIdSnapshot -ListUri $listUri -Headers $h -CredentialType $vct
+# ... the action that issues ...
+$fresh   = Wait-SorchaNewCredential -ListUri $listUri -Headers $h -CredentialType $vct `
+    -ExcludeIds $before -TimeoutSeconds 60
+Assert ($null -ne $fresh) "this action issued a NEW credential and it reached the wallet"
+# then pin $fresh.id into every downstream presentation
+```
+
+`Get-SorchaCredentialIdSnapshot` **throws** on a failed read and deliberately does not default to an
+empty set: an empty before-set makes every credential look new, so the guard would go inert at exactly
+the moment the wallet read is broken. It matches on **both** `type` and `vct`, because the org listing
+returns `type` and the citizen endpoint (`/v1/wallet/credentials`) returns `vct`.
+
 **Assert the subject IS the subject before asserting anything about the result.** Selecting by type
 is fine only when any credential of that type genuinely will do.
 
@@ -564,6 +617,21 @@ Freshly-issued credentials sit at `pending-acceptance` for the same reason. The 
 correct holder-side behaviour (a wallet should not casually hand over a revoked credential); it just
 makes the adversarial case — a holder who kept the token and presents it anyway — impossible to build
 unless you ask for it explicitly.
+
+### 3b. Scenario ORDER can consume the credential the next scenario needs
+
+`run-revocation.ps1` revokes the only ACTIVE credential in the wallet, so `run-suspension.ps1` run
+after it finds nothing to suspend and fails at its first step. Nothing is broken — revocation is
+terminal by design and did exactly its job.
+
+Either run suspension **before** revocation, or re-issue with `run-agents.ps1` in between. A suite
+runner that just lists scripts in file order will hit this, and the failure lands on the *innocent*
+script.
+
+This is why the fallback was removed from `run-revocation.ps1` (PR #1536): it used to drop back to
+first-of-type when no ACTIVE credential existed, which turned a missing precondition into an
+unrecognisable *"must be in Active or Suspended state"* error one step later, blaming the revoke
+endpoint for the selection. It now says which credentials it can see and what state they are in.
 
 ### 3. Pick a credential in the state the scenario needs, not the first one
 
@@ -916,6 +984,40 @@ await orgCard.First.ClickAsync();
 | Walkthrough: re-running after n1 reset but setup keeps state from last run | State files (state.json) persist between resets, pointing at deleted registers/users | Before re-running: `find walkthroughs -name state.json -delete`. The script's idempotency only works against state that still exists server-side. |
 | Walkthrough: Action N times out at 60s on `/actions/execute` with "Transaction not confirmed" | Script raced ahead of docket-seal; the previous action's tx is mid-cleanup at the validator and the new tx triggers the docket-monitoring race (P0 issue #787). Register is now wedged — restart won't help; new txs on this register never seal. | Pass `-WaitForSeal` on every `Invoke-SorchaAction` call (see "Cadence" section above). Existing wedged register needs the underlying validator bug fixed, or the register replaced (the wedge survives validator restart because the stuck tx is persisted in the mempool). |
 | Walkthrough: Action 1 returns 403 immediately (6 ms response) on a fresh setup, no rate-limit warning | setup.ps1 saved state.json before the participant/blueprint publish txs had sealed; run.ps1 starts instantly, auth check looks up the participant record, 404 upstream becomes 403 at auth layer | Add `Wait-SorchaActorReady -Mode BlueprintSealed` / `ParticipantSealed` in setup.ps1 after each publish, before writing state.json. |
+
+## Running the whole suite — `run-all.ps1 -Profile n1`
+
+The **core** suite is sixteen steps and is the platform's end-to-end regression check ("16/16").
+`pwsh walkthroughs/run-all.ps1 -Profile n1 -AuthGapMs 1000`, ~11 minutes, transcripts in
+`walkthroughs/.run-logs/`.
+
+Four things cost a wasted cycle each when they were got wrong, and are now encoded in the runner:
+
+- **An exit code is not a verdict.** `ConstructionPermit/run-agents.ps1` prints `ERROR (exit 1)` per
+  agent and exits **0**; `TradeFinance/setup.ps1` has printed a raw HTTP 500 and exited **0**. A run
+  scored a step PASS with all five agents dead against the wrong host. Judge on the exit code AND on
+  markers in the transcript (`ERROR \(exit`, `The build failed`, `actively refused`, `[FAIL]`,
+  `"status":50x`, `Invoke-RestMethod:`).
+- **ConstructionPermit and SelfBuildHouse: `run.ps1 -Scenario all`, NEVER `run-agents.ps1`.** Their
+  agent launchers hard-code `actors/*.json` whose `gatewayUrl` is literally `http://localhost`, and
+  only 3 of ConstructionPermit's 5 actors have a `-remote` variant — they cannot target a remote node
+  at all. The scenario runners read URLs from `state.json`; that is where "3/3" comes from.
+  `CyberEssentialsUac/run-agents.ps1` is safe despite its name — it spawns no agents.
+- **Pre-build `Sorcha.Agent`.** Five concurrent `dotnet run` calls race to build the same assembly
+  and all die on the file lock (`The build failed`, inside each agent's own log, launcher exits 0).
+- **Order:** ConstructionPermit FIRST (its setup enables the Public org node-wide; three of seven
+  walkthroughs never enable it themselves, and on a fresh database that is a wall of 403s reading as
+  permissions problems). `run-suspension` BEFORE `run-revocation`.
+
+**`-AuthGapMs` is a deliberate stress knob.** The module default is 8s per `/auth/` call; a node with
+`RATELIMIT_AUTH_PERMIT` raised takes 1000ms happily. Lowering it compresses the timeline and **finds
+latent races the slow default hides** — the second-resolution blueprint-id collision that made
+`POST /api/blueprints/` return a bare 500 (PR #1577) was found exactly this way.
+
+**The suite passing is not the whole verdict on a pinning-capable node.** Features 194/195 degrade to
+the OLD behaviour rather than to an error, so the positive check is a counter no walkthrough can see:
+`docker logs sorcha-blueprint-service | grep -c 'pre-Feature-194 fallback'` must read 0. A rejection
+scenario currently makes it non-zero — #1576.
 
 ## Running against n1 (ground-truth verification)
 

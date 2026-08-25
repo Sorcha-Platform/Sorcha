@@ -57,6 +57,7 @@ public class EfCoreInstanceStorePendingFilterTests
     {
         Id = "inst-1",
         BlueprintId = "bp-1",
+        BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: execution resolves and chains by the pin
         BlueprintVersion = 1,
         RegisterId = "reg-1",
         TenantId = "tenant-1",

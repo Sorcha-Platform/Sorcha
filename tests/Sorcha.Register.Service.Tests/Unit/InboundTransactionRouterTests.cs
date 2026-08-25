@@ -60,6 +60,7 @@ public class InboundTransactionRouterTests
             RoutingDecision = new RoutingDecision
             {
                 CompletedActionId = (int)actionId,
+                BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
                 NextActions = [new ActionRef { ActionId = (int)nextActionId }],
                 Attestation = new Attestation { Kind = AttestationKind.SenderSigned },
             },

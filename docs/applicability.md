@@ -1,12 +1,12 @@
 ---
 title: Where Sorcha Applies — Regulatory Pull and Worked Examples
-description: The four near-term domains where cryptographic proof infrastructure replaces platform-asserted trust — Digital Product Passports, SME trade finance, IPC-1782 manufacturing data exchange, and municipal governance — each with a worked example from the codebase.
+description: The four near-term domains where programmable proof infrastructure replaces platform-asserted trust — Digital Product Passports, SME trade finance, IPC-1782 manufacturing data exchange, and municipal governance — each with a worked example from the codebase.
 standards:
   - W3C Verifiable Credentials Data Model 2.0
   - OpenID4VCI
   - OpenID4VP
   - HAIP 1.0
-last_updated: 2026-05-04
+last_updated: 2026-08-22
 ---
 
 # Where Sorcha Applies — Regulatory Pull and Worked Examples

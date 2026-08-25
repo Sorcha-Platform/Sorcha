@@ -25,31 +25,10 @@ namespace Sorcha.Tenant.Service.Tests.ServiceAuth;
 /// </summary>
 public sealed class DisabledSecretsTenantFactory : MtlsTenantFactory
 {
-    /// <summary>Captured log lines (message only) for the startup-visibility assertion.</summary>
-    public List<string> CapturedLogs { get; } = [];
-
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
         builder.UseSetting(WorkloadIdentityConfig.DisableSharedSecrets, "true");
-        builder.ConfigureLogging(logging => logging.AddProvider(new CaptureLoggerProvider(CapturedLogs)));
-    }
-
-    private sealed class CaptureLoggerProvider(List<string> sink) : ILoggerProvider
-    {
-        public ILogger CreateLogger(string categoryName) => new CaptureLogger(sink);
-        public void Dispose() { }
-
-        private sealed class CaptureLogger(List<string> sink) : ILogger
-        {
-            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-            public bool IsEnabled(LogLevel logLevel) => true;
-            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-                Func<TState, Exception?, string> formatter)
-            {
-                lock (sink) sink.Add(formatter(state, exception));
-            }
-        }
     }
 }
 
@@ -177,15 +156,10 @@ public class DisableSharedSecretsTests : IClassFixture<DisabledSecretsTenantFact
         body.GetProperty("access_token").GetString().Should().NotBeNullOrEmpty();
     }
 
-    [Fact]
-    public void StartupLog_StatesSecretsAreDisabled()
-    {
-        List<string> snapshot;
-        lock (_factory.CapturedLogs) snapshot = [.. _factory.CapturedLogs];
-
-        snapshot.Should().Contain(
-            line => line.Contains("DisableSharedSecrets", StringComparison.OrdinalIgnoreCase)
-                 && line.Contains("disabled", StringComparison.OrdinalIgnoreCase),
-            "a mis-flipped deployment must be diagnosable from startup logs");
-    }
+    // The startup-log requirement is asserted deterministically against the log site itself, in
+    // ServiceAuthStartupDiagnosticsTests. It used to live here, reading a sink attached to this
+    // fixture's host — which received NO events at all once other Serilog-configured hosts existed
+    // in the same test process, so it failed the whole suite while claiming shared secrets were not
+    // disabled (#1507). The three tests above already prove the posture behaviourally; the log line
+    // is operator diagnostics, and diagnostics do not need a Kestrel socket to be verified.
 }

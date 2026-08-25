@@ -34,7 +34,29 @@ public sealed record ProjectedTransaction(
     IReadOnlyDictionary<string, string> ParticipantBindings,
     bool IsRejection = false,
     string? RouteId = null,
-    string? ReasonCode = null);
+    string? ReasonCode = null,
+    string? BlueprintDefinitionTxId = null);
+
+/// <summary>
+/// The result of folding one sealed transaction into an instance (Feature 194 made this a
+/// three-state answer: "did not advance" is no longer enough, because refusing a foreign definition
+/// and re-seeing an already-folded transaction are entirely different events).
+/// </summary>
+public enum FoldOutcome
+{
+    /// <summary>The instance advanced.</summary>
+    Advanced,
+
+    /// <summary>Already folded — the transaction id equals the watermark. Routine and silent.</summary>
+    AlreadyApplied,
+
+    /// <summary>
+    /// The transaction claims a different blueprint definition than the one the instance is pinned
+    /// to. Refused: a sender must not be able to move a running instance onto another definition by
+    /// asserting one. This is a divergence, and an operator should see it.
+    /// </summary>
+    RefusedForeignDefinition,
+}
 
 /// <summary>
 /// The pure, deterministic core of Feature 145: folds a set of sealed action transactions into
@@ -91,7 +113,17 @@ public static class InstanceProjection
         };
 
         foreach (var tx in ordered)
+        {
+            // Feature 194: a transaction claiming a definition other than the one this instance is
+            // pinned to is not folded — in the batch path as in the online one, or a rebuild would
+            // reach a different answer than the projector and break the FR-003 parity guarantee.
+            // Skipping (rather than throwing) keeps the fold total and deterministic; the caller
+            // reports the refusal.
+            if (!IsDefinitionCompatible(instance, tx))
+                continue;
+
             ApplyInPlace(instance, tx);
+        }
 
         return instance;
     }
@@ -105,21 +137,71 @@ public static class InstanceProjection
     /// </summary>
     /// <param name="instance">The current materialized view (mutated in place).</param>
     /// <param name="tx">The sealed transaction to fold.</param>
-    /// <returns>True if the instance advanced; false if the transaction was already applied.</returns>
-    public static bool Apply(Instance instance, ProjectedTransaction tx)
+    /// <returns>What happened — see <see cref="FoldOutcome"/>.</returns>
+    public static FoldOutcome Apply(Instance instance, ProjectedTransaction tx)
     {
         ArgumentNullException.ThrowIfNull(instance);
         ArgumentNullException.ThrowIfNull(tx);
 
         if (string.Equals(instance.LastAppliedTxId, tx.TxId, StringComparison.Ordinal))
-            return false;
+            return FoldOutcome.AlreadyApplied;
+
+        if (!IsDefinitionCompatible(instance, tx))
+            return FoldOutcome.RefusedForeignDefinition;
 
         ApplyInPlace(instance, tx);
-        return true;
+        return FoldOutcome.Advanced;
+    }
+
+    /// <summary>
+    /// Feature 194 — whether a transaction may be folded into this instance, given the definition it
+    /// claims to have been executed against.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A different non-null pin is refused.</b> That is the divergence this feature exists to
+    /// prevent: without it, a sender could move a running instance onto another definition simply by
+    /// asserting one, and two nodes folding the same ledger could disagree about which rules an
+    /// instance runs under.
+    /// </para>
+    /// <para>
+    /// <b>A null pin is accepted, deliberately.</b> Null means the transaction predates Feature 194,
+    /// not that it claims something different — refusing it would wedge instances whose earlier
+    /// actions sealed before the feature shipped, which is a worse outcome than folding one action
+    /// through the documented fallback. The callers log and count each occurrence so the fallback
+    /// can eventually be removed on evidence rather than on hope.
+    /// </para>
+    /// </remarks>
+    public static bool IsDefinitionCompatible(Instance instance, ProjectedTransaction tx)
+    {
+        ArgumentNullException.ThrowIfNull(instance);
+        ArgumentNullException.ThrowIfNull(tx);
+
+        if (string.IsNullOrWhiteSpace(tx.BlueprintDefinitionTxId))
+            return true;
+
+        if (string.IsNullOrWhiteSpace(instance.BlueprintDefinitionTxId))
+            return true; // not yet pinned — this transaction establishes the pin
+
+        return string.Equals(
+            instance.BlueprintDefinitionTxId, tx.BlueprintDefinitionTxId, StringComparison.Ordinal);
     }
 
     private static void ApplyInPlace(Instance instance, ProjectedTransaction tx)
     {
+        // Feature 194: establish the pin from the first transaction that carries one, and never
+        // change it afterwards. `Apply` has already refused a transaction claiming a different
+        // definition, so reaching here with a non-empty existing pin means they agree.
+        //
+        // Assigned only when currently empty — the OPPOSITE of the Feature 186 decision fields
+        // below, which are assigned unconditionally so a later transaction clears a stale reason.
+        // A pin is not a per-transaction fact; it is the instance's identity for its whole life.
+        if (string.IsNullOrWhiteSpace(instance.BlueprintDefinitionTxId)
+            && !string.IsNullOrWhiteSpace(tx.BlueprintDefinitionTxId))
+        {
+            instance.BlueprintDefinitionTxId = tx.BlueprintDefinitionTxId;
+        }
+
         // Advance control state: remove the completed action, add the full next-action set
         // (parallel branches preserved). Dedup keeps CurrentActionIds a clean set.
         instance.CurrentActionIds.RemoveAll(id => id == tx.CompletedActionId);

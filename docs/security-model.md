@@ -6,7 +6,7 @@ standards:
   - HAIP 1.0
   - W3C Verifiable Credentials Data Model 2.0
   - OAuth 2.0
-last_updated: 2026-08-11
+last_updated: 2026-08-25
 ---
 
 # Sorcha Security Model
@@ -71,6 +71,7 @@ Naming what is *not* implemented, with the same precision as what is:
 - **mTLS at internal service hops** — the constitutional principle is in place. Wire enforcement is on the roadmap. Today, internal hops are JWT-authenticated but not mutually-TLS-authenticated. This is a defence-in-depth gap, not a cryptographic-evidence gap — the wallet signatures and docket signatures remain verifiable regardless of transport.
 - **Register governance approvals prove custody, not organisational intent** — this is the sharpest gap on this list, and it is **not solved**. An organisation's governance key is its slot-100 (`sorcha:register-attestation`) key, derived from a wallet held in the platform's own custody. Any principal authorised to call the Wallet Service's signing endpoint for that wallet can therefore produce that organisation's approval signature. A sealed approval proves *the node was asked to use the organisation's key* — it does not prove the organisation decided anything. The exposure is worst under a `Unanimous` quorum, where a single sufficiently-privileged principal can satisfy an entire consortium. Feature 189 narrowed the surface without closing it: approvals are now produced outside the server's automatic path rather than manufactured by it (R-014), every counted approval must carry an accountability block naming a responsible individual (FR-029), and both signatures are re-verified independently on every node (FR-032). But the named individual's key is custodied the same way, so the accountability block records *who was named*, not who consented. Closing this needs the organisation's governance key held outside the platform — the open key-custody question in `specs/189-org-signed-governance/` (T083), tracked as issue #1380. Until then, treat a register's governance trail as an audit record of key use, not as non-repudiable organisational consent.
 - **mdoc / ISO 18013-5** — implemented (`Sorcha.Mdoc`, Features 135 and 185): issuance and online OpenID4VP verification, plus proximity presentation over BLE with `deviceMac`/`COSE_Mac0` verified against the standard's own Annex D vectors. The remaining gap is **interoperability evidence**, not capability: the bar to date is Sorcha's own devices plus those reference vectors, not a certified third-party reader, and `MdocIssuer` still uses a flat namespace equal to the docType where a real mDL separates the two.
+- **Encryption at rest has one fail-open, and promotion is not retrospective.** Both are now verified rather than assumed — see step 2b of the reviewer path below. (a) On a Normal register, if *no* disclosure recipient's public key resolves on that register, `ActionExecutionService` falls through to the plaintext transaction builder and writes field values in the clear, logging only `recipient skipped`. The register still reports `devMode: false`. Tracked as issue #1581; the conformance check's `P3.2` is the assertion that catches it. (b) Promoting a register from DevMode to Normal is one-way and *forward-only*: the ledger is immutable, so every payload sealed while it was in DevMode remains plaintext permanently. Promotion protects what a register stores next, not what it already holds.
 - **DID method registration** — `did:sorcha:org:` and `did:sorcha:holder:` are implemented but not registered with the W3C DID method registry. Cross-platform DID resolution requires bilateral agreement; this is a network-effect gap, not a security one.
 
 ## Security Audits and Review Cycle
@@ -106,11 +107,21 @@ If you are reviewing Sorcha's security claims and only have an hour, this is the
 
 1. Read the **genesis ceremony** for an actual deployment (n1 is the reference). Confirm the validator key set is publicly recorded and the witnesses are independent.
 2. Pick one walkthrough run (`walkthroughs/TradeFinance/run.ps1`) and **verify a single docket independently** — pull it from the register, recompute the Merkle hash, verify the validator quorum signatures against the genesis-recorded keys.
+2b. **Verify encryption at rest from storage, not from the API.** Run
+   `walkthroughs/EncryptionAtRest/run-conformance.ps1`. It promotes one register from DevMode to
+   Normal mid-run and requires the *same* MongoDB probe to **find** a known field value while the
+   register is in DevMode and **fail to find it** afterwards — as raw text, base64, base64url, hex
+   or UTF-16 — and additionally requires the decoded ciphertext to be opaque to the payload's own
+   field *names*. The pairing is the point: an absence on its own is equally the result of a probe
+   looking in the wrong place, so the check refuses to report the encrypted half unless the plaintext
+   half demonstrably succeeded. Do **not** accept a check that reads the API's response body as
+   evidence about storage — the API applies disclosure filtering, so it will hide a field it is
+   storing in the clear.
 3. Pick one credential issuance and **verify the SD-JWT VC end-to-end** — issuer signature, holder key binding, status list look-up, every disclosure decryption matches the schema.
 4. Read [`STANDARDS.md`](../STANDARDS.md) and confirm every standard's `Components` cell points at code that actually implements that standard.
 5. Read this document's **Honest Gaps** section and confirm the gaps are accurate — there is nothing claimed here that is not in the codebase, and there is nothing in the codebase that contradicts a claim here.
 
-If any of those five steps fails, the claim being made is wrong and we want to hear about it. Open an issue.
+If any of those steps fails, the claim being made is wrong and we want to hear about it. Open an issue.
 
 ## Pointers
 

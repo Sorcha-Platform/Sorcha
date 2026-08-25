@@ -77,6 +77,7 @@ public class InstanceBindingCacheTests
         {
             Id = instanceId,
             BlueprintId = "bp-test",
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: an instance must carry its definition pin, or execution has nothing to resolve or chain from
             BlueprintVersion = 1,
             RegisterId = "reg-test",
             TenantId = "tenant-test",
@@ -131,6 +132,7 @@ public class InstanceBindingCacheTests
         {
             Id = instanceId,
             BlueprintId = "bp-test",
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: an instance must carry its definition pin, or execution has nothing to resolve or chain from
             BlueprintVersion = 1,
             RegisterId = "reg-test",
             TenantId = "tenant-test",

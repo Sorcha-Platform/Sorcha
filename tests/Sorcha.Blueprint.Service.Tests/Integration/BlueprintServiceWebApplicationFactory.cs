@@ -210,6 +210,22 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
 
         // Create mock register service client
         var mockRegisterClient = new Mock<IRegisterServiceClient>();
+
+        // Feature 195 — the register assigns a definition's identity, so a publish that returns
+        // nothing is a FAILED publish. An unconfigured mock returns null and the endpoint answers
+        // 400, which is correct behaviour rather than a test-harness quirk: a definition recorded
+        // locally with no ledger identity is resolvable here and nowhere else.
+        mockRegisterClient
+            .Setup(x => x.PublishBlueprintToRegisterAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string registerId, string blueprintId, string json, string _, CancellationToken _) =>
+                new BlueprintPublicationResult
+                {
+                    PublicationTxId = Sorcha.Blueprint.Models.Canonical.BlueprintPublicationId
+                        .ComputeFromDefinition(registerId, blueprintId, json)
+                });
+
         mockRegisterClient
             .Setup(x => x.SubmitTransactionAsync(It.IsAny<string>(), It.IsAny<Sorcha.Register.Models.TransactionModel>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string regId, Sorcha.Register.Models.TransactionModel tx, CancellationToken _) =>

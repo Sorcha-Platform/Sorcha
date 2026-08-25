@@ -150,8 +150,6 @@ public class BlueprintInstructionsTests
         var blueprint = new Models.Blueprint();
 
         blueprint.Instructions.Should().BeNull();
-        blueprint.VersionMajor.Should().Be(1);
-        blueprint.VersionMinor.Should().Be(0);
     }
 
     [Fact]
@@ -166,7 +164,6 @@ public class BlueprintInstructionsTests
         var json = JsonSerializer.Serialize(blueprint, JsonOptions);
 
         json.Should().NotContain("\"instructions\"");
-        json.Should().Contain("\"versionMajor\"");
     }
 
     [Fact]
@@ -208,8 +205,6 @@ public class BlueprintInstructionsTests
         blueprint.Should().NotBeNull();
         blueprint!.Id.Should().Be("bp-legacy");
         blueprint.Instructions.Should().BeNull();
-        blueprint.VersionMajor.Should().Be(1);
-        blueprint.VersionMinor.Should().Be(0);
     }
 
     [Fact]
@@ -221,8 +216,6 @@ public class BlueprintInstructionsTests
             "title": "New Blueprint",
             "description": "Created with instructions",
             "version": 1,
-            "versionMajor": 2,
-            "versionMinor": 3,
             "instructions": {
                 "overview": "## Help\nThis is help text.",
                 "locale": "en-GB",
@@ -241,9 +234,7 @@ public class BlueprintInstructionsTests
         var blueprint = JsonSerializer.Deserialize<Models.Blueprint>(json, JsonOptions);
 
         blueprint.Should().NotBeNull();
-        blueprint!.VersionMajor.Should().Be(2);
-        blueprint.VersionMinor.Should().Be(3);
-        blueprint.Instructions.Should().NotBeNull();
+        blueprint!.Instructions.Should().NotBeNull();
         blueprint.Instructions!.Overview.Should().Contain("This is help text.");
         blueprint.Instructions.Locale.Should().Be("en-GB");
         blueprint.Instructions.ActionInstructions.Should().ContainKey(0);

@@ -731,6 +731,7 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
         }
 
         // Parse accepted issuers
+        var anyOfGroup = root.TryGetProperty("anyOfGroup", out var groupProp) ? groupProp.GetString() : null;
         var acceptedIssuers = root.TryGetProperty("acceptedIssuers", out var issuersProp)
             ? issuersProp.EnumerateArray().Select(i => i.GetString()!).ToList()
             : new List<string>();
@@ -775,6 +776,7 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
         var requirement = new CredentialRequirement
         {
             Type = credentialType,
+            AnyOfGroup = string.IsNullOrWhiteSpace(anyOfGroup) ? null : anyOfGroup,
             TrustPolicy = acceptedIssuers.Count > 0
                 ? TrustPolicyExtensions.FromLegacyIssuers(acceptedIssuers)
                 : null,
@@ -796,6 +798,7 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                 actionId,
                 credentialType,
                 acceptedIssuers,
+                anyOfGroup = anyOfGroup ?? "(none — this requirement is independently required)",
                 requiredClaims = requiredClaims?.Select(c => new { c.ClaimName, c.ExpectedValue }) ?? [],
                 revocationPolicy = revocationPolicy.ToString()
             },
@@ -844,13 +847,76 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                 $"Available participants: {string.Join(", ", participantIds)}");
         }
 
+        // vct — SD-JWT VC §3.2.2.1 makes this the credential's SOLE type claim, and it is REQUIRED.
+        // Until now this tool could not set it at all, so every AI-authored blueprint fell back to the
+        // bare `credentialType` name. A credential with no absolute-URI vct cannot be matched to a
+        // requested type by any conformant verifier (the #1540 failure, on the HAIP rail).
+        var vct = root.TryGetProperty("vct", out var vctProp) ? vctProp.GetString() : null;
+        if (string.IsNullOrWhiteSpace(vct))
+        {
+            return ToolResult.Failed(
+                Guid.NewGuid().ToString(),
+                "vct is required. Per SD-JWT VC it is the credential's ONLY type claim, so a credential " +
+                "without one cannot be matched to a requested type by any conforming verifier. Pass an " +
+                "absolute URI, e.g. 'https://sorcha.dev/vc/training-completion/v1'.");
+        }
+        if (!Uri.TryCreate(vct, UriKind.Absolute, out _))
+        {
+            return ToolResult.Failed(
+                Guid.NewGuid().ToString(),
+                $"vct '{vct}' is not an absolute URI. Use the canonical form, e.g. " +
+                "https://sorcha.dev/vc/{type}/v1 — a relative or bare-name vct mints an unmatchable credential.");
+        }
+
+        var displayName = root.TryGetProperty("displayName", out var dnProp) ? dnProp.GetString() : null;
+
+        // issuanceCondition — JSON Logic over the submitted action data, gating whether the credential
+        // is actually minted. Without it a single decision action ALWAYS issues, so a rejection still
+        // mints and delivers a credential: the fail-open defect Feature 176 exists to close. An
+        // approve/reject workflow authored without this reproduces it.
+        // A null Disclosable is expanded to EVERY claim name by SdJwtService, so leaving it unset is
+        // not "disclose nothing" - it is "disclose everything" (#1550).
+        List<string>? disclosable = null;
+        if (root.TryGetProperty("disclosable", out var discProp) && discProp.ValueKind == JsonValueKind.Array)
+        {
+            disclosable = discProp.EnumerateArray()
+                .Where(e => e.ValueKind == JsonValueKind.String)
+                .Select(e => e.GetString()!)
+                .ToList();
+        }
+
+        var holderKeySourceField = root.TryGetProperty("holderKeySourceField", out var hkProp)
+            ? hkProp.GetString()
+            : null;
+
+        JsonNode? issuanceCondition = null;
+        if (root.TryGetProperty("issuanceCondition", out var condProp) && condProp.ValueKind != JsonValueKind.Null)
+        {
+            try
+            {
+                issuanceCondition = JsonNode.Parse(condProp.GetRawText());
+            }
+            catch (JsonException ex)
+            {
+                return ToolResult.Failed(
+                    Guid.NewGuid().ToString(),
+                    $"issuanceCondition is not valid JSON Logic: {ex.Message}. " +
+                    "Example: {\"==\": [{\"var\": \"decision\"}, \"approved\"]}");
+            }
+        }
+
         action.CredentialIssuanceConfig = new CredentialIssuanceConfig
         {
             CredentialType = credentialType,
+            Vct = vct,
+            DisplayName = displayName,
             ClaimMappings = claimMappings,
             RecipientParticipantId = recipientParticipantId,
             ExpiryDuration = expiryDuration,
-            UsagePolicy = usagePolicy
+            UsagePolicy = usagePolicy,
+            IssuanceCondition = issuanceCondition,
+            Disclosable = disclosable,
+            HolderKeySourceField = holderKeySourceField
         };
 
         return ToolResult.Succeeded(
@@ -863,7 +929,14 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                 claimCount = claimMappings.Count,
                 recipientParticipantId,
                 expiryDuration = expiryDuration ?? "none",
-                usagePolicy = usagePolicy.ToString()
+                usagePolicy = usagePolicy.ToString(),
+                vct = vct ?? "(none — falls back to credentialType, not conformant)",
+                displayName = displayName ?? "(none)",
+                issuanceCondition = issuanceCondition?.ToJsonString() ?? "(none — ALWAYS issues, including on rejection)",
+                disclosable = disclosable is { Count: > 0 }
+                    ? string.Join(", ", disclosable)
+                    : "(none set — EVERY claim is selectively disclosable)",
+                holderKeySourceField = holderKeySourceField ?? "(none — an open/late-bound recipient cannot be delivered to)"
             },
             blueprintChanged: true);
     }
@@ -1151,6 +1224,23 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                 });
             }
 
+            // Duplicate participant ids (issue #1548/#1549). Nothing can disambiguate two
+            // participants sharing an id — action.sender resolves by id — and the designer
+            // produced exactly this when it rebuilt a draft. Checked regardless of routing style.
+            foreach (var duplicateId in draft.Participants
+                         .GroupBy(p => p.Id, StringComparer.Ordinal)
+                         .Where(g => g.Count() > 1)
+                         .Select(g => g.Key))
+            {
+                errors.Add(new
+                {
+                    code = "DUPLICATE_PARTICIPANT_ID",
+                    message = $"Participant id '{duplicateId}' is declared more than once. " +
+                              $"action.sender resolves participants by id, so a duplicate cannot be disambiguated.",
+                    location = "participants"
+                });
+            }
+
             // Check minimum actions
             if (draft.Actions.Count < 1)
             {
@@ -1194,6 +1284,117 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                     message = "No action is marked as a starting action",
                     location = "actions"
                 });
+            }
+
+            // ---- Route reachability (issue #1548) -------------------------------------------
+            // The chat validator used to answer VALID for a blueprint that cannot execute: a
+            // starting action with no routes, and every other route looping back to it. /publish
+            // then refused it, so the author's first sight of the problem was at Go-live.
+            //
+            // The reachability graph below is GATED on the blueprint actually using route-based
+            // routing, because legacy and platform-driven blueprints (complex-sme-invoice-finance,
+            // register-governance-v1) declare no routes and are advanced by other means.
+            //
+            // ⚠ That gate had a hole, found by a live designer run: a multi-action blueprint with
+            // NO routes anywhere skipped every check and validated clean — then PUBLISHED, because
+            // the publish path reports unreachability only as a warning. A workflow that cannot
+            // advance past its starting action reached a register. Corpus-testing the rule against
+            // 45 shipped blueprints could not surface this, because none of them had that shape.
+            //
+            // So zero-route is checked FIRST and explicitly, rather than silently exempted.
+            var usesRouteBasedRouting = draft.Actions.Any(a => a.Routes?.Any() == true);
+
+            // add_action's routeToNext parameter populates Action.Participants (a Condition list),
+            // NOT Routes — it is the legacy participant-based model, and the chat tools still offer
+            // it. A blueprint routed that way is coherent, so it must not trip the check below.
+            var usesParticipantRouting = draft.Actions.Any(a => a.Participants?.Any() == true);
+
+            if (!usesRouteBasedRouting && !usesParticipantRouting && draft.Actions.Count > 1)
+            {
+                errors.Add(new
+                {
+                    code = "NO_ROUTING_DEFINED",
+                    message = $"The blueprint has {draft.Actions.Count} actions but declares no routes on any of " +
+                              $"them, so nothing can advance past the starting action. Add routes linking each " +
+                              $"action to the next, ending with an empty nextActionIds to finish the workflow.",
+                    location = "actions"
+                });
+            }
+
+            if (usesRouteBasedRouting && draft.Actions.Count > 0)
+            {
+                static List<Sorcha.Blueprint.Models.Route> RoutesOf(Sorcha.Blueprint.Models.Action a)
+                    => a.Routes?.ToList() ?? [];
+
+                var startingActions = draft.Actions.Where(a => a.IsStartingAction).ToList();
+
+                // A starting action with nowhere to go cannot advance the workflow. A single-action
+                // blueprint (e.g. a credential gate) is legitimately terminal, hence the count test.
+                foreach (var start in startingActions.Where(a => draft.Actions.Count > 1 && RoutesOf(a).Count == 0))
+                {
+                    errors.Add(new
+                    {
+                        code = "STARTING_ACTION_NO_ROUTES",
+                        message = $"Starting action {start.Id} ('{start.Title}') declares no routes, so the " +
+                                  $"workflow can never advance past it. Add a route to the action that follows it.",
+                        location = $"actions[{start.Id}].routes"
+                    });
+                }
+
+                if (startingActions.Count > 0)
+                {
+                    var byId = draft.Actions.ToDictionary(a => a.Id);
+                    var reachable = startingActions.Select(a => a.Id).ToHashSet();
+                    var pending = new Stack<int>(reachable);
+                    while (pending.Count > 0)
+                    {
+                        if (!byId.TryGetValue(pending.Pop(), out var current)) continue;
+
+                        var next = RoutesOf(current).SelectMany(r => r.NextActionIds).ToList();
+                        if (current.RejectionConfig is not null)
+                        {
+                            next.Add(current.RejectionConfig.TargetActionId);
+                        }
+
+                        foreach (var id in next.Where(reachable.Add))
+                        {
+                            pending.Push(id);
+                        }
+                    }
+
+                    foreach (var orphan in draft.Actions.Where(a => !reachable.Contains(a.Id)))
+                    {
+                        errors.Add(new
+                        {
+                            code = "UNREACHABLE_ACTION",
+                            message = $"Action {orphan.Id} ('{orphan.Title}') is not reachable from any starting " +
+                                      $"action by routes or rejection targets, so it can never run.",
+                            location = $"actions[{orphan.Id}]"
+                        });
+                    }
+                }
+
+                // Something must be able to END. An action with no routes is terminal by absence;
+                // a route with an empty nextActionIds is terminal by declaration. A cyclic
+                // blueprint declares itself so and is exempt.
+                var declaresCycles = draft.Metadata is not null
+                    && draft.Metadata.TryGetValue("hasCycles", out var cyclesFlag)
+                    && string.Equals(cyclesFlag, "true", StringComparison.OrdinalIgnoreCase);
+
+                var hasTerminal = draft.Actions.Any(a =>
+                    RoutesOf(a).Count == 0 || RoutesOf(a).Any(r => !r.NextActionIds.Any()));
+
+                if (!hasTerminal && !declaresCycles)
+                {
+                    warnings.Add(new
+                    {
+                        code = "NO_TERMINAL_PATH",
+                        message = "No action ends the workflow — every action routes onward and none declares " +
+                                  "an empty nextActionIds. Add a terminal route, or set metadata.hasCycles = \"true\" " +
+                                  "if the loop is intentional.",
+                        location = "actions"
+                    });
+                }
             }
 
             // Validate action participant references
@@ -1252,6 +1453,42 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                             code = "INVALID_CREDENTIAL_RECIPIENT",
                             message = $"Action '{action.Title}' issues credential to '{issuance.RecipientParticipantId}' which is not a known participant",
                             location = $"actions[{action.Id}].credentialIssuanceConfig"
+                        });
+                    }
+
+                    // WARN_BP_CRED_005 (#1550/#1551) — mirrors the publish-time rule so the author
+                    // is told at authoring time, not at Go-live. Minting runs BEFORE routing, so an
+                    // action that models a decision and omits issuanceCondition issues to the
+                    // rejected party too; a terminal reject route does not prevent the mint.
+                    if (issuance.IssuanceCondition is null)
+                    {
+                        var decisionRoutes = action.Routes?.ToList() ?? [];
+                        var conditionalRoutes = decisionRoutes.Count(r => r.Condition is not null);
+                        if (conditionalRoutes > 0 || decisionRoutes.Count > 1)
+                        {
+                            warnings.Add(new
+                            {
+                                code = Sorcha.Blueprint.Models.ValidationWarningCodes.UnconditionalIssuanceOnDecision,
+                                message = $"Action '{action.Title}' issues a credential with no issuanceCondition but " +
+                                          $"routes on a decision. Minting runs before routing, so the credential is " +
+                                          $"minted and delivered on every path — including the reject path. Add " +
+                                          $"issuanceCondition, e.g. {{\"==\": [{{\"var\": \"decision\"}}, \"approved\"]}}.",
+                                location = $"actions[{action.Id}].credentialIssuanceConfig.issuanceCondition"
+                            });
+                        }
+                    }
+
+                    // A null Disclosable is expanded to EVERY claim name at signing time, so leaving
+                    // it unset silently makes all claims disclosable rather than none (#1550).
+                    if (issuance.Disclosable is null && issuance.ClaimMappings.Any())
+                    {
+                        warnings.Add(new
+                        {
+                            code = "NO_DISCLOSABLE_SET",
+                            message = $"Action '{action.Title}' issues a credential with no 'disclosable' list, so " +
+                                      $"EVERY claim becomes selectively disclosable (a null set is expanded to all " +
+                                      $"claim names — it does not mean 'none'). List the claims a verifier should see.",
+                            location = $"actions[{action.Id}].credentialIssuanceConfig.disclosable"
                         });
                     }
 
@@ -1679,7 +1916,12 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                         {
                             type = "array",
                             items = new { type = "string" },
-                            description = "List of trusted issuer DIDs or addresses. Empty array means any issuer is accepted."
+                            description = "Trusted issuer DIDs. Becomes a did-allowlist trustPolicy source. Empty means any issuer that the register can resolve is accepted. For richer trust (x509/trustlist sources, AllOf combinator, a minimum assurance level) the blueprint must be authored directly — this tool only expresses the allowlist case."
+                        },
+                        anyOfGroup = new
+                        {
+                            type = "string",
+                            description = "Optional tag making this requirement one of several ALTERNATIVES. Requirements on the same action sharing a tag are satisfied by presenting ANY ONE of them; requirements with no tag are each independently required (AND). Use when 'a passport OR a driving licence' would do."
                         },
                         requiredClaims = new
                         {
@@ -1716,7 +1958,22 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                     properties = new
                     {
                         actionId = new { type = "integer", description = "Action ID that issues the credential" },
-                        credentialType = new { type = "string", description = "Type of credential to issue (e.g., 'TrainingCompletionCertificate', 'ApprovalAttestation')" },
+                        credentialType = new { type = "string", description = "Short readable type name (e.g., 'TrainingCompletionCertificate'). A fallback identity only — ALWAYS pass vct as well." },
+                        vct = new
+                        {
+                            type = "string",
+                            description = "REQUIRED in practice. The credential's canonical type identifier and, per SD-JWT VC, its ONLY type claim — an absolute URI, e.g. 'https://sorcha.dev/vc/training-completion/v1'. Omit it and the credential falls back to the bare credentialType, which no conforming verifier can match to a requested type."
+                        },
+                        displayName = new
+                        {
+                            type = "string",
+                            description = "Human card label shown in the wallet (e.g., 'Training Completion'). Falls back to a humanised vct when omitted."
+                        },
+                        issuanceCondition = new
+                        {
+                            type = "object",
+                            description = "JSON Logic evaluated over the SUBMITTED action data, gating whether the credential is minted. USE THIS ON ANY APPROVE/REJECT ACTION: without it the credential is issued unconditionally, so a rejection still mints and delivers one. Example: {\"==\": [{\"var\": \"decision\"}, \"approved\"]}. Fails closed — an unevaluable condition skips issuance."
+                        },
                         claimMappings = new
                         {
                             type = "array",
@@ -1734,6 +1991,17 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                         },
                         recipientParticipantId = new { type = "string", description = "Participant ID who receives the credential" },
                         expiryDuration = new { type = "string", description = "ISO 8601 duration for credential validity (e.g., 'P365D' for 1 year, 'P2Y' for 2 years)" },
+                        disclosable = new
+                        {
+                            type = "array",
+                            description = "Claim names the holder may selectively disclose. OMITTING THIS MAKES EVERY CLAIM DISCLOSABLE - a null set is expanded to all claim names, it does not mean 'none'. List only the claims a verifier should be able to see.",
+                            items = new { type = "string" }
+                        },
+                        holderKeySourceField = new
+                        {
+                            type = "string",
+                            description = "JSON Pointer to the recipient's carried holder key, conventionally '/holderKeys/holderJwk'. REQUIRED when the recipient is an open/late-bound participant with no published participant record, or issuance fails closed at runtime with VAL_RUNTIME_CRED_004 and no credential is delivered. Pair it with a 'sorcha-holder-key' formatted field on the starting action."
+                        },
                         usagePolicy = new
                         {
                             type = "string",
@@ -1741,7 +2009,10 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                             description = "How many times the credential can be presented. Default: Reusable"
                         }
                     },
-                    required = new[] { "actionId", "credentialType", "claimMappings", "recipientParticipantId" }
+                    // vct is required: SD-JWT VC makes it the credential's ONLY type claim, so a
+                    // credential without one cannot be matched to a requested type by any conforming
+                    // verifier (#1550). The description said "REQUIRED in practice" and was ignored.
+                    required = new[] { "actionId", "credentialType", "vct", "claimMappings", "recipientParticipantId" }
                 }),
 
             ToolDefinition.Create(

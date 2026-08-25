@@ -20,6 +20,7 @@ public class RoutingDecisionTests
         var decision = new RoutingDecision
         {
             CompletedActionId = 1,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions =
             [
                 new ActionRef { ActionId = 2 },
@@ -47,6 +48,7 @@ public class RoutingDecisionTests
         var decision = new RoutingDecision
         {
             CompletedActionId = 5,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions = [new ActionRef { ActionId = 6 }],
             Attestation = new Attestation { Kind = AttestationKind.SenderSigned, Signature = "abc" },
         };
@@ -70,6 +72,7 @@ public class RoutingDecisionTests
         var decision = new RoutingDecision
         {
             CompletedActionId = 1,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions =
             [
                 new ActionRef { ActionId = 10, BranchKey = "a" },
@@ -91,11 +94,13 @@ public class RoutingDecisionTests
         var withoutAttestation = new RoutingDecision
         {
             CompletedActionId = 7,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions = [new ActionRef { ActionId = 8 }],
         };
         var withAttestation = new RoutingDecision
         {
             CompletedActionId = 7,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions = [new ActionRef { ActionId = 8 }],
             Attestation = new Attestation { Kind = AttestationKind.SenderSigned, Signature = "deadbeef" },
         };
@@ -117,11 +122,13 @@ public class RoutingDecisionTests
         var a = new RoutingDecision
         {
             CompletedActionId = 1,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions = [new ActionRef { ActionId = 2 }, new ActionRef { ActionId = 3 }],
         };
         var b = new RoutingDecision
         {
             CompletedActionId = 1,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions = [new ActionRef { ActionId = 2 }, new ActionRef { ActionId = 3 }],
         };
 
@@ -151,6 +158,7 @@ public class RoutingDecisionTests
         var decision = new RoutingDecision
         {
             CompletedActionId = 2,
+            BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
             NextActions = [],
             RouteId = "rejected-terminal",
             ReasonCode = "postcode-not-found",
@@ -199,5 +207,62 @@ public class RoutingDecisionTests
 
         Assert.NotEqual(a.ComputeSignableBytes(), b.ComputeSignableBytes());
         Assert.Contains("postcode-not-found", Encoding.UTF8.GetString(a.ComputeSignableBytes()));
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Feature 194 — the pin: the executable definition this action was executed against.
+    //
+    // NOTE these per-field tests are a hand-written list and cannot catch the NEXT field added to
+    // the record. RoutingDecisionSigningCoverageTests is the reflection-driven guard that can; these
+    // remain because they state the intent of each specific field in a readable way.
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public void ComputeSignableBytes_IncludesTheBlueprintPin_SoAnInstanceCannotBeMovedOntoAnotherDefinition()
+    {
+        var a = new RoutingDecision { CompletedActionId = 2, NextActions = [], BlueprintDefinitionTxId = new string('a', 64) };
+        var b = new RoutingDecision { CompletedActionId = 2, NextActions = [], BlueprintDefinitionTxId = new string('b', 64) };
+
+        // Were the pin omitted from the rebuild, these would be byte-identical — and a sender could
+        // rewrite which definition their action claims to have run against, with a signature that
+        // still verified.
+        Assert.NotEqual(a.ComputeSignableBytes(), b.ComputeSignableBytes());
+        Assert.Contains(new string('a', 64), Encoding.UTF8.GetString(a.ComputeSignableBytes()));
+    }
+
+    [Fact]
+    public void RoutingDecision_AbsentPin_DeserializesToNull_AndSerializesIdenticallyToAPreFeatureDecision()
+    {
+        // A transaction sealed before Feature 194 carries no pin. It must deserialize cleanly, and a
+        // null pin must not change a single byte of the canonical form — otherwise every existing
+        // signature would stop verifying the moment this field shipped.
+        const string legacyJson = """{"completedActionId":2,"nextActions":[]}""";
+
+        var legacy = JsonSerializer.Deserialize<RoutingDecision>(legacyJson, RegisterSerializationOptions.Canonical)!;
+        Assert.Null(legacy.BlueprintDefinitionTxId);
+
+        var reserialised = JsonSerializer.Serialize(legacy, RegisterSerializationOptions.Canonical);
+        Assert.DoesNotContain("blueprintDefinitionTxId", reserialised);
+
+        var freshWithNullPin = new RoutingDecision { CompletedActionId = 2, NextActions = [] };
+        Assert.Equal(legacy.ComputeSignableBytes(), freshWithNullPin.ComputeSignableBytes());
+    }
+
+    [Fact]
+    public void RoutingDecision_CanonicalRoundTrip_PreservesThePin()
+    {
+        var decision = new RoutingDecision
+        {
+            CompletedActionId = 1,
+            NextActions = [new ActionRef { ActionId = 2 }],
+            BlueprintDefinitionTxId = "9f2c00112233445566778899aabbccddeeff00112233445566778899aabbccdd",
+            Attestation = new Attestation { Kind = AttestationKind.SenderSigned, Signature = "c2ln" },
+        };
+
+        var json = JsonSerializer.Serialize(decision, RegisterSerializationOptions.Canonical);
+        var round = JsonSerializer.Deserialize<RoutingDecision>(json, RegisterSerializationOptions.Canonical)!;
+
+        Assert.Contains("\"blueprintDefinitionTxId\":", json);
+        Assert.Equal(decision.BlueprintDefinitionTxId, round.BlueprintDefinitionTxId);
     }
 }

@@ -1,6 +1,6 @@
 # Sorcha — long-form context for AI agents
 
-> Cryptographic proof infrastructure for multi-party workflows. Every action is wallet-signed, every record is Merkle-chained, every disclosure is cryptographically bounded. Built for AI systems that need verified data inputs to make automated decisions.
+> Programmable proof infrastructure for multi-party workflows. Every action is wallet-signed, every record is Merkle-chained, every disclosure is cryptographically bounded. Built for AI systems that need verified data inputs to make automated decisions.
 
 This document is the longer companion to `llms.txt`. It exists for agents that have already
 decided Sorcha is in scope and want enough detail to plan an integration. The shorter
@@ -56,7 +56,7 @@ The **API Gateway** (YARP-based) is the single external surface. It aggregates t
 per-service OpenAPI documents into one well-known surface and proxies authenticated
 calls to the services behind it.
 
-The **MCP Server** exposes 36 tools across three role slices (admin, designer,
+The **MCP Server** exposes 65 tools across four role slices (admin, citizen, designer,
 participant) so AI agents can drive the platform end-to-end.
 
 Full architecture diagrams: `docs/architecture.md`.
@@ -91,16 +91,22 @@ The MCP server speaks the Model Context Protocol over both stdio (for local agen
 hosts) and http+sse (for hosted agents). Authentication is JWT Bearer; obtain a token
 from the Tenant Service via `POST /api/tenant/api/service-auth/token`.
 
-Tool catalogue (36 tools across three role slices):
+Tool catalogue (65 tools across four role slices):
 
-- **Admin slice (13 tools).** Audit query, health check, log query, metrics, peer
-  status, register stats, tenant list/create/update, user list/manage, validator
-  status, token revoke. Use these to inspect or operate a running instance.
+- **Admin slice (35 tools).** Platform operation and oversight: audit query, health
+  check, log query, metrics, platform settings; tenant list/create/update, user
+  list/manage/provision/password-reset, org status/user-audit/wallet-status, token
+  revoke; register stats/subscribe/unsubscribe/relationship/sync-state, peer status,
+  validator status/control; transaction status/revoke/inclusion-proof/verification-bundle;
+  credential offer/revoke/suspend/reinstate/refresh and presentation request/status.
+- **Citizen slice (8 tools).** The wallet holder's own view: my credentials, my
+  devices, device rename/revoke, my persona, my presentations, my invitations, and
+  pending applications.
 - **Designer slice (13 tools).** Blueprint create/update/get/list/diff/export/validate,
   schema generate/validate, blueprint simulate, JsonLogic test, disclosure analysis,
   workflow instances. Use these to author and refine blueprints before deployment.
-- **Participant slice (10 tools).** Action validate/submit, action details, inbox
-  list, transaction history, register query, wallet info/sign, disclosed data,
+- **Participant slice (9 tools).** Action validate/submit, action details, inbox
+  list, transaction history, register query, wallet info, disclosed data,
   workflow status. Use these to drive a running workflow on behalf of a participant.
 
 The manifest at `/.well-known/mcp.json` names every transport, the JWT acquisition

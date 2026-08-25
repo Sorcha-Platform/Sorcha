@@ -2,7 +2,7 @@
 title: Sorcha MCP Server
 description: Connection guide and worked-example session for the Sorcha MCP server — sorcha_-prefixed tools across admin, designer, participant, and citizen slices.
 standards: [OAuth 2.0]
-last_updated: 2026-08-13
+last_updated: 2026-08-22
 ---
 
 # Sorcha MCP Server
@@ -13,7 +13,7 @@ If you have the platform running, the manifest at `/.well-known/mcp.json` (relat
 
 ## Overview
 
-Sorcha is cryptographic proof infrastructure for multi-party workflows. Every action is wallet-signed, every record is Merkle-chained on an immutable register, every disclosure is cryptographically bounded. The MCP server lets an AI agent drive any of those workflows — issue a verified credential, design a blueprint, submit a participant action — without requiring the agent to learn each REST endpoint individually.
+Sorcha is programmable proof infrastructure for multi-party workflows. Every action is wallet-signed, every record is Merkle-chained on an immutable register, every disclosure is cryptographically bounded. The MCP server lets an AI agent drive any of those workflows — issue a verified credential, design a blueprint, submit a participant action — without requiring the agent to learn each REST endpoint individually.
 
 What you get from connecting:
 

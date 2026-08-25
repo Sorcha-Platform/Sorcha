@@ -112,8 +112,12 @@ public static class BlueprintFromPublishedEndpoint
             });
         }
 
-        // -- 2) Resolve the source published version --------------------------
-        var published = await publishedStore.GetVersionAsync(body.BlueprintId, body.Version);
+        // -- 2) Resolve the source published DEFINITION ------------------------
+        //
+        // Feature 195 — selected by PUBLICATION ID, not by ordinal. The ordinal is assigned from
+        // in-memory insert order and re-derived on every recovery, so "amend v2" could clone a
+        // different definition before and after a restart.
+        var published = await publishedStore.GetByPublicationAsync(body.BlueprintId, body.PublicationTxId);
         if (published is null
             || published.Blueprint is null
             || !string.Equals(published.RegisterId, body.RegisterId, StringComparison.OrdinalIgnoreCase))
@@ -149,10 +153,13 @@ public static class BlueprintFromPublishedEndpoint
             JsonSerializer.Serialize(published.Blueprint))
             ?? throw new InvalidOperationException("Failed to clone the published blueprint payload.");
 
-        clone.Id = Guid.NewGuid().ToString();
-        clone.Version = 1;
-        clone.VersionMajor = 1;
-        clone.VersionMinor = 0;
+        // Feature 195 — the clone keeps the SAME blueprint id.
+        //
+        // It used to mint a fresh GUID, which made "Amend" a FORK rather than a new version: the
+        // amendment never appeared in the source blueprint's version history, and the platform had
+        // two unrelated upgrade paths with no stated relationship between them. One button that
+        // looks like versioning and is not.
+        clone.Id = body.BlueprintId;
         clone.CreatedAt = DateTimeOffset.UtcNow;
         clone.UpdatedAt = DateTimeOffset.UtcNow;
         // Carry forward the caller's organisation so the new draft is org-scoped to the amender,
@@ -163,18 +170,32 @@ public static class BlueprintFromPublishedEndpoint
         clone.Metadata ??= new Dictionary<string, string>();
         clone.Metadata[SourceRegisterMetadataKey] = body.RegisterId;
         clone.Metadata[SourceBlueprintMetadataKey] = body.BlueprintId;
-        clone.Metadata[SourceVersionMetadataKey] = body.Version.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        clone.Metadata[SourceVersionMetadataKey] = body.PublicationTxId;
 
-        // -- 6) Persist as a fresh draft --------------------------------------
-        var stored = await draftStore.AddAsync(clone);
+        // -- 6) Persist as THE draft for this blueprint ------------------------
+        //
+        // Upsert, not add: the draft is the editor's buffer for a blueprint, and "amend this
+        // published definition" is an explicit instruction to load it there. AddAsync would mint a
+        // new id (it assigns one unconditionally), which is the fork this change removes.
+        var stored = await draftStore.UpdateAsync(body.BlueprintId, clone)
+                     ?? await draftStore.AddAsync(clone);
+
+        if (!string.Equals(stored.Id, body.BlueprintId, StringComparison.Ordinal))
+        {
+            // AddAsync assigns its own id. If we reached it, the blueprint had no draft and the
+            // store has just renamed our clone — correct that, or the amendment silently forks
+            // exactly as it used to.
+            stored.Id = body.BlueprintId;
+            stored = await draftStore.UpdateAsync(body.BlueprintId, stored) ?? stored;
+        }
 
         logger.LogInformation(
-            "Amend draft {DraftId} derived from published blueprint {SourceBlueprintId} v{Version} on register {RegisterId} by user {UserId}",
-            stored.Id, body.BlueprintId, body.Version, body.RegisterId, caller.PlatformUserId);
+            "Amend draft {DraftId} derived from definition {PublicationTxId} of blueprint {SourceBlueprintId} on register {RegisterId} by user {UserId}",
+            stored.Id, body.PublicationTxId, body.BlueprintId, body.RegisterId, caller.PlatformUserId);
 
         var responseBody = new CloneFromPublishedResponseBody(
             DraftBlueprintId: stored.Id,
-            SourceVersion: body.Version,
+            SourcePublicationTxId: body.PublicationTxId,
             RegisterId: body.RegisterId);
 
         return Results.Created($"/api/blueprints/{stored.Id}", responseBody);
@@ -263,9 +284,17 @@ public sealed record CloneFromPublishedRequestBody
     [Required, JsonPropertyName("blueprintId")]
     public string BlueprintId { get; init; } = string.Empty;
 
-    /// <summary>The published version to clone.</summary>
-    [Range(1, int.MaxValue), JsonPropertyName("version")]
-    public int Version { get; init; }
+    /// <summary>
+    /// The published definition to amend — the id of the transaction that published it
+    /// (Feature 195).
+    /// </summary>
+    /// <remarks>
+    /// Replaces an ordinal <c>version</c>. The ordinal is assigned from in-memory insert order and
+    /// re-derived on every recovery, so selecting by it could clone a different definition before and
+    /// after a restart.
+    /// </remarks>
+    [Required, JsonPropertyName("publicationTxId")]
+    public string PublicationTxId { get; init; } = string.Empty;
 }
 
 /// <summary>
@@ -273,9 +302,10 @@ public sealed record CloneFromPublishedRequestBody
 /// and a <c>Location</c> header pointing at the new draft.
 /// </summary>
 /// <param name="DraftBlueprintId">The id of the newly-created draft.</param>
-/// <param name="SourceVersion">The published version the draft was derived from (lineage).</param>
+/// <param name="DraftBlueprintId">The draft id — the SAME blueprint id, since an amendment is a new version of it.</param>
+/// <param name="SourcePublicationTxId">The published definition the draft was derived from (lineage).</param>
 /// <param name="RegisterId">The source register (lineage).</param>
 public sealed record CloneFromPublishedResponseBody(
     [property: JsonPropertyName("draftBlueprintId")] string DraftBlueprintId,
-    [property: JsonPropertyName("sourceVersion")] int SourceVersion,
+    [property: JsonPropertyName("sourcePublicationTxId")] string SourcePublicationTxId,
     [property: JsonPropertyName("registerId")] string RegisterId);

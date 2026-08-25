@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Publication-id ownership gate (Feature 195). Fails when anything other than the Register Service
+# mints a blueprint definition's publication id.
+#
+# A definition's identity is the id of the transaction that published it. Only ONE component may
+# compute that id; everything else reads the value the publish call returns. A second producer does
+# not throw — it computes a plausible id that disagrees with the ledger's, and the consequence
+# surfaces far away as a definition that cannot be resolved.
+#
+# The formula this replaced had four homes plus a hand-rewritten copy in its own guard, all of them
+# existing only because the published-blueprint store never recorded the transaction id it was
+# published as (issue #1563).
+#
+# See scripts/check-publication-id-owner.ps1 and .publication-id-owner-allowlist.
+
+name: publication-id-owner-gate
+
+on:
+  pull_request:
+    paths:
+      - "src/**/*.cs"
+      - "scripts/check-publication-id-owner.ps1"
+      - ".publication-id-owner-allowlist"
+      - ".github/workflows/publication-id-owner-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  publication-id-owner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run publication-id ownership gate
+        shell: pwsh
+        run: ./scripts/check-publication-id-owner.ps1

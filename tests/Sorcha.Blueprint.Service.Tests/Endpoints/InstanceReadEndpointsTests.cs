@@ -58,6 +58,7 @@ public sealed class InstanceReadEndpointsTests
     {
         Id = "inst-1",
         BlueprintId = "bp-1",
+        BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: execution resolves and chains by the pin
         BlueprintVersion = 1,
         RegisterId = "reg-1",
         TenantId = "default",
@@ -80,6 +81,7 @@ public sealed class InstanceReadEndpointsTests
     {
         Id = "inst-open",
         BlueprintId = "bp-1",
+        BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: execution resolves and chains by the pin
         BlueprintVersion = 1,
         RegisterId = "reg-1",
         TenantId = "default",

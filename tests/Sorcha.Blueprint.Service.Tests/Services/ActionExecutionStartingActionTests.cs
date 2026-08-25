@@ -248,7 +248,7 @@ public class ActionExecutionStartingActionTests
             .ReturnsAsync(instance);
 
         _mockActionResolver
-            .Setup(x => x.GetBlueprintAsync(instance.BlueprintId, It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetBlueprintAsync(instance.BlueprintId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         _mockActionResolver
@@ -291,6 +291,7 @@ public class ActionExecutionStartingActionTests
     {
         Id = id,
         BlueprintId = "bp-001",
+        BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: execution resolves and chains by the pin
         BlueprintVersion = 1,
         RegisterId = "reg-001",
         TenantId = "tenant-001",

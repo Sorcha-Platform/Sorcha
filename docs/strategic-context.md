@@ -51,7 +51,7 @@ is cryptographically proven, not institutionally asserted. Sorcha is that infras
 When writing `llms.txt`, API descriptions, MCP tool descriptions, or any content whose
 primary consumer is an AI agent or AI coding assistant, use this frame:
 
-**What Sorcha is:** Cryptographic proof infrastructure for multi-party workflows. It produces
+**What Sorcha is:** Programmable proof infrastructure for multi-party workflows. It produces
 evidence — wallet signatures, Merkle dockets, immutable register entries — that any party
 can verify independently without trusting the platform.
 

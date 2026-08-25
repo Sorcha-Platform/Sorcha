@@ -23,9 +23,33 @@ public class Instance
 
     /// <summary>
     /// Blueprint version at the time of instance creation.
-    /// Instance continues with this version even if blueprint is updated.
     /// </summary>
+    /// <remarks>
+    /// <b>Display label only</b> — do not resolve a definition by it. It is assigned from in-memory
+    /// insert order and re-derived on recovery, and two of the paths that write it hardcode 1. The
+    /// authoritative answer to "which definition is this instance running" is
+    /// <see cref="BlueprintDefinitionTxId"/> (Feature 194).
+    /// </remarks>
     public required int BlueprintVersion { get; init; }
+
+    /// <summary>
+    /// The executable-definition hash this instance is pinned to — the definition it started on and
+    /// will run for its whole life (Feature 194).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Established once, when the instance is created, from the latest definition published to its
+    /// register at that moment. <b>Immutable thereafter</b>: republishing the blueprint, restarting
+    /// the service, replacing the node, or any submission by any participant leaves it alone. A
+    /// folded transaction claiming a different pin is refused rather than applied.
+    /// </para>
+    /// <para>
+    /// Empty means <i>unpinned</i> — an instance whose transactions predate Feature 194. Those fall
+    /// back to the latest published definition, identically on every derivation path, and each use
+    /// of that fallback is counted so the fallback can eventually be removed on evidence.
+    /// </para>
+    /// </remarks>
+    public string BlueprintDefinitionTxId { get; set; } = string.Empty;
 
     /// <summary>
     /// The register where transactions are stored

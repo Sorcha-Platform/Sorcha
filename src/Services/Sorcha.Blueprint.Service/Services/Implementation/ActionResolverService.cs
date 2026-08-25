@@ -23,11 +23,17 @@ public class ActionResolverService : IActionResolverService
     private readonly ILogger<ActionResolverService> _logger;
     private const int CacheTtlMinutes = 10;
 
-    /// <summary>
-    /// Per-blueprint action index cache. Evicted when blueprint is re-fetched.
-    /// Static so it survives scoped DI lifetimes.
-    /// </summary>
-    private static readonly ConcurrentDictionary<string, Dictionary<int, ActionModel>> _actionIndexCache = new();
+    // Feature 195 — the static per-blueprint action-index cache is REMOVED.
+    //
+    // It was a ConcurrentDictionary keyed by bare blueprint id, read by GetActionDefinition, which
+    // receives an already-resolved blueprint and therefore had no way to say WHICH definition it
+    // wanted. With two definitions of one blueprint in play it returned the index of whichever
+    // populated the entry first — a process-wide cache serving one instance's actions to another,
+    // silently, and only when two definitions coexist (i.e. only once version pinning works).
+    //
+    // Keying it by definition would have fixed the write side while leaving the read side unable to
+    // supply the key. The index is a dictionary over an action list already in hand, so building it
+    // per call removes the hazard entirely and the "optimisation" it replaced was never measured.
 
     /// <summary>Initialises a new instance of the <see cref="ActionResolverService"/> class.</summary>
     public ActionResolverService(
@@ -43,49 +49,58 @@ public class ActionResolverService : IActionResolverService
     }
 
     /// <inheritdoc/>
-    public async Task<BlueprintModel?> GetBlueprintAsync(string blueprintId, CancellationToken cancellationToken = default)
+    public async Task<BlueprintModel?> GetBlueprintAsync(
+        string blueprintId,
+        string definitionTxId,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(blueprintId))
         {
             throw new ArgumentException("Blueprint ID cannot be null or empty", nameof(blueprintId));
         }
 
-        // Try to get from cache first
-        var cacheKey = $"blueprint:{blueprintId}";
-        var cachedBlueprint = await _cache.GetStringAsync(cacheKey, cancellationToken);
+        if (string.IsNullOrWhiteSpace(definitionTxId))
+        {
+            // Refuse rather than fall back. Resolving "latest" for an instance whose pin we do not
+            // know is precisely the defect Feature 194 exists to remove, and it fails silently: the
+            // payload validates against the wrong rules and the workflow takes the wrong route.
+            throw new ArgumentException(
+                "A definition pin is required to resolve a blueprint for execution. Resolving the " +
+                "latest definition instead would validate the submission against rules the instance " +
+                "never agreed to run.",
+                nameof(definitionTxId));
+        }
 
+        // Keyed by definition, not by blueprint. An entry addressed by content is immutable, so
+        // several definitions of one blueprint coexist and a pinned instance resolves its own.
+        var cacheKey = $"blueprint:{blueprintId}:{definitionTxId}";
+
+        var cachedBlueprint = await _cache.GetStringAsync(cacheKey, cancellationToken);
         if (!string.IsNullOrEmpty(cachedBlueprint))
         {
-            _logger.LogDebug("Blueprint {BlueprintId} retrieved from cache", blueprintId);
-            var cached = JsonSerializer.Deserialize<BlueprintModel>(cachedBlueprint);
-            if (cached != null)
-            {
-                // Ensure action index is also cached
-                _actionIndexCache.GetOrAdd(blueprintId, _ => cached.BuildActionIndex());
-            }
-            return cached;
+            _logger.LogDebug(
+                "Definition {DefinitionTxId} of blueprint {BlueprintId} retrieved from cache",
+                definitionTxId, blueprintId);
+            return JsonSerializer.Deserialize<BlueprintModel>(cachedBlueprint);
         }
 
-        // Get from the draft/editable store. The draft store only exists on the node that
-        // authored the blueprint; a replica (Feature 137 / C1) holds it solely in the
-        // replicated published store. Fall back to the latest published version so action
-        // execution works on a node that does not own the register — mirroring the published-
-        // store-aware CreateInstance path (Program.cs) so a replica-origin submission can be
-        // validated + signed + fanned out to the owner.
-        var blueprint = await _blueprintStore.GetAsync(blueprintId);
-        if (blueprint == null)
-        {
-            var publishedVersions = await _publishedBlueprintStore.GetVersionsAsync(blueprintId);
-            blueprint = PublishedBlueprintSelector.SelectLatest(publishedVersions)?.Blueprint;
-        }
+        // The published store only. The DRAFT store is deliberately absent: a draft is unpublished
+        // work-in-progress on one node, and letting it reach the execution path is what allowed a
+        // submission to be judged by a definition its instance never ran.
+        var versions = await _publishedBlueprintStore.GetVersionsAsync(blueprintId);
+        var blueprint = versions
+            .FirstOrDefault(v => string.Equals(v.PublicationTxId, definitionTxId, StringComparison.OrdinalIgnoreCase))
+            ?.Blueprint;
 
         if (blueprint == null)
         {
-            _logger.LogWarning("Blueprint {BlueprintId} not found", blueprintId);
+            _logger.LogError(
+                "Definition {DefinitionTxId} of blueprint {BlueprintId} is UNRESOLVABLE on this node. " +
+                "The submission will be refused rather than judged against a different definition.",
+                definitionTxId, blueprintId);
             return null;
         }
 
-        // Cache for future requests
         var cacheOptions = new DistributedCacheEntryOptions
         {
             AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(CacheTtlMinutes)
@@ -96,10 +111,9 @@ public class ActionResolverService : IActionResolverService
             cacheOptions,
             cancellationToken);
 
-        // Pre-compute action index alongside blueprint cache
-        _actionIndexCache[blueprintId] = blueprint.BuildActionIndex();
-
-        _logger.LogDebug("Blueprint {BlueprintId} cached for {Minutes} minutes", blueprintId, CacheTtlMinutes);
+        _logger.LogDebug(
+            "Definition {DefinitionTxId} of blueprint {BlueprintId} cached for {Minutes} minutes",
+            definitionTxId, blueprintId, CacheTtlMinutes);
 
         return blueprint;
     }
@@ -124,10 +138,9 @@ public class ActionResolverService : IActionResolverService
             return null;
         }
 
-        // Use cached action index (O(1) lookup) — falls back to building on demand
-        var actionIndex = _actionIndexCache.GetOrAdd(
-            blueprint.Id ?? "",
-            _ => blueprint.BuildActionIndex());
+        // Built from the blueprint in hand — the ONLY definition this caller means. See the note
+        // where the former static index cache was removed.
+        var actionIndex = blueprint.BuildActionIndex();
 
         if (!actionIndex.TryGetValue(actionIdInt, out var action))
         {

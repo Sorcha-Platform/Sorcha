@@ -160,6 +160,22 @@ public sealed class MeApplicationEndpointsTests
         return mock.Object;
     }
 
+    /// <summary>
+    /// Feature 194 — the endpoints resolve the PINNED definition first and fall back to the draft
+    /// store. These fixtures' instances carry no pin, so this stand-in returns nothing and the
+    /// existing draft-store behaviour is what every test below still exercises. The pinned path has
+    /// its own coverage in InstancePinReadTests.
+    /// </summary>
+    private static IPublishedBlueprintStore EmptyPublishedStore()
+    {
+        var mock = new Mock<IPublishedBlueprintStore>();
+        mock.Setup(s => s.GetByPublicationAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync((PublishedBlueprint?)null);
+        mock.Setup(s => s.GetVersionsAsync(It.IsAny<string>()))
+            .ReturnsAsync(Enumerable.Empty<PublishedBlueprint>());
+        return mock.Object;
+    }
+
     private static IBlueprintStore BlueprintStoreWith(BlueprintModel? blueprint)
     {
         var mock = new Mock<IBlueprintStore>();
@@ -190,7 +206,7 @@ public sealed class MeApplicationEndpointsTests
         HttpContext ctx, IInstanceStore store, BlueprintModel? blueprint, IWalletServiceClient wallets,
         InstanceState? status = null, int? page = null, int? pageSize = null) =>
         InvokeAsync(nameof(MeApplicationEndpoints.ListMyApplications),
-            ctx, store, BlueprintStoreWith(blueprint), wallets,
+            ctx, store, BlueprintStoreWith(blueprint), EmptyPublishedStore(), wallets,
             NullLogger<MeApplicationEndpoints.MeApplicationEndpointsLogCategory>.Instance,
             status, page, pageSize, CancellationToken.None);
 
@@ -198,7 +214,7 @@ public sealed class MeApplicationEndpointsTests
         HttpContext ctx, string instanceId, IInstanceStore store, BlueprintModel? blueprint,
         IWalletServiceClient wallets) =>
         InvokeAsync(nameof(MeApplicationEndpoints.GetMyApplication),
-            ctx, instanceId, store, BlueprintStoreWith(blueprint), wallets,
+            ctx, instanceId, store, BlueprintStoreWith(blueprint), EmptyPublishedStore(), wallets,
             NullLogger<MeApplicationEndpoints.MeApplicationEndpointsLogCategory>.Instance,
             CancellationToken.None);
 

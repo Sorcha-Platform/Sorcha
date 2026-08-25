@@ -104,6 +104,65 @@ public class BlueprintFetcher : IBlueprintFetcher
     }
 
     /// <inheritdoc/>
+    public async Task<BlueprintModel?> FetchBlueprintByPublicationAsync(
+        string blueprintId,
+        string definitionTxId,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(blueprintId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(definitionTxId);
+
+        var sw = Stopwatch.StartNew();
+
+        try
+        {
+            var blueprintJson = await _blueprintClient.GetBlueprintDefinitionAsync(blueprintId, definitionTxId, ct);
+
+            if (string.IsNullOrEmpty(blueprintJson))
+            {
+                // Deliberately a WARNING, not a debug line. An unresolvable pin means a running
+                // instance cannot advance on this node, and the operator-visible symptom is a
+                // transaction that never seals — which says nothing about the cause on its own.
+                _logger.LogWarning(
+                    "Pinned definition {DefinitionTxId} of blueprint {BlueprintId} could not be resolved " +
+                    "from the Blueprint Service. An instance pinned to it cannot advance on this node.",
+                    definitionTxId, blueprintId);
+                Interlocked.Increment(ref _totalFailures);
+                return null;
+            }
+
+            var blueprint = JsonSerializer.Deserialize<BlueprintModel>(blueprintJson, _jsonOptions);
+            if (blueprint is null)
+            {
+                _logger.LogWarning(
+                    "Failed to deserialize pinned definition {DefinitionTxId} of blueprint {BlueprintId}",
+                    definitionTxId, blueprintId);
+                Interlocked.Increment(ref _totalFailures);
+                return null;
+            }
+
+            sw.Stop();
+            Interlocked.Increment(ref _totalFetched);
+            RecordFetchTime(sw.Elapsed.TotalMilliseconds);
+            _lastFetchedAt = DateTimeOffset.UtcNow;
+
+            _logger.LogInformation(
+                "Fetched pinned definition {DefinitionTxId} of blueprint {BlueprintId} in {ElapsedMs}ms",
+                definitionTxId, blueprintId, sw.ElapsedMilliseconds);
+
+            return blueprint;
+        }
+        catch (Exception ex)
+        {
+            Interlocked.Increment(ref _totalFailures);
+            _logger.LogError(ex,
+                "Error fetching pinned definition {DefinitionTxId} of blueprint {BlueprintId}",
+                definitionTxId, blueprintId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc/>
     public async Task<BlueprintPayloadValidationResult> ValidatePayloadAsync(
         string blueprintId,
         string actionId,

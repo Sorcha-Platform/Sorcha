@@ -93,7 +93,7 @@ public class ReactionDispatcherDecisionNoticeTests
             ],
         };
 
-        _actionResolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>()))
+        _actionResolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
     }
 
@@ -131,6 +131,7 @@ public class ReactionDispatcherDecisionNoticeTests
                 RoutingDecision = new RoutingDecision
                 {
                     CompletedActionId = completedActionId,
+                    BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: the decision carries the definition it was computed against
                     NextActions = nextActionIds.Select(id => new ActionRef { ActionId = id }).ToList(),
                     RouteId = routeId,
                     ReasonCode = reasonCode,
@@ -143,6 +144,7 @@ public class ReactionDispatcherDecisionNoticeTests
     {
         Id = "inst-1",
         BlueprintId = "bp-1",
+        BlueprintDefinitionTxId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // Feature 195: execution resolves and chains by the pin
         BlueprintVersion = 1,
         RegisterId = "reg-1",
         TenantId = "tenant-1",

@@ -173,9 +173,13 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
             return ToContract(session);
         }
 
-        // Create a fresh sandbox instance against the sandbox blueprint copy.
+        // Create a fresh sandbox instance against the sandbox blueprint copy, PINNED to the
+        // definition the publish above just assigned (Feature 195). A rehearsal instance is an
+        // instance: without a pin its starting action has nothing to chain from, and its actions
+        // could not be resolved against any definition.
         var instance = await CreateSandboxInstanceAsync(
-            sp, sandboxBlueprint, sandboxBlueprintId, sandboxRegisterId, organizationId, session.RoleWallets, cancellationToken);
+            sp, sandboxBlueprint, sandboxBlueprintId, sandboxRegisterId, organizationId,
+            session.RoleWallets, publishResult.PublishedBlueprint!.PublicationTxId, cancellationToken);
         session.InstanceId = instance.Id;
 
         // Build the ordered walk-through steps from the blueprint actions in flow order.
@@ -721,6 +725,7 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
         string sandboxRegisterId,
         string organizationId,
         IReadOnlyDictionary<string, string> roleWallets,
+        string definitionTxId,
         CancellationToken cancellationToken)
     {
         var instanceStore = sp.GetRequiredService<IInstanceStore>();
@@ -758,6 +763,7 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
             Id = Guid.NewGuid().ToString(),
             BlueprintId = blueprintId,
             BlueprintVersion = 1,
+            BlueprintDefinitionTxId = definitionTxId,
             RegisterId = sandboxRegisterId,
             CurrentActionIds = startingActions,
             ParticipantWallets = preBoundWallets,

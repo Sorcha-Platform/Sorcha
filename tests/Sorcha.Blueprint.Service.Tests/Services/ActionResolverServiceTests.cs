@@ -15,6 +15,13 @@ namespace Sorcha.Blueprint.Service.Tests.Services;
 
 public class ActionResolverServiceTests
 {
+
+    /// <summary>
+    /// A stand-in definition pin (Feature 195). Publishing assigns a real publication id;
+    /// these tests only need a stable, non-empty one, because the resolver now REQUIRES a pin
+    /// rather than falling back to whatever definition this node holds latest.
+    /// </summary>
+    private const string TestDefinitionPin = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     private readonly Mock<IBlueprintStore> _mockBlueprintStore;
     private readonly Mock<IPublishedBlueprintStore> _mockPublishedStore;
     private readonly Mock<IDistributedCache> _mockCache;
@@ -34,142 +41,168 @@ public class ActionResolverServiceTests
             _mockLogger.Object);
     }
 
-    [Fact]
-    public async Task GetBlueprintAsync_DraftMiss_FallsBackToPublishedStore()
-    {
-        // Feature 137: on a replica the blueprint exists only in the replicated published
-        // store, so action execution must fall back to it when the draft store misses.
-        var blueprintId = "replicated-bp";
-        var blueprint = new BlueprintModel { Id = blueprintId, Title = "Replicated", Description = "" };
+    // ---------------------------------------------------------------------------------------------
+    // Feature 195 — resolution on the EXECUTION path is by pin, from the published store only.
+    //
+    // What these tests replaced, and why it is not a weakening: the previous set asserted draft-first
+    // resolution with a fallback to the LATEST published definition, and caching under a bare
+    // blueprint id. Each of those is now a defect rather than a feature. The engine validated a
+    // payload, evaluated calculations and computed a route against whichever definition that
+    // resolution happened to return, then signed a routing decision labelled with the instance's
+    // actual pin — and where the two disagreed the submission returned 202 and never sealed,
+    // permanently, with no error anywhere.
+    //
+    // The draft-store test in particular ENCODED the defect: a draft is unpublished work-in-progress
+    // and must never decide how a running instance behaves.
+    // ---------------------------------------------------------------------------------------------
 
-        _mockCache.Setup(x => x.GetAsync($"blueprint:{blueprintId}", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((byte[]?)null);
-        _mockBlueprintStore.Setup(x => x.GetAsync(blueprintId))
-            .ReturnsAsync((BlueprintModel?)null);
-        _mockPublishedStore.Setup(x => x.GetVersionsAsync(blueprintId))
-            .ReturnsAsync(new[] { new PublishedBlueprint { Version = 2, Blueprint = blueprint } });
-
-        var result = await _service.GetBlueprintAsync(blueprintId);
-
-        result.Should().NotBeNull("a replica resolves the blueprint from the published store");
-        result!.Id.Should().Be(blueprintId);
-        _mockPublishedStore.Verify(x => x.GetVersionsAsync(blueprintId), Times.Once);
-    }
-
-    [Fact]
-    public async Task GetBlueprintAsync_NotInEitherStore_ReturnsNull()
-    {
-        var blueprintId = "ghost-bp";
-        _mockCache.Setup(x => x.GetAsync($"blueprint:{blueprintId}", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((byte[]?)null);
-        _mockBlueprintStore.Setup(x => x.GetAsync(blueprintId)).ReturnsAsync((BlueprintModel?)null);
-        _mockPublishedStore.Setup(x => x.GetVersionsAsync(blueprintId))
-            .ReturnsAsync(Array.Empty<PublishedBlueprint>());
-
-        var result = await _service.GetBlueprintAsync(blueprintId);
-
-        result.Should().BeNull();
-    }
-
-    [Fact]
-    public async Task GetBlueprintAsync_WithValidId_ReturnsBlueprint()
-    {
-        // Arrange
-        var blueprintId = "test-blueprint-1";
-        var blueprint = new BlueprintModel
+    private static PublishedBlueprint Publication(string blueprintId, string pin, string title)
+        => new()
         {
-            Id = blueprintId,
-            Title = "Test Blueprint",
-            Description = "A test blueprint"
+            BlueprintId = blueprintId,
+            PublicationTxId = pin,
+            Blueprint = new BlueprintModel { Id = blueprintId, Title = title, Description = "" }
         };
 
-        _mockCache.Setup(x => x.GetAsync(
-            It.Is<string>(k => k == $"blueprint:{blueprintId}"),
-            It.IsAny<CancellationToken>()))
+    [Fact]
+    public async Task GetBlueprintAsync_ResolvesThePinnedDefinition_FromThePublishedStore()
+    {
+        const string blueprintId = "replicated-bp";
+        _mockCache.Setup(x => x.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((byte[]?)null);
+        _mockPublishedStore.Setup(x => x.GetVersionsAsync(blueprintId))
+            .ReturnsAsync(new[] { Publication(blueprintId, TestDefinitionPin, "Replicated") });
 
-        _mockBlueprintStore.Setup(x => x.GetAsync(blueprintId))
-            .ReturnsAsync(blueprint);
+        var result = await _service.GetBlueprintAsync(blueprintId, TestDefinitionPin);
 
-        // Act
-        var result = await _service.GetBlueprintAsync(blueprintId);
-
-        // Assert
-        result.Should().NotBeNull();
+        result.Should().NotBeNull("a replica resolves the pinned definition from the published store");
         result!.Id.Should().Be(blueprintId);
-        result.Title.Should().Be("Test Blueprint");
+    }
 
-        _mockBlueprintStore.Verify(x => x.GetAsync(blueprintId), Times.Once);
+    /// <summary>
+    /// The load-bearing test of this feature: two definitions of one blueprint, and each instance
+    /// gets its own.
+    /// </summary>
+    [Fact]
+    public async Task GetBlueprintAsync_WithTwoDefinitions_ResolvesTheOneAsked_NotTheLatest()
+    {
+        const string blueprintId = "two-definition-bp";
+        const string olderPin = "1111111111111111111111111111111111111111111111111111111111111111";
+        const string newerPin = "2222222222222222222222222222222222222222222222222222222222222222";
+
+        _mockCache.Setup(x => x.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((byte[]?)null);
+        _mockPublishedStore.Setup(x => x.GetVersionsAsync(blueprintId))
+            .ReturnsAsync(new[]
+            {
+                Publication(blueprintId, olderPin, "Older"),
+                Publication(blueprintId, newerPin, "Newer")
+            });
+
+        var older = await _service.GetBlueprintAsync(blueprintId, olderPin);
+        var newer = await _service.GetBlueprintAsync(blueprintId, newerPin);
+
+        older!.Title.Should().Be("Older", "an instance pinned to the older definition must keep it");
+        newer!.Title.Should().Be("Newer");
+    }
+
+    /// <summary>
+    /// A draft must not influence a running instance — the defect the previous suite encoded.
+    /// </summary>
+    [Fact]
+    public async Task GetBlueprintAsync_DoesNotConsultTheDraftStore()
+    {
+        const string blueprintId = "drafted-bp";
+        _mockCache.Setup(x => x.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((byte[]?)null);
+        _mockBlueprintStore.Setup(x => x.GetAsync(blueprintId))
+            .ReturnsAsync(new BlueprintModel { Id = blueprintId, Title = "DRAFT - must not be used" });
+        _mockPublishedStore.Setup(x => x.GetVersionsAsync(blueprintId))
+            .ReturnsAsync(new[] { Publication(blueprintId, TestDefinitionPin, "Published") });
+
+        var result = await _service.GetBlueprintAsync(blueprintId, TestDefinitionPin);
+
+        result!.Title.Should().Be("Published");
+        _mockBlueprintStore.Verify(x => x.GetAsync(It.IsAny<string>()), Times.Never,
+            "the draft store is not on the execution path at all");
+    }
+
+    [Fact]
+    public async Task GetBlueprintAsync_UnresolvablePin_ReturnsNull_AndNeverSubstitutesLatest()
+    {
+        const string blueprintId = "two-definition-bp";
+        const string knownPin = "1111111111111111111111111111111111111111111111111111111111111111";
+        const string unknownPin = "9999999999999999999999999999999999999999999999999999999999999999";
+
+        _mockCache.Setup(x => x.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((byte[]?)null);
+        _mockPublishedStore.Setup(x => x.GetVersionsAsync(blueprintId))
+            .ReturnsAsync(new[] { Publication(blueprintId, knownPin, "The only one here") });
+
+        var result = await _service.GetBlueprintAsync(blueprintId, unknownPin);
+
+        result.Should().BeNull(
+            "refusing is the point - substituting a definition the instance never agreed to run is " +
+            "the defect version pinning exists to remove, and it fails silently");
+    }
+
+    [Fact]
+    public async Task GetBlueprintAsync_CachesPerDefinition_NotPerBlueprint()
+    {
+        const string blueprintId = "cached-bp";
+        _mockCache.Setup(x => x.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((byte[]?)null);
+        _mockPublishedStore.Setup(x => x.GetVersionsAsync(blueprintId))
+            .ReturnsAsync(new[] { Publication(blueprintId, TestDefinitionPin, "Cached") });
+
+        await _service.GetBlueprintAsync(blueprintId, TestDefinitionPin);
+
         _mockCache.Verify(x => x.SetAsync(
-            It.Is<string>(k => k == $"blueprint:{blueprintId}"),
+            $"blueprint:{blueprintId}:{TestDefinitionPin}",
             It.IsAny<byte[]>(),
             It.IsAny<DistributedCacheEntryOptions>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+            It.IsAny<CancellationToken>()), Times.Once,
+            "a cache key that omits the pin serves one instance's definition to another");
     }
 
     [Fact]
-    public async Task GetBlueprintAsync_WithCachedBlueprint_ReturnsCachedVersion()
+    public async Task GetBlueprintAsync_ReturnsTheCachedDefinition_WithoutTouchingTheStore()
     {
-        // Arrange
-        var blueprintId = "test-blueprint-1";
-        var blueprint = new BlueprintModel
-        {
-            Id = blueprintId,
-            Title = "Cached Blueprint"
-        };
-
-        var cachedData = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(blueprint));
+        const string blueprintId = "cached-bp";
+        var cached = new BlueprintModel { Id = blueprintId, Title = "Cached Blueprint" };
         _mockCache.Setup(x => x.GetAsync(
-            It.Is<string>(k => k == $"blueprint:{blueprintId}"),
-            It.IsAny<CancellationToken>()))
-            .ReturnsAsync(cachedData);
+                $"blueprint:{blueprintId}:{TestDefinitionPin}", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(cached)));
 
-        // Act
-        var result = await _service.GetBlueprintAsync(blueprintId);
+        var result = await _service.GetBlueprintAsync(blueprintId, TestDefinitionPin);
 
-        // Assert
-        result.Should().NotBeNull();
-        result!.Id.Should().Be(blueprintId);
-        result.Title.Should().Be("Cached Blueprint");
-
-        _mockBlueprintStore.Verify(x => x.GetAsync(It.IsAny<string>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task GetBlueprintAsync_WithNonExistentId_ReturnsNull()
-    {
-        // Arrange
-        var blueprintId = "non-existent";
-
-        _mockCache.Setup(x => x.GetAsync(
-            It.IsAny<string>(),
-            It.IsAny<CancellationToken>()))
-            .ReturnsAsync((byte[]?)null);
-
-        _mockBlueprintStore.Setup(x => x.GetAsync(blueprintId))
-            .ReturnsAsync((BlueprintModel?)null);
-
-        // Act
-        var result = await _service.GetBlueprintAsync(blueprintId);
-
-        // Assert
-        result.Should().BeNull();
+        result!.Title.Should().Be("Cached Blueprint");
+        _mockPublishedStore.Verify(x => x.GetVersionsAsync(It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
     public async Task GetBlueprintAsync_WithNullId_ThrowsArgumentException()
     {
-        // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.GetBlueprintAsync(null!));
+            () => _service.GetBlueprintAsync(null!, TestDefinitionPin));
     }
 
     [Fact]
     public async Task GetBlueprintAsync_WithEmptyId_ThrowsArgumentException()
     {
-        // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.GetBlueprintAsync(""));
+            () => _service.GetBlueprintAsync("", TestDefinitionPin));
+    }
+
+    /// <summary>
+    /// An absent pin is a programming error, not a resolvable state. Falling back to "latest" here
+    /// would reinstate the defect for every caller that forgot to pass one.
+    /// </summary>
+    [Fact]
+    public async Task GetBlueprintAsync_WithNoPin_ThrowsRatherThanResolvingLatest()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.GetBlueprintAsync("some-bp", ""));
     }
 
     [Fact]
