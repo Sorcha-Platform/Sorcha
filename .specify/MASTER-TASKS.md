@@ -3,10 +3,26 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.20
+**Version:** 7.21
 **Last Updated:** 2026-08-25
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
+
+> **2026-08-25 - every log line was written to stdout TWICE, by two writers.**
+>
+> `AddSerilogLogging` uses `writeToProviders: true` so enriched events still reach OpenTelemetry (and therefore the Aspire dashboard). But `WebApplicationBuilder` registers `ConsoleLoggerProvider` by default, and `writeToProviders` forwards to it too - so every event produced **three physical lines**: MEL's `info: Category[0]` header, its indented message with quoted structured values, and Serilog's single `[HH:mm:ss LVL] Category Message`. Interleaved non-deterministically, because two writers race for the stream.
+>
+> **The operational cost is that a counter cannot be trusted.** `docker logs ... | grep -c` reports double the real event count. It caught me this session: `pin_fallback` read **4** on an n1 suite run against a recorded baseline of **2**, and looked like a regression until the distinct transaction ids were counted - there were two events, logged twice each.
+>
+> **The obvious fix does nothing, and only running it says so.** `builder.Logging.AddFilter<ConsoleLoggerProvider>(null, LogLevel.None)` is the documented way to silence a provider and had **no effect**: with `writeToProviders: true` Serilog fans out to the providers itself, so MEL's filter pipeline - where `AddFilter` rules live - is never consulted. A probe over all three candidates measured **3 lines as-is, 3 with the filter, 1 with the provider registration removed**. Reasoning would have shipped the filter.
+>
+> **And `ClearProviders()` is not a substitute.** Every service calls `AddServiceDefaults()` (which registers OTel) BEFORE `AddSerilogLogging()`, so clearing takes OpenTelemetry with it and the Aspire dashboard silently stops receiving logs - nothing fails. The regression test asserts **both** halves for that reason, and the mutation run proves the pair is load-bearing: `ClearProviders()` passes "exactly one line" and is caught only by "OTel survives".
+>
+> A host that does not call `AddSerilogLogging` keeps its console provider - whichever console is the only one survives. `Sorcha.Haip.Service` is currently such a host, and is pinned by its own test.
+>
+> ServiceDefaults 217/217; Tenant 1712, Blueprint 1249 unaffected.
+>
+> WARNING **Separate, NOT fixed, and worth a decision: n1 has no Docker log rotation at all.** `json-file` with empty options and no `/etc/docker/daemon.json`, so container logs grow unbounded - **550 MB today**, led by aspire-dashboard 220 MB, tenant 100 MB, mongodb 84 MB, validator 76 MB, on a 29 GB disk at 47%. The de-duplication cuts the app services' share by roughly two thirds but does not bound it. This node has had a disk-full incident before (ghost containers needing a daemon restart).
 
 > **2026-08-25 - Set A / Feature 187 US3: a docket can now be checked against the commitment it was sealed with (#1372). #1370 and #1371 were already merged (#1373) and are closed on verified source, not on the commit message.**
 >
