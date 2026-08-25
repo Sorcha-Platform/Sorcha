@@ -985,6 +985,40 @@ await orgCard.First.ClickAsync();
 | Walkthrough: Action N times out at 60s on `/actions/execute` with "Transaction not confirmed" | Script raced ahead of docket-seal; the previous action's tx is mid-cleanup at the validator and the new tx triggers the docket-monitoring race (P0 issue #787). Register is now wedged — restart won't help; new txs on this register never seal. | Pass `-WaitForSeal` on every `Invoke-SorchaAction` call (see "Cadence" section above). Existing wedged register needs the underlying validator bug fixed, or the register replaced (the wedge survives validator restart because the stuck tx is persisted in the mempool). |
 | Walkthrough: Action 1 returns 403 immediately (6 ms response) on a fresh setup, no rate-limit warning | setup.ps1 saved state.json before the participant/blueprint publish txs had sealed; run.ps1 starts instantly, auth check looks up the participant record, 404 upstream becomes 403 at auth layer | Add `Wait-SorchaActorReady -Mode BlueprintSealed` / `ParticipantSealed` in setup.ps1 after each publish, before writing state.json. |
 
+## Running the whole suite — `run-all.ps1 -Profile n1`
+
+The **core** suite is sixteen steps and is the platform's end-to-end regression check ("16/16").
+`pwsh walkthroughs/run-all.ps1 -Profile n1 -AuthGapMs 1000`, ~11 minutes, transcripts in
+`walkthroughs/.run-logs/`.
+
+Four things cost a wasted cycle each when they were got wrong, and are now encoded in the runner:
+
+- **An exit code is not a verdict.** `ConstructionPermit/run-agents.ps1` prints `ERROR (exit 1)` per
+  agent and exits **0**; `TradeFinance/setup.ps1` has printed a raw HTTP 500 and exited **0**. A run
+  scored a step PASS with all five agents dead against the wrong host. Judge on the exit code AND on
+  markers in the transcript (`ERROR \(exit`, `The build failed`, `actively refused`, `[FAIL]`,
+  `"status":50x`, `Invoke-RestMethod:`).
+- **ConstructionPermit and SelfBuildHouse: `run.ps1 -Scenario all`, NEVER `run-agents.ps1`.** Their
+  agent launchers hard-code `actors/*.json` whose `gatewayUrl` is literally `http://localhost`, and
+  only 3 of ConstructionPermit's 5 actors have a `-remote` variant — they cannot target a remote node
+  at all. The scenario runners read URLs from `state.json`; that is where "3/3" comes from.
+  `CyberEssentialsUac/run-agents.ps1` is safe despite its name — it spawns no agents.
+- **Pre-build `Sorcha.Agent`.** Five concurrent `dotnet run` calls race to build the same assembly
+  and all die on the file lock (`The build failed`, inside each agent's own log, launcher exits 0).
+- **Order:** ConstructionPermit FIRST (its setup enables the Public org node-wide; three of seven
+  walkthroughs never enable it themselves, and on a fresh database that is a wall of 403s reading as
+  permissions problems). `run-suspension` BEFORE `run-revocation`.
+
+**`-AuthGapMs` is a deliberate stress knob.** The module default is 8s per `/auth/` call; a node with
+`RATELIMIT_AUTH_PERMIT` raised takes 1000ms happily. Lowering it compresses the timeline and **finds
+latent races the slow default hides** — the second-resolution blueprint-id collision that made
+`POST /api/blueprints/` return a bare 500 (PR #1577) was found exactly this way.
+
+**The suite passing is not the whole verdict on a pinning-capable node.** Features 194/195 degrade to
+the OLD behaviour rather than to an error, so the positive check is a counter no walkthrough can see:
+`docker logs sorcha-blueprint-service | grep -c 'pre-Feature-194 fallback'` must read 0. A rejection
+scenario currently makes it non-zero — #1576.
+
 ## Running against n1 (ground-truth verification)
 
 The local `docker-compose` stack is fine for fast iteration, but it shares code paths with tests — a change can pass every unit/integration test yet still break on n1 because of a layer the tests don't cover (DI wiring, registration of endpoints, docket-seal projections, Docker image staleness).
