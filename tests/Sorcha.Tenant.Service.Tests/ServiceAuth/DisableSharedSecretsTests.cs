@@ -107,6 +107,34 @@ public class DisableSharedSecretsTests : IClassFixture<DisabledSecretsTenantFact
         body.Should().Contain("DisableSharedSecrets");
     }
 
+    /// <summary>
+    /// Issue #1443, via its actual symptom. A valid client_credentials body in the OAuth2
+    /// snake_case spelling used to bind NOTHING on the JSON path, so this request fell through to
+    /// the "client_id is required" guard — telling an operator their request was malformed when the
+    /// truth was that this deployment has retired shared secrets.
+    /// </summary>
+    [Fact]
+    public async Task SnakeCaseJsonBody_ReachesTheSharedSecretsRefusal_NotAMisleadingValidationError()
+    {
+        var response = await _plaintextClient.PostAsync(
+            "/api/internal/service-auth/token",
+            new StringContent(
+                """{"grant_type":"client_credentials","client_id":"service-blueprint","client_secret":"test-client-secret"}""",
+                System.Text.Encoding.UTF8,
+                "application/json"),
+            TestContext.Current.CancellationToken);
+
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        body.Should().Contain("DisableSharedSecrets",
+            "the request bound correctly and was refused for the real reason — its credential CLASS " +
+            "is retired on this deployment");
+        body.Should().NotContain("Client ID is required",
+            "that is the pre-#1443 symptom: the snake_case body bound nothing, so the request was " +
+            "reported as malformed rather than as a refused credential class");
+    }
+
     [Fact]
     public async Task SecretDelegatedToken_IsRefusedWithExplicitError()
     {

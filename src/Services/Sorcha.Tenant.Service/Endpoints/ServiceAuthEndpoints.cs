@@ -195,10 +195,11 @@ public static class ServiceAuthEndpoints
                 });
             }
 
-            grantType = request.GrantType ?? "";
+            // Resolved* accept either the camelCase or the OAuth2 snake_case spelling (#1443).
+            grantType = request.ResolvedGrantType;
             username = request.Username ?? "";
             password = request.Password ?? "";
-            refreshToken = request.RefreshToken ?? "";
+            refreshToken = request.ResolvedRefreshToken;
             scope = request.Scope ?? "";
         }
         else
@@ -261,9 +262,10 @@ public static class ServiceAuthEndpoints
                 });
             }
 
-            grantType = request.GrantType ?? "";
-            clientId = request.ClientId ?? "";
-            clientSecret = request.ClientSecret ?? "";
+            // Resolved* accept either the camelCase or the OAuth2 snake_case spelling (#1443).
+            grantType = request.ResolvedGrantType;
+            clientId = request.ResolvedClientId;
+            clientSecret = request.ResolvedClientSecret;
             scope = request.Scope ?? "";
         }
         else
