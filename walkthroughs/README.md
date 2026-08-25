@@ -313,11 +313,11 @@ See `walkthroughs/council/README.md` and `walkthroughs/council/setup-council.ps1
 
 ## run-all.ps1 — the regression suite
 
-The **core** suite is sixteen steps and is the platform's end-to-end regression check. It is what
-"16/16" means in `MASTER-TASKS.md` and in the node-state notes.
+The **core** suite is eighteen steps and is the platform's end-to-end regression check. It is what
+"18/18" means in `MASTER-TASKS.md` and in the node-state notes.
 
 ```powershell
-pwsh walkthroughs/run-all.ps1 -Profile n1                  # the sixteen-step core suite against n1
+pwsh walkthroughs/run-all.ps1 -Profile n1                  # the eighteen-step core suite against n1
 pwsh walkthroughs/run-all.ps1 -Profile n1 -AuthGapMs 1000  # faster, where RATELIMIT_* is raised
 pwsh walkthroughs/run-all.ps1 -GatewayUrl http://tiny:8090 # any node, no profile needed
 pwsh walkthroughs/run-all.ps1 -Profile n1 -StartAt 9       # resume after fixing one step
@@ -327,6 +327,13 @@ pwsh walkthroughs/run-all.ps1 -OnlySetup                   # provision only
 
 Every step writes a transcript to `walkthroughs/.run-logs/` (gitignored) plus a `summary.json`.
 Nothing aborts on the first failure.
+
+> **`EncryptionAtRest` is the one step that needs more than the gateway.** It reads the node's
+> MongoDB directly over `ssh` + `docker exec`, because the claim it settles — that a Normal
+> register stores field *values* as ciphertext — cannot be established from anything the API
+> returns. Against `-Profile n1` it derives the ssh host itself; against a local Docker stack it
+> uses `docker` on this machine. It runs last because it promotes its own register one-way and so
+> provisions a fresh one every time.
 
 ### Four things the runner has to get right — each has produced a wrong verdict before
 
