@@ -5,6 +5,7 @@
 
 using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Infrastructure;
+using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
 using Sorcha.ServiceClients.Wallet;
 
@@ -142,7 +143,136 @@ public static class ActionEndpoints
             + "Uses the same wallet resolution path as GetPendingActions. urgentCount is currently always 0 — "
             + "urgency-aware counting will be added in a future iteration.");
 
+        // Issue #1446 — the discovery surface for Feature 103 OPEN starting actions.
+        //
+        // These deliberately do NOT appear in /api/actions/pending. An open starting action is an
+        // invitation, not an assignment: the participant who may perform it has no wallet on the
+        // instance yet (that is what late binding means), so there is nobody to put it in the inbox
+        // OF. Placing it in every pre-bound participant's inbox is what n1 was doing — the tenant's
+        // "Report Problem" listed as the housing officer's work — and putting it in every
+        // authenticated wallet's inbox instead would have made every citizen's list carry every open
+        // instance on the node.
+        //
+        // So it is asked for, not pushed: blueprintId is REQUIRED, which is what makes this a
+        // deliberate question ("which instances of the service I operate are waiting to be started?")
+        // rather than an unbounded feed.
+        //
+        // Authorization is the group's plain RequireAuthorization, matching
+        // InstanceParticipantGate.IsAwaitingOpenParticipant — the carve-out that already lets ANY
+        // authenticated caller read GET /api/instances/{id} while it awaits its open participant,
+        // because the walk-in applicant is not yet a participant on their own instance. This endpoint
+        // therefore discloses nothing that audience cannot already read one instance at a time.
+        group.MapGet("/open-starting", async (
+            IInstanceStore instanceStore,
+            IActionResolverService actionResolver,
+            string blueprintId,
+            string? registerId = null,
+            int page = 1,
+            int pageSize = 20) =>
+        {
+            if (string.IsNullOrWhiteSpace(blueprintId))
+            {
+                return Results.BadRequest(new { error = "blueprintId is required" });
+            }
+
+            page = page < 1 ? 1 : page;
+            pageSize = pageSize is < 1 or > 100 ? 20 : pageSize;
+            var skip = (page - 1) * pageSize;
+
+            // Over-fetch, because the register filter and the open-participant test are applied
+            // after the store query. Approximate on very deep pages, exactly like the sibling
+            // /pending endpoint's multi-wallet merge; say so rather than imply otherwise.
+            var candidates = await instanceStore.GetByBlueprintAsync(
+                blueprintId, InstanceState.Active, skip: 0, take: skip + pageSize + OpenStartingOverFetch);
+
+            var matches = new List<PendingActionSummary>();
+            foreach (var instance in candidates)
+            {
+                if (!string.IsNullOrWhiteSpace(registerId)
+                    && !string.Equals(instance.RegisterId, registerId, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                // Resolve by the instance's PIN, never "latest" (Feature 194/195): whether a
+                // participant is open is a property of the definition this instance runs.
+                var blueprint = string.IsNullOrWhiteSpace(instance.BlueprintDefinitionTxId)
+                    ? null
+                    : await actionResolver.GetBlueprintAsync(
+                        instance.BlueprintId, instance.BlueprintDefinitionTxId);
+
+                // Fails closed on an unresolvable definition — an open-participant claim that cannot
+                // be verified is not granted.
+                if (!InstanceParticipantGate.IsAwaitingOpenParticipant(instance, blueprint))
+                {
+                    continue;
+                }
+
+                foreach (var actionId in instance.CurrentActionIds)
+                {
+                    if (IsUnboundOpenSender(blueprint!, actionResolver, instance, actionId))
+                    {
+                        matches.Add(PendingActionProjection.ToSummary(instance, actionId, blueprint, actionResolver));
+                    }
+                }
+            }
+
+            var paged = matches
+                .OrderByDescending(m => m.ReceivedAt)
+                .Skip(skip)
+                .Take(pageSize)
+                .ToList();
+
+            return Results.Ok(new { items = paged, totalCount = matches.Count, page, pageSize });
+        })
+        .WithName("GetOpenStartingActions")
+        .WithSummary("Get starting actions awaiting their open (late-bound) participant")
+        .WithDescription(
+            "Returns the current starting actions of active instances of `blueprintId` whose sender is a "
+            + "Feature 103 open participant that has not been late-bound yet — i.e. workflows waiting for "
+            + "somebody to start them. Deliberately separate from /api/actions/pending, which only ever "
+            + "carries work assigned to the caller. `blueprintId` is required; `registerId` narrows further. "
+            + "totalCount reflects the over-fetched candidate window, so it is approximate on deep pages.")
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized);
+
         return routes;
+    }
+
+    /// <summary>
+    /// How many extra candidate instances to pull beyond the requested page, to absorb those the
+    /// register filter and the open-participant test discard.
+    /// </summary>
+    private const int OpenStartingOverFetch = 100;
+
+    /// <summary>
+    /// Whether <paramref name="actionId"/> is a starting action whose sender is an open participant
+    /// with no binding yet — the exact complement of the case
+    /// <c>EfCoreInstanceStore.IsActionForWallet</c> now excludes from the personal list, so an action
+    /// never falls between the two surfaces or appears on both.
+    /// </summary>
+    internal static bool IsUnboundOpenSender(
+        Sorcha.Blueprint.Models.Blueprint blueprint,
+        IActionResolverService actionResolver,
+        Instance instance,
+        int actionId)
+    {
+        var action = actionResolver.GetActionDefinition(blueprint, actionId.ToString());
+        if (action is null || !action.IsStartingAction || string.IsNullOrEmpty(action.Sender))
+        {
+            return false;
+        }
+
+        if (instance.ParticipantWallets.TryGetValue(action.Sender, out var bound) && !string.IsNullOrEmpty(bound))
+        {
+            return false;
+        }
+
+        var sender = blueprint.Participants
+            .FirstOrDefault(p => string.Equals(p.Id, action.Sender, StringComparison.OrdinalIgnoreCase));
+
+        return sender is not null && string.IsNullOrEmpty(sender.WalletAddress);
     }
 
     /// <summary>

@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Sorcha.Blueprint.Service.Data;
 using Sorcha.Blueprint.Service.Data.Entities;
 using Sorcha.Blueprint.Service.Models;
+using Sorcha.Blueprint.Service.Services.Infrastructure;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 
 namespace Sorcha.Blueprint.Service.Storage;
@@ -315,68 +316,8 @@ public class EfCoreInstanceStore : IInstanceStore
                 // analyst's-action bug). See IsActionForWallet.
                 return instance.CurrentActionIds
                     .Where(actionId => IsActionForWallet(blueprint, actionResolver, instance, actionId, walletAddress))
-                    .Select(actionId =>
-                {
-                    var actionTitle = $"Action {actionId}";
-                    JsonElement? dataSchema = null;
-
-                    if (blueprint != null && actionResolver != null)
-                    {
-                        var actionDef = actionResolver.GetActionDefinition(blueprint, actionId.ToString());
-                        if (actionDef != null)
-                        {
-                            if (!string.IsNullOrEmpty(actionDef.Title))
-                            {
-                                actionTitle = actionDef.Title;
-                            }
-
-                            // Surface the first declared DataSchema so the client-side
-                            // pending-actions dispatcher can detect Feature 104 wave 14b
-                            // claim actions via the x-credential-offer schema extension.
-                            // Without this the CredentialOfferSchemaResolver short-circuits
-                            // on a null schema and the UI falls through to a generic
-                            // empty form. Wave 14b shipped this gap — fixing it here so
-                            // the claim card finally renders in the browser.
-                            //
-                            // Actions may declare multiple schemas, but the client-side
-                            // CredentialOfferSchemaResolver only inspects the first to
-                            // detect the x-credential-offer extension. Multi-schema
-                            // actions are not a wave 14b use-case; revisit this
-                            // projection if that assumption ever changes.
-                            //
-                            // RootElement.Clone() is required — JsonElement shares memory
-                            // with its parent JsonDocument and becomes invalid once the
-                            // document is disposed. Without Clone() this would corrupt
-                            // at runtime in a hard-to-reproduce way.
-                            var firstSchemaDoc = actionDef.DataSchemas?.FirstOrDefault();
-                            if (firstSchemaDoc is not null)
-                            {
-                                dataSchema = firstSchemaDoc.RootElement.Clone();
-                            }
-                        }
-                    }
-
-                    // Surface any prepopulated seed payload for this action so
-                    // the UI can render it without a second round trip.
-                    // Feature 104 wave 14a (FR-006).
-                    instance.PendingActionPayloads.TryGetValue(actionId, out var seededPayload);
-
-                    return new PendingActionSummary
-                    {
-                        InstanceId = instance.Id,
-                        ActionId = actionId,
-                        ActionTitle = actionTitle,
-                        BlueprintId = instance.BlueprintId,
-                        BlueprintTitle = instance.Metadata.GetValueOrDefault("BlueprintTitle", instance.BlueprintId),
-                        InstanceReference = instance.Metadata.GetValueOrDefault("instanceReference", string.Empty),
-                        RegisterId = instance.RegisterId,
-                        TransactionId = instance.LastTransactionId ?? string.Empty,
-                        NavigationPath = $"/blueprints/{instance.BlueprintId}/instances/{instance.Id}/actions/{actionId}",
-                        ReceivedAt = instance.UpdatedAt,
-                        PrepopulatedPayload = seededPayload,
-                        DataSchema = dataSchema
-                    };
-                });
+                    .Select(actionId => PendingActionProjection.ToSummary(
+                        instance, actionId, blueprint, actionResolver));
             })
             .OrderByDescending(s => s.ReceivedAt)
             .Skip(skip)
@@ -711,15 +652,28 @@ public class EfCoreInstanceStore : IInstanceStore
     }
 
     /// <summary>
-    /// Whether a current action is actionable by <paramref name="walletAddress"/> — i.e. the
-    /// action's <c>Sender</c> participant either binds to that wallet in the instance, or is not
-    /// yet bound to any wallet (open / late-bound, ambiguous). It excludes ONLY actions whose
-    /// sender is bound to a <b>different</b> wallet, so a participant who merely shares an instance
-    /// (e.g. the citizen applicant whose wallet is in <see cref="Instance.ParticipantWallets"/>
-    /// alongside the analyst's) is no longer shown the analyst's action as if it were their own.
-    /// Falls back to inclusive whenever the blueprint / action / sender can't be resolved, so a
-    /// resolution failure never hides a legitimate pending action from the actor who must perform it.
+    /// Whether a current action is this wallet's OWN outstanding work — the predicate behind
+    /// <c>GET /api/actions/pending</c>.
     /// </summary>
+    /// <remarks>
+    /// <para>Three cases, and issue #1446 was that the last two were collapsed into "don't hide it":</para>
+    /// <list type="number">
+    /// <item><description>The sender is bound to a wallet (on the instance, else in the pinned
+    /// definition) — the action belongs to that wallet and to nobody else.</description></item>
+    /// <item><description>The sender is a Feature 103 <b>open</b> participant with no binding
+    /// anywhere and no late-bind yet. It is nobody's assigned work, so it belongs in nobody's
+    /// personal list. Live on n1 this arm put a tenant's "Report Problem" into the housing officer's,
+    /// the contractor's and the building inspector's inboxes — seven times over — while the tenant,
+    /// who is not in <see cref="Instance.ParticipantWallets"/> until they submit, saw nothing. The
+    /// discovery surface for these is <c>GET /api/actions/open-starting</c>.</description></item>
+    /// <item><description>Nothing about the sender resolves (an unreplicated blueprint, an unpinned
+    /// instance). Genuinely unknown, so stay inclusive — a resolution failure must never hide real
+    /// work from the actor who has to do it.</description></item>
+    /// </list>
+    /// <para>Distinguishing 2 from 3 is the whole fix, and it needs the blueprint: an open
+    /// participant is one the DEFINITION declares with no wallet, which is exactly what the instance
+    /// map cannot tell you, because both cases look like a missing key.</para>
+    /// </remarks>
     internal static bool IsActionForWallet(
         Sorcha.Blueprint.Models.Blueprint? blueprint,
         IActionResolverService? actionResolver,
@@ -741,11 +695,29 @@ public class EfCoreInstanceStore : IInstanceStore
         if (instance.ParticipantWallets.TryGetValue(sender, out var senderWallet)
             && !string.IsNullOrEmpty(senderWallet))
         {
-            // Sender is bound to a wallet — the action belongs to that wallet only.
+            // Case 1 — bound on the instance (pre-bound at creation, or late-bound on submission).
             return string.Equals(senderWallet, walletAddress, StringComparison.OrdinalIgnoreCase);
         }
 
-        // Sender not yet bound (open / late-bound participant) — ambiguous, don't hide it.
-        return true;
+        var senderParticipant = blueprint.Participants
+            .FirstOrDefault(p => string.Equals(p.Id, sender, StringComparison.OrdinalIgnoreCase));
+
+        if (senderParticipant is null)
+        {
+            // Case 3 — the definition does not describe this sender at all. Unknown, stay inclusive.
+            return true;
+        }
+
+        if (!string.IsNullOrEmpty(senderParticipant.WalletAddress))
+        {
+            // Case 1 again, via the definition. The instance map is seeded from the pinned
+            // definition at creation, so this normally agrees with the branch above; it answers
+            // correctly anyway if the map is incomplete, instead of falling through to inclusive.
+            return string.Equals(senderParticipant.WalletAddress, walletAddress, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Case 2 — an open (Feature 103) participant, not yet late-bound. Not this wallet's work,
+        // and not anyone else's either.
+        return false;
     }
 }

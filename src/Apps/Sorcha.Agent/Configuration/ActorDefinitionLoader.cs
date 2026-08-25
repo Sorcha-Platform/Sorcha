@@ -125,6 +125,15 @@ public static class ActorDefinitionLoader
             errors.Add("At least one inbox channel (signalR or polling) must be enabled");
         }
 
+        // Issue #1446 — an open-starting watch with no blueprint has nothing to ask for, and the
+        // endpoint refuses an unscoped query. Caught here so `sorcha-agent validate` reports it
+        // rather than the agent starting and silently never seeing anything.
+        if ((definition.Inbox.OpenStarting?.Enabled ?? false)
+            && string.IsNullOrWhiteSpace(definition.Inbox.OpenStarting!.BlueprintId))
+        {
+            errors.Add(OpenStartingConfig.BlueprintIdRequiredError);
+        }
+
         return errors;
     }
 }

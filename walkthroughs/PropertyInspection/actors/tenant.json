@@ -15,7 +15,8 @@
   },
   "inbox": {
     "signalR": { "enabled": true },
-    "polling": { "enabled": true, "intervalSeconds": 15 }
+    "polling": { "enabled": true, "intervalSeconds": 15 },
+    "openStarting": { "enabled": true, "blueprintId": "{{blueprintId}}", "intervalSeconds": 15 }
   },
   "mode": "rules",
   "rules": [

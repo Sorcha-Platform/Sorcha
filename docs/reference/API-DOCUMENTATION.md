@@ -960,6 +960,71 @@ claim directly and returned an empty page when it was absent — so every consum
 none of their own applications. It now resolves through the same seam, spans every wallet the caller
 controls, deduplicates by instance id and orders newest-first.
 
+### Outstanding actions — two surfaces, never one (issue #1446)
+
+| Method | Path | Auth | Answers |
+|--------|------|------|---------|
+| GET | `/api/actions/pending` | Authenticated | "What work is assigned to **me**?" |
+| GET | `/api/actions/pending/count` | Authenticated | The badge for the above |
+| GET | `/api/actions/open-starting?blueprintId={id}[&registerId={id}]` | Authenticated | "Which instances of **this blueprint** are waiting for somebody to start them?" |
+
+A Feature 103 **open** starting action has no wallet bound to its sender until the first qualifying
+submitter late-binds, so it is nobody's assigned work. It therefore does **not** appear in
+`/api/actions/pending` for anyone — not for the pre-bound participants on the instance (who cannot
+usefully do it), and not as an unbounded node-wide feed for every authenticated wallet.
+
+Before this, `/pending` was exactly inverted for such an action: on n1 a tenant's "Report Problem"
+was listed seven times as the housing officer's work, and also offered to the contractor and the
+building inspector, while the tenant — absent from `ParticipantWallets` until they submit — saw
+nothing. Autonomous agents playing an open role could not start a workflow at all.
+
+`blueprintId` is **required** on `/open-starting`. That is what makes it a deliberate question rather
+than a feed. `registerId` narrows further. `totalCount` reflects an over-fetched candidate window, so
+it is approximate on deep pages — the same honest caveat the multi-wallet merge on `/pending` carries.
+
+Authorization is the group's plain authenticated check, matching
+`InstanceParticipantGate.IsAwaitingOpenParticipant`: any authenticated caller may already read
+`GET /api/instances/{id}` while it awaits its open participant (the walk-in applicant is not yet a
+participant on their own instance), so this discloses nothing that audience cannot already read one
+instance at a time.
+
+**Response — 200 OK:**
+
+```json
+{
+  "items": [
+    {
+      "instanceId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "actionId": 0,
+      "actionTitle": "Report Problem",
+      "blueprintId": "property-inspection",
+      "blueprintTitle": "Property Inspection",
+      "registerId": "…",
+      "navigationPath": "/blueprints/property-inspection/instances/3fa85f64-…/actions/0",
+      "receivedAt": "2026-08-25T10:30:00Z"
+    }
+  ],
+  "totalCount": 1,
+  "page": 1,
+  "pageSize": 20
+}
+```
+
+`400` when `blueprintId` is missing.
+
+**Agent consumption.** `sorcha-agent` watches this only when the actor opts in:
+
+```jsonc
+"inbox": {
+  "polling": { "enabled": true, "intervalSeconds": 15 },
+  "openStarting": { "enabled": true, "blueprintId": "{{blueprintId}}", "intervalSeconds": 15 }
+}
+```
+
+`enabled` without `blueprintId` fails `sorcha-agent validate` — an agent silently watching nothing
+looks exactly like the defect this closes.
+
+
 ### My Applications — the citizen read surface (Feature 186 / #1163)
 
 *What did I submit, and what happened to it?* Under `/api/me/*`, the platform's personal-scope

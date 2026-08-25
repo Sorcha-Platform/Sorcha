@@ -71,6 +71,46 @@ public record InboxConfig
 {
     public SignalRConfig? SignalR { get; init; }
     public PollingConfig? Polling { get; init; }
+
+    /// <summary>
+    /// Opt-in: also poll for Feature 103 OPEN starting actions of a named blueprint, so this agent
+    /// can START a workflow rather than only respond to work already assigned to it (issue #1446).
+    /// </summary>
+    /// <remarks>
+    /// Deliberately separate from <see cref="Polling"/>, and off unless configured. An open starting
+    /// action has no participant bound to it yet, so it appears in nobody's pending list — including
+    /// the agent that plays the open role. It is asked for by blueprint id, which is what keeps the
+    /// question bounded ("which instances of the service I operate are waiting to be started?").
+    /// </remarks>
+    public OpenStartingConfig? OpenStarting { get; init; }
+}
+
+/// <summary>
+/// Settings for polling <c>GET /api/actions/open-starting</c>.
+/// </summary>
+public record OpenStartingConfig
+{
+    /// <summary>
+    /// The one place this rule is worded. Both <c>ActorDefinitionLoader.Validate</c> (so
+    /// <c>sorcha-agent validate</c> catches it before a run) and the run loop report it.
+    /// </summary>
+    public const string BlueprintIdRequiredError =
+        "inbox.openStarting.enabled is true but inbox.openStarting.blueprintId is missing — "
+        + "an open-starting watch must name the blueprint this agent starts";
+
+    public bool Enabled { get; init; }
+
+    /// <summary>
+    /// The blueprint whose open starting actions this agent will start. Required when
+    /// <see cref="Enabled"/> — the endpoint refuses an unscoped query, and an agent that started
+    /// arbitrary workflows would be a worse defect than the one this fixes.
+    /// </summary>
+    public string? BlueprintId { get; init; }
+
+    /// <summary>
+    /// Reuses the polling interval when unset, so the two loops do not drift apart by accident.
+    /// </summary>
+    public int? IntervalSeconds { get; init; }
 }
 
 /// <summary>

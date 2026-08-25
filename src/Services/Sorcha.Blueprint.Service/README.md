@@ -323,6 +323,24 @@ binding all yield `false`, so the page cannot offer an action that turns out not
 |--------|----------|-------------|
 | GET | `/api/actions/pending` | Get pending actions (paginated, urgency filter, blueprintId filter) |
 | GET | `/api/actions/pending/count` | Get pending action count (for badge display) |
+| GET | `/api/actions/open-starting` | Starting actions awaiting their open (Feature 103) participant — `blueprintId` **required**, optional `registerId` |
+
+**`/pending` means "assigned to you"; `/open-starting` means "waiting for somebody" (issue #1446).**
+An action whose sender is a Feature 103 open participant is bound to no wallet until the first
+qualifying submitter late-binds, so it belongs in nobody's personal list. It used to appear in the
+list of every *other* participant on the instance (a tenant's "Report Problem" listed seven times as
+the housing officer's work) while the citizen who could actually perform it — not in
+`ParticipantWallets` until they submit — saw nothing.
+
+The two surfaces **partition** every current action: `EfCoreInstanceStore.IsActionForWallet` excludes
+exactly the case `ActionEndpoints.IsUnboundOpenSender` publishes, and a test asserts the XOR. An
+action on neither would be unreachable; on both, the noise returns.
+
+`/open-starting` requires `blueprintId` deliberately — that is what makes it a deliberate question
+("which instances of the service I operate are waiting to be started?") rather than an unbounded feed
+of every open instance on the node. Its authorization is the group's plain authenticated check,
+matching `InstanceParticipantGate.IsAwaitingOpenParticipant`, which already lets any authenticated
+caller read `GET /api/instances/{id}` while it awaits its open participant.
 
 **NotificationConfig on Action Model:** The `Action` class in `Sorcha.Blueprint.Models` now includes a `NotificationConfig` property that defines per-action notification behavior (summary template, urgency rules, deadline).
 

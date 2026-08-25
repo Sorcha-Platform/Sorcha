@@ -177,6 +177,33 @@ public class RunCommand : Command
                 if (!quiet) Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Polling enabled ({interval}s interval)");
             }
 
+            // Issue #1446 — opt-in: also watch for Feature 103 OPEN starting actions of a named
+            // blueprint, so this agent can START a workflow. These never appear in /pending: until
+            // somebody submits, the open participant is bound to no wallet, so the action is in
+            // nobody's assigned work. Off unless the actor asks for it, and scoped to one blueprint.
+            if (definition.Inbox.OpenStarting?.Enabled ?? false)
+            {
+                var openStarting = definition.Inbox.OpenStarting!;
+                if (string.IsNullOrWhiteSpace(openStarting.BlueprintId))
+                {
+                    Console.Error.WriteLine($"  Config error: {OpenStartingConfig.BlueprintIdRequiredError}");
+                    return ExitCodes.ConfigurationError;
+                }
+
+                var openInterval = openStarting.IntervalSeconds
+                    ?? definition.Inbox.Polling?.IntervalSeconds
+                    ?? 60;
+                var openListener = new PollingInboxListener(
+                    httpClient, authService, openInterval,
+                    loggerFactory.CreateLogger<PollingInboxListener>(),
+                    PollingInboxListener.OpenStartingPath(openStarting.BlueprintId!, definition.Connection.RegisterId));
+                listeners.Add(openListener);
+                if (!quiet)
+                    Console.WriteLine(
+                        $"[{DateTime.Now:HH:mm:ss}] Open-starting watch enabled for blueprint "
+                        + $"\"{openStarting.BlueprintId}\" ({openInterval}s interval)");
+            }
+
             var compositeListener = new CompositeInboxListener(
                 loggerFactory.CreateLogger<CompositeInboxListener>(),
                 listeners.ToArray());
