@@ -352,6 +352,17 @@ public class VerifyMerkleInclusionProofRequest
     public string TransactionHash { get; set; } = string.Empty;
     public string MerkleRoot { get; set; } = string.Empty;
     public IReadOnlyList<MerkleProofStep> ProofPath { get; set; } = new List<MerkleProofStep>();
+
+    /// <summary>
+    /// The docket this proof claims inclusion in, so the server can cross-check the folded root
+    /// against the one its proposing validator sealed (issue #1372).
+    /// </summary>
+    /// <remarks>
+    /// Optional on the wire, but the CLI always sends it: every proof it verifies came from a file
+    /// that carries the docket number, and without it the server can only confirm the arithmetic —
+    /// a proof path always folds to SOME root.
+    /// </remarks>
+    public long? DocketNumber { get; set; }
 }
 
 /// <summary>
@@ -361,6 +372,16 @@ public class VerifyProofResult
 {
     public bool IsValid { get; set; }
     public string ComputedRoot { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Whether the folded root is the one this register sealed: <c>"verified"</c>, <c>"failed"</c>,
+    /// or <c>null</c> when the check could not run (issue #1372). Null on an older node too, which
+    /// is why it must be reported as unknown rather than assumed sound.
+    /// </summary>
+    public string? LedgerAnchored { get; set; }
+
+    /// <summary>Why the anchor check did not run, or why it failed. Null when it succeeded.</summary>
+    public string? LedgerAnchorReason { get; set; }
 }
 
 /// <summary>

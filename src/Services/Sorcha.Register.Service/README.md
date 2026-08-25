@@ -424,6 +424,10 @@ ledger. Every check passed; none of them consulted the commitment.
 - **Cost.** Generation adds no I/O (the transactions were already fetched) and one recomputation;
   verification adds a single indexed docket-header read and no hashing. Nothing recomputes on a plain
   docket read.
+- **`sorcha transaction verify-proof` consumes it too.** It sends the proof file's `docketNumber`
+  and only claims "included in the docket" on an affirmative `verified`; otherwise it reports the
+  proof as *well-formed* and says the register did not confirm it. It used to print "the transaction
+  is included in the docket" on the arithmetic alone.
 - **The Open Verifier consumes it.** `IRegisterAnchorClient` (F155 layer 4) now sends `docketNumber`
   on its verify call and requires an affirmative `ledgerAnchored: "verified"` before reporting
   `Verified`. A **contradicted** anchor is `Failed`; anything else — including an older node that
