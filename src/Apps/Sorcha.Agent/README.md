@@ -270,12 +270,45 @@ Hooks that execute before payload submission, e.g. file uploads:
 ## Features
 
 - **Dual Inbox Discovery** — Real-time SignalR + configurable HTTP polling with automatic deduplication
+- **Open-Starting Watch** — Optional blueprint-scoped watch so an agent playing a Feature 103 open participant can START a workflow (issue #1446)
 - **Pluggable Decision Engines** — Rules (JSON Logic) or AI (Claude) with schema validation
 - **File Upload Pre-Actions** — Chunked encrypted file submission (up to 40MB)
 - **Resilient Execution** — Polly retry/circuit-breaker, SignalR auto-reconnect, JWT auto-refresh
 - **Audit Logging** — JSONL append-only trail of all decisions and submissions
 - **Persona Mode** — Optional autonomous initiator loop alongside reactive inbox (Feature 110)
 - **Cross-Platform** — Runs on Windows, macOS, and Linux
+
+## Open-Starting Watch (issue #1446)
+
+An agent that plays a **Feature 103 open (late-bound) participant** cannot be reached through its
+inbox, and that is not a bug in the inbox: until somebody submits the starting action, the open
+participant is bound to no wallet, so the action is nobody's assigned work. `GET /api/actions/pending`
+therefore never carries it — for this agent or for anyone else.
+
+Opt in to a second, blueprint-scoped watch:
+
+```jsonc
+"inbox": {
+  "signalR": { "enabled": true },
+  "polling": { "enabled": true, "intervalSeconds": 15 },
+  "openStarting": {
+    "enabled": true,
+    "blueprintId": "{{blueprintId}}",   // REQUIRED — validated
+    "intervalSeconds": 15               // optional; falls back to polling.intervalSeconds
+  }
+}
+```
+
+It polls `GET /api/actions/open-starting?blueprintId=…&registerId=…` and feeds the results through
+the same `CompositeInboxListener`, so rules match on `actionName` exactly as they do for assigned
+work, and the existing dedupe prevents a second submission before the late-bind folds.
+
+`enabled` with no `blueprintId` fails `sorcha-agent validate`: the endpoint refuses an unscoped query,
+and an agent that quietly watched nothing would look identical to the defect this closes. Scoping to
+one blueprint is also what stops an agent starting arbitrary workflows.
+
+`walkthroughs/PropertyInspection/actors/tenant.json` is the worked example — the actor whose run this
+defect blocked.
 
 ## Persona Mode
 

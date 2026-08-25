@@ -9,6 +9,8 @@ using System.Text.Json;
 
 using Microsoft.AspNetCore.Mvc;
 
+using Polly;
+
 using Sorcha.Blueprint.Models.Credentials;
 using Sorcha.Blueprint.Service.Services;
 using Sorcha.Register.Models;
@@ -43,6 +45,9 @@ public static class CredentialEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound)
+            // #1506 — the ownership check could not run (wallet unreachable). Retryable, and
+            // deliberately NOT a 403: it is not a statement about who issued the credential.
+            .Produces(StatusCodes.Status503ServiceUnavailable)
             .WithOpenApi(operation =>
             {
                 OpenApiExamples.SetRequestExample(operation, """
@@ -72,7 +77,10 @@ public static class CredentialEndpoints
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status403Forbidden)
-            .Produces(StatusCodes.Status404NotFound);
+            .Produces(StatusCodes.Status404NotFound)
+            // #1506 — the ownership check could not run (wallet unreachable). Retryable, and
+            // deliberately NOT a 403: it is not a statement about who issued the credential.
+            .Produces(StatusCodes.Status503ServiceUnavailable);
 
         credentialGroup.MapPost("/{credentialId}/reinstate", ReinstateCredential)
             .WithName("ReinstateCredential")
@@ -82,7 +90,10 @@ public static class CredentialEndpoints
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status403Forbidden)
-            .Produces(StatusCodes.Status404NotFound);
+            .Produces(StatusCodes.Status404NotFound)
+            // #1506 — the ownership check could not run (wallet unreachable). Retryable, and
+            // deliberately NOT a 403: it is not a statement about who issued the credential.
+            .Produces(StatusCodes.Status503ServiceUnavailable);
 
         credentialGroup.MapPost("/{credentialId}/refresh", RefreshCredential)
             .WithName("RefreshCredential")
@@ -92,7 +103,10 @@ public static class CredentialEndpoints
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status403Forbidden)
-            .Produces(StatusCodes.Status404NotFound);
+            .Produces(StatusCodes.Status404NotFound)
+            // #1506 — the ownership check could not run (wallet unreachable). Retryable, and
+            // deliberately NOT a 403: it is not a statement about who issued the credential.
+            .Produces(StatusCodes.Status503ServiceUnavailable);
     }
 
     private static async Task<IResult> RevokeCredential(
@@ -306,7 +320,14 @@ public static class CredentialEndpoints
     /// <summary>
     /// Gets a credential and verifies the caller is the original issuer.
     /// </summary>
-    private static async Task<(CredentialIssuanceResult? Value, IResult? Error)> GetAndVerifyIssuer(
+    /// <remarks>
+    /// Four distinct outcomes, and issue #1506 was that two of them were reported as one: a failure
+    /// to REACH the wallet was returned as "Failed to verify credential ownership", which reads as a
+    /// verdict. Ownership is decided only by the <c>IssuerDid</c> comparison; absence only by the
+    /// null check. Internal so the outcomes can be pinned directly — they are shared by all four
+    /// credential lifecycle endpoints.
+    /// </remarks>
+    internal static async Task<(CredentialIssuanceResult? Value, IResult? Error)> GetAndVerifyIssuer(
         string credentialId,
         string issuerWallet,
         IWalletServiceClient walletClient,
@@ -318,11 +339,41 @@ public static class CredentialEndpoints
         {
             credential = await walletClient.GetCredentialAsync(issuerWallet, credentialId, cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or TimeoutException
+                                      or ExecutionRejectedException
+                                   && !cancellationToken.IsCancellationRequested)
         {
-            logger.LogWarning(ex, "Failed to retrieve credential {CredentialId} from wallet {Wallet}",
+            // Issue #1506 — the lookup did not answer, so ownership is UNKNOWN. It used to be
+            // reported as "Failed to verify credential ownership", which reads as a verdict this
+            // code never reached: on n1 a wallet-side 500 became a 500 from `revoke` asserting an
+            // ownership outcome, and an operator debugging their own credential had no way to see
+            // that the dependency was the fault. Ownership failure is the IssuerDid comparison
+            // below; absence is the null check. Everything caught here is about the CALL.
+            //
+            // 503 rather than 500 because these four are all retryable — a transport failure, a
+            // timeout, or a Polly rejection (an open circuit, a rate limiter). A caller that
+            // retries a 503 is doing the right thing.
+            logger.LogError(ex,
+                "Credential ownership check for {CredentialId} could not reach wallet {Wallet}; reporting 503, not a verdict",
                 credentialId, issuerWallet);
-            return (null, Results.Problem("Failed to verify credential ownership"));
+            return (null, Results.Problem(
+                title: "Credential ownership could not be verified",
+                detail: "The wallet service did not answer in time, so whether you issued this credential is unknown. "
+                      + "This is not a refusal — retry.",
+                statusCode: StatusCodes.Status503ServiceUnavailable));
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Anything else is a fault in reading the credential (a mapping failure, say — see the
+            // #1475 note on WalletServiceClient.GetCredentialAsync, which throws rather than
+            // returning null so a bug cannot masquerade as absence). Retrying will not help, so it
+            // must NOT be dressed up as a retryable 503 — but it is still not an ownership verdict.
+            logger.LogError(ex, "Credential ownership check for {CredentialId} on wallet {Wallet} faulted",
+                credentialId, issuerWallet);
+            return (null, Results.Problem(
+                title: "Credential ownership could not be checked",
+                detail: "Reading the credential failed. This is not a statement about who issued it.",
+                statusCode: StatusCodes.Status500InternalServerError));
         }
 
         if (credential == null)

@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.ServiceDiscovery;
 using OpenTelemetry;
@@ -43,8 +44,25 @@ public static class Extensions
 
         builder.Services.ConfigureHttpClientDefaults(http =>
         {
-            // Turn on resilience by default
-            http.AddStandardResilienceHandler();
+            // Turn on resilience by default.
+            //
+            // SelectPipelineByAuthority is load-bearing, not tuning (issue #1506). A resilience
+            // handler registered through ConfigureHttpClientDefaults is built ONCE, for the default
+            // (nameless) client builder, so without a key selector EVERY HttpClient in the process
+            // shares ONE circuit breaker. A run of failures against any single dependency then
+            // refuses outbound calls to every OTHER dependency, immediately and without touching the
+            // wire. That is how a best-effort inbox write to the Tenant Service — a bell-drawer
+            // notification — stopped credential issuance on n1 with "The circuit is now open and is
+            // not allowing calls": the breaker it opened was not the inbox's, it was the process's.
+            //
+            // Partitioning by request authority gives one breaker per downstream host, which is what
+            // a breaker is for: it protects a sick dependency and reports on that dependency alone.
+            // Per-authority rather than per-client on purpose — two clients addressing the same sick
+            // host SHOULD share a verdict, and clients addressing different hosts never should.
+            //
+            // Note this runs BEFORE the service-discovery handler below, so the authority is the
+            // logical service name (e.g. "tenant-service"), which is exactly the partition wanted.
+            http.AddStandardResilienceHandler().SelectPipelineByAuthority();
 
             // Turn on service discovery by default
             http.AddServiceDiscovery();
