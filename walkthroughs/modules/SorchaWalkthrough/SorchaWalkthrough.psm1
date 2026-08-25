@@ -1365,6 +1365,12 @@ function New-SorchaRegister {
         # so consumer-persona and public-discovery flows have access by default.
         [string]$TenantUrl,
         [switch]$SkipPublicOrgSubscription,
+
+        # A SYSTEM ADMIN session, used only to subscribe the Public org to this register so consumer
+        # users see it. Optional: without it the register is created normally and simply is not
+        # surfaced publicly. It cannot be done with the creating org's headers — that is a
+        # cross-organisation write and is refused (#1530).
+        [hashtable]$SysAdminHeaders,
         [switch]$DevMode
     )
 
@@ -1492,29 +1498,34 @@ function New-SorchaRegister {
     # or even possible for service-principal callers (they don't have the
     # Administrator role required by the public subscribe endpoint).
 
-    # Auto-subscribe Sorcha Public Org (well-known ID) so consumer-persona
-    # and public-discovery flows can access the register by default.
-    # TenantUrl resolution order: explicit parameter → cached environment.
+    # Surface the register under the Public org so consumer users (who default to it) see it.
+    #
+    # This used to be attempted inline with $Headers — the CREATING org's admin — which is a
+    # cross-organisation write that CallerOrganizationGate correctly refuses. It 403'd on every
+    # fresh register, was swallowed into a warning, and so nothing was ever actually subscribed
+    # (#1530). It only surfaced when a wiped node made every register new again.
+    #
+    # The right mechanism was already in this module: Add-SorchaPublicOrgSubscription, which uses a
+    # SYSTEM ADMIN session and ensures that admin is a member of the Public org first. Subscribing
+    # another organisation is a platform act, not one org acting on another's behalf.
+    #
+    # It needs a sysadmin session, which New-SorchaRegister is not otherwise given — so it is opt-in
+    # via -SysAdminHeaders. Callers that do not pass it get no public subscription and are told so
+    # once, rather than a 403 warning on every register that reads like a failure.
     if (-not $SkipPublicOrgSubscription) {
         $resolvedTenantUrl = if ($TenantUrl) { $TenantUrl } `
                              elseif ($script:LastEnvironment) { $script:LastEnvironment.TenantUrl } `
                              else { $null }
 
-        if ($resolvedTenantUrl) {
-            $publicOrgId = "00000000-0000-0000-0000-000000000002"
-            try {
-                $null = New-SorchaRegisterSubscription `
-                    -TenantUrl $resolvedTenantUrl `
-                    -OrganizationId $publicOrgId `
-                    -RegisterId $registerId `
-                    -RegisterName $Name `
-                    -SubscriptionType "Public" `
-                    -Headers $Headers
-            } catch {
-                Write-WtWarn "  Public org auto-subscribe failed for register '$Name': $($_.Exception.Message)"
-            }
-        } else {
-            Write-WtWarn "  Skipping public org subscription for '$Name' — no TenantUrl available (pass -TenantUrl or call Initialize-SorchaEnvironment first)"
+        if ($SysAdminHeaders -and $resolvedTenantUrl) {
+            $null = Add-SorchaPublicOrgSubscription `
+                -TenantUrl $resolvedTenantUrl `
+                -RegisterId $registerId `
+                -RegisterName $Name `
+                -SysAdminHeaders $SysAdminHeaders
+        } elseif ($resolvedTenantUrl) {
+            Write-WtInfo "  Public org not subscribed to '$Name' — pass -SysAdminHeaders to New-SorchaRegister"
+            Write-WtInfo "  if consumer users should see this register by default (#1530)."
         }
     }
 
