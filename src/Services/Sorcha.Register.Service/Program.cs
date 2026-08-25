@@ -3749,8 +3749,11 @@ receiptsGroup.MapPost("/receipts/verify", async (
         var docketNumber = request.Receipt.InclusionProof?.DocketNumber;
         if (docketNumber is { } number)
         {
-            var docket = await repository.GetDocketAsync(
-                registerId, checked((ulong)number), cancellationToken);
+            // Guarded rather than `checked` — a receipt carrying a negative docket number is
+            // malformed input, and an OverflowException here would report it as a server fault.
+            var docket = number < 0
+                ? null
+                : await repository.GetDocketAsync(registerId, (ulong)number, cancellationToken);
 
             if (docket is null)
             {

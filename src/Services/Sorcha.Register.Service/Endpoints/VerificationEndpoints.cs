@@ -141,8 +141,11 @@ public static class VerificationEndpoints
 
             if (result.IsValid && request.DocketNumber is { } docketNumber)
             {
-                var docket = await repository.GetDocketAsync(
-                    registerId, checked((ulong)docketNumber), cancellationToken);
+                // A caller's negative number is a caller's mistake, not a server fault. `checked`
+                // here would throw OverflowException and surface as a 500 (#1476's exact shape).
+                var docket = docketNumber < 0
+                    ? null
+                    : await repository.GetDocketAsync(registerId, (ulong)docketNumber, cancellationToken);
 
                 if (docket is null)
                 {

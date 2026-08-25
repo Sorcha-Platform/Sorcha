@@ -114,6 +114,23 @@ public class InclusionProofLedgerAnchorTests : IClassFixture<RegisterServiceWebA
         body.Should().Contain(tampered.SealedRoot, "an auditor needs the sealed and recomputed roots side by side");
     }
 
+    [Theory]
+    [InlineData(-1L)]
+    [InlineData(long.MinValue)]
+    public async Task ANegativeDocketNumber_IsTheCallersMistake_NotAServerFault(long docketNumber)
+    {
+        // The obvious spelling of the lookup is checked((ulong)docketNumber), which throws
+        // OverflowException and surfaces as a 500 — a caller's malformed input reported as the
+        // server having broken. That is precisely the shape #1476 closed.
+        var seeded = await SeedDocketAsync(sealWithCorrectRoot: true);
+        var proof = await GetProofAsync(seeded.TargetTxId);
+
+        var verified = await VerifyAsync(proof, docketNumber);
+
+        verified.GetProperty("ledgerAnchored").ValueKind.Should().Be(JsonValueKind.Null);
+        verified.GetProperty("ledgerAnchorReason").GetString().Should().Contain("not held");
+    }
+
     // -----------------------------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------------------------
