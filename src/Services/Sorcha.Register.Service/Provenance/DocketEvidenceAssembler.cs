@@ -124,46 +124,26 @@ public sealed class DocketEvidenceAssembler : IDocketEvidenceAssembler
         DocketHeader docket,
         CancellationToken cancellationToken)
     {
-        var ids = docket.TransactionIds;
-        if (ids is null || ids.Count == 0)
-        {
-            return [];
-        }
-
         try
         {
-            var transactions = (await _repository.GetTransactionsByDocketAsync(
+            var held = (await _repository.GetTransactionsByDocketAsync(
                 registerId, docket.Id, cancellationToken)).ToList();
 
-            var byId = new Dictionary<string, TransactionModel>(StringComparer.OrdinalIgnoreCase);
-            foreach (var tx in transactions)
+            // ONE leaf rule for the whole service (#1372). The Feature 188 Seal check and the
+            // Register Service's own inclusion-proof and ZK-proof endpoints must agree about what a
+            // docket committed to, or a proof and a provenance trail can report different verdicts on
+            // the same docket — with no error to say which is right.
+            var leaves = Verification.DocketMerkleCommitment.BuildLeaves(docket, held, _docketHasher);
+
+            if (leaves is null)
             {
-                var key = tx.TxId ?? tx.Id;
-                if (!string.IsNullOrWhiteSpace(key))
-                {
-                    byId[key] = tx;
-                }
+                _logger.LogDebug(
+                    "Docket {Docket} of register {RegisterId} lists a transaction this node does not hold; the seal check cannot recompute",
+                    docket.Id, registerId);
+                return null;
             }
 
-            var leaves = new List<string>(ids.Count);
-
-            foreach (var id in ids)
-            {
-                if (!byId.TryGetValue(id, out var tx))
-                {
-                    _logger.LogDebug(
-                        "Docket {Docket} of register {RegisterId} lists transaction {TxId}, which this node does not hold; the seal check cannot recompute",
-                        docket.Id, registerId, id);
-                    return null;
-                }
-
-                leaves.Add(_docketHasher.ComputeTransactionHash(
-                    tx.TxId ?? tx.Id ?? string.Empty,
-                    tx.Payloads?.FirstOrDefault()?.Hash ?? string.Empty,
-                    new DateTimeOffset(tx.TimeStamp, TimeSpan.Zero)));
-            }
-
-            return leaves;
+            return leaves.Hashes;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

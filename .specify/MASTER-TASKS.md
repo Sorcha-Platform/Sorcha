@@ -3,10 +3,26 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.19
+**Version:** 7.20
 **Last Updated:** 2026-08-25
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
+
+> **2026-08-25 - Set A / Feature 187 US3: a docket can now be checked against the commitment it was sealed with (#1372). #1370 and #1371 were already merged (#1373) and are closed on verified source, not on the commit message.**
+>
+> **T019 was the task that mattered, and its answer inverts its own premise.** It asked whether F079's `merkleRootConsistent` already cross-checks sealed-versus-recomputed, so the work could extend it. It does not, and there is nothing to extend: `ReceiptValidator` compares `receipt.MerkleRoot` with `receipt.InclusionProof.MerkleRoot` - **two fields of the same caller-supplied object**. A receipt whose two roots agree passes regardless of what this register sealed, so the entire verdict was decidable without reading the ledger. It reads exactly like the check #1372 asks for.
+>
+> **`POST /proofs/inclusion` had to be FIXED before it could be checked at all.** It built its Merkle tree from **raw transaction ids**, while the proposing validator seals composite `(id, payloadHash, timestamp)` leaves - so its root could never equal the sealed one, on any docket, on any register. Bolting a cross-check onto it would have reported tampering everywhere: a **false** tamper report on a healthy ledger, which is the most damaging output this work can produce. (Same mistake F188 made and caught against real n1 dockets. Twice now.) Its `MerkleRoot` was also emitted as hex and parsed as base64 by `/verify-inclusion` - and a 64-character hex string IS valid base64, so it decoded to 48 wrong bytes rather than throwing. The pair never round-tripped and never said so. Nothing in-tree calls either endpoint; Stuart chose to fix rather than retire them.
+>
+> WARNING **`ZKProofIntegrationTests` stayed green throughout, because it carries a PRIVATE COPY of the proof-path walk.** It exercised its own arithmetic and never the endpoint it is named after. The same shape as F186's `IsRejection` and F194's `isPinnedToLatest`: a test that constructs the intermediate itself proves the consumer, never the producer.
+>
+> **The fix: one rule, five sites, and generation refuses rather than reports.** `Verification/DocketMerkleCommitment` is the single leaf construction and the single comparison, shared with the F188 provenance Seal check so a proof and a provenance trail cannot reach different verdicts about the same docket. Generation (`GET .../inclusion-proof`, `GET .../credentials/{id}/anchor`, `POST /proofs/inclusion`) answers **409** naming both roots - handing back a proof whose root the ledger never sealed is worse than handing back nothing, because it verifies. Verification (`POST /inclusion-proofs/verify`, `POST /receipts/verify`, `POST /proofs/verify-inclusion`) reports **`ledgerAnchored`** as a TRI-STATE plus a reason: a **contradicted** anchor flips `isValid`, an **unverifiable** one does not - absence of evidence is not evidence of tampering.
+>
+> **The tamper test executes the attack before showing the catch.** It asserts the altered set really does produce a self-consistent root that differs from the sealed one, and only then that the comparison fails. Without that first half it would pass just as well if tampering were impossible - a green tick asserting a defence against something nothing proved was reachable. **Six mutations** verified the guard: leaves-by-store-order (3 red), blank-root-as-verified (1), `IsAnchored` written as `!= Failed` (2), leaves-as-raw-ids (2), dropping the 409 (1), always-"verified" (1).
+>
+> **T021 confirmed by call-site audit** - recomputation happens at three places, none of them a docket list or get. **T023: the cost is close to nothing** - generation adds no I/O (the transactions were already fetched) and one recomputation; verification adds one indexed header read and no hashing at all. Nothing was narrowed because nothing needed to be.
+>
+> Register.Service 473 (9 skipped), Provenance.Engine 55/55, solution builds clean.
 
 > **2026-08-25 - Set B: a notification write can no longer stop credential issuance, and an open workflow can be started (#1506, #1446).**
 >

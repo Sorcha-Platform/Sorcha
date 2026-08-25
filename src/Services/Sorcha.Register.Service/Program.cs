@@ -3428,20 +3428,57 @@ proofsGroup.MapPost("/inclusion", async (
     if (docket == null)
         return Results.NotFound(new { error = $"DocketHeader {request.DocketId} not found" });
 
-    // Verify the transaction is in the docket
-    var txIds = docket.TransactionIds?.ToList() ?? [];
-    if (!txIds.Contains(request.TxId, StringComparer.OrdinalIgnoreCase))
+    // #1372 — this endpoint used to build its Merkle tree from the RAW TRANSACTION IDS while the
+    // proposing validator seals a tree of per-transaction composite hashes
+    // (DocketHasher.ComputeTransactionHash of id + payload hash + timestamp). So the root it returned
+    // could never equal the root this register sealed — on any docket, on any register. It was
+    // labelled MerkleRoot and read as authoritative, and nothing compared it to the ledger.
+    //
+    // One leaf rule now (DocketMerkleCommitment), shared with the F079 inclusion-proof endpoint and
+    // the F188 provenance Seal check, and the recomputation is compared with the sealed commitment
+    // before any proof is issued.
+    var held = (await repository.GetTransactionsByDocketAsync(registerId, docket.Id)).ToList();
+    var docketHasher = new Sorcha.Cryptography.Utilities.DocketHasher(hashProvider);
+    var leaves = Sorcha.Register.Service.Verification.DocketMerkleCommitment.BuildLeaves(docket, held, docketHasher);
+
+    var merkleTree = new Sorcha.Cryptography.Utilities.MerkleTree(hashProvider);
+    var seal = Sorcha.Register.Service.Verification.DocketMerkleCommitment.Compare(docket, leaves, merkleTree);
+
+    if (seal.Status == Sorcha.Verification.Abstractions.VerificationStatus.Failed)
+    {
+        return Results.Problem(
+            title: "Docket integrity failure",
+            detail: "This docket's stored transactions do not reproduce the Merkle root its proposing "
+                  + $"validator sealed, so no proof can be anchored to it. Sealed: {seal.SealedRoot} - "
+                  + $"recomputed: {seal.RecomputedRoot}",
+            statusCode: StatusCodes.Status409Conflict);
+    }
+
+    if (leaves is null || leaves.Hashes.Count == 0)
+    {
+        return Results.Problem(
+            title: "Data integrity error",
+            detail: "This node does not hold every transaction the docket lists, so its committed leaf "
+                  + "sequence cannot be rebuilt.",
+            statusCode: StatusCodes.Status409Conflict);
+    }
+
+    var leafIndex = leaves.OrderedTransactions
+        .Select((tx, i) => (tx, i))
+        .Where(e => string.Equals(e.tx.TxId ?? e.tx.Id, request.TxId, StringComparison.OrdinalIgnoreCase))
+        .Select(e => e.i)
+        .DefaultIfEmpty(-1)
+        .First();
+    if (leafIndex < 0)
         return Results.BadRequest(new { error = "Transaction not found in specified docket" });
 
-    // Build Merkle tree and generate proof path
-    var merkleTree = new Sorcha.Cryptography.Utilities.MerkleTree(hashProvider);
-    var merkleRoot = merkleTree.ComputeMerkleRoot(txIds.AsReadOnly());
-    var proofPath = BuildMerkleProofPath(txIds, request.TxId, hashProvider);
+    var merkleProof = merkleTree.GenerateInclusionProof(leafIndex, leaves.Hashes.ToList().AsReadOnly());
 
-    // Generate ZK inclusion proof
-    var txHash = Convert.FromHexString(request.TxId);
-    var rootBytes = Convert.FromHexString(merkleRoot);
-    var proofPathBytes = proofPath.Select(p => Convert.FromHexString(p)).ToArray();
+    // The ZK commitment commits to the LEAF, because the leaf is what the tree is built from. It
+    // used to commit to Convert.FromHexString(request.TxId) — a value that is not in the tree.
+    var txHash = Convert.FromHexString(merkleProof.TransactionHash);
+    var rootBytes = Convert.FromHexString(merkleProof.MerkleRoot);
+    var proofPathBytes = merkleProof.ProofPath.Select(step => Convert.FromHexString(step.Hash)).ToArray();
 
     var zkProvider = new Sorcha.Cryptography.Core.ZKInclusionProofProvider();
     var proof = zkProvider.GenerateInclusionProof(txHash, rootBytes, proofPathBytes, request.DocketId);
@@ -3451,11 +3488,22 @@ proofsGroup.MapPost("/inclusion", async (
         RegisterId = registerId,
         DocketId = request.DocketId,
         TxId = request.TxId,
-        MerkleRoot = merkleRoot,
+        // HEX, like every other Merkle value this API emits (MerkleInclusionProof.MerkleRoot, the
+        // persisted DocketHeader.MerkleRoot). It used to be emitted as hex here and parsed as BASE64
+        // by /verify-inclusion — and a 64-character hex string is valid base64, so it decoded to 48
+        // wrong bytes instead of throwing. The pair never round-tripped, and never said so.
+        MerkleRoot = merkleProof.MerkleRoot,
+        LeafHash = merkleProof.TransactionHash,
+        LeafIndex = merkleProof.LeafIndex,
+        TreeSize = merkleProof.TreeSize,
+        MerkleProofPath = merkleProof.ProofPath
+            .Select(step => new { Hash = step.Hash, Position = step.Position.ToString() })
+            .ToArray(),
+        // Opaque curve material, not hashes — base64 as before.
         Commitment = Convert.ToBase64String(proof.Commitment),
         ProofData = Convert.ToBase64String(proof.ProofData),
-        MerkleProofPath = proofPathBytes.Select(Convert.ToBase64String).ToArray(),
-        VerificationKey = Convert.ToBase64String(proof.VerificationKey)
+        VerificationKey = Convert.ToBase64String(proof.VerificationKey),
+        SealStatus = seal.Wire
     });
 })
 .WithRequestValidation()
@@ -3471,34 +3519,79 @@ proofsGroup.MapPost("/inclusion", async (
 // <summary>
 // Verify a ZK inclusion proof
 // </summary>
-proofsGroup.MapPost("/verify-inclusion", (
-    VerifyInclusionProofRequest request) =>
+proofsGroup.MapPost("/verify-inclusion", async (
+    IRegisterRepository repository,
+    string registerId,
+    VerifyInclusionProofRequest request,
+    CancellationToken cancellationToken) =>
 {
     try
     {
         var proof = new Sorcha.Cryptography.Models.ZKInclusionProof
         {
             DocketId = request.DocketId,
-            MerkleRoot = Convert.FromBase64String(request.MerkleRoot),
+            MerkleRoot = Convert.FromHexString(request.MerkleRoot),
             Commitment = Convert.FromBase64String(request.Commitment),
             ProofData = Convert.FromBase64String(request.ProofData),
-            MerkleProofPath = request.MerkleProofPath.Select(Convert.FromBase64String).ToArray(),
+            MerkleProofPath = (request.MerkleProofPath ?? [])
+                .Select(step => Convert.FromHexString(step.Hash)).ToArray(),
             VerificationKey = Convert.FromBase64String(request.VerificationKey)
         };
 
         var zkProvider = new Sorcha.Cryptography.Core.ZKInclusionProofProvider();
         var result = zkProvider.VerifyInclusionProof(proof);
 
+        // #1372 — the ZK verification is self-contained: it checks a Schnorr proof of knowledge and
+        // that the carried root is 32 well-formed bytes. It never consults this register, so on its
+        // own it says nothing about whether the root is one we sealed. TRI-STATE, and null means the
+        // question could not be asked — never reported as a pass.
+        string? ledgerAnchored = null;
+        string? ledgerAnchorReason = $"docket {request.DocketId} is not held on register '{registerId}'";
+
+        if (ulong.TryParse(request.DocketId, out var docketNumber))
+        {
+            var docket = await repository.GetDocketAsync(registerId, docketNumber, cancellationToken);
+            if (docket is not null)
+            {
+                if (string.IsNullOrWhiteSpace(docket.MerkleRoot))
+                {
+                    ledgerAnchorReason =
+                        "that docket was sealed before the platform kept the sealed Merkle root, so there is "
+                        + "no commitment to compare against";
+                }
+                else
+                {
+                    var matches = string.Equals(
+                        docket.MerkleRoot, request.MerkleRoot, StringComparison.OrdinalIgnoreCase);
+                    ledgerAnchored = matches ? "verified" : "failed";
+                    ledgerAnchorReason = matches
+                        ? null
+                        : "the root carried by this proof is NOT the root that docket's proposing validator sealed";
+                }
+            }
+        }
+        else
+        {
+            ledgerAnchorReason = "docketId is not a docket number, so it cannot be looked up on this register";
+        }
+
         return Results.Ok(new
         {
-            IsValid = result.IsValid,
+            // An unverifiable anchor deliberately does not flip this; a contradicted one does.
+            IsValid = result.IsValid && ledgerAnchored != "failed",
             Message = result.Message,
-            DocketId = request.DocketId
+            DocketId = request.DocketId,
+            LedgerAnchored = ledgerAnchored,
+            LedgerAnchorReason = ledgerAnchorReason
         });
     }
     catch (FormatException)
     {
-        return Results.BadRequest(new { error = "Invalid base64 encoding in proof fields" });
+        return Results.BadRequest(new
+        {
+            error = "Invalid encoding in proof fields — merkleRoot and merkleProofPath[].hash are hex; "
+                  + "commitment, proofData and verificationKey are base64"
+        });
     }
 })
 .WithRequestValidation()
@@ -3622,9 +3715,12 @@ receiptsGroup.MapGet("/dockets/{docketNumber:long}/receipts", async (
 // <summary>
 // Verify a transaction receipt
 // </summary>
-receiptsGroup.MapPost("/receipts/verify", (
+receiptsGroup.MapPost("/receipts/verify", async (
+    IRegisterRepository repository,
     IHashProvider hashProvider,
-    VerifyReceiptRequest request) =>
+    string registerId,
+    VerifyReceiptRequest request,
+    CancellationToken cancellationToken) =>
 {
     if (request.Receipt == null)
         return Results.BadRequest(new { error = "Receipt is required" });
@@ -3638,16 +3734,62 @@ receiptsGroup.MapPost("/receipts/verify", (
         var receiptValidator = new ReceiptValidator(proofValidator);
         var result = receiptValidator.Verify(request.Receipt, request.ValidatorPublicKey);
 
+        // #1372 — `merkleRootConsistent` reads like a ledger check and is not one: it compares
+        // receipt.MerkleRoot against receipt.InclusionProof.MerkleRoot, two fields of the SAME
+        // caller-supplied object. A receipt whose two roots agree passes it regardless of what this
+        // register sealed, so the whole verdict was decidable without touching the ledger at all.
+        //
+        // ledgerAnchored is the missing half, and it is a TRI-STATE: null means the check could not
+        // run (no docket named, docket not held here, or a docket sealed before the platform kept
+        // the root). A check that did not run must never be reported as a pass — that is the
+        // Feature 188 discipline, and the reason this is not folded into `isValid` as a bare bool.
+        string? ledgerAnchored = null;
+        string? ledgerAnchorReason = "the receipt names no docket, so there is nothing to anchor it to";
+
+        var docketNumber = request.Receipt.InclusionProof?.DocketNumber;
+        if (docketNumber is { } number)
+        {
+            var docket = await repository.GetDocketAsync(
+                registerId, checked((ulong)number), cancellationToken);
+
+            if (docket is null)
+            {
+                ledgerAnchorReason = $"docket {number} is not held on register '{registerId}'";
+            }
+            else if (string.IsNullOrWhiteSpace(docket.MerkleRoot))
+            {
+                ledgerAnchorReason =
+                    "that docket was sealed before the platform kept the sealed Merkle root, so there is "
+                    + "no commitment to compare against";
+            }
+            else
+            {
+                var matches = string.Equals(
+                    docket.MerkleRoot, request.Receipt.MerkleRoot, StringComparison.OrdinalIgnoreCase);
+                ledgerAnchored = matches ? "verified" : "failed";
+                ledgerAnchorReason = matches
+                    ? null
+                    : "this receipt's Merkle root is NOT the root that docket's proposing validator sealed";
+            }
+        }
+
         return Results.Ok(new
         {
-            isValid = result.IsValid,
+            // A receipt that contradicts the ledger is not valid, whatever its internal arithmetic
+            // says. An UNVERIFIABLE anchor deliberately does not flip this — absence of evidence is
+            // not evidence of tampering.
+            isValid = result.IsValid && ledgerAnchored != "failed",
             checks = new
             {
                 signatureValid = result.SignatureValid,
                 inclusionProofValid = result.InclusionProofValid,
-                merkleRootConsistent = result.MerkleRootConsistent
+                merkleRootConsistent = result.MerkleRootConsistent,
+                ledgerAnchored,
+                ledgerAnchorReason
             },
-            errors = result.Errors
+            errors = ledgerAnchored == "failed"
+                ? result.Errors.Append(ledgerAnchorReason!).ToList()
+                : result.Errors
         });
     }
     catch (FormatException ex)
@@ -3808,47 +3950,11 @@ adminGroup.MapDelete("/orphan-transactions", async (
 .Produces(StatusCodes.Status409Conflict)
 .Produces(StatusCodes.Status401Unauthorized);
 
-// Local function: builds a Merkle proof path (sibling hashes) for a target transaction
-List<string> BuildMerkleProofPath(List<string> txIds, string targetTxId, IHashProvider hashProvider)
-{
-    if (txIds.Count <= 1)
-        return [];
-
-    var proofPath = new List<string>();
-    var currentLevel = txIds.Select(h => h.ToLowerInvariant()).ToList();
-    int targetIdx = currentLevel.FindIndex(h => string.Equals(h, targetTxId, StringComparison.OrdinalIgnoreCase));
-    if (targetIdx < 0)
-        return [];
-
-    while (currentLevel.Count > 1)
-    {
-        var nextLevel = new List<string>();
-        int nextTargetIdx = targetIdx / 2;
-
-        for (int i = 0; i < currentLevel.Count; i += 2)
-        {
-            string left = currentLevel[i];
-            string right = (i + 1 < currentLevel.Count) ? currentLevel[i + 1] : left;
-
-            // If target is in this pair, add sibling to proof path
-            if (i == targetIdx || i + 1 == targetIdx)
-            {
-                proofPath.Add(i == targetIdx ? right : left);
-            }
-
-            // Compute parent hash (matches MerkleTree.CombineAndHash)
-            string combined = left + right;
-            byte[] combinedBytes = System.Text.Encoding.UTF8.GetBytes(combined);
-            byte[] hash = hashProvider.ComputeHash(combinedBytes, Sorcha.Cryptography.Enums.HashType.SHA256);
-            nextLevel.Add(Convert.ToHexString(hash).ToLowerInvariant());
-        }
-
-        currentLevel = nextLevel;
-        targetIdx = nextTargetIdx;
-    }
-
-    return proofPath;
-}
+// #1372 - the local BuildMerkleProofPath is DELETED. It walked a tree over raw transaction ids,
+// which is not the tree any docket commits to; its sole caller (POST /proofs/inclusion) now builds
+// the committed leaf sequence via DocketMerkleCommitment and takes its path from the platform's one
+// MerkleTree. Note ZKProofIntegrationTests carries a PRIVATE COPY of the old walk, so it exercised
+// its own arithmetic and never this endpoint's.
 
 // Feature 047: Bloom filter admin endpoint (US1)
 // <summary>Trigger a full rebuild of the bloom filter for a register.</summary>
@@ -4011,13 +4117,25 @@ record WriteDocketRequest(
 record InclusionProofRequest(
     [property: Required(AllowEmptyStrings = false), StringLength(200)] string TxId,
     [property: Required(AllowEmptyStrings = false), StringLength(200)] string DocketId);
+/// <remarks>
+/// <c>MerkleRoot</c> and <c>MerkleProofPath[].Hash</c> are HEX (#1372) — the encoding every other
+/// Merkle value in this API uses, and the one <c>POST /proofs/inclusion</c> emits. They were parsed
+/// as base64 here while being emitted as hex there, and a 64-character hex string is itself valid
+/// base64, so the mismatch decoded to 48 wrong bytes rather than throwing. <c>Commitment</c>,
+/// <c>ProofData</c> and <c>VerificationKey</c> are opaque curve material and stay base64.
+/// </remarks>
 record VerifyInclusionProofRequest(
     [property: Required(AllowEmptyStrings = false), StringLength(200)] string DocketId,
     [property: Required(AllowEmptyStrings = false), StringLength(2048)] string MerkleRoot,
     [property: Required(AllowEmptyStrings = false), StringLength(2048)] string Commitment,
     [property: Required(AllowEmptyStrings = false), StringLength(1_000_000)] string ProofData,
-    string[] MerkleProofPath,
+    MerkleProofPathStep[] MerkleProofPath,
     [property: Required(AllowEmptyStrings = false), StringLength(8192)] string VerificationKey);
+
+/// <summary>One sibling hash on a Merkle proof path, hex-encoded, with the side it sits on.</summary>
+record MerkleProofPathStep(
+    [property: Required(AllowEmptyStrings = false), StringLength(200)] string Hash,
+    [property: StringLength(10)] string? Position = null);
 
 // Receipt request models
 record BatchReceiptRequest(
