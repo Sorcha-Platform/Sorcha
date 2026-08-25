@@ -101,13 +101,19 @@ public sealed class RegisterAnchorClient(
                 transactionHash = anchor.InclusionProof.TransactionHash,
                 merkleRoot = anchor.InclusionProof.MerkleRoot,
                 proofPath = anchor.InclusionProof.ProofPath,
+                // Issue #1372 — ask the LEDGER question too. Without a docket number this endpoint
+                // only folds the proof path, and a path always folds to SOME root: `isValid` alone
+                // says the arithmetic is sound, never that the root is one this register sealed.
+                docketNumber = anchor.DocketNumber,
             }, JsonOpts, ct);
 
             var proofValid = false;
+            string? ledgerAnchored = null;
             if (verifyResp.IsSuccessStatusCode)
             {
                 var verdict = await verifyResp.Content.ReadFromJsonAsync<ProofVerifyDto>(JsonOpts, ct);
                 proofValid = verdict?.IsValid ?? false;
+                ledgerAnchored = verdict?.LedgerAnchored;
             }
 
             if (!proofValid)
@@ -124,15 +130,39 @@ public sealed class RegisterAnchorClient(
                 };
             }
 
+            // A contradicted anchor is a FAILURE — the proof is sound and describes a different
+            // ledger than this one. Anything short of an affirmative "verified" is UNVERIFIED, never
+            // Verified: reporting a check that could not run as a pass is the one output this layer
+            // must never produce (Feature 188's tri-state discipline).
+            if (string.Equals(ledgerAnchored, "failed", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(anchor.SealStatus, "failed", StringComparison.OrdinalIgnoreCase))
+            {
+                return new RegisterAnchorResult
+                {
+                    Anchored = false,
+                    Status = VerificationStatus.Failed,
+                    TxId = anchor.TxId,
+                    DocketNumber = anchor.DocketNumber,
+                    SealedAt = anchor.SealedAt,
+                    LifecycleStatus = anchor.Status,
+                    Note = $"Docket #{anchor.DocketNumber} does not match the Merkle root its validator sealed.",
+                };
+            }
+
+            var sealConfirmed = string.Equals(ledgerAnchored, "verified", StringComparison.OrdinalIgnoreCase);
+
             return new RegisterAnchorResult
             {
-                Anchored = true,
-                Status = VerificationStatus.Verified,
+                Anchored = sealConfirmed,
+                Status = sealConfirmed ? VerificationStatus.Verified : VerificationStatus.Unverified,
                 TxId = anchor.TxId,
                 DocketNumber = anchor.DocketNumber,
                 SealedAt = anchor.SealedAt,
                 LifecycleStatus = anchor.Status,
-                Note = $"Anchored in docket #{anchor.DocketNumber}.",
+                Note = sealConfirmed
+                    ? $"Anchored in docket #{anchor.DocketNumber}, matching the root its validator sealed."
+                    : $"Inclusion proof verifies for docket #{anchor.DocketNumber}, but the register did not "
+                      + "confirm it against the root the validator sealed.",
             };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -156,7 +186,9 @@ public sealed class RegisterAnchorClient(
         ulong DocketNumber,
         DateTimeOffset SealedAt,
         string Status,
-        MerkleInclusionProofDto? InclusionProof);
+        MerkleInclusionProofDto? InclusionProof,
+        // Issue #1372. Absent on an older node, which lands as null => Unverified, not Verified.
+        string? SealStatus = null);
 
     private sealed record MerkleInclusionProofDto(
         string TransactionHash,
@@ -164,5 +196,6 @@ public sealed class RegisterAnchorClient(
         [property: JsonPropertyName("proofPath")] JsonElement ProofPath);
 
     private sealed record ProofVerifyDto(
-        [property: JsonPropertyName("isValid")] bool IsValid);
+        [property: JsonPropertyName("isValid")] bool IsValid,
+        [property: JsonPropertyName("ledgerAnchored")] string? LedgerAnchored = null);
 }

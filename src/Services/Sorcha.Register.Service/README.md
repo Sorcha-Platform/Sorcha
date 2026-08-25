@@ -397,7 +397,42 @@ Registers are classified by a `RegisterPurpose` enum:
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/registers/{registerId}/transactions/{txId}/inclusion-proof` | Generate inclusion proof on-demand |
-| POST | `/api/registers/{registerId}/inclusion-proofs/verify` | Verify proof (public, stateless) |
+| POST | `/api/registers/{registerId}/inclusion-proofs/verify` | Verify proof (public); optional `docketNumber` cross-checks against the sealed root |
+
+#### Anchoring to the sealed commitment (Feature 187 US3 / #1372)
+
+`DocketHeader.MerkleRoot` records what the proposing validator sealed. Before it was persisted, the
+service recomputed a root on demand — and a recomputation over altered stored data is *internally
+self-consistent*, so a proof generated against it verified perfectly while saying nothing about this
+ledger. Every check passed; none of them consulted the commitment.
+
+- **Proof generation refuses.** `GET …/inclusion-proof`, `GET …/credentials/{id}/anchor` and
+  `POST …/proofs/inclusion` return **409 Docket integrity failure**, naming both roots, when the
+  stored contents no longer reproduce the sealed one.
+- **Proof verification reports a tri-state.** `ledgerAnchored` is `verified`, `failed`, or `null`
+  (the check could not run — no docket named, docket not held here, or a docket sealed before the
+  root was kept), always with a `ledgerAnchorReason`. A **contradicted** anchor flips `isValid`; an
+  **unverifiable** one does not.
+- **`merkleRootConsistent` is not a ledger check.** It compares two fields of the caller's own
+  receipt (`MerkleRoot` vs `InclusionProof.MerkleRoot`), so it passes for any self-consistent receipt
+  regardless of what this register sealed. It is kept for continuity; read `ledgerAnchored` for the
+  ledger's answer.
+- **Leaves are composite hashes, not transaction ids.** `DocketHasher.ComputeTransactionHash(txId,
+  payloadHash, timestamp)`, in `DocketHeader.TransactionIds` order — which is what makes tampering
+  with the id list itself detectable. One implementation, in
+  `Verification/DocketMerkleCommitment.cs`, shared with the Feature 188 provenance Seal check.
+- **Cost.** Generation adds no I/O (the transactions were already fetched) and one recomputation;
+  verification adds a single indexed docket-header read and no hashing. Nothing recomputes on a plain
+  docket read.
+- **`sorcha transaction verify-proof` consumes it too.** It sends the proof file's `docketNumber`
+  and only claims "included in the docket" on an affirmative `verified`; otherwise it reports the
+  proof as *well-formed* and says the register did not confirm it. It used to print "the transaction
+  is included in the docket" on the arithmetic alone.
+- **The Open Verifier consumes it.** `IRegisterAnchorClient` (F155 layer 4) now sends `docketNumber`
+  on its verify call and requires an affirmative `ledgerAnchored: "verified"` before reporting
+  `Verified`. A **contradicted** anchor is `Failed`; anything else — including an older node that
+  returns no `ledgerAnchored` at all — is `Unverified`. It used to report `Verified` on `isValid`
+  alone, which is arithmetic about the proof path and says nothing about this register.
 
 ### Transaction Revocation (Feature 079)
 

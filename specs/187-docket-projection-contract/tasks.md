@@ -1,6 +1,6 @@
 # Feature 187 — Tasks
 
-**Status:** 🚧 IN PROGRESS — US1 DONE (T001-T008 ✅, live-verified on n1); US2 DONE (T009-T018 ✅, pending live re-genesis); US3 next
+**Status:** ✅ DONE — US1 (T001-T008, live-verified on n1), US2 (T009-T018), US3 (T019-T023). Close-out T024/T025 done; T026 (#1215) deliberately left separate.
 **Branch:** `feature/187-docket-projection-contract`
 
 Legend: 📋 pending · 🚧 in progress · ✅ done · ⛔ blocked on a gate
@@ -32,7 +32,7 @@ Ordered so the wire contract exists before anything tries to fill it.
 - ✅ **T010** Add `ProposerValidatorId`, `MerkleRoot` and `List<ConsensusVote> Votes` to `Register.Models.Docket`. **Remove the old `string? Votes`** and its false doc-comment.
 - ✅ **T011** Add `Votes` to `DocketModel` and `WriteDocketRequest` — neither carries votes today, so the contract must gain the field before either projection can populate it.
 - ✅ **T012** `DocketBuildTriggerService:~354` — copy `consensusResult.Votes` onto the docket before the write. **Currently discarded**; path A has the result in hand and drops it. Mirrors `ValidatorOrchestrator:223-224`.
-- 📋 **T013** Extend the unified mapper (from T003) to carry `Votes`, `ProposerValidatorId`, `MerkleRoot`. T002's completeness test should now cover them.
+- ✅ **T013** Extend the unified mapper (from T003) to carry `Votes`, `ProposerValidatorId`, `MerkleRoot`. T002's completeness test should now cover them.
 - ✅ **T014** `Register.Service/Program.cs:1637-1650` — write `ProposerValidatorId`, `MerkleRoot`, `Votes` to their own fields; **stop the `Votes = request.ProposerValidatorId` smuggle**.
 - ✅ **T015** `RegisterServiceClient.cs:344-351` — read each from its own field; delete the `docket.Votes` read and the `MerkleRoot = string.Empty` stub.
 - ✅ **T016** Round-trip test: `DocketModel` → persist → read → `DocketModel` preserves every contract-declared field. Reflection-based, same shape as T002.
@@ -43,16 +43,17 @@ Ordered so the wire contract exists before anything tries to fill it.
 
 `MerkleRoot` is persisted by T010. This story is the verification side.
 
-- 📋 **T019** Establish whether F079's `merkleRootConsistent` (`Program.cs:3186`) already cross-checks sealed-vs-recomputed. **Do this first** — the work should extend it, not duplicate it.
-- 📋 **T020** Cross-check sealed-vs-recomputed at the points where integrity is **asserted**: proof generation (`Program.cs:~2976`), proof verification, and the chain-integrity endpoint. Fail loud on mismatch.
-- 📋 **T021** **Do NOT verify on every docket read.** Recomputation is O(n) hashing and docket list/get are hot paths. Confirm no verify call landed on a plain read path before closing the story.
-- 📋 **T022** Test: a docket whose stored transactions have been altered fails verification instead of passing against a self-consistent recomputed root.
-- 📋 **T023** Benchmark or reason explicitly about the added cost on the proof paths; record the finding in the PR body. If it is material, narrow the scope further rather than widening it.
+- ✅ **T019** **Done first, and the answer inverts the task's own premise: there is nothing to extend.** `merkleRootConsistent` (`ReceiptValidator.cs:105-110`) compares `receipt.MerkleRoot` against `receipt.InclusionProof.MerkleRoot` — two fields of the SAME caller-supplied object. It never reads the register. A receipt whose two roots agree passes it regardless of what this ledger sealed, so the entire verdict was decidable without touching the ledger. It reads like the check #1372 asks for and is not one.
+- ✅ **T020** One rule (`Verification/DocketMerkleCommitment`), five sites. **Generation refuses**: `GET /transactions/{txId}/inclusion-proof`, `GET /credentials/{id}/anchor` and `POST /proofs/inclusion` return **409** when the stored contents do not reproduce the sealed root — a proof against a root the ledger never sealed verifies perfectly and is therefore worse than no proof. **Verification reports a tri-state**: `POST /inclusion-proofs/verify`, `POST /receipts/verify` and `POST /proofs/verify-inclusion` gained `ledgerAnchored` (`verified`/`failed`/`null`) + a reason. A contradicted anchor flips `isValid`; an UNVERIFIABLE one does not — absence of evidence is not evidence of tampering.
+  ⚠ **`POST /proofs/inclusion` had to be fixed before it could be checked at all.** It built its tree from RAW TRANSACTION IDS while the validator seals composite `(id, payloadHash, timestamp)` leaves, so its root could never equal the sealed one — on any docket, on any register — and a naive cross-check bolted on would have reported tampering everywhere. Its `MerkleRoot` was also emitted as hex and parsed as base64 by `/verify-inclusion`; a 64-char hex string is valid base64, so it decoded to 48 wrong bytes instead of throwing. The pair never round-tripped and never said so. Nothing in-tree calls either endpoint.
+- ✅ **T021** Confirmed by call-site audit: `DocketMerkleCommitment` is referenced from exactly three places that recompute (`BuildInclusionProofAsync`, `POST /proofs/inclusion`, and the F188 `DocketEvidenceAssembler` — already an on-demand admin surface). No docket list or get path touches it.
+- ✅ **T022** `DocketMerkleCommitmentTests` (11) + `InclusionProofLedgerAnchorTests` (4, real handlers). The tamper test **executes the attack before showing the catch** — it asserts the altered set really does produce a self-consistent root that differs from the sealed one, then that the comparison fails. Without that first half it would pass just as well if tampering were impossible. Six mutations verified: leaves-by-store-order (3 red), blank-root-as-verified (1), `IsAnchored` as `!= Failed` (2), leaves-as-raw-ids (2), drop the 409 (1), always-"verified" (1).
+- ✅ **T023** Cost reasoned, and it is close to nothing. **Generation adds no I/O**: the proof path already fetched the docket's transactions, so the only new work is one Merkle recomputation over a set it was already hashing. **Verification adds one indexed docket-header read and no hashing at all** — the sealed root is a stored field, so the comparison is a string equality. Nothing was narrowed because nothing needed to be.
 
 ## Close-out
 
-- 📋 **T024** Update `.specify/MASTER-TASKS.md` with the shipped entry.
-- 📋 **T025** Update the `sorcha-architecture` skill if the docket representation table or the seal-path projection changes shape.
+- ✅ **T024** Update `.specify/MASTER-TASKS.md` with the shipped entry.
+- ✅ **T025** Update the `sorcha-architecture` skill if the docket representation table or the seal-path projection changes shape.
 - 📋 **T026** Disposition #1215 separately (delete-or-build the control-versioning subsystem) — do NOT fold it into this feature.
 
 ---

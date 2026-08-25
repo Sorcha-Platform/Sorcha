@@ -7,6 +7,8 @@ using Sorcha.Cryptography.Interfaces;
 using Sorcha.Cryptography.Utilities;
 using Sorcha.Register.Core.Storage;
 using Sorcha.Register.Models;
+using Sorcha.Register.Service.Verification;
+using Sorcha.Verification.Abstractions;
 using Sorcha.Register.Models.Enums;
 using Sorcha.Validator.Core;
 
@@ -64,60 +66,34 @@ public static class VerificationEndpoints
                 return Results.NotFound(new { error = $"DocketHeader {transaction.DocketNumber} not found" });
             }
 
-            // Fetch all transactions in the docket to compute proper Merkle leaf hashes
-            // (must match ReceiptGenerator which uses DocketHasher.ComputeTransactionHash)
-            var docketTransactions = (await repository.GetTransactionsByDocketAsync(
-                registerId, docket.Id, cancellationToken)).ToList();
-            if (docketTransactions.Count == 0)
+            // One leaf rule, one comparison — see DocketMerkleCommitment. This block used to build
+            // the leaves inline, in whatever order the repository returned rows, and never consulted
+            // the sealed root at all (#1372).
+            var built = await BuildInclusionProofAsync(
+                repository, hashProvider, registerId, docket, txId, cancellationToken);
+
+            if (built is null)
             {
                 return Results.Problem(
                     title: "Data integrity error",
-                    detail: "DocketHeader has no transactions",
+                    detail: "DocketHeader has no transactions, or the transaction is not one of its leaves",
                     statusCode: 500);
             }
 
-            // Compute transaction hashes the same way as ReceiptGenerator
-            var docketHasher = new DocketHasher(hashProvider);
-            var txHashes = docketTransactions
-                .Select(tx => docketHasher.ComputeTransactionHash(
-                    tx.TxId ?? tx.Id ?? string.Empty,
-                    tx.Payloads?.FirstOrDefault()?.Hash ?? string.Empty,
-                    new DateTimeOffset(tx.TimeStamp, TimeSpan.Zero)))
-                .ToList();
-
-            // Find the leaf index by matching the target transaction
-            int leafIndex = docketTransactions.FindIndex(tx =>
-                string.Equals(tx.TxId ?? tx.Id, txId, StringComparison.OrdinalIgnoreCase));
-            if (leafIndex < 0)
+            // #1372 — fail LOUD rather than hand back a proof against a root the ledger never sealed.
+            // A recomputation over altered stored data is internally self-consistent, so the proof
+            // would verify perfectly against its own root and prove nothing about the ledger.
+            if (built.Seal.Status == VerificationStatus.Failed)
             {
                 return Results.Problem(
-                    title: "Data integrity error",
-                    detail: "Transaction not found in its docket's transaction list",
-                    statusCode: 500);
+                    title: "Docket integrity failure",
+                    detail: "This docket's stored transactions do not reproduce the Merkle root its proposing "
+                          + "validator sealed, so no inclusion proof can be anchored to it. "
+                          + $"Sealed: {built.Seal.SealedRoot} - recomputed: {built.Seal.RecomputedRoot}",
+                    statusCode: StatusCodes.Status409Conflict);
             }
 
-            // Generate the inclusion proof using MerkleTree with proper hashes
-            var merkleTree = new MerkleTree(hashProvider);
-            var proof = merkleTree.GenerateInclusionProof(leafIndex, txHashes.AsReadOnly());
-
-            // Map from MerkleProof (Cryptography) to MerkleInclusionProof (Register.Models)
-            var inclusionProof = new MerkleInclusionProof
-            {
-                TransactionHash = proof.TransactionHash,
-                DocketNumber = checked((long)docket.Id),
-                MerkleRoot = proof.MerkleRoot,
-                ProofPath = proof.ProofPath.Select(step => new MerkleProofStep
-                {
-                    Hash = step.Hash,
-                    Position = step.Position == MerkleProofPosition.Left
-                        ? ProofPosition.Left
-                        : ProofPosition.Right
-                }).ToList().AsReadOnly(),
-                LeafIndex = proof.LeafIndex,
-                TreeSize = proof.TreeSize
-            };
-
-            return Results.Ok(inclusionProof);
+            return Results.Ok(built.Proof);
         })
         .WithName("GetMerkleInclusionProof")
         .WithSummary("Generate Merkle inclusion proof for a transaction")
@@ -131,10 +107,12 @@ public static class VerificationEndpoints
         .Produces(StatusCodes.Status401Unauthorized);
 
         // T028: POST /api/registers/{registerId}/inclusion-proofs/verify
-        app.MapPost("/api/registers/{registerId}/inclusion-proofs/verify", (
+        app.MapPost("/api/registers/{registerId}/inclusion-proofs/verify", async (
+            IRegisterRepository repository,
             IHashProvider hashProvider,
             string registerId,
-            VerifyMerkleInclusionProofRequest request) =>
+            VerifyMerkleInclusionProofRequest request,
+            CancellationToken cancellationToken) =>
         {
             if (string.IsNullOrWhiteSpace(request.TransactionHash))
                 return Results.BadRequest(new { error = "TransactionHash is required" });
@@ -152,17 +130,59 @@ public static class VerificationEndpoints
 
             var result = validator.Verify(request.TransactionHash, request.MerkleRoot, proofSteps);
 
+            // #1372 — isValid on its own is arithmetic: a proof path folds to SOME root, and a root
+            // recomputed over altered data is internally self-consistent, so the proof verifies
+            // perfectly while proving nothing about this register. ledgerAnchored is the missing
+            // half, and it is a TRI-STATE: null means the caller did not name a docket, so the
+            // question was never asked. Never report a check that did not run as a pass.
+            string? anchored = null;
+            string? anchorReason =
+                "no docketNumber supplied - this response is about the proof path only, not about the ledger";
+
+            if (result.IsValid && request.DocketNumber is { } docketNumber)
+            {
+                // A caller's negative number is a caller's mistake, not a server fault. `checked`
+                // here would throw OverflowException and surface as a 500 (#1476's exact shape).
+                var docket = docketNumber < 0
+                    ? null
+                    : await repository.GetDocketAsync(registerId, (ulong)docketNumber, cancellationToken);
+
+                if (docket is null)
+                {
+                    anchorReason = $"docket {docketNumber} is not held on register '{registerId}'";
+                }
+                else if (string.IsNullOrWhiteSpace(docket.MerkleRoot))
+                {
+                    anchorReason =
+                        "that docket was sealed before the platform kept the sealed Merkle root, so there is "
+                        + "no commitment to compare against";
+                }
+                else
+                {
+                    var matches = string.Equals(
+                        docket.MerkleRoot, result.ComputedRoot, StringComparison.OrdinalIgnoreCase);
+                    anchored = matches ? "verified" : "failed";
+                    anchorReason = matches
+                        ? null
+                        : "the root this proof folds to is NOT the root that docket's proposing validator sealed";
+                }
+            }
+
             return Results.Ok(new
             {
                 isValid = result.IsValid,
-                computedRoot = result.ComputedRoot
+                computedRoot = result.ComputedRoot,
+                ledgerAnchored = anchored,
+                ledgerAnchorReason = anchorReason
             });
         })
         .WithRequestValidation()
         .WithName("VerifyMerkleInclusionProof")
         .WithSummary("Verify a Merkle inclusion proof (public)")
         .WithDescription("Verifies a standalone Merkle inclusion proof by recomputing the root from the proof path. " +
-            "No authentication required — suitable for offline verification workflows.")
+            "No authentication required — suitable for offline verification workflows. " +
+            "Supply the optional docketNumber to additionally cross-check the folded root against the root this " +
+            "register actually sealed; without it, ledgerAnchored is null and isValid describes the proof path alone.")
         .WithTags("Verification")
         .AllowAnonymous()
         .Produces<object>(StatusCodes.Status200OK)
@@ -618,14 +638,26 @@ public static class VerificationEndpoints
 
             // Generate the Merkle inclusion proof — same logic as the authenticated
             // GET .../inclusion-proof endpoint (shared helper below).
-            var inclusionProof = await BuildInclusionProofAsync(
+            var anchored = await BuildInclusionProofAsync(
                 repository, hashProvider, registerId, docket, txId, cancellationToken);
-            if (inclusionProof is null)
+            if (anchored is null)
             {
                 return Results.Problem(
                     title: "Data integrity error",
                     detail: "Unable to generate inclusion proof for the issuance transaction",
                     statusCode: 500);
+            }
+
+            // #1372 — same refusal as proof generation. Handing a verifier a proof whose root the
+            // ledger never sealed is worse than handing it nothing: the proof verifies against its
+            // own recomputed root, so the verifier reports a pass it has no basis for.
+            if (anchored.Seal.Status == VerificationStatus.Failed)
+            {
+                return Results.Problem(
+                    title: "Docket integrity failure",
+                    detail: "The docket sealing this credential's issuance no longer reproduces the Merkle root "
+                          + "its proposing validator sealed, so its inclusion proof cannot be anchored.",
+                    statusCode: StatusCodes.Status409Conflict);
             }
 
             // Resolve lifecycle status (Active / Revoked / Superseded) via the revocation index.
@@ -639,7 +671,12 @@ public static class VerificationEndpoints
                 DocketNumber = checked((long)docket.Id),
                 SealedAt = new DateTimeOffset(docket.TimeStamp, TimeSpan.Zero),
                 Status = status.ToString(),
-                InclusionProof = inclusionProof
+                InclusionProof = anchored.Proof,
+                // Tri-state on purpose (#1372). "verified" means the stored contents reproduce the
+                // sealed commitment; "unverified" means the check could not run — a docket sealed
+                // before the platform kept the root, or a node holding only part of it. Absent this
+                // field a verifier cannot tell the two apart, and would read both as verified.
+                SealStatus = anchored.Seal.Wire
             };
 
             return Results.Ok(anchorResponse);
@@ -654,7 +691,8 @@ public static class VerificationEndpoints
         .AllowAnonymous()
         .Produces<CredentialAnchorResponse>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest)
-        .Produces(StatusCodes.Status404NotFound);
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status409Conflict);
     }
 
     // ===========================
@@ -662,11 +700,24 @@ public static class VerificationEndpoints
     // ===========================
 
     /// <summary>
-    /// Builds a Merkle inclusion proof for a sealed transaction using the same leaf-hash
-    /// computation as the authenticated inclusion-proof endpoint and the <c>ReceiptGenerator</c>.
-    /// Returns null when the docket has no transactions or the target is not a docket leaf.
+    /// Builds a Merkle inclusion proof for a sealed transaction, together with the sealed-versus-
+    /// recomputed comparison for the docket it is anchored to.
     /// </summary>
-    private static async Task<MerkleInclusionProof?> BuildInclusionProofAsync(
+    /// <remarks>
+    /// <para>
+    /// The leaves come from <see cref="DocketMerkleCommitment.BuildLeaves"/> — the single rule shared
+    /// with the Feature 188 provenance Seal check — so a proof and a provenance trail can never
+    /// disagree about what a docket committed to.
+    /// </para>
+    /// <para>
+    /// The comparison is returned, not enforced, because the two callers want different things from
+    /// it: proof GENERATION refuses outright on a mismatch (issue #1372 — a proof against a root the
+    /// ledger never sealed proves nothing), while the credential-anchor read reports it as a field so
+    /// an auditor can see a docket that no longer reproduces its commitment.
+    /// </para>
+    /// <para>Returns null when the docket holds no transactions or the target is not one of its leaves.</para>
+    /// </remarks>
+    private static async Task<AnchoredInclusionProof?> BuildInclusionProofAsync(
         IRegisterRepository repository,
         IHashProvider hashProvider,
         string registerId,
@@ -674,32 +725,36 @@ public static class VerificationEndpoints
         string txId,
         CancellationToken cancellationToken)
     {
-        var docketTransactions = (await repository.GetTransactionsByDocketAsync(
+        var held = (await repository.GetTransactionsByDocketAsync(
             registerId, docket.Id, cancellationToken)).ToList();
-        if (docketTransactions.Count == 0)
+        if (held.Count == 0)
         {
             return null;
         }
 
         var docketHasher = new DocketHasher(hashProvider);
-        var txHashes = docketTransactions
-            .Select(tx => docketHasher.ComputeTransactionHash(
-                tx.TxId ?? tx.Id ?? string.Empty,
-                tx.Payloads?.FirstOrDefault()?.Hash ?? string.Empty,
-                new DateTimeOffset(tx.TimeStamp, TimeSpan.Zero)))
-            .ToList();
+        var leaves = DocketMerkleCommitment.BuildLeaves(docket, held, docketHasher);
 
-        int leafIndex = docketTransactions.FindIndex(tx =>
+        var merkleTree = new MerkleTree(hashProvider);
+        var seal = DocketMerkleCommitment.Compare(docket, leaves, merkleTree);
+
+        if (leaves is null || leaves.Hashes.Count == 0)
+        {
+            // The node does not hold every transaction this docket lists, so there is no committed
+            // leaf sequence to index into. Unverifiable, not tampered.
+            return null;
+        }
+
+        var leafIndex = leaves.OrderedTransactions.ToList().FindIndex(tx =>
             string.Equals(tx.TxId ?? tx.Id, txId, StringComparison.OrdinalIgnoreCase));
         if (leafIndex < 0)
         {
             return null;
         }
 
-        var merkleTree = new MerkleTree(hashProvider);
-        var proof = merkleTree.GenerateInclusionProof(leafIndex, txHashes.AsReadOnly());
+        var proof = merkleTree.GenerateInclusionProof(leafIndex, leaves.Hashes.ToList().AsReadOnly());
 
-        return new MerkleInclusionProof
+        var inclusionProof = new MerkleInclusionProof
         {
             TransactionHash = proof.TransactionHash,
             DocketNumber = checked((long)docket.Id),
@@ -714,7 +769,14 @@ public static class VerificationEndpoints
             LeafIndex = proof.LeafIndex,
             TreeSize = proof.TreeSize
         };
+
+        return new AnchoredInclusionProof(inclusionProof, seal);
     }
+
+    /// <summary>An inclusion proof plus what the docket it anchors to says about its own integrity.</summary>
+    private sealed record AnchoredInclusionProof(
+        MerkleInclusionProof Proof,
+        DocketMerkleCommitment.SealComparison Seal);
 
     /// <summary>
     /// Resolves the lifecycle status of a transaction (Active / Revoked / Superseded) by looking
@@ -785,6 +847,19 @@ public class VerifyMerkleInclusionProofRequest
     /// <summary>Sibling hashes from leaf to root.</summary>
     [Required]
     public IReadOnlyList<MerkleProofStep> ProofPath { get; set; } = [];
+
+    /// <summary>
+    /// Optional. The docket this proof claims inclusion in — echoed by
+    /// <c>GET /transactions/{txId}/inclusion-proof</c> as
+    /// <see cref="MerkleInclusionProof.DocketNumber"/>.
+    /// </summary>
+    /// <remarks>
+    /// Supply it and the response's <c>ledgerAnchored</c> says whether the root you verified against
+    /// is the one this register actually sealed. Omit it and the endpoint does arithmetic only
+    /// (issue #1372): a proof path always folds to SOME root, so <c>isValid</c> alone is a statement
+    /// about the proof, never about the ledger.
+    /// </remarks>
+    public long? DocketNumber { get; set; }
 }
 
 /// <summary>
@@ -841,4 +916,18 @@ public class CredentialAnchorResponse
 
     /// <summary>The F079 Merkle inclusion proof for the issuance transaction.</summary>
     public MerkleInclusionProof InclusionProof { get; set; } = null!;
+
+    /// <summary>
+    /// Whether the sealing docket's stored contents still reproduce the Merkle root its proposing
+    /// validator sealed: <c>"verified"</c>, <c>"unverified"</c>, or <c>"failed"</c> (issue #1372).
+    /// </summary>
+    /// <remarks>
+    /// A <c>failed</c> comparison is refused with 409 rather than returned, so in practice this is
+    /// <c>verified</c> or <c>unverified</c>. The distinction still matters and must not be collapsed:
+    /// <c>unverified</c> means the check could not run — a docket sealed before the platform kept the
+    /// root, or a node that holds only part of the docket — and a verifier reading that as
+    /// <c>verified</c> would be manufacturing confidence, which is the whole failure mode Feature 188
+    /// exists to prevent.
+    /// </remarks>
+    public string SealStatus { get; set; } = string.Empty;
 }

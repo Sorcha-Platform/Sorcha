@@ -756,7 +756,8 @@ public class TxVerifyProofCommand : Command
                 {
                     TransactionHash = proof.TransactionHash,
                     MerkleRoot = proof.MerkleRoot,
-                    ProofPath = proof.ProofPath
+                    ProofPath = proof.ProofPath,
+                    DocketNumber = proof.DocketNumber
                 };
 
                 var result = await client.VerifyInclusionProofAsync(
@@ -772,7 +773,23 @@ public class TxVerifyProofCommand : Command
                 Console.WriteLine();
                 if (result.IsValid)
                 {
-                    ConsoleHelper.WriteSuccess("Proof is VALID — the transaction is included in the docket.");
+                    // #1372 — "included in the docket" is a claim about the LEDGER, and folding a
+                    // proof path does not establish it: a root recomputed over altered data is
+                    // internally self-consistent, so the proof verifies against it perfectly. Only
+                    // say it when the register confirms the root its validator sealed.
+                    if (string.Equals(result.LedgerAnchored, "verified", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ConsoleHelper.WriteSuccess("Proof is VALID — the transaction is included in the docket, "
+                            + "and the docket matches the root its validator sealed.");
+                    }
+                    else
+                    {
+                        ConsoleHelper.WriteWarning("Proof is well-formed — the proof path folds to the stated root.");
+                        Console.WriteLine("  The register did NOT confirm that root against the one its validator sealed"
+                            + (string.IsNullOrWhiteSpace(result.LedgerAnchorReason)
+                                ? "."
+                                : $": {result.LedgerAnchorReason}"));
+                    }
                     Console.WriteLine($"  Computed root: {result.ComputedRoot}");
                     return ExitCodes.Success;
                 }

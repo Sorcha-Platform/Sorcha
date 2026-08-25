@@ -116,6 +116,29 @@ Transaction receipts, Merkle inclusion proofs, revocation transactions, and offl
 | GET | `/registers/{registerId}/transactions/{txId}/inclusion-proof` | Generate Merkle proof |
 | POST | `/registers/{registerId}/inclusion-proofs/verify` | Verify proof (public) |
 
+#### The sealed root is the commitment — recomputation alone is not a check (Feature 187 US3 / #1372)
+
+`DocketHeader.MerkleRoot` is persisted, and every point that ASSERTS integrity compares the stored
+contents against it via the one rule in `Sorcha.Register.Service.Verification.DocketMerkleCommitment`.
+
+- **Generation refuses.** `GET …/inclusion-proof`, `GET …/credentials/{id}/anchor` and
+  `POST …/proofs/inclusion` answer **409** when a docket's stored transactions no longer reproduce
+  its sealed root. A proof built over a recomputation is internally self-consistent — it verifies
+  flawlessly and proves nothing about the ledger — so returning one is worse than returning nothing.
+- **Verification reports a tri-state.** `POST …/inclusion-proofs/verify` (optional `docketNumber`),
+  `POST …/receipts/verify` and `POST …/proofs/verify-inclusion` return `ledgerAnchored` ∈
+  `verified` | `failed` | `null`, plus `ledgerAnchorReason`. A **contradicted** anchor flips
+  `isValid`; an **unverifiable** one does not — absence of evidence is not evidence of tampering.
+- ⚠ **`merkleRootConsistent` is NOT a ledger check** and never was. It compares `receipt.MerkleRoot`
+  with `receipt.InclusionProof.MerkleRoot` — two fields of the same caller-supplied object — so the
+  whole verdict was decidable without reading the register. Read `ledgerAnchored` for the ledger.
+- ⚠ **A docket does not commit to its transaction ids.** Leaves are
+  `DocketHasher.ComputeTransactionHash(txId, payloadHash, timestamp)`, in `TransactionIds` order.
+  Recomputing over raw ids mismatches on every docket of every register, so it does not fail
+  occasionally — it reports tampering on a healthy ledger. That mistake has been made twice here.
+- The rule is shared with the Feature 188 provenance Seal check, so a proof and a provenance trail
+  cannot reach different verdicts about the same docket.
+
 ### Revocation & Status (Register Service)
 
 | Method | Path | Purpose |
