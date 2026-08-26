@@ -3,10 +3,30 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.21
-**Last Updated:** 2026-08-25
+**Version:** 7.22
+**Last Updated:** 2026-08-26
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
+
+> **2026-08-26 - the system register could not seed its blueprints, so `register-governance-v1` was never published (#1587).**
+>
+> On every node genesised since Feature 195, `sorcha_register_aebf26362e079087571ac0932d4db973` held **exactly one transaction - its genesis**. Seeding died on the FIRST blueprint (`register-creation-v1`) with `TX_012 Payload hash mismatch`, all three attempts, and `SeedBlueprintsIfMissingAsync` throws on exhaustion - so the loop aborted before ever reaching `register-governance-v1`, the publication that must land before any other blueprint can be published. #1516's validator last-resort, which resolves the governance blueprint by reading the SSR ledger, therefore had nothing to read.
+>
+> **The cause was ONE call site failing to follow the pattern its sibling already established, not a design fork.** F195 moved `SystemRegisterService.PublishBlueprintAsync` onto `BlueprintCanonicalJson` (RFC-8785 key-sorted) for the publication id, and hashed that canonical form - but left the submission carrying the caller's `blueprintJson`. `TransactionValidator.ValidatePayloadHash` re-serialises `transaction.Payload` with options that **preserve the key order they receive**, so the two could only ever agree on a definition authored key-sorted. None is: `register-creation-v1.json` is authored `id, title, description, ...` and sorts to `actions, description, id, ...`.
+>
+> The per-register publish path (`Program.cs`, `POST /registers/{id}/blueprints`) has always done the right thing, in the same PR, with the reason in a comment: parse the canonical JSON back to an element, hash the validator's own re-serialisation of it, and **transmit that element**. The fix is to make the system-register path do exactly that. The Validator is deliberately untouched - its rule applies to EVERY transaction type, so changing it there would re-hash every payload on every ledger, and type-scoping it would put the two-rules-one-name shape inside the validator.
+>
+> **Which bytes change: only `BlueprintPublish` transactions on the system register, and only ones not yet written.** No other transaction type, no other register, nothing already sealed. A sibling sweep of all six other `PayloadHash` producers (crypto-policy, governance propose/approve/enact, register creation, participant publishing) found every one already serialising once, hashing those bytes, and transmitting that same element - this was the sole deviation.
+>
+> WARNING **The existing tests could not see this, and that is the reusable lesson.** `SystemRegisterBlueprintTests` mocks `IHashProvider` to return `new byte[32]`, so every hash it compares equals every other **by construction** - a suite that would stay green no matter what the producer hashed. The new `SystemRegisterPayloadHashSeamTests` therefore uses the REAL `HashProvider` and the REAL `TransactionValidator`: the thing under test is the join, so a stand-in on either side makes the assertion vacuous. It reproduced `TX_012` at unit level before the fix - the same error code as the live logs.
+>
+> **Mutation-verified against the variant that also satisfies the validator.** "Hash what you send, but send the caller's bytes" passes the payload-hash assertion while leaving non-canonical bytes on the ledger and giving a reordered definition a different payload hash; tests 2 and 4 go red on it and 1 and 3 stay green. The suite discriminates between the two candidate fixes rather than rubber-stamping either.
+>
+> **Observation, deliberately NOT changed:** `SeedBlueprintsIfMissingAsync` throws when one blueprint exhausts its attempts, aborting the remaining seeds. That is what turned a one-blueprint defect into a platform-wide governance outage. Failing loudly is defensible; whether it should be per-blueprint is a separate call.
+>
+> WARNING **The 18/18 walkthrough suite is green with this broken** - it runs no governance operation and publishes no system blueprint, the same gap #1466 is left open on. A green suite is not evidence for this fix.
+>
+> Register.Service 479 (9 skipped), publication-id-owner gate OK, solution builds clean.
 
 > **2026-08-25 - every log line was written to stdout TWICE, by two writers.**
 >
