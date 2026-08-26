@@ -256,9 +256,28 @@ public class SystemRegisterService
         // new check on every restart.
         var canonicalJson = Sorcha.Blueprint.Models.Canonical.BlueprintCanonicalJson
             .Canonicalise(JsonSerializer.Serialize(blueprintJson, CanonicalJsonOptions));
-        var blueprintBytes = Encoding.UTF8.GetBytes(canonicalJson);
 
-        // Compute payload hash
+        // Issue #1587 — TRANSMIT the canonical definition, and hash the bytes actually transmitted.
+        //
+        // Feature 195 moved this producer onto canonical JSON for the publication id above, but left
+        // the submission carrying the caller's `blueprintJson` while the payload hash was computed
+        // over the canonical form. The Validator re-serialises `transaction.Payload` with its own
+        // options, which PRESERVE the key order they receive (TransactionValidator.ValidatePayloadHash),
+        // so the two could only agree on a definition that happened to be authored key-sorted. None
+        // is. Every seed attempt was refused TX_012, bootstrap aborted on the first blueprint, and
+        // `register-governance-v1` was never published to the system register at all.
+        //
+        // Re-serialising an ALREADY-canonical document reproduces it byte for byte, so hashing that
+        // form and sending that element is what makes the Validator's recomputation agree. This is
+        // exactly what the per-register publish path has always done (Program.cs, POST
+        // /registers/{id}/blueprints) — the system register is a register, and publishing to it is
+        // not a special case. The Validator is deliberately untouched: its rule applies to EVERY
+        // transaction type, so changing it there would re-hash every payload on every ledger.
+        var canonicalElement = JsonDocument.Parse(canonicalJson).RootElement;
+        var transmittedJson = JsonSerializer.Serialize(canonicalElement, CanonicalJsonOptions);
+        var blueprintBytes = Encoding.UTF8.GetBytes(transmittedJson);
+
+        // Compute payload hash — over the transmitted bytes, per above.
         var payloadHash = _hashProvider.ComputeHash(blueprintBytes, Sorcha.Cryptography.Enums.HashType.SHA256);
         var payloadHashHex = Convert.ToHexString(payloadHash).ToLowerInvariant();
 
@@ -322,7 +341,10 @@ public class SystemRegisterService
             RegisterId = SystemRegisterConstants.SystemRegisterId,
             BlueprintId = blueprintId,
             ActionId = "blueprint-publish",
-            Payload = blueprintJson,
+            // The CANONICAL element, not the caller's — see the payload-hash note above (#1587).
+            // The bytes on the ledger are then the same bytes the transaction id is the digest of,
+            // which is what makes recovery's provenance check self-anchoring.
+            Payload = canonicalElement,
             PayloadHash = payloadHashHex,
             PreviousTransactionId = previousTxId,
             Signatures = new List<SignatureInfo> { systemSignature },
