@@ -2181,15 +2181,26 @@ app.MapGet("/api/registers/{registerId}/blueprints/published", async (
     // TransactionType.Control + TrackingData["transactionType"]="BlueprintPublish".
     // Both eras coexist forever, so this filter must accept either.
     // Pushed down: two index-backed type queries (BlueprintPublish + pre-#876 Control), then the
-    // BlueprintId filter in memory over that small subset — avoids materialising the whole ledger.
+    // publication filter in memory over that small subset — avoids materialising the whole ledger.
+    //
+    // Issue #1587 — the marker gate the comment above describes was never applied. This filter
+    // accepted EVERY Control transaction carrying a BlueprintId, and every governance transaction
+    // and crypto-policy update carries one (`register-governance-v1`), because a control transaction
+    // genuinely IS an operation against the governance workflow. So a DevMode→Normal promotion was
+    // served here as a phantom publication whose payload is a control record, and
+    // BlueprintRecoveryService refused it `hash_mismatch` on every sweep — hundreds of lines a node.
+    // Harmless ONLY because Feature 195's provenance check refuses it; before that check existed the
+    // same response would have recovered a control record into the published store as a definition.
+    //
+    // BlueprintPublicationFilter is the rule written for #1515, where the system register's blueprint
+    // LOOKUP made the same mistake. Shared rather than restated: a second rule under the same name is
+    // how this reader came to disagree with that one in the first place.
     var byPublish = await repository.GetTransactionsByTypeAsync(
         registerId, TransactionType.BlueprintPublish, TransactionSort.TimeStampDescending);
     var byControl = await repository.GetTransactionsByTypeAsync(
         registerId, TransactionType.Control, TransactionSort.TimeStampDescending);
     var publishTransactions = byPublish.Concat(byControl)
-        .Where(tx => tx.MetaData != null
-            && !string.IsNullOrEmpty(tx.MetaData.BlueprintId)
-            && tx.MetaData.BlueprintId != "genesis")
+        .Where(Sorcha.Register.Service.Services.BlueprintPublicationFilter.IsPublication)
         .OrderByDescending(tx => tx.TimeStamp)
         .ToList();
 

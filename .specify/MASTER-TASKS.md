@@ -8,6 +8,22 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
+> **2026-08-26 - control traffic was served as blueprint publications, and the gate was described but never applied (#1587, second defect).**
+>
+> `GET /api/registers/{id}/blueprints/published` - the read `BlueprintRecoveryService` rebuilds the published index from - accepted **every** `TransactionType.Control` transaction carrying a non-empty `MetaData.BlueprintId`. Its own comment stated the pre-#876 arm should be gated on `TrackingData["transactionType"] == "BlueprintPublish"`. The gate was in the comment and not in the code.
+>
+> **Every control transaction carries `BlueprintId = register-governance-v1`,** because a control transaction genuinely IS an operation against the governance workflow. So a DevMode->Normal promotion (`CryptoPolicyUpdate`) and every governance propose/approve/enact were served as phantom publications whose payload is a control record, and recovery refused each one `hash_mismatch` on every sweep - ~364 lines per node.
+>
+> WARNING **It was harmless ONLY because Feature 195's provenance check refuses it.** Before that check existed, this response would have recovered a control record's payload into the published blueprint store AS A DEFINITION. The defect predates the thing that makes it survivable.
+>
+> **This is #1515 at a different reader, so the fix is to stop having two rules.** `SystemRegisterService.IsBlueprintPublication` - written for #1515, tested, and correct - was named for the caller that first needed it rather than for what it decides, so the next reader wrote a second, weaker rule under the same name. It is now `BlueprintPublicationFilter.IsPublication`, register-agnostic, used by both. The Validator keeps its independent backstop (an empty-actions payload is refused loudly), which is the right shape: one rule plus one distrusting reader.
+>
+> **Checked for over-correction rather than assumed.** A sweep of the other Control-type producers confirms none becomes a false negative: participant publishing writes `Type=Participant` and no `BlueprintId`, register creation writes `Type=Genesis` with `BlueprintId=genesis`, and governance and crypto-policy all carry their own `transactionType` marker AND an `ActionId`. The pre-marker `ActionId is null` fallback is retained unchanged.
+>
+> The regression test drives the **endpoint**, not the predicate, because the predicate was already right - it is the reader that was wrong. It seeds the exact shape the EncryptionAtRest walkthrough leaves behind and failed with three entries where one was due.
+>
+> Register.Service 483 (9 skipped).
+
 > **2026-08-26 - the system register could not seed its blueprints, so `register-governance-v1` was never published (#1587).**
 >
 > On every node genesised since Feature 195, `sorcha_register_aebf26362e079087571ac0932d4db973` held **exactly one transaction - its genesis**. Seeding died on the FIRST blueprint (`register-creation-v1`) with `TX_012 Payload hash mismatch`, all three attempts, and `SeedBlueprintsIfMissingAsync` throws on exhaustion - so the loop aborted before ever reaching `register-governance-v1`, the publication that must land before any other blueprint can be published. #1516's validator last-resort, which resolves the governance blueprint by reading the SSR ledger, therefore had nothing to read.

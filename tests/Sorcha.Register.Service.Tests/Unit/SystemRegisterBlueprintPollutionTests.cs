@@ -86,13 +86,13 @@ public class SystemRegisterBlueprintPollutionTests
     // ------------------------------------------------------------------ //
 
     [Fact]
-    public void IsBlueprintPublication_TheRealPublication_IsTrue()
+    public void IsPublication_TheRealPublication_IsTrue()
     {
         // n1 docket 2: seeded by the bootstrapper. Persists as Control — NOT BlueprintPublish —
         // which is exactly why the transaction type cannot be the discriminator.
         var tx = Publication(GovernanceBlueprintId, Day(2));
 
-        SystemRegisterService.IsBlueprintPublication(tx).Should().BeTrue();
+        BlueprintPublicationFilter.IsPublication(tx).Should().BeTrue();
     }
 
     [Theory]
@@ -102,50 +102,50 @@ public class SystemRegisterBlueprintPollutionTests
     [InlineData(2u, "GovernanceApproval")]
     // n1 docket 14: "Record Control Transaction" — the enactment that bricked the node.
     [InlineData(4u, "GovernanceOperation")]
-    public void IsBlueprintPublication_GovernanceActivity_IsFalse(uint actionId, string trackingType)
+    public void IsPublication_GovernanceActivity_IsFalse(uint actionId, string trackingType)
     {
         var tx = GovernanceTransaction(actionId, trackingType, Day(14));
 
-        SystemRegisterService.IsBlueprintPublication(tx)
+        BlueprintPublicationFilter.IsPublication(tx)
             .Should().BeFalse("a governance transaction names the governance blueprint, it does not publish it");
     }
 
     [Fact]
-    public void IsBlueprintPublication_PostIssue876BlueprintPublishType_IsTrue()
+    public void IsPublication_PostIssue876BlueprintPublishType_IsTrue()
     {
         var tx = Publication("register-creation-v1", Day(1));
         tx.MetaData!.TransactionType = Sorcha.Register.Models.Enums.TransactionType.BlueprintPublish;
         tx.MetaData.TrackingData = null;
 
-        SystemRegisterService.IsBlueprintPublication(tx).Should().BeTrue();
+        BlueprintPublicationFilter.IsPublication(tx).Should().BeTrue();
     }
 
     [Fact]
-    public void IsBlueprintPublication_PreMarkerControlPublication_IsTrue()
+    public void IsPublication_PreMarkerControlPublication_IsTrue()
     {
         // A publication old enough to predate the TrackingData marker. It is still not an action
         // submission, so it carries no action id — which is what the fallback keys on.
         var tx = Publication("legacy-v1", Day(1));
         tx.MetaData!.TrackingData = null;
 
-        SystemRegisterService.IsBlueprintPublication(tx).Should().BeTrue();
+        BlueprintPublicationFilter.IsPublication(tx).Should().BeTrue();
     }
 
     [Fact]
-    public void IsBlueprintPublication_PreMarkerControlCarryingAnActionId_IsFalse()
+    public void IsPublication_PreMarkerControlCarryingAnActionId_IsFalse()
     {
         var tx = GovernanceTransaction(1u, "GovernanceOperation", Day(9));
         tx.MetaData!.TrackingData = null;
 
-        SystemRegisterService.IsBlueprintPublication(tx).Should().BeFalse();
+        BlueprintPublicationFilter.IsPublication(tx).Should().BeFalse();
     }
 
     [Fact]
-    public void IsBlueprintPublication_Genesis_IsFalse()
+    public void IsPublication_Genesis_IsFalse()
     {
         var tx = Publication("genesis", Day(0));
 
-        SystemRegisterService.IsBlueprintPublication(tx).Should().BeFalse();
+        BlueprintPublicationFilter.IsPublication(tx).Should().BeFalse();
     }
 
     // ------------------------------------------------------------------ //
