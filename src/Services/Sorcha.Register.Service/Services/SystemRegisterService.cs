@@ -506,47 +506,9 @@ public class SystemRegisterService
             cancellationToken: cancellationToken);
 
         return byPublish.Concat(byControl)
-            .Where(IsBlueprintPublication)
+            .Where(BlueprintPublicationFilter.IsPublication)
             .OrderByDescending(t => t.TimeStamp)
             .ToList();
-    }
-
-    /// <summary>
-    /// True when a system-register transaction publishes a blueprint, as opposed to merely naming
-    /// one (which every governance action does — see <see cref="GetBlueprintTransactionsAsync"/>).
-    /// </summary>
-    /// <remarks>
-    /// Marker value written alongside the publication rather than inferred, so a future control
-    /// transaction that happens to carry a BlueprintId cannot re-open #1515 by accident. The
-    /// ActionId arm is the pre-marker fallback: a blueprint publication is not an action submission
-    /// and carries no action id, while everything governance writes carries one (1 propose,
-    /// 2 approve, 4 enact).
-    /// </remarks>
-    internal static bool IsBlueprintPublication(TransactionModel tx)
-    {
-        var meta = tx.MetaData;
-
-        if (meta is null
-            || string.IsNullOrEmpty(meta.BlueprintId)
-            || meta.BlueprintId == "genesis")
-        {
-            return false;
-        }
-
-        if (meta.TransactionType == Sorcha.Register.Models.Enums.TransactionType.BlueprintPublish)
-        {
-            return true;
-        }
-
-        if (meta.TrackingData is not null
-            && meta.TrackingData.TryGetValue("transactionType", out var marker)
-            && !string.IsNullOrWhiteSpace(marker))
-        {
-            return string.Equals(marker, nameof(Sorcha.Register.Models.Enums.TransactionType.BlueprintPublish),
-                StringComparison.OrdinalIgnoreCase);
-        }
-
-        return meta.ActionId is null;
     }
 
     /// <summary>

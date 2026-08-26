@@ -2672,7 +2672,7 @@ public class ValidationEngine : IValidationEngine
             // "VAL_SCHEMA_003: Action N not found", an error that names the wrong thing and sends
             // the reader looking for a missing action in a blueprint that is in fact correct.
             //
-            // The filter in SystemRegisterService.IsBlueprintPublication is the fix; this is the
+            // The filter in Register Service's BlueprintPublicationFilter is the fix; this is the
             // backstop, so any FUTURE way of resolving a non-blueprint fails here, loudly, naming
             // the resolution rather than the symptom.
             if (blueprint.Actions is null || blueprint.Actions.Count == 0)
