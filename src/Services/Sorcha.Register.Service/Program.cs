@@ -195,8 +195,14 @@ builder.Services.AddSingleton<Sorcha.Cryptography.Interfaces.IWalletUtilities,
 // process-wide. The resolver, assembler and Merkle seam are scoped alongside the repository they
 // read through. MerkleRootCalculator DELEGATES to the platform's one MerkleTree — see its remarks
 // for why a second implementation here would surface as a false tamper report.
-builder.Services.AddSingleton<Sorcha.Register.Service.Provenance.INodeTrustAnchor,
-    Sorcha.Register.Service.Provenance.NodeTrustAnchor>();
+// Feature 196: the anchor moved to Sorcha.Register.Core so the Validator Service resolves the SAME
+// root of trust rather than a second, independently configured one. Constructed from this host's
+// configured genesis path — the Core loader takes a path, not IOptions, so it stays free of
+// ServiceDefaults.
+builder.Services.AddSingleton<Sorcha.Register.Core.Provenance.INodeTrustAnchor>(sp =>
+    new Sorcha.Register.Core.Provenance.NodeTrustAnchor(
+        sp.GetRequiredService<IOptions<Sorcha.ServiceDefaults.SystemRegisterOptions>>().Value.GenesisFile,
+        sp.GetRequiredService<ILogger<Sorcha.Register.Core.Provenance.NodeTrustAnchor>>()));
 builder.Services.AddSingleton<Sorcha.Register.Service.Provenance.ProvenanceMetrics>();
 builder.Services.AddScoped<Sorcha.Register.Service.Provenance.IRosterAsOfResolver,
     Sorcha.Register.Service.Provenance.RosterAsOfResolver>();
@@ -2090,7 +2096,10 @@ app.MapPost("/api/registers/{registerId}/blueprints/publish", async (
         registerId: registerId,
         txId: txId,
         payloadHash: payloadHashHex,
-        derivationPath: SorchaDerivationPaths.RegisterControl,
+        // Feature 196: unified onto the dedicated publication context. This path previously signed
+        // with RegisterControl while SystemRegisterService seeded with BlueprintPublish, so the two
+        // publish routes used DIFFERENT keys and no single roster entry could authorise both.
+        derivationPath: SorchaDerivationPaths.BlueprintPublish,
         transactionType: "BlueprintPublish");
 
     var systemSignature = new Sorcha.ServiceClients.Validator.SignatureInfo

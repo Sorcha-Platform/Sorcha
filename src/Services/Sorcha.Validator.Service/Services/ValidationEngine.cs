@@ -44,6 +44,7 @@ public class ValidationEngine : IValidationEngine
     private readonly IRightsEnforcementService _rightsEnforcementService;
     private readonly IWalletSequenceRepository? _walletSequenceRepository;
     private readonly Sorcha.Register.Core.Services.IGovernanceRosterService? _governanceRosterService;
+    private readonly IExemptionAuthorityResolver? _exemptionResolver;
     private readonly ILogger<ValidationEngine> _logger;
 
     // Statistics
@@ -67,7 +68,8 @@ public class ValidationEngine : IValidationEngine
         IBlueprintFetcher? blueprintFetcher = null,
         IWalletSequenceRepository? walletSequenceRepository = null,
         IChainTransactionCache? chainTxCache = null,
-        Sorcha.Register.Core.Services.IGovernanceRosterService? governanceRosterService = null)
+        Sorcha.Register.Core.Services.IGovernanceRosterService? governanceRosterService = null,
+        IExemptionAuthorityResolver? exemptionResolver = null)
     {
         _config = config?.Value ?? throw new ArgumentNullException(nameof(config));
         _blueprintCache = blueprintCache ?? throw new ArgumentNullException(nameof(blueprintCache));
@@ -80,12 +82,42 @@ public class ValidationEngine : IValidationEngine
         _chainTxCache = chainTxCache;
         _rightsEnforcementService = rightsEnforcementService ?? throw new ArgumentNullException(nameof(rightsEnforcementService));
         _governanceRosterService = governanceRosterService;
+        _exemptionResolver = exemptionResolver;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         if (_blueprintFetcher != null)
         {
             _logger.LogInformation("ValidationEngine initialized with BlueprintFetcher fallback enabled");
         }
+    }
+
+    /// <summary>
+    /// Resolves whether this transaction is entitled to the administrative exemptions
+    /// (Feature 196 / #1591).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A null resolver withholds every exemption.</b> Before Feature 196 the exemptions were
+    /// granted from two unsigned fields — <c>Metadata["Type"]</c> and <c>BlueprintId == "genesis"</c>
+    /// — which a submitter sets freely. Falling back to that behaviour when no resolver is injected
+    /// would leave the vulnerability reachable by simply not registering the resolver, so the
+    /// fallback is "no exemption" rather than "the old behaviour". FR-007: fail closed, in every
+    /// environment.
+    /// </para>
+    /// <para>
+    /// The resolver memoises per scope, so calling this from each rule costs one roster resolution
+    /// per transaction, not one per rule.
+    /// </para>
+    /// </remarks>
+    private async Task<ExemptionDecision> ResolveExemptionAsync(
+        Transaction transaction, CancellationToken ct)
+    {
+        if (_exemptionResolver is null)
+        {
+            return ExemptionDecision.NoClaim(ExemptionAuthorityResolver.ReadClaim(transaction));
+        }
+
+        return await _exemptionResolver.ResolveAsync(transaction, ct);
     }
 
     /// <inheritdoc/>
@@ -118,6 +150,24 @@ public class ValidationEngine : IValidationEngine
                 errors.AddRange(hashResult.Errors);
                 // Hash mismatch is fatal
                 return RecordResult(CreateFailureResult(transaction, sw.Elapsed, errors), sw.Elapsed);
+            }
+
+            // Feature 196 (#1591): resolve the administrative exemption decision ONCE, here, and pass
+            // it to every rule that used to derive its own answer from an unsigned field. Placed
+            // after the fatal structure and payload-hash gates so authority is never resolved for a
+            // transaction that is already malformed.
+            //
+            // Six rules consult this. Before Feature 196 each read Metadata["Type"] or
+            // BlueprintId directly, which is how one unsigned string could switch off six rules at
+            // once — including the sender-authorisation check that would have caught the forger.
+            var exemption = await ResolveExemptionAsync(transaction, ct);
+
+            // 2b. Feature 196 (FR-006): the unsigned identifying fields must agree with their
+            // counterparts inside the signed payload. Placed before the rules that read them.
+            var agreementResult = ValidateSignedFieldAgreement(transaction);
+            if (!agreementResult.IsValid)
+            {
+                errors.AddRange(agreementResult.Errors);
             }
 
             // 3. Validate schema (if enabled)
@@ -197,7 +247,7 @@ public class ValidationEngine : IValidationEngine
             // 4d. Validate crypto policy compliance (if enabled)
             if (_config.EnableCryptoPolicyValidation)
             {
-                var cryptoPolicyResult = ValidateCryptoPolicy(transaction);
+                var cryptoPolicyResult = ValidateCryptoPolicy(transaction, exemption);
                 if (!cryptoPolicyResult.IsValid)
                 {
                     errors.AddRange(cryptoPolicyResult.Errors);
@@ -215,7 +265,7 @@ public class ValidationEngine : IValidationEngine
             }
 
             // 5b. Validate sequence number for replay protection (SEC-AUDIT 4.2)
-            if (_walletSequenceRepository != null && !TransactionTypeClassifier.IsGenesisOrControlTransaction(transaction))
+            if (_walletSequenceRepository != null && !exemption.Granted)
             {
                 using var _replayScope = RuleTelemetry.TimeSection("SequenceReplay");
                 try
@@ -265,7 +315,7 @@ public class ValidationEngine : IValidationEngine
             }
 
             // 6. Validate timing
-            var timingResult = ValidateTiming(transaction);
+            var timingResult = ValidateTiming(transaction, exemption);
             if (!timingResult.IsValid)
             {
                 errors.AddRange(timingResult.Errors);
@@ -475,7 +525,8 @@ public class ValidationEngine : IValidationEngine
             //
             // It withdraws ONLY the schema exemption. The other five riding on the same
             // discriminator stay, and two of them have to — see IsGovernanceActionTransaction.
-            if (TransactionTypeClassifier.IsGenesisOrControlTransaction(transaction)
+            var schemaExemption = await ResolveExemptionAsync(transaction, ct);
+            if (schemaExemption.Granted
                 && !TransactionTypeClassifier.IsGovernanceActionTransaction(transaction))
             {
                 _logger.LogDebug("Validating signatures for genesis/control transaction {TransactionId}",
@@ -856,19 +907,93 @@ public class ValidationEngine : IValidationEngine
     }
 
     /// <summary>
+    /// Feature 196 (FR-006): the unsigned identifying fields must agree with the copies inside the
+    /// signed payload.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>blueprintId</c>, <c>actionId</c> and <c>instanceId</c> exist <b>twice</b> on an action
+    /// transaction: inside the canonical payload the signature covers, and again as submission-level
+    /// fields the signature does not cover. Every rule in this engine reads the unsigned copies, and
+    /// until now nothing compared them — so a transaction could present one identity to the rules and
+    /// a different one to its own signature.
+    /// </para>
+    /// <para>
+    /// This is the general form of #1591 rather than a demonstrated exploit, and it is cheap to
+    /// close: a mismatch has no legitimate producer, because the builder writes both copies from the
+    /// same values in the same breath.
+    /// </para>
+    /// <para>
+    /// <b>An absent counterpart is not a disagreement.</b> Genesis, governance and publication
+    /// payloads carry no such fields — a publication's payload is the blueprint definition itself —
+    /// so requiring them would refuse every administrative transaction on the network.
+    /// </para>
+    /// </remarks>
+    private ValidationEngineResult ValidateSignedFieldAgreement(Transaction transaction)
+    {
+        using var _section = RuleTelemetry.TimeSection("SignedFieldAgreement");
+        var sw = Stopwatch.StartNew();
+        var errors = new List<ValidationEngineError>();
+
+        if (transaction.Payload.ValueKind == JsonValueKind.Object)
+        {
+            Compare("blueprintId", transaction.BlueprintId);
+            Compare("actionId", transaction.ActionId);
+        }
+
+        void Compare(string property, string? unsignedValue)
+        {
+            if (!transaction.Payload.TryGetProperty(property, out var signed)
+                || signed.ValueKind != JsonValueKind.String)
+            {
+                // No signed counterpart for this transaction kind — nothing to disagree with.
+                return;
+            }
+
+            var signedValue = signed.GetString();
+            if (string.IsNullOrEmpty(signedValue) || string.IsNullOrEmpty(unsignedValue))
+            {
+                return;
+            }
+
+            if (!string.Equals(signedValue, unsignedValue, StringComparison.Ordinal))
+            {
+                errors.Add(CreateError("VAL_STRUCT_011",
+                    $"The transaction's '{property}' does not match the value inside its signed "
+                    + $"payload. The signature covers the payload, so the two must agree.",
+                    ValidationErrorCategory.Structure, property));
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            _logger.LogWarning(
+                "Transaction {TransactionId} on register {RegisterId} describes itself differently to "
+                + "the rules than to its own signature", transaction.TransactionId, transaction.RegisterId);
+
+            return CreateFailureResult(transaction, sw.Elapsed, errors);
+        }
+
+        return ValidationEngineResult.Success(
+            transaction.TransactionId, transaction.RegisterId, sw.Elapsed);
+    }
+
+    /// <summary>
     /// Validates that transaction signature algorithms comply with crypto policy.
     /// Checks that all algorithms are recognized and supported.
     /// Per-register policy enforcement checks accepted/required algorithms.
     /// </summary>
-    private ValidationEngineResult ValidateCryptoPolicy(Transaction transaction)
+    private ValidationEngineResult ValidateCryptoPolicy(Transaction transaction, ExemptionDecision exemption)
     {
         using var _section = RuleTelemetry.TimeSection("CryptoPolicy");
         var sw = Stopwatch.StartNew();
         var errors = new List<ValidationEngineError>();
 
-        // Skip policy validation for system/control transactions
-        if (transaction.Metadata.TryGetValue("Type", out var txType) &&
-            txType is "Genesis" or "Control")
+        // Skip policy validation for system/control transactions.
+        // Feature 196: was `Metadata["Type"] is "Genesis" or "Control"` — an unsigned string that
+        // let any submitter opt out of crypto policy. Now derived from proved authority.
+        if (exemption.Granted &&
+            exemption.Kind is ExemptionKind.Genesis or ExemptionKind.Control)
         {
             return ValidationEngineResult.Success(
                 transaction.TransactionId,
@@ -948,7 +1073,8 @@ public class ValidationEngine : IValidationEngine
             transaction.TransactionId, transaction.RegisterId, sw.Elapsed);
 
         // Routing decisions ride on forward-routing action transactions only.
-        if (TransactionTypeClassifier.IsGenesisOrControlTransaction(transaction)
+        var routingExemption = await ResolveExemptionAsync(transaction, ct);
+        if (routingExemption.Granted
             || TransactionTypeClassifier.IsParticipantTransaction(transaction)
             || TransactionTypeClassifier.IsRejectionTransaction(transaction)
             || TransactionTypeClassifier.IsIntraActionLifecycleTerminal(transaction))
@@ -1362,8 +1488,12 @@ public class ValidationEngine : IValidationEngine
         var sw = Stopwatch.StartNew();
         var errors = new List<ValidationEngineError>();
 
-        // Skip for genesis/control transactions
-        if (TransactionTypeClassifier.IsGenesisOrControlTransaction(transaction))
+        // Skip for genesis/control transactions.
+        // Feature 196: this is the exemption that waives VAL_BP_002 SENDER AUTHORISATION, so
+        // granting it from an unsigned label meant a forged claim disabled the very check that
+        // would have caught the forger.
+        var conformanceExemption = await ResolveExemptionAsync(transaction, ct);
+        if (conformanceExemption.Granted)
         {
             return ValidationEngineResult.Success(
                 transaction.TransactionId,
@@ -1932,7 +2062,7 @@ public class ValidationEngine : IValidationEngine
             sw.Elapsed);
     }
 
-    private ValidationEngineResult ValidateTiming(Transaction transaction)
+    private ValidationEngineResult ValidateTiming(Transaction transaction, ExemptionDecision exemption)
     {
         using var _section = RuleTelemetry.TimeSection("Timing");
         var sw = Stopwatch.StartNew();
@@ -1958,7 +2088,10 @@ public class ValidationEngine : IValidationEngine
         // ingest-and-seal path (Auto bootstrap); a node that pulls an already-sealed genesis
         // docket from a peer verifies the sealed docket (validator signature + chain), not the
         // genesis tx's age, so late-joining SyncOnly replicas are unaffected.
-        var isGenesis = TransactionTypeClassifier.IsGenesisTransaction(transaction);
+        // Feature 196: the short genesis window is a PRIVILEGE (it admits an older transaction),
+        // so it must follow proved authority, not a claimed label. Claiming genesis without the
+        // anchor no longer selects it.
+        var isGenesis = exemption.IsGenesis;
         var maxAge = isGenesis ? _config.GenesisMaxAge : _config.MaxTransactionAge;
         if (transaction.CreatedAt < now.Subtract(maxAge))
         {

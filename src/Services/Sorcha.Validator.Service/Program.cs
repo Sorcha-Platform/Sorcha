@@ -98,6 +98,26 @@ builder.Services.AddScoped<Sorcha.Validator.Core.Validators.IDocketValidator,
 builder.Services.AddScoped<Sorcha.Validator.Core.Validators.IConsensusValidator,
     Sorcha.Validator.Core.Validators.ConsensusValidator>();
 
+// Feature 196: bind the same SystemRegister section the Register Service binds, so a node that mounts
+// a genesis file gets its anchor from that file rather than silently falling back to the embedded
+// resource. Both services must reach the SAME root of trust — two anchors that can disagree is the
+// defect class this feature removes.
+builder.Services.Configure<Sorcha.ServiceDefaults.SystemRegisterOptions>(
+    builder.Configuration.GetSection(Sorcha.ServiceDefaults.SystemRegisterOptions.SectionName));
+
+// Feature 196 (#1591): the node's trust anchor, resolved from the SAME genesis the Register Service
+// reads. The validator needs it to prove that a transaction claiming to be genesis was signed by the
+// network's genesis key rather than merely labelled as such.
+builder.Services.AddSingleton<Sorcha.Register.Core.Provenance.INodeTrustAnchor>(sp =>
+    new Sorcha.Register.Core.Provenance.NodeTrustAnchor(
+        sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Sorcha.ServiceDefaults.SystemRegisterOptions>>().Value.GenesisFile,
+        sp.GetRequiredService<ILogger<Sorcha.Register.Core.Provenance.NodeTrustAnchor>>()));
+
+// Feature 196: the SINGLE producer of the administrative exemption decision.
+builder.Services.AddSingleton<Sorcha.Validator.Service.Services.ExemptionMetrics>();
+builder.Services.AddScoped<Sorcha.Validator.Service.Services.IExemptionAuthorityResolver,
+    Sorcha.Validator.Service.Services.ExemptionAuthorityResolver>();
+
 // Add memory pool manager
 builder.Services.AddSingleton<Sorcha.Validator.Service.Services.IMemPoolManager,
     Sorcha.Validator.Service.Services.MemPoolManager>();

@@ -18,25 +18,31 @@ namespace Sorcha.Validator.Service.Services;
 internal static class TransactionTypeClassifier
 {
     /// <summary>
-    /// True for transactions that bypass action-schema validation and per-sender replay
-    /// protection: genesis, governance Control, and (post-#876) BlueprintPublish. All three
-    /// are administrative — signed by the system wallet (or in genesis's case the offline
-    /// ceremony key) and have no per-sender sequence; they carry a free-form ActionId
-    /// (<c>"blueprint-publish"</c>, etc.) that can't and shouldn't parse as an int.
+    /// <b>REMOVED in Feature 196 (#1591).</b> This is where the six administrative exemptions used to
+    /// be granted, from either <c>BlueprintId == "genesis"</c> or
+    /// <c>Metadata["Type"] in {Genesis, Control, BlueprintPublish}</c>.
     /// </summary>
-    public static bool IsGenesisOrControlTransaction(Transaction transaction)
-    {
-        if (string.Equals(transaction.BlueprintId, GenesisConstants.BlueprintId, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (transaction.Metadata.TryGetValue("Type", out var typeStr) &&
-            (string.Equals(typeStr, "Genesis", StringComparison.OrdinalIgnoreCase) ||
-             string.Equals(typeStr, "Control", StringComparison.OrdinalIgnoreCase) ||
-             string.Equals(typeStr, "BlueprintPublish", StringComparison.OrdinalIgnoreCase)))
-            return true;
-
-        return false;
-    }
+    /// <remarks>
+    /// <para>
+    /// Neither field is signed. The signed bytes are <c>"{TransactionId}:{PayloadHash}"</c>, and both
+    /// of those are the same digest of the payload body — so a submitter chose both discriminators
+    /// freely and nothing checked whether they were entitled to what they claimed. Since one of the
+    /// six waivers is <c>VAL_BP_002</c> sender authorisation itself, a forged claim disabled the very
+    /// check that would have caught the forger.
+    /// </para>
+    /// <para>
+    /// Replaced by <see cref="IExemptionAuthorityResolver"/>, which grants an exemption only where the
+    /// SIGNER is proved entitled to it. Deleted rather than deprecated: a predicate that grants
+    /// privilege from an unsigned field is not safe to leave callable, and the compiler finding every
+    /// call site is the point.
+    /// </para>
+    /// <para>
+    /// Note the asymmetry this class already documented and which #1591 formalised: reading an
+    /// unsigned field to <i>withdraw</i> an exemption is sound, because forging it can only subject
+    /// the forger to more validation. Reading one to <i>grant</i> is not. That is why
+    /// <see cref="IsGovernanceActionTransaction"/> below still reads unsigned fields and is correct.
+    /// </para>
+    /// </remarks>
 
     /// <summary>
     /// True for the three governance transactions submitted as numbered actions of
@@ -105,34 +111,12 @@ internal static class TransactionTypeClassifier
     }
 
     /// <summary>
-    /// True only for the pre-signed genesis transaction (the network trust anchor),
-    /// NOT live control/governance transactions. The genesis transaction is signed
-    /// once during the offline ceremony with a fixed timestamp and embedded for the
-    /// life of the network.
+    /// <b>REMOVED in Feature 196 (#1591).</b> Selected the short genesis freshness window from the
+    /// same two unsigned fields, so claiming genesis was enough to be judged against
+    /// <c>GenesisMaxAge</c> instead of the live-transaction window. Use
+    /// <see cref="ExemptionDecision.IsGenesis"/> from <see cref="IExemptionAuthorityResolver"/>, which
+    /// additionally requires the signing key to match this node's trust anchor.
     /// </summary>
-    /// <remarks>
-    /// Genesis is <b>not exempt</b> from the freshness check — it is subject to a
-    /// <b>separate, short window</b> (<see cref="Configuration.ValidationEngineConfiguration.GenesisMaxAge"/>,
-    /// default 1h) instead of the live-transaction window
-    /// (<see cref="Configuration.ValidationEngineConfiguration.MaxTransactionAge"/>); see
-    /// <c>ValidateTiming</c> / <c>VAL_TIME_002</c>. SECURITY: a stale-but-accepted genesis is a
-    /// replay vector, so the bound forces a regenerated system register to be minted, deployed, and
-    /// bootstrapped within the window. This gates the <b>ingest-and-seal</b> path (Auto bootstrap);
-    /// a node that <b>pulls an already-sealed genesis docket</b> verifies the docket's validator
-    /// signature + chain (not the genesis tx's age), so late-joining SyncOnly replicas are
-    /// unaffected by the window.
-    /// </remarks>
-    public static bool IsGenesisTransaction(Transaction transaction)
-    {
-        if (string.Equals(transaction.BlueprintId, GenesisConstants.BlueprintId, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (transaction.Metadata.TryGetValue("Type", out var typeStr) &&
-            string.Equals(typeStr, "Genesis", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return false;
-    }
 
     public static bool IsParticipantTransaction(Transaction transaction)
     {

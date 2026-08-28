@@ -133,8 +133,9 @@ public class ValidatorRosterValidationTests
     }
 
     [Fact]
-    public void DuplicateValidatorIds_FailsValidation()
+    public void DuplicateValidatorIds_ForTheSamePurpose_FailsValidation()
     {
+        // Same node, same purpose key, twice — a genuine duplicate, still refused.
         var roster = new ValidatorRoster
         {
             Validators =
@@ -145,6 +146,31 @@ public class ValidatorRosterValidationTests
         };
         var errors = roster.Validate();
         errors.Should().Contain(e => e.Contains("Duplicate"));
+    }
+
+    /// <summary>
+    /// Feature 196 (#1591): one node holding several PURPOSE keys is the roster's intended shape —
+    /// that is what <c>DerivationContext</c> is for. Uniqueness is on the pair, not the id alone.
+    /// </summary>
+    /// <remarks>
+    /// Keying uniqueness on <c>ValidatorId</c> alone made a second purpose key unrepresentable, which
+    /// is why blueprint-publication authority had nowhere to live: a node needs
+    /// <c>sorcha:docket-signing</c> to seal dockets AND <c>sorcha:blueprint-publish</c> to publish
+    /// definitions, and they are deliberately different keys so a compromise of one is not a
+    /// compromise of the other.
+    /// </remarks>
+    [Fact]
+    public void SameValidator_WithTwoDifferentPurposeKeys_IsValid()
+    {
+        var docketEntry = CreateEntry("node-1");
+        var publishEntry = CreateEntry("node-1");
+        publishEntry.DerivationContext = "sorcha:blueprint-publish";
+        publishEntry.PublicKey = Convert.ToBase64String(Enumerable.Repeat((byte)9, 32).ToArray());
+
+        var roster = new ValidatorRoster { Validators = [docketEntry, publishEntry] };
+
+        roster.Validate().Should().NotContain(e => e.Contains("Duplicate"),
+            "the roster is a purpose-keyed registry — one node, several keys, is its whole point");
     }
 
     [Fact]

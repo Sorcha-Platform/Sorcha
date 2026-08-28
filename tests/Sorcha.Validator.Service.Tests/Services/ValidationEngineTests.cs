@@ -1588,31 +1588,38 @@ public class ValidationEngineTests
 
     #region Blueprint Conformance Tests
 
+    // ── Feature 196 (#1591): conformance exemption requires PROVED authority ──────────────────
+    //
+    // These two tests previously asserted that `blueprintId = "genesis"` and
+    // `Metadata["Type"] = "Control"` were enough, on their own, to skip blueprint conformance —
+    // which includes VAL_BP_002 SENDER AUTHORISATION. Both fields are unsigned and submitter-set,
+    // so what they asserted was that a forged label disables the check that would have caught the
+    // forger. They now assert the opposite, and the genuine paths are covered by
+    // ExemptionAuthorityTests plus the anchored cases in RightsEnforcementServiceTests.
+
     [Fact]
-    public async Task ValidateBlueprintConformanceAsync_GenesisTransaction_ReturnsSuccess()
+    public async Task ValidateBlueprintConformanceAsync_GenesisClaimWithoutAuthority_IsNotExempt()
     {
-        // Arrange
+        // The engine here has no exemption resolver, which is the fail-closed configuration: a node
+        // that cannot establish authority does not grant exemptions (FR-007).
         var tx = CreateValidTransaction(blueprintId: "genesis");
 
-        // Act
         var result = await _engine.ValidateBlueprintConformanceAsync(tx);
 
-        // Assert
-        result.IsValid.Should().BeTrue();
+        result.IsValid.Should().BeFalse(
+            "claiming genesis via the blueprint identifier is not proof of being genesis");
     }
 
     [Fact]
-    public async Task ValidateBlueprintConformanceAsync_ControlTransaction_ReturnsSuccess()
+    public async Task ValidateBlueprintConformanceAsync_ControlClaimWithoutAuthority_IsNotExempt()
     {
-        // Arrange
         var tx = CreateValidTransaction();
         tx.Metadata["Type"] = "Control";
 
-        // Act
         var result = await _engine.ValidateBlueprintConformanceAsync(tx);
 
-        // Assert
-        result.IsValid.Should().BeTrue();
+        result.IsValid.Should().BeFalse(
+            "claiming Control in unsigned metadata is not membership of the register's roster");
     }
 
     [Fact]

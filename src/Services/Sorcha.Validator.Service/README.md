@@ -343,6 +343,69 @@ When metadata claims a lifecycle type the signed payload does not corroborate, t
 refused **and** `ValidationEngine` logs a warning — a transaction requesting an exemption it is
 not entitled to is what an attempted schema-validation bypass looks like on the wire.
 
+## Administrative exemptions come from PROVED AUTHORITY (Feature 196 / #1591)
+
+The section above is about *which transactions* are carved out. This one is about *who may be*.
+
+Three administrative kinds waive **six** rules at once — action-schema validation, blueprint
+conformance (**including `VAL_BP_002` sender authorisation**), the routing-decision attestation,
+crypto policy, sequence replay, and (via the persisted transaction type) fork detection:
+
+| Kind | Authority that must be proved |
+|------|-------------------------------|
+| `Genesis` | the constant genesis transaction id, on the system register, signed by a key whose fingerprint matches this node's `INodeTrustAnchor` |
+| `Control` | the signer is on the register's **governance** roster |
+| `BlueprintPublish` | the signer is on the register's **validator** roster under `sorcha:blueprint-publish` |
+
+`IExemptionAuthorityResolver` is the **single producer** of that decision. Nothing else may grant an
+exemption.
+
+**What was wrong.** The grant used to come from `Metadata["Type"]` or `BlueprintId == "genesis"` —
+both unsigned, exactly as the lifecycle section above describes. `Control` happened to be covered by
+a roster check keyed on the same string, so claiming it was a trade; `Genesis` and `BlueprintPublish`
+substituted nothing at all. Because one of the six waivers is sender authorisation *itself*, a forged
+claim disabled the check that would have caught the forger.
+
+**Why the lifecycle fix could not simply be repeated.** Moving the discriminator into the signed
+payload — the 2026-07-29 remedy — is unavailable for two of the three: a publication's signed payload
+**is** the canonical blueprint definition, so adding a property would change every publication id on
+every register (CLAUDE.md §22); and genesis's payload is a pre-signed offline-ceremony artefact.
+Authority is derivable from the signer's key, which is already signed, so nothing on the ledger moves.
+
+**And signing the metadata would not have been enough anyway.** It makes a claim *attributable*, not
+*authorised*: an attacker signing their own transaction produces a perfectly valid signature over
+their own forged label.
+
+**Fail closed.** If the anchor or roster cannot be consulted the exemption is withheld, in every
+environment — no environment gate and no bypass flag. `ExemptionRefusalReason` distinguishes
+`NotEntitled` ("you may not") from `AuthorityUnresolvable` ("I could not tell"), because those call
+for different operator responses; both raise `sorcha_exemption_claim_refused_total` on the
+`Sorcha.Validation` meter, dimensioned by kind, claim route and reason.
+
+**Adding a kind means adding its rule.** `ExemptionKindCoverageTests` fails the build otherwise —
+both defaults are wrong in different directions.
+
+**What this does NOT change.** Not one of the six waivers is narrowed. Two are load-bearing for
+governance quorum (F189 T054): approvals share a predecessor, a shape only the fork bypass permits,
+and the chain-derived sender binding would otherwise treat the second approver as an impostor.
+
+**Roster provisioning is part of this.** A register whose validator roster carries no active
+`sorcha:blueprint-publish` entry accepts **no blueprint publications at all** — correct fail-closed
+behaviour, and useless. Both roster-creating paths now provision one:
+`RegisterCreationOrchestrator` for ordinary registers, and the genesis ceremony's
+`BuildControlRecord` for the system register (it must go in the **signed payload**, which is what
+`GovernanceRosterService` reconstructs from — not the genesis document's top-level
+`validatorRoster` field).
+
+**The two publish paths were unified onto `sorcha:blueprint-publish`.** They previously disagreed —
+the per-register endpoint signed with `sorcha:register-control` while system-register seeding used
+`sorcha:blueprint-publish` — so no single roster entry could have authorised both. Unifying cost
+nothing only because the platform is pre-release and the estate could be wiped; after release it
+would have needed a dual-accept transition.
+
+⚠ **Adopting this needs a genesis re-ceremony and a re-genesis of every node**, because the system
+register's roster lives inside the pre-signed genesis payload.
+
 ## gRPC Services
 
 ### gRPC access is TIERED, not blanket-authorized

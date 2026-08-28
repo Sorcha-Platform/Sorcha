@@ -10,7 +10,9 @@ using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
 using Sorcha.Register.Core.Services;
 using Sorcha.Register.Models;
+using Sorcha.Register.Models.Constants;
 using Sorcha.Register.Models.Enums;
+using Sorcha.Register.Models.Genesis;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Service.Services.Interfaces;
@@ -55,6 +57,45 @@ public class RightsEnforcementServiceTests
             seatAcceptanceVerifier: new Sorcha.Validator.Core.Validators.SeatAcceptanceVerifier(
                 new Sorcha.Cryptography.Core.CryptoModule(),
                 new Sorcha.Cryptography.Utilities.WalletUtilities()));
+
+    /// <summary>
+    /// A service wired with a REAL exemption resolver anchored on <paramref name="anchorKey"/>
+    /// (Feature 196 / #1591). The default <c>_service</c> has none, so it withholds every
+    /// administrative exemption — the fail-closed direction (FR-007).
+    /// </summary>
+    private RightsEnforcementService ServiceAnchoredOn(byte[] anchorKey) =>
+        new(_rosterServiceMock.Object, _cryptoMock.Object,
+            new Mock<ILogger<RightsEnforcementService>>().Object,
+            exemptionResolver: ExemptionAuthorityTestKit.Resolver(
+                ExemptionAuthorityTestKit.AnchorFor(anchorKey), _rosterServiceMock.Object));
+
+    /// <summary>
+    /// A genesis transaction as the network actually produces one: the single constant genesis
+    /// transaction id, on the system register, signed by <paramref name="signerPublicKey"/>.
+    /// </summary>
+    /// <remarks>
+    /// The id and register matter. Feature 196 requires all three of id, register and anchored
+    /// signing key — the id alone is not sufficient, because an attacker can set the id and supply
+    /// their own payload with a matching hash and a perfectly valid self-signature.
+    /// </remarks>
+    private static Transaction CreateRealGenesisTransaction(byte[] signerPublicKey)
+    {
+        var tx = CreateGovernanceTransaction(signerPublicKey);
+        var genesis = new Transaction
+        {
+            TransactionId = GenesisSignatureVerifier.ComputeGenesisTxId(),
+            RegisterId = SystemRegisterConstants.SystemRegisterId,
+            BlueprintId = tx.BlueprintId,
+            ActionId = tx.ActionId,
+            Payload = tx.Payload,
+            PayloadHash = tx.PayloadHash,
+            CreatedAt = tx.CreatedAt,
+            Signatures = tx.Signatures,
+            Metadata = new Dictionary<string, string>(tx.Metadata)
+        };
+        genesis.Metadata["Type"] = "Genesis";
+        return genesis;
+    }
 
     private static AdminRoster CreateRoster(params (byte[] publicKey, RegisterRole role, string did)[] members)
     {
@@ -185,10 +226,13 @@ public class RightsEnforcementServiceTests
         //
         // The transaction is now genuinely a genesis transaction, which is what the name always
         // claimed. The narrowed behaviour is covered by NoRoster_NonGenesisGovernanceTx_IsRefused.
-        var tx = CreateGovernanceTransaction(OwnerPublicKey);
-        tx.Metadata["Type"] = "Genesis";
+        //
+        // Feature 196 (#1591): the allowance additionally requires PROVED genesis authority — the
+        // signing key must match this node's trust anchor. Setting Metadata["Type"] = "Genesis" is
+        // no longer sufficient on its own, so the service must be anchored on the signing key.
+        var tx = CreateRealGenesisTransaction(OwnerPublicKey);
 
-        var result = await _service.ValidateGovernanceRightsAsync(tx);
+        var result = await ServiceAnchoredOn(OwnerPublicKey).ValidateGovernanceRightsAsync(tx);
 
         result.IsValid.Should().BeTrue("genesis creates the roster, so it cannot require one");
     }
@@ -1263,12 +1307,60 @@ public class RightsEnforcementServiceTests
         _rosterServiceMock.Setup(x => x.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
             .ReturnsAsync((AdminRoster?)null);
 
+        // Feature 196 (#1591): REVERSED, deliberately.
+        //
+        // This test previously asserted that an UNKNOWN key claiming Metadata["Type"] = "Genesis"
+        // was admitted with no roster and no authority check — that is, it encoded the vulnerability
+        // as the expected behaviour. On a register whose roster had not yet sealed, anyone able to
+        // submit could take the allowance simply by claiming it.
+        //
+        // The genuine-genesis path it was trying to protect is covered by
+        // ValidateGovernanceRightsAsync_GenesisControlTx_AllowedWhenNoRoster, which now anchors the
+        // resolver on the signing key.
+        var tx = CreateRealGenesisTransaction(UnknownPublicKey);
+
+        var result = await ServiceAnchoredOn(OwnerPublicKey).ValidateGovernanceRightsAsync(tx);
+
+        result.IsValid.Should().BeFalse(
+            "a key that is not the network's genesis key may not take the no-roster allowance by "
+            + "claiming genesis — the claim is not the authority");
+    }
+
+    /// <summary>
+    /// The counterfactual for the test above: the same unknown key, WITHOUT the genesis claim, is
+    /// also refused. Without this, the reversal above could pass simply because everything is
+    /// refused, which would prove nothing about the check.
+    /// </summary>
+    [Fact]
+    public async Task NoRoster_UnknownKeyWithoutAnyClaim_IsAlsoRefused()
+    {
+        _rosterServiceMock.Setup(x => x.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((AdminRoster?)null);
+
         var tx = CreateGovernanceTransaction(UnknownPublicKey);
-        tx.Metadata["Type"] = "Genesis";
 
-        var result = await _service.ValidateGovernanceRightsAsync(tx);
+        var result = await ServiceAnchoredOn(OwnerPublicKey).ValidateGovernanceRightsAsync(tx);
 
-        result.IsValid.Should().BeTrue("genesis is what creates the roster, so it cannot require one");
+        result.IsValid.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// And the discriminating case: the genesis KEY is admitted where the genesis CLAIM alone is
+    /// not. Together with the two above, this shows the refusal tracks the authority rather than
+    /// the label.
+    /// </summary>
+    [Fact]
+    public async Task NoRoster_GenesisKeyWithGenesisClaim_IsAdmitted()
+    {
+        _rosterServiceMock.Setup(x => x.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((AdminRoster?)null);
+
+        var tx = CreateRealGenesisTransaction(UnknownPublicKey);
+
+        // Anchor the node on the very key that signed it.
+        var result = await ServiceAnchoredOn(UnknownPublicKey).ValidateGovernanceRightsAsync(tx);
+
+        result.IsValid.Should().BeTrue();
     }
 
     // ── Feature 193 / #1464: the seat-acceptance rule is enforced HERE, on every node ──────────

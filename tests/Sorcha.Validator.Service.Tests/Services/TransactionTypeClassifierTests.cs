@@ -43,11 +43,17 @@ public class TransactionTypeClassifierTests
     }
 
     [Fact]
-    public void IsGenesisOrControlTransaction_BlueprintIdIsGenesis_ReturnsTrue()
+    public void ReadClaim_BlueprintIdIsGenesis_ClaimsGenesisViaTheBlueprintIdentifierRoute()
     {
+        // Feature 196: this used to GRANT the six exemptions. It now only records that a claim was
+        // made, and by which route — the grant needs proved signer authority on top.
         var tx = Build(blueprintId: GenesisConstants.BlueprintId, payloadJson: "{}");
 
-        TransactionTypeClassifier.IsGenesisOrControlTransaction(tx).Should().BeTrue();
+        var claim = ExemptionAuthorityResolver.ReadClaim(tx);
+
+        claim.Kind.Should().Be(ExemptionKind.Genesis);
+        claim.Route.Should().Be(ExemptionClaimRoute.BlueprintIdentifier,
+            "this route needs no metadata at all, so closing only the metadata route closes nothing");
     }
 
     [Theory]
@@ -57,23 +63,29 @@ public class TransactionTypeClassifierTests
     [InlineData("CONTROL")]
     [InlineData("BlueprintPublish")]
     [InlineData("blueprintpublish")]
-    public void IsGenesisOrControlTransaction_TypeMetadataMatches_ReturnsTrue(string type)
+    public void ReadClaim_TypeMetadataMatches_RecordsTheClaim(string type)
     {
         // BlueprintPublish (post-#876) joins Genesis+Control in bypassing action-schema
         // validation and per-sender replay protection: the publish is signed by the
         // system wallet with an ActionId of "blueprint-publish" (not an int) and no
         // per-sender sequence number — both checks would reject otherwise.
+        //
+        // Feature 196: recognising the label is still correct; HONOURING it without checking the
+        // signer's entitlement was the defect (#1591).
         var tx = TxWithMetadata(("Type", type));
 
-        TransactionTypeClassifier.IsGenesisOrControlTransaction(tx).Should().BeTrue();
+        var claim = ExemptionAuthorityResolver.ReadClaim(tx);
+
+        claim.IsClaimed.Should().BeTrue();
+        claim.Route.Should().Be(ExemptionClaimRoute.TypeLabel);
     }
 
     [Fact]
-    public void IsGenesisOrControlTransaction_RegularAction_ReturnsFalse()
+    public void ReadClaim_RegularAction_ClaimsNothing()
     {
         var tx = TxWithMetadata(("Type", "Action"));
 
-        TransactionTypeClassifier.IsGenesisOrControlTransaction(tx).Should().BeFalse();
+        ExemptionAuthorityResolver.ReadClaim(tx).IsClaimed.Should().BeFalse();
     }
 
     [Theory]
@@ -251,8 +263,9 @@ public class TransactionTypeClassifierTests
         var tx = Governance("control.crypto.update", ("Type", "Control"));
 
         TransactionTypeClassifier.IsGovernanceActionTransaction(tx).Should().BeFalse();
-        TransactionTypeClassifier.IsGenesisOrControlTransaction(tx).Should().BeTrue(
-            "it keeps the exemption it has always had");
+        ExemptionAuthorityResolver.ReadClaim(tx).Kind.Should().Be(ExemptionKind.Control,
+            "it still claims the exemption it has always claimed — Feature 196 changed who may be "
+            + "granted one, not which transactions ask");
     }
 
     [Fact]
@@ -296,12 +309,12 @@ public class TransactionTypeClassifierTests
     [Fact]
     public void IsGovernanceActionTransaction_IsAWithdrawal_SoGenesisKeepsItsExemption()
     {
-        // The predicate is only ever used as `IsGenesisOrControl && !IsGovernanceAction`. Genesis
+        // The predicate is only ever used as `exemption.Granted && !IsGovernanceAction`. Genesis
         // must never satisfy it, or the trust anchor would be judged against a governance contract
         // it cannot possibly meet and no network could bootstrap.
         var genesis = Build(GenesisConstants.BlueprintId, "{}", ("Type", "Genesis"));
 
         TransactionTypeClassifier.IsGovernanceActionTransaction(genesis).Should().BeFalse();
-        TransactionTypeClassifier.IsGenesisOrControlTransaction(genesis).Should().BeTrue();
+        ExemptionAuthorityResolver.ReadClaim(genesis).Kind.Should().Be(ExemptionKind.Genesis);
     }
 }
