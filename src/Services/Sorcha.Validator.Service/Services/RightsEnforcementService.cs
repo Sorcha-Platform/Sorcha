@@ -64,6 +64,19 @@ public class RightsEnforcementService : IRightsEnforcementService
     private readonly ISeatAcceptanceVerifier? _seatAcceptanceVerifier;
 
     /// <summary>
+    /// The single producer of the administrative exemption decision (Feature 196 / #1591).
+    /// </summary>
+    /// <remarks>
+    /// Used here for one thing only: the "a register has no roster until its genesis creates one"
+    /// allowance below. That allowance used to fire on <c>TransactionTypeClassifier
+    /// .IsGenesisTransaction</c>, which read two unsigned fields — so anyone able to submit to a
+    /// register with no roster yet could claim genesis and be admitted unchecked. Optional for the
+    /// same reason the other collaborators here are; absent, the allowance is simply not granted,
+    /// which is the fail-closed direction (FR-007).
+    /// </remarks>
+    private readonly IExemptionAuthorityResolver? _exemptionResolver;
+
+    /// <summary>
     /// The governance blueprint ID used to identify Control transactions
     /// </summary>
     public const string GovernanceBlueprintId = GovernanceBlueprint.BlueprintId;
@@ -75,7 +88,8 @@ public class RightsEnforcementService : IRightsEnforcementService
         GovernanceMetrics? metrics = null,
         IReadOnlyRegisterRepository? repository = null,
         IDetachedApprovalVerifier? approvalVerifier = null,
-        ISeatAcceptanceVerifier? seatAcceptanceVerifier = null)
+        ISeatAcceptanceVerifier? seatAcceptanceVerifier = null,
+        IExemptionAuthorityResolver? exemptionResolver = null)
     {
         _rosterService = rosterService ?? throw new ArgumentNullException(nameof(rosterService));
         _cryptoModule = cryptoModule ?? throw new ArgumentNullException(nameof(cryptoModule));
@@ -84,6 +98,7 @@ public class RightsEnforcementService : IRightsEnforcementService
         _repository = repository;
         _approvalVerifier = approvalVerifier;
         _seatAcceptanceVerifier = seatAcceptanceVerifier;
+        _exemptionResolver = exemptionResolver;
     }
 
     /// <inheritdoc/>
@@ -128,7 +143,17 @@ public class RightsEnforcementService : IRightsEnforcementService
                 //
                 // Narrowed to the transaction that CREATES the roster. Anything else with no roster
                 // fails closed — there is no authority to check it against.
-                if (TransactionTypeClassifier.IsGenesisTransaction(transaction))
+                // Feature 196 (#1591): the allowance now requires PROVED genesis authority — the
+                // signing key must match this node's trust anchor. Previously it keyed on
+                // TransactionTypeClassifier.IsGenesisTransaction, which read Metadata["Type"] or
+                // BlueprintId == "genesis": both unsigned, both submitter-set. On a register whose
+                // roster had not yet sealed, claiming genesis was therefore enough to be admitted
+                // with no authority check at all. A null resolver withholds the allowance.
+                ExemptionDecision? genesisExemption = _exemptionResolver is null
+                    ? null
+                    : await _exemptionResolver.ResolveAsync(transaction, ct);
+
+                if (genesisExemption is { IsGenesis: true })
                 {
                     _logger.LogInformation(
                         "No existing roster for register {RegisterId} — allowing genesis Control TX {TransactionId}",

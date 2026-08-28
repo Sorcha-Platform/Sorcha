@@ -587,6 +587,65 @@ var txId = BlueprintPublicationId.Compute(registerId, blueprintId, canonicalJson
 
 ---
 
+### 23. An exemption is granted from proved authority, never from a claimed label (#1591)
+
+The validator waives six rules for administrative transactions — action-schema, blueprint
+conformance (**including `VAL_BP_002` sender authorisation**), routing attestation, crypto policy,
+sequence replay, and fork detection. That waiver is granted **only** by
+`IExemptionAuthorityResolver`, the single producer of `ExemptionDecision`.
+
+```csharp
+// DO — one producer, consulted once per transaction and passed to every rule.
+var exemption = await ResolveExemptionAsync(transaction, ct);
+if (exemption.Granted) { /* skip the rule */ }
+
+// DON'T — these are UNSIGNED. Both predicates were deleted in Feature 196; do not reintroduce them.
+if (transaction.Metadata["Type"] is "Genesis" or "Control") { ... }
+if (transaction.BlueprintId == "genesis") { ... }
+```
+
+- **The signature covers the payload and nothing else.** The signed bytes are
+  `"{TransactionId}:{PayloadHash}"` — and both of those are the *same* SHA-256 of the canonical
+  payload. `RegisterId`, `SenderWallet`, `SequenceNumber`, `BlueprintId`, `ActionId` and `Metadata`
+  are all outside it. `Metadata` is assembled *after* signing, as a deliberate whitelist projection.
+- **Signing the claim would not have fixed it.** Signing makes a claim *attributable*, not
+  *authorised* — an attacker signing their own transaction produces a valid signature over their own
+  forged label. Since the waiver removes sender authorisation itself, nothing downstream then asks
+  whether they were entitled to it. Authority must come from **who signed**, which is already proved.
+- **Moving the discriminator into the signed payload was unavailable** for two of the three values,
+  which is why authority checking is the fix rather than a complement: a publication's signed payload
+  *is* the canonical blueprint definition (§22 — changing it moves every publication id on every
+  register), and genesis's is a pre-signed ceremony artefact.
+- **Reading an unsigned field to WITHDRAW an exemption stays sound** — forging it can only subject
+  the forger to more validation. `TransactionTypeClassifier.IsGovernanceActionTransaction` does
+  exactly that and is correct. The reasoning inverts the moment it is used to *grant*.
+- **Fail closed, everywhere.** Unresolvable authority withholds the exemption in every environment —
+  no environment gate, no bypass flag. `ExemptionRefusalReason` separates `NotEntitled` from
+  `AuthorityUnresolvable` because those need different operator responses.
+- **Adding an `ExemptionKind` means adding its authority rule.** `ExemptionKindCoverageTests` fails
+  the build otherwise — both defaults are wrong in different directions (granted unconditionally
+  reinstates #1591; refused unconditionally breaks legitimate administrative traffic).
+- **Two of the six waivers are load-bearing for governance quorum** (F189 T054). This pattern governs
+  *who may claim* an exemption, never *what one does*. Narrowing the fork bypass or the chain-derived
+  sender binding makes quorum unattainable.
+- **Publication authority lives on the VALIDATOR roster, under `sorcha:blueprint-publish`.** Not the
+  governance roster — that is built from genesis attestations recording *organisation* keys, and the
+  publisher is a *node*. Not the validating node's own configured wallet either: a replica
+  re-validates peers' transactions, so that would accept a publication on the node that made it and
+  refuse it everywhere else, silently partitioning the register. Both publish paths were unified onto
+  this one context (they previously disagreed — `Program.cs` used `register-control`,
+  `SystemRegisterService` used `blueprint-publish`, so no single entry could authorise both).
+- **A roster is purpose-keyed, so uniqueness is on `(ValidatorId, DerivationContext)`.** One node
+  legitimately holds several entries — docket-signing to seal, blueprint-publish to publish — and
+  they are deliberately different keys so a compromise of one is not a compromise of the other. Both
+  `RegisterCreationOrchestrator` and the genesis ceremony must provision the publishing entry; a
+  register without one accepts no blueprint publications at all (correct, fail-closed, and useless).
+
+Full design: `docs/superpowers/specs/2026-08-28-validator-exemption-authority-design.md` ·
+spec `specs/196-validator-exemption-authority/`.
+
+---
+
 ---
 
 ## Key Documentation
@@ -740,5 +799,5 @@ _(This revision number is for CLAUDE.md itself; it is unrelated to the platform'
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/195-blueprint-definition-identity/plan.md`
+`specs/196-validator-exemption-authority/plan.md`
 <!-- SPECKIT END -->

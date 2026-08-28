@@ -9,6 +9,7 @@ using Sorcha.Register.Core.Storage;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Constants;
 using Sorcha.Register.Models.Genesis;
+using Sorcha.Register.Core.Provenance;
 
 namespace Sorcha.Register.Service.Provenance;
 

@@ -1,20 +1,29 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 using Sorcha.Register.Models.Genesis;
-using Sorcha.ServiceDefaults;
 
-namespace Sorcha.Register.Service.Provenance;
+namespace Sorcha.Register.Core.Provenance;
 
 /// <summary>
 /// Reads this node's trust anchor from the configured or embedded system-register genesis, once.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Registered as a singleton: the genesis is a deploy-time fact, and re-reading it per request would
 /// turn a provenance view into file IO. A missing, unreadable or placeholder genesis leaves
 /// <see cref="IsKnown"/> false rather than throwing — a node that cannot say what it trusts must
 /// still be able to serve the rest of a provenance view (FR-020).
+/// </para>
+/// <para>
+/// <b>Takes a path, not <c>IOptions&lt;SystemRegisterOptions&gt;</c> (Feature 196).</b> That options
+/// type lives in <c>Sorcha.ServiceDefaults</c>, which this Core library deliberately does not
+/// reference — binding it here would pull ASP.NET hosting into a business-logic library. Each host
+/// resolves its own configured path and passes it in, so both the Register Service and the Validator
+/// Service run *this* loader over *their* configured genesis. One implementation, one meaning of
+/// "the network's root of trust", two hosts.
+/// </para>
 /// </remarks>
 public sealed class NodeTrustAnchor : INodeTrustAnchor
 {
@@ -31,13 +40,19 @@ public sealed class NodeTrustAnchor : INodeTrustAnchor
     public string? GenesisPayloadHash { get; }
 
     /// <summary>Loads the anchor from the system-register genesis.</summary>
-    public NodeTrustAnchor(IOptions<SystemRegisterOptions> options, ILogger<NodeTrustAnchor> logger)
+    /// <param name="genesisFilePath">
+    /// Absolute path to the genesis JSON file. Null uses the embedded assembly resource.
+    /// </param>
+    /// <param name="logger">Logger for load outcome.</param>
+    public NodeTrustAnchor(string? genesisFilePath, ILogger<NodeTrustAnchor> logger)
     {
+        ArgumentNullException.ThrowIfNull(logger);
+
         SystemRegisterGenesis? genesis = null;
 
         try
         {
-            genesis = GenesisFileLoader.Load(options.Value.GenesisFile);
+            genesis = GenesisFileLoader.Load(genesisFilePath);
         }
         catch (Exception ex)
         {

@@ -3,10 +3,30 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.22
-**Last Updated:** 2026-08-26
+**Version:** 7.23
+**Last Updated:** 2026-08-28
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
+
+> **2026-08-28 - Feature 196 (#1591): the validator granted six exemptions from an UNSIGNED field. 🚧 IN PROGRESS.**
+>
+> `TransactionTypeClassifier.IsGenesisOrControlTransaction` waived six rules — action-schema, blueprint conformance (**including `VAL_BP_002` sender authorisation**), routing attestation, crypto policy, sequence replay, and fork detection — on either `Metadata["Type"] in {Genesis, Control, BlueprintPublish}` or `BlueprintId == "genesis"`. **Neither is signed.** The signed bytes are `"{TransactionId}:{PayloadHash}"` and both are the same digest of the payload body, so a submitter chose both freely. `Control` had a compensating roster check keyed on the same string; `Genesis` and `BlueprintPublish` substituted nothing.
+>
+> **Signing the metadata would NOT have fixed it** — that was the first instinct and it is wrong. Signing makes a claim attributable, not authorised: an attacker signing their own transaction produces a valid signature over their own forged label, and the waiver removes the sender-authorisation check that would have caught them. **Moving the discriminator into the signed payload was also unavailable** for two of the three values: a publication's signed payload IS the canonical blueprint definition (pattern 22 — it would move every publication id on every register), and genesis's is a pre-signed ceremony artefact. So authority checking is the fix, not a complement to it.
+>
+> **New `IExemptionAuthorityResolver` — the single producer of `ExemptionDecision`.** Genesis requires the constant genesis tx id + the system register + a signing key matching the node's trust anchor (the id alone is insufficient: an attacker can set it and self-sign their own payload). Control derives from the governance roster, so the exemption and its compensating check can no longer drift apart. Publication matches the register's **validator roster** under `sorcha:register-control` — not the governance roster, which records ORGANISATION keys the publishing node is never on. Fail closed everywhere; no environment gate, no bypass flag. `INodeTrustAnchor` relocated to `Sorcha.Register.Core` so both services reach ONE root of trust. CLAUDE.md **pattern 23**.
+>
+> **Two existing tests asserted the vulnerability as correct**, which is why a green suite never caught it: `NoRoster_GenesisTx_IsStillAdmitted` set `Type=Genesis` on an UNKNOWN key and asserted admission. Now reversed, each with a counterfactual.
+>
+> Validator 1097 → **1123, 0 failed**; Register.Service 483, 0 failed; solution builds clean. **6 mutations applied, all 6 killed** — no surviving mutants.
+>
+> **Publication authority now lives on the VALIDATOR roster under `sorcha:blueprint-publish`, and both publish paths were unified onto it.** They previously DISAGREED — `Program.cs` signed per-register publishes with `sorcha:register-control` while `SystemRegisterService` seeded with `sorcha:blueprint-publish` — so no single roster entry could ever have authorised both. Unifying cost nothing only because the estate can be wiped; after release it needs a dual-accept transition. Roster entries are provisioned by `RegisterCreationOrchestrator` and by the genesis ceremony's `BuildControlRecord` (the SIGNED payload — `GovernanceRosterService` reconstructs from there, not from the genesis document's top-level `validatorRoster`).
+>
+> **`ValidatorRoster.Validate()` uniqueness moved to `(ValidatorId, DerivationContext)`.** Keying on `ValidatorId` alone contradicted the entry's own `DerivationContext` field and made a second purpose key unrepresentable — which is why publication authority had nowhere to live. Relaxation only; same node + same purpose is still a duplicate.
+>
+> Validator **1124/0**, Register.Service **483/0**, Register.Models **396/0**, solution builds clean. **7 mutations, all 7 killed.** ⚠ Mutation 7 first appeared to survive — the test filter matched the wrong class (`ValidatorRosterTests` vs the real `ValidatorRosterValidationTests`) and reported 14 unrelated tests green. **A filtered run that matches nothing you intended is indistinguishable from a passing one.**
+>
+> ⚠ **NOT DONE: re-genesis + live verification.** The system register's roster is inside the pre-signed genesis payload, so adopting this needs a fresh ceremony and a wipe/re-genesis of n1 and tiny (authorised 2026-08-28). **1-hour genesis freshness window** — mint, Docker Publish, deploy and bootstrap must all fit inside it. ⚠ Peer gRPC surface deliberately out of scope; #1591 severity assessments must say so.
 
 > **2026-08-26 - control traffic was served as blueprint publications, and the gate was described but never applied (#1587, second defect).**
 >

@@ -156,6 +156,23 @@ public class SystemRegisterCreateCommand : Command
         var controlPublicKeyBytes = controlKeySet.PublicKey.Key!;
         var controlPrivateKey = controlKeySet.PrivateKey.Key!;
 
+        // Feature 196 (#1591): also derive sorcha:blueprint-publish. The Validator grants the
+        // blueprint-publication exemption — which waives six rules including VAL_BP_002 sender
+        // authorisation — only to a signer holding an ACTIVE roster entry under this context.
+        // Without it in the genesis control record, the system register accepts no blueprint
+        // publications at all and SSR seeding fails on the first blueprint.
+        //
+        // Same direct-master chain as the other two, so the node recovers the identical key from
+        // this mnemonic at runtime and matches its own roster entry.
+        var publishPrivateKeyBytes = masterExtKey.Derive(new KeyPath(SorchaDerivationPaths.BlueprintPublishPath)).PrivateKey.ToBytes();
+        var publishKeyResult = await crypto.GenerateKeySetAsync(network, seed: publishPrivateKeyBytes, cancellationToken: ct);
+        if (!publishKeyResult.IsSuccess)
+        {
+            ConsoleHelper.WriteError($"Blueprint-publish key derivation failed: {publishKeyResult.ErrorMessage}");
+            return ExitCodes.GeneralError;
+        }
+        var publishPublicKeyBytes = publishKeyResult.Value.PublicKey.Key!;
+
         // 2. Build the control record and wrap it in a ControlTransactionPayload envelope.
         //    PR #868 made the orchestrator's genesis path emit the wrapper shape
         //    ({ version, roster, operation }) so GovernanceRosterService and the non-genesis
@@ -166,7 +183,7 @@ public class SystemRegisterCreateCommand : Command
         //    after PR #868 deployed). All known readers accept either shape via
         //    RegisterControlPayloadReader; new genesis bytes therefore go through the same
         //    path the orchestrator uses.
-        var controlRecord = BuildControlRecord(publicKeyBytes, algorithm);
+        var controlRecord = BuildControlRecord(publicKeyBytes, publishPublicKeyBytes, algorithm);
         var controlPayload = new ControlTransactionPayload
         {
             Version = 1,
@@ -234,6 +251,17 @@ public class SystemRegisterCreateCommand : Command
                         DerivationContext = SorchaDerivationPaths.DocketSigning,
                         Status = ValidatorKeyStatus.Active,
                         AuthorizedAt = now
+                    },
+                    // Feature 196: mirrors the signed control record above. The authoritative copy
+                    // is the one inside the payload; this one must not disagree with it.
+                    new ValidatorRosterEntry
+                    {
+                        ValidatorId = walletAddress,
+                        PublicKey = Convert.ToBase64String(publishPublicKeyBytes),
+                        Algorithm = ParseAlgorithm(algorithm),
+                        DerivationContext = SorchaDerivationPaths.BlueprintPublish,
+                        Status = ValidatorKeyStatus.Active,
+                        AuthorizedAt = now
                     }
                 ],
                 RequiredSignatures = 1,
@@ -296,7 +324,16 @@ public class SystemRegisterCreateCommand : Command
         return ExitCodes.Success;
     }
 
-    private static RegisterControlRecord BuildControlRecord(byte[] publicKey, string algorithm)
+    /// <summary>
+    /// The genesis control record. Its <c>Validators</c> is the roster the Validator actually reads:
+    /// <c>GovernanceRosterService</c> reconstructs from the control-transaction PAYLOAD, not from the
+    /// genesis document's top-level <c>validatorRoster</c> field.
+    /// </summary>
+    /// <param name="publicKey">The docket-signing key (m/44'/0'/0'/0/102).</param>
+    /// <param name="publishPublicKey">The blueprint-publish key (Feature 196).</param>
+    /// <param name="algorithm">Signature algorithm name.</param>
+    private static RegisterControlRecord BuildControlRecord(
+        byte[] publicKey, byte[] publishPublicKey, string algorithm)
     {
         var now = DateTimeOffset.UtcNow;
         return new RegisterControlRecord
@@ -327,6 +364,21 @@ public class SystemRegisterCreateCommand : Command
                         PublicKey = Convert.ToBase64String(publicKey),
                         Algorithm = ParseAlgorithm(algorithm),
                         DerivationContext = SorchaDerivationPaths.DocketSigning,
+                        Status = ValidatorKeyStatus.Active,
+                        AuthorizedAt = now
+                    },
+                    // Feature 196 (#1591): who may PUBLISH definitions to the system register.
+                    // A separate key from docket signing by design — a compromise of one is then
+                    // not a compromise of the other.
+                    new ValidatorRosterEntry
+                    {
+                        // Same node id as the docket-signing entry above: one node, two purpose
+                        // keys, distinguished by DerivationContext. Authority is matched by public
+                        // key, never by this id.
+                        ValidatorId = DeriveWalletAddress(publicKey, Enum.Parse<WalletNetworks>(algorithm, ignoreCase: true)),
+                        PublicKey = Convert.ToBase64String(publishPublicKey),
+                        Algorithm = ParseAlgorithm(algorithm),
+                        DerivationContext = SorchaDerivationPaths.BlueprintPublish,
                         Status = ValidatorKeyStatus.Active,
                         AuthorizedAt = now
                     }

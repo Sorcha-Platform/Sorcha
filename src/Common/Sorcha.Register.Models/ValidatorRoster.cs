@@ -84,10 +84,21 @@ public class ValidatorRoster
         if (RequiredSignatures > activeCount && activeCount > 0)
             errors.Add($"RequiredSignatures ({RequiredSignatures}) exceeds active validator count ({activeCount}).");
 
+        // Uniqueness is on (ValidatorId, DerivationContext), not ValidatorId alone.
+        //
+        // Feature 196 (#1591): the roster is a PURPOSE-KEYED registry — that is what
+        // ValidatorRosterEntry.DerivationContext is for — so one node legitimately holds several
+        // entries: sorcha:docket-signing to seal dockets, and sorcha:blueprint-publish to publish
+        // definitions. Keying uniqueness on ValidatorId alone contradicted that and made the second
+        // purpose key unrepresentable, which is why blueprint-publication authority had nowhere to
+        // live. Two entries for the same node and the SAME purpose are still a genuine duplicate and
+        // still refused.
+        //
+        // This only relaxes the rule: nothing that validated before stops validating.
         var duplicateIds = Validators
-            .GroupBy(v => v.ValidatorId)
+            .GroupBy(v => (v.ValidatorId, v.DerivationContext))
             .Where(g => g.Count() > 1)
-            .Select(g => g.Key)
+            .Select(g => $"{g.Key.ValidatorId} ({g.Key.DerivationContext})")
             .ToList();
 
         if (duplicateIds.Count > 0)

@@ -345,6 +345,26 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
                 transactionType: "ValidatorKeyDerivation",
                 cancellationToken);
 
+            // Feature 196 (#1591): the roster must also record who may PUBLISH definitions to this
+            // register. The Validator grants the blueprint-publication exemption — which waives six
+            // rules including VAL_BP_002 sender authorisation — only to a signer holding an active
+            // entry under sorcha:blueprint-publish. Without this entry the register accepts no
+            // blueprint publications at all, which is the correct fail-closed direction but makes
+            // the register useless.
+            //
+            // Provisioned HERE, in the roster snapshot that already exists, rather than as a
+            // follow-up control transaction. GovernanceRosterService reconstructs the roster as
+            // latest-control-tx-WITH-A-ROSTER wins — it does not merge — so a later transaction
+            // carrying only validators would replace the snapshot and drop every governance
+            // attestation with it, refusing all governance platform-wide. That is #1515's shape.
+            var publishSignResult = await _signingService.SignAsync(
+                registerId: pending.RegisterId,
+                txId: "publisher-roster-key-derivation",
+                payloadHash: "0000000000000000000000000000000000000000000000000000000000000000",
+                derivationPath: SorchaDerivationPaths.BlueprintPublish,
+                transactionType: "ValidatorKeyDerivation",
+                cancellationToken);
+
             controlRecord.Validators = new ValidatorRoster
             {
                 Validators =
@@ -358,6 +378,17 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
                         DerivationContext = SorchaDerivationPaths.DocketSigning,
                         Status = ValidatorKeyStatus.Active,
                         AuthorizedAt = controlRecord.CreatedAt
+                    },
+                    new ValidatorRosterEntry
+                    {
+                        // Same node id as the docket-signing entry: one node, two purpose keys.
+                        ValidatorId = docketSignResult.WalletAddress,
+                        PublicKey = Convert.ToBase64String(publishSignResult.PublicKey),
+                        Algorithm = Enum.TryParse<SignatureAlgorithm>(publishSignResult.Algorithm, true, out var pubAlg)
+                            ? pubAlg : SignatureAlgorithm.ED25519,
+                        DerivationContext = SorchaDerivationPaths.BlueprintPublish,
+                        Status = ValidatorKeyStatus.Active,
+                        AuthorizedAt = controlRecord.CreatedAt
                     }
                 ],
                 RequiredSignatures = 1,
@@ -365,8 +396,9 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
             };
 
             _logger.LogInformation(
-                "Populated validator roster for register {RegisterId} with local validator {ValidatorId}",
-                pending.RegisterId, docketSignResult.WalletAddress);
+                "Populated validator roster for register {RegisterId} with local validator {ValidatorId} "
+                + "(docket signing) and publisher {PublisherId} (blueprint publication)",
+                pending.RegisterId, docketSignResult.WalletAddress, publishSignResult.WalletAddress);
         }
 
         // Validate validator roster (FR-010)
