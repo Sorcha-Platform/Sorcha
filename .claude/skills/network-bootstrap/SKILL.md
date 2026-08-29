@@ -314,6 +314,39 @@ db.dockets.find({}).sort({TimeStamp:1}).forEach(d=>print(\"State=\"+d.State+\" n
 # BAD:  first docket nTx=0 (empty docket 0) — genesis landed in docket 1, replication will fail.
 ```
 
+## After a re-genesis: clear walkthrough state before running the suite
+
+Every `walkthroughs/*/state.json` caches org ids, user credentials and register ids from the
+**previous** network. After a wipe they point at things that no longer exist, and the walkthrough
+fails with `401 Unauthorized` during org bootstrap — which reads as a platform defect and is not one.
+
+```bash
+rm -f walkthroughs/*/state.json walkthroughs/council/council-state.json
+rm -f walkthroughs/.run-logs/*.log
+pwsh walkthroughs/run-all.ps1 -Profile n1 -AuthGapMs 1000
+```
+
+`PropertyInspection` additionally reuses **council** state (`council-state.json`), so clear that too
+or it 401s while creating its register.
+
+**This cost a full suite run on 2026-08-29.** Two walkthroughs failed on three-day-old state after a
+re-genesis and looked like regressions.
+
+### Do not assess a node before clearing it
+
+A register whose genesis was refused keeps a permanently empty governance roster, and any walkthrough
+that reuses it **by name** inherits that damage forever. On the same day a suite went 2/18 with
+*correct* code: the only passes were the one walkthrough that creates a fresh timestamped register,
+while the validator logged zero refusals. Correct code, dirty node.
+
+### The suite is not the whole set
+
+`run-all.ps1` covers 13 of 24 walkthrough directories. Notably **`VersionPinning/run-acceptance.ps1`
+(F194) and `run-f195-acceptance.ps1` (F195) are in no suite** and are worth running after any change
+to blueprint publication or definition pinning. Pass `-ComposeFiles` matching how the node was
+actually brought up — the default includes `docker-compose.smtp.yml`, and a mismatched restart
+silently swaps the artefact under test.
+
 ## Troubleshooting
 
 Consult `references/troubleshooting.md` for common bootstrap failures and fixes.
