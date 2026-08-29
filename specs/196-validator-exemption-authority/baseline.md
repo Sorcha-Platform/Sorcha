@@ -113,9 +113,60 @@ Both publish paths were also unified onto `sorcha:blueprint-publish`. They previ
 `SystemRegisterService` seeded with `sorcha:blueprint-publish`, so **no single roster entry could
 have authorised both**. Unifying was free only because the estate can be wiped.
 
-## Live verification (T050–T052)
+## Live verification (T050–T052) — DONE 2026-08-29
 
-**NOT YET RUN.** Merged is not proven; this section stays empty until both nodes have been
-exercised. Requires the genesis ceremony re-run + re-genesis of n1 and tiny — see the
-`network-bootstrap` skill. ⚠ **1-hour genesis freshness window**: mint, publish images, deploy and
-bootstrap must all complete inside it or genesis is refused `VAL_TIME_002`.
+Fresh genesis ceremony (`8d40e189b11863b6d447d6307c4f4e06`), both nodes wiped and re-genesised.
+
+| Check | Result |
+|---|---|
+| n1 genesis ingested, signature verified, **sealed** | ✅ docket 0 `nTx=1` (an empty docket 0 silently breaks replication) |
+| n1 SSR after bootstrap | ✅ **5 tx / 5 dockets**, all 4 system blueprints seeded **and sealed** in 29s |
+| tiny as SyncOnly replica | ✅ Height=5, `FullyReplicated`, byte-identical TxIds |
+| **Exemption refusals during the passing run** | ✅ **0** |
+| `GenesisMaxAge` override removed afterwards | ✅ absent from the compose dir **and** from the running container env |
+| Walkthrough suite (n1) | ✅ **18/18** |
+
+**Every system blueprint publication is a live proof of the feature**: each passed the new authority
+check against a `sorcha:blueprint-publish` roster entry. Under the previous genesis — which carried
+only a `sorcha:docket-signing` entry — every one would have been refused.
+
+### The suite took three runs. Only the third was a valid test.
+
+| Run | Result | Why |
+|---|---|---|
+| 1 | 0/18 | **Real regression** (below) |
+| 2 | 2/18 | Code fixed, but the node still held registers poisoned by run 1 |
+| 3 | **18/18** | Clean nodes |
+
+Run 2 is the instructive one. The two passes were `EncryptionAtRest`, the only walkthrough that
+creates a *fresh, timestamped* register instead of reusing one by name. Every failure reused a
+fixed-name register whose genesis had been refused in run 1 and whose roster was therefore
+permanently empty. With **zero** refusals appearing after the redeploy, those three facts together
+admitted only one explanation: correct code, dirty node. *Clear a node before assessing it.*
+
+The last two failures in run 3 were `TradeFinance`, whose local `state.json` was three days old and
+pointed at orgs wiped by the re-genesis — a 401 during org bootstrap, nothing to do with validation.
+Archiving that file and re-running gave setup PASS (2 registers, 2 blueprints published) and all
+three scenarios PASS. **Walkthrough state is node state**: it must be cleared with the node.
+
+### ⚠ The regression the live run caught, that 1124 green unit tests did not
+
+The first genesis rule required the network's constant genesis transaction id, the system register
+id, and the anchored key. But `RegisterCreationOrchestrator` marks **every** new register's first
+transaction `Type=Genesis` with `BlueprintId="genesis"`. So every ordinary register's genesis was
+refused, never sealed, and left an empty governance roster — surfacing far away as
+`403 "You do not hold a publish-governance role"`, a message about roles that actually meant the
+roster never sealed.
+
+**The unit tests missed it because they only ever built system-register-shaped genesis
+transactions.** Fixed by `ExemptionKind.RegisterGenesis` (PR #1594), whose authority is "this
+register has no roster yet" — still a narrowing, since it is claimable at most once per register and
+never on one that has already sealed a roster.
+
+The FR-013 refusal log diagnosed it in seconds by naming the transaction, register, claim route and
+exact reason. The observability requirement paid for itself before the feature shipped.
+
+### Known, pre-existing, not caused by this work
+
+`pre-Feature-194 fallback` count is **2** on n1 — issue **#1576** (a rejection carries no definition
+pin). TradeFinance's declined scenario exercises exactly that path.

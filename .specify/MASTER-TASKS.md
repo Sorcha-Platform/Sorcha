@@ -3,12 +3,12 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.23
-**Last Updated:** 2026-08-28
+**Version:** 7.24
+**Last Updated:** 2026-08-29
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
-> **2026-08-28 - Feature 196 (#1591): the validator granted six exemptions from an UNSIGNED field. 🚧 IN PROGRESS.**
+> **2026-08-29 - Feature 196 (#1591): the validator granted six exemptions from an UNSIGNED field. ✅ DONE, LIVE-VERIFIED 18/18.**
 >
 > `TransactionTypeClassifier.IsGenesisOrControlTransaction` waived six rules — action-schema, blueprint conformance (**including `VAL_BP_002` sender authorisation**), routing attestation, crypto policy, sequence replay, and fork detection — on either `Metadata["Type"] in {Genesis, Control, BlueprintPublish}` or `BlueprintId == "genesis"`. **Neither is signed.** The signed bytes are `"{TransactionId}:{PayloadHash}"` and both are the same digest of the payload body, so a submitter chose both freely. `Control` had a compensating roster check keyed on the same string; `Genesis` and `BlueprintPublish` substituted nothing.
 >
@@ -26,7 +26,17 @@
 >
 > Validator **1124/0**, Register.Service **483/0**, Register.Models **396/0**, solution builds clean. **7 mutations, all 7 killed.** ⚠ Mutation 7 first appeared to survive — the test filter matched the wrong class (`ValidatorRosterTests` vs the real `ValidatorRosterValidationTests`) and reported 14 unrelated tests green. **A filtered run that matches nothing you intended is indistinguishable from a passing one.**
 >
-> ⚠ **NOT DONE: re-genesis + live verification.** The system register's roster is inside the pre-signed genesis payload, so adopting this needs a fresh ceremony and a wipe/re-genesis of n1 and tiny (authorised 2026-08-28). **1-hour genesis freshness window** — mint, Docker Publish, deploy and bootstrap must all fit inside it. ⚠ Peer gRPC surface deliberately out of scope; #1591 severity assessments must say so.
+> **LIVE: fresh genesis `8d40e189b11863b6d447d6307c4f4e06`, n1 + tiny wiped and re-genesised, suite 18/18, ZERO exemption refusals.** All 4 system blueprints seeded AND sealed — each one a live proof, since the previous genesis carried only a docket-signing entry and would have refused every publish.
+>
+> ⚠ **THE LIVE RUN CAUGHT A REGRESSION 1124 GREEN UNIT TESTS DID NOT.** The genesis rule required the SSR's constant tx id + system register id + anchored key — but `RegisterCreationOrchestrator` marks EVERY new register's first transaction `Type=Genesis`. So every ordinary register's genesis was refused, never sealed, and left an EMPTY governance roster, surfacing as `403 "You do not hold a publish-governance role"` — a message about roles that actually means the roster never sealed. **The unit tests only ever built system-register-shaped genesis transactions.** Fixed by `ExemptionKind.RegisterGenesis` (PR #1594): authority is "this register has no roster yet", still a narrowing (once per register, never after a roster seals).
+>
+> ⚠ **Three suite runs; only the third was a valid test.** Run 1 = 0/18 (the regression). Run 2 = 2/18 — the ONLY passes were `EncryptionAtRest`, the one walkthrough creating a FRESH timestamped register; every failure reused a fixed-name register poisoned in run 1, while the validator logged ZERO refusals. Correct code, dirty node. Run 3 on wiped nodes = 18/18. **Clear a node BEFORE assessing it.** Also: **walkthrough `state.json` is node state** — TradeFinance's was 3 days stale and 401'd on orgs the wipe removed; archiving it gave a clean pass.
+>
+> ⚠ Re-ingesting the SAME genesis after the 1h window needed a TEMPORARY `ValidationEngine__GenesisMaxAge` override (separate compose file). Signature + anchor verification unchanged — recency only. **Removed and verified absent from the running container env before the suite ran**; a result under a weakened validator would be worthless.
+>
+> ⚠ **The `network-bootstrap` skill's Azure route is DEAD**: `sorcha-n1-vm` is in neither subscription and `sorcha-n1-uk` is empty, yet n1 serves fine. SSH — which the skill calls unreliable — is the only working route.
+>
+> ~~NOT DONE: re-genesis + live verification.~~ The system register's roster is inside the pre-signed genesis payload, so adopting this needs a fresh ceremony and a wipe/re-genesis of n1 and tiny (authorised 2026-08-28). **1-hour genesis freshness window** — mint, Docker Publish, deploy and bootstrap must all fit inside it. ⚠ Peer gRPC surface deliberately out of scope; #1591 severity assessments must say so.
 
 > **2026-08-26 - control traffic was served as blueprint publications, and the gate was described but never applied (#1587, second defect).**
 >
