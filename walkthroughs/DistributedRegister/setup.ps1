@@ -6,6 +6,10 @@
 # Bootstrap org and create wallet on LOCAL machine.
 
 param(
+    # NO 'n1' — DistributedRegister is a LOCAL two-node test by design (this bootstraps on the
+    # local machine and sync-test.ps1 compares a local gateway/peer against a remote one, using
+    # hardcoded http://localhost endpoints). Adding 'n1' here would let the suite start a test
+    # whose other half cannot target n1.
     [ValidateSet('gateway', 'direct', 'aspire')]
     [string]$Profile = 'gateway',
     [switch]$SkipHealthCheck

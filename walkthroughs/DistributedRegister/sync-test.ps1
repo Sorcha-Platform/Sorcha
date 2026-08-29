@@ -33,6 +33,9 @@ param(
 
     [string]$RemotePeerPort = "50051",
 
+    # NO 'n1' — this half of the test talks to http://localhost for the local gateway and peer
+    # (see \$localGateway / \$localPeerUrl below). It is a local-vs-remote comparison, not a
+    # single-target walkthrough.
     [ValidateSet('gateway', 'direct', 'aspire')]
     [string]$Profile = 'gateway',
 

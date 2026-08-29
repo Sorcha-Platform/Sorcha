@@ -140,7 +140,7 @@ $core = @(
 # currently maintained against every node profile.
 $legacy = @(
     @{ W = 'AdminIntegration';      Label = 'test';        Script = 'test-admin-integration.ps1'; Kind = 'runp' }
-    @{ W = 'McpServerBasics';       Label = 'test';        Script = 'test-mcp-server.ps1';        Kind = 'runp' }
+    @{ W = 'McpServerBasics';       Label = 'test';        Script = 'test-mcp-server.ps1';        Kind = 'runp'; LocalOnly = $true }
     @{ W = 'RegisterCreationFlow';  Label = 'setup';       Script = 'setup.ps1';                  Kind = 'setup' }
     @{ W = 'RegisterCreationFlow';  Label = 'run';         Script = 'run.ps1';                    Kind = 'run' }
     @{ W = 'WalletVerification';    Label = 'setup';       Script = 'setup.ps1';                  Kind = 'setup' }
@@ -201,6 +201,20 @@ foreach ($s in $steps) {
     if (-not (Test-Path $path)) {
         Write-Host ("[{0,2}] {1,-22} {2,-12} SKIP (script not found)" -f $s.N, $s.W, $s.Label) -ForegroundColor Gray
         $results.Add([pscustomobject]@{ N = $s.N; W = $s.W; Label = $s.Label; Status = 'SKIP'; Secs = 0; Note = 'script not found' })
+        continue
+    }
+
+    # A step that CANNOT run against the selected target is SKIPPED, not FAILED.
+    #
+    # Some walkthroughs drive a local container stack (they check Docker, then `docker compose`
+    # against localhost) and have no remote equivalent. Reporting those as failures against -Profile
+    # n1 is worse than useless: it manufactures red that no code change can ever turn green, and it
+    # buries the failures that are real. Six legacy steps did exactly that until 2026-08-29 — their
+    # ValidateSet simply predated the n1 profile, so PowerShell rejected the argument and the step
+    # never executed, yet the suite still printed FAIL.
+    if ($s.LocalOnly -and ($GatewayUrl -or $Profile -eq 'n1')) {
+        Write-Host ("[{0,2}] {1,-22} {2,-12} SKIP (local-only: needs a local Docker stack)" -f $s.N, $s.W, $s.Label) -ForegroundColor Gray
+        $results.Add([pscustomobject]@{ N = $s.N; W = $s.W; Label = $s.Label; Status = 'SKIP'; Secs = 0; Note = 'local-only' })
         continue
     }
 

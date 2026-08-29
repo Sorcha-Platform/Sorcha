@@ -6,6 +6,10 @@
 # Authenticates with Tenant Service, then starts the MCP server Docker container.
 
 param(
+    # NO 'n1' — this walkthrough runs the MCP server as a LOCAL container and checks local
+    # Docker before anything else ('Docker not running' → then `docker compose` against the
+    # local stack). It cannot target a remote node as-is. Making it n1-capable means skipping
+    # the container steps for remote profiles, which is a real change, not a ValidateSet edit.
     [ValidateSet('gateway', 'direct', 'aspire')]
     [string]$Profile = 'gateway',
     [switch]$SkipStartup
