@@ -6,6 +6,9 @@
 # Verifies MongoDB connectivity, Docker containers, and Register Service health.
 
 param(
+    # NO 'n1' — this reads MongoDB through `docker exec sorcha-mongodb` on the LOCAL host. On a
+    # remote node the database is only reachable over ssh (see the EncryptionAtRest walkthrough,
+    # which does exactly that). Adding 'n1' would fail at the first docker exec.
     [ValidateSet('gateway', 'direct', 'aspire')]
     [string]$Profile = 'gateway'
 )

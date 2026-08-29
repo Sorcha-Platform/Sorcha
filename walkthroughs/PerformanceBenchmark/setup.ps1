@@ -7,7 +7,11 @@
 # Replaces bootstrap-perf-org.ps1.
 
 param(
-    [ValidateSet('gateway', 'direct', 'aspire')]
+    # 'n1' resolves through Initialize-SorchaEnvironment like every other profile. It was missing
+    # here only because these scripts predate that profile, and PowerShell rejects the argument
+    # before any code runs — so run-all.ps1 reported them as 1-second FAILURES that had in fact
+    # never executed. A suite that cannot run a script must not report it as a failing one.
+    [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
     [string]$Profile = 'gateway',
     [switch]$SkipHealthCheck
 )
