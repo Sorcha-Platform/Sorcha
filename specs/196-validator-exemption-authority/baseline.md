@@ -115,7 +115,15 @@ have authorised both**. Unifying was free only because the estate can be wiped.
 
 ## Live verification (T050–T052) — DONE 2026-08-29
 
-Fresh genesis ceremony (`8d40e189b11863b6d447d6307c4f4e06`), both nodes wiped and re-genesised.
+**Final live anchor: `2150ef9461313d7e0f140934be041c04`.** Both nodes wiped and re-genesised.
+
+The re-genesis was done **twice**. The first (`8d40e189b1…`) needed a temporary
+`ValidationEngine__GenesisMaxAge` override, because the genesis aged past its 1-hour window while CI
+ran; the override was removed and proved gone before the suite, so that 18/18 stood — but the
+genesis had nonetheless been *ingested* under a relaxed validator. A second ceremony was minted so
+the whole mint → publish → deploy → bootstrap ran **inside the window with no override at any
+point**: minted 12:08:35Z, sealed 12:35:46Z, and the suite passed **18/18 on the first attempt**
+with no mid-run intervention. That is the provenance story worth having.
 
 | Check | Result |
 |---|---|
