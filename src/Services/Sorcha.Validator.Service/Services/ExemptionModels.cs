@@ -110,6 +110,17 @@ public readonly record struct ExemptionDecision(
     public bool IsRefusedClaim =>
         Claim.IsClaimed && !Granted && RefusalReason != ExemptionRefusalReason.NoClaim;
 
-    /// <summary>True when the granted exemption is the genesis one.</summary>
-    public bool IsGenesis => Granted && Kind == ExemptionKind.Genesis;
+    /// <summary>
+    /// True when the granted exemption is a genesis one — either the network's system-register
+    /// genesis or an ordinary register's.
+    /// </summary>
+    /// <remarks>
+    /// <b>Both, deliberately.</b> The two consumers of this — the short <c>GenesisMaxAge</c>
+    /// freshness window, and <c>RightsEnforcementService</c>'s "a register has no roster until its
+    /// genesis creates one" allowance — apply to any register's genesis, not just the system
+    /// register's. Restricting it to <see cref="ExemptionKind.Genesis"/> is what stopped every new
+    /// register from sealing its roster.
+    /// </remarks>
+    public bool IsGenesis =>
+        Granted && Kind is ExemptionKind.Genesis or ExemptionKind.RegisterGenesis;
 }

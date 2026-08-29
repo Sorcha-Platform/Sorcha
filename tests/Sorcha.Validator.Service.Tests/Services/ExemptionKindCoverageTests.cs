@@ -6,6 +6,7 @@ using FluentAssertions;
 using Moq;
 using Sorcha.Register.Core.Services;
 using Sorcha.Register.Models;
+using Sorcha.Register.Models.Constants;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
 
@@ -80,7 +81,11 @@ public class ExemptionKindCoverageTests
 
     private static Transaction TransactionClaiming(ExemptionKind kind) => kind switch
     {
-        ExemptionKind.Genesis => Build("some-workflow", new() { ["Type"] = "Genesis" }),
+        // Genesis and RegisterGenesis carry the SAME label and are told apart by register, so the
+        // Genesis case must be built on the system register or it classifies as the other one.
+        ExemptionKind.Genesis => Build("some-workflow", new() { ["Type"] = "Genesis" },
+            SystemRegisterConstants.SystemRegisterId),
+        ExemptionKind.RegisterGenesis => Build("some-workflow", new() { ["Type"] = "Genesis" }),
         ExemptionKind.Control => Build("some-workflow", new() { ["Type"] = "Control" }),
         ExemptionKind.BlueprintPublish => Build("some-workflow", new() { ["Type"] = "BlueprintPublish" }),
 
@@ -89,11 +94,12 @@ public class ExemptionKindCoverageTests
         _ => Build("some-workflow", [])
     };
 
-    private static Transaction Build(string blueprintId, Dictionary<string, string> metadata) =>
+    private static Transaction Build(
+        string blueprintId, Dictionary<string, string> metadata, string registerId = "test-register") =>
         new()
         {
             TransactionId = Guid.NewGuid().ToString("N"),
-            RegisterId = "test-register",
+            RegisterId = registerId,
             BlueprintId = blueprintId,
             ActionId = "1",
             Payload = JsonSerializer.Deserialize<JsonElement>("{}"),
