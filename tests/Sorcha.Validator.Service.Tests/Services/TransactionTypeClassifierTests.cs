@@ -51,7 +51,9 @@ public class TransactionTypeClassifierTests
 
         var claim = ExemptionAuthorityResolver.ReadClaim(tx);
 
-        claim.Kind.Should().Be(ExemptionKind.Genesis);
+        // On a NON-system register this is an ordinary register genesis, not the network's trust
+        // anchor. Same label, same route — told apart by which register it is on.
+        claim.Kind.Should().Be(ExemptionKind.RegisterGenesis);
         claim.Route.Should().Be(ExemptionClaimRoute.BlueprintIdentifier,
             "this route needs no metadata at all, so closing only the metadata route closes nothing");
     }
@@ -315,6 +317,6 @@ public class TransactionTypeClassifierTests
         var genesis = Build(GenesisConstants.BlueprintId, "{}", ("Type", "Genesis"));
 
         TransactionTypeClassifier.IsGovernanceActionTransaction(genesis).Should().BeFalse();
-        ExemptionAuthorityResolver.ReadClaim(genesis).Kind.Should().Be(ExemptionKind.Genesis);
+        ExemptionAuthorityResolver.ReadClaim(genesis).Kind.Should().Be(ExemptionKind.RegisterGenesis);
     }
 }

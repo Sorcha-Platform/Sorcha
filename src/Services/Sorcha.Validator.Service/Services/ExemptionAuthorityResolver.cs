@@ -101,6 +101,7 @@ public sealed class ExemptionAuthorityResolver : IExemptionAuthorityResolver
             decision = claim.Kind switch
             {
                 ExemptionKind.Genesis => ResolveGenesis(transaction, claim),
+                ExemptionKind.RegisterGenesis => await ResolveRegisterGenesisAsync(transaction, claim, ct),
                 ExemptionKind.Control => await ResolveControlAsync(transaction, claim, ct),
                 ExemptionKind.BlueprintPublish => await ResolveBlueprintPublishAsync(transaction, claim, ct),
 
@@ -143,7 +144,9 @@ public sealed class ExemptionAuthorityResolver : IExemptionAuthorityResolver
         if (string.Equals(transaction.BlueprintId, GenesisConstants.BlueprintId, StringComparison.OrdinalIgnoreCase))
         {
             return new ExemptionClaim(
-                ExemptionKind.Genesis, ExemptionClaimRoute.BlueprintIdentifier, transaction.BlueprintId);
+                IsSystemRegister(transaction) ? ExemptionKind.Genesis : ExemptionKind.RegisterGenesis,
+                ExemptionClaimRoute.BlueprintIdentifier,
+                transaction.BlueprintId);
         }
 
         if (!transaction.Metadata.TryGetValue("Type", out var label) || string.IsNullOrWhiteSpace(label))
@@ -165,8 +168,12 @@ public sealed class ExemptionAuthorityResolver : IExemptionAuthorityResolver
 
         ExemptionKind? kind = effectiveLabel switch
         {
+            // The SSR's genesis and an ordinary register's genesis carry the SAME label and are
+            // told apart by which register they are on. Only the system register can hold the
+            // network trust anchor, so anything else claiming genesis is a register genesis and is
+            // judged by the far narrower "this register has no roster yet" rule.
             _ when string.Equals(effectiveLabel, "Genesis", StringComparison.OrdinalIgnoreCase)
-                => ExemptionKind.Genesis,
+                => IsSystemRegister(transaction) ? ExemptionKind.Genesis : ExemptionKind.RegisterGenesis,
             _ when string.Equals(effectiveLabel, "Control", StringComparison.OrdinalIgnoreCase)
                 => ExemptionKind.Control,
             _ when string.Equals(effectiveLabel, "BlueprintPublish", StringComparison.OrdinalIgnoreCase)
@@ -236,6 +243,51 @@ public sealed class ExemptionAuthorityResolver : IExemptionAuthorityResolver
 
         return ExemptionDecision.NotEntitled(claim,
             "no signature is from the genesis key this node is anchored on");
+    }
+
+    /// <summary>Whether a transaction is on the system register.</summary>
+    private static bool IsSystemRegister(Transaction transaction) =>
+        string.Equals(
+            transaction.RegisterId,
+            SystemRegisterConstants.SystemRegisterId,
+            StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Ordinary-register genesis authority: the register has no roster yet.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A register genesis is the transaction that CREATES the roster, so there is no prior authority
+    /// to check it against. <c>RightsEnforcementService</c> already resolves the same chicken-and-egg
+    /// the same way (F189 R-002) — this states it as the exemption's own rule rather than leaving it
+    /// implicit.
+    /// </para>
+    /// <para>
+    /// <b>This is a narrowing, not a free pass.</b> It can be claimed at most once per register and
+    /// never on one that has already sealed a roster — which is where a forged claim would be worth
+    /// anything, since that is where real workflow traffic lives. What it replaces was an
+    /// unconditional grant on every register for the register's whole life.
+    /// </para>
+    /// <para>
+    /// It deliberately does NOT require the system-register id, the constant genesis transaction id,
+    /// or the network trust anchor. Requiring those is what broke every register creation on the
+    /// network: only the SSR's own genesis can satisfy them, and every other register's genesis then
+    /// failed validation, never sealed, and left an empty roster behind.
+    /// </para>
+    /// </remarks>
+    private async Task<ExemptionDecision> ResolveRegisterGenesisAsync(
+        Transaction transaction, ExemptionClaim claim, CancellationToken ct)
+    {
+        var roster = await _rosterService.GetCurrentRosterAsync(transaction.RegisterId, ct);
+
+        if (roster is not null)
+        {
+            return ExemptionDecision.NotEntitled(claim,
+                "this register already has a governance roster, so it is past its genesis — a "
+                + "transaction cannot claim to create a roster that already exists");
+        }
+
+        return ExemptionDecision.Grant(ExemptionKind.RegisterGenesis, claim);
     }
 
     /// <summary>

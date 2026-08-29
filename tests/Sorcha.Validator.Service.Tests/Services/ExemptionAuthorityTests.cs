@@ -240,9 +240,22 @@ public class ExemptionAuthorityTests
             + "different operator responses");
     }
 
+    /// <summary>
+    /// The anchored <see cref="ExemptionKind.Genesis"/> is not claimable off the system register —
+    /// a genesis claim elsewhere is an ordinary register genesis and gets the far narrower rule.
+    /// </summary>
+    /// <remarks>
+    /// This test previously asserted "genesis exists only on the system register", which was wrong
+    /// and broke every register creation on the network: RegisterCreationOrchestrator marks every
+    /// new register's first transaction Type=Genesis. Refusing those left each new register with an
+    /// empty roster, surfacing as an unrelated-sounding 403 on the first blueprint publish.
+    /// </remarks>
     [Fact]
-    public async Task Genesis_OnAnOrdinaryRegister_IsRefused()
+    public async Task Genesis_ClaimedOffTheSystemRegister_IsClassifiedAsARegisterGenesis()
     {
+        _roster.Setup(r => r.GetCurrentRosterAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+               .ReturnsAsync((AdminRoster?)null);
+
         var tx = Tx(GenesisKey,
             blueprintId: GenesisConstants.BlueprintId,
             txId: GenesisSignatureVerifier.ComputeGenesisTxId(),
@@ -250,7 +263,81 @@ public class ExemptionAuthorityTests
 
         var decision = await Anchored().ResolveAsync(tx);
 
-        decision.Granted.Should().BeFalse("genesis exists only on the system register");
+        decision.Kind.Should().Be(ExemptionKind.RegisterGenesis,
+            "only the system register can carry the network trust anchor");
+        decision.Granted.Should().BeTrue("the register has no roster yet");
+    }
+
+    // ════════════ ORDINARY REGISTER GENESIS — the case that broke the network ════════════
+    //
+    // RegisterCreationOrchestrator marks EVERY new register's first transaction Type=Genesis with
+    // BlueprintId="genesis". The first implementation required the constant SSR genesis id and the
+    // system register id, so every ordinary register's genesis was refused, never sealed, and left
+    // an empty governance roster — surfacing as a 403 "you do not hold a publish-governance role"
+    // on the first blueprint publish, which names a cause unrelated to the actual one.
+    //
+    // These tests exist because the original suite only ever built SSR-shaped genesis transactions
+    // and was therefore blind to it.
+
+    [Fact]
+    public async Task RegisterGenesis_OnAnOrdinaryRegisterWithNoRosterYet_IsGranted()
+    {
+        _roster.Setup(r => r.GetCurrentRosterAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+               .ReturnsAsync((AdminRoster?)null);
+
+        // Exactly the shape RegisterCreationOrchestrator emits: its own tx id, its own register id.
+        var tx = Tx(PublisherKey, blueprintId: GenesisConstants.BlueprintId, registerId: TestRegister);
+
+        var decision = await Anchored().ResolveAsync(tx);
+
+        decision.Granted.Should().BeTrue(
+            "a register genesis is what CREATES the roster, so there is no prior authority to check");
+        decision.Kind.Should().Be(ExemptionKind.RegisterGenesis);
+        decision.IsGenesis.Should().BeTrue(
+            "the short freshness window and the no-roster allowance both key off this");
+    }
+
+    [Fact]
+    public async Task RegisterGenesis_OnARegisterThatAlreadyHasARoster_IsRefused()
+    {
+        // The narrowing that makes this an authority rule rather than a free pass: once a register
+        // has sealed a roster it is past its genesis, and that is precisely where a forged claim
+        // would be worth something.
+        RosterWith(Member(RosterKey));
+
+        var tx = Tx(AttackerKey, blueprintId: GenesisConstants.BlueprintId, registerId: TestRegister);
+
+        var decision = await Anchored().ResolveAsync(tx);
+
+        decision.Granted.Should().BeFalse();
+        decision.RefusalReason.Should().Be(ExemptionRefusalReason.NotEntitled);
+    }
+
+    [Fact]
+    public async Task RegisterGenesis_IsNotJudgedAgainstTheNetworkTrustAnchor()
+    {
+        // The specific mistake, pinned: an ordinary register's genesis must NOT be required to carry
+        // the system register's constant transaction id, nor to be signed by the network genesis key.
+        _roster.Setup(r => r.GetCurrentRosterAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+               .ReturnsAsync((AdminRoster?)null);
+
+        var tx = Tx(PublisherKey, blueprintId: GenesisConstants.BlueprintId, registerId: TestRegister);
+        tx.TransactionId.Should().NotBe(GenesisSignatureVerifier.ComputeGenesisTxId());
+
+        (await Anchored().ResolveAsync(tx)).Granted.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ReadClaim_GenesisOnTheSystemRegisterVersusAnOrdinaryOne_AreDifferentKinds()
+    {
+        // Same label, same route — told apart only by which register they are on. Only the system
+        // register can hold the network trust anchor.
+        ExemptionAuthorityResolver.ReadClaim(RealShapeGenesis(GenesisKey)).Kind
+            .Should().Be(ExemptionKind.Genesis);
+
+        ExemptionAuthorityResolver.ReadClaim(
+            Tx(PublisherKey, blueprintId: GenesisConstants.BlueprintId, registerId: TestRegister)).Kind
+            .Should().Be(ExemptionKind.RegisterGenesis);
     }
 
     // ════════════════════════ US3 — CONTROL ════════════════════════
