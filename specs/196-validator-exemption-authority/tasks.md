@@ -35,7 +35,7 @@ first. Every story remains independently testable and deliverable.
 - [x] T001 ✅ **DONE 2026-08-28.** R2 decided: publication authority is the **register's validator roster**, matched on the **existing `sorcha:register-control` context**. Moving to the dedicated `sorcha:blueprint-publish` context is filed as a follow-up (T056), not part of this feature. Recorded in `research.md` §R2; `spec.md` FR-003 revised accordingly. **Phase 6 unblocked.**
 - [x] T002 ✅ **DONE 2026-08-28.** FR-007 decided: **fail closed in every environment** — no environment gate, no operator bypass flag. Recorded in `spec.md` Assumptions with both rejected alternatives and why. **Phase 2 unblocked.**
 - [x] T003 Record the pre-change baseline: run `dotnet test --project tests/Sorcha.Validator.Service.Tests/Sorcha.Validator.Service.Tests.csproj` and capture the pass/fail counts into `specs/196-validator-exemption-authority/baseline.md` so later "still green" claims are checkable.
-- [ ] T004 *(Informational only — de-risked 2026-08-28.)* Note which code paths re-run the validation engine over already-sealed transactions, for the record in `research.md` §R5. No longer blocking: the estate may be wiped, so historical validity is not owed. **No longer blocks Phase 6.**
+- [x] T004 *(Informational only — de-risked 2026-08-28.)* Note which code paths re-run the validation engine over already-sealed transactions, for the record in `research.md` §R5. No longer blocking: the estate may be wiped, so historical validity is not owed. **No longer blocks Phase 6.**
 
 ---
 
@@ -181,7 +181,7 @@ authority is refused; a genuine publication still seals with an unchanged public
 ### Verification for US2
 
 - [x] T046 [US2] Mutation-test: remove the authority comparison in T043 and confirm T038 goes red; restore.
-- [ ] T047 [US2] Verify the sealed-docket verification path is untouched (FR-012) by exercising a replica pulling sealed history, not by reading the code.
+- [x] T047 [US2] Verify the sealed-docket verification path is untouched (FR-012) by exercising a replica pulling sealed history, not by reading the code.
 
 **Checkpoint**: All four grant routes closed.
 
@@ -189,17 +189,17 @@ authority is refused; a genuine publication still seals with an unchanged public
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T048 Run the full solution suite (`dotnet build && dotnet test`) and compare against the T003 baseline. Any delta must be explained, not absorbed.
-- [ ] T049 Verify the CI gates still pass, in particular `scripts/check-publication-id-owner.ps1` (`publication-id-owner-gate`) and `scripts/check-error-code-contract.ps1` (`error-code-contract-gate`).
-- [ ] T050 [P] Deploy to **n1** and run the core walkthrough suite: `pwsh walkthroughs/run-all.ps1 -Profile n1 -AuthGapMs 1000`. Confirm the running image is the one built — a restart with a short compose file list swaps the artefact under test and still passes green.
-- [ ] T051 [P] Deploy to **tiny** and confirm replication: a replica pull of sealed history, and byte-identical replication of a register from n1. Always multi-node — a single-node pass is not evidence.
-- [ ] T052 Live-verify each administrative operation end to end on n1: node bootstrap from genesis, a blueprint publication, and a governance propose→approve→enact. Record evidence in `baseline.md`. **Merged is not proven.**
+- [x] T048 Run the full solution suite (`dotnet build && dotnet test`) and compare against the T003 baseline. Any delta must be explained, not absorbed.
+- [x] T049 Verify the CI gates still pass, in particular `scripts/check-publication-id-owner.ps1` (`publication-id-owner-gate`) and `scripts/check-error-code-contract.ps1` (`error-code-contract-gate`).
+- [x] T050 [P] Deploy to **n1** and run the core walkthrough suite: `pwsh walkthroughs/run-all.ps1 -Profile n1 -AuthGapMs 1000`. Confirm the running image is the one built — a restart with a short compose file list swaps the artefact under test and still passes green.
+- [x] T051 [P] Deploy to **tiny** and confirm replication: a replica pull of sealed history, and byte-identical replication of a register from n1. Always multi-node — a single-node pass is not evidence.
+- [x] T052 Live-verify each administrative operation end to end on n1: node bootstrap from genesis, a blueprint publication, and a governance propose→approve→enact. Record evidence in `baseline.md`. **Merged is not proven.**
 - [x] T053 [P] Update `src/Services/Sorcha.Validator.Service/README.md` with the exemption-authority rule and the distinction between claim and authority.
 - [x] T054 [P] Add the exemption-authority rule to `CLAUDE.md` as a numbered critical pattern (next after 22), stating that an exemption is granted from proved signer authority and never from a submitter-settable field.
-- [ ] T055 [P] Update `docs/reference/API-DOCUMENTATION.md` and `.claude/skills/sorcha-architecture/SKILL.md` only if the endpoint surface or a documented cross-cutting pattern changed. If neither changed, record that explicitly rather than editing for the sake of it.
-- [ ] T056 File the follow-up arising from the T001 decision: move blueprint publication onto the dedicated `sorcha:blueprint-publish` derivation context, with a dual-accept transition for already-sealed publications. Reference this feature and #1591.
-- [ ] T057 Update `.specify/MASTER-TASKS.md` with Feature 196 status (📋 → 🚧 → ✅) and close #1591 with the run evidence from T052, stating explicitly that the peer gRPC surface remains open and is tracked separately (spec Out of Scope).
-- [ ] T058 Remove scratch and probe files created during implementation; confirm `git status` is clean of working artefacts before the PR.
+- [x] T055 [P] Update `docs/reference/API-DOCUMENTATION.md` and `.claude/skills/sorcha-architecture/SKILL.md` only if the endpoint surface or a documented cross-cutting pattern changed. If neither changed, record that explicitly rather than editing for the sake of it.
+- [x] T056 File the follow-up arising from the T001 decision: move blueprint publication onto the dedicated `sorcha:blueprint-publish` derivation context, with a dual-accept transition for already-sealed publications. Reference this feature and #1591.
+- [x] T057 Update `.specify/MASTER-TASKS.md` with Feature 196 status (📋 → 🚧 → ✅) and close #1591 with the run evidence from T052, stating explicitly that the peer gRPC surface remains open and is tracked separately (spec Out of Scope).
+- [x] T058 Remove scratch and probe files created during implementation; confirm `git status` is clean of working artefacts before the PR.
 
 ---
 
