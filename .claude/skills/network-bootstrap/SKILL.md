@@ -66,9 +66,38 @@ Wait for the Docker Publish workflow to complete (rebuilds ALL images since `Com
 gh run list --workflow=docker-publish.yml --branch=master --limit 1
 ```
 
-### Step 3: Reset n1 (via Azure CLI)
+### Step 3: Reset n1 — **use SSH; the Azure route is DEAD (verified 2026-08-29)**
 
-SSH key auth to n1 is unreliable. Use `az vm run-command` for all remote operations.
+> ⚠ **`az vm run-command` no longer reaches n1.** `sorcha-n1-vm` exists in **neither** subscription on
+> this account, and the `sorcha-n1-uk` resource group is **empty** — while n1 serves normally at
+> 51.105.7.135. The VM has been moved, recreated outside these subscriptions, or is no longer
+> Azure-hosted. Every `az vm` command below will fail with `ResourceNotFound`.
+>
+> **SSH works and is currently the only route**, despite the note this skill used to carry:
+> ```bash
+> ssh sorcha@51.105.7.135 "cd /opt/sorcha && docker compose ... "
+> ssh tiny "cd /home/stuart/sorcha-test && docker compose ... "
+> ```
+>
+> ⚠ **`az account show` reads the LOCAL CACHE** and will report a healthy session when there is none.
+> Prove a session with `az account get-access-token`, never `account show`. And the duplicate-account
+> crash (azure-cli #20168) is cleared with
+> `az config set core.enable_broker_on_windows=false` then `az logout` / `az login --use-device-code`.
+
+> ⚠ **`docker-compose.tiny.yml` is NODE-LOCAL and is NOT in the repo.** Curling it from master returns
+> a 404 **body**, and `curl -o` writes that over the real file. Refresh only repo-tracked compose
+> files, and use `curl -f` so a 4xx fails instead of overwriting. A good copy lives at
+> `/home/stuart/sorcha-demo/docker-compose.tiny.yml`; the `.bak-*` in `sorcha-test` is a stale
+> Feature-143 shape that would put tiny into `GenesisFile` mode and split the network.
+
+> ⚠ **Walkthrough `state.json` is NODE state.** After a wipe each `walkthroughs/*/state.json` still
+> points at orgs and users that no longer exist and the walkthrough **401s during org bootstrap**.
+> Clear them with the node, or the suite fails for reasons that look like platform defects.
+
+The historical Azure instructions are retained below for the day the VM returns to a subscription
+this account can see.
+
+SSH key auth to n1 was once unreliable; `az vm run-command` was the workaround.
 
 **Check VM is running:**
 
