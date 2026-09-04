@@ -45,9 +45,22 @@ Internal cross-service capabilities that aren't external standards but are refer
 
 - **Notifications & Inbox** — `full` — [specs/118-notifications-architecture/spec.md](specs/118-notifications-architecture/spec.md). Five-hub topology (Blueprint, Wallet, Register, Tenant, Chat) with Redis backplane, thin-signal contract (opaque IDs only), and durable per-user inbox with category filtering. ChatHub is the documented streaming exception (FR-019).
 
+## Third-party runtime dependencies — licensing position
+
+Sorcha is MIT-licensed. It runs alongside three third-party datastores, each as a **separate, unmodified process reached over a network protocol**. None is linked into a Sorcha assembly, none is redistributed in modified form, and the compose files *pull* upstream images rather than vendoring them. This section exists so the question is answered once rather than re-litigated per deployment.
+
+- **Redis 8** (`redis:8-alpine`) — **AGPLv3** since Redis 8.0 (tri-licensed with RSALv2 / SSPLv1). Reached over RESP by `StackExchange.Redis` (MIT). **Sorcha's MIT licence is unaffected.** AGPLv3's network clause binds a party who *modifies* Redis and offers the modified version over a network; Sorcha modifies nothing and offers Redis to nobody. Sorcha is not a derivative work of Redis.
+- **MongoDB 8** (`mongo:8`) — **SSPLv1**, which is not OSI-approved and is broader in reach than AGPLv3: it targets a party offering *MongoDB itself* as a service. Sorcha operators run it as an internal datastore, so the same separate-process reasoning applies — but this, not Redis, is the dependency to raise with counsel first if Sorcha is ever offered as a hosted multi-tenant service.
+- **PostgreSQL 17** (`postgres:17-alpine`) — PostgreSQL Licence (permissive, OSI-approved). No constraint.
+
+**What would change the answer.** Any of: patching or rebuilding Redis or MongoDB and shipping that build; statically linking either into a Sorcha binary; or offering either as a service in its own right. None is on the roadmap. A new AGPL- or SSPL-licensed component on the *linked* path — a library rather than a server — is a different question and needs its own review before adoption.
+
+**Procurement note.** A blanket "no AGPL/SSPL anywhere in the dependency tree" scan will flag Redis and MongoDB regardless of the analysis above, because such scans read image manifests rather than linkage. The drop-in swap of Redis for BSD-3 Valkey is analysed in [#1601](https://github.com/Sorcha-Platform/Sorcha/issues/1601) and is deliberately demand-gated: it removes a procurement conversation, not a legal exposure, and carries no functional benefit.
+
 ## Maintenance
 
 - **PR checklist requirement.** Every PR that touches a path listed in any Components cell MUST review this file and update it if the change affects compliance status. The PR template at `.github/pull_request_template.md` carries a "STANDARDS.md reviewed" checkbox.
 - **Structural CI check.** A CI step in `.github/workflows/ai-discoverability-check.yml` (via `scripts/check-discoverability.sh`) verifies on every PR to master that this file is present, parses as a Markdown table with the seven required columns, every Status is one of `full`/`partial`/`planned`, and every Components path resolves to a real path in the repository.
 - **Cross-reference contract.** A second CI check verifies every standard named in `llms.txt`, `docs/llms-full.txt`, the served OpenAPI document's `info.x-standards`, and the `standards[]` frontmatter of published `docs/` files matches a row here with status `full` or `partial`. A `planned` row cannot be cited externally.
 - **Drift policy.** A stale row is treated as a defect, not a documentation issue. If a Components path is renamed or a standard's adoption status changes, the same PR that makes the change updates this file.
+- **Table-only parsing.** The structural check treats *every* line beginning with `|` as a standards-table row. Prose sections in this file MUST NOT introduce a second Markdown table — use bullets, as the capabilities and third-party-dependency sections do.
