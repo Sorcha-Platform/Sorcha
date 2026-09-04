@@ -47,7 +47,7 @@ dotnet restore && dotnet build && dotnet test
 | Databases | PostgreSQL / MongoDB / Redis | Relational, document, cache |
 | Auth | JWT Bearer | Service-to-service and user authentication |
 | Crypto | NBitcoin + Sorcha.Cryptography | HD wallets (BIP32/39/44), ED25519, P-256, RSA-4096 |
-| Testing | xUnit + FluentAssertions + Moq | 11,000+ tests across 50+ projects |
+| Testing | xUnit + FluentAssertions + Moq | 15,000+ tests across 63 test projects |
 
 ---
 

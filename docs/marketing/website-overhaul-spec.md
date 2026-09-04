@@ -379,10 +379,10 @@ self-select within one screen; no audience is funnelled into another's path.
 ### Section 11 — For developers
 - **Headline:** Open source. Standards-based. Yours to run.
 - **Body:** Sorcha is built on .NET 10 and .NET Aspire, MIT-licensed, and self-hostable with
-  Docker. Eight single-responsibility services, a documented API, and more than 10,000 tests.
+  Docker. Eight single-responsibility services, a documented API, and more than 15,000 tests.
   Read it, run it, build on it.
 - **Spec line:** .NET 10 · .NET Aspire · MIT · PostgreSQL / MongoDB / Redis · Minimal APIs +
-  OpenAPI · `[VERIFY]` 8 services · `[VERIFY]` 10,000+ tests.
+  OpenAPI · `[VERIFY]` 8 services · 15,000+ tests.
 - **CTAs:** `View on GitHub →` · `Read the docs →` · `Self-hosting guide →`
 
 ### Section 12 — Maturity & openness

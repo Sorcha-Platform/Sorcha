@@ -144,7 +144,7 @@ Services/Sorcha.*.Service/
 | Databases | PostgreSQL / MongoDB / Redis | Relational, document, cache |
 | Auth | JWT Bearer | Service-to-service and user authentication |
 | Crypto | NBitcoin + Sorcha.Cryptography | HD wallets, ED25519, P-256, RSA, ML-DSA, ML-KEM |
-| Testing | xUnit + FluentAssertions + Moq | 11,000+ tests across 50+ projects |
+| Testing | xUnit + FluentAssertions + Moq | 15,000+ tests across 63 test projects |
 
 ## Testing
 
