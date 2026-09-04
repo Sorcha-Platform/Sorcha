@@ -79,26 +79,18 @@ public class ActionProcessor : IActionProcessor
                 }
             }
 
-            // Step 1: Validate action data against schema
-            if (context.Action.Form?.Schema != null)
-            {
-                result.Validation = await _schemaValidator.ValidateAsync(
-                    context.ActionData,
-                    context.Action.Form.Schema,
-                    ct);
+            // Step 1: Validate action data against the action's declared schemas.
+            // Issue #1573: this gated on Form.Schema, which no published blueprint sets, so the
+            // step passed vacuously for every action. See ActionSchemaValidation.
+            result.Validation = await ActionSchemaValidation.ValidateAsync(
+                _schemaValidator, context.ActionData, context.Action, ct);
 
-                if (!result.Validation.IsValid)
-                {
-                    // Validation failed - short circuit
-                    result.Success = false;
-                    result.Errors.Add("Action data failed schema validation");
-                    return result;
-                }
-            }
-            else
+            if (!result.Validation.IsValid)
             {
-                // No schema defined - validation passes
-                result.Validation = ValidationResult.Valid();
+                // Validation failed - short circuit
+                result.Success = false;
+                result.Errors.Add("Action data failed schema validation");
+                return result;
             }
 
             // ValidationOnly mode: return after schema validation without executing

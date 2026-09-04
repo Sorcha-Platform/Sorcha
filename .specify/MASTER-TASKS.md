@@ -8,6 +8,24 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
+> **2026-09-04 - Issue #1573: action schema was never enforced on the submission path. ✅ FIXED (engine + processor); rehearsal and /validate still open.**
+>
+> Blueprints declare their payload contract on `Action.DataSchemas`. `ExecutionEngine.ValidateAsync` and `ActionProcessor.ProcessAsync` validated `Action.Form.Schema` — a property **no** published blueprint sets, defaulting to null on a layout-only `Control`. Caller gated on one property, callee read the other, nothing verified the join, and it **failed open**: every payload validated successfully. On an encrypted (Normal) register the Validator then skips schema checks by design — precisely because it trusts that pre-validation — so **no component validated action payloads at all**.
+>
+> ⚠ **The "plaintext register" premise in the earlier note was WRONG.** Live check: the F194 acceptance register is `devMode=False`. The trap is **two different fields both named `contentEncoding`** — `Payloads[].ContentEncoding` is `base64url` on every transaction ever (how the Register stores the envelope BYTES, which is what a Mongo check reads), while the envelope's OWN `contentEncoding` is `"encrypted"` and is the field the Validator actually reads.
+>
+> **Fix**: new `ActionSchemaValidation` — one home for "which schemas must this action's data satisfy" — wired into both call sites. Semantics are deliberately the Validator's: the action's own submitted payload must satisfy EVERY entry in `dataSchemas`. `Form.Schema` retained only as a fallback for actions built in code rather than published. CLAUDE.md **pattern 24**.
+>
+> ⚠ **Do NOT populate `Form.Schema` at publish time instead.** `form` is in the canonical published definition, so that moves **every publication id on every register** (pattern 22) while leaving `execDefHash` untouched — identity moves, the behavioural signature says nothing changed, and `RehearsalPass` survives. Reading `dataSchemas` changes no bytes.
+>
+> ⚠ **Why a green suite missed it**: `CreateActionWithSchema()` hand-built `Form.Schema`, a shape **0 of 14** blueprint JSON files produce. Fixture rebuilt from the published shape.
+>
+> **Blast radius measured, not assumed.** Full solution: baseline **639 failed / 15,323 passed**, with the fix **638 failed / 15,333 passed** (+9 = the new tests) — zero new failures across ~16k tests. Live traffic on n1: **121 sealed action transactions across 12 registers, 2 would newly be refused** — both the VersionPinning acceptance case that is *meant* to be refused. ⚠ For the 50 encrypted transactions only required-field presence is measurable (`disclosedFields`), not value constraints; closing that needs a suite run against a node carrying the fix.
+>
+> ⚠ A first pass reported 4 violations; 2 were `type: rejection` envelopes, which both paths legitimately skip. ⚠ And a first comparison blamed 38 `Blueprint.Service.Tests` failures on the fix — it compared an *isolated* baseline against a *full-solution* run. Under identical conditions that project is **1,244/0 either way**; the 38 are full-solution contention.
+>
+> **Still open**: `DryRunStepper` (the F142 rehearsal that gates go-live — it never checked a schema either) and `POST /api/execution/validate` (answers `isValid: true` for anything). Neither is covered by #1573's title.
+
 > **2026-08-29 - Feature 196 (#1591): the validator granted six exemptions from an UNSIGNED field. ✅ DONE, LIVE-VERIFIED 18/18.**
 >
 > `TransactionTypeClassifier.IsGenesisOrControlTransaction` waived six rules — action-schema, blueprint conformance (**including `VAL_BP_002` sender authorisation**), routing attestation, crypto policy, sequence replay, and fork detection — on either `Metadata["Type"] in {Genesis, Control, BlueprintPublish}` or `BlueprintId == "genesis"`. **Neither is signed.** The signed bytes are `"{TransactionId}:{PayloadHash}"` and both are the same digest of the payload body, so a submitter chose both freely. `Control` had a compensating roster check keyed on the same string; `Genesis` and `BlueprintPublish` substituted nothing.

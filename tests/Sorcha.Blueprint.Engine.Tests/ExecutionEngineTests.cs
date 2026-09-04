@@ -207,6 +207,28 @@ public class ExecutionEngineTests
     }
 
     [Fact]
+    public async Task ValidateAsync_WithLegacyFormSchemaOnly_StillValidates()
+    {
+        // The retained fallback for actions built in code rather than published. Named so that its
+        // shape is understood as legacy, not as the shape new fixtures should copy.
+        var action = new BpModels.Action
+        {
+            Id = 1,
+            Title = "Legacy Action",
+            Form = new BpModels.Control
+            {
+                Schema = JsonNode.Parse("""
+                { "type": "object", "required": ["name", "age"] }
+                """)
+            }
+        };
+
+        var result = await _engine.ValidateAsync(new Dictionary<string, object> { ["name"] = "John" }, action);
+
+        result.IsValid.Should().BeFalse("the legacy Form.Schema path must keep enforcing");
+    }
+
+    [Fact]
     public async Task ValidateAsync_WithNullData_ThrowsArgumentNullException()
     {
         // Arrange
@@ -559,15 +581,26 @@ public class ExecutionEngineTests
         return blueprint;
     }
 
+    /// <summary>
+    /// An action shaped the way a PUBLISHED blueprint actually is: the schema on
+    /// <c>dataSchemas</c>, <c>form</c> left at its layout-only default.
+    /// </summary>
+    /// <remarks>
+    /// This fixture used to hand-build <c>Form.Schema</c> — a shape that 0 of the 14
+    /// blueprint-shaped JSON files in the repository produce. Every test below therefore proved a
+    /// code path production never took, which is why issue #1573 (schema validation passing
+    /// vacuously for every real payload) survived a green suite. Keep this built from the real
+    /// shape; a fixture that can only pass on a synthetic shape is not a guard.
+    /// </remarks>
     private BpModels.Action CreateActionWithSchema()
     {
         return new BpModels.Action
         {
             Id = 1,
             Title = "Test Action",
-            Form = new BpModels.Control
-            {
-                Schema = JsonNode.Parse("""
+            DataSchemas =
+            [
+                System.Text.Json.JsonDocument.Parse("""
                 {
                     "type": "object",
                     "properties": {
@@ -577,7 +610,7 @@ public class ExecutionEngineTests
                     "required": ["name", "age"]
                 }
                 """)
-            }
+            ]
         };
     }
 
