@@ -16,7 +16,6 @@ namespace Sorcha.McpServer.Tests.Tools.Participant;
 
 public sealed class RegisterQueryToolTests
 {
-    private readonly Mock<IMcpSessionService> _sessionServiceMock;
     private readonly Mock<IMcpAuthorizationService> _authServiceMock;
     private readonly Mock<IMcpErrorHandler> _errorHandlerMock;
     private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock;
@@ -27,7 +26,6 @@ public sealed class RegisterQueryToolTests
 
     public RegisterQueryToolTests()
     {
-        _sessionServiceMock = new Mock<IMcpSessionService>();
         _authServiceMock = new Mock<IMcpAuthorizationService>();
         _errorHandlerMock = new Mock<IMcpErrorHandler>();
         _availabilityTrackerMock = new Mock<IServiceAvailabilityTracker>();
@@ -42,7 +40,6 @@ public sealed class RegisterQueryToolTests
             .Build();
 
         _tool = new RegisterQueryTool(
-            _sessionServiceMock.Object,
             _authServiceMock.Object,
             _errorHandlerMock.Object,
             _availabilityTrackerMock.Object,

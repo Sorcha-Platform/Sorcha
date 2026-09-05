@@ -27,7 +27,6 @@ namespace Sorcha.McpServer.Tools.Participant;
 /// </summary>
 public sealed class WalletSignTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
     private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
@@ -36,7 +35,6 @@ public sealed class WalletSignTool
     private readonly string _walletServiceEndpoint;
 
     public WalletSignTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
         IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
@@ -44,7 +42,6 @@ public sealed class WalletSignTool
         IConfiguration configuration,
         ILogger<WalletSignTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
         _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;

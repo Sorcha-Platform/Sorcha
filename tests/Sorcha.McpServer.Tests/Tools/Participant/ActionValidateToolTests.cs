@@ -16,7 +16,6 @@ namespace Sorcha.McpServer.Tests.Tools.Participant;
 
 public sealed class ActionValidateToolTests
 {
-    private readonly Mock<IMcpSessionService> _sessionServiceMock;
     private readonly Mock<IMcpAuthorizationService> _authServiceMock;
     private readonly Mock<IMcpErrorHandler> _errorHandlerMock;
     private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock;
@@ -27,7 +26,6 @@ public sealed class ActionValidateToolTests
 
     public ActionValidateToolTests()
     {
-        _sessionServiceMock = new Mock<IMcpSessionService>();
         _authServiceMock = new Mock<IMcpAuthorizationService>();
         _errorHandlerMock = new Mock<IMcpErrorHandler>();
         _availabilityTrackerMock = new Mock<IServiceAvailabilityTracker>();
@@ -42,7 +40,6 @@ public sealed class ActionValidateToolTests
             .Build();
 
         _tool = new ActionValidateTool(
-            _sessionServiceMock.Object,
             _authServiceMock.Object,
             _errorHandlerMock.Object,
             _availabilityTrackerMock.Object,

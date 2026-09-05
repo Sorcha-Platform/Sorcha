@@ -20,7 +20,6 @@ namespace Sorcha.McpServer.Tools.Participant;
 [McpServerToolType]
 public sealed class ActionValidateTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
     private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
@@ -29,7 +28,6 @@ public sealed class ActionValidateTool
     private readonly string _blueprintServiceEndpoint;
 
     public ActionValidateTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
         IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
@@ -37,7 +35,6 @@ public sealed class ActionValidateTool
         IConfiguration configuration,
         ILogger<ActionValidateTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
         _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;

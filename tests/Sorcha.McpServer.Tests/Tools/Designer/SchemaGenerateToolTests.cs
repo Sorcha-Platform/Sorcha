@@ -10,14 +10,12 @@ namespace Sorcha.McpServer.Tests.Tools.Designer;
 
 public class SchemaGenerateToolTests
 {
-    private readonly Mock<IMcpSessionService> _sessionServiceMock;
     private readonly Mock<IMcpAuthorizationService> _authServiceMock;
     private readonly Mock<IMcpErrorHandler> _errorHandlerMock;
     private readonly Mock<ILogger<SchemaGenerateTool>> _loggerMock;
 
     public SchemaGenerateToolTests()
     {
-        _sessionServiceMock = new Mock<IMcpSessionService>();
         _authServiceMock = new Mock<IMcpAuthorizationService>();
         _errorHandlerMock = new Mock<IMcpErrorHandler>();
         _loggerMock = new Mock<ILogger<SchemaGenerateTool>>();
@@ -26,7 +24,6 @@ public class SchemaGenerateToolTests
     private SchemaGenerateTool CreateTool()
     {
         return new SchemaGenerateTool(
-            _sessionServiceMock.Object,
             _authServiceMock.Object,
             _errorHandlerMock.Object,
             _loggerMock.Object);

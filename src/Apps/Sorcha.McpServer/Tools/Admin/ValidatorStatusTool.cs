@@ -19,7 +19,6 @@ namespace Sorcha.McpServer.Tools.Admin;
 [McpServerToolType]
 public sealed class ValidatorStatusTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
     private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
@@ -28,7 +27,6 @@ public sealed class ValidatorStatusTool
     private readonly string _validatorServiceEndpoint;
 
     public ValidatorStatusTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
         IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
@@ -36,7 +34,6 @@ public sealed class ValidatorStatusTool
         IConfiguration configuration,
         ILogger<ValidatorStatusTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
         _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;
