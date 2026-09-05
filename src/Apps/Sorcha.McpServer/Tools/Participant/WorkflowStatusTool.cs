@@ -125,7 +125,7 @@ public sealed class WorkflowStatusTool
                 };
             }
 
-            var currentStatus = ResolveState(result.State);
+            var currentStatus = InstanceStateResolver.Resolve(result.State);
 
             _logger.LogInformation(
                 "Retrieved workflow status in {ElapsedMs}ms. Status: {WorkflowStatus}",
@@ -191,29 +191,6 @@ public sealed class WorkflowStatusTool
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
             };
         }
-    }
-
-    // Sorcha.Blueprint.Service.Models.InstanceState's ordinal order — mirrored here because
-    // enums serialize as their underlying int by default (no JsonStringEnumConverter is registered
-    // for this type in Blueprint Service) and McpServer cannot reference the service's own model
-    // project. Index MUST track that enum's declaration order.
-    private static readonly string[] InstanceStateNames =
-        ["Active", "Completed", "Rejected", "TimedOut", "Cancelled"];
-
-    private static string ResolveState(JsonElement? state)
-    {
-        if (state is not { } value)
-        {
-            return "Unknown";
-        }
-
-        return value.ValueKind switch
-        {
-            JsonValueKind.String => value.GetString() ?? "Unknown",
-            JsonValueKind.Number when value.TryGetInt32(out var ordinal)
-                && ordinal >= 0 && ordinal < InstanceStateNames.Length => InstanceStateNames[ordinal],
-            _ => "Unknown"
-        };
     }
 
     // Internal response model — mirrors Sorcha.Blueprint.Service.Models.Instance, the actual wire

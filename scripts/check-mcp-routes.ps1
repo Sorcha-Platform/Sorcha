@@ -433,13 +433,26 @@ $clientFiles = Get-SourceFiles -Roots $clientRoots
 $clientText = @{}
 foreach ($f in $clientFiles) { $clientText[$f.FullName] = Get-Content -LiteralPath $f.FullName -Raw }
 
-# interfaceName -> implementation file(s)
+# clientTypeName -> implementation file(s). Keyed by BOTH the interface a client implements and
+# the client's own concrete class name: a tool field typed as the concrete class (a legitimate,
+# already-present idiom — AddHttpClient<T> registers the concrete type) would otherwise be invisible
+# to the scan, and an unscanned tool is a SILENTLY unchecked tool, not a reported one.
 $clientImpls = @{}
 foreach ($f in $clientFiles) {
-    foreach ($m in [regex]::Matches($clientText[$f.FullName], 'class\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*([^\{]+)\{')) {
-        foreach ($iface in ($m.Groups[1].Value -split ',')) {
+    foreach ($m in [regex]::Matches($clientText[$f.FullName], 'class\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([^\{]+)\{')) {
+        $className = $m.Groups[1].Value
+        $names = @()
+        foreach ($iface in ($m.Groups[2].Value -split ',')) {
             $name = $iface.Trim()
             if ($name -notmatch '^I[A-Za-z0-9_]*Client$') { continue }
+            $names += $name
+        }
+        # Only name the concrete type when it actually implements a client interface — that is what
+        # makes it a service client rather than any other class living under the client roots.
+        if ($names.Count -gt 0 -and $className -match '^[A-Za-z_][A-Za-z0-9_]*Client$') {
+            $names += $className
+        }
+        foreach ($name in $names) {
             if (-not $clientImpls.ContainsKey($name)) { $clientImpls[$name] = @() }
             if ($clientImpls[$name] -notcontains $f.FullName) { $clientImpls[$name] += $f.FullName }
         }
@@ -588,12 +601,30 @@ foreach ($file in $toolFiles) {
     }
 
     # (b) URLs built by the typed clients this tool calls.
+    #
+    # A typed client reaches a tool three ways and ALL of them must be seen. A reference the scan
+    # cannot see silently drops that tool from the gate — which reads as a PASS, not as a report:
+    #   1. a plain readonly field ...................  private readonly IFooClient _foo;
+    #   2. the same field WITH an initialiser .......  private readonly IFooClient _foo = foo;
+    #   3. a primary-constructor parameter, used
+    #      directly .................................  sealed class T(IFooClient foo)
+    # Idioms 2 and 3 are already present elsewhere in this tree, so this is a live gap, not a
+    # hypothetical one: converting one tool to the primary-constructor form dropped the call-site
+    # count by one and left the gate green with a bogus route in place.
+    #
+    # The declared type may be the INTERFACE or the CONCRETE client class; $clientImpls keys both.
     $fields = @{}
-    foreach ($m in [regex]::Matches($text, 'readonly\s+(I[A-Za-z0-9_]*Client)\s+(_[A-Za-z0-9_]+)\s*;')) {
+    foreach ($m in [regex]::Matches($text, '(?:readonly\s+)?([A-Za-z_][A-Za-z0-9_]*Client)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=[^;]*)?;')) {
         $fields[$m.Groups[2].Value] = $m.Groups[1].Value
     }
+    foreach ($ctor in [regex]::Matches($text, 'class\s+[A-Za-z_][A-Za-z0-9_]*\s*\(([^)]*)\)')) {
+        foreach ($param in ($ctor.Groups[1].Value -split ',')) {
+            $pm = [regex]::Match($param.Trim(), '^([A-Za-z_][A-Za-z0-9_]*Client)\s+([A-Za-z_][A-Za-z0-9_]*)$')
+            if ($pm.Success) { $fields[$pm.Groups[2].Value] = $pm.Groups[1].Value }
+        }
+    }
 
-    foreach ($m in [regex]::Matches($text, '(_[A-Za-z0-9_]+)\s*\.\s*([A-Za-z0-9_]+)\s*\(')) {
+    foreach ($m in [regex]::Matches($text, '(?<![A-Za-z0-9_.])([A-Za-z_][A-Za-z0-9_]*)\s*\.\s*([A-Za-z0-9_]+)\s*\(')) {
         $fieldName = $m.Groups[1].Value
         $method = $m.Groups[2].Value
         if (-not $fields.ContainsKey($fieldName)) { continue }
@@ -635,6 +666,30 @@ foreach ($t in $toolRoutes) {
     $deduped += $t
 }
 $toolRoutes = $deduped
+
+# ---------------------------------------------------------------------------
+# NON-VACUITY: broken extraction must FAIL, not read as a clean gate.
+# ---------------------------------------------------------------------------
+#
+# There has always been a floor on the tool-class side ($toolFiles.Count -eq 0 above). There was
+# none here, so any breakage in route extraction — a regex that stops matching an idiom, a client
+# root that moves, a refactor of the typed clients — produced "0 violations" and exit 0. A gate
+# that cannot see anything is not a gate that found nothing wrong.
+$toolsWithRoutes = @($toolRoutes | Select-Object -ExpandProperty Tool -Unique).Count
+$minToolsWithRoutes = [int][Math]::Floor($toolFiles.Count / 2)
+
+if ($toolRoutes.Count -eq 0) {
+    Write-Host "FAIL: no request paths extracted from any [McpServerToolType] class — extraction is broken." -ForegroundColor Red
+    exit 1
+}
+
+if ($toolsWithRoutes -lt $minToolsWithRoutes) {
+    Write-Host ("FAIL: only {0} of {1} registered tool class(es) yielded a request path (floor {2})." -f `
+            $toolsWithRoutes, $toolFiles.Count, $minToolsWithRoutes) -ForegroundColor Red
+    Write-Host "Nearly every MCP tool calls a backend, so this means extraction stopped seeing an idiom" -ForegroundColor Red
+    Write-Host "rather than that the tools stopped calling anything. Fix the resolver; do not lower the floor." -ForegroundColor Red
+    exit 1
+}
 
 # ---------------------------------------------------------------------------
 # MATCH

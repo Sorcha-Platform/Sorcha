@@ -31,6 +31,10 @@
          Sorcha.Cli.ContractTests project relies on (CLAUDE.md pattern 18) - legitimate in a test
          project, never in a production assembly. -->
     <ProjectReference Include="..\..\src\Services\Sorcha.Tenant.Service\Sorcha.Tenant.Service.csproj" />
+    <!-- Test-only, same exception: pins InstanceStateResolver's ordinal mirror against the REAL
+         InstanceState enum. The MCP server cannot reference this project, so without the test the
+         mirror is protected by nothing but a comment. -->
+    <ProjectReference Include="..\..\src\Services\Sorcha.Blueprint.Service\Sorcha.Blueprint.Service.csproj" />
   </ItemGroup>
 
   <ItemGroup>
