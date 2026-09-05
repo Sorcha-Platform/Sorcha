@@ -1,0 +1,61 @@
+# MCP tool request-path families that no Sorcha service currently maps.
+#
+# Each line is a route family as reduced by scripts/check-mcp-routes.ps1: query string dropped,
+# every route parameter collapsed to '*', lower-cased. Comments start with '#'.
+#
+# RATCHET: this list may ONLY shrink. A stale entry (a family that is now mapped, or no longer
+# called by any registered tool) FAILS the gate, so an entry must be deleted in the same PR that
+# fixes or removes the call. Never add a line here to make a build pass — repoint the tool at the
+# route that exists, or map the route in the service.
+#
+# Seeded 2026-09-05 from the first run of the gate on feature/mcp-agent-experience. These are the
+# known-broken calls the gate was written to prove: ten tools were reaching routes that were never
+# mapped, including the ENTIRE participant discovery loop, so an agent could submit an action but
+# never discover or inspect one. Tasks 4 and 5 of the MCP P0 restore-surface work repoint them and
+# empty this list down to a single remaining entry.
+#
+# ---------------------------------------------------------------------------------------------
+# Participant discovery loop — the whole reason this gate exists. Blueprint Service maps none of
+# these; the typed client in Sorcha.ServiceClients.Http/Blueprint/BlueprintServiceClient.cs has
+# been pointing at them since it was written.
+# ---------------------------------------------------------------------------------------------
+
+# sorcha_inbox_list — GET api/inbox. Blueprint Service maps /api/me/inbox and /api/internal/inbox
+# only, so an agent waking up on a participant's behalf can never see what work is waiting.
+api/inbox
+
+# sorcha_action_details — GET api/actions/{actionInstanceId}. /api/actions maps only /pending,
+# /pending/count, /open-starting, /reject, "/" and /{wallet}/{register}... — no bare id lookup.
+api/actions/*
+
+# sorcha_workflow_instances — GET api/workflows. The /api/workflows group exists but hangs only
+# two disclosure routes off it; nothing serves the group root, so listing instances 404s.
+api/workflows
+
+# sorcha_workflow_status — GET api/workflows/{workflowInstanceId}. Same group, no id route.
+api/workflows/*
+
+# ---------------------------------------------------------------------------------------------
+# Register / Designer / Admin surfaces
+# ---------------------------------------------------------------------------------------------
+
+# sorcha_register_query — GET api/registers/{registerId}/data, built inline in RegisterQueryTool.
+# Register Service maps /transactions, /sync-state, /local-relationship, /cache, /subscribe … and
+# no /data at all.
+api/registers/*/data
+
+# sorcha_blueprint_diff — GET api/blueprints/{id}/diff. No 'diff' route exists in any service.
+# (BlueprintDiffTool is expected to leave the served surface shortly; if it does, delete this line
+# with it — the gate only scans classes carrying [McpServerToolType].)
+api/blueprints/*/diff
+
+# sorcha_user_list — GET api/users. Tenant Service maps /api/platform/users and the org-scoped
+# /api/organizations/{orgId}/users; there is no flat /api/users collection.
+api/users
+
+# sorcha_user_manage — POST api/users/{userId}/actions. Same story: user mutation lives under the
+# org-scoped or platform-scoped groups, never under a bare /api/users.
+api/users/*/actions
+
+# sorcha_token_revoke — POST api/tokens/revoke. No 'api/tokens' family is mapped anywhere.
+api/tokens/revoke
