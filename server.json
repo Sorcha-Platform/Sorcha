@@ -17,7 +17,6 @@
     "sorcha_action_validate",
     "sorcha_audit_query",
     "sorcha_blueprint_create",
-    "sorcha_blueprint_diff",
     "sorcha_blueprint_export",
     "sorcha_blueprint_get",
     "sorcha_blueprint_list",

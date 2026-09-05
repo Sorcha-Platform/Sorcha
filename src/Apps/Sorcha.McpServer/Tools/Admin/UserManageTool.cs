@@ -13,8 +13,9 @@ using Sorcha.ServiceClients.Tenant;
 namespace Sorcha.McpServer.Tools.Admin;
 
 /// <summary>
-/// Admin tool for managing users. Writes via the typed <see cref="ITenantServiceClient"/>
-/// (spec 139 US4) so the caller's bearer is forwarded and the route is contract-pinned.
+/// Admin tool for managing users within an organisation. Writes via the typed
+/// <see cref="ITenantServiceClient"/> (spec 139 US4) so the caller's bearer is forwarded
+/// and the route is contract-pinned.
 /// </summary>
 [McpServerToolType]
 public sealed class UserManageTool
@@ -37,19 +38,21 @@ public sealed class UserManageTool
     }
 
     /// <summary>
-    /// Manages a user's status or roles.
+    /// Manages a user's status or role within an organisation.
     /// </summary>
+    /// <param name="organizationId">The organisation the user belongs to (required — GUID).</param>
     /// <param name="userId">The user ID to manage.</param>
-    /// <param name="action">Action to perform: Activate, Deactivate, Lock, Unlock, AddRole, RemoveRole.</param>
-    /// <param name="role">Role to add/remove: Admin, Designer, Participant (required for AddRole/RemoveRole).</param>
+    /// <param name="action">Action to perform: Suspend, Reactivate, Unlock, ChangeRole.</param>
+    /// <param name="role">New role: Administrator, Designer, Auditor, Consumer (required for ChangeRole).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Management result.</returns>
     [McpServerTool(Name = "sorcha_user_manage")]
-    [Description("Applies a single state mutation to one user — Activate, Deactivate, Lock, Unlock, AddRole, or RemoveRole — and returns the updated user record. Call this when changing a single user's access level or role membership; prefer this over sorcha_tenant_update when the action should affect one user rather than every user in the organisation, prefer it over sorcha_token_revoke when the goal is to gate future logins rather than invalidate sessions already in flight, and call after sorcha_user_list to confirm the userId and current state before mutating.")]
+    [Description("Applies a single state mutation to one user within an organisation — Suspend, Reactivate, Unlock, or ChangeRole — and returns success/failure. Call this when changing a single user's access level or role; prefer this over sorcha_tenant_update when the action should affect one user rather than every user in the organisation, prefer it over sorcha_token_revoke when the goal is to gate future logins rather than invalidate sessions already in flight, and call after sorcha_user_list to confirm the organizationId, userId, and current state before mutating. NOTE: there is no manual Lock action — accounts lock automatically after repeated failed logins, and ChangeRole REPLACES a user's role entirely (there is no additive AddRole/RemoveRole on this endpoint).")]
     public async Task<UserManageResult> ManageUserAsync(
+        [Description("The organisation the user belongs to (required — GUID)")] string organizationId,
         [Description("The user ID to manage")] string userId,
-        [Description("Action: Activate, Deactivate, Lock, Unlock, AddRole, RemoveRole")] string action,
-        [Description("Role for AddRole/RemoveRole: Admin, Designer, Participant")] string? role = null,
+        [Description("Action: Suspend, Reactivate, Unlock, ChangeRole")] string action,
+        [Description("New role for ChangeRole: Administrator, Designer, Auditor, Consumer")] string? role = null,
         CancellationToken cancellationToken = default)
     {
         // Authorization check
@@ -64,6 +67,16 @@ public sealed class UserManageTool
         }
 
         // Validate inputs
+        if (string.IsNullOrWhiteSpace(organizationId) || !Guid.TryParse(organizationId, out _))
+        {
+            return new UserManageResult
+            {
+                Status = "Error",
+                Message = "Organization ID is required and must be a valid GUID.",
+                CheckedAt = DateTimeOffset.UtcNow
+            };
+        }
+
         if (string.IsNullOrWhiteSpace(userId))
         {
             return new UserManageResult
@@ -84,39 +97,41 @@ public sealed class UserManageTool
             };
         }
 
-        // Validate action
-        var validActions = new[] { "Activate", "Deactivate", "Lock", "Unlock", "AddRole", "RemoveRole" };
+        // Validate action — this is the complete set the server exposes: no Activate/Deactivate/Lock,
+        // and no separate AddRole/RemoveRole (ChangeRole replaces the role outright).
+        var validActions = new[] { "Suspend", "Reactivate", "Unlock", "ChangeRole" };
         if (!validActions.Contains(action, StringComparer.OrdinalIgnoreCase))
         {
             return new UserManageResult
             {
                 Status = "Error",
-                Message = "Invalid action. Must be Activate, Deactivate, Lock, Unlock, AddRole, or RemoveRole.",
+                Message = "Invalid action. Must be Suspend, Reactivate, Unlock, or ChangeRole.",
                 CheckedAt = DateTimeOffset.UtcNow
             };
         }
 
-        // Validate role for role-related actions
-        var roleActions = new[] { "AddRole", "RemoveRole" };
-        if (roleActions.Contains(action, StringComparer.OrdinalIgnoreCase))
+        // Validate role for ChangeRole
+        if (string.Equals(action, "ChangeRole", StringComparison.OrdinalIgnoreCase))
         {
             if (string.IsNullOrWhiteSpace(role))
             {
                 return new UserManageResult
                 {
                     Status = "Error",
-                    Message = "Role is required for AddRole/RemoveRole actions.",
+                    Message = "Role is required for the ChangeRole action.",
                     CheckedAt = DateTimeOffset.UtcNow
                 };
             }
 
-            var validRoles = new[] { "Admin", "Designer", "Participant" };
+            // SystemAdmin is deliberately excluded: the server refuses to assign it via this
+            // endpoint (ValidationProblem), so rejecting it client-side saves a round trip.
+            var validRoles = new[] { "Administrator", "Designer", "Auditor", "Consumer" };
             if (!validRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
             {
                 return new UserManageResult
                 {
                     Status = "Error",
-                    Message = "Invalid role. Must be Admin, Designer, or Participant.",
+                    Message = "Invalid role. Must be Administrator, Designer, Auditor, or Consumer.",
                     CheckedAt = DateTimeOffset.UtcNow
                 };
             }
@@ -133,21 +148,23 @@ public sealed class UserManageTool
             };
         }
 
-        _logger.LogInformation("Managing user {UserId}. Action: {Action}, Role: {Role}",
-            userId, action, role ?? "N/A");
+        _logger.LogInformation(
+            "Managing user {UserId} in organization {OrganizationId}. Action: {Action}, Role: {Role}",
+            userId, organizationId, action, role ?? "N/A");
 
         var stopwatch = Stopwatch.StartNew();
 
         try
         {
-            var requestBody = JsonSerializer.Serialize(new
-            {
-                action,
-                role
-            });
+            string? requestBody = string.Equals(action, "ChangeRole", StringComparison.OrdinalIgnoreCase)
+                ? JsonSerializer.Serialize(new { role })
+                : null;
 
-            // Typed client forwards the caller's bearer and pins the route (POST api/users/{id}/actions).
-            var responseContent = await _tenantClient.ManageUserAsync(userId, requestBody, cancellationToken);
+            // Typed client forwards the caller's bearer and pins the route:
+            // POST api/organizations/{organizationId}/users/{userId}/suspend|reactivate|unlock, or
+            // PUT api/organizations/{organizationId}/users/{userId}/role.
+            var responseContent = await _tenantClient.ManageUserAsync(
+                organizationId, userId, action, requestBody, cancellationToken);
 
             stopwatch.Stop();
 
@@ -172,12 +189,10 @@ public sealed class UserManageTool
 
             var actionDescription = action.ToLowerInvariant() switch
             {
-                "activate" => "activated",
-                "deactivate" => "deactivated",
-                "lock" => "locked",
+                "suspend" => "suspended",
+                "reactivate" => "reactivated",
                 "unlock" => "unlocked",
-                "addrole" => $"granted {role} role",
-                "removerole" => $"removed {role} role",
+                "changerole" => $"assigned the {role} role",
                 _ => action
             };
 
@@ -273,7 +288,7 @@ public sealed record UserManageResult
     public string ActionPerformed { get; init; } = "";
 
     /// <summary>
-    /// The role that was affected (for role actions).
+    /// The role that was affected (for the ChangeRole action).
     /// </summary>
     public string? RoleAffected { get; init; }
 }

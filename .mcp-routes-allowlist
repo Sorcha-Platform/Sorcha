@@ -15,38 +15,27 @@
 # Seeded 2026-09-05 from the first run of the gate on feature/mcp-agent-experience. These were the
 # known-broken calls the gate was written to prove: ten tools were reaching routes that were never
 # mapped, including the ENTIRE participant discovery loop, so an agent could submit an action but
-# never discover or inspect one. Task 4 of the MCP P0 restore-surface work repointed
-# sorcha_inbox_list, sorcha_action_details, sorcha_workflow_instances, sorcha_workflow_status, and
-# sorcha_action_validate at routes that actually exist (api/actions/pending, api/instances/,
-# api/instances/{id}/actions/{id}, api/instances/{id}, and api/execution/validate respectively) and
-# removed their four entries below. sorcha_action_validate's target was NOT visible to this gate at
-# all — Blueprint Service also maps api/actions/{wallet}/{register}, a same-shaped four-segment
-# family, so the static family match hid the miss entirely; it was fixed on the task brief's
-# authority, not this gate's, and stayed broken through a fully green gate run until then.
-
-# ---------------------------------------------------------------------------------------------
-# Register / Designer / Admin surfaces
-# ---------------------------------------------------------------------------------------------
-
-# sorcha_register_query — GET api/registers/{registerId}/data against Register, built inline in
-# RegisterQueryTool. Register maps /transactions, /sync-state, /local-relationship, /cache … and
-# no /data at all.
-api/registers/*/data
-
-# sorcha_blueprint_diff — GET api/blueprints/{id}/diff against Blueprint. No 'diff' route exists
-# in Blueprint (or, as it happens, in any other service either).
-# (BlueprintDiffTool is expected to leave the served surface shortly; if it does, delete this line
-# with it — the gate only scans classes carrying [McpServerToolType].)
-api/blueprints/*/diff
-
-# sorcha_user_list — GET api/users. Tenant Service maps /api/platform/users and the org-scoped
-# /api/organizations/{orgId}/users; there is no flat /api/users collection.
-api/users
-
-# sorcha_user_manage — POST api/users/{userId}/actions. Same story: user mutation lives under the
-# org-scoped or platform-scoped groups, never under a bare /api/users.
-api/users/*/actions
-
-# sorcha_token_revoke — POST api/tokens/revoke against Tenant. Tenant maps no 'api/tokens' family
-# (nor does any other service).
-api/tokens/revoke
+# never discover or inspect one.
+#
+# Task 4 repointed sorcha_inbox_list, sorcha_action_details, sorcha_workflow_instances,
+# sorcha_workflow_status, and sorcha_action_validate at routes that actually exist
+# (api/actions/pending, api/instances/, api/instances/{id}/actions/{id}, api/instances/{id}, and
+# api/execution/validate respectively) and removed their four entries. sorcha_action_validate's
+# target was NOT visible to this gate at all — Blueprint Service also maps
+# api/actions/{wallet}/{register}, a same-shaped four-segment family, so the static family match
+# hid the miss entirely; it was fixed on the task brief's authority, not this gate's, and stayed
+# broken through a fully green gate run until then.
+#
+# Task 5 repointed the remaining four — sorcha_register_query (api/registers/{id}/transactions),
+# sorcha_user_list and sorcha_user_manage (api/organizations/{organizationId}/users and its
+# suspend/reactivate/unlock/role sub-routes — both tools gained a required organizationId
+# parameter the routes need in the path), and sorcha_token_revoke
+# (api/auth/token/revoke-user / revoke-organization) — and withdrew sorcha_blueprint_diff from
+# the served surface (no /diff endpoint exists anywhere to back it; see BlueprintDiffTool and
+# issue #1607). Withdrawing [McpServerToolType] from BlueprintDiffTool removes it from this gate's
+# scan entirely, which is why its former api/blueprints/*/diff entry is deleted here rather than
+# kept — a family no registered tool calls is stale, and the gate fails stale entries by design.
+#
+# This list is now EMPTY: every MCP tool's route is mapped by the service it addresses. A future
+# regression re-adds an entry only as a last resort, and only alongside a task that will remove it
+# again — this ratchet does not reopen just because a new tool ships broken.

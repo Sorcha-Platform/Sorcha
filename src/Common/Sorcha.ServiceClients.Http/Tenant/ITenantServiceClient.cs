@@ -48,35 +48,63 @@ public interface ITenantServiceClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Lists users with the supplied query string. Calls <c>GET /api/users</c>.
+    /// Lists users in an organisation. Calls <c>GET /api/organizations/{organizationId}/users</c>.
     /// </summary>
-    /// <param name="queryString">Already-built query string (without leading '?'), or null.</param>
+    /// <param name="organizationId">Organisation ID whose users to list.</param>
+    /// <param name="queryString">
+    /// Already-built query string (without leading '?'), or null. The endpoint binds only
+    /// <c>includeInactive</c> (bool), <c>emailVerified</c> (bool), <c>provisionedVia</c> (string),
+    /// and <c>includePending</c> (bool) — it has no role/status/search filter and no pagination.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The user-list JSON body, or null on non-success.</returns>
     Task<string?> ListUsersAsync(
+        string organizationId,
         string? queryString = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Performs a management action against a user. Calls <c>POST /api/users/{userId}/actions</c>.
+    /// Performs a lifecycle or role action against a user within an organisation. Dispatches to
+    /// <c>POST /api/organizations/{organizationId}/users/{userId}/suspend</c>,
+    /// <c>/reactivate</c>, <c>/unlock</c> (no request body — <paramref name="requestJson"/> is
+    /// ignored), or <c>PUT .../role</c> (<paramref name="requestJson"/> is the required
+    /// <c>{ "role": "..." }</c> body).
     /// </summary>
+    /// <param name="organizationId">Organisation the user belongs to.</param>
     /// <param name="userId">Target user ID.</param>
-    /// <param name="requestJson">The action request body as JSON.</param>
+    /// <param name="action">One of: Suspend, Reactivate, Unlock, ChangeRole (case-insensitive).</param>
+    /// <param name="requestJson">The <c>{ "role": "..." }</c> body — required for ChangeRole.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The action-result JSON body, or null on non-success.</returns>
+    /// <returns>
+    /// The action-result JSON body, or null on non-success. The lifecycle actions
+    /// (suspend/reactivate/unlock) return an empty 200 body on success — a non-null,
+    /// possibly-empty string, not JSON to parse.
+    /// </returns>
+    /// <exception cref="ArgumentException"><paramref name="action"/> is not one of the four supported actions.</exception>
     Task<string?> ManageUserAsync(
+        string organizationId,
         string userId,
-        string requestJson,
+        string action,
+        string? requestJson = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Revokes a token (or all of a user's tokens). Calls <c>POST /api/tokens/revoke</c>.
+    /// Revokes all tokens for a user, or for every user in an organisation. Exactly one of
+    /// <paramref name="userId"/> or <paramref name="organizationId"/> must be supplied — they
+    /// address two mutually-exclusive endpoints, <c>POST /api/auth/token/revoke-user</c> and
+    /// <c>POST /api/auth/token/revoke-organization</c>, not one combined route.
     /// </summary>
-    /// <param name="requestJson">The revoke request body as JSON.</param>
+    /// <param name="userId">User ID to revoke all tokens for, or null.</param>
+    /// <param name="organizationId">Organisation ID to revoke every member's tokens for, or null.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The revoke-result JSON body, or null on non-success.</returns>
+    /// <returns>
+    /// The revoke-result JSON body (<c>{ "success": bool, "message": string }</c> — there is no
+    /// token/user count in the response), or null on non-success.
+    /// </returns>
+    /// <exception cref="ArgumentException">Neither <paramref name="userId"/> nor <paramref name="organizationId"/> was supplied.</exception>
     Task<string?> RevokeTokenAsync(
-        string requestJson,
+        string? userId,
+        string? organizationId,
         CancellationToken cancellationToken = default);
 
     /// <summary>

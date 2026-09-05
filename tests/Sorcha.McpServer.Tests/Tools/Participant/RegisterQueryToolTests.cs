@@ -1,63 +1,64 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Net;
-using System.Text.Json;
-using FluentAssertions;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Moq;
-using Moq.Protected;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 using Sorcha.McpServer.Tools.Participant;
+using Sorcha.Register.Models;
+using Sorcha.Register.Models.Enums;
+using Sorcha.ServiceClients.Register;
 
 namespace Sorcha.McpServer.Tests.Tools.Participant;
 
+/// <summary>
+/// Spec 139 US4 / MCP P0 Task 5: RegisterQueryTool reads via the typed
+/// <see cref="IRegisterServiceClient"/> (route pinned, caller token forwarded), so these tests
+/// mock the client rather than HTTP.
+/// </summary>
 public sealed class RegisterQueryToolTests
 {
-    private readonly Mock<IMcpAuthorizationService> _authServiceMock;
-    private readonly Mock<IMcpErrorHandler> _errorHandlerMock;
-    private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock;
-    private readonly Mock<IHttpClientFactory> _httpClientFactoryMock;
-    private readonly Mock<ILogger<RegisterQueryTool>> _loggerMock;
-    private readonly IConfiguration _configuration;
-    private readonly RegisterQueryTool _tool;
+    private readonly Mock<IMcpAuthorizationService> _authServiceMock = new();
+    private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock = new();
+    private readonly Mock<IRegisterServiceClient> _registerClientMock = new();
 
-    public RegisterQueryToolTests()
+    private RegisterQueryTool CreateTool() => new(
+        _authServiceMock.Object,
+        _availabilityTrackerMock.Object,
+        _registerClientMock.Object,
+        Mock.Of<ILogger<RegisterQueryTool>>());
+
+    private void Allow()
     {
-        _authServiceMock = new Mock<IMcpAuthorizationService>();
-        _errorHandlerMock = new Mock<IMcpErrorHandler>();
-        _availabilityTrackerMock = new Mock<IServiceAvailabilityTracker>();
-        _httpClientFactoryMock = new Mock<IHttpClientFactory>();
-        _loggerMock = new Mock<ILogger<RegisterQueryTool>>();
-
-        _configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ServiceClients:RegisterService:Address"] = "http://localhost:5290"
-            })
-            .Build();
-
-        _tool = new RegisterQueryTool(
-            _authServiceMock.Object,
-            _errorHandlerMock.Object,
-            _availabilityTrackerMock.Object,
-            _httpClientFactoryMock.Object,
-            _configuration,
-            _loggerMock.Object);
+        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_register_query")).Returns(true);
+        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
     }
+
+    private static TransactionModel Tx(string txId, string sender, string? blueprintId = null, string? instanceId = null, uint? actionId = null) => new()
+    {
+        TxId = txId,
+        RegisterId = "register-123",
+        SenderWallet = sender,
+        Signature = "sig...",
+        DocketNumber = 5,
+        TimeStamp = DateTime.UtcNow,
+        PayloadCount = 1,
+        MetaData = new TransactionMetaData
+        {
+            TransactionType = TransactionType.Action,
+            BlueprintId = blueprintId,
+            InstanceId = instanceId,
+            ActionId = actionId
+        }
+    };
 
     [Fact]
     public async Task QueryRegisterAsync_WhenUnauthorized_ReturnsUnauthorizedStatus()
     {
-        // Arrange
         _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_register_query")).Returns(false);
 
-        // Act
-        var result = await _tool.QueryRegisterAsync("register-123");
+        var result = await CreateTool().QueryRegisterAsync("register-123");
 
-        // Assert
         result.Status.Should().Be("Unauthorized");
         result.Message.Should().Contain("sorcha:participant");
     }
@@ -65,13 +66,10 @@ public sealed class RegisterQueryToolTests
     [Fact]
     public async Task QueryRegisterAsync_WithEmptyRegisterId_ReturnsError()
     {
-        // Arrange
         _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_register_query")).Returns(true);
 
-        // Act
-        var result = await _tool.QueryRegisterAsync("");
+        var result = await CreateTool().QueryRegisterAsync("");
 
-        // Assert
         result.Status.Should().Be("Error");
         result.Message.Should().Contain("Register ID is required");
     }
@@ -79,14 +77,11 @@ public sealed class RegisterQueryToolTests
     [Fact]
     public async Task QueryRegisterAsync_WhenServiceUnavailable_ReturnsUnavailableStatus()
     {
-        // Arrange
         _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_register_query")).Returns(true);
         _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(false);
 
-        // Act
-        var result = await _tool.QueryRegisterAsync("register-123");
+        var result = await CreateTool().QueryRegisterAsync("register-123");
 
-        // Assert
         result.Status.Should().Be("Unavailable");
         result.Message.Should().Contain("Register service");
     }
@@ -94,195 +89,92 @@ public sealed class RegisterQueryToolTests
     [Fact]
     public async Task QueryRegisterAsync_WithSuccessfulResponse_ReturnsRecords()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_register_query")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
+        Allow();
 
-        var response = new
-        {
-            value = new[]
+        _registerClientMock
+            .Setup(c => c.GetTransactionsAsync("register-123", 1, 20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionPage
             {
-                new
-                {
-                    id = "record-1",
-                    docketId = "docket-1",
-                    transactionId = "tx-1",
-                    data = new Dictionary<string, object>
-                    {
-                        ["name"] = "John Doe",
-                        ["status"] = "Active"
-                    },
-                    createdAt = (DateTimeOffset?)DateTimeOffset.UtcNow.AddDays(-1),
-                    updatedAt = (DateTimeOffset?)DateTimeOffset.UtcNow.AddHours(-2)
-                },
-                new
-                {
-                    id = "record-2",
-                    docketId = "docket-2",
-                    transactionId = "tx-2",
-                    data = new Dictionary<string, object>
-                    {
-                        ["name"] = "Jane Smith",
-                        ["status"] = "Pending"
-                    },
-                    createdAt = (DateTimeOffset?)DateTimeOffset.UtcNow.AddDays(-2),
-                    updatedAt = (DateTimeOffset?)null
-                }
-            },
-            count = 2
-        };
+                Page = 1,
+                PageSize = 20,
+                Total = 2,
+                Transactions =
+                [
+                    Tx("tx-1", "addr-1", blueprintId: "bp-1", instanceId: "wf-1", actionId: 1),
+                    Tx("tx-2", "addr-2", blueprintId: "bp-1", instanceId: "wf-1", actionId: 2)
+                ]
+            });
 
-        SetupHttpClient(HttpStatusCode.OK, JsonSerializer.Serialize(response));
+        var result = await CreateTool().QueryRegisterAsync("register-123");
 
-        // Act
-        var result = await _tool.QueryRegisterAsync("register-123");
-
-        // Assert
         result.Status.Should().Be("Success");
         result.Records.Should().HaveCount(2);
-        result.Records[0].RecordId.Should().Be("record-1");
-        result.Records[0].DocketId.Should().Be("docket-1");
+        result.Records[0].TransactionId.Should().Be("tx-1");
+        result.Records[0].SenderWallet.Should().Be("addr-1");
+        result.Records[0].DocketNumber.Should().Be((ulong)5);
+        result.Records[0].BlueprintId.Should().Be("bp-1");
+        result.Records[0].WorkflowInstanceId.Should().Be("wf-1");
+        result.Records[0].ActionId.Should().Be(1);
         result.TotalCount.Should().Be(2);
     }
 
     [Fact]
     public async Task QueryRegisterAsync_WithEmptyResults_ReturnsSuccessWithEmptyList()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_register_query")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
+        Allow();
 
-        var response = new { value = Array.Empty<object>(), count = 0 };
-        SetupHttpClient(HttpStatusCode.OK, JsonSerializer.Serialize(response));
+        _registerClientMock
+            .Setup(c => c.GetTransactionsAsync("register-123", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionPage { Page = 1, PageSize = 20, Total = 0, Transactions = [] });
 
-        // Act
-        var result = await _tool.QueryRegisterAsync("register-123");
+        var result = await CreateTool().QueryRegisterAsync("register-123");
 
-        // Assert
         result.Status.Should().Be("Success");
         result.Records.Should().BeEmpty();
         result.Message.Should().Contain("0 record");
     }
 
     [Fact]
-    public async Task QueryRegisterAsync_WithDocketFilter_PassesCorrectParameter()
-    {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_register_query")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
-
-        var response = new { value = Array.Empty<object>(), count = 0 };
-        var handlerMock = SetupHttpClientWithCapture(HttpStatusCode.OK, JsonSerializer.Serialize(response));
-
-        // Act
-        await _tool.QueryRegisterAsync("register-123", "docket-456");
-
-        // Assert
-        handlerMock.Protected().Verify(
-            "SendAsync",
-            Times.Once(),
-            ItExpr.Is<HttpRequestMessage>(req =>
-                req.RequestUri!.ToString().Contains("docketId=docket-456")),
-            ItExpr.IsAny<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task QueryRegisterAsync_WithODataFilter_PassesCorrectParameter()
-    {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_register_query")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
-
-        var response = new { value = Array.Empty<object>(), count = 0 };
-        var handlerMock = SetupHttpClientWithCapture(HttpStatusCode.OK, JsonSerializer.Serialize(response));
-
-        // Act
-        await _tool.QueryRegisterAsync("register-123", query: "status eq 'Active'");
-
-        // Assert
-        handlerMock.Protected().Verify(
-            "SendAsync",
-            Times.Once(),
-            ItExpr.Is<HttpRequestMessage>(req =>
-                req.RequestUri!.ToString().Contains("$filter=")),
-            ItExpr.IsAny<CancellationToken>());
-    }
-
-    [Fact]
     public async Task QueryRegisterAsync_WithPagination_PassesCorrectParameters()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_register_query")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
+        Allow();
 
-        var response = new { value = Array.Empty<object>(), count = 0 };
-        var handlerMock = SetupHttpClientWithCapture(HttpStatusCode.OK, JsonSerializer.Serialize(response));
+        _registerClientMock
+            .Setup(c => c.GetTransactionsAsync("register-123", 3, 25, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionPage { Page = 3, PageSize = 25, Total = 0, Transactions = [] });
 
-        // Act
-        await _tool.QueryRegisterAsync("register-123", page: 3, pageSize: 25);
+        await CreateTool().QueryRegisterAsync("register-123", page: 3, pageSize: 25);
 
-        // Assert
-        handlerMock.Protected().Verify(
-            "SendAsync",
-            Times.Once(),
-            ItExpr.Is<HttpRequestMessage>(req =>
-                req.RequestUri!.ToString().Contains("$skip=50") &&
-                req.RequestUri.ToString().Contains("$top=25")),
-            ItExpr.IsAny<CancellationToken>());
+        _registerClientMock.Verify(
+            c => c.GetTransactionsAsync("register-123", 3, 25, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task QueryRegisterAsync_WithPageSizeOverMax_CapsAt100()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_register_query")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
+        Allow();
 
-        var response = new { value = Array.Empty<object>(), count = 0 };
-        var handlerMock = SetupHttpClientWithCapture(HttpStatusCode.OK, JsonSerializer.Serialize(response));
+        _registerClientMock
+            .Setup(c => c.GetTransactionsAsync("register-123", 1, 100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionPage { Page = 1, PageSize = 100, Total = 0, Transactions = [] });
 
-        // Act
-        await _tool.QueryRegisterAsync("register-123", pageSize: 200);
+        await CreateTool().QueryRegisterAsync("register-123", pageSize: 200);
 
-        // Assert
-        handlerMock.Protected().Verify(
-            "SendAsync",
-            Times.Once(),
-            ItExpr.Is<HttpRequestMessage>(req =>
-                req.RequestUri!.ToString().Contains("$top=100")),
-            ItExpr.IsAny<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task QueryRegisterAsync_WithHttpError_ReturnsErrorStatus()
-    {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_register_query")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
-
-        SetupHttpClient(HttpStatusCode.NotFound, "{\"error\":\"Register not found\"}");
-
-        // Act
-        var result = await _tool.QueryRegisterAsync("register-invalid");
-
-        // Assert
-        result.Status.Should().Be("Error");
-        result.Message.Should().Contain("not found");
+        _registerClientMock.Verify(
+            c => c.GetTransactionsAsync("register-123", 1, 100, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task QueryRegisterAsync_WithTimeout_ReturnsTimeoutStatus()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_register_query")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
+        Allow();
 
-        SetupHttpClientWithException(new TaskCanceledException());
+        _registerClientMock
+            .Setup(c => c.GetTransactionsAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TaskCanceledException());
 
-        // Act
-        var result = await _tool.QueryRegisterAsync("register-123");
+        var result = await CreateTool().QueryRegisterAsync("register-123");
 
-        // Assert
         result.Status.Should().Be("Timeout");
         _availabilityTrackerMock.Verify(x => x.RecordFailure("Register"), Times.Once);
     }
@@ -290,16 +182,14 @@ public sealed class RegisterQueryToolTests
     [Fact]
     public async Task QueryRegisterAsync_WithHttpException_ReturnsErrorStatus()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_register_query")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
+        Allow();
 
-        SetupHttpClientWithException(new HttpRequestException("Connection refused"));
+        _registerClientMock
+            .Setup(c => c.GetTransactionsAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Connection refused"));
 
-        // Act
-        var result = await _tool.QueryRegisterAsync("register-123");
+        var result = await CreateTool().QueryRegisterAsync("register-123");
 
-        // Assert
         result.Status.Should().Be("Error");
         result.Message.Should().Contain("Connection refused");
     }
@@ -307,68 +197,14 @@ public sealed class RegisterQueryToolTests
     [Fact]
     public async Task QueryRegisterAsync_RecordsSuccessOnSuccessfulResponse()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_register_query")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
+        Allow();
 
-        var response = new { value = Array.Empty<object>(), count = 0 };
-        SetupHttpClient(HttpStatusCode.OK, JsonSerializer.Serialize(response));
+        _registerClientMock
+            .Setup(c => c.GetTransactionsAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionPage { Page = 1, PageSize = 20, Total = 0, Transactions = [] });
 
-        // Act
-        await _tool.QueryRegisterAsync("register-123");
+        await CreateTool().QueryRegisterAsync("register-123");
 
-        // Assert
         _availabilityTrackerMock.Verify(x => x.RecordSuccess("Register"), Times.Once);
-    }
-
-    private void SetupHttpClient(HttpStatusCode statusCode, string content)
-    {
-        var handlerMock = new Mock<HttpMessageHandler>();
-        handlerMock.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage
-            {
-                StatusCode = statusCode,
-                Content = new StringContent(content)
-            });
-
-        var client = new HttpClient(handlerMock.Object);
-        _httpClientFactoryMock.Setup(x => x.CreateClient(It.IsAny<string>())).Returns(client);
-    }
-
-    private Mock<HttpMessageHandler> SetupHttpClientWithCapture(HttpStatusCode statusCode, string content)
-    {
-        var handlerMock = new Mock<HttpMessageHandler>();
-        handlerMock.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage
-            {
-                StatusCode = statusCode,
-                Content = new StringContent(content)
-            });
-
-        var client = new HttpClient(handlerMock.Object);
-        _httpClientFactoryMock.Setup(x => x.CreateClient(It.IsAny<string>())).Returns(client);
-        return handlerMock;
-    }
-
-    private void SetupHttpClientWithException(Exception exception)
-    {
-        var handlerMock = new Mock<HttpMessageHandler>();
-        handlerMock.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ThrowsAsync(exception);
-
-        var client = new HttpClient(handlerMock.Object);
-        _httpClientFactoryMock.Setup(x => x.CreateClient(It.IsAny<string>())).Returns(client);
     }
 }

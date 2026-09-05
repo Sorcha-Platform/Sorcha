@@ -13,8 +13,9 @@ using Sorcha.ServiceClients.Tenant;
 namespace Sorcha.McpServer.Tools.Admin;
 
 /// <summary>
-/// Admin tool for listing users. Reads via the typed <see cref="ITenantServiceClient"/>
-/// (spec 139 US4) so the caller's bearer is forwarded and the route is contract-pinned.
+/// Admin tool for listing users within an organisation. Reads via the typed
+/// <see cref="ITenantServiceClient"/> (spec 139 US4) so the caller's bearer is forwarded
+/// and the route is contract-pinned.
 /// </summary>
 [McpServerToolType]
 public sealed class UserListTool
@@ -37,25 +38,23 @@ public sealed class UserListTool
     }
 
     /// <summary>
-    /// Lists users, optionally filtered by tenant.
+    /// Lists the users belonging to an organisation.
     /// </summary>
-    /// <param name="tenantId">Filter by tenant/organization ID (optional).</param>
-    /// <param name="role">Filter by role: Admin, Designer, Participant (optional).</param>
-    /// <param name="status">Filter by status: Active, Inactive, Locked (optional).</param>
-    /// <param name="search">Search text in user name or email (optional).</param>
-    /// <param name="page">Page number (1-based, default: 1).</param>
-    /// <param name="pageSize">Items per page (default: 20, max: 100).</param>
+    /// <param name="organizationId">Organisation ID whose users to list (required — GUID).</param>
+    /// <param name="includeInactive">Include suspended/deleted users as well as active ones (default: false).</param>
+    /// <param name="emailVerified">Filter to users whose email is (or is not) verified (optional).</param>
+    /// <param name="provisionedVia">Filter by provisioning method: Local, Oidc, Invitation, SocialLogin, AdminCreated, Passkey (optional).</param>
+    /// <param name="includePending">Also return pending (not yet accepted) invitations (default: false).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>List of users.</returns>
+    /// <returns>List of users in the organisation.</returns>
     [McpServerTool(Name = "sorcha_user_list")]
-    [Description("Returns a paged list of users with id, email, display name, status, and roles, scoped to a specific tenant or platform-wide, with optional filters on role, status, and free-text name/email search. Call this when you need to discover a user ID, audit role assignments, or confirm a user exists before mutating them; prefer this over sorcha_user_manage when the goal is read-only enquiry rather than mutation, and call before sorcha_user_manage or sorcha_token_revoke so the subsequent mutation targets the correct user ID.")]
+    [Description("Returns every user in one organisation — id, email, display name, roles, status, and provisioning metadata — with optional filters on inactive-inclusion, email-verified state, and provisioning method. Call this when you need to discover a user ID, audit role assignments, or confirm a user exists before mutating them; prefer this over sorcha_user_manage when the goal is read-only enquiry rather than mutation, and call before sorcha_user_manage or sorcha_token_revoke so the subsequent mutation targets the correct user ID. NOTE: the underlying endpoint (GET /api/organizations/{organizationId}/users) has no role/status/free-text filter and no pagination — every matching user is returned in one response, so those parameters are not offered.")]
     public async Task<UserListResult> ListUsersAsync(
-        [Description("Filter by tenant/organization ID")] string? tenantId = null,
-        [Description("Filter by role: Admin, Designer, Participant")] string? role = null,
-        [Description("Filter by status: Active, Inactive, Locked")] string? status = null,
-        [Description("Search text in user name or email")] string? search = null,
-        [Description("Page number (1-based, default: 1)")] int page = 1,
-        [Description("Items per page (default: 20, max: 100)")] int pageSize = 20,
+        [Description("Organisation ID whose users to list (required — GUID)")] string organizationId,
+        [Description("Include suspended/deleted users as well as active ones (default: false)")] bool includeInactive = false,
+        [Description("Filter to users whose email is (or is not) verified (optional)")] bool? emailVerified = null,
+        [Description("Filter by provisioning method: Local, Oidc, Invitation, SocialLogin, AdminCreated, Passkey (optional)")] string? provisionedVia = null,
+        [Description("Also return pending (not yet accepted) invitations (default: false)")] bool includePending = false,
         CancellationToken cancellationToken = default)
     {
         // Authorization check
@@ -69,39 +68,25 @@ public sealed class UserListTool
             };
         }
 
-        // Validate pagination
-        if (page < 1) page = 1;
-        if (pageSize < 1) pageSize = 20;
-        if (pageSize > 100) pageSize = 100;
-
-        // Validate role if provided
-        if (!string.IsNullOrWhiteSpace(role))
+        // Validate input
+        if (string.IsNullOrWhiteSpace(organizationId))
         {
-            var validRoles = new[] { "Admin", "Designer", "Participant" };
-            if (!validRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
+            return new UserListResult
             {
-                return new UserListResult
-                {
-                    Status = "Error",
-                    Message = "Invalid role. Must be Admin, Designer, or Participant.",
-                    CheckedAt = DateTimeOffset.UtcNow
-                };
-            }
+                Status = "Error",
+                Message = "Organization ID is required.",
+                CheckedAt = DateTimeOffset.UtcNow
+            };
         }
 
-        // Validate status if provided
-        if (!string.IsNullOrWhiteSpace(status))
+        if (!Guid.TryParse(organizationId, out _))
         {
-            var validStatuses = new[] { "Active", "Inactive", "Locked" };
-            if (!validStatuses.Contains(status, StringComparer.OrdinalIgnoreCase))
+            return new UserListResult
             {
-                return new UserListResult
-                {
-                    Status = "Error",
-                    Message = "Invalid status. Must be Active, Inactive, or Locked.",
-                    CheckedAt = DateTimeOffset.UtcNow
-                };
-            }
+                Status = "Error",
+                Message = "Organization ID must be a valid GUID.",
+                CheckedAt = DateTimeOffset.UtcNow
+            };
         }
 
         // Check service availability
@@ -116,35 +101,29 @@ public sealed class UserListTool
         }
 
         _logger.LogInformation(
-            "Listing users. Tenant: {Tenant}, Role: {Role}, Status: {Status}, Page: {Page}",
-            tenantId ?? "all", role ?? "all", status ?? "all", page);
+            "Listing users for organization {OrganizationId}. IncludeInactive: {IncludeInactive}",
+            organizationId, includeInactive);
 
         var stopwatch = Stopwatch.StartNew();
 
         try
         {
-            // Build query string
-            var queryParams = new List<string>
-            {
-                $"page={page}",
-                $"pageSize={pageSize}"
-            };
+            // Build query string — only fields GetOrganizationUsers actually binds.
+            var queryParams = new List<string> { $"includeInactive={includeInactive}" };
 
-            if (!string.IsNullOrWhiteSpace(tenantId))
-                queryParams.Add($"organizationId={Uri.EscapeDataString(tenantId)}");
+            if (emailVerified.HasValue)
+                queryParams.Add($"emailVerified={emailVerified.Value}");
 
-            if (!string.IsNullOrWhiteSpace(role))
-                queryParams.Add($"role={Uri.EscapeDataString(role)}");
+            if (!string.IsNullOrWhiteSpace(provisionedVia))
+                queryParams.Add($"provisionedVia={Uri.EscapeDataString(provisionedVia)}");
 
-            if (!string.IsNullOrWhiteSpace(status))
-                queryParams.Add($"status={Uri.EscapeDataString(status)}");
+            if (includePending)
+                queryParams.Add("includePending=true");
 
-            if (!string.IsNullOrWhiteSpace(search))
-                queryParams.Add($"search={Uri.EscapeDataString(search)}");
-
-            // Typed client forwards the caller's bearer and pins the route (GET api/users).
+            // Typed client forwards the caller's bearer and pins the route
+            // (GET api/organizations/{organizationId}/users).
             var responseContent = await _tenantClient.ListUsersAsync(
-                string.Join("&", queryParams), cancellationToken);
+                organizationId, string.Join("&", queryParams), cancellationToken);
 
             stopwatch.Stop();
 
@@ -163,7 +142,7 @@ public sealed class UserListTool
 
             _availabilityTracker.RecordSuccess("Tenant");
 
-            var result = JsonSerializer.Deserialize<UserListResponse>(responseContent, new JsonSerializerOptions
+            var result = JsonSerializer.Deserialize<OrganizationUserListResponse>(responseContent, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
             });
@@ -181,30 +160,40 @@ public sealed class UserListTool
 
             _logger.LogInformation(
                 "Retrieved {Count} users in {ElapsedMs}ms",
-                result.Items?.Count ?? 0, stopwatch.ElapsedMilliseconds);
+                result.Users?.Count ?? 0, stopwatch.ElapsedMilliseconds);
 
             return new UserListResult
             {
                 Status = "Success",
-                Message = $"Retrieved {result.Items?.Count ?? 0} user(s).",
+                Message = $"Retrieved {result.Users?.Count ?? 0} user(s).",
                 CheckedAt = DateTimeOffset.UtcNow,
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
-                Users = result.Items?.Select(u => new UserInfo
+                Users = result.Users?.Select(u => new UserInfo
                 {
-                    UserId = u.UserId ?? "",
+                    UserId = u.Id.ToString(),
+                    OrganizationId = u.OrganizationId.ToString(),
                     Email = u.Email ?? "",
                     DisplayName = u.DisplayName ?? "",
-                    TenantId = u.OrganizationId ?? "",
-                    TenantName = u.OrganizationName,
                     Roles = u.Roles ?? [],
                     Status = u.Status ?? "Active",
+                    CreatedAt = u.CreatedAt,
                     LastLoginAt = u.LastLoginAt,
-                    CreatedAt = u.CreatedAt
+                    EmailVerified = u.EmailVerified,
+                    EmailVerifiedAt = u.EmailVerifiedAt,
+                    ProvisionedVia = u.ProvisionedVia ?? "",
+                    ProfileCompleted = u.ProfileCompleted,
+                    InvitationStatus = u.InvitationStatus
                 }).ToList() ?? [],
                 TotalCount = result.TotalCount,
-                Page = result.Page,
-                PageSize = result.PageSize,
-                TotalPages = result.TotalPages
+                PendingInvitations = result.PendingInvitations?.Select(p => new PendingInvitationInfo
+                {
+                    Email = p.Email ?? "",
+                    AssignedRole = p.AssignedRole ?? "",
+                    InvitationStatus = p.InvitationStatus ?? "",
+                    ExpiresAt = p.ExpiresAt,
+                    CreatedAt = p.CreatedAt
+                }).ToList() ?? [],
+                PendingInvitationCount = result.PendingInvitationCount
             };
         }
         catch (TaskCanceledException)
@@ -250,27 +239,43 @@ public sealed class UserListTool
         }
     }
 
-    // Internal response models
-    private sealed class UserListResponse
+    // Internal response models — mirror Sorcha.Tenant.Service.Models.Dtos.UserListResponse /
+    // UserResponse / PendingInvitationResponse, the actual wire shape of
+    // GET /api/organizations/{organizationId}/users. That endpoint has no Page/PageSize/TotalPages
+    // (no pagination at all) and its collection property is "Users", not "Items" — both differed
+    // from what this tool previously assumed.
+    private sealed class OrganizationUserListResponse
     {
-        public List<UserDto>? Items { get; set; }
+        public List<UserResponseDto>? Users { get; set; }
         public int TotalCount { get; set; }
-        public int Page { get; set; }
-        public int PageSize { get; set; }
-        public int TotalPages { get; set; }
+        public List<PendingInvitationResponseDto>? PendingInvitations { get; set; }
+        public int PendingInvitationCount { get; set; }
     }
 
-    private sealed class UserDto
+    private sealed class UserResponseDto
     {
-        public string? UserId { get; set; }
+        public Guid Id { get; set; }
+        public Guid OrganizationId { get; set; }
         public string? Email { get; set; }
         public string? DisplayName { get; set; }
-        public string? OrganizationId { get; set; }
-        public string? OrganizationName { get; set; }
         public List<string>? Roles { get; set; }
         public string? Status { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset? LastLoginAt { get; set; }
-        public DateTimeOffset? CreatedAt { get; set; }
+        public bool EmailVerified { get; set; }
+        public DateTimeOffset? EmailVerifiedAt { get; set; }
+        public string? ProvisionedVia { get; set; }
+        public bool ProfileCompleted { get; set; }
+        public string? InvitationStatus { get; set; }
+    }
+
+    private sealed class PendingInvitationResponseDto
+    {
+        public string? Email { get; set; }
+        public string? AssignedRole { get; set; }
+        public string? InvitationStatus { get; set; }
+        public DateTimeOffset ExpiresAt { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
     }
 }
 
@@ -300,29 +305,24 @@ public sealed record UserListResult
     public int ResponseTimeMs { get; init; }
 
     /// <summary>
-    /// List of users.
+    /// List of users in the organisation.
     /// </summary>
     public IReadOnlyList<UserInfo> Users { get; init; } = [];
 
     /// <summary>
-    /// Total number of users matching the filter.
+    /// Total number of users returned (this endpoint does not paginate).
     /// </summary>
     public int TotalCount { get; init; }
 
     /// <summary>
-    /// Current page number.
+    /// Pending (not yet accepted) invitations, populated only when includePending was requested.
     /// </summary>
-    public int Page { get; init; }
+    public IReadOnlyList<PendingInvitationInfo> PendingInvitations { get; init; } = [];
 
     /// <summary>
-    /// Items per page.
+    /// Count of pending invitations for this organisation.
     /// </summary>
-    public int PageSize { get; init; }
-
-    /// <summary>
-    /// Total number of pages.
-    /// </summary>
-    public int TotalPages { get; init; }
+    public int PendingInvitationCount { get; init; }
 }
 
 /// <summary>
@@ -336,6 +336,11 @@ public sealed record UserInfo
     public required string UserId { get; init; }
 
     /// <summary>
+    /// Organisation ID this user belongs to.
+    /// </summary>
+    public required string OrganizationId { get; init; }
+
+    /// <summary>
     /// User email address.
     /// </summary>
     public required string Email { get; init; }
@@ -346,24 +351,19 @@ public sealed record UserInfo
     public required string DisplayName { get; init; }
 
     /// <summary>
-    /// Tenant/organization ID.
-    /// </summary>
-    public required string TenantId { get; init; }
-
-    /// <summary>
-    /// Tenant/organization name.
-    /// </summary>
-    public string? TenantName { get; init; }
-
-    /// <summary>
-    /// User roles.
+    /// User roles: SystemAdmin, Administrator, Designer, Auditor, Consumer.
     /// </summary>
     public IReadOnlyList<string> Roles { get; init; } = [];
 
     /// <summary>
-    /// User status: Active, Inactive, Locked.
+    /// User account status: Active, Suspended, Deleted.
     /// </summary>
     public required string Status { get; init; }
+
+    /// <summary>
+    /// When the user was created.
+    /// </summary>
+    public DateTimeOffset CreatedAt { get; init; }
 
     /// <summary>
     /// Last login timestamp.
@@ -371,7 +371,58 @@ public sealed record UserInfo
     public DateTimeOffset? LastLoginAt { get; init; }
 
     /// <summary>
-    /// When the user was created.
+    /// Whether the user's email address has been verified.
     /// </summary>
-    public DateTimeOffset? CreatedAt { get; init; }
+    public bool EmailVerified { get; init; }
+
+    /// <summary>
+    /// When the email was verified, if it has been.
+    /// </summary>
+    public DateTimeOffset? EmailVerifiedAt { get; init; }
+
+    /// <summary>
+    /// How the user was provisioned (Local, Oidc, Invitation, SocialLogin, AdminCreated, Passkey).
+    /// </summary>
+    public string ProvisionedVia { get; init; } = "";
+
+    /// <summary>
+    /// Whether the user has completed their profile.
+    /// </summary>
+    public bool ProfileCompleted { get; init; }
+
+    /// <summary>
+    /// Status of the organisation invitation for this user, if any (Pending, Accepted, Expired, Revoked).
+    /// </summary>
+    public string? InvitationStatus { get; init; }
+}
+
+/// <summary>
+/// A pending (not yet accepted) organisation invitation.
+/// </summary>
+public sealed record PendingInvitationInfo
+{
+    /// <summary>
+    /// Email address the invitation was sent to.
+    /// </summary>
+    public required string Email { get; init; }
+
+    /// <summary>
+    /// Role that will be assigned upon acceptance.
+    /// </summary>
+    public required string AssignedRole { get; init; }
+
+    /// <summary>
+    /// Current invitation status (Pending or Expired).
+    /// </summary>
+    public required string InvitationStatus { get; init; }
+
+    /// <summary>
+    /// Invitation expiry timestamp.
+    /// </summary>
+    public DateTimeOffset ExpiresAt { get; init; }
+
+    /// <summary>
+    /// When the invitation was created.
+    /// </summary>
+    public DateTimeOffset CreatedAt { get; init; }
 }

@@ -11,11 +11,13 @@ using Sorcha.ServiceClients.Tenant;
 namespace Sorcha.McpServer.Tests.Tools.Admin;
 
 /// <summary>
-/// Spec 139 US4: UserListTool reads via the typed <see cref="ITenantServiceClient"/>
+/// Spec 139 US4 / MCP P0 Task 5: UserListTool reads via the typed <see cref="ITenantServiceClient"/>
 /// (route pinned, caller token forwarded), so these tests mock the client rather than HTTP.
 /// </summary>
 public class UserListToolTests
 {
+    private const string OrgId = "11111111-1111-1111-1111-111111111111";
+
     private readonly Mock<IMcpAuthorizationService> _authServiceMock = new();
     private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock = new();
     private readonly Mock<ITenantServiceClient> _tenantClientMock = new();
@@ -37,7 +39,7 @@ public class UserListToolTests
     {
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_list")).Returns(false);
 
-        var result = await CreateTool().ListUsersAsync();
+        var result = await CreateTool().ListUsersAsync(OrgId);
 
         result.Status.Should().Be("Unauthorized");
     }
@@ -48,29 +50,30 @@ public class UserListToolTests
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_list")).Returns(true);
         _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(false);
 
-        var result = await CreateTool().ListUsersAsync();
+        var result = await CreateTool().ListUsersAsync(OrgId);
 
         result.Status.Should().Be("Unavailable");
     }
 
     [Fact]
-    public async Task ListUsersAsync_InvalidRole_ReturnsError()
+    public async Task ListUsersAsync_MissingOrganizationId_ReturnsError()
     {
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_list")).Returns(true);
 
-        var result = await CreateTool().ListUsersAsync(role: "Bogus");
+        var result = await CreateTool().ListUsersAsync("");
 
         result.Status.Should().Be("Error");
     }
 
     [Fact]
-    public async Task ListUsersAsync_InvalidStatus_ReturnsError()
+    public async Task ListUsersAsync_NonGuidOrganizationId_ReturnsError()
     {
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_list")).Returns(true);
 
-        var result = await CreateTool().ListUsersAsync(status: "Bogus");
+        var result = await CreateTool().ListUsersAsync("not-a-guid");
 
         result.Status.Should().Be("Error");
+        result.Message.Should().Contain("GUID");
     }
 
     [Fact]
@@ -80,23 +83,52 @@ public class UserListToolTests
 
         var response = JsonSerializer.Serialize(new
         {
-            Items = new[]
+            Users = new[]
             {
-                new { UserId = "user-1", Email = "user1@test.com", DisplayName = "User One", OrganizationId = "tenant-1", OrganizationName = "Tenant One", Roles = new[] { "Admin" }, Status = "Active", LastLoginAt = DateTimeOffset.UtcNow.AddHours(-1), CreatedAt = DateTimeOffset.UtcNow.AddDays(-30) },
-                new { UserId = "user-2", Email = "user2@test.com", DisplayName = "User Two", OrganizationId = "tenant-1", OrganizationName = "Tenant One", Roles = new[] { "Designer" }, Status = "Active", LastLoginAt = DateTimeOffset.UtcNow.AddDays(-1), CreatedAt = DateTimeOffset.UtcNow.AddDays(-60) }
+                new
+                {
+                    Id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    OrganizationId = OrgId,
+                    Email = "user1@test.com",
+                    DisplayName = "User One",
+                    Roles = new[] { "Administrator" },
+                    Status = "Active",
+                    CreatedAt = DateTimeOffset.UtcNow.AddDays(-30),
+                    LastLoginAt = DateTimeOffset.UtcNow.AddHours(-1),
+                    EmailVerified = true,
+                    ProvisionedVia = "Local",
+                    ProfileCompleted = true
+                },
+                new
+                {
+                    Id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                    OrganizationId = OrgId,
+                    Email = "user2@test.com",
+                    DisplayName = "User Two",
+                    Roles = new[] { "Designer" },
+                    Status = "Active",
+                    CreatedAt = DateTimeOffset.UtcNow.AddDays(-60),
+                    LastLoginAt = DateTimeOffset.UtcNow.AddDays(-1),
+                    EmailVerified = false,
+                    ProvisionedVia = "Invitation",
+                    ProfileCompleted = false
+                }
             },
-            TotalCount = 2, Page = 1, PageSize = 20, TotalPages = 1
+            TotalCount = 2,
+            PendingInvitations = Array.Empty<object>(),
+            PendingInvitationCount = 0
         });
         _tenantClientMock
-            .Setup(c => c.ListUsersAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ListUsersAsync(OrgId, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(response);
 
-        var result = await CreateTool().ListUsersAsync();
+        var result = await CreateTool().ListUsersAsync(OrgId);
 
         result.Status.Should().Be("Success");
         result.Users.Should().HaveCount(2);
-        result.Users[0].UserId.Should().Be("user-1");
+        result.Users[0].UserId.Should().Be("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
         result.Users[0].Email.Should().Be("user1@test.com");
+        result.Users[0].Roles.Should().Contain("Administrator");
         result.TotalCount.Should().Be(2);
         _availabilityTrackerMock.Verify(a => a.RecordSuccess("Tenant"), Times.Once);
     }
@@ -106,28 +138,20 @@ public class UserListToolTests
     {
         Allow();
         _tenantClientMock
-            .Setup(c => c.ListUsersAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(JsonSerializer.Serialize(new { Items = Array.Empty<object>(), TotalCount = 0, Page = 1, PageSize = 20, TotalPages = 0 }));
+            .Setup(c => c.ListUsersAsync(OrgId, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonSerializer.Serialize(new { Users = Array.Empty<object>(), TotalCount = 0, PendingInvitations = Array.Empty<object>(), PendingInvitationCount = 0 }));
 
-        await CreateTool().ListUsersAsync(tenantId: "t-1", role: "Admin", status: "Active", search: "jane");
-
-        _tenantClientMock.Verify(
-            c => c.ListUsersAsync(It.Is<string>(q => q.Contains("organizationId=t-1") && q.Contains("role=Admin") && q.Contains("status=Active") && q.Contains("search=jane")), It.IsAny<CancellationToken>()),
-            Times.Once);
-    }
-
-    [Fact]
-    public async Task ListUsersAsync_PageSizeExceeds100_ClampedTo100()
-    {
-        Allow();
-        _tenantClientMock
-            .Setup(c => c.ListUsersAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(JsonSerializer.Serialize(new { Items = Array.Empty<object>(), TotalCount = 0, Page = 1, PageSize = 100, TotalPages = 0 }));
-
-        await CreateTool().ListUsersAsync(pageSize: 500);
+        await CreateTool().ListUsersAsync(OrgId, includeInactive: true, emailVerified: true, provisionedVia: "Local", includePending: true);
 
         _tenantClientMock.Verify(
-            c => c.ListUsersAsync(It.Is<string>(q => q.Contains("pageSize=100")), It.IsAny<CancellationToken>()),
+            c => c.ListUsersAsync(
+                OrgId,
+                It.Is<string>(q =>
+                    q.Contains("includeInactive=True") &&
+                    q.Contains("emailVerified=True") &&
+                    q.Contains("provisionedVia=Local") &&
+                    q.Contains("includePending=true")),
+                It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -136,10 +160,10 @@ public class UserListToolTests
     {
         Allow();
         _tenantClientMock
-            .Setup(c => c.ListUsersAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ListUsersAsync(OrgId, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string?)null);
 
-        var result = await CreateTool().ListUsersAsync();
+        var result = await CreateTool().ListUsersAsync(OrgId);
 
         result.Status.Should().Be("Error");
     }
@@ -149,10 +173,10 @@ public class UserListToolTests
     {
         Allow();
         _tenantClientMock
-            .Setup(c => c.ListUsersAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ListUsersAsync(OrgId, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new TaskCanceledException());
 
-        var result = await CreateTool().ListUsersAsync();
+        var result = await CreateTool().ListUsersAsync(OrgId);
 
         result.Status.Should().Be("Timeout");
     }
