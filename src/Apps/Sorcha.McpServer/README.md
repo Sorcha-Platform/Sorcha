@@ -176,6 +176,28 @@ source but is deliberately unregistered (T029 — signing stays in the Wallet Se
 - **Audit Trail**: All tool invocations are logged with user context
 - **Secure Defaults**: Minimal permissions, explicit grants required
 
+### Caller-token forwarding — a standing constraint
+
+**The MCP server authorises by forwarding the caller's bearer token; it must never be given
+`ServiceAuth__*` credentials.** Every tool call carries the caller's own JWT through to the backend
+service it calls, so the service enforces exactly the caller's tier/role — not the MCP server's own.
+Configuring `ServiceAuth:ClientId`/`ServiceAuth:ClientSecret` (or the certificate-mode equivalent)
+on this host would grant it ambient service-principal authority independent of who is calling it,
+which is precisely the elevation the caller-forwarding design exists to refuse. Do not add
+`ServiceAuth__*` env vars or config to any MCP server deployment (Docker, Aspire, or otherwise).
+
+This is why `Sorcha.ServiceClients.Http.Auth.ServiceAuthClient` resolves `ServiceAuth:ClientId`
+(and the legacy secret) **lazily, at first use** (`RequireClientId()`/`RequireClientSecret()`,
+called from `RefreshTokenAsync`) rather than in its constructor. The constructor used to throw
+`InvalidOperationException("ServiceAuth:ClientId not configured")` unconditionally — which is
+correct for a host that mints its own service tokens, but made the dependency mandatory for every
+host, including the MCP server, which never configures it by design. That made `AddServiceClients`
+itself throw at startup, so the MCP server could not resolve **any** typed client and every tool
+call failed before it ever reached the network — one of the two root causes behind the tool surface
+being completely dead for 6+ days (MCP-P0, 2026-09-05). The fix keeps construction unconditional
+(a host that forwards only never calls `RefreshTokenAsync`) and keeps the fail-fast loud for hosts
+that DO need a service token — it just moved from "at construction" to "at first attempted use".
+
 ## Development
 
 ### Project Dependencies

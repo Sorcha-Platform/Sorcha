@@ -3,12 +3,30 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.24
-**Last Updated:** 2026-08-29
+**Version:** 7.25
+**Last Updated:** 2026-09-05
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
-> **2026-08-29 - Feature 196 (#1591): the validator granted six exemptions from an UNSIGNED field. ✅ DONE, LIVE-VERIFIED 18/18.**
+> **2026-09-05 - MCP-P0: the public MCP tool surface had been completely dead for 6+ days; restored, gated, and role-corrected. LIVE VERIFICATION ON n1 OUTSTANDING.**
+>
+> Every `tools/call` on the public MCP endpoint had been failing since the HTTP transport shipped, and the suite stayed green throughout because every existing integration test stopped at `initialize` — proving the auth gate, never that a tool could dispatch.
+>
+> **Two independent causes, both silent.** (1) Eleven tools injected `IMcpSessionService`, a stdio-shaped singleton the HTTP-mode container never registers — the dependency was declared, assigned, and never used, so the fix was deletion, not registering a stateful session service into a stateless server. The HTTP transport's registrations were extracted into `McpServerHttpRegistration.ConfigureServices` so a test can build the exact container the server builds. (2) `ServiceAuthClient`'s constructor threw `InvalidOperationException("ServiceAuth:ClientId not configured")` unconditionally — but the MCP server authorises by forwarding the caller's bearer and must never hold service-principal credentials, so it never configures `ServiceAuth:ClientId` and could not resolve ANY typed client. Fixed by moving the fail-fast from construction to first use (`RequireClientId()`/`RequireClientSecret()`, resolved at `RefreshTokenAsync`) — a host that never needs a service token now never pays for one, and a host that does still fails loudly, not silently on a null token.
+>
+> **Ten tools called routes that were never mapped anywhere**, including the entire participant discovery loop — `sorcha_inbox_list`, `sorcha_workflow_status`, `sorcha_workflow_instances`, `sorcha_action_details`, `sorcha_action_validate` — so an agent could submit a workflow action but never discover or inspect one. Also broken: `sorcha_register_query` (invented OData shape against a route no service maps), `sorcha_user_list`/`sorcha_user_manage` (fictional flat `api/users` routes and an invented action vocabulary), `sorcha_token_revoke` (`api/tokens/revoke` never mapped). Each repointed at the real endpoint and response shape rather than patched to compile:
+> - `sorcha_action_details` now takes **both an instance id and an action id** (`GET /api/instances/{id}/actions/{id}`), not a bare action id.
+> - `sorcha_action_validate` now posts `{blueprintId, actionId, data}` to `POST /api/execution/validate` and documents that it validates against the blueprint's **latest** definition, not an instance's pinned one (#1606) — a gap the route gate cannot see, since the old broken route structurally collides with a real one.
+> - `sorcha_user_list`/`sorcha_user_manage` now require an `organizationId` (the real routes are org-scoped: `api/organizations/{organizationId}/users`); `sorcha_user_manage`'s action vocabulary is now the real `Suspend|Reactivate|Unlock|ChangeRole` (no `Activate`/`Deactivate`/`Lock`/`AddRole`/`RemoveRole` endpoint exists).
+> - `sorcha_blueprint_diff` is **withdrawn from the surface** (unregistered, not left advertised-and-broken) — no `/diff` endpoint exists anywhere to repoint it to. Follow-up to delete the now-dead client method: #1607.
+>
+> **New CI gate: `scripts/check-mcp-routes.ps1`.** Extracts every `api/…` request path a `[McpServerToolType]` class issues — inline `HttpClient` calls and calls into typed `Sorcha.ServiceClients*` methods, since most tools never name a URL directly — resolves the service side by composing `MapGroup` prefixes with the endpoints mapped under them, and fails naming file:line and the offending path. Scoped **per-service** (not one global route union) so a tool bound for Blueprint asking for a Tenant-owned path fails instead of being satisfied by a same-named route elsewhere; ownership is derived on both sides (service side from the project directory, tool side from the `SorchaService` a typed client resolves), never hardcoded. Verified not vacuous with seeded bogus literals on both probe paths. **The allowlist ratchet is now empty** — it started at 9, went to 5, and is fully cleared; CI fails outright on any new unmapped route.
+>
+> **Role model fix:** the tier normaliser recognised `participant|user|member` but the platform never emits any of them — a citizen's role is `Consumer`. Corrected to one home instead of two copies; verified no tool's reachability changes (the nine participant/citizen tools gate on tier alone, not role).
+>
+> Extended `HttpTransportIntegrationTests` with a `tools/call` test against `sorcha_health_check` (previously the suite never invoked a tool, which is exactly how a dead surface shipped unnoticed) — it asserts on the JSON-RPC payload (`result.isError`), not the HTTP status, because a dead surface answers 200 with `isError:true`.
+>
+> ⚠ **LIVE VERIFICATION ON n1 IS OUTSTANDING, NOT DONE.** Deploying this branch to n1 and confirming a live `tools/call` succeeds (one admin tool, one designer tool, one participant tool) plus a clean container-log check is explicitly deferred pending the human partner's decision — do not treat the green local/CI suite as proof; that is precisely the failure mode this incident is about.
 >
 > `TransactionTypeClassifier.IsGenesisOrControlTransaction` waived six rules — action-schema, blueprint conformance (**including `VAL_BP_002` sender authorisation**), routing attestation, crypto policy, sequence replay, and fork detection — on either `Metadata["Type"] in {Genesis, Control, BlueprintPublish}` or `BlueprintId == "genesis"`. **Neither is signed.** The signed bytes are `"{TransactionId}:{PayloadHash}"` and both are the same digest of the payload body, so a submitter chose both freely. `Control` had a compensating roster check keyed on the same string; `Genesis` and `BlueprintPublish` substituted nothing.
 >
