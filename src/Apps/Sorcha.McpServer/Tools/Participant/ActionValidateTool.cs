@@ -47,14 +47,16 @@ public sealed class ActionValidateTool
     /// <summary>
     /// Validates action data before submitting.
     /// </summary>
-    /// <param name="actionInstanceId">The action instance ID.</param>
+    /// <param name="blueprintId">The blueprint ID the action belongs to.</param>
+    /// <param name="actionId">The action's sequence number within the blueprint.</param>
     /// <param name="dataJson">The action data in JSON format.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Validation result.</returns>
     [McpServerTool(Name = "sorcha_action_validate")]
-    [Description("Validate a candidate JSON payload against the input schema of a specific action without committing anything to the register. Returns a list of schema violations or a clean pass, leaving the action in its current pending state. Call this when an agent has drafted submission data and wants to confirm it will pass server-side schema validation; use this rather than sorcha_action_submit when you do not yet intend to advance the workflow, and call sorcha_action_details first when you need to see the schema itself before drafting input.")]
+    [Description("Validate a candidate JSON payload against the input schema of a specific action without committing anything to the register. Returns a list of schema violations or a clean pass, leaving the action in its current pending state. Call this when an agent has drafted submission data and wants to confirm it will pass server-side schema validation; use this rather than sorcha_action_submit when you do not yet intend to advance the workflow, and call sorcha_action_details first when you need to see the schema itself before drafting input. IMPORTANT: this validates against the blueprint's LATEST published definition, not the definition an instance is pinned to (Feature 195 version pinning) — on a blueprint republished since an instance started, a clean pass here does not guarantee the same payload will pass when actually submitted against that instance's pinned definition. Tracked as issue #1606.")]
     public async Task<ActionValidateResult> ValidateActionDataAsync(
-        [Description("The action instance ID")] string actionInstanceId,
+        [Description("The blueprint ID the action belongs to")] string blueprintId,
+        [Description("The action's sequence number within the blueprint")] string actionId,
         [Description("The action data in JSON format")] string dataJson,
         CancellationToken cancellationToken = default)
     {
@@ -70,12 +72,22 @@ public sealed class ActionValidateTool
         }
 
         // Validate inputs
-        if (string.IsNullOrWhiteSpace(actionInstanceId))
+        if (string.IsNullOrWhiteSpace(blueprintId))
         {
             return new ActionValidateResult
             {
                 Status = "Error",
-                Message = "Action instance ID is required.",
+                Message = "Blueprint ID is required.",
+                CheckedAt = DateTimeOffset.UtcNow
+            };
+        }
+
+        if (string.IsNullOrWhiteSpace(actionId))
+        {
+            return new ActionValidateResult
+            {
+                Status = "Error",
+                Message = "Action ID is required.",
                 CheckedAt = DateTimeOffset.UtcNow
             };
         }
@@ -90,10 +102,11 @@ public sealed class ActionValidateTool
             };
         }
 
-        // Parse data JSON
+        // Parse data JSON — also the payload the request body to /api/execution/validate is built from.
+        Dictionary<string, object>? data;
         try
         {
-            var data = JsonSerializer.Deserialize<Dictionary<string, object>>(dataJson);
+            data = JsonSerializer.Deserialize<Dictionary<string, object>>(dataJson);
             if (data == null)
             {
                 return new ActionValidateResult
@@ -125,7 +138,7 @@ public sealed class ActionValidateTool
             };
         }
 
-        _logger.LogInformation("Validating action data for {ActionInstanceId}", actionInstanceId);
+        _logger.LogInformation("Validating action data for blueprint {BlueprintId} action {ActionId}", blueprintId, actionId);
 
         var stopwatch = Stopwatch.StartNew();
 
@@ -134,9 +147,16 @@ public sealed class ActionValidateTool
             var client = _httpClientFactory.CreateClient();
             client.Timeout = TimeSpan.FromSeconds(30);
 
-            var url = $"{_blueprintServiceEndpoint.TrimEnd('/')}/api/actions/{actionInstanceId}/validate";
+            var url = $"{_blueprintServiceEndpoint.TrimEnd('/')}/api/execution/validate";
 
-            var content = new StringContent(dataJson, Encoding.UTF8, "application/json");
+            var requestBody = JsonSerializer.Serialize(new
+            {
+                blueprintId,
+                actionId,
+                data
+            });
+
+            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
             var response = await client.PostAsync(url, content, cancellationToken);
 
             stopwatch.Stop();

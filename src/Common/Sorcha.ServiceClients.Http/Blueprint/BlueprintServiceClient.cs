@@ -396,22 +396,22 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     /// <inheritdoc />
     public Task<string?> GetWorkflowInstancesAsync(string? queryString = null, CancellationToken cancellationToken = default)
     {
-        var url = string.IsNullOrWhiteSpace(queryString) ? "api/workflows" : $"api/workflows?{queryString}";
+        var url = string.IsNullOrWhiteSpace(queryString) ? "api/instances/" : $"api/instances/?{queryString}";
         return GetRawAsync(url, "workflow instances", cancellationToken);
     }
 
     /// <inheritdoc />
     public Task<string?> GetWorkflowStatusAsync(string workflowInstanceId, CancellationToken cancellationToken = default) =>
-        GetRawAsync($"api/workflows/{Uri.EscapeDataString(workflowInstanceId)}", "workflow status", cancellationToken);
+        GetRawAsync($"api/instances/{Uri.EscapeDataString(workflowInstanceId)}", "workflow status", cancellationToken);
 
     /// <inheritdoc />
-    public Task<string?> GetActionDetailsAsync(string actionInstanceId, CancellationToken cancellationToken = default) =>
-        GetRawAsync($"api/actions/{Uri.EscapeDataString(actionInstanceId)}", "action details", cancellationToken);
+    public Task<string?> GetActionDetailsAsync(string instanceId, string actionId, CancellationToken cancellationToken = default) =>
+        GetRawAsync($"api/instances/{Uri.EscapeDataString(instanceId)}/actions/{Uri.EscapeDataString(actionId)}", "action details", cancellationToken);
 
     /// <inheritdoc />
     public Task<string?> GetInboxAsync(string? queryString = null, CancellationToken cancellationToken = default)
     {
-        var url = string.IsNullOrWhiteSpace(queryString) ? "api/inbox" : $"api/inbox?{queryString}";
+        var url = string.IsNullOrWhiteSpace(queryString) ? "api/actions/pending" : $"api/actions/pending?{queryString}";
         return GetRawAsync(url, "inbox", cancellationToken);
     }
 

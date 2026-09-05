@@ -44,7 +44,7 @@ public sealed class WorkflowStatusTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Workflow status and progress.</returns>
     [McpServerTool(Name = "sorcha_workflow_status")]
-    [Description("Return the current state of a single workflow instance: which actions have completed, which are pending, who they are assigned to, and where the instance sits in its blueprint. Gives an agent a real-time snapshot of progress across all participants in the workflow, not just the caller. Call this when investigating one specific workflow instance the agent already knows the id of; use sorcha_inbox_list rather than this tool when you want the participant's pending work across all workflows, and prefer sorcha_transaction_history when you need the immutable signed audit log instead of the live status view.")]
+    [Description("Return the current state of a single workflow instance: its lifecycle state (Active, Completed, Rejected, TimedOut, or Cancelled), which action(s) are currently awaiting execution, and how many actions have completed. Gives an agent a real-time snapshot of instance progress. Readable only by a caller controlling a wallet recorded as a participant on the instance. Call this when investigating one specific workflow instance the agent already knows the id of; use sorcha_inbox_list rather than this tool when you want the participant's pending work across all workflows, and prefer sorcha_transaction_history when you need the immutable signed audit log instead of the live status view. NOTE: the blueprint title, the current action's title, and the workflow's total action count are not carried on the instance record this reads and are always null/zero here — call sorcha_blueprint_get with the blueprint ID for that context.")]
     public async Task<WorkflowStatusResult> GetWorkflowStatusAsync(
         [Description("The workflow instance ID")] string workflowInstanceId,
         CancellationToken cancellationToken = default)
@@ -88,7 +88,7 @@ public sealed class WorkflowStatusTool
 
         try
         {
-            // Typed client forwards the caller's bearer and pins the route (GET api/workflows/{id}).
+            // Typed client forwards the caller's bearer and pins the route (GET api/instances/{id}).
             var responseContent = await _blueprintClient.GetWorkflowStatusAsync(workflowInstanceId, cancellationToken);
 
             stopwatch.Stop();
@@ -125,32 +125,28 @@ public sealed class WorkflowStatusTool
                 };
             }
 
+            var currentStatus = ResolveState(result.State);
+
             _logger.LogInformation(
                 "Retrieved workflow status in {ElapsedMs}ms. Status: {WorkflowStatus}",
-                stopwatch.ElapsedMilliseconds, result.Status);
+                stopwatch.ElapsedMilliseconds, currentStatus);
 
             return new WorkflowStatusResult
             {
                 Status = "Success",
-                Message = $"Workflow is {result.Status}.",
+                Message = $"Workflow is {currentStatus}.",
                 CheckedAt = DateTimeOffset.UtcNow,
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
                 Workflow = new WorkflowStatus
                 {
-                    WorkflowInstanceId = result.WorkflowInstanceId ?? workflowInstanceId,
+                    WorkflowInstanceId = result.Id ?? workflowInstanceId,
                     BlueprintId = result.BlueprintId ?? "",
-                    BlueprintTitle = result.BlueprintTitle,
-                    CurrentStatus = result.Status ?? "Unknown",
-                    CurrentActionId = result.CurrentActionId,
-                    CurrentActionTitle = result.CurrentActionTitle,
-                    CompletedActions = result.CompletedActions ?? 0,
-                    TotalActions = result.TotalActions ?? 0,
-                    Progress = result.TotalActions > 0
-                        ? (int)((result.CompletedActions ?? 0) * 100.0 / result.TotalActions)
-                        : 0,
-                    StartedAt = result.StartedAt,
+                    CurrentStatus = currentStatus,
+                    CurrentActionId = result.CurrentActionIds?.Count > 0 ? result.CurrentActionIds[0] : null,
+                    CompletedActions = result.CompletedActionCount,
+                    StartedAt = result.CreatedAt,
                     CompletedAt = result.CompletedAt,
-                    LastActivityAt = result.LastActivityAt
+                    LastActivityAt = result.UpdatedAt
                 }
             };
         }
@@ -197,20 +193,42 @@ public sealed class WorkflowStatusTool
         }
     }
 
-    // Internal response models
+    // Sorcha.Blueprint.Service.Models.InstanceState's ordinal order — mirrored here because
+    // enums serialize as their underlying int by default (no JsonStringEnumConverter is registered
+    // for this type in Blueprint Service) and McpServer cannot reference the service's own model
+    // project. Index MUST track that enum's declaration order.
+    private static readonly string[] InstanceStateNames =
+        ["Active", "Completed", "Rejected", "TimedOut", "Cancelled"];
+
+    private static string ResolveState(JsonElement? state)
+    {
+        if (state is not { } value)
+        {
+            return "Unknown";
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString() ?? "Unknown",
+            JsonValueKind.Number when value.TryGetInt32(out var ordinal)
+                && ordinal >= 0 && ordinal < InstanceStateNames.Length => InstanceStateNames[ordinal],
+            _ => "Unknown"
+        };
+    }
+
+    // Internal response model — mirrors Sorcha.Blueprint.Service.Models.Instance, the actual wire
+    // body of GET /api/instances/{id} (the whole instance, returned verbatim). There is no
+    // "workflow status" projection: no blueprint/action title, no total-action count.
     private sealed class WorkflowStatusResponse
     {
-        public string? WorkflowInstanceId { get; set; }
+        public string? Id { get; set; }
         public string? BlueprintId { get; set; }
-        public string? BlueprintTitle { get; set; }
-        public string? Status { get; set; }
-        public int? CurrentActionId { get; set; }
-        public string? CurrentActionTitle { get; set; }
-        public int? CompletedActions { get; set; }
-        public int? TotalActions { get; set; }
-        public DateTimeOffset? StartedAt { get; set; }
+        public JsonElement? State { get; set; }
+        public List<int>? CurrentActionIds { get; set; }
+        public int CompletedActionCount { get; set; }
+        public DateTimeOffset? CreatedAt { get; set; }
+        public DateTimeOffset? UpdatedAt { get; set; }
         public DateTimeOffset? CompletedAt { get; set; }
-        public DateTimeOffset? LastActivityAt { get; set; }
     }
 
 }
@@ -247,7 +265,9 @@ public sealed record WorkflowStatusResult
 }
 
 /// <summary>
-/// Workflow status details.
+/// Workflow status details, mirroring the fields actually present on
+/// <c>GET /api/instances/{instanceId}</c> (the raw instance record — there is no separate
+/// "workflow status" projection carrying blueprint/action titles or a total-action count).
 /// </summary>
 public sealed record WorkflowStatus
 {
@@ -262,39 +282,21 @@ public sealed record WorkflowStatus
     public required string BlueprintId { get; init; }
 
     /// <summary>
-    /// The blueprint title.
-    /// </summary>
-    public string? BlueprintTitle { get; init; }
-
-    /// <summary>
-    /// Current workflow status: Active, Completed, or Suspended.
+    /// Current instance lifecycle state: Active, Completed, Rejected, TimedOut, or Cancelled.
     /// </summary>
     public required string CurrentStatus { get; init; }
 
     /// <summary>
-    /// The current action ID (sequence number).
+    /// The current action ID (sequence number) awaiting execution, if any. Multiple current
+    /// actions (parallel branches) are possible on the instance; only the first is surfaced here —
+    /// call sorcha_action_details per action ID for the full set.
     /// </summary>
     public int? CurrentActionId { get; init; }
-
-    /// <summary>
-    /// The current action title.
-    /// </summary>
-    public string? CurrentActionTitle { get; init; }
 
     /// <summary>
     /// Number of completed actions.
     /// </summary>
     public int CompletedActions { get; init; }
-
-    /// <summary>
-    /// Total number of actions in the workflow.
-    /// </summary>
-    public int TotalActions { get; init; }
-
-    /// <summary>
-    /// Progress percentage (0-100).
-    /// </summary>
-    public int Progress { get; init; }
 
     /// <summary>
     /// When the workflow was started.

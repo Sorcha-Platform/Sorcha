@@ -12,34 +12,17 @@
 # fixes or removes the call. Never add a line here to make a build pass — repoint the tool at the
 # route that exists, or map the route in the service.
 #
-# Seeded 2026-09-05 from the first run of the gate on feature/mcp-agent-experience. These are the
+# Seeded 2026-09-05 from the first run of the gate on feature/mcp-agent-experience. These were the
 # known-broken calls the gate was written to prove: ten tools were reaching routes that were never
 # mapped, including the ENTIRE participant discovery loop, so an agent could submit an action but
-# never discover or inspect one. Tasks 4 and 5 of the MCP P0 restore-surface work repoint them and
-# empty this list down to a single remaining entry.
-#
-# ---------------------------------------------------------------------------------------------
-# Participant discovery loop — the whole reason this gate exists. Blueprint Service maps none of
-# these; the typed client in Sorcha.ServiceClients.Http/Blueprint/BlueprintServiceClient.cs has
-# been pointing at them since it was written.
-# ---------------------------------------------------------------------------------------------
-
-# sorcha_inbox_list — GET api/inbox against the BLUEPRINT Service, which maps no inbox route at
-# all. (The similarly-named /api/me/inbox and /api/internal/inbox belong to the TENANT Service and
-# are a different surface — they would not serve this call even if the tool reached them.) So an
-# agent waking up on a participant's behalf can never see what work is waiting.
-api/inbox
-
-# sorcha_action_details — GET api/actions/{actionInstanceId}. /api/actions maps only /pending,
-# /pending/count, /open-starting, /reject, "/" and /{wallet}/{register}... — no bare id lookup.
-api/actions/*
-
-# sorcha_workflow_instances — GET api/workflows. The /api/workflows group exists but hangs only
-# two disclosure routes off it; nothing serves the group root, so listing instances 404s.
-api/workflows
-
-# sorcha_workflow_status — GET api/workflows/{workflowInstanceId}. Same group, no id route.
-api/workflows/*
+# never discover or inspect one. Task 4 of the MCP P0 restore-surface work repointed
+# sorcha_inbox_list, sorcha_action_details, sorcha_workflow_instances, sorcha_workflow_status, and
+# sorcha_action_validate at routes that actually exist (api/actions/pending, api/instances/,
+# api/instances/{id}/actions/{id}, api/instances/{id}, and api/execution/validate respectively) and
+# removed their four entries below. sorcha_action_validate's target was NOT visible to this gate at
+# all — Blueprint Service also maps api/actions/{wallet}/{register}, a same-shaped four-segment
+# family, so the static family match hid the miss entirely; it was fixed on the task brief's
+# authority, not this gate's, and stayed broken through a fully green gate run until then.
 
 # ---------------------------------------------------------------------------------------------
 # Register / Designer / Admin surfaces

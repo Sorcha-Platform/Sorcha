@@ -62,14 +62,19 @@ public sealed class InboxListToolTests
     {
         Allow();
 
+        // Shape of Sorcha.Blueprint.Service.Models.PendingActionSummary, the actual wire body of
+        // GET /api/actions/pending — instanceId/actionId, not a single actionInstanceId; urgency,
+        // not status.
         var response = JsonSerializer.Serialize(new
         {
             items = new[]
             {
-                new { actionInstanceId = "action-1", blueprintId = "bp-1", actionTitle = "Review Document", workflowInstanceId = "wf-1", status = "Pending", createdAt = DateTimeOffset.UtcNow.AddHours(-1) },
-                new { actionInstanceId = "action-2", blueprintId = "bp-2", actionTitle = "Approve Request", workflowInstanceId = "wf-2", status = "Pending", createdAt = DateTimeOffset.UtcNow.AddMinutes(-30) }
+                new { instanceId = "instance-1", actionId = 1, blueprintId = "bp-1", actionTitle = "Review Document", urgency = "normal", receivedAt = DateTimeOffset.UtcNow.AddHours(-1) },
+                new { instanceId = "instance-2", actionId = 2, blueprintId = "bp-2", actionTitle = "Approve Request", urgency = "urgent", receivedAt = DateTimeOffset.UtcNow.AddMinutes(-30) }
             },
-            totalCount = 2
+            totalCount = 2,
+            page = 1,
+            pageSize = 20
         });
         _blueprintClientMock
             .Setup(c => c.GetInboxAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
@@ -78,8 +83,10 @@ public sealed class InboxListToolTests
         var result = await _tool.ListInboxAsync();
 
         result.Status.Should().Be("Success");
-        result.Items[0].ActionInstanceId.Should().Be("action-1");
+        result.Items[0].InstanceId.Should().Be("instance-1");
+        result.Items[0].ActionId.Should().Be(1);
         result.Items[0].ActionTitle.Should().Be("Review Document");
+        result.Items[1].Urgency.Should().Be("urgent");
         result.TotalCount.Should().Be(2);
         _availabilityTrackerMock.Verify(x => x.RecordSuccess("Blueprint"), Times.Once);
     }
