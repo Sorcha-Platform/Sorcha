@@ -39,6 +39,20 @@
 #
 # ROUTE FAMILIES, NOT EXACT MATCHES
 #
+# SCOPED PER OWNING SERVICE
+#
+#   A tool's path is checked against the routes mapped by THE SERVICE IT ACTUALLY CALLS, not
+#   against the union of all of them. Otherwise a Blueprint-bound `api/inbox` would be satisfied by
+#   a same-named route in Tenant and the gate would go green on a tool that still 404s.
+#
+#   Ownership is DERIVED, never hardcoded. Both sides already name the service:
+#     service side — the project directory (src/Services/Sorcha.<X>.Service)
+#     typed client — `SorchaServiceAddresses.TryResolve(configuration, SorchaService.<X>)` in the
+#                    client's own constructor, or in its AddHttpClient<> registration
+#     inline tool  — the same TryResolve call assigning the endpoint field the URL interpolates
+#   A route whose owner cannot be established falls back to the union and is reported, so an
+#   unattributable call is visible rather than silently strict or silently lax.
+#
 #   Both sides are reduced to a route FAMILY: the query string is dropped and every parameter
 #   segment ({id}, {id:guid}, {Uri.EscapeDataString(x)}) collapses to '*'. So
 #     api/registers/{registerId}/transactions   ->  api/registers/*/transactions
@@ -161,6 +175,17 @@ function Get-ApiPathsInLine {
         }
     }
     return $out
+}
+
+# The owning service of a file under src/Services, named as the SorchaService enum names it
+# (Sorcha.Blueprint.Service -> Blueprint, Sorcha.ApiGateway -> ApiGateway).
+function Get-ServiceOwnerFromPath {
+    param([string]$FullPath)
+
+    $p = $FullPath.Replace('\', '/')
+    if ($p -match '/src/Services/Sorcha\.([A-Za-z0-9]+)\.Service(/|$)') { return $Matches[1] }
+    if ($p -match '/src/Services/Sorcha\.ApiGateway(/|$)') { return 'ApiGateway' }
+    return $null
 }
 
 function Remove-LineComments {
@@ -292,8 +317,22 @@ foreach ($file in $serviceFiles) {
 }
 
 # --- Pass B: resolve every Map<Verb> literal to one or more absolute routes -------------------
-$serviceRoutes = [System.Collections.Generic.HashSet[string]]::new()
+$serviceRoutes = [System.Collections.Generic.HashSet[string]]::new()   # union, for fallback only
+$serviceRoutesByOwner = @{}                                           # owner -> HashSet[string]
 $serviceRouteSamples = @{}
+
+function Add-ServiceRoute {
+    param([string]$Family, [string]$Owner, [string]$RelFile)
+
+    [void]$serviceRoutes.Add($Family)
+    if ($Owner) {
+        if (-not $serviceRoutesByOwner.ContainsKey($Owner)) {
+            $serviceRoutesByOwner[$Owner] = [System.Collections.Generic.HashSet[string]]::new()
+        }
+        [void]$serviceRoutesByOwner[$Owner].Add($Family)
+    }
+    if (-not $serviceRouteSamples.ContainsKey($Family)) { $serviceRouteSamples[$Family] = $RelFile }
+}
 
 foreach ($file in $serviceFiles) {
     $text = $serviceText[$file.FullName]
@@ -360,10 +399,9 @@ foreach ($file in $serviceFiles) {
         foreach ($c in $candidates) {
             $fam = ConvertTo-RouteFamily $c
             if ($fam.Length -eq 0) { continue }
-            [void]$serviceRoutes.Add($fam)
-            if (-not $serviceRouteSamples.ContainsKey($fam)) {
-                $serviceRouteSamples[$fam] = [IO.Path]::GetRelativePath($repo, $file.FullName).Replace('\', '/')
-            }
+            Add-ServiceRoute -Family $fam `
+                -Owner (Get-ServiceOwnerFromPath $file.FullName) `
+                -RelFile ([IO.Path]::GetRelativePath($repo, $file.FullName).Replace('\', '/'))
         }
     }
 }
@@ -406,6 +444,50 @@ foreach ($f in $clientFiles) {
             if ($clientImpls[$name] -notcontains $f.FullName) { $clientImpls[$name] += $f.FullName }
         }
     }
+}
+
+# Which Sorcha service does each typed client address? Derived, not hardcoded: a client either
+# resolves its own base address in its constructor
+#   SorchaServiceAddresses.TryResolve(configuration, SorchaService.Blueprint)
+# or has it set at its AddHttpClient<> registration (HaipServiceClient does the latter).
+# interfaceName -> SorchaService name
+$clientOwner = @{}
+
+function Get-SoleService {
+    param([string]$Text)
+
+    $names = @()
+    foreach ($m in [regex]::Matches($Text, 'SorchaService\.([A-Za-z0-9]+)')) {
+        if ($names -notcontains $m.Groups[1].Value) { $names += $m.Groups[1].Value }
+    }
+    if ($names.Count -eq 1) { return $names[0] }
+    return $null
+}
+
+foreach ($iface in $clientImpls.Keys) {
+    $owners = @()
+    foreach ($implFile in $clientImpls[$iface]) {
+        $implName = [IO.Path]::GetFileNameWithoutExtension($implFile)
+
+        # (1) the client's own file
+        $o = Get-SoleService $clientText[$implFile]
+
+        # (2) otherwise its AddHttpClient<> registration, wherever that lives
+        if (-not $o) {
+            foreach ($regFile in $clientFiles) {
+                $regText = $clientText[$regFile.FullName]
+                foreach ($m in [regex]::Matches($regText, "AddHttpClient<[^>]*\b$([regex]::Escape($implName))\b[^>]*>")) {
+                    $window = $regText.Substring($m.Index, [Math]::Min(1200, $regText.Length - $m.Index))
+                    $o = Get-SoleService $window
+                    if ($o) { break }
+                }
+                if ($o) { break }
+            }
+        }
+
+        if ($o -and $owners -notcontains $o) { $owners += $o }
+    }
+    if ($owners.Count -eq 1) { $clientOwner[$iface] = $owners[0] }
 }
 
 # Extract the body of a named method (block or expression bodied) from a class file.
@@ -467,6 +549,16 @@ foreach ($file in $toolFiles) {
 
     $toolName = [IO.Path]::GetFileNameWithoutExtension($file.FullName)
 
+    # Endpoint fields the tool interpolates into inline URLs, and the service each addresses:
+    #   _peerServiceEndpoint = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Peer)
+    $endpointOwner = @{}
+    foreach ($m in [regex]::Matches($text, '(_[A-Za-z0-9_]+)\s*=\s*SorchaServiceAddresses\.TryResolve\s*\([^;]*?SorchaService\.([A-Za-z0-9]+)')) {
+        $endpointOwner[$m.Groups[1].Value] = $m.Groups[2].Value
+    }
+    $soleEndpointOwner = $null
+    $distinctOwners = @($endpointOwner.Values | Sort-Object -Unique)
+    if ($distinctOwners.Count -eq 1) { $soleEndpointOwner = $distinctOwners[0] }
+
     # (a) URLs built inline in the tool itself.
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $line = $lines[$i]
@@ -475,8 +567,22 @@ foreach ($file in $toolFiles) {
         foreach ($p in (Get-ApiPathsInLine $line)) {
             $fam = ConvertTo-RouteFamily $p
             if ($fam.Length -eq 0) { continue }
+
+            # Attribute to the endpoint field this very line interpolates; fall back to the tool's
+            # only endpoint field when the URL is assembled away from the field reference.
+            $owner = $null
+            $onLine = @()
+            foreach ($fm in [regex]::Matches($line, '_[A-Za-z0-9_]+')) {
+                if ($endpointOwner.ContainsKey($fm.Value) -and $onLine -notcontains $endpointOwner[$fm.Value]) {
+                    $onLine += $endpointOwner[$fm.Value]
+                }
+            }
+            if ($onLine.Count -eq 1) { $owner = $onLine[0] }
+            elseif ($onLine.Count -eq 0) { $owner = $soleEndpointOwner }
+
             $toolRoutes += [pscustomobject]@{
-                Family = $fam; Raw = $p; File = $rel; Line = ($i + 1); Tool = $toolName; Via = 'inline'
+                Family = $fam; Raw = $p; File = $rel; Line = ($i + 1); Tool = $toolName
+                Via    = 'inline'; Owner = $owner
             }
         }
     }
@@ -510,6 +616,7 @@ foreach ($file in $toolFiles) {
                             Line   = (Get-LineNumber -Text $implText -Index $body.Start)
                             Tool   = $toolName
                             Via    = "$iface.$method"
+                            Owner  = $(if ($clientOwner.ContainsKey($iface)) { $clientOwner[$iface] } else { $null })
                         }
                     }
                 }
@@ -537,12 +644,25 @@ $serviceSegments = @{}
 foreach ($s in $serviceRoutes) { $serviceSegments[$s] = ($s -split '/') }
 
 function Test-RouteMapped {
-    param([string]$Family)
+    param([string]$Family, [string]$Owner)
 
-    if ($serviceRoutes.Contains($Family)) { return $true }
+    # Scope to the service the tool actually calls. Without this, a Blueprint-bound api/inbox would
+    # be satisfied by a same-named Tenant route and the gate would go green on a broken tool.
+    $candidates = $null
+    if ($Owner -and $serviceRoutesByOwner.ContainsKey($Owner)) {
+        $candidates = $serviceRoutesByOwner[$Owner]
+    }
+    elseif ($Owner) {
+        return $false      # owner known, but that service maps no routes at all
+    }
+    else {
+        $candidates = $serviceRoutes   # unattributable: fall back to the union, and report it
+    }
+
+    if ($candidates.Contains($Family)) { return $true }
 
     $tool = $Family -split '/'
-    foreach ($svc in $serviceSegments.Keys) {
+    foreach ($svc in $candidates) {
         $s = $serviceSegments[$svc]
         $ok = $true
         $i = 0
@@ -581,8 +701,12 @@ if ($ShowRoutes) {
     Write-Host ""
     Write-Host "Tool route families ($(($toolRoutes | Select-Object -ExpandProperty Family -Unique).Count) distinct, $($toolRoutes.Count) call sites):" -ForegroundColor Cyan
     foreach ($t in ($toolRoutes | Sort-Object Family, Tool)) {
-        Write-Host ("  {0,-52} {1} ({2}) {3}:{4}" -f $t.Family, $t.Tool, $t.Via, $t.File, $t.Line)
+        $svc = if ($t.Owner) { $t.Owner } else { 'UNATTRIBUTED' }
+        Write-Host ("  {0,-52} -> {1,-11} {2} ({3}) {4}:{5}" -f $t.Family, $svc, $t.Tool, $t.Via, $t.File, $t.Line)
     }
+    Write-Host ""
+    Write-Host "Owning service per typed client:" -ForegroundColor Cyan
+    foreach ($k in ($clientOwner.Keys | Sort-Object)) { Write-Host ("  {0,-36} -> {1}" -f $k, $clientOwner[$k]) }
     Write-Host ""
 }
 
@@ -590,10 +714,12 @@ $violations = @()
 $hitAllowed = @{}
 
 foreach ($t in $toolRoutes) {
-    if (Test-RouteMapped -Family $t.Family) { continue }
+    if (Test-RouteMapped -Family $t.Family -Owner $t.Owner) { continue }
     if ($allowed.ContainsKey($t.Family)) { $hitAllowed[$t.Family] = $true; continue }
     $violations += $t
 }
+
+$unattributed = @($toolRoutes | Where-Object { -not $_.Owner })
 
 $stale = @()
 foreach ($entry in $allowed.Keys) {
@@ -605,16 +731,18 @@ $failed = $false
 if ($violations.Count -gt 0) {
     $failed = $true
     Write-Host ""
-    Write-Host "FAIL: MCP tool calls a route family no Sorcha service maps." -ForegroundColor Red
+    Write-Host "FAIL: MCP tool calls a route family the service it addresses does not map." -ForegroundColor Red
     Write-Host ""
     foreach ($group in ($violations | Group-Object Family | Sort-Object Name)) {
         Write-Host ("  {0}" -f $group.Name) -ForegroundColor Yellow
         foreach ($v in ($group.Group | Sort-Object File, Line)) {
-            Write-Host ("      {0}:{1}  {2}  [{3}]" -f $v.File, $v.Line, $v.Tool, $v.Via)
+            $svc = if ($v.Owner) { $v.Owner } else { 'UNATTRIBUTED' }
+            Write-Host ("      {0}:{1}  {2}  [{3}] -> {4} Service" -f $v.File, $v.Line, $v.Tool, $v.Via, $svc)
         }
     }
     Write-Host ""
-    Write-Host "Each path above 404s at runtime. The tool compiles, the client compiles, and the"
+    Write-Host "Each path above 404s at runtime AGAINST THE SERVICE NAMED ON ITS LINE — a same-named"
+    Write-Host "route in a different service does not help. The tool compiles, the client compiles, and the"
     Write-Host "agent is told the platform failed — so a permanently broken tool reads as a"
     Write-Host "transient outage. Map the route in the service, or repoint the tool at the route"
     Write-Host "that already exists. See .mcp-routes-allowlist (a ratchet — it may only shrink)"
@@ -632,14 +760,26 @@ if ($stale.Count -gt 0) {
     Write-Host "Remove these lines from .mcp-routes-allowlist in the same PR. The allowlist may only shrink."
 }
 
+if ($unattributed.Count -gt 0) {
+    Write-Host ""
+    Write-Host "NOTE: $($unattributed.Count) tool call site(s) could not be attributed to an owning service and" -ForegroundColor Yellow
+    Write-Host "      were checked against the union of all services (weaker, but never falsely strict):" -ForegroundColor Yellow
+    foreach ($u in ($unattributed | Sort-Object Tool, Family)) {
+        Write-Host ("        {0,-44} {1} [{2}]" -f $u.Family, $u.Tool, $u.Via)
+    }
+    Write-Host ""
+}
+
 if ($failed) { exit 1 }
 
-Write-Host ("OK: mcp-routes gate passed. {0} registered tool class(es), {1} tool call site(s) across {2} route famil(ies), checked against {3} mapped service route famil(ies). {4} allowlisted." -f `
+Write-Host ("OK: mcp-routes gate passed. {0} registered tool class(es), {1} tool call site(s) across {2} route famil(ies), checked per owning service against {3} mapped service route famil(ies) in {4} service(s). {5} allowlisted, {6} unattributed." -f `
         $toolFiles.Count,
         $toolRoutes.Count,
     ($toolRoutes | Select-Object -ExpandProperty Family -Unique).Count,
         $serviceRoutes.Count,
-        $allowed.Count) -ForegroundColor Green
+        $serviceRoutesByOwner.Count,
+        $allowed.Count,
+        $unattributed.Count) -ForegroundColor Green
 
 if ($allowed.Count -eq 0) {
     Write-Host "  Allowlist is empty — every MCP tool route family is mapped by a service." -ForegroundColor Green
