@@ -60,7 +60,7 @@ public sealed class RegisterQueryToolTests
         var result = await CreateTool().QueryRegisterAsync("register-123");
 
         result.Status.Should().Be("Unauthorized");
-        result.Message.Should().Contain("sorcha:participant");
+        result.Message.Should().Contain("consumer- or platform-tier");
     }
 
     [Fact]

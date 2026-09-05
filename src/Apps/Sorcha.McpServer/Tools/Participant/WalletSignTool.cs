@@ -71,7 +71,7 @@ public sealed class WalletSignTool
             return new WalletSignResult
             {
                 Status = "Unauthorized",
-                Message = "Access denied. This tool requires the sorcha:participant role.",
+                Message = "Access denied. This tool is not currently enabled for any caller (deferred to a dedicated security-reviewed wave — use sorcha_action_submit for signed workflow actions).",
                 CheckedAt = DateTimeOffset.UtcNow
             };
         }

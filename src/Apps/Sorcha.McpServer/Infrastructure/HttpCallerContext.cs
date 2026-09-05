@@ -4,6 +4,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
+using Sorcha.McpServer.Services;
 using Sorcha.ServiceDefaults.Auth;
 
 namespace Sorcha.McpServer.Infrastructure;
@@ -140,31 +141,9 @@ public sealed class HttpCallerContext : ICallerContext
     public bool IsAuthenticated => User?.Identity?.IsAuthenticated == true;
 
     /// <summary>
-    /// Maps standard role names to the Sorcha MCP role format (mirrors the stdio path).
+    /// Maps standard role names to the Sorcha MCP role format. Delegates to the single-home
+    /// <see cref="McpRoleNormalizer"/> (mirrors the stdio path in <see cref="Sorcha.McpServer.Services.McpSessionService"/>).
     /// </summary>
-    private static List<string> MapToMcpRoles(IEnumerable<string> roles)
-    {
-        var mapped = new List<string>();
-
-        foreach (var role in roles)
-        {
-            if (role.StartsWith("sorcha:", StringComparison.OrdinalIgnoreCase))
-            {
-                mapped.Add(role.ToLowerInvariant());
-                continue;
-            }
-
-            var mappedRole = role.ToLowerInvariant() switch
-            {
-                "admin" or "administrator" or "systemadmin" => "sorcha:admin",
-                "designer" or "workflowdesigner" or "blueprintdesigner" => "sorcha:designer",
-                "participant" or "user" or "member" => "sorcha:participant",
-                _ => role
-            };
-
-            mapped.Add(mappedRole);
-        }
-
-        return mapped.Distinct().ToList();
-    }
+    private static List<string> MapToMcpRoles(IEnumerable<string> roles) =>
+        McpRoleNormalizer.NormalizeAll(roles);
 }

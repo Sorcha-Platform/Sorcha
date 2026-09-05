@@ -39,7 +39,7 @@ public sealed class WalletInfoToolTests
         var result = await CreateTool().GetWalletInfoAsync("addr-1");
 
         result.Status.Should().Be("Unauthorized");
-        result.Message.Should().Contain("sorcha:participant");
+        result.Message.Should().Contain("consumer- or platform-tier");
     }
 
     [Fact]

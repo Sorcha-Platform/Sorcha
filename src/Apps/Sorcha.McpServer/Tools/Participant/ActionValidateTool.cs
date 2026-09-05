@@ -66,7 +66,7 @@ public sealed class ActionValidateTool
             return new ActionValidateResult
             {
                 Status = "Unauthorized",
-                Message = "Access denied. This tool requires the sorcha:participant role.",
+                Message = "Access denied. This tool requires an authenticated consumer- or platform-tier caller.",
                 CheckedAt = DateTimeOffset.UtcNow
             };
         }

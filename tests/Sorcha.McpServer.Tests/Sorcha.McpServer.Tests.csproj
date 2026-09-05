@@ -26,6 +26,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Apps\Sorcha.McpServer\Sorcha.McpServer.csproj" />
+    <!-- Test-only: lets the role-coverage assertion reflect over the REAL platform role enum
+         instead of a hand-copied list that silently rots. Same layering exception the
+         Sorcha.Cli.ContractTests project relies on (CLAUDE.md pattern 18) - legitimate in a test
+         project, never in a production assembly. -->
+    <ProjectReference Include="..\..\src\Services\Sorcha.Tenant.Service\Sorcha.Tenant.Service.csproj" />
   </ItemGroup>
 
   <ItemGroup>

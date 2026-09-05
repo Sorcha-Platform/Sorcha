@@ -57,7 +57,7 @@ public sealed class InboxListTool
             return new InboxListResult
             {
                 Status = "Unauthorized",
-                Message = "Access denied. This tool requires the sorcha:participant role.",
+                Message = "Access denied. This tool requires an authenticated consumer- or platform-tier caller.",
                 CheckedAt = DateTimeOffset.UtcNow
             };
         }

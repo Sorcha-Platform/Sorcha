@@ -59,7 +59,7 @@ public sealed class WalletSignToolTests
 
         // Assert
         result.Status.Should().Be("Unauthorized");
-        result.Message.Should().Contain("sorcha:participant");
+        result.Message.Should().Contain("deferred to a dedicated security-reviewed wave");
     }
 
     [Fact]

@@ -59,7 +59,7 @@ public sealed class ActionValidateToolTests
 
         // Assert
         result.Status.Should().Be("Unauthorized");
-        result.Message.Should().Contain("sorcha:participant");
+        result.Message.Should().Contain("consumer- or platform-tier");
     }
 
     [Fact]
