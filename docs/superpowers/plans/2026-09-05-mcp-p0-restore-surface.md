@@ -527,13 +527,15 @@ An advertised tool that cannot work is worse than an absent one, because an agen
 
 Run: `pwsh scripts/check-mcp-routes.ps1`
 
-Expected: exit 0 with **exactly one** entry left in `.mcp-routes-allowlist`:
-`api/blueprints/*/diff`, with a comment recording that the tool is withdrawn and the
-endpoint does not exist. It cannot be removed here: the URL literal lives in
-`BlueprintServiceClient.GetBlueprintDiffAsync`, not in the tool, and `BlueprintDiffToolTests`
-mocks that method — deleting it would break existing tests and is scope growth inside P0.
-Open a follow-up issue for removing the dead client method and its mock-only tests, and
-reference it in the allowlist comment.
+Expected: exit 0 with an **empty** `.mcp-routes-allowlist`.
+
+Withdrawing `[McpServerToolType]` from `BlueprintDiffTool` removes it from the gate's scan
+entirely, which makes its `api/blueprints/*/diff` allowlist entry **stale** — and the gate
+fails on stale entries by design (the ratchet may only shrink). So the entry must be deleted
+in the same commit that withdraws the tool, not kept.
+
+Open a follow-up issue for removing the now-dead `BlueprintServiceClient.GetBlueprintDiffAsync`
+and its mock-only `BlueprintDiffToolTests`, and reference it in the commit message.
 
 - [ ] **Step 4: Run the suites**
 
