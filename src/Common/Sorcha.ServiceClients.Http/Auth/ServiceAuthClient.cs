@@ -39,6 +39,7 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
     private readonly string? _clientSecret;
     private readonly string _scopes;
     private readonly bool _certificateMode;
+    private readonly bool _hasNoCredentialsConfigured;
     private readonly HttpClient? _mtlsHttpClient;
     private readonly X509Certificate2? _clientCertificate;
 
@@ -118,6 +119,23 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
             _clientSecret = configuration["ServiceAuth:ClientSecret"];
         }
 
+        // Whether this host holds ANY service-principal credential material. Computed once, after
+        // both branches above have resolved _clientSecret. A host with none of it never
+        // authenticates as itself — it forwards the caller's bearer instead (the MCP server) — and
+        // ServiceClientAuthHelper skips the token demand for it. A host with SOME of it is
+        // configured, so RequireClientId/RequireClientSecret still fail loudly on the missing half.
+        _hasNoCredentialsConfigured =
+            !_certificateMode
+            && string.IsNullOrWhiteSpace(_clientId)
+            && string.IsNullOrWhiteSpace(_clientSecret);
+
+        if (_hasNoCredentialsConfigured)
+        {
+            _logger.LogInformation(
+                "ServiceAuthClient has no ServiceAuth credentials configured; this host authorises "
+                + "by forwarding the caller's bearer and will not acquire a service token.");
+        }
+
         // Set base address for Tenant Service (JWT issuer)
         if (_httpClient.BaseAddress is null)
         {
@@ -127,6 +145,9 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
             _logger.LogInformation("ServiceAuthClient targeting Tenant Service at {Address}", tenantAddress);
         }
     }
+
+    /// <inheritdoc />
+    public bool HasNoCredentialsConfigured => _hasNoCredentialsConfigured;
 
     /// <inheritdoc />
     public async Task<string?> GetTokenAsync(CancellationToken cancellationToken = default)
