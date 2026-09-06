@@ -106,9 +106,12 @@ public class BlueprintUpdateToolTests
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_blueprint_update")).Returns(true);
         _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Blueprint")).Returns(true);
 
+        // Field names as Sorcha.Blueprint.Models.Blueprint actually serializes them: there is no
+        // "status" property at all, and the timestamp field is "updatedAt", not "modifiedAt".
+        var updatedAt = DateTimeOffset.Parse("2026-09-01T12:00:00Z");
         _blueprintClientMock
             .Setup(c => c.UpdateBlueprintAsync("bp-123", It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(JsonSerializer.Serialize(new { Id = "bp-123", Title = "Updated Blueprint", Version = 2, Status = "Draft", ModifiedAt = DateTimeOffset.UtcNow }));
+            .ReturnsAsync(JsonSerializer.Serialize(new { id = "bp-123", title = "Updated Blueprint", version = 2, updatedAt }));
 
         var result = await CreateTool().UpdateBlueprintAsync("bp-123", ValidJson());
 
@@ -116,6 +119,7 @@ public class BlueprintUpdateToolTests
         result.Blueprint!.Id.Should().Be("bp-123");
         result.Blueprint.Title.Should().Be("Updated Blueprint");
         result.Blueprint.Version.Should().Be(2);
+        result.Blueprint.ModifiedAt.Should().Be(updatedAt);
     }
 
     [Fact]
@@ -163,5 +167,44 @@ public class BlueprintUpdateToolTests
 
         result.ResponseTimeMs.Should().BeGreaterThanOrEqualTo(0);
         result.CheckedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
+    }
+}
+
+/// <summary>
+/// Fixture-level tests against the real wire shape of <c>Sorcha.Blueprint.Models.Blueprint</c>
+/// (see <c>src/Common/Sorcha.Blueprint.Models/Blueprint.cs</c>) — the type
+/// <c>PUT /api/blueprints/{id}</c> returns. That type has no <c>status</c> property at all, and
+/// its modification timestamp serializes as <c>updatedAt</c>, never <c>modifiedAt</c>. A fixture
+/// written with the tool's original (wrong) field names would pass against the tool's own bug;
+/// this one uses the server's real names, so it fails against the pre-fix mapping.
+/// </summary>
+public sealed class BlueprintUpdateResponseParsingTests
+{
+    private const string ServerBody = """
+        {
+          "id": "bp-123",
+          "title": "Updated Blueprint",
+          "version": 2,
+          "updatedAt": "2026-09-01T12:00:00Z"
+        }
+        """;
+
+    [Fact]
+    public void Parse_ServerBody_ReadsUpdatedAtNotModifiedAt()
+    {
+        var parsed = BlueprintUpdateTool.ParseBlueprintResponse(ServerBody);
+
+        parsed.Should().NotBeNull();
+        parsed!.UpdatedAt.Should().Be(DateTimeOffset.Parse("2026-09-01T12:00:00Z"));
+    }
+
+    [Fact]
+    public void Parse_ServerBody_HasNoStatusProperty()
+    {
+        // Sorcha.Blueprint.Models.Blueprint has no "status" property at all — the DTO must not
+        // declare one either, since it can only ever deserialize to a misleading always-null value.
+        var properties = typeof(BlueprintUpdateTool.BlueprintResponse).GetProperties();
+
+        properties.Should().NotContain(p => p.Name == "Status");
     }
 }

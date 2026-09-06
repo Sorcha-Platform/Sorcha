@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json;
+using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
@@ -103,11 +104,14 @@ public sealed class ActionSubmitToolTests
     {
         Allow();
 
+        // Field names as the Blueprint Service's ActionSubmissionResponse / NextActionResponse
+        // actually serialize them (actionTitle / participantId) — NOT title / assignedTo.
         var response = JsonSerializer.Serialize(new
         {
-            message = "Action submitted successfully.",
             transactionId = "tx-789",
-            nextActions = new[] { new { actionId = 2, title = "Next Action", assignedTo = "participant-2" } }
+            instanceId = "wf-1",
+            isComplete = false,
+            nextActions = new[] { new { actionId = 2, actionTitle = "Next Action", participantId = "participant-2" } }
         });
         _blueprintClientMock
             .Setup(c => c.ExecuteActionAsync("wf-1", "1", It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -118,7 +122,32 @@ public sealed class ActionSubmitToolTests
         result.Status.Should().Be("Success");
         result.TransactionId.Should().Be("tx-789");
         result.NextActions.Should().HaveCount(1);
+        result.NextActions[0].Title.Should().Be("Next Action");
+        result.NextActions[0].AssignedTo.Should().Be("participant-2");
+        result.Message.Should().Contain("Next Action");
         _availabilityTrackerMock.Verify(x => x.RecordSuccess("Blueprint"), Times.Once);
+    }
+
+    [Fact]
+    public async Task SubmitActionAsync_WhenWorkflowComplete_MessageSaysComplete()
+    {
+        Allow();
+
+        var response = JsonSerializer.Serialize(new
+        {
+            transactionId = "tx-999",
+            instanceId = "wf-1",
+            isComplete = true,
+            nextActions = Array.Empty<object>()
+        });
+        _blueprintClientMock
+            .Setup(c => c.ExecuteActionAsync("wf-1", "1", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(response);
+
+        var result = await _tool.SubmitActionAsync("wf-1", "1", "{\"name\":\"John Doe\"}");
+
+        result.Message.Should().Contain("complete");
+        result.NextActions.Should().BeEmpty();
     }
 
     [Fact]
@@ -172,5 +201,76 @@ public sealed class ActionSubmitToolTests
         var result = await _tool.SubmitActionAsync("wf-1", "1", "{\"data\":\"test\"}");
 
         result.Status.Should().Be("Error");
+    }
+}
+
+/// <summary>
+/// Fixture-level tests against the Blueprint Service's real wire shape, taken from
+/// <c>src/Services/Sorcha.Blueprint.Service/Models/Responses/ActionSubmissionResponse.cs</c>:
+/// <c>ActionSubmissionResponse</c> has no <c>message</c> property, and its nested
+/// <c>NextActionResponse</c> serializes <c>actionTitle</c> / <c>participantId</c> — never
+/// <c>title</c> / <c>assignedTo</c>. A fixture written with the tool's original (wrong) field
+/// names would pass against the tool's own bug; these use the server's real names instead, so
+/// they fail against the pre-fix mapping and pass only once the DTO matches the wire.
+/// </summary>
+public sealed class ActionSubmitResponseParsingTests
+{
+    private const string ServerBody = """
+        {
+          "transactionId": "tx-789",
+          "instanceId": "wf-1",
+          "isComplete": false,
+          "nextActions": [
+            { "actionId": 2, "actionTitle": "Next Action", "participantId": "participant-2" }
+          ]
+        }
+        """;
+
+    [Fact]
+    public void Parse_ServerBody_ReadsActionTitleNotTitle()
+    {
+        var parsed = ActionSubmitTool.ParseSubmitResponse(ServerBody);
+
+        parsed.Should().NotBeNull();
+        parsed!.NextActions.Should().ContainSingle();
+        parsed.NextActions![0].ActionTitle.Should().Be("Next Action");
+    }
+
+    [Fact]
+    public void Parse_ServerBody_ReadsParticipantIdNotAssignedTo()
+    {
+        var parsed = ActionSubmitTool.ParseSubmitResponse(ServerBody);
+
+        parsed.Should().NotBeNull();
+        parsed!.NextActions![0].ParticipantId.Should().Be("participant-2");
+    }
+
+    [Fact]
+    public void BuildSuccessMessage_WithNextAction_NamesItInsteadOfReadingMissingMessage()
+    {
+        // The server never sends 'message' at all, so the text must come from real fields.
+        var parsed = ActionSubmitTool.ParseSubmitResponse(ServerBody);
+
+        var message = ActionSubmitTool.BuildSuccessMessage(parsed);
+
+        message.Should().Contain("Next Action");
+    }
+
+    [Fact]
+    public void BuildSuccessMessage_WithNullResult_ReturnsGenericSuccess()
+    {
+        var message = ActionSubmitTool.BuildSuccessMessage(null);
+
+        message.Should().Be("Action submitted successfully.");
+    }
+
+    [Fact]
+    public void SubmitResponse_HasNoMessageProperty()
+    {
+        // ActionSubmissionResponse has no "message" property at all — the DTO must not declare
+        // one either, since it can only ever deserialize to a misleading always-null value.
+        var properties = typeof(ActionSubmitTool.SubmitResponse).GetProperties();
+
+        properties.Should().NotContain(p => p.Name == "Message");
     }
 }

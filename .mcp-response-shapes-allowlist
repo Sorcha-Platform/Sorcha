@@ -15,15 +15,6 @@
 # to give the endpoint a named response type (.Produces<T>() or a typed result) — then the gate
 # checks it and the line goes.
 
-# ── (a) GENUINE MISMATCHES — the endpoint is typed, the tool asks for something it never sends ──
-# These are live defects in the served MCP surface, not analyser limitations. Left for the tool-
-# fixing tasks; every one of them silently deserializes to null/0 today.
-ActionSubmitTool.SubmitResponse.Message           # ActionSubmissionResponse has no 'message' at all
-ActionSubmitTool.NextActionDto.Title              # NextActionResponse sends 'actionTitle', not 'title'
-ActionSubmitTool.NextActionDto.AssignedTo         # NextActionResponse sends 'participantId', not 'assignedTo'
-BlueprintUpdateTool.BlueprintResponse.Status      # Blueprint has no 'status' property
-BlueprintUpdateTool.BlueprintResponse.ModifiedAt  # Blueprint sends 'updatedAt', not 'modifiedAt'
-
 # ── (b) SERVER SHAPE NOT STATICALLY REACHABLE ──────────────────────────────────────────────────
 # Same limitation Sorcha.Cli.ContractTests documents in its NotAWireContract list: a handler
 # declared Task<IResult> returning Results.Ok(new { ... }) names no type, so there is nothing for

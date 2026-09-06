@@ -159,10 +159,7 @@ public sealed class ActionSubmitTool
             // Record success
             _availabilityTracker.RecordSuccess("Blueprint");
 
-            var result = JsonSerializer.Deserialize<SubmitResponse>(responseContent, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            var result = ParseSubmitResponse(responseContent);
 
             _logger.LogInformation(
                 "Action {ActionId} on instance {InstanceId} executed successfully in {ElapsedMs}ms",
@@ -171,15 +168,15 @@ public sealed class ActionSubmitTool
             return new ActionSubmitResult
             {
                 Status = "Success",
-                Message = result?.Message ?? "Action submitted successfully.",
+                Message = BuildSuccessMessage(result),
                 CheckedAt = DateTimeOffset.UtcNow,
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
                 TransactionId = result?.TransactionId,
                 NextActions = result?.NextActions?.Select(a => new NextAction
                 {
                     ActionId = a.ActionId,
-                    Title = a.Title ?? "",
-                    AssignedTo = a.AssignedTo
+                    Title = a.ActionTitle ?? "",
+                    AssignedTo = a.ParticipantId
                 }).ToList() ?? []
             };
         }
@@ -226,19 +223,61 @@ public sealed class ActionSubmitTool
         }
     }
 
-    // Internal response models
-    private sealed class SubmitResponse
+    /// <summary>
+    /// Builds the human-readable success message from what the server actually sends.
+    /// <c>ActionSubmissionResponse</c> (see
+    /// <c>src/Services/Sorcha.Blueprint.Service/Models/Responses/ActionSubmissionResponse.cs</c>)
+    /// has no <c>message</c> property at all, so this is composed from <see cref="SubmitResponse.IsComplete"/>
+    /// and <see cref="SubmitResponse.NextActions"/> instead of reading a field that does not exist.
+    /// </summary>
+    internal static string BuildSuccessMessage(SubmitResponse? result)
     {
-        public string? Message { get; set; }
-        public string? TransactionId { get; set; }
-        public List<NextActionDto>? NextActions { get; set; }
+        if (result is null)
+        {
+            return "Action submitted successfully.";
+        }
+
+        if (result.IsComplete)
+        {
+            return "Action submitted successfully. Workflow is complete.";
+        }
+
+        var next = result.NextActions?.FirstOrDefault();
+        return next is not null
+            ? $"Action submitted successfully. Next action: '{next.ActionTitle}'."
+            : "Action submitted successfully.";
     }
 
-    private sealed class NextActionDto
+    /// <summary>Deserializes the Blueprint Service's action-submission response body. Returns null on unparseable input.</summary>
+    internal static SubmitResponse? ParseSubmitResponse(string body) =>
+        JsonSerializer.Deserialize<SubmitResponse>(body, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        });
+
+    /// <summary>
+    /// Mirrors the Blueprint Service's <c>ActionSubmissionResponse</c>. It has no <c>message</c>
+    /// property at all — reading one always deserialized to null — so <see cref="SubmitResponse"/>
+    /// deliberately carries none; <see cref="ActionSubmitResult.Message"/> is composed instead by
+    /// <see cref="BuildSuccessMessage"/> from fields the server does send.
+    /// </summary>
+    internal sealed class SubmitResponse
+    {
+        public string? TransactionId { get; set; }
+        public List<NextActionDto>? NextActions { get; set; }
+        public bool IsComplete { get; set; }
+    }
+
+    /// <summary>
+    /// Mirrors the Blueprint Service's <c>NextActionResponse</c>. The wire properties are
+    /// <c>actionTitle</c> and <c>participantId</c> — NOT <c>title</c>/<c>assignedTo</c>, which
+    /// silently deserialized to null against every live response.
+    /// </summary>
+    internal sealed class NextActionDto
     {
         public int ActionId { get; set; }
-        public string? Title { get; set; }
-        public string? AssignedTo { get; set; }
+        public string? ActionTitle { get; set; }
+        public string? ParticipantId { get; set; }
     }
 }
 
