@@ -96,6 +96,7 @@ public static class ToolEntitlements
         new("sorcha_schema_generate", PlatformOnly, DesignerRole),
         new("sorcha_jsonlogic_test", PlatformOnly, DesignerRole),
         new("sorcha_workflow_instances", PlatformOnly, DesignerRole),
+        new("sorcha_instance_create", PlatformOnly, DesignerRole),
 
         // Workflow participation + citizen read — cross-tier (consumer OR platform), no role
         new("sorcha_inbox_list", ConsumerAndPlatform, null),

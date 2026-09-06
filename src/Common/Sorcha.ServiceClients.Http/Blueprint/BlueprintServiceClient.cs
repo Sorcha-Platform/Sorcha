@@ -405,6 +405,18 @@ public class BlueprintServiceClient : IBlueprintServiceClient
         GetRawAsync($"api/instances/{Uri.EscapeDataString(workflowInstanceId)}", "workflow status", cancellationToken);
 
     /// <inheritdoc />
+    public Task<string?> CreateInstanceAsync(string blueprintId, string registerId, string? tenantId = null, CancellationToken cancellationToken = default)
+    {
+        var payload = JsonSerializer.Serialize(new
+        {
+            blueprintId,
+            registerId,
+            tenantId
+        });
+        return SendRawAsync(HttpMethod.Post, "api/instances/", payload, "create instance", cancellationToken);
+    }
+
+    /// <inheritdoc />
     public Task<string?> GetActionDetailsAsync(string instanceId, string actionId, CancellationToken cancellationToken = default) =>
         GetRawAsync($"api/instances/{Uri.EscapeDataString(instanceId)}/actions/{Uri.EscapeDataString(actionId)}", "action details", cancellationToken);
 

@@ -32,6 +32,7 @@
     "sorcha_disclosure_analysis",
     "sorcha_health_check",
     "sorcha_inbox_list",
+    "sorcha_instance_create",
     "sorcha_jsonlogic_test",
     "sorcha_log_query",
     "sorcha_metrics",
