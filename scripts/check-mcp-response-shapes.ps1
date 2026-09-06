@@ -358,7 +358,13 @@ function Test-UnconditionalJsonIgnore {
     return $false
 }
 
-$propertyPattern = '(?<attrs>(?:\[[^\[\]]*\]\s*)*)\b(?<vis>public|internal)\s+(?:(?:required|virtual|override|new|abstract|static|readonly)\s+)*(?<type>[A-Za-z_][A-Za-z0-9_\.]*(?:<(?:[^<>]|<(?:[^<>]|<[^<>]*>)*>)*>)?\??(?:\[\])?\??)\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\{\s*(?:get|set|init)\b'
+# Matches both `T Name { get; … }` and the expression-bodied `T Name => expr;`. The latter matters:
+# System.Text.Json DOES serialize a computed get-only property (ActionSubmissionResponse.TransactionHash
+# is one), so omitting it would shrink the server's wire shape and flag a tool DTO that reads it as a
+# violation that isn't one. Unlike the parser's other limits this class of miss is not silence — it is
+# a loud wrong answer, and a gate that cries wolf gets switched off.
+# A method is excluded by construction: `Name(` never matches `Name\s*=>`.
+$propertyPattern = '(?<attrs>(?:\[[^\[\]]*\]\s*)*)\b(?<vis>public|internal)\s+(?:(?:required|virtual|override|new|abstract|static|readonly)\s+)*(?<type>[A-Za-z_][A-Za-z0-9_\.]*(?:<(?:[^<>]|<(?:[^<>]|<[^<>]*>)*>)*>)?\??(?:\[\])?\??)\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*(?:\{\s*(?:get|set|init)\b|=>)'
 
 function Get-PropertiesFromBody {
     param([string]$Body)
@@ -884,7 +890,17 @@ function Test-FamilyHasOpaqueProducer {
 
     foreach ($k in $familyHasOpaqueProducer.Keys) {
         $parts = $k -split '\|', 2
-        if ($Owner -and $parts[0] -ne '' -and $parts[0] -ne $Owner) { continue }
+
+        # Scope exactly as Get-RouteCandidates scopes: a tool route with a KNOWN owner consults only
+        # that service's opaque producers — never the union key, whose owner segment is ''.
+        #
+        # Getting this wrong made the scoping a no-op: the union key matched every owner, so an
+        # anonymous producer on a same-named family in ANY other service marked a tool's route
+        # opaque. That widens the withhold-a-verdict branch below, and a genuinely broken DTO can
+        # then present as "server shape not statically reachable" and be allowlisted under kind (b)
+        # in good faith — exactly the ratchet rot the allowlist header warns about.
+        if ($Owner -and $parts[0] -eq '') { continue }
+        if ($Owner -and $parts[0] -ne $Owner) { continue }
         if (Test-FamilyMatch -ServiceFamily $parts[1] -ToolFamily $Family) { return $true }
     }
     return $false
@@ -1497,12 +1513,18 @@ if ($stale.Count -gt 0) {
 
 if ($failed) { exit 1 }
 
-Write-Host ("OK: mcp-response-shapes gate passed. {0} registered tool class(es), {1} response DTO(s) discovered, {2} DTO/server-type pairing(s) resolved (max nesting depth {3}), {4} allowlisted." -f `
+# The unchecked count is stated, not left to subtraction. This line is what CI surfaces and what a
+# reader takes as the coverage claim, and a kind (b) allowlist entry means a DTO is UNCHECKED — not
+# that it is correct. Saying "36 allowlisted" alone reads like 36 known-and-handled problems.
+$uncheckedCount = @($violations | Where-Object { $_.Kind -eq 'unresolved' }).Count
+
+Write-Host ("OK: mcp-response-shapes gate passed. {0} registered tool class(es), {1} response DTO(s) discovered, {2} DTO/server-type pairing(s) resolved (max nesting depth {3}), {4} allowlisted, {5} DTO(s) UNCHECKED (server shape not statically reachable)." -f `
         $toolFiles.Count,
         $dtoCount,
         $resolvedPairs,
     (@($pairings | Select-Object -ExpandProperty Depth) + 0 | Measure-Object -Maximum).Maximum,
-        $allowed.Count) -ForegroundColor Green
+        $allowed.Count,
+        $uncheckedCount) -ForegroundColor Green
 
 if ($allowed.Count -eq 0) {
     Write-Host "  Allowlist is empty — every MCP tool response DTO agrees with the shape its endpoint sends." -ForegroundColor Green

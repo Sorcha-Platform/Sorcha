@@ -28,6 +28,14 @@ on:
       - "src/Apps/Sorcha.McpServer/**/*.cs"
       - "src/Common/Sorcha.ServiceClients/**/*.cs"
       - "src/Common/Sorcha.ServiceClients.Http/**/*.cs"
+      # The response-shape gate builds its server type registry over ALL of src/Common, not just the
+      # two ServiceClients projects the route gate follows — a service DTO frequently lives in a
+      # shared contracts project (BlueprintUpdateTool pairs against
+      # src/Common/Sorcha.Blueprint.Models/Blueprint.cs). Without this line, renaming
+      # Blueprint.UpdatedAt would break that pairing and the gate that would have caught it would
+      # never run. Path filters are workflow-scoped in GitHub Actions, so this widens the route
+      # gate's trigger too; both jobs take ~30s, which is the cheaper side of the trade.
+      - "src/Common/**/*.cs"
       - "src/Services/**/*.cs"
       - "scripts/check-mcp-routes.ps1"
       - ".mcp-routes-allowlist"
