@@ -230,6 +230,21 @@ public sealed class ActionSubmitTool
     /// has no <c>message</c> property at all, so this is composed from <see cref="SubmitResponse.IsComplete"/>
     /// and <see cref="SubmitResponse.NextActions"/> instead of reading a field that does not exist.
     /// </summary>
+    /// <remarks>
+    /// Feature 145 — <c>ActionExecutionService.ExecuteAsync</c> hard-codes <c>IsComplete = false</c>
+    /// and <c>NextActions = []</c> on every one of its three return paths (see
+    /// <c>src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs</c>,
+    /// return sites around lines 358/1211/1411, one of which logs "returning 202 — instance advances
+    /// on projection of the sealed docket"). Submission is asynchronous: the real routing decision
+    /// rides on the sealed transaction's metadata for the <c>InstanceProjector</c> to fold, not on
+    /// this HTTP response (also documented in <c>RehearsalOrchestrationService.cs</c>'s "F145
+    /// reconciliation" comment block). So the <see cref="IsComplete"/>/next-action branches below are
+    /// live for other future or historical response shapes, but the ELSE branch — which names
+    /// <c>sorcha_workflow_status</c> as how to observe the real outcome — is the one every live call
+    /// through this tool actually takes today. Do not let the enriched branches be the only ones that
+    /// say something meaningful; an agent that never sees them must still be told submission is
+    /// asynchronous.
+    /// </remarks>
     internal static string BuildSuccessMessage(SubmitResponse? result)
     {
         if (result is null)
@@ -243,9 +258,18 @@ public sealed class ActionSubmitTool
         }
 
         var next = result.NextActions?.FirstOrDefault();
-        return next is not null
-            ? $"Action submitted successfully. Next action: '{next.ActionTitle}'."
-            : "Action submitted successfully.";
+        if (next is not null)
+        {
+            return $"Action submitted successfully. Next action: '{next.ActionTitle}'.";
+        }
+
+        // The path every live call takes today (see remarks above): the server accepted the
+        // submission but processes it asynchronously, so there is nothing further to report from
+        // this response. Tell the agent plainly rather than letting a bare "submitted successfully"
+        // imply the workflow already advanced.
+        return "Action submitted successfully. Processing is asynchronous: the workflow instance " +
+               "advances once the transaction seals on the register. Call sorcha_workflow_status " +
+               "with this instance id to check whether it has advanced.";
     }
 
     /// <summary>Deserializes the Blueprint Service's action-submission response body. Returns null on unparseable input.</summary>
