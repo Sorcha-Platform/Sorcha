@@ -45,7 +45,7 @@ public sealed class TokenRevokeTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Revocation result.</returns>
     [McpServerTool(Name = "sorcha_token_revoke")]
-    [Description("Invalidates outstanding JWT access and refresh tokens for a single user or for every user under a tenant, recording the supplied reason for audit, and returns the count of tokens revoked. Call this when responding to a credential compromise, an offboarded user, or any incident that requires immediate forced re-authentication; prefer this over sorcha_user_manage Lock when you need to invalidate sessions already in flight rather than only block future logins, and prefer it over sorcha_tenant_update Suspend when you want to force re-authentication without changing the tenant's status. Call after sorcha_audit_query so the revocation has a documented trigger.")]
+    [Description("Invalidates outstanding JWT access and refresh tokens for a single user or for every user in a tenant, returning success/failure (the server does not report a token or user count, and the supplied reason is not persisted server-side — it is logged locally only). Provide exactly one of userId or tenantId; they target two different endpoints, not one combined route. Call this when responding to a credential compromise, an offboarded user, or any incident that requires immediate forced re-authentication; prefer this over sorcha_user_manage Suspend when you need to invalidate sessions already in flight rather than only block future logins, and prefer it over sorcha_tenant_update Suspend when you want to force re-authentication without changing the tenant's status. Call after sorcha_audit_query so the revocation has a documented trigger.")]
     public async Task<TokenRevokeResult> RevokeTokensAsync(
         [Description("Revoke tokens for this user ID")] string? userId = null,
         [Description("Revoke tokens for all users in this tenant")] string? tenantId = null,
@@ -70,6 +70,19 @@ public sealed class TokenRevokeTool
             {
                 Status = "Error",
                 Message = "Either userId or tenantId is required.",
+                CheckedAt = DateTimeOffset.UtcNow
+            };
+        }
+
+        // The two target endpoints are mutually exclusive — each targets a different server route
+        // (POST .../token/revoke-user vs POST .../token/revoke-organization), so a caller supplying
+        // both is ambiguous rather than "revoke both".
+        if (!string.IsNullOrWhiteSpace(userId) && !string.IsNullOrWhiteSpace(tenantId))
+        {
+            return new TokenRevokeResult
+            {
+                Status = "Error",
+                Message = "Provide either userId or tenantId, not both — they target different endpoints.",
                 CheckedAt = DateTimeOffset.UtcNow
             };
         }
@@ -107,15 +120,9 @@ public sealed class TokenRevokeTool
 
         try
         {
-            var requestBody = JsonSerializer.Serialize(new
-            {
-                userId,
-                organizationId = tenantId,
-                reason
-            });
-
-            // Typed client forwards the caller's bearer and pins the route (POST api/tokens/revoke).
-            var responseContent = await _tenantClient.RevokeTokenAsync(requestBody, cancellationToken);
+            // Typed client forwards the caller's bearer and pins the route (POST
+            // api/auth/token/revoke-user, or POST api/auth/token/revoke-organization).
+            var responseContent = await _tenantClient.RevokeTokenAsync(userId, tenantId, cancellationToken);
 
             stopwatch.Stop();
 
@@ -134,6 +141,9 @@ public sealed class TokenRevokeTool
 
             _availabilityTracker.RecordSuccess("Tenant");
 
+            // The endpoint's response is { success, message } — there is no token/user count on
+            // this contract (SuccessResponse). Reporting one that always reads "0" would be worse
+            // than not reporting one at all, so this tool no longer claims a count it cannot know.
             var result = string.IsNullOrWhiteSpace(responseContent)
                 ? null
                 : JsonSerializer.Deserialize<RevokeResponse>(responseContent, new JsonSerializerOptions
@@ -142,17 +152,15 @@ public sealed class TokenRevokeTool
                 });
 
             _logger.LogInformation(
-                "Revoked {Count} tokens for {Target} in {ElapsedMs}ms",
-                result?.TokensRevoked ?? 0, targetDescription, stopwatch.ElapsedMilliseconds);
+                "Token revocation for {Target} completed in {ElapsedMs}ms (success={Success})",
+                targetDescription, stopwatch.ElapsedMilliseconds, result?.Success ?? true);
 
             return new TokenRevokeResult
             {
                 Status = "Success",
-                Message = $"Successfully revoked {result?.TokensRevoked ?? 0} token(s) for {targetDescription}.",
+                Message = result?.Message ?? $"Successfully revoked tokens for {targetDescription}.",
                 CheckedAt = DateTimeOffset.UtcNow,
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
-                TokensRevoked = result?.TokensRevoked ?? 0,
-                UsersAffected = result?.UsersAffected ?? 0,
                 UserId = userId,
                 TenantId = tenantId,
                 Reason = reason
@@ -201,11 +209,14 @@ public sealed class TokenRevokeTool
         }
     }
 
-    // Internal response models
+    // Internal response model — mirrors Sorcha.Tenant.Service.Models.Dtos.SuccessResponse, the
+    // actual wire shape of both POST .../token/revoke-user and .../token/revoke-organization.
+    // There is no token/user count on this contract; the old TokensRevoked/UsersAffected fields
+    // never matched anything the server returned.
     private sealed class RevokeResponse
     {
-        public int TokensRevoked { get; set; }
-        public int UsersAffected { get; set; }
+        public bool Success { get; set; }
+        public string? Message { get; set; }
     }
 
 }
@@ -234,16 +245,6 @@ public sealed record TokenRevokeResult
     /// Response time in milliseconds.
     /// </summary>
     public int ResponseTimeMs { get; init; }
-
-    /// <summary>
-    /// Number of tokens revoked.
-    /// </summary>
-    public int TokensRevoked { get; init; }
-
-    /// <summary>
-    /// Number of users affected.
-    /// </summary>
-    public int UsersAffected { get; init; }
 
     /// <summary>
     /// User ID if user-specific revocation.

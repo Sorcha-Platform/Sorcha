@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Auth;
@@ -62,19 +63,55 @@ public class TenantServiceClient : ITenantServiceClient
         SendRawAsync(HttpMethod.Put, $"api/organizations/{Uri.EscapeDataString(organizationId)}", requestJson, "update organization", cancellationToken);
 
     /// <inheritdoc />
-    public Task<string?> ListUsersAsync(string? queryString = null, CancellationToken cancellationToken = default)
+    public Task<string?> ListUsersAsync(string organizationId, string? queryString = null, CancellationToken cancellationToken = default)
     {
-        var url = string.IsNullOrWhiteSpace(queryString) ? "api/users" : $"api/users?{queryString}";
+        var url = $"api/organizations/{Uri.EscapeDataString(organizationId)}/users";
+        if (!string.IsNullOrWhiteSpace(queryString))
+        {
+            url += $"?{queryString}";
+        }
+
         return GetRawAsync(url, "list users", cancellationToken);
     }
 
     /// <inheritdoc />
-    public Task<string?> ManageUserAsync(string userId, string requestJson, CancellationToken cancellationToken = default) =>
-        SendRawAsync(HttpMethod.Post, $"api/users/{Uri.EscapeDataString(userId)}/actions", requestJson, "manage user", cancellationToken);
+    public Task<string?> ManageUserAsync(
+        string organizationId,
+        string userId,
+        string action,
+        string? requestJson = null,
+        CancellationToken cancellationToken = default)
+    {
+        var orgSegment = Uri.EscapeDataString(organizationId);
+        var userSegment = Uri.EscapeDataString(userId);
+
+        return action.ToLowerInvariant() switch
+        {
+            "suspend" => SendRawAsync(HttpMethod.Post, $"api/organizations/{orgSegment}/users/{userSegment}/suspend", string.Empty, "suspend user", cancellationToken),
+            "reactivate" => SendRawAsync(HttpMethod.Post, $"api/organizations/{orgSegment}/users/{userSegment}/reactivate", string.Empty, "reactivate user", cancellationToken),
+            "unlock" => SendRawAsync(HttpMethod.Post, $"api/organizations/{orgSegment}/users/{userSegment}/unlock", string.Empty, "unlock user", cancellationToken),
+            "changerole" => SendRawAsync(HttpMethod.Put, $"api/organizations/{orgSegment}/users/{userSegment}/role", requestJson ?? "{}", "change user role", cancellationToken),
+            _ => throw new ArgumentException($"Unknown action '{action}'. Must be Suspend, Reactivate, Unlock, or ChangeRole.", nameof(action))
+        };
+    }
 
     /// <inheritdoc />
-    public Task<string?> RevokeTokenAsync(string requestJson, CancellationToken cancellationToken = default) =>
-        SendRawAsync(HttpMethod.Post, "api/tokens/revoke", requestJson, "revoke token", cancellationToken);
+    public Task<string?> RevokeTokenAsync(string? userId, string? organizationId, CancellationToken cancellationToken = default)
+    {
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+            var body = JsonSerializer.Serialize(new { userId });
+            return SendRawAsync(HttpMethod.Post, "api/auth/token/revoke-user", body, "revoke user tokens", cancellationToken);
+        }
+
+        if (!string.IsNullOrWhiteSpace(organizationId))
+        {
+            var body = JsonSerializer.Serialize(new { organizationId });
+            return SendRawAsync(HttpMethod.Post, "api/auth/token/revoke-organization", body, "revoke organization tokens", cancellationToken);
+        }
+
+        throw new ArgumentException("Either userId or organizationId must be supplied.");
+    }
 
     /// <inheritdoc />
     public Task<string?> GetMyPersonaAsync(string? queryString = null, CancellationToken cancellationToken = default)

@@ -35,10 +35,11 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<ServiceAuthClient> _logger;
-    private readonly string _clientId;
+    private readonly string? _clientId;
     private readonly string? _clientSecret;
     private readonly string _scopes;
     private readonly bool _certificateMode;
+    private readonly bool _hasNoCredentialsConfigured;
     private readonly HttpClient? _mtlsHttpClient;
     private readonly X509Certificate2? _clientCertificate;
 
@@ -57,8 +58,11 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        _clientId = configuration["ServiceAuth:ClientId"]
-            ?? throw new InvalidOperationException("ServiceAuth:ClientId not configured");
+        // Deliberately NOT validated here — see RequireClientId(). A host that authorises by
+        // forwarding the caller's bearer (the MCP server) resolves this client through
+        // AddServiceClients but never acquires a service token, so construction must not demand
+        // credentials it will never use.
+        _clientId = configuration["ServiceAuth:ClientId"];
         _scopes = configuration["ServiceAuth:Scopes"] ?? DefaultScopes;
 
         var certificateSource = configuration[WorkloadIdentityConfig.ClientCertificate];
@@ -109,9 +113,27 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
         }
         else
         {
-            // Legacy secret mode — unchanged behaviour, including the fail-fast on a missing secret.
-            _clientSecret = configuration["ServiceAuth:ClientSecret"]
-                ?? throw new InvalidOperationException("ServiceAuth:ClientSecret not configured");
+            // Legacy secret mode. Resolved lazily via RequireClientSecret() at the point a token
+            // is actually requested — see RequireClientId() for why the fail-fast moved out of
+            // the constructor.
+            _clientSecret = configuration["ServiceAuth:ClientSecret"];
+        }
+
+        // Whether this host holds ANY service-principal credential material. Computed once, after
+        // both branches above have resolved _clientSecret. A host with none of it never
+        // authenticates as itself — it forwards the caller's bearer instead (the MCP server) — and
+        // ServiceClientAuthHelper skips the token demand for it. A host with SOME of it is
+        // configured, so RequireClientId/RequireClientSecret still fail loudly on the missing half.
+        _hasNoCredentialsConfigured =
+            !_certificateMode
+            && string.IsNullOrWhiteSpace(_clientId)
+            && string.IsNullOrWhiteSpace(_clientSecret);
+
+        if (_hasNoCredentialsConfigured)
+        {
+            _logger.LogInformation(
+                "ServiceAuthClient has no ServiceAuth credentials configured; this host authorises "
+                + "by forwarding the caller's bearer and will not acquire a service token.");
         }
 
         // Set base address for Tenant Service (JWT issuer)
@@ -123,6 +145,9 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
             _logger.LogInformation("ServiceAuthClient targeting Tenant Service at {Address}", tenantAddress);
         }
     }
+
+    /// <inheritdoc />
+    public bool HasNoCredentialsConfigured => _hasNoCredentialsConfigured;
 
     /// <inheritdoc />
     public async Task<string?> GetTokenAsync(CancellationToken cancellationToken = default)
@@ -156,24 +181,49 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
         }
     }
 
+    /// <summary>
+    /// Resolves the client id at the point a service token is actually needed. Deliberately not
+    /// in the constructor: hosts that authorise by forwarding the caller's bearer (the MCP server)
+    /// resolve this client through AddServiceClients but never acquire a service token, and a
+    /// throwing constructor made that impossible.
+    /// </summary>
+    private string RequireClientId() =>
+        _clientId
+        ?? throw new InvalidOperationException("ServiceAuth:ClientId not configured");
+
+    /// <summary>
+    /// Resolves the legacy client secret at the point a service token is actually needed via the
+    /// secret path. Never called in certificate mode. Deliberately not in the constructor — see
+    /// <see cref="RequireClientId"/> for why.
+    /// </summary>
+    private string RequireClientSecret() =>
+        _clientSecret
+        ?? throw new InvalidOperationException("ServiceAuth:ClientSecret not configured");
+
     private async Task<string?> RefreshTokenAsync(CancellationToken cancellationToken)
     {
+        // Resolved before the try block, deliberately: a host that never configured
+        // credentials (the MCP server, which forwards the caller's bearer instead) must see
+        // this fail loudly, not be swallowed by the generic catch below and returned as null.
+        var clientId = RequireClientId();
+        var clientSecret = _certificateMode ? null : RequireClientSecret();
+
         try
         {
             _logger.LogInformation(
                 "Service token refresh triggered for {ClientId} with scopes [{Scopes}] via {CredentialMode}",
-                _clientId, _scopes, _certificateMode ? "workload certificate" : "client secret");
+                clientId, _scopes, _certificateMode ? "workload certificate" : "client secret");
 
             var formFields = new Dictionary<string, string>
             {
                 ["grant_type"] = "client_credentials",
-                ["client_id"] = _clientId,
+                ["client_id"] = clientId,
                 ["scope"] = _scopes
             };
             if (!_certificateMode)
             {
                 // Legacy path only — certificate mode never transmits a secret.
-                formFields["client_secret"] = _clientSecret!;
+                formFields["client_secret"] = clientSecret!;
             }
 
             using var formData = new FormUrlEncodedContent(formFields);
@@ -185,7 +235,7 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
             {
                 _logger.LogWarning(
                     "Service token acquisition failed for {ClientId}: HTTP {StatusCode}",
-                    _clientId, (int)response.StatusCode);
+                    clientId, (int)response.StatusCode);
                 _cachedToken = null;
                 return null;
             }
@@ -195,7 +245,7 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
             {
                 _logger.LogWarning(
                     "Service token response for {ClientId} was null or missing access_token",
-                    _clientId);
+                    clientId);
                 _cachedToken = null;
                 return null;
             }
@@ -205,7 +255,7 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
 
             _logger.LogInformation(
                 "Service token acquired for {ClientId}, expires at {Expiry} (in {ExpiresInSeconds}s)",
-                _clientId, _tokenExpiry, tokenResponse.ExpiresIn);
+                clientId, _tokenExpiry, tokenResponse.ExpiresIn);
 
             return _cachedToken;
         }
@@ -213,7 +263,7 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
         {
             _logger.LogError(ex,
                 "Service token acquisition failed for {ClientId}: network error communicating with Tenant Service",
-                _clientId);
+                clientId);
             _cachedToken = null;
             return null;
         }
@@ -221,7 +271,7 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
         {
             _logger.LogError(ex,
                 "Service token acquisition failed for {ClientId}: unexpected error",
-                _clientId);
+                clientId);
             _cachedToken = null;
             return null;
         }

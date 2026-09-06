@@ -148,7 +148,7 @@ public interface IBlueprintServiceClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Lists workflow instances with the supplied query string. Calls <c>GET /api/workflows</c>.
+    /// Lists workflow instances with the supplied query string. Calls <c>GET /api/instances/</c>.
     /// </summary>
     /// <param name="queryString">Already-built query string (without leading '?'), or null.</param>
     /// <returns>The workflow-list JSON body, or null on non-success.</returns>
@@ -157,7 +157,7 @@ public interface IBlueprintServiceClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets a workflow instance's current status. Calls <c>GET /api/workflows/{id}</c>.
+    /// Gets a workflow instance's current status. Calls <c>GET /api/instances/{id}</c>.
     /// </summary>
     /// <returns>The workflow-status JSON body, or null on non-success.</returns>
     Task<string?> GetWorkflowStatusAsync(
@@ -165,15 +165,20 @@ public interface IBlueprintServiceClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets the details of an action instance. Calls <c>GET /api/actions/{id}</c>.
+    /// Gets the renderable schema for a single action within a blueprint instance. Calls
+    /// <c>GET /api/instances/{instanceId}/actions/{actionId}</c>.
     /// </summary>
+    /// <param name="instanceId">The workflow instance ID the action belongs to.</param>
+    /// <param name="actionId">The action's sequence number within the blueprint.</param>
     /// <returns>The action-details JSON body, or null on non-success.</returns>
     Task<string?> GetActionDetailsAsync(
-        string actionInstanceId,
+        string instanceId,
+        string actionId,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Lists inbox (pending action) items with the supplied query string. Calls <c>GET /api/inbox</c>.
+    /// Lists inbox (pending action) items with the supplied query string. Calls
+    /// <c>GET /api/actions/pending</c>.
     /// </summary>
     /// <param name="queryString">Already-built query string (without leading '?'), or null.</param>
     /// <returns>The inbox JSON body, or null on non-success.</returns>

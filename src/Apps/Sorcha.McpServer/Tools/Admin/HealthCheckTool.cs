@@ -18,7 +18,6 @@ namespace Sorcha.McpServer.Tools.Admin;
 [McpServerToolType]
 public sealed class HealthCheckTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
     private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
@@ -27,7 +26,6 @@ public sealed class HealthCheckTool
     private readonly Dictionary<string, string> _serviceEndpoints;
 
     public HealthCheckTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
         IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
@@ -35,7 +33,6 @@ public sealed class HealthCheckTool
         IConfiguration configuration,
         ILogger<HealthCheckTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
         _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;

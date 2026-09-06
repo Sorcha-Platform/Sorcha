@@ -27,7 +27,6 @@ namespace Sorcha.McpServer.Tools.Participant;
 /// </summary>
 public sealed class WalletSignTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
     private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
@@ -36,7 +35,6 @@ public sealed class WalletSignTool
     private readonly string _walletServiceEndpoint;
 
     public WalletSignTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
         IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
@@ -44,7 +42,6 @@ public sealed class WalletSignTool
         IConfiguration configuration,
         ILogger<WalletSignTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
         _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;
@@ -74,7 +71,7 @@ public sealed class WalletSignTool
             return new WalletSignResult
             {
                 Status = "Unauthorized",
-                Message = "Access denied. This tool requires the sorcha:participant role.",
+                Message = "Access denied. This tool is not currently enabled for any caller (deferred to a dedicated security-reviewed wave — use sorcha_action_submit for signed workflow actions).",
                 CheckedAt = DateTimeOffset.UtcNow
             };
         }

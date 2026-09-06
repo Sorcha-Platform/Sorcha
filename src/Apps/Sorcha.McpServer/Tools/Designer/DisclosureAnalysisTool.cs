@@ -20,7 +20,6 @@ namespace Sorcha.McpServer.Tools.Designer;
 [McpServerToolType]
 public sealed class DisclosureAnalysisTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
     private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
@@ -29,7 +28,6 @@ public sealed class DisclosureAnalysisTool
     private readonly string _blueprintServiceEndpoint;
 
     public DisclosureAnalysisTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
         IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
@@ -37,7 +35,6 @@ public sealed class DisclosureAnalysisTool
         IConfiguration configuration,
         ILogger<DisclosureAnalysisTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
         _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;

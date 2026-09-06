@@ -178,33 +178,9 @@ public sealed class McpSessionService : IMcpSessionService, ICallerContext
     }
 
     /// <summary>
-    /// Maps standard role names to Sorcha MCP role format.
+    /// Maps standard role names to Sorcha MCP role format. Delegates to the single-home
+    /// <see cref="McpRoleNormalizer"/> (mirrors the HTTP path in <see cref="Infrastructure.HttpCallerContext"/>).
     /// </summary>
-    private static List<string> MapToMcpRoles(List<string> roles)
-    {
-        var mappedRoles = new List<string>();
-
-        foreach (var role in roles)
-        {
-            // Already in sorcha:xxx format
-            if (role.StartsWith("sorcha:", StringComparison.OrdinalIgnoreCase))
-            {
-                mappedRoles.Add(role.ToLowerInvariant());
-                continue;
-            }
-
-            // Map common role names
-            var mappedRole = role.ToLowerInvariant() switch
-            {
-                "admin" or "administrator" or "systemadmin" => "sorcha:admin",
-                "designer" or "workflowdesigner" or "blueprintdesigner" => "sorcha:designer",
-                "participant" or "user" or "member" => "sorcha:participant",
-                _ => role // Keep unknown roles as-is
-            };
-
-            mappedRoles.Add(mappedRole);
-        }
-
-        return mappedRoles.Distinct().ToList();
-    }
+    private static List<string> MapToMcpRoles(List<string> roles) =>
+        McpRoleNormalizer.NormalizeAll(roles);
 }

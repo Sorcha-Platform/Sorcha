@@ -11,7 +11,7 @@ using Sorcha.ServiceClients.Tenant;
 namespace Sorcha.McpServer.Tests.Tools.Admin;
 
 /// <summary>
-/// Spec 139 US4: TokenRevokeTool writes via the typed <see cref="ITenantServiceClient"/>
+/// Spec 139 US4 / MCP P0 Task 5: TokenRevokeTool writes via the typed <see cref="ITenantServiceClient"/>
 /// (route pinned, caller token forwarded), so these tests mock the client rather than HTTP.
 /// </summary>
 public class TokenRevokeToolTests
@@ -64,6 +64,17 @@ public class TokenRevokeToolTests
     }
 
     [Fact]
+    public async Task RevokeTokensAsync_BothTargetsProvided_ReturnsError()
+    {
+        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_token_revoke")).Returns(true);
+
+        var result = await CreateTool().RevokeTokensAsync(userId: "user-123", tenantId: "tenant-123", reason: "x");
+
+        result.Status.Should().Be("Error");
+        result.Message.Should().Contain("not both");
+    }
+
+    [Fact]
     public async Task RevokeTokensAsync_NoReasonProvided_ReturnsError()
     {
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_token_revoke")).Returns(true);
@@ -78,17 +89,15 @@ public class TokenRevokeToolTests
     {
         Allow();
         _tenantClientMock
-            .Setup(c => c.RevokeTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(JsonSerializer.Serialize(new { TokensRevoked = 3, UsersAffected = 1 }));
+            .Setup(c => c.RevokeTokenAsync("user-123", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonSerializer.Serialize(new { success = true, message = "All tokens for user user-123 have been revoked" }));
 
         var result = await CreateTool().RevokeTokensAsync(userId: "user-123", reason: "Security incident");
 
         result.Status.Should().Be("Success");
-        result.TokensRevoked.Should().Be(3);
-        result.UsersAffected.Should().Be(1);
         result.UserId.Should().Be("user-123");
         result.Reason.Should().Be("Security incident");
-        result.Message.Should().Contain("3 token(s)");
+        result.Message.Should().Contain("user-123");
         _availabilityTrackerMock.Verify(a => a.RecordSuccess("Tenant"), Times.Once);
     }
 
@@ -97,30 +106,28 @@ public class TokenRevokeToolTests
     {
         Allow();
         _tenantClientMock
-            .Setup(c => c.RevokeTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(JsonSerializer.Serialize(new { TokensRevoked = 50, UsersAffected = 15 }));
+            .Setup(c => c.RevokeTokenAsync(null, "tenant-123", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonSerializer.Serialize(new { success = true, message = "All tokens for organization tenant-123 have been revoked" }));
 
         var result = await CreateTool().RevokeTokensAsync(tenantId: "tenant-123", reason: "Organization security reset");
 
         result.Status.Should().Be("Success");
-        result.TokensRevoked.Should().Be(50);
-        result.UsersAffected.Should().Be(15);
         result.TenantId.Should().Be("tenant-123");
         result.Reason.Should().Be("Organization security reset");
     }
 
     [Fact]
-    public async Task RevokeTokensAsync_PassesRequestToClient()
+    public async Task RevokeTokensAsync_PassesUserIdToClient()
     {
         Allow();
         _tenantClientMock
-            .Setup(c => c.RevokeTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(JsonSerializer.Serialize(new { TokensRevoked = 1, UsersAffected = 1 }));
+            .Setup(c => c.RevokeTokenAsync("user-123", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonSerializer.Serialize(new { success = true, message = "ok" }));
 
         await CreateTool().RevokeTokensAsync(userId: "user-123", reason: "x");
 
         _tenantClientMock.Verify(
-            c => c.RevokeTokenAsync(It.Is<string>(b => b.Contains("user-123") && b.Contains("x")), It.IsAny<CancellationToken>()),
+            c => c.RevokeTokenAsync("user-123", null, It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -129,7 +136,7 @@ public class TokenRevokeToolTests
     {
         Allow();
         _tenantClientMock
-            .Setup(c => c.RevokeTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.RevokeTokenAsync("user-123", null, It.IsAny<CancellationToken>()))
             .ReturnsAsync((string?)null);
 
         var result = await CreateTool().RevokeTokensAsync(userId: "user-123", reason: "x");
@@ -142,7 +149,7 @@ public class TokenRevokeToolTests
     {
         Allow();
         _tenantClientMock
-            .Setup(c => c.RevokeTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.RevokeTokenAsync("user-123", null, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new TaskCanceledException());
 
         var result = await CreateTool().RevokeTokensAsync(userId: "user-123", reason: "x");
@@ -155,8 +162,8 @@ public class TokenRevokeToolTests
     {
         Allow();
         _tenantClientMock
-            .Setup(c => c.RevokeTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(JsonSerializer.Serialize(new { TokensRevoked = 1, UsersAffected = 1 }));
+            .Setup(c => c.RevokeTokenAsync("user-123", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonSerializer.Serialize(new { success = true, message = "ok" }));
 
         var result = await CreateTool().RevokeTokensAsync(userId: "user-123", reason: "x");
 

@@ -7,12 +7,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
-using OpenTelemetry;
-using OpenTelemetry.Metrics;
 using Sorcha.McpServer;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
-using Sorcha.ServiceClients.Extensions;
 using Sorcha.ServiceDefaults;
 using Sorcha.ServiceDefaults.Auth;
 
@@ -70,8 +67,8 @@ static async Task<int> RunStdioAsync(string[] args)
     // of the bearer token forwarded to backends (one caller per process on stdio).
     builder.Services.AddSingleton<ICallerContext>(sp => (ICallerContext)sp.GetRequiredService<IMcpSessionService>());
 
-    RegisterMcpInfrastructure(builder.Services, builder.Configuration);
-    RegisterServiceClients(builder.Services, builder.Configuration);
+    McpServerHttpRegistration.RegisterMcpInfrastructure(builder.Services, builder.Configuration);
+    McpServerHttpRegistration.RegisterServiceClients(builder.Services, builder.Configuration);
 
     builder.Services
         .AddMcpServer(ConfigureServerOptions)
@@ -114,22 +111,18 @@ static async Task<int> RunHttpAsync(string[] args)
     builder.AddJwtAuthentication();
     builder.Services.AddAuthorization();
 
-    // Per-request caller identity from the validated HttpContext (token + claims).
-    builder.Services.AddHttpContextAccessor();
-
     // JwtOptions is still configured for the local advisory tier-resolution path
     // (TierResolution over the validated principal mirrors the stdio derivation).
     ConfigureJwtOptions(builder.Services, builder.Configuration, builder.Environment);
     builder.Services.Configure<RateLimitSettings>(builder.Configuration.GetSection(RateLimitSettings.SectionName));
-    builder.Services.AddSingleton<IJwtValidationHandler, JwtValidationHandler>();
 
     // The HTTP caller context reads IHttpContextAccessor on every access, so a singleton
     // registration yields per-request values without making the forwarding handler capture a
-    // scoped dependency (captive-dependency / cross-request token-bleed hazard).
-    builder.Services.AddSingleton<ICallerContext, HttpCallerContext>();
-
-    RegisterMcpInfrastructure(builder.Services, builder.Configuration);
-    RegisterServiceClients(builder.Services, builder.Configuration);
+    // scoped dependency (captive-dependency / cross-request token-bleed hazard). This is the
+    // exact set of registrations the HTTP transport uses — extracted to McpServerHttpRegistration
+    // (including the shared MCP infrastructure) so a test can build the same container the
+    // server builds (MCP-P0).
+    McpServerHttpRegistration.ConfigureServices(builder.Services, builder.Configuration);
 
     builder.Services
         .AddMcpServer(ConfigureServerOptions)
@@ -193,90 +186,6 @@ static void ConfigureJwtOptions(IServiceCollection services, IConfiguration conf
             o.SigningKey = configuration["JwtSettings:SigningKey"];
         }
     });
-}
-
-static void RegisterMcpInfrastructure(IServiceCollection services, IConfiguration configuration)
-{
-    services.AddSingleton<IMcpAuthorizationService, McpAuthorizationService>();
-    services.AddSingleton<IRateLimitService, RateLimitService>();
-    services.AddSingleton<IToolAuditService, ToolAuditService>();
-    services.AddSingleton<IMcpErrorHandler, McpErrorHandler>();
-    services.AddSingleton<IServiceAvailabilityTracker, ServiceAvailabilityTracker>();
-
-    // Spec 139 US5: per-invocation observability. McpMetrics needs IMeterFactory (AddMetrics) and
-    // is registered as a singleton; the central call-tool audit filter records every invocation
-    // through ToolAuditService, which emits these metrics. Add the Sorcha.Mcp meter to the OTel
-    // meter provider so the counters/histogram export when an OTLP endpoint is configured — the
-    // exporter itself is only wired when OTEL_EXPORTER_OTLP_ENDPOINT is set (silent otherwise).
-    services.AddMetrics();
-    services.AddSingleton<McpMetrics>();
-    services.AddOpenTelemetry().WithMetrics(metrics => metrics.AddMeter(McpMetrics.MeterName));
-
-    if (!string.IsNullOrWhiteSpace(configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))
-    {
-        services.AddOpenTelemetry().UseOtlpExporter();
-    }
-}
-
-static void RegisterServiceClients(IServiceCollection services, IConfiguration configuration)
-{
-    // Register Sorcha service clients for backend communication
-    services.AddServiceClients(configuration);
-
-    // Spec 139: forward the caller's bearer to every backend call. Attaching the handler to the
-    // default HttpClient covers tools that resolve clients via IHttpClientFactory; the backend
-    // (API Gateway) then authorizes the operation as the calling identity rather than anonymously.
-    services.AddTransient<CallerTokenForwardingHandler>();
-    services.AddHttpClient(string.Empty).AddHttpMessageHandler<CallerTokenForwardingHandler>();
-
-    // Spec 139 US4: as tools are reconciled onto typed Sorcha.ServiceClients, attach the
-    // forwarding handler to each typed client's HttpClient (keyed by concrete type name) so the
-    // caller's bearer rides every typed call. Base addresses come from ServiceClients:*:Address
-    // (point these at the API Gateway in deployment config).
-    services.AddHttpClient<Sorcha.ServiceClients.Blueprint.BlueprintServiceClient>()
-        .AddHttpMessageHandler<CallerTokenForwardingHandler>();
-    services.AddHttpClient<Sorcha.ServiceClients.Register.RegisterServiceClient>()
-        .AddHttpMessageHandler<CallerTokenForwardingHandler>();
-    services.AddHttpClient<Sorcha.ServiceClients.Wallet.WalletServiceClient>()
-        .AddHttpMessageHandler<CallerTokenForwardingHandler>();
-    services.AddHttpClient<Sorcha.ServiceClients.Tenant.TenantServiceClient>()
-        .AddHttpMessageHandler<CallerTokenForwardingHandler>();
-
-    // Feature 140 Wave 1: the Peer typed client is registered interface-first in AddServiceClients
-    // (AddHttpClient<IPeerServiceClient, PeerServiceClient>), so its named HttpClient is keyed by the
-    // interface. Re-open that same registration to append the forwarding handler so register
-    // subscribe/unsubscribe calls ride the caller's bearer to the gateway.
-    services.AddHttpClient<Sorcha.ServiceClients.Peer.IPeerServiceClient, Sorcha.ServiceClients.Peer.PeerServiceClient>()
-        .AddHttpMessageHandler<CallerTokenForwardingHandler>();
-
-    // Feature 140 Wave 2: the HAIP typed client is also registered interface-first in
-    // AddServiceClients (AddHttpClient<IHaipServiceClient, HaipServiceClient>). Re-open that
-    // same named registration to append the forwarding handler so the credential-offer /
-    // presentation-request tools ride the caller's bearer to the gateway. The Blueprint client
-    // (used by the presentation-status + credential-lifecycle tools) is already covered above.
-    services.AddHttpClient<Sorcha.ServiceClients.Haip.IHaipServiceClient, Sorcha.ServiceClients.Haip.HaipServiceClient>()
-        .AddHttpMessageHandler<CallerTokenForwardingHandler>();
-
-    // Feature 140 Wave 3: the citizen self-service tools are CONSUMER tier and MUST act as the
-    // calling citizen. The CitizenWalletClient and RegisterInvitationServiceClient are registered
-    // concrete-type-keyed in AddServiceClients (AddHttpClient<CitizenWalletClient>() /
-    // AddHttpClient<RegisterInvitationServiceClient>()) — re-open those same named registrations to
-    // append the forwarding handler so the consumer's bearer rides every my-credentials /
-    // my-devices / my-presentations / my-invitations call. The Tenant client (used by the
-    // my-persona tool) already has the handler attached above.
-    services.AddHttpClient<Sorcha.ServiceClients.CitizenWallet.CitizenWalletClient>()
-        .AddHttpMessageHandler<CallerTokenForwardingHandler>();
-    services.AddHttpClient<Sorcha.ServiceClients.Invitation.RegisterInvitationServiceClient>()
-        .AddHttpMessageHandler<CallerTokenForwardingHandler>();
-
-    // Feature 140 Wave 4: the platform-administration depth tools route org-status, platform-settings,
-    // org-user-audit, user-provision and user-password-reset through the Tenant client (already covered
-    // above) and validator start/stop through the Validator typed client. The ValidatorServiceClient is
-    // registered concrete-type-keyed in AddServiceClients (AddHttpClient<ValidatorServiceClient>()) —
-    // re-open that same named registration to append the forwarding handler so the admin's bearer rides
-    // every validator-control call to the gateway (which enforces the SystemAdmin gate server-side).
-    services.AddHttpClient<Sorcha.ServiceClients.Validator.ValidatorServiceClient>()
-        .AddHttpMessageHandler<CallerTokenForwardingHandler>();
 }
 
 static void ConfigureServerOptions(McpServerOptions options)

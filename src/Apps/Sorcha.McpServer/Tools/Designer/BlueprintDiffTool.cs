@@ -13,11 +13,19 @@ using Sorcha.ServiceClients.Blueprint;
 namespace Sorcha.McpServer.Tools.Designer;
 
 /// <summary>
-/// Designer tool for comparing blueprint versions. Reads via the typed
-/// <see cref="IBlueprintServiceClient"/> (spec 139 US4) so the caller's bearer is forwarded
-/// and the route is contract-pinned, not hand-rolled.
+/// Designer tool for comparing blueprint versions.
+/// <para>
+/// MCP P0 restore-surface Task 5: this tool is intentionally <b>not</b> decorated with
+/// <c>[McpServerToolType]</c>, so the assembly tool scan does not discover or register it and
+/// it is fully absent from the served MCP surface (and from the advertised manifest catalogue).
+/// No <c>/diff</c> endpoint exists anywhere in <c>Sorcha.Blueprint.Service</c> (or any other
+/// service) — <see cref="IBlueprintServiceClient.GetBlueprintDiffAsync"/> targets a route that
+/// was never mapped, so an advertised <c>sorcha_blueprint_diff</c> tool would always fail. The
+/// class is kept intact (compiles, unit-tested) so a future wave can re-enable it by restoring
+/// the attribute once a real diff endpoint exists. See issue #1607 for removing the now-dead
+/// client method and its mock-only tests, which are deliberately left in place here.
+/// </para>
 /// </summary>
-[McpServerToolType]
 public sealed class BlueprintDiffTool
 {
     private readonly IMcpAuthorizationService _authService;

@@ -40,15 +40,13 @@ public sealed class InboxListTool
     /// <summary>
     /// Lists pending actions waiting for the current user.
     /// </summary>
-    /// <param name="status">Filter by status: Pending, InProgress, or all (optional).</param>
     /// <param name="page">Page number (1-based, default: 1).</param>
     /// <param name="pageSize">Items per page (default: 20, max: 100).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of pending actions.</returns>
     [McpServerTool(Name = "sorcha_inbox_list")]
-    [Description("List the workflow actions currently assigned to the authenticated participant, optionally filtered by status and paginated. Returns one row per outstanding action with its instance id, workflow context, and assignment state — the entry point an agent should use to discover what work is waiting. Call this when an agent first wakes up on behalf of a participant and needs to know what to act on; use sorcha_action_details rather than this tool when you already have an actionInstanceId and need its schema, and prefer sorcha_workflow_status when investigating a specific workflow instance rather than a participant's whole queue.")]
+    [Description("List the workflow actions currently assigned to the authenticated participant, paginated. Returns one row per outstanding action with its instance id, action id, blueprint context, and urgency — the entry point an agent should use to discover what work is waiting. Call this when an agent first wakes up on behalf of a participant and needs to know what to act on; use sorcha_action_details rather than this tool when you already have an instanceId and actionId and need the action's schema, and prefer sorcha_workflow_status when investigating a specific workflow instance rather than a participant's whole queue. NOTE: the underlying endpoint (GET /api/actions/pending) has no server-side status filter — every item returned is pending by definition, so a status parameter is not offered.")]
     public async Task<InboxListResult> ListInboxAsync(
-        [Description("Status filter: Pending, InProgress, or leave empty for all")] string? status = null,
         [Description("Page number (1-based, default: 1)")] int page = 1,
         [Description("Items per page (default: 20, max: 100)")] int pageSize = 20,
         CancellationToken cancellationToken = default)
@@ -59,7 +57,7 @@ public sealed class InboxListTool
             return new InboxListResult
             {
                 Status = "Unauthorized",
-                Message = "Access denied. This tool requires the sorcha:participant role.",
+                Message = "Access denied. This tool requires an authenticated consumer- or platform-tier caller.",
                 CheckedAt = DateTimeOffset.UtcNow
             };
         }
@@ -68,21 +66,6 @@ public sealed class InboxListTool
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 100) pageSize = 100;
-
-        // Validate status if provided
-        if (!string.IsNullOrWhiteSpace(status))
-        {
-            var validStatuses = new[] { "Pending", "InProgress" };
-            if (!validStatuses.Contains(status, StringComparer.OrdinalIgnoreCase))
-            {
-                return new InboxListResult
-                {
-                    Status = "Error",
-                    Message = "Invalid status. Must be Pending or InProgress.",
-                    CheckedAt = DateTimeOffset.UtcNow
-                };
-            }
-        }
 
         // Check service availability
         if (!_availabilityTracker.IsServiceAvailable("Blueprint"))
@@ -95,27 +78,17 @@ public sealed class InboxListTool
             };
         }
 
-        _logger.LogInformation("Listing inbox items. Status: {Status}, Page: {Page}", status ?? "all", page);
+        _logger.LogInformation("Listing inbox items. Page: {Page}", page);
 
         var stopwatch = Stopwatch.StartNew();
 
         try
         {
             // Build query string
-            var queryParams = new List<string>
-            {
-                $"page={page}",
-                $"pageSize={pageSize}"
-            };
+            var queryString = $"page={page}&pageSize={pageSize}";
 
-            if (!string.IsNullOrWhiteSpace(status))
-            {
-                queryParams.Add($"status={Uri.EscapeDataString(status)}");
-            }
-
-            // Typed client forwards the caller's bearer and pins the route (GET api/inbox).
-            var responseContent = await _blueprintClient.GetInboxAsync(
-                string.Join("&", queryParams), cancellationToken);
+            // Typed client forwards the caller's bearer and pins the route (GET api/actions/pending).
+            var responseContent = await _blueprintClient.GetInboxAsync(queryString, cancellationToken);
 
             stopwatch.Stop();
 
@@ -163,21 +136,23 @@ public sealed class InboxListTool
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
                 Items = result.Items?.Select(i => new InboxItem
                 {
-                    ActionInstanceId = i.ActionInstanceId ?? "",
-                    WorkflowInstanceId = i.WorkflowInstanceId ?? "",
+                    InstanceId = i.InstanceId ?? "",
                     BlueprintId = i.BlueprintId ?? "",
                     BlueprintTitle = i.BlueprintTitle,
                     ActionId = i.ActionId,
                     ActionTitle = i.ActionTitle ?? "",
-                    Status = i.Status ?? "Pending",
-                    Priority = i.Priority,
-                    AssignedAt = i.AssignedAt,
-                    DueAt = i.DueAt
+                    Urgency = i.Urgency ?? "normal",
+                    ReceivedAt = i.ReceivedAt,
+                    DueAt = i.Deadline
                 }).ToList() ?? [],
                 TotalCount = result.TotalCount,
                 Page = result.Page,
                 PageSize = result.PageSize,
-                TotalPages = result.TotalPages
+                // The endpoint does not return a totalPages field — derive it rather than report a
+                // permanently-zero value the wire body never actually carries.
+                TotalPages = result.PageSize > 0
+                    ? (int)Math.Ceiling(result.TotalCount / (double)result.PageSize)
+                    : 0
             };
         }
         catch (TaskCanceledException)
@@ -223,28 +198,27 @@ public sealed class InboxListTool
         }
     }
 
-    // Internal response models
+    // Internal response models — mirror Sorcha.Blueprint.Service.Models.PendingActionSummary, the
+    // actual wire shape of GET /api/actions/pending (no totalPages, no status/priority/actionInstanceId —
+    // those fields never existed on this endpoint; see report for what was dropped/renamed).
     private sealed class InboxResponse
     {
         public List<InboxItemDto>? Items { get; set; }
         public int TotalCount { get; set; }
         public int Page { get; set; }
         public int PageSize { get; set; }
-        public int TotalPages { get; set; }
     }
 
     private sealed class InboxItemDto
     {
-        public string? ActionInstanceId { get; set; }
-        public string? WorkflowInstanceId { get; set; }
-        public string? BlueprintId { get; set; }
-        public string? BlueprintTitle { get; set; }
+        public string? InstanceId { get; set; }
         public int ActionId { get; set; }
         public string? ActionTitle { get; set; }
-        public string? Status { get; set; }
-        public string? Priority { get; set; }
-        public DateTimeOffset? AssignedAt { get; set; }
-        public DateTimeOffset? DueAt { get; set; }
+        public string? BlueprintId { get; set; }
+        public string? BlueprintTitle { get; set; }
+        public string? Urgency { get; set; }
+        public DateTimeOffset? Deadline { get; set; }
+        public DateTimeOffset ReceivedAt { get; set; }
     }
 }
 
@@ -300,19 +274,16 @@ public sealed record InboxListResult
 }
 
 /// <summary>
-/// An item in the user's inbox.
+/// An item in the user's inbox. Every item is a pending action — there is no separate
+/// "in progress" state on this endpoint.
 /// </summary>
 public sealed record InboxItem
 {
     /// <summary>
-    /// The unique action instance ID.
+    /// The workflow instance ID this action belongs to. Pass this and <see cref="ActionId"/> to
+    /// sorcha_action_details or sorcha_action_validate.
     /// </summary>
-    public required string ActionInstanceId { get; init; }
-
-    /// <summary>
-    /// The workflow instance ID this action belongs to.
-    /// </summary>
-    public required string WorkflowInstanceId { get; init; }
+    public required string InstanceId { get; init; }
 
     /// <summary>
     /// The blueprint ID.
@@ -325,7 +296,7 @@ public sealed record InboxItem
     public string? BlueprintTitle { get; init; }
 
     /// <summary>
-    /// The action ID (sequence number).
+    /// The action ID (sequence number) within the blueprint.
     /// </summary>
     public int ActionId { get; init; }
 
@@ -335,22 +306,17 @@ public sealed record InboxItem
     public required string ActionTitle { get; init; }
 
     /// <summary>
-    /// Current status: Pending or InProgress.
+    /// Urgency level: normal, warning, or urgent.
     /// </summary>
-    public required string Status { get; init; }
+    public required string Urgency { get; init; }
 
     /// <summary>
-    /// Priority level if set.
+    /// When the action arrived in the participant's queue.
     /// </summary>
-    public string? Priority { get; init; }
+    public DateTimeOffset ReceivedAt { get; init; }
 
     /// <summary>
-    /// When the action was assigned to the user.
-    /// </summary>
-    public DateTimeOffset? AssignedAt { get; init; }
-
-    /// <summary>
-    /// When the action is due if a deadline is set.
+    /// When the action is due if a deadline is configured.
     /// </summary>
     public DateTimeOffset? DueAt { get; init; }
 }

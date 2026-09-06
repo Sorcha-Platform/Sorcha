@@ -17,18 +17,15 @@ namespace Sorcha.McpServer.Tools.Designer;
 [McpServerToolType]
 public sealed class SchemaGenerateTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
     private readonly IMcpErrorHandler _errorHandler;
     private readonly ILogger<SchemaGenerateTool> _logger;
 
     public SchemaGenerateTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
         IMcpErrorHandler errorHandler,
         ILogger<SchemaGenerateTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
         _errorHandler = errorHandler;
         _logger = logger;
