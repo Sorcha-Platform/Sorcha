@@ -3,12 +3,12 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.26
-**Last Updated:** 2026-09-05
+**Version:** 7.27
+**Last Updated:** 2026-09-06
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
-> **2026-09-05 - MCP-P0: the public MCP tool surface had been completely dead for 6+ days; restored, gated, and role-corrected. LIVE VERIFICATION ON n1 OUTSTANDING.**
+> **2026-09-05 - MCP-P0: the public MCP tool surface had been completely dead for 6+ days; restored, gated, and role-corrected. LIVE-VERIFIED ON n1 (2026-09-06).**
 >
 > Every `tools/call` on the public MCP endpoint had been failing since the HTTP transport shipped, and the suite stayed green throughout because every existing integration test stopped at `initialize` — proving the auth gate, never that a tool could dispatch.
 >
@@ -30,7 +30,11 @@
 >
 > **Route-gate hardening.** `scripts/check-mcp-routes.ps1` discovered typed-client fields only as a declaration with no initialiser and only when typed as an `I…Client` interface, so the primary-constructor idiom (already used elsewhere in this tree) or a concrete-class-typed field silently dropped a tool from the scan — mutation-proven: call sites 72 → 71 with a bogus route present and the gate still green. It now accepts field initialisers, primary-constructor parameters, and concrete client types, and carries a **non-vacuity floor on the extracted routes** (there was one on the tool-class count but none on the routes, so collapsed extraction read as a pass rather than a failure).
 >
-> ⚠ **LIVE VERIFICATION ON n1 IS OUTSTANDING, NOT DONE.** Deploying this branch to n1 and confirming a live `tools/call` succeeds (one admin tool, one designer tool, one participant tool) plus a clean container-log check is explicitly deferred pending the human partner's decision — do not treat the green local/CI suite as proof; that is precisely the failure mode this incident is about.
+> ✅ **LIVE VERIFICATION ON n1: DONE, 2026-09-06.** Deployed `mcp-server-http` to n1 from a branch-built image. Five tools verified live across all three role tiers, every one `Success`, zero exceptions: `sorcha_health_check` (admin) — real result; `sorcha_blueprint_list` (designer, typed client) — Success, 16ms; `sorcha_inbox_list` (participant, typed client) — Success, 20ms; `sorcha_register_query` (participant, typed client) — Success, 34ms, "Query returned 19 record(s)" — real ledger data; `sorcha_user_list` (admin, typed client) — Success, 38ms, "Retrieved 1 user(s)". **Zero occurrences** in the container log of either signature that defined the incident: `Unable to resolve service` and `ServiceAuth:ClientId not configured`. The verification deliberately included **typed-client-backed** tools from more than one tier, because `sorcha_health_check` alone uses `IHttpClientFactory` directly and would have passed against the still-dead surface.
+>
+> ⚠ n1 currently runs a **locally-built branch image** pinned by `/opt/sorcha/docker-compose.mcpbranch.yml`. That override must be removed once the branch merges and Docker Publish republishes `:latest`, or n1 will never receive another mcp-server update.
+>
+> ⚠ A pre-existing, unrelated defect observed during verification: `HealthCheckTool` probes `localhost:80` / `localhost:5002` rather than resolved service addresses, so it reports ApiGateway and Peer unhealthy on every node. Not introduced by this branch; worth its own issue.
 >
 > `TransactionTypeClassifier.IsGenesisOrControlTransaction` waived six rules — action-schema, blueprint conformance (**including `VAL_BP_002` sender authorisation**), routing attestation, crypto policy, sequence replay, and fork detection — on either `Metadata["Type"] in {Genesis, Control, BlueprintPublish}` or `BlueprintId == "genesis"`. **Neither is signed.** The signed bytes are `"{TransactionId}:{PayloadHash}"` and both are the same digest of the payload body, so a submitter chose both freely. `Control` had a compensating roster check keyed on the same string; `Genesis` and `BlueprintPublish` substituted nothing.
 >

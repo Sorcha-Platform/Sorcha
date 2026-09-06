@@ -624,7 +624,7 @@ foreach ($file in $toolFiles) {
         }
     }
 
-    foreach ($m in [regex]::Matches($text, '(?<![A-Za-z0-9_.])([A-Za-z_][A-Za-z0-9_]*)\s*\.\s*([A-Za-z0-9_]+)\s*\(')) {
+    foreach ($m in [regex]::Matches($text, '(?<![A-Za-z0-9_.])(?:this\s*\.\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\.\s*([A-Za-z0-9_]+)\s*\(')) {
         $fieldName = $m.Groups[1].Value
         $method = $m.Groups[2].Value
         if (-not $fields.ContainsKey($fieldName)) { continue }
