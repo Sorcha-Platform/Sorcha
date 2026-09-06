@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
 namespace Sorcha.ServiceClients.Tenant;
@@ -22,6 +22,22 @@ public interface ITenantServiceClient
     /// <returns>The organisation-list JSON body, or null on non-success.</returns>
     Task<string?> ListOrganizationsAsync(
         string? queryString = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a single organisation. Calls <c>GET /api/organizations/{id}</c>.
+    /// </summary>
+    /// <remarks>
+    /// The route requires authentication only (no administrator role), unlike
+    /// <see cref="ListOrganizationsAsync"/>, so a caller may read their OWN organisation.
+    /// The body is <c>OrganizationResponse</c>, which carries <c>walletAddress</c> — the org's
+    /// canonical signing wallet, or null while it is still awaiting one (#1525).
+    /// </remarks>
+    /// <param name="organizationId">Organisation ID.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The organisation JSON body, or null on non-success (including 404).</returns>
+    Task<string?> GetOrganizationAsync(
+        string organizationId,
         CancellationToken cancellationToken = default);
 
     /// <summary>

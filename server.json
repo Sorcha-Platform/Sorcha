@@ -51,6 +51,7 @@
     "sorcha_platform_settings",
     "sorcha_presentation_request",
     "sorcha_presentation_status",
+    "sorcha_register_create",
     "sorcha_register_query",
     "sorcha_register_relationship",
     "sorcha_register_stats",

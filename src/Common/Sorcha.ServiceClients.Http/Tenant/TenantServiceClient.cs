@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text;
@@ -53,6 +53,10 @@ public class TenantServiceClient : ITenantServiceClient
         var url = string.IsNullOrWhiteSpace(queryString) ? "api/organizations" : $"api/organizations?{queryString}";
         return GetRawAsync(url, "list organizations", cancellationToken);
     }
+
+    /// <inheritdoc />
+    public Task<string?> GetOrganizationAsync(string organizationId, CancellationToken cancellationToken = default) =>
+        GetRawAsync($"api/organizations/{Uri.EscapeDataString(organizationId)}", "get organization", cancellationToken);
 
     /// <inheritdoc />
     public Task<string?> CreateOrganizationAsync(string requestJson, CancellationToken cancellationToken = default) =>

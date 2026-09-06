@@ -97,6 +97,9 @@ public static class ToolEntitlements
         new("sorcha_jsonlogic_test", PlatformOnly, DesignerRole),
         new("sorcha_workflow_instances", PlatformOnly, DesignerRole),
         new("sorcha_instance_create", PlatformOnly, DesignerRole),
+        // Creates a register and establishes its governance roster. Additionally gated on a real
+        // person's confirmation at the client (IHumanApproval) — entitlement alone is not enough.
+        new("sorcha_register_create", PlatformOnly, DesignerRole),
 
         // Workflow participation + citizen read — cross-tier (consumer OR platform), no role
         new("sorcha_inbox_list", ConsumerAndPlatform, null),
