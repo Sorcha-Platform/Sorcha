@@ -646,6 +646,43 @@ spec `specs/196-validator-exemption-authority/`.
 
 ---
 
+### 24. An action's data contract lives on `dataSchemas`, and one place reads it (#1573)
+
+Every published blueprint declares its action payload contract on **`Action.DataSchemas`**. The
+engine validated `Action.Form.Schema` instead — a property no blueprint sets, which defaults to
+null on a layout-only `Control`. Caller and callee were joined on different properties, nothing
+verified the join, and it **failed open**: `ValidateAsync` returned `Valid` for every payload ever
+submitted.
+
+```csharp
+// DO — one home for "which schemas must this action's data satisfy".
+return await ActionSchemaValidation.ValidateAsync(_schemaValidator, data, action, ct);
+
+// DON'T — no blueprint populates this, so it is a silent pass, not a null-ref.
+if (action.Form?.Schema == null) return ValidationResult.Valid();
+```
+
+- **The semantics are the Validator's, deliberately.** The data validated is the action's own
+  submitted payload, and it must satisfy **every** entry in `dataSchemas` — the rule
+  `ValidationEngine.ValidateSchemaAsync` applies on the ledger side. Anything else means the two
+  halves of the platform disagree about the contract, and the disagreement surfaces only as a
+  transaction that is accepted and then never seals.
+- **Do NOT "fix" a missing schema by populating `Form.Schema` at publish time.** `form` is
+  serialised into the canonical published definition, so writing to it changes the canonical bytes
+  and **moves every publication id on every register** (pattern 22) — while leaving `execDefHash`
+  untouched, because `form` is presentational and excluded from it. Identity would move, the
+  behavioural signature would say nothing had changed, and any `RehearsalPass` would survive.
+  Reading `dataSchemas` changes no bytes at all.
+- **`Form.Schema` is retained only as a fallback** when `dataSchemas` is empty. Actions built in
+  code rather than published (the Fluent API, the demo app, older tests) do set it, and dropping
+  their one schema would be a second fail-open in the opposite direction.
+- **Why ~4,300 green tests missed it**: `ExecutionEngineTests.CreateActionWithSchema()` hand-built
+  `Form.Schema`, a shape **0 of the 14 blueprint-shaped JSON files** in the repo produce. The
+  fixture is now built from the published shape. A fixture that can only pass on a synthetic shape
+  is not a guard — the same trap as Feature 196's genesis fixtures.
+- **Still open, deliberately out of scope here**: `DryRunStepper` (the F142 rehearsal that gates
+  go-live) and `POST /api/execution/validate` reach schema validation by other routes.
+
 ---
 
 ## Key Documentation

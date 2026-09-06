@@ -65,13 +65,10 @@ public class ExecutionEngine : IExecutionEngine
         ArgumentNullException.ThrowIfNull(data);
         ArgumentNullException.ThrowIfNull(action);
 
-        if (action.Form?.Schema == null)
-        {
-            // No schema defined - validation passes
-            return ValidationResult.Valid();
-        }
-
-        return await _schemaValidator.ValidateAsync(data, action.Form.Schema, ct);
+        // Issue #1573: the schemas live on Action.DataSchemas — the property every published
+        // blueprint populates and the one the Validator itself enforces. Reading Form.Schema here
+        // meant this returned Valid for every payload ever submitted. See ActionSchemaValidation.
+        return await ActionSchemaValidation.ValidateAsync(_schemaValidator, data, action, ct);
     }
 
     /// <summary>
