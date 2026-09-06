@@ -38,15 +38,21 @@ public sealed class ActionSubmitTool
     }
 
     /// <summary>
-    /// Submits (executes) data for an action on a workflow instance, completing it and advancing the workflow.
+    /// Submits (executes) data for an action on a workflow instance, committing it to the register.
+    /// Acceptance is asynchronous (Feature 145): the workflow instance advances only once the
+    /// resulting transaction seals and is folded by the projector, not synchronously within this
+    /// call. Poll <c>sorcha_workflow_status</c> with the instance id to observe the outcome.
     /// </summary>
     /// <param name="instanceId">The workflow instance ID the action belongs to.</param>
     /// <param name="actionId">The action ID within the instance.</param>
     /// <param name="dataJson">The action data in JSON format.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Result of the submission.</returns>
+    /// <returns>
+    /// The submission result, including the transaction id if accepted. Does not report whether the
+    /// workflow has advanced — check <c>sorcha_workflow_status</c> for that.
+    /// </returns>
     [McpServerTool(Name = "sorcha_action_submit")]
-    [Description("Submit (execute) signed data for an action on a workflow instance, completing that action and advancing the multi-party workflow to its next step. Returns the resulting transaction id and any next actions triggered. Requires both the workflow instanceId and the actionId within it (use sorcha_inbox_list or sorcha_workflow_status to discover them). Call this when the agent has the participant's input ready and intends to commit it to the register; call sorcha_action_validate first when you only want to dry-run the data against the input schema, and use sorcha_inbox_list rather than this tool when discovering which actions are pending.")]
+    [Description("Submit (execute) signed data for an action on a workflow instance, committing it to the register. This call is accepted asynchronously (HTTP 202): it returns the resulting transaction id, but the workflow instance advances only later, once that transaction seals and is folded by the instance projector — not synchronously in this response, and the response never carries next-action data. After calling this, use sorcha_workflow_status with the instance id to observe whether and how the workflow advanced. Requires both the workflow instanceId and the actionId within it (use sorcha_inbox_list or sorcha_workflow_status to discover them). Call this when the agent has the participant's input ready and intends to commit it to the register; call sorcha_action_validate first when you only want to dry-run the data against the input schema, and use sorcha_inbox_list rather than this tool when discovering which actions are pending.")]
     public async Task<ActionSubmitResult> SubmitActionAsync(
         [Description("The workflow instance ID the action belongs to")] string instanceId,
         [Description("The action ID within the instance")] string actionId,
@@ -336,7 +342,13 @@ public sealed record ActionSubmitResult
     public string? TransactionId { get; init; }
 
     /// <summary>
-    /// Next actions in the workflow that were triggered.
+    /// Next actions the server reported as triggered by this submission, when present. Feature
+    /// 145's execute endpoint currently hard-codes this empty on every live call — the real
+    /// routing decision rides on the sealed transaction's metadata for the instance projector to
+    /// fold, not on this HTTP response (see <c>ActionExecutionService.ExecuteAsync</c>). Modelled
+    /// for shape-parity with the shared wire contract and in case a future response populates it;
+    /// do not expect entries here from a live <c>sorcha_action_submit</c> call today — use
+    /// <c>sorcha_workflow_status</c> to see what actually advanced.
     /// </summary>
     public IReadOnlyList<NextAction> NextActions { get; init; } = [];
 
@@ -347,7 +359,10 @@ public sealed record ActionSubmitResult
 }
 
 /// <summary>
-/// Information about a next action triggered by submission.
+/// A next-action entry as the Blueprint Service's wire shape describes it. NOTE: a live
+/// <c>sorcha_action_submit</c> response never populates this today (Feature 145 — see
+/// <see cref="ActionSubmitResult.NextActions"/> for why); this type exists for shape-parity with
+/// the same <c>NextActionResponse</c> contract other consumers deserialize.
 /// </summary>
 public sealed record NextAction
 {
