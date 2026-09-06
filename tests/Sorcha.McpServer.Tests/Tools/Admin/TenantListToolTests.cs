@@ -70,12 +70,12 @@ public class TenantListToolTests
 
         var response = JsonSerializer.Serialize(new
         {
-            Items = new[]
+            Organizations = new[]
             {
                 new { OrganizationId = "tenant-1", Name = "Tenant One", Status = "Active", UserCount = 10, BlueprintCount = 5, CreatedAt = DateTimeOffset.UtcNow.AddDays(-30), LastActivityAt = DateTimeOffset.UtcNow.AddHours(-1) },
                 new { OrganizationId = "tenant-2", Name = "Tenant Two", Status = "Suspended", UserCount = 5, BlueprintCount = 2, CreatedAt = DateTimeOffset.UtcNow.AddDays(-60), LastActivityAt = DateTimeOffset.UtcNow.AddDays(-5) }
             },
-            TotalCount = 2, Page = 1, PageSize = 20, TotalPages = 1
+            TotalCount = 2
         });
         _tenantClientMock
             .Setup(c => c.ListOrganizationsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
@@ -98,7 +98,7 @@ public class TenantListToolTests
         Allow();
         _tenantClientMock
             .Setup(c => c.ListOrganizationsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(JsonSerializer.Serialize(new { Items = Array.Empty<object>(), TotalCount = 0, Page = 1, PageSize = 20, TotalPages = 0 }));
+            .ReturnsAsync(JsonSerializer.Serialize(new { Organizations = Array.Empty<object>(), TotalCount = 0 }));
 
         await CreateTool().ListTenantsAsync(status: "Active", search: "acme");
 
@@ -113,7 +113,7 @@ public class TenantListToolTests
         Allow();
         _tenantClientMock
             .Setup(c => c.ListOrganizationsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(JsonSerializer.Serialize(new { Items = Array.Empty<object>(), TotalCount = 0, Page = 1, PageSize = 100, TotalPages = 0 }));
+            .ReturnsAsync(JsonSerializer.Serialize(new { Organizations = Array.Empty<object>(), TotalCount = 0 }));
 
         await CreateTool().ListTenantsAsync(pageSize: 500);
 

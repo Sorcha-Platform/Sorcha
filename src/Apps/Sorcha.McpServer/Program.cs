@@ -75,7 +75,8 @@ static async Task<int> RunStdioAsync(string[] args)
         .WithStdioServerTransport()
         .WithToolsFromAssembly()
         .WithAuthorizationNarrowingListToolsFilter()
-        .WithToolInvocationAuditFilter();
+        .WithToolInvocationAuditFilter()
+        .WithArgumentBindingErrorFilter();
 
     var app = builder.Build();
 
@@ -131,7 +132,8 @@ static async Task<int> RunHttpAsync(string[] args)
         .WithHttpTransport(o => o.Stateless = true)
         .WithToolsFromAssembly()
         .WithAuthorizationNarrowingListToolsFilter()
-        .WithToolInvocationAuditFilter();
+        .WithToolInvocationAuditFilter()
+        .WithArgumentBindingErrorFilter();
 
     var app = builder.Build();
 

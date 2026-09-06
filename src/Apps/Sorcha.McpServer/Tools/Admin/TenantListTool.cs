@@ -103,22 +103,9 @@ public sealed class TenantListTool
 
         try
         {
-            // Build query string
-            var queryParams = new List<string>
-            {
-                $"page={page}",
-                $"pageSize={pageSize}"
-            };
-
-            if (!string.IsNullOrWhiteSpace(status))
-                queryParams.Add($"status={Uri.EscapeDataString(status)}");
-
-            if (!string.IsNullOrWhiteSpace(search))
-                queryParams.Add($"search={Uri.EscapeDataString(search)}");
-
             // Typed client forwards the caller's bearer and pins the route (GET api/organizations).
             var responseContent = await _tenantClient.ListOrganizationsAsync(
-                string.Join("&", queryParams), cancellationToken);
+                BuildQueryString(page, pageSize, status, search), cancellationToken);
 
             stopwatch.Stop();
 
@@ -137,10 +124,7 @@ public sealed class TenantListTool
 
             _availabilityTracker.RecordSuccess("Tenant");
 
-            var result = JsonSerializer.Deserialize<TenantListResponse>(responseContent, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            var result = ParseTenantList(responseContent);
 
             if (result == null)
             {
@@ -155,15 +139,15 @@ public sealed class TenantListTool
 
             _logger.LogInformation(
                 "Retrieved {Count} tenants in {ElapsedMs}ms",
-                result.Items?.Count ?? 0, stopwatch.ElapsedMilliseconds);
+                result.Organizations.Count, stopwatch.ElapsedMilliseconds);
 
             return new TenantListResult
             {
                 Status = "Success",
-                Message = $"Retrieved {result.Items?.Count ?? 0} tenant(s).",
+                Message = $"Retrieved {result.Organizations.Count} tenant(s).",
                 CheckedAt = DateTimeOffset.UtcNow,
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
-                Tenants = result.Items?.Select(t => new TenantInfo
+                Tenants = result.Organizations.Select(t => new TenantInfo
                 {
                     TenantId = t.OrganizationId ?? "",
                     Name = t.Name ?? "",
@@ -172,11 +156,11 @@ public sealed class TenantListTool
                     BlueprintCount = t.BlueprintCount,
                     CreatedAt = t.CreatedAt,
                     LastActivityAt = t.LastActivityAt
-                }).ToList() ?? [],
+                }).ToList(),
                 TotalCount = result.TotalCount,
-                Page = result.Page,
-                PageSize = result.PageSize,
-                TotalPages = result.TotalPages
+                Page = page,
+                PageSize = pageSize,
+                TotalPages = pageSize > 0 ? (int)Math.Ceiling(result.TotalCount / (double)pageSize) : 0
             };
         }
         catch (TaskCanceledException)
@@ -222,17 +206,45 @@ public sealed class TenantListTool
         }
     }
 
-    // Internal response models
-    private sealed class TenantListResponse
+    /// <summary>
+    /// Mirrors the Tenant Service's <c>OrganizationListResponse</c> from
+    /// <c>GET /api/organizations/</c>. Property names here ARE the wire contract — the previous
+    /// shape (<c>Items</c>/<c>Page</c>/<c>PageSize</c>/<c>TotalPages</c>) matched nothing the
+    /// server sends, so every field silently defaulted.
+    /// </summary>
+    internal sealed class TenantListResponse
     {
-        public List<TenantDto>? Items { get; set; }
+        public List<TenantDto> Organizations { get; set; } = [];
+
         public int TotalCount { get; set; }
-        public int Page { get; set; }
-        public int PageSize { get; set; }
-        public int TotalPages { get; set; }
     }
 
-    private sealed class TenantDto
+    /// <summary>Deserializes the Tenant Service list body. Returns null on unparseable input.</summary>
+    internal static TenantListResponse? ParseTenantList(string body) =>
+        JsonSerializer.Deserialize<TenantListResponse>(
+            body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+    /// <summary>
+    /// Builds the list query string. The endpoint binds <c>pageNumber</c>, not <c>page</c>.
+    /// </summary>
+    internal static string BuildQueryString(int page, int pageSize, string? status, string? search)
+    {
+        var parts = new List<string> { $"pageNumber={page}", $"pageSize={pageSize}" };
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            parts.Add($"status={Uri.EscapeDataString(status)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            parts.Add($"search={Uri.EscapeDataString(search)}");
+        }
+
+        return string.Join("&", parts);
+    }
+
+    /// <summary>Mirrors one element of the Tenant Service's <c>organizations</c> array.</summary>
+    internal sealed class TenantDto
     {
         public string? OrganizationId { get; set; }
         public string? Name { get; set; }

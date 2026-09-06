@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using ModelContextProtocol.Server;
-
 namespace Sorcha.McpServer.Services;
 
 /// <summary>How a request for human approval resolved.</summary>

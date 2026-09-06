@@ -2,7 +2,6 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 
 namespace Sorcha.McpServer.Services;
 
