@@ -39,17 +39,28 @@ public sealed class TenantListTool
     /// <summary>
     /// Lists all tenants/organizations in the system.
     /// </summary>
-    /// <param name="status">Filter by status: Active, Suspended, Inactive (optional).</param>
-    /// <param name="search">Search text in tenant name or ID (optional).</param>
+    /// <param name="status">Filter by status: Active, Suspended, Deleted (optional). Applied
+    /// client-side to the requested page only — see remarks on <see cref="ListTenantsAsync"/>.</param>
+    /// <param name="search">Search text in tenant name or ID (optional). Applied client-side to
+    /// the requested page only — see remarks on <see cref="ListTenantsAsync"/>.</param>
     /// <param name="page">Page number (1-based, default: 1).</param>
     /// <param name="pageSize">Items per page (default: 20, max: 100).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of tenants.</returns>
+    /// <remarks>
+    /// The Tenant Service's <c>GET /api/organizations/</c> endpoint has no server-side status or
+    /// search filter at all — it binds only <c>includeInactive</c>, <c>pageNumber</c>, and
+    /// <c>pageSize</c>. <paramref name="status"/> and <paramref name="search"/> are therefore
+    /// applied HERE, client-side, to the single page of organisations the server returns for the
+    /// requested <paramref name="page"/>/<paramref name="pageSize"/> — they do not reach into
+    /// other pages, and <see cref="TenantListResult.TotalCount"/>/<see
+    /// cref="TenantListResult.TotalPages"/> report the server's unfiltered totals regardless.
+    /// </remarks>
     [McpServerTool(Name = "sorcha_tenant_list")]
-    [Description("Returns a paged list of tenants (organisations) with id, name, status, and basic metadata, filtered by status or by name/id text search. Call this when you need to discover a tenant ID, audit which organisations exist, or check whether an organisation is already provisioned before creating a new one; prefer this over sorcha_tenant_create when you only need to look up or audit existing tenants rather than create one, and call before sorcha_tenant_update or sorcha_token_revoke so subsequent mutations target the correct tenant ID.")]
+    [Description("Returns a paged list of tenants (organisations) with id, name, status, and creation date, optionally narrowed by status or by name/id text search. NOTE: status/search are applied client-side to the returned page only — the Tenant Service has no server-side filter, so matches on other pages are not found; call multiple pages if you need an exhaustive search. Call this when you need to discover a tenant ID, audit which organisations exist, or check whether an organisation is already provisioned before creating a new one; prefer this over sorcha_tenant_create when you only need to look up or audit existing tenants rather than create one, and call before sorcha_tenant_update or sorcha_token_revoke so subsequent mutations target the correct tenant ID.")]
     public async Task<TenantListResult> ListTenantsAsync(
-        [Description("Filter by status: Active, Suspended, Inactive")] string? status = null,
-        [Description("Search text in tenant name or ID")] string? search = null,
+        [Description("Filter by status: Active, Suspended, Deleted. Applied client-side to this page only.")] string? status = null,
+        [Description("Search text in tenant name or ID. Applied client-side to this page only.")] string? search = null,
         [Description("Page number (1-based, default: 1)")] int page = 1,
         [Description("Items per page (default: 20, max: 100)")] int pageSize = 20,
         CancellationToken cancellationToken = default)
@@ -70,16 +81,18 @@ public sealed class TenantListTool
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 100) pageSize = 100;
 
-        // Validate status if provided
+        // Validate status if provided. These are the Tenant Service's actual OrganizationStatus
+        // enum values (Active/Suspended/Deleted) — the previous list offered "Inactive", a value
+        // the server never sends, so filtering on it would silently match nothing forever.
         if (!string.IsNullOrWhiteSpace(status))
         {
-            var validStatuses = new[] { "Active", "Suspended", "Inactive" };
+            var validStatuses = new[] { "Active", "Suspended", "Deleted" };
             if (!validStatuses.Contains(status, StringComparer.OrdinalIgnoreCase))
             {
                 return new TenantListResult
                 {
                     Status = "Error",
-                    Message = "Invalid status. Must be Active, Suspended, or Inactive.",
+                    Message = "Invalid status. Must be Active, Suspended, or Deleted.",
                     CheckedAt = DateTimeOffset.UtcNow
                 };
             }
@@ -104,8 +117,9 @@ public sealed class TenantListTool
         try
         {
             // Typed client forwards the caller's bearer and pins the route (GET api/organizations).
+            // status/search are NOT sent — the endpoint has no server-side filter for either.
             var responseContent = await _tenantClient.ListOrganizationsAsync(
-                BuildQueryString(page, pageSize, status, search), cancellationToken);
+                BuildQueryString(page, pageSize), cancellationToken);
 
             stopwatch.Stop();
 
@@ -137,26 +151,46 @@ public sealed class TenantListTool
                 };
             }
 
+            IEnumerable<TenantInfo> tenants = result.Organizations.Select(t => new TenantInfo
+            {
+                TenantId = t.Id ?? "",
+                Name = t.Name ?? "",
+                Status = t.Status ?? "Active",
+                CreatedAt = t.CreatedAt
+            });
+
+            // Client-side only: the server has no status/search filter (see the <remarks> above),
+            // so this narrows the page already returned rather than searching across all pages.
+            var filtersApplied = !string.IsNullOrWhiteSpace(status) || !string.IsNullOrWhiteSpace(search);
+
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                tenants = tenants.Where(t => string.Equals(t.Status, status, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                tenants = tenants.Where(t =>
+                    t.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    t.TenantId.Contains(search, StringComparison.OrdinalIgnoreCase));
+            }
+
+            var tenantList = tenants.ToList();
+
             _logger.LogInformation(
                 "Retrieved {Count} tenants in {ElapsedMs}ms",
-                result.Organizations.Count, stopwatch.ElapsedMilliseconds);
+                tenantList.Count, stopwatch.ElapsedMilliseconds);
 
             return new TenantListResult
             {
                 Status = "Success",
-                Message = $"Retrieved {result.Organizations.Count} tenant(s).",
+                Message = filtersApplied
+                    ? $"Retrieved {tenantList.Count} of {result.Organizations.Count} tenant(s) on this page matching the filter. " +
+                      "status/search are applied client-side (the Tenant Service has no server-side filter), so other pages were not searched."
+                    : $"Retrieved {tenantList.Count} tenant(s).",
                 CheckedAt = DateTimeOffset.UtcNow,
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
-                Tenants = result.Organizations.Select(t => new TenantInfo
-                {
-                    TenantId = t.OrganizationId ?? "",
-                    Name = t.Name ?? "",
-                    Status = t.Status ?? "Active",
-                    UserCount = t.UserCount,
-                    BlueprintCount = t.BlueprintCount,
-                    CreatedAt = t.CreatedAt,
-                    LastActivityAt = t.LastActivityAt
-                }).ToList(),
+                Tenants = tenantList,
                 TotalCount = result.TotalCount,
                 Page = page,
                 PageSize = pageSize,
@@ -225,34 +259,28 @@ public sealed class TenantListTool
             body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
     /// <summary>
-    /// Builds the list query string. The endpoint binds <c>pageNumber</c>, not <c>page</c>.
+    /// Builds the list query string. The endpoint binds <c>pageNumber</c>, not <c>page</c> — and
+    /// binds ONLY <c>includeInactive</c>/<c>pageNumber</c>/<c>pageSize</c>
+    /// (<c>OrganizationEndpoints.ListOrganizations</c>). There is no server-side status or search
+    /// parameter to send, so this method deliberately does not accept them — <see
+    /// cref="ListTenantsAsync"/> applies status/search client-side instead of sending query
+    /// parameters nothing on the server would read.
     /// </summary>
-    internal static string BuildQueryString(int page, int pageSize, string? status, string? search)
-    {
-        var parts = new List<string> { $"pageNumber={page}", $"pageSize={pageSize}" };
-        if (!string.IsNullOrWhiteSpace(status))
-        {
-            parts.Add($"status={Uri.EscapeDataString(status)}");
-        }
+    internal static string BuildQueryString(int page, int pageSize) =>
+        $"pageNumber={page}&pageSize={pageSize}";
 
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            parts.Add($"search={Uri.EscapeDataString(search)}");
-        }
-
-        return string.Join("&", parts);
-    }
-
-    /// <summary>Mirrors one element of the Tenant Service's <c>organizations</c> array.</summary>
+    /// <summary>
+    /// Mirrors one element of the Tenant Service's <c>organizations</c> array
+    /// (<c>OrganizationResponse</c>). There is no <c>userCount</c>, <c>blueprintCount</c>, or
+    /// <c>lastActivityAt</c> on the wire — those were invented fields that always deserialized to
+    /// zero/null, so they are not modelled here or surfaced on <see cref="TenantInfo"/>.
+    /// </summary>
     internal sealed class TenantDto
     {
-        public string? OrganizationId { get; set; }
+        public string? Id { get; set; }
         public string? Name { get; set; }
         public string? Status { get; set; }
-        public int UserCount { get; set; }
-        public int BlueprintCount { get; set; }
         public DateTimeOffset? CreatedAt { get; set; }
-        public DateTimeOffset? LastActivityAt { get; set; }
     }
 }
 
@@ -287,7 +315,10 @@ public sealed record TenantListResult
     public IReadOnlyList<TenantInfo> Tenants { get; init; } = [];
 
     /// <summary>
-    /// Total number of tenants matching the filter.
+    /// Total number of tenants across all pages, as reported by the Tenant Service. This is the
+    /// server's unfiltered total — status/search filtering happens client-side against
+    /// <see cref="Tenants"/> only (see the <c>sorcha_tenant_list</c> tool's remarks), so it does
+    /// not reflect the filter when one is supplied.
     /// </summary>
     public int TotalCount { get; init; }
 
@@ -323,27 +354,12 @@ public sealed record TenantInfo
     public required string Name { get; init; }
 
     /// <summary>
-    /// Tenant status: Active, Suspended, Inactive.
+    /// Tenant status: Active, Suspended, Deleted.
     /// </summary>
     public required string Status { get; init; }
-
-    /// <summary>
-    /// Number of users in the tenant.
-    /// </summary>
-    public int UserCount { get; init; }
-
-    /// <summary>
-    /// Number of blueprints owned by the tenant.
-    /// </summary>
-    public int BlueprintCount { get; init; }
 
     /// <summary>
     /// When the tenant was created.
     /// </summary>
     public DateTimeOffset? CreatedAt { get; init; }
-
-    /// <summary>
-    /// Last activity timestamp.
-    /// </summary>
-    public DateTimeOffset? LastActivityAt { get; init; }
 }
