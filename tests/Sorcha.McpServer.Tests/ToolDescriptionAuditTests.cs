@@ -3,6 +3,7 @@
 
 using System.ComponentModel;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using FluentAssertions;
 using ModelContextProtocol.Server;
 
@@ -93,6 +94,96 @@ public class ToolDescriptionAuditTests
         var method = type?.GetMethod(methodName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance);
         return method?.GetCustomAttribute<DescriptionAttribute>()?.Description
             ?? type?.GetCustomAttribute<DescriptionAttribute>()?.Description;
+    }
+
+    /// <summary>
+    /// The MCP name a tool method is actually registered under — from the compiled
+    /// <c>[McpServerTool(Name = ...)]</c> attribute instance, NOT a textual match over source. Most
+    /// tools spell the name as a string literal, but ~30 declare it via a
+    /// <c>private const string ToolName = "sorcha_x";</c> and reference the constant instead. A
+    /// regex over source text cannot see through that; reflection over the compiled attribute
+    /// resolves the constant automatically because the compiler already folded it in.
+    /// </summary>
+    private static string? ResolveToolName(string typeName, string methodName)
+    {
+        var type = Assembly.Load("Sorcha.McpServer").GetType(typeName);
+        var method = type?.GetMethod(methodName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance);
+        return method?.GetCustomAttribute<McpServerToolAttribute>()?.Name;
+    }
+
+    /// <summary>
+    /// Every name actually registered on the MCP surface (mirrors
+    /// <c>ManifestIntegrityTests.ServedToolNames</c> — reflection over <see cref="EveryToolMethod"/>
+    /// rather than a duplicate type scan).
+    /// </summary>
+    private static IReadOnlySet<string> RegisteredToolNames()
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entry in EveryToolMethod())
+        {
+            if (ResolveToolName((string)entry[0], (string)entry[1]) is { Length: > 0 } name)
+            {
+                names.Add(name);
+            }
+        }
+        return names;
+    }
+
+    // Tool names are always lowercase snake_case starting "sorcha_" — matches the convention every
+    // [McpServerTool(Name = ...)] in this assembly follows. Bounded on both sides so a match can't
+    // swallow trailing punctuation or bleed into an adjacent word.
+    private static readonly Regex ToolNameReferencePattern =
+        new(@"\bsorcha_[a-z0-9]+(?:_[a-z0-9]+)*\b", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Spec 117 follow-up (Task 4 review) — a tool's <c>[Description]</c> must never point an agent
+    /// at a tool name that does not exist on the registered surface. This is the exact shape of
+    /// defect that shipped earlier in this workstream: <c>sorcha_action_submit</c>'s description
+    /// told agents to call <c>sorcha_inbox_list</c> for the ids it needed, while that route had
+    /// never actually been mapped. Nothing checked the cross-reference; this test is that check.
+    /// </summary>
+    [Fact]
+    public void EveryToolNameReferencedInADescription_ExistsInTheRegisteredSurface()
+    {
+        var registered = RegisteredToolNames();
+        registered.Should().NotBeEmpty(
+            "the registered-tool-name resolver must find at least one tool, or this test is vacuous");
+
+        var dangling = new List<string>();
+
+        foreach (var entry in EveryToolMethod())
+        {
+            var typeName = (string)entry[0];
+            var methodName = (string)entry[1];
+
+            var description = ResolveToolDescription(typeName, methodName);
+            if (string.IsNullOrWhiteSpace(description))
+            {
+                continue;
+            }
+
+            var selfName = ResolveToolName(typeName, methodName);
+
+            foreach (var referenced in ToolNameReferencePattern.Matches(description)
+                         .Select(m => m.Value).Distinct(StringComparer.Ordinal))
+            {
+                // A tool naming ITSELF (e.g. restating its own name for clarity) is not a
+                // cross-reference and is not what this test guards against.
+                if (string.Equals(referenced, selfName, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (!registered.Contains(referenced))
+                {
+                    dangling.Add($"{typeName}.{methodName} description references '{referenced}', which is not a registered tool");
+                }
+            }
+        }
+
+        dangling.Should().BeEmpty(
+            "every sorcha_* name mentioned in a [Description] must exist on the registered tool " +
+            $"surface. Dangling references found: {string.Join("; ", dangling)}");
     }
 
     private static int CountSentences(string text)
