@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# MCP tool route-contract CI gate. Fails when a registered MCP tool — or a typed service-client
+# method one of them calls — issues a request path whose route family no Sorcha service maps.
+#
+# The public MCP server advertises ~65 tools to external AI agents. An audit found TEN calling
+# routes that were never mapped, including the ENTIRE participant discovery loop, so an agent
+# could submit an action but never discover or inspect one. Nothing fails at build time: the tool
+# compiles, the client compiles, and the 404 reaches the agent as a generic "failed to retrieve",
+# which reads as a transient outage rather than a permanently broken tool.
+#
+# Only classes carrying [McpServerToolType] are in scope — a tool deliberately left off the served
+# surface (WalletSignTool, spec 139 T029) must not fail the gate for a route nobody can call.
+#
+# See scripts/check-mcp-routes.ps1 and .mcp-routes-allowlist (a ratchet: may only shrink).
+
+name: mcp-routes-gate
+
+on:
+  pull_request:
+    paths:
+      - "src/Apps/Sorcha.McpServer/**/*.cs"
+      - "src/Common/Sorcha.ServiceClients/**/*.cs"
+      - "src/Common/Sorcha.ServiceClients.Http/**/*.cs"
+      - "src/Services/**/*.cs"
+      - "scripts/check-mcp-routes.ps1"
+      - ".mcp-routes-allowlist"
+      - ".github/workflows/mcp-routes-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  mcp-routes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run MCP route contract gate
+        shell: pwsh
+        run: ./scripts/check-mcp-routes.ps1

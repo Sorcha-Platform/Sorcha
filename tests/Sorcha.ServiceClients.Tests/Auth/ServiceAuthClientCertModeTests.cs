@@ -191,13 +191,19 @@ public sealed class ServiceAuthClientCertModeTests : IDisposable
     }
 
     [Fact]
-    public void LegacyMode_NoCertNoSecret_ThrowsExactlyAsToday()
+    public async Task LegacyMode_NoCertNoSecret_ConstructsButThrowsWhenATokenIsRequested()
     {
+        // A throwing constructor made ServiceAuth an involuntary hard dependency for every host
+        // (including ones, like the MCP server, that forward the caller's bearer and never
+        // acquire a service token). Construction now succeeds; the missing secret only surfaces
+        // — loudly, same exception/message as before — once a token is actually requested.
         var config = BuildConfig(certSource: null, bundle: null, mtlsAddress: null, secret: null);
 
-        var act = () => new ServiceAuthClient(new HttpClient(), config, NullLogger<ServiceAuthClient>.Instance);
+        using var client = new ServiceAuthClient(new HttpClient(), config, NullLogger<ServiceAuthClient>.Instance);
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*ServiceAuth:ClientSecret*");
+        var act = async () => await client.GetTokenAsync(TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*ServiceAuth:ClientSecret*");
     }
 
     [Fact]

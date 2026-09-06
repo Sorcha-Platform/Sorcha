@@ -14,7 +14,6 @@ namespace Sorcha.McpServer.Tests.Tools.Admin;
 
 public class ValidatorStatusToolTests
 {
-    private readonly Mock<IMcpSessionService> _sessionServiceMock;
     private readonly Mock<IMcpAuthorizationService> _authServiceMock;
     private readonly Mock<IMcpErrorHandler> _errorHandlerMock;
     private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock;
@@ -24,7 +23,6 @@ public class ValidatorStatusToolTests
 
     public ValidatorStatusToolTests()
     {
-        _sessionServiceMock = new Mock<IMcpSessionService>();
         _authServiceMock = new Mock<IMcpAuthorizationService>();
         _errorHandlerMock = new Mock<IMcpErrorHandler>();
         _availabilityTrackerMock = new Mock<IServiceAvailabilityTracker>();
@@ -39,7 +37,6 @@ public class ValidatorStatusToolTests
     private ValidatorStatusTool CreateTool()
     {
         return new ValidatorStatusTool(
-            _sessionServiceMock.Object,
             _authServiceMock.Object,
             _errorHandlerMock.Object,
             _availabilityTrackerMock.Object,

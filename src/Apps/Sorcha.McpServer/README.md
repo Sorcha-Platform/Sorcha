@@ -176,6 +176,58 @@ source but is deliberately unregistered (T029 — signing stays in the Wallet Se
 - **Audit Trail**: All tool invocations are logged with user context
 - **Secure Defaults**: Minimal permissions, explicit grants required
 
+### Caller-token forwarding — a standing constraint
+
+**The MCP server authorises by forwarding the caller's bearer token; it must never be given
+`ServiceAuth__*` credentials.** Every tool call carries the caller's own JWT through to the backend
+service it calls, so the service enforces exactly the caller's tier/role — not the MCP server's own.
+Configuring `ServiceAuth:ClientId`/`ServiceAuth:ClientSecret` (or the certificate-mode equivalent)
+on this host would grant it ambient service-principal authority independent of who is calling it,
+which is precisely the elevation the caller-forwarding design exists to refuse. Do not add
+`ServiceAuth__*` env vars or config to any MCP server deployment (Docker, Aspire, or otherwise).
+
+This is why `Sorcha.ServiceClients.Http.Auth.ServiceAuthClient` resolves `ServiceAuth:ClientId`
+(and the legacy secret) **lazily, at first use** (`RequireClientId()`/`RequireClientSecret()`,
+called from `RefreshTokenAsync`) rather than in its constructor. The constructor used to throw
+`InvalidOperationException("ServiceAuth:ClientId not configured")` unconditionally — which is
+correct for a host that mints its own service tokens, but made the dependency mandatory for every
+host, including the MCP server, which never configures it by design. That made `AddServiceClients`
+itself throw at startup, so the MCP server could not resolve **any** typed client and every tool
+call failed before it ever reached the network — one of the two root causes behind the tool surface
+being completely dead for 6+ days (MCP-P0, 2026-09-05). Moving the fail-fast out of the
+constructor let every tool ACTIVATE, and the fail-fast stays loud for hosts that DO need a service
+token — it just moved from "at construction" to "at first attempted use".
+
+Moving it, on its own, did **not** make the tools work. Every typed client calls
+`ServiceClientAuthHelper.SetAuthHeaderAsync` before **every** request, which called
+`GetTokenAsync` unconditionally; the token cache is empty on the first call, so it reached
+`RequireClientId()` and threw anyway — and each typed client's own `catch (Exception)` swallowed
+that throw into a `null` return. The tool then reported a generic "failed to retrieve…" to the
+agent having never opened a socket. Roughly **50 of the 64 tools** were still dead after
+activation was fixed, and the symptom was now *less* diagnostic than before, because nothing
+named `ServiceAuth:ClientId` any more.
+
+So the second half of the fix is `IServiceAuthClient.HasNoCredentialsConfigured`, and
+`SetAuthHeaderAsync` skips the token demand when it is true — leaving the `Authorization` header
+for `CallerTokenForwardingHandler` to stamp with the caller's own bearer. It is set **only** when
+the host holds no credential material at all: no `ServiceAuth:ClientId`, no
+`ServiceAuth:ClientSecret`, no workload certificate. That keeps two cases distinguishable which
+must never be collapsed:
+
+| Host | `HasNoCredentialsConfigured` | Behaviour |
+|------|------------------------------|-----------|
+| MCP server (no `ServiceAuth:*` at all) | `true` | Token demand skipped; caller's bearer forwarded; the request is actually made. |
+| Any Sorcha service (configured) | `false` | Unchanged — acquires and attaches its service token exactly as before. |
+| A service configured **incompletely** (id without secret) | `false` | Still throws `InvalidOperationException` out of `GetTokenAsync`, unswallowed by the helper. |
+
+Collapsing the second and third rows into the first would turn a fail-closed credential check into
+a fail-open one. The property is deliberately phrased negatively so that `default(bool)` — a test
+double, or a future implementation that forgets the member — lands on the demanding, fail-closed
+path. `tests/Sorcha.ServiceClients.Tests/Helpers/ServiceClientAuthHelperTests.cs` pins all three
+rows, and `tests/Sorcha.McpServer.Tests/Infrastructure/HttpModeInvocationTests.cs` invokes real
+tools through the production-shaped container against an unroutable address and requires a
+**transport** failure — a credential failure fails that assertion.
+
 ## Development
 
 ### Project Dependencies
@@ -192,6 +244,7 @@ source but is deliberately unregistered (T029 — signing stays in the Wallet Se
 2. Mark the tool method `[McpServerTool(Name = "sorcha_...")]` with a `[Description]` of **at least two sentences** (FR-017 — the catalogue test checks the name, reviewers check the prose)
 3. Enforce the caller's tier/role inside the tool via `ICallerContext` (tools are dispatch-filtered per tier, and each tool re-checks — defence in depth)
 4. Add the tool name to BOTH the gateway `appsettings.json` `McpManifest` catalogue and the repo-root `server.json` — `ManifestIntegrityTests` fails the build until all three agree
+5. Point the tool at a route a service actually maps. `scripts/check-mcp-routes.ps1` (CI: `mcp-routes-gate`) extracts every `api/…` request path a `[McpServerToolType]` class issues — inline against `HttpClient` **and** inside the typed `Sorcha.ServiceClients*` methods it calls — reduces both sides to a route family (query dropped, route parameters collapsed to `*`), and fails when **the service that tool addresses** maps no such family. Ownership is derived from the `SorchaService.<X>` the typed client or endpoint field resolves, so a same-named route in a different service does not count as a match. Nothing else verifies that join: an unmapped path compiles fine and reaches the agent as a generic "failed to retrieve", so a permanently broken tool reads as a transient outage. Known-broken families are ratcheted in `.mcp-routes-allowlist`, which may only shrink
 
 Example:
 

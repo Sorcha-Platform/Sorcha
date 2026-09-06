@@ -10,11 +10,13 @@ using Sorcha.ServiceClients.Tenant;
 namespace Sorcha.McpServer.Tests.Tools.Admin;
 
 /// <summary>
-/// Spec 139 US4: UserManageTool writes via the typed <see cref="ITenantServiceClient"/>
+/// Spec 139 US4 / MCP P0 Task 5: UserManageTool writes via the typed <see cref="ITenantServiceClient"/>
 /// (route pinned, caller token forwarded), so these tests mock the client rather than HTTP.
 /// </summary>
 public class UserManageToolTests
 {
+    private const string OrgId = "11111111-1111-1111-1111-111111111111";
+
     private readonly Mock<IMcpAuthorizationService> _authServiceMock = new();
     private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock = new();
     private readonly Mock<ITenantServiceClient> _tenantClientMock = new();
@@ -33,7 +35,7 @@ public class UserManageToolTests
 
     private void SuccessClient() =>
         _tenantClientMock
-            .Setup(c => c.ManageUserAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ManageUserAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(string.Empty);
 
     [Fact]
@@ -41,7 +43,7 @@ public class UserManageToolTests
     {
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(false);
 
-        var result = await CreateTool().ManageUserAsync("user-123", "Activate");
+        var result = await CreateTool().ManageUserAsync(OrgId, "user-123", "Suspend");
 
         result.Status.Should().Be("Unauthorized");
     }
@@ -52,9 +54,29 @@ public class UserManageToolTests
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
         _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(false);
 
-        var result = await CreateTool().ManageUserAsync("user-123", "Activate");
+        var result = await CreateTool().ManageUserAsync(OrgId, "user-123", "Suspend");
 
         result.Status.Should().Be("Unavailable");
+    }
+
+    [Fact]
+    public async Task ManageUserAsync_MissingOrganizationId_ReturnsError()
+    {
+        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
+
+        var result = await CreateTool().ManageUserAsync("", "user-123", "Suspend");
+
+        result.Status.Should().Be("Error");
+    }
+
+    [Fact]
+    public async Task ManageUserAsync_NonGuidOrganizationId_ReturnsError()
+    {
+        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
+
+        var result = await CreateTool().ManageUserAsync("not-a-guid", "user-123", "Suspend");
+
+        result.Status.Should().Be("Error");
     }
 
     [Fact]
@@ -62,7 +84,7 @@ public class UserManageToolTests
     {
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
 
-        var result = await CreateTool().ManageUserAsync("", "Activate");
+        var result = await CreateTool().ManageUserAsync(OrgId, "", "Suspend");
 
         result.Status.Should().Be("Error");
     }
@@ -72,27 +94,7 @@ public class UserManageToolTests
     {
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
 
-        var result = await CreateTool().ManageUserAsync("user-123", "Bogus");
-
-        result.Status.Should().Be("Error");
-    }
-
-    [Fact]
-    public async Task ManageUserAsync_AddRoleWithoutRole_ReturnsError()
-    {
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
-
-        var result = await CreateTool().ManageUserAsync("user-123", "AddRole");
-
-        result.Status.Should().Be("Error");
-    }
-
-    [Fact]
-    public async Task ManageUserAsync_AddRoleWithInvalidRole_ReturnsError()
-    {
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
-
-        var result = await CreateTool().ManageUserAsync("user-123", "AddRole", "Bogus");
+        var result = await CreateTool().ManageUserAsync(OrgId, "user-123", "Bogus");
 
         result.Status.Should().Be("Error");
     }
@@ -101,45 +103,99 @@ public class UserManageToolTests
     [InlineData("Activate")]
     [InlineData("Deactivate")]
     [InlineData("Lock")]
-    [InlineData("Unlock")]
-    public async Task ManageUserAsync_StatusActions_Success(string action)
+    [InlineData("AddRole")]
+    [InlineData("RemoveRole")]
+    public async Task ManageUserAsync_RetiredActions_ReturnError(string action)
     {
-        Allow();
-        SuccessClient();
+        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
 
-        var result = await CreateTool().ManageUserAsync("user-123", action);
+        var result = await CreateTool().ManageUserAsync(OrgId, "user-123", action);
 
-        result.Status.Should().Be("Success");
-        result.UserId.Should().Be("user-123");
-        result.ActionPerformed.Should().Be(action);
-    }
-
-    [Theory]
-    [InlineData("AddRole", "Admin")]
-    [InlineData("RemoveRole", "Designer")]
-    public async Task ManageUserAsync_RoleActions_Success(string action, string role)
-    {
-        Allow();
-        SuccessClient();
-
-        var result = await CreateTool().ManageUserAsync("user-123", action, role);
-
-        result.Status.Should().Be("Success");
-        result.UserId.Should().Be("user-123");
-        result.ActionPerformed.Should().Be(action);
-        result.RoleAffected.Should().Be(role);
+        result.Status.Should().Be("Error");
     }
 
     [Fact]
-    public async Task ManageUserAsync_PassesUserIdToClient()
+    public async Task ManageUserAsync_ChangeRoleWithoutRole_ReturnsError()
+    {
+        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
+
+        var result = await CreateTool().ManageUserAsync(OrgId, "user-123", "ChangeRole");
+
+        result.Status.Should().Be("Error");
+    }
+
+    [Fact]
+    public async Task ManageUserAsync_ChangeRoleWithInvalidRole_ReturnsError()
+    {
+        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
+
+        var result = await CreateTool().ManageUserAsync(OrgId, "user-123", "ChangeRole", "Bogus");
+
+        result.Status.Should().Be("Error");
+    }
+
+    [Fact]
+    public async Task ManageUserAsync_ChangeRoleWithSystemAdmin_ReturnsError()
+    {
+        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
+
+        var result = await CreateTool().ManageUserAsync(OrgId, "user-123", "ChangeRole", "SystemAdmin");
+
+        result.Status.Should().Be("Error");
+    }
+
+    [Theory]
+    [InlineData("Suspend")]
+    [InlineData("Reactivate")]
+    [InlineData("Unlock")]
+    public async Task ManageUserAsync_LifecycleActions_Success(string action)
     {
         Allow();
         SuccessClient();
 
-        await CreateTool().ManageUserAsync("user-123", "Activate");
+        var result = await CreateTool().ManageUserAsync(OrgId, "user-123", action);
+
+        result.Status.Should().Be("Success");
+        result.UserId.Should().Be("user-123");
+        result.ActionPerformed.Should().Be(action);
+    }
+
+    [Fact]
+    public async Task ManageUserAsync_ChangeRole_Success()
+    {
+        Allow();
+        SuccessClient();
+
+        var result = await CreateTool().ManageUserAsync(OrgId, "user-123", "ChangeRole", "Designer");
+
+        result.Status.Should().Be("Success");
+        result.UserId.Should().Be("user-123");
+        result.ActionPerformed.Should().Be("ChangeRole");
+        result.RoleAffected.Should().Be("Designer");
+    }
+
+    [Fact]
+    public async Task ManageUserAsync_PassesOrganizationAndUserIdToClient()
+    {
+        Allow();
+        SuccessClient();
+
+        await CreateTool().ManageUserAsync(OrgId, "user-123", "Suspend");
 
         _tenantClientMock.Verify(
-            c => c.ManageUserAsync("user-123", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+            c => c.ManageUserAsync(OrgId, "user-123", "Suspend", It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ManageUserAsync_ChangeRole_PassesRoleBodyToClient()
+    {
+        Allow();
+        SuccessClient();
+
+        await CreateTool().ManageUserAsync(OrgId, "user-123", "ChangeRole", "Auditor");
+
+        _tenantClientMock.Verify(
+            c => c.ManageUserAsync(OrgId, "user-123", "ChangeRole", It.Is<string>(b => b.Contains("Auditor")), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -147,10 +203,10 @@ public class UserManageToolTests
     {
         Allow();
         _tenantClientMock
-            .Setup(c => c.ManageUserAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ManageUserAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string?)null);
 
-        var result = await CreateTool().ManageUserAsync("user-123", "Activate");
+        var result = await CreateTool().ManageUserAsync(OrgId, "user-123", "Suspend");
 
         result.Status.Should().Be("Error");
     }
@@ -160,10 +216,10 @@ public class UserManageToolTests
     {
         Allow();
         _tenantClientMock
-            .Setup(c => c.ManageUserAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ManageUserAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new TaskCanceledException());
 
-        var result = await CreateTool().ManageUserAsync("user-123", "Activate");
+        var result = await CreateTool().ManageUserAsync(OrgId, "user-123", "Suspend");
 
         result.Status.Should().Be("Timeout");
     }
@@ -174,7 +230,7 @@ public class UserManageToolTests
         Allow();
         SuccessClient();
 
-        var result = await CreateTool().ManageUserAsync("user-123", "Activate");
+        var result = await CreateTool().ManageUserAsync(OrgId, "user-123", "Suspend");
 
         result.ResponseTimeMs.Should().BeGreaterThanOrEqualTo(0);
         result.CheckedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));

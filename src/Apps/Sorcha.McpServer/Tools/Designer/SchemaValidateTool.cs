@@ -18,18 +18,15 @@ namespace Sorcha.McpServer.Tools.Designer;
 [McpServerToolType]
 public sealed class SchemaValidateTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
     private readonly IMcpErrorHandler _errorHandler;
     private readonly ILogger<SchemaValidateTool> _logger;
 
     public SchemaValidateTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
         IMcpErrorHandler errorHandler,
         ILogger<SchemaValidateTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
         _errorHandler = errorHandler;
         _logger = logger;

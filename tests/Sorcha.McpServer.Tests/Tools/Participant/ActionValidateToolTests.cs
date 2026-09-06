@@ -16,7 +16,6 @@ namespace Sorcha.McpServer.Tests.Tools.Participant;
 
 public sealed class ActionValidateToolTests
 {
-    private readonly Mock<IMcpSessionService> _sessionServiceMock;
     private readonly Mock<IMcpAuthorizationService> _authServiceMock;
     private readonly Mock<IMcpErrorHandler> _errorHandlerMock;
     private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock;
@@ -27,7 +26,6 @@ public sealed class ActionValidateToolTests
 
     public ActionValidateToolTests()
     {
-        _sessionServiceMock = new Mock<IMcpSessionService>();
         _authServiceMock = new Mock<IMcpAuthorizationService>();
         _errorHandlerMock = new Mock<IMcpErrorHandler>();
         _availabilityTrackerMock = new Mock<IServiceAvailabilityTracker>();
@@ -42,7 +40,6 @@ public sealed class ActionValidateToolTests
             .Build();
 
         _tool = new ActionValidateTool(
-            _sessionServiceMock.Object,
             _authServiceMock.Object,
             _errorHandlerMock.Object,
             _availabilityTrackerMock.Object,
@@ -58,11 +55,25 @@ public sealed class ActionValidateToolTests
         _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_action_validate")).Returns(false);
 
         // Act
-        var result = await _tool.ValidateActionDataAsync("action-123", "{}");
+        var result = await _tool.ValidateActionDataAsync("bp-1", "1", "{}");
 
         // Assert
         result.Status.Should().Be("Unauthorized");
-        result.Message.Should().Contain("sorcha:participant");
+        result.Message.Should().Contain("consumer- or platform-tier");
+    }
+
+    [Fact]
+    public async Task ValidateActionDataAsync_WithEmptyBlueprintId_ReturnsError()
+    {
+        // Arrange
+        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_action_validate")).Returns(true);
+
+        // Act
+        var result = await _tool.ValidateActionDataAsync("", "1", "{}");
+
+        // Assert
+        result.Status.Should().Be("Error");
+        result.Message.Should().Contain("Blueprint ID is required");
     }
 
     [Fact]
@@ -72,11 +83,11 @@ public sealed class ActionValidateToolTests
         _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_action_validate")).Returns(true);
 
         // Act
-        var result = await _tool.ValidateActionDataAsync("", "{}");
+        var result = await _tool.ValidateActionDataAsync("bp-1", "", "{}");
 
         // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("Action instance ID is required");
+        result.Message.Should().Contain("Action ID is required");
     }
 
     [Fact]
@@ -86,7 +97,7 @@ public sealed class ActionValidateToolTests
         _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_action_validate")).Returns(true);
 
         // Act
-        var result = await _tool.ValidateActionDataAsync("action-123", "");
+        var result = await _tool.ValidateActionDataAsync("bp-1", "1", "");
 
         // Assert
         result.Status.Should().Be("Error");
@@ -100,7 +111,7 @@ public sealed class ActionValidateToolTests
         _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_action_validate")).Returns(true);
 
         // Act
-        var result = await _tool.ValidateActionDataAsync("action-123", "{invalid json");
+        var result = await _tool.ValidateActionDataAsync("bp-1", "1", "{invalid json");
 
         // Assert
         result.Status.Should().Be("Error");
@@ -115,7 +126,7 @@ public sealed class ActionValidateToolTests
         _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Blueprint")).Returns(false);
 
         // Act
-        var result = await _tool.ValidateActionDataAsync("action-123", "{\"name\":\"test\"}");
+        var result = await _tool.ValidateActionDataAsync("bp-1", "1", "{\"name\":\"test\"}");
 
         // Assert
         result.Status.Should().Be("Unavailable");
@@ -135,15 +146,23 @@ public sealed class ActionValidateToolTests
             errors = Array.Empty<object>()
         };
 
-        SetupHttpClient(HttpStatusCode.OK, JsonSerializer.Serialize(response));
+        HttpRequestMessage? capturedRequest = null;
+        SetupHttpClient(HttpStatusCode.OK, JsonSerializer.Serialize(response), r => capturedRequest = r);
 
         // Act
-        var result = await _tool.ValidateActionDataAsync("action-123", "{\"name\":\"John\",\"email\":\"john@example.com\"}");
+        var result = await _tool.ValidateActionDataAsync("bp-1", "1", "{\"name\":\"John\",\"email\":\"john@example.com\"}");
 
         // Assert
         result.Status.Should().Be("Valid");
         result.IsValid.Should().BeTrue();
         result.Errors.Should().BeEmpty();
+
+        // Posted to /api/execution/validate — GET /api/actions/{id}/validate is not mapped.
+        capturedRequest.Should().NotBeNull();
+        capturedRequest!.RequestUri!.AbsolutePath.Should().Be("/api/execution/validate");
+        var body = await capturedRequest.Content!.ReadAsStringAsync();
+        body.Should().Contain("\"blueprintId\":\"bp-1\"");
+        body.Should().Contain("\"actionId\":\"1\"");
     }
 
     [Fact]
@@ -166,7 +185,7 @@ public sealed class ActionValidateToolTests
         SetupHttpClient(HttpStatusCode.OK, JsonSerializer.Serialize(response));
 
         // Act
-        var result = await _tool.ValidateActionDataAsync("action-123", "{\"name\":\"John\"}");
+        var result = await _tool.ValidateActionDataAsync("bp-1", "1", "{\"name\":\"John\"}");
 
         // Assert
         result.Status.Should().Be("Invalid");
@@ -182,10 +201,10 @@ public sealed class ActionValidateToolTests
         _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_action_validate")).Returns(true);
         _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Blueprint")).Returns(true);
 
-        SetupHttpClient(HttpStatusCode.NotFound, "{\"error\":\"Action not found\"}");
+        SetupHttpClient(HttpStatusCode.NotFound, "{\"error\":\"Blueprint not found\"}");
 
         // Act
-        var result = await _tool.ValidateActionDataAsync("action-invalid", "{}");
+        var result = await _tool.ValidateActionDataAsync("bp-invalid", "1", "{}");
 
         // Assert
         result.Status.Should().Be("Error");
@@ -201,7 +220,7 @@ public sealed class ActionValidateToolTests
         SetupHttpClientWithException(new TaskCanceledException());
 
         // Act
-        var result = await _tool.ValidateActionDataAsync("action-123", "{}");
+        var result = await _tool.ValidateActionDataAsync("bp-1", "1", "{}");
 
         // Assert
         result.Status.Should().Be("Timeout");
@@ -218,14 +237,14 @@ public sealed class ActionValidateToolTests
         SetupHttpClientWithException(new HttpRequestException("Connection failed"));
 
         // Act
-        var result = await _tool.ValidateActionDataAsync("action-123", "{}");
+        var result = await _tool.ValidateActionDataAsync("bp-1", "1", "{}");
 
         // Assert
         result.Status.Should().Be("Error");
         result.Message.Should().Contain("Connection failed");
     }
 
-    private void SetupHttpClient(HttpStatusCode statusCode, string content)
+    private void SetupHttpClient(HttpStatusCode statusCode, string content, Action<HttpRequestMessage>? onRequest = null)
     {
         var handlerMock = new Mock<HttpMessageHandler>();
         handlerMock.Protected()
@@ -233,6 +252,7 @@ public sealed class ActionValidateToolTests
                 "SendAsync",
                 ItExpr.IsAny<HttpRequestMessage>(),
                 ItExpr.IsAny<CancellationToken>())
+            .Callback<HttpRequestMessage, CancellationToken>((request, _) => onRequest?.Invoke(request))
             .ReturnsAsync(new HttpResponseMessage
             {
                 StatusCode = statusCode,

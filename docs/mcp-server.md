@@ -2,7 +2,7 @@
 title: Sorcha MCP Server
 description: Connection guide and worked-example session for the Sorcha MCP server — sorcha_-prefixed tools across admin, designer, participant, and citizen slices.
 standards: [OAuth 2.0]
-last_updated: 2026-08-22
+last_updated: 2026-09-05
 ---
 
 # Sorcha MCP Server
@@ -107,13 +107,29 @@ A token without admin claims will receive 401 / 403 from admin tools and should 
 
 Use this slice when an agent has admin scope and needs to inspect or operate a running instance. Tools include `sorcha_health_check` (aggregated platform health), `sorcha_metrics` (snapshot of platform metrics), `sorcha_log_query` and `sorcha_audit_query` (structured retrieval), `sorcha_peer_status` and `sorcha_validator_status` (P2P + consensus visibility), `sorcha_register_stats` (per-register statistics), `sorcha_tenant_create` / `sorcha_tenant_list` / `sorcha_tenant_update` (tenancy management), `sorcha_user_list` / `sorcha_user_manage` / `sorcha_token_revoke` (user and credential management). It also covers register federation (subscribe/unsubscribe/sync-state/relationship) and credential lifecycle (offer/suspend/reinstate/revoke/refresh). This list is illustrative, not exhaustive — it's the largest slice by tool count; see the per-slice table in [`src/Apps/Sorcha.McpServer/README.md`](../src/Apps/Sorcha.McpServer/README.md) for the current breakdown.
 
+`sorcha_user_list` and `sorcha_user_manage` are **org-scoped** — both require an `organizationId`
+argument, matching the real `api/organizations/{organizationId}/users` routes (MCP-P0, 2026-09-05;
+the earlier flat `api/users` shape these tools targeted was never mapped by any service).
+`sorcha_user_manage`'s action vocabulary is `Suspend | Reactivate | Unlock | ChangeRole` — there is
+no `Activate` / `Deactivate` / `Lock` / `AddRole` / `RemoveRole` endpoint to call.
+
 ### Designer
 
-Use this slice for an agent designing or refining workflows. Tools include `sorcha_blueprint_create` / `sorcha_blueprint_get` / `sorcha_blueprint_list` / `sorcha_blueprint_update` / `sorcha_blueprint_validate` / `sorcha_blueprint_simulate` / `sorcha_blueprint_diff` / `sorcha_blueprint_export` (the full blueprint authoring lifecycle), `sorcha_schema_generate` and `sorcha_schema_validate` (JSON-Schema work), `sorcha_jsonlogic_test` (rule expression sandbox), `sorcha_disclosure_analysis` (selective-disclosure rule audit), `sorcha_workflow_instances` (running instances of a blueprint).
+Use this slice for an agent designing or refining workflows. Tools include `sorcha_blueprint_create` / `sorcha_blueprint_get` / `sorcha_blueprint_list` / `sorcha_blueprint_update` / `sorcha_blueprint_validate` / `sorcha_blueprint_simulate` / `sorcha_blueprint_export` (the full blueprint authoring lifecycle), `sorcha_schema_generate` and `sorcha_schema_validate` (JSON-Schema work), `sorcha_jsonlogic_test` (rule expression sandbox), `sorcha_disclosure_analysis` (selective-disclosure rule audit), `sorcha_workflow_instances` (running instances of a blueprint).
+
+`sorcha_blueprint_diff` has been **withdrawn from the surface** (MCP-P0, 2026-09-05) — no `/diff`
+endpoint exists on any service to repoint it to, and an advertised-but-broken tool is worse than no
+tool. Tracked for removal of the now-dead client method: issue #1607.
 
 ### Participant
 
 Use this slice for an agent acting on behalf of an end-user participant in a running workflow. Tools include `sorcha_inbox_list` (actions awaiting this participant), `sorcha_action_details` / `sorcha_action_validate` / `sorcha_action_submit` (the action lifecycle), `sorcha_wallet_info` (wallet/address lookup), `sorcha_register_query` and `sorcha_transaction_history` (read-side ledger access), `sorcha_disclosed_data` (decrypt payloads disclosed to this participant), `sorcha_workflow_status` (instance progress).
+
+`sorcha_action_details` takes **both an instance id and an action id** (`instanceId`, `actionId`) —
+it reads `GET /api/instances/{instanceId}/actions/{actionId}`, not a bare action id. `sorcha_action_validate`
+takes `blueprintId`, `actionId`, and `dataJson`, posting to `POST /api/execution/validate`; it validates
+against the blueprint's **latest published definition**, not an instance's pinned one (issue #1606) —
+an agent checking a running instance's own pinned version should not treat a pass here as final.
 
 Signing an action is **implicit inside `sorcha_action_submit`** — there is no separate "sign, then submit"
 step for an agent to orchestrate. A `sorcha_wallet_sign` tool exists in source
@@ -133,6 +149,7 @@ The TradeFinance walkthrough (`walkthroughs/TradeFinance/`) demonstrates a four-
 ```
 1. sorcha_inbox_list             → returns the action awaiting the supplier participant
 2. sorcha_action_details         → reads the action's input schema + disclosure rules
+                                    (takes both the instance id and the action id)
 3. sorcha_action_submit          → submits the supplier's invoice; signing happens
                                     implicitly inside this call (see "Participant" above)
    ─ buyer participant ─

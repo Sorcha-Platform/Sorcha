@@ -27,18 +27,15 @@ namespace Sorcha.McpServer.Tools.Designer;
 [McpServerToolType]
 public sealed class JsonLogicTestTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
     private readonly IMcpErrorHandler _errorHandler;
     private readonly ILogger<JsonLogicTestTool> _logger;
 
     public JsonLogicTestTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
         IMcpErrorHandler errorHandler,
         ILogger<JsonLogicTestTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
         _errorHandler = errorHandler;
         _logger = logger;

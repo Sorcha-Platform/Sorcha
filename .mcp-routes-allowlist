@@ -1,0 +1,41 @@
+# MCP tool request-path families that no Sorcha service currently maps.
+#
+# Each line is a route family as reduced by scripts/check-mcp-routes.ps1: query string dropped,
+# every route parameter collapsed to '*', lower-cased. Comments start with '#'.
+#
+# Families are matched PER OWNING SERVICE — the service the tool actually addresses, derived from
+# the SorchaService.<X> its typed client or endpoint field resolves. A same-named route in another
+# service does not satisfy a call, so each reason below names the service that is missing it.
+#
+# RATCHET: this list may ONLY shrink. A stale entry (a family that is now mapped, or no longer
+# called by any registered tool) FAILS the gate, so an entry must be deleted in the same PR that
+# fixes or removes the call. Never add a line here to make a build pass — repoint the tool at the
+# route that exists, or map the route in the service.
+#
+# Seeded 2026-09-05 from the first run of the gate on feature/mcp-agent-experience. These were the
+# known-broken calls the gate was written to prove: ten tools were reaching routes that were never
+# mapped, including the ENTIRE participant discovery loop, so an agent could submit an action but
+# never discover or inspect one.
+#
+# Task 4 repointed sorcha_inbox_list, sorcha_action_details, sorcha_workflow_instances,
+# sorcha_workflow_status, and sorcha_action_validate at routes that actually exist
+# (api/actions/pending, api/instances/, api/instances/{id}/actions/{id}, api/instances/{id}, and
+# api/execution/validate respectively) and removed their four entries. sorcha_action_validate's
+# target was NOT visible to this gate at all — Blueprint Service also maps
+# api/actions/{wallet}/{register}, a same-shaped four-segment family, so the static family match
+# hid the miss entirely; it was fixed on the task brief's authority, not this gate's, and stayed
+# broken through a fully green gate run until then.
+#
+# Task 5 repointed the remaining four — sorcha_register_query (api/registers/{id}/transactions),
+# sorcha_user_list and sorcha_user_manage (api/organizations/{organizationId}/users and its
+# suspend/reactivate/unlock/role sub-routes — both tools gained a required organizationId
+# parameter the routes need in the path), and sorcha_token_revoke
+# (api/auth/token/revoke-user / revoke-organization) — and withdrew sorcha_blueprint_diff from
+# the served surface (no /diff endpoint exists anywhere to back it; see BlueprintDiffTool and
+# issue #1607). Withdrawing [McpServerToolType] from BlueprintDiffTool removes it from this gate's
+# scan entirely, which is why its former api/blueprints/*/diff entry is deleted here rather than
+# kept — a family no registered tool calls is stale, and the gate fails stale entries by design.
+#
+# This list is now EMPTY: every MCP tool's route is mapped by the service it addresses. A future
+# regression re-adds an entry only as a last resort, and only alongside a task that will remove it
+# again — this ratchet does not reopen just because a new tool ships broken.

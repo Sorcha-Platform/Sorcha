@@ -20,7 +20,6 @@ namespace Sorcha.McpServer.Tools.Designer;
 [McpServerToolType]
 public sealed class BlueprintValidateTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
     private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
@@ -29,7 +28,6 @@ public sealed class BlueprintValidateTool
     private readonly string _blueprintServiceEndpoint;
 
     public BlueprintValidateTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
         IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
@@ -37,7 +35,6 @@ public sealed class BlueprintValidateTool
         IConfiguration configuration,
         ILogger<BlueprintValidateTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
         _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;

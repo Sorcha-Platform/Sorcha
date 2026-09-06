@@ -38,15 +38,17 @@ public sealed class ActionDetailsTool
     }
 
     /// <summary>
-    /// Gets details of a specific action instance.
+    /// Gets details of a specific action within a workflow instance.
     /// </summary>
-    /// <param name="actionInstanceId">The action instance ID.</param>
+    /// <param name="instanceId">The workflow instance ID the action belongs to.</param>
+    /// <param name="actionId">The action's sequence number within the blueprint.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Action details including schema and disclosed data.</returns>
+    /// <returns>Action details including its renderable schema.</returns>
     [McpServerTool(Name = "sorcha_action_details")]
-    [Description("Fetch the full configuration of a single action assigned to the participant, including its JSON input schema, prompt copy, and any upstream data selectively disclosed to this participant. Returns enough detail for an agent to construct a schema-valid submission payload. Call this when the agent has an actionInstanceId from sorcha_inbox_list and needs the schema before drafting input; prefer sorcha_inbox_list rather than this tool when only enumerating pending work, and use sorcha_disclosed_data instead when you want disclosures across an entire workflow rather than a single action.")]
+    [Description("Fetch the renderable configuration of a single action on a workflow instance — its title, JSON input schema(s), UI form layout, calculated-field definitions, and its own credential gate — for an instance the caller's wallet participates in. Returns enough detail for an agent to construct a schema-valid submission payload. Deliberately narrow: it does not return routing rules, other participants, or any other action's content. Call this when the agent has an instanceId and actionId (from sorcha_inbox_list or sorcha_workflow_status) and needs the schema before drafting input; prefer sorcha_inbox_list rather than this tool when only enumerating pending work, and use sorcha_disclosed_data instead when you want disclosures across an entire workflow rather than a single action's schema.")]
     public async Task<ActionDetailsResult> GetActionDetailsAsync(
-        [Description("The action instance ID")] string actionInstanceId,
+        [Description("The workflow instance ID the action belongs to")] string instanceId,
+        [Description("The action's sequence number within the blueprint")] string actionId,
         CancellationToken cancellationToken = default)
     {
         // Authorization check
@@ -55,18 +57,28 @@ public sealed class ActionDetailsTool
             return new ActionDetailsResult
             {
                 Status = "Unauthorized",
-                Message = "Access denied. This tool requires the sorcha:participant role.",
+                Message = "Access denied. This tool requires an authenticated consumer- or platform-tier caller.",
                 CheckedAt = DateTimeOffset.UtcNow
             };
         }
 
         // Validate input
-        if (string.IsNullOrWhiteSpace(actionInstanceId))
+        if (string.IsNullOrWhiteSpace(instanceId))
         {
             return new ActionDetailsResult
             {
                 Status = "Error",
-                Message = "Action instance ID is required.",
+                Message = "Instance ID is required.",
+                CheckedAt = DateTimeOffset.UtcNow
+            };
+        }
+
+        if (string.IsNullOrWhiteSpace(actionId))
+        {
+            return new ActionDetailsResult
+            {
+                Status = "Error",
+                Message = "Action ID is required.",
                 CheckedAt = DateTimeOffset.UtcNow
             };
         }
@@ -82,14 +94,15 @@ public sealed class ActionDetailsTool
             };
         }
 
-        _logger.LogInformation("Getting action details for {ActionInstanceId}", actionInstanceId);
+        _logger.LogInformation("Getting action details for instance {InstanceId} action {ActionId}", instanceId, actionId);
 
         var stopwatch = Stopwatch.StartNew();
 
         try
         {
-            // Typed client forwards the caller's bearer and pins the route (GET api/actions/{id}).
-            var responseContent = await _blueprintClient.GetActionDetailsAsync(actionInstanceId, cancellationToken);
+            // Typed client forwards the caller's bearer and pins the route
+            // (GET api/instances/{instanceId}/actions/{actionId}).
+            var responseContent = await _blueprintClient.GetActionDetailsAsync(instanceId, actionId, cancellationToken);
 
             stopwatch.Stop();
 
@@ -132,24 +145,19 @@ public sealed class ActionDetailsTool
             return new ActionDetailsResult
             {
                 Status = "Success",
-                Message = $"Retrieved details for action '{result.Title ?? actionInstanceId}'.",
+                Message = $"Retrieved details for action '{result.Title ?? actionId}'.",
                 CheckedAt = DateTimeOffset.UtcNow,
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
                 Action = new ActionDetail
                 {
-                    ActionInstanceId = result.ActionInstanceId ?? actionInstanceId,
-                    WorkflowInstanceId = result.WorkflowInstanceId ?? "",
-                    BlueprintId = result.BlueprintId ?? "",
-                    BlueprintTitle = result.BlueprintTitle,
+                    InstanceId = instanceId,
                     ActionId = result.ActionId,
                     Title = result.Title ?? "",
-                    Description = result.Description,
-                    Status = result.Status ?? "Pending",
-                    InputSchema = result.InputSchema,
-                    DisclosedData = result.DisclosedData,
-                    RequiredFields = result.RequiredFields ?? [],
-                    AssignedAt = result.AssignedAt,
-                    DueAt = result.DueAt
+                    InputSchemas = result.DataSchemas?.Select(d => d.GetRawText()).ToList() ?? [],
+                    FormLayout = result.Form?.GetRawText(),
+                    Calculations = result.Calculations?.GetRawText(),
+                    HasCredentialRequirements = result.CredentialRequirements is { Count: > 0 },
+                    CredentialIssuanceConfig = result.CredentialIssuanceConfig?.GetRawText()
                 }
             };
         }
@@ -196,22 +204,18 @@ public sealed class ActionDetailsTool
         }
     }
 
-    // Internal response models
+    // Internal response model — mirrors Sorcha.Blueprint.Service.Models.Responses.InstanceActionSchemaResponse
+    // (GET /api/instances/{instanceId}/actions/{actionId}). Typed loosely (JsonElement) rather than
+    // referencing the service's own model types, which McpServer does not depend on.
     private sealed class ActionDetailsResponse
     {
-        public string? ActionInstanceId { get; set; }
-        public string? WorkflowInstanceId { get; set; }
-        public string? BlueprintId { get; set; }
-        public string? BlueprintTitle { get; set; }
         public int ActionId { get; set; }
         public string? Title { get; set; }
-        public string? Description { get; set; }
-        public string? Status { get; set; }
-        public string? InputSchema { get; set; }
-        public Dictionary<string, object>? DisclosedData { get; set; }
-        public List<string>? RequiredFields { get; set; }
-        public DateTimeOffset? AssignedAt { get; set; }
-        public DateTimeOffset? DueAt { get; set; }
+        public JsonElement? Form { get; set; }
+        public List<JsonElement>? DataSchemas { get; set; }
+        public JsonElement? Calculations { get; set; }
+        public List<JsonElement>? CredentialRequirements { get; set; }
+        public JsonElement? CredentialIssuanceConfig { get; set; }
     }
 
 }
@@ -248,32 +252,19 @@ public sealed record ActionDetailsResult
 }
 
 /// <summary>
-/// Detailed information about an action.
+/// Detailed information about an action, mirroring the deliberately narrow shape of
+/// <c>GET /api/instances/{instanceId}/actions/{actionId}</c> (routing rules, other participants,
+/// and other actions' content are excluded by that endpoint, not just by this record).
 /// </summary>
 public sealed record ActionDetail
 {
     /// <summary>
-    /// The unique action instance ID.
-    /// </summary>
-    public required string ActionInstanceId { get; init; }
-
-    /// <summary>
     /// The workflow instance ID this action belongs to.
     /// </summary>
-    public required string WorkflowInstanceId { get; init; }
+    public required string InstanceId { get; init; }
 
     /// <summary>
-    /// The blueprint ID.
-    /// </summary>
-    public required string BlueprintId { get; init; }
-
-    /// <summary>
-    /// The blueprint title.
-    /// </summary>
-    public string? BlueprintTitle { get; init; }
-
-    /// <summary>
-    /// The action ID (sequence number).
+    /// The action ID (sequence number) within the blueprint.
     /// </summary>
     public int ActionId { get; init; }
 
@@ -283,37 +274,31 @@ public sealed record ActionDetail
     public required string Title { get; init; }
 
     /// <summary>
-    /// The action description.
+    /// The JSON Schema(s) describing the data this action collects, each as a raw JSON string.
     /// </summary>
-    public string? Description { get; init; }
+    public IReadOnlyList<string> InputSchemas { get; init; } = [];
 
     /// <summary>
-    /// Current status: Pending or InProgress.
+    /// The UI form layout (JSON Forms-style control tree) as a raw JSON string, or null if the
+    /// action has none (falls back to schema auto-generation).
     /// </summary>
-    public required string Status { get; init; }
+    public string? FormLayout { get; init; }
 
     /// <summary>
-    /// JSON Schema for the action input data.
+    /// User-defined calculations (JSON Logic) performed on submitted data, as a raw JSON string.
     /// </summary>
-    public string? InputSchema { get; init; }
+    public string? Calculations { get; init; }
 
     /// <summary>
-    /// Data disclosed to the current participant.
+    /// Whether this action has credential requirements that must be satisfied before it can be
+    /// executed. Requirement detail is intentionally not surfaced here — use sorcha_action_details
+    /// output only to detect the gate's presence, not to evaluate it.
     /// </summary>
-    public Dictionary<string, object>? DisclosedData { get; init; }
+    public bool HasCredentialRequirements { get; init; }
 
     /// <summary>
-    /// List of required field names.
+    /// Configuration for a credential minted when this action executes, as a raw JSON string, or
+    /// null if this action mints none.
     /// </summary>
-    public IReadOnlyList<string> RequiredFields { get; init; } = [];
-
-    /// <summary>
-    /// When the action was assigned to the user.
-    /// </summary>
-    public DateTimeOffset? AssignedAt { get; init; }
-
-    /// <summary>
-    /// When the action is due if a deadline is set.
-    /// </summary>
-    public DateTimeOffset? DueAt { get; init; }
+    public string? CredentialIssuanceConfig { get; init; }
 }

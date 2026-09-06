@@ -3,65 +3,52 @@
 
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
-using Sorcha.ServiceClients.Configuration;
+using Sorcha.Register.Models;
+using Sorcha.ServiceClients.Register;
 
 namespace Sorcha.McpServer.Tools.Participant;
 
 /// <summary>
-/// Participant tool for querying register data.
+/// Participant tool for querying register data. Reads via the typed
+/// <see cref="IRegisterServiceClient"/> (spec 139 US4) so the caller's bearer is forwarded
+/// and the route is contract-pinned, not hand-rolled.
 /// </summary>
 [McpServerToolType]
 public sealed class RegisterQueryTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
-    private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IRegisterServiceClient _registerClient;
     private readonly ILogger<RegisterQueryTool> _logger;
-    private readonly string _registerServiceEndpoint;
 
     public RegisterQueryTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
-        IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
-        IHttpClientFactory httpClientFactory,
-        IConfiguration configuration,
+        IRegisterServiceClient registerClient,
         ILogger<RegisterQueryTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
-        _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;
-        _httpClientFactory = httpClientFactory;
+        _registerClient = registerClient;
         _logger = logger;
-
-        _registerServiceEndpoint = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Register) ?? "http://localhost:5290";
     }
 
     /// <summary>
-    /// Queries data from a register.
+    /// Queries the raw transaction ledger of a register, paginated.
     /// </summary>
     /// <param name="registerId">The register ID to query.</param>
-    /// <param name="docketId">Filter by docket ID (optional).</param>
-    /// <param name="query">OData-style query filter (optional).</param>
     /// <param name="page">Page number (1-based, default: 1).</param>
     /// <param name="pageSize">Items per page (default: 20, max: 100).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Query results.</returns>
     [McpServerTool(Name = "sorcha_register_query")]
-    [Description("Query records from a specific register on the Sorcha distributed ledger using OData-style filter, docket, and pagination parameters. Returns the materialised record rows the participant is permitted to see, each anchored to a Merkle-chained docket entry. Call this when an agent needs to look up business data committed to a register (for example reading credentials, invoices, or product passport entries) rather than workflow state; prefer sorcha_workflow_status when you want in-flight workflow progress, and use sorcha_transaction_history instead when you want the audit trail of submissions rather than the current record set.")]
+    [Description("Returns the raw signed transactions recorded on a register's ledger, newest first, paginated. Call this when you need direct paginated ledger access; prefer sorcha_transaction_history instead when the goal is reconstructing an audit trail or scoping to one workflow instance via workflowInstanceId — both tools read the same underlying data for a register-wide query. Payload contents are encrypted and not decrypted here — only transaction envelope fields (sender, recipients, docket, blueprint/instance/action linkage, payload count) are returned. NOTE: the underlying endpoint (GET /api/registers/{registerId}/transactions) has no docket filter and no OData $filter — those parameters were removed because the server never bound them.")]
     public async Task<RegisterQueryResult> QueryRegisterAsync(
         [Description("The register ID to query")] string registerId,
-        [Description("Filter by docket ID (optional)")] string? docketId = null,
-        [Description("OData-style query filter (optional)")] string? query = null,
         [Description("Page number (1-based, default: 1)")] int page = 1,
         [Description("Items per page (default: 20, max: 100)")] int pageSize = 20,
         CancellationToken cancellationToken = default)
@@ -72,7 +59,7 @@ public sealed class RegisterQueryTool
             return new RegisterQueryResult
             {
                 Status = "Unauthorized",
-                Message = "Access denied. This tool requires the sorcha:participant role.",
+                Message = "Access denied. This tool requires an authenticated consumer- or platform-tier caller.",
                 CheckedAt = DateTimeOffset.UtcNow
             };
         }
@@ -105,115 +92,35 @@ public sealed class RegisterQueryTool
         }
 
         _logger.LogInformation(
-            "Querying register {RegisterId}, docket {DocketId}, page {Page}",
-            registerId, docketId ?? "all", page);
+            "Querying register {RegisterId}, page {Page}",
+            registerId, page);
 
         var stopwatch = Stopwatch.StartNew();
 
         try
         {
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(30);
-
-            // Build query string
-            var queryParams = new List<string>
-            {
-                $"$top={pageSize}",
-                $"$skip={(page - 1) * pageSize}"
-            };
-
-            if (!string.IsNullOrWhiteSpace(docketId))
-            {
-                queryParams.Add($"docketId={Uri.EscapeDataString(docketId)}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(query))
-            {
-                queryParams.Add($"$filter={Uri.EscapeDataString(query)}");
-            }
-
-            var url = $"{_registerServiceEndpoint.TrimEnd('/')}/api/registers/{registerId}/data?{string.Join("&", queryParams)}";
-
-            var response = await client.GetAsync(url, cancellationToken);
+            // Typed client forwards the caller's bearer and pins the route
+            // (GET api/registers/{registerId}/transactions).
+            var pageResult = await _registerClient.GetTransactionsAsync(
+                registerId, page, pageSize, cancellationToken);
 
             stopwatch.Stop();
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning("Register query failed: HTTP {StatusCode} - {Error}", response.StatusCode, errorContent);
-
-                _availabilityTracker.RecordSuccess("Register");
-
-                try
-                {
-                    var errorResponse = JsonSerializer.Deserialize<ErrorResponse>(errorContent, new JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true
-                    });
-
-                    return new RegisterQueryResult
-                    {
-                        Status = "Error",
-                        Message = errorResponse?.Error ?? "Query failed.",
-                        CheckedAt = DateTimeOffset.UtcNow,
-                        ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-                    };
-                }
-                catch (JsonException)
-                {
-                    return new RegisterQueryResult
-                    {
-                        Status = "Error",
-                        Message = $"Query failed with status {(int)response.StatusCode}.",
-                        CheckedAt = DateTimeOffset.UtcNow,
-                        ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-                    };
-                }
-            }
-
-            // Record success
             _availabilityTracker.RecordSuccess("Register");
 
-            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
-            var result = JsonSerializer.Deserialize<RegisterQueryResponse>(responseContent, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
-
-            if (result == null)
-            {
-                return new RegisterQueryResult
-                {
-                    Status = "Error",
-                    Message = "Failed to parse query response.",
-                    CheckedAt = DateTimeOffset.UtcNow,
-                    ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-                };
-            }
-
             _logger.LogInformation(
-                "Query returned {Count} records in {ElapsedMs}ms",
-                result.Value?.Count ?? 0, stopwatch.ElapsedMilliseconds);
+                "Query returned {Count} record(s) in {ElapsedMs}ms",
+                pageResult.Transactions.Count, stopwatch.ElapsedMilliseconds);
 
             return new RegisterQueryResult
             {
                 Status = "Success",
-                Message = $"Query returned {result.Value?.Count ?? 0} record(s).",
+                Message = $"Query returned {pageResult.Transactions.Count} record(s).",
                 CheckedAt = DateTimeOffset.UtcNow,
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
-                Records = result.Value?.Select(r => new RegisterRecord
-                {
-                    RecordId = r.Id ?? "",
-                    DocketId = r.DocketId ?? "",
-                    TransactionId = r.TransactionId,
-                    Data = r.Data ?? new Dictionary<string, object>(),
-                    CreatedAt = r.CreatedAt,
-                    UpdatedAt = r.UpdatedAt
-                }).ToList() ?? [],
-                TotalCount = result.Count ?? result.Value?.Count ?? 0,
-                Page = page,
-                PageSize = pageSize
+                Records = pageResult.Transactions.Select(MapRecord).ToList(),
+                TotalCount = pageResult.Total,
+                Page = pageResult.Page,
+                PageSize = pageResult.PageSize
             };
         }
         catch (TaskCanceledException)
@@ -259,27 +166,23 @@ public sealed class RegisterQueryTool
         }
     }
 
-    // Internal response models (OData-style)
-    private sealed class RegisterQueryResponse
+    // Maps the actual wire shape (Sorcha.Register.Models.TransactionModel — TxId, PrevTxId,
+    // DocketNumber, SenderWallet, RecipientsWallets, TimeStamp, MetaData, PayloadCount, encrypted
+    // Payloads) rather than the fictional OData-record shape (Id/DocketId/Data dictionary) this
+    // tool previously assumed, which no endpoint has ever returned.
+    private static RegisterRecord MapRecord(TransactionModel t) => new()
     {
-        public List<RecordDto>? Value { get; set; }
-        public int? Count { get; set; }
-    }
-
-    private sealed class RecordDto
-    {
-        public string? Id { get; set; }
-        public string? DocketId { get; set; }
-        public string? TransactionId { get; set; }
-        public Dictionary<string, object>? Data { get; set; }
-        public DateTimeOffset? CreatedAt { get; set; }
-        public DateTimeOffset? UpdatedAt { get; set; }
-    }
-
-    private sealed class ErrorResponse
-    {
-        public string? Error { get; set; }
-    }
+        TransactionId = t.TxId,
+        PreviousTransactionId = string.IsNullOrEmpty(t.PrevTxId) ? null : t.PrevTxId,
+        DocketNumber = t.DocketNumber,
+        SenderWallet = t.SenderWallet,
+        RecipientWallets = t.RecipientsWallets?.ToList() ?? [],
+        TimeStamp = new DateTimeOffset(DateTime.SpecifyKind(t.TimeStamp, DateTimeKind.Utc)),
+        BlueprintId = t.MetaData?.BlueprintId,
+        WorkflowInstanceId = t.MetaData?.InstanceId,
+        ActionId = t.MetaData?.ActionId is { } actionId ? (int)actionId : null,
+        PayloadCount = (int)t.PayloadCount
+    };
 }
 
 /// <summary>
@@ -308,12 +211,12 @@ public sealed record RegisterQueryResult
     public int ResponseTimeMs { get; init; }
 
     /// <summary>
-    /// List of records matching the query.
+    /// List of transactions matching the query.
     /// </summary>
     public IReadOnlyList<RegisterRecord> Records { get; init; } = [];
 
     /// <summary>
-    /// Total number of records matching the filter.
+    /// Total number of transactions on the register.
     /// </summary>
     public int TotalCount { get; init; }
 
@@ -329,37 +232,58 @@ public sealed record RegisterQueryResult
 }
 
 /// <summary>
-/// A record from the register.
+/// A raw transaction record from the register's ledger. Payload contents are encrypted and not
+/// exposed here — only envelope fields are.
 /// </summary>
 public sealed record RegisterRecord
 {
     /// <summary>
-    /// The record ID.
+    /// The transaction ID — the record's unique identifier on the ledger.
     /// </summary>
-    public required string RecordId { get; init; }
+    public required string TransactionId { get; init; }
 
     /// <summary>
-    /// The docket ID this record belongs to.
+    /// The previous transaction ID in the sender's chain, if any.
     /// </summary>
-    public required string DocketId { get; init; }
+    public string? PreviousTransactionId { get; init; }
 
     /// <summary>
-    /// The transaction ID that created this record.
+    /// Docket number this transaction was sealed in, or null if still pending.
     /// </summary>
-    public string? TransactionId { get; init; }
+    public ulong? DocketNumber { get; init; }
 
     /// <summary>
-    /// The record data.
+    /// Wallet address that submitted the transaction.
     /// </summary>
-    public Dictionary<string, object> Data { get; init; } = new();
+    public required string SenderWallet { get; init; }
 
     /// <summary>
-    /// When the record was created.
+    /// Wallet addresses authorised to decrypt this transaction's payloads.
     /// </summary>
-    public DateTimeOffset? CreatedAt { get; init; }
+    public IReadOnlyList<string> RecipientWallets { get; init; } = [];
 
     /// <summary>
-    /// When the record was last updated.
+    /// When the transaction was recorded.
     /// </summary>
-    public DateTimeOffset? UpdatedAt { get; init; }
+    public DateTimeOffset TimeStamp { get; init; }
+
+    /// <summary>
+    /// Blueprint ID this transaction belongs to, if it is a workflow action.
+    /// </summary>
+    public string? BlueprintId { get; init; }
+
+    /// <summary>
+    /// Workflow instance ID this transaction belongs to, if it is a workflow action.
+    /// </summary>
+    public string? WorkflowInstanceId { get; init; }
+
+    /// <summary>
+    /// Action sequence number within the blueprint, if this is a workflow action.
+    /// </summary>
+    public int? ActionId { get; init; }
+
+    /// <summary>
+    /// Number of encrypted payloads on this transaction. Contents are not decrypted here.
+    /// </summary>
+    public int PayloadCount { get; init; }
 }

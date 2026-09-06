@@ -56,7 +56,7 @@ public sealed class TransactionHistoryToolTests
         var result = await CreateTool().GetTransactionHistoryAsync("reg-1");
 
         result.Status.Should().Be("Unauthorized");
-        result.Message.Should().Contain("sorcha:participant");
+        result.Message.Should().Contain("consumer- or platform-tier");
     }
 
     [Fact]

@@ -21,6 +21,10 @@ public sealed class ServiceAuthMessageHandlerTests
 {
     private sealed class StubServiceAuthClient(string? token) : IServiceAuthClient
     {
+        // The Verifier IS a configured service principal — it authenticates as itself, so it never
+        // takes the "no credentials configured" path ServiceClientAuthHelper skips on.
+        public bool HasNoCredentialsConfigured => false;
+
         public Task<string?> GetTokenAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(token);
     }
