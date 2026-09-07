@@ -22,11 +22,18 @@ public class LiveStateResourcesTests
     private readonly Mock<IBlueprintServiceClient> _blueprintClientMock = new();
     private readonly Mock<IRegisterServiceClient> _registerClientMock = new();
     private readonly Mock<ICallerContext> _callerMock = new();
+    private readonly Mock<IServiceAvailabilityTracker> _availabilityMock = new();
+
+    public LiveStateResourcesTests()
+    {
+        _availabilityMock.Setup(a => a.IsServiceAvailable(It.IsAny<string>())).Returns(true);
+    }
 
     private LiveStateResources CreateSut() => new(
         _blueprintClientMock.Object,
         _registerClientMock.Object,
         _callerMock.Object,
+        _availabilityMock.Object,
         Mock.Of<ILogger<LiveStateResources>>());
 
     private void Authenticate() => _callerMock.SetupGet(c => c.IsAuthenticated).Returns(true);
@@ -183,5 +190,31 @@ public class LiveStateResourcesTests
         using var doc = JsonDocument.Parse(body);
         doc.RootElement.GetProperty("registers").GetArrayLength().Should().Be(0);
         doc.RootElement.GetProperty("note").GetString().Should().NotBeNullOrWhiteSpace();
+    }
+
+    // Important 5 (final-fix-report): GetRecentRegistersAsync itself swallows every failure into
+    // the SAME empty list a genuinely empty org would produce, and never throws — the two
+    // catch clauses above are defensive, not reachable in practice. The availability tracker is
+    // the one honest (if partial) signal available without changing that client's contract: if
+    // another Register-service tool call already recorded a failure in this process, this
+    // resource must say so rather than silently reporting "registers: []".
+    [Fact]
+    public async Task RegistersAsync_RegisterServiceMarkedUnavailable_ReturnsHonestNoteWithoutCallingBackend()
+    {
+        Authenticate();
+        _availabilityMock.Setup(a => a.IsServiceAvailable("Register")).Returns(false);
+
+        var body = await CreateSut().RegistersAsync(CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(body);
+        doc.RootElement.GetProperty("registers").GetArrayLength().Should().Be(0);
+        var note = doc.RootElement.GetProperty("note").GetString();
+        note.Should().NotBeNullOrWhiteSpace();
+        note.Should().ContainEquivalentOf("unreachable",
+            "the note must say the service was unreachable, not just that the list is empty");
+        note.Should().ContainEquivalentOf("NOT confirmation",
+            "an unreachable service must not be reported as a confirmed-empty organisation");
+        _registerClientMock.Verify(
+            c => c.GetRecentRegistersAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

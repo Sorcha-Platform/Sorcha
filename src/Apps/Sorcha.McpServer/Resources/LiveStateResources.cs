@@ -34,6 +34,7 @@ public sealed class LiveStateResources
     private readonly IBlueprintServiceClient _blueprintClient;
     private readonly IRegisterServiceClient _registerClient;
     private readonly ICallerContext _callerContext;
+    private readonly IServiceAvailabilityTracker _availabilityTracker;
     private readonly ILogger<LiveStateResources> _logger;
 
     /// <summary>
@@ -43,11 +44,13 @@ public sealed class LiveStateResources
         IBlueprintServiceClient blueprintClient,
         IRegisterServiceClient registerClient,
         ICallerContext callerContext,
+        IServiceAvailabilityTracker availabilityTracker,
         ILogger<LiveStateResources> logger)
     {
         _blueprintClient = blueprintClient;
         _registerClient = registerClient;
         _callerContext = callerContext;
+        _availabilityTracker = availabilityTracker;
         _logger = logger;
     }
 
@@ -90,7 +93,7 @@ public sealed class LiveStateResources
     /// The registers visible to the calling identity's organisation, plus system registers.
     /// </summary>
     [McpServerResource(UriTemplate = "sorcha://registers", Name = "Your registers", MimeType = "application/json")]
-    [Description("The registers visible to you right now (your organisation's registers, plus system registers), most-recently-created first, as JSON. Capped at 50 entries — the response carries `count` (how many are in this body) and `truncated` (true when more than 50 exist), so a register's absence from this list is NOT evidence it doesn't exist when `truncated` is true. Read this instead of spending a tool call when you only need to see what registers exist.")]
+    [Description("The registers visible to you right now (your organisation's registers, plus system registers), most-recently-created first, as JSON. Capped at 50 entries — the response carries `count` (how many are in this body) and `truncated` (true when more than 50 exist), so a register's absence from this list is NOT evidence it doesn't exist when `truncated` is true. An empty list is ALSO not proof your organisation has no registers: the underlying call collapses a 5xx, a 403, and a transport fault into the same empty result as a genuinely empty org, so treat `registers: []` alongside a `note` field as \"could not be confirmed\" rather than \"confirmed empty\" — cross-check with sorcha_register_stats or the Sorcha UI if that distinction matters. Read this instead of spending a tool call when you only need to see what registers exist.")]
     public async Task<string> RegistersAsync(CancellationToken cancellationToken)
     {
         if (!_callerContext.IsAuthenticated)
@@ -98,13 +101,31 @@ public sealed class LiveStateResources
             return NoteJson("registers", "Not authenticated — sign in to see your registers.");
         }
 
+        // Best-effort distinguishing signal: IRegisterServiceClient.GetRecentRegistersAsync
+        // itself swallows every failure (5xx, 403, transport) into the SAME empty list a
+        // genuinely empty organisation would produce, and never calls RecordFailure/RecordSuccess
+        // on this tracker — so it cannot tell us about ITS OWN call. What it CAN reflect is a
+        // failure another Register-service tool (e.g. sorcha_register_stats) recorded in this
+        // same process. That is a real but incomplete signal — a Register outage with no prior
+        // tool call in this session still reads as "no registers" — which is why the
+        // [Description] above also tells the agent not to trust an empty list as confirmed-empty.
+        if (!_availabilityTracker.IsServiceAvailable("Register"))
+        {
+            return NoteJson(
+                "registers",
+                "The Register service was recently unreachable, so this list may be incomplete or "
+                + "empty even if registers exist. This is NOT confirmation your organisation has no "
+                + "registers.");
+        }
+
         try
         {
             // GET /api/registers/ (Sorcha.ServiceClients.Register.RegisterServiceClient) —
-            // org-scoped by the caller's forwarded bearer, plus system registers. Today this
-            // client itself swallows failures and returns an empty list rather than throwing, so
-            // an empty result here is indistinguishable from "no registers"; the catch clauses
-            // below are defensive against that contract changing, not evidence it currently fires.
+            // org-scoped by the caller's forwarded bearer, plus system registers. This client
+            // itself swallows failures and returns an empty list rather than throwing, so an
+            // empty result here is indistinguishable from "no registers" UNLESS the availability
+            // check above already caught it; the catch clauses below are defensive against that
+            // client contract changing, not evidence they currently fire.
             //
             // Request one more than we display (see RegistersDisplayLimit) so truncation is an
             // exact fact, not a guess.

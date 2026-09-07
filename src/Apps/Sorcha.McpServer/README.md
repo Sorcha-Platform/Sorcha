@@ -320,11 +320,34 @@ tools through the production-shaped container against an unroutable address and 
 Example:
 
 ```csharp
-[McpTool("create_blueprint")]
-[RequireRole("sorcha:designer")]
-public class CreateBlueprintTool : IMcpTool
+[McpServerToolType]
+public sealed class CreateBlueprintTool
 {
-    // Implementation
+    private readonly IMcpAuthorizationService _authService;
+    // ... other injected dependencies (typed service clients, IServiceAvailabilityTracker, ILogger)
+
+    public CreateBlueprintTool(IMcpAuthorizationService authService, /* ... */)
+    {
+        _authService = authService;
+    }
+
+    [McpServerTool(Name = "sorcha_blueprint_create")]
+    [Description("Creates a new blueprint from a complete JSON definition and returns the assigned " +
+        "blueprint ID, version, and counts of participants and actions. Call this when you need to " +
+        "register a brand-new multi-party workflow definition; use sorcha_blueprint_update instead " +
+        "when revising an existing blueprint by ID.")]
+    public async Task<BlueprintCreateResult> CreateBlueprintAsync(
+        string blueprintJson, CancellationToken cancellationToken = default)
+    {
+        // Step 3: re-check entitlement inside the tool (defence in depth) — the dispatch filter
+        // already narrowed the surface, but this tool must not trust that alone.
+        if (!_authService.CanInvokeTool("sorcha_blueprint_create"))
+        {
+            return new BlueprintCreateResult { Status = "Unauthorized", /* ... */ };
+        }
+
+        // Implementation
+    }
 }
 ```
 

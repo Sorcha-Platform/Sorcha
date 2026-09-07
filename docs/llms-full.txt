@@ -123,7 +123,9 @@ three **prompts** (`sorcha_two_party_exchange`, `sorcha_issue_credential`,
 flows.
 
 The manifest at `/.well-known/mcp.json` names every transport, the JWT acquisition
-flow, and the per-slice tool count.
+flow, and the Admin/Designer/Participant per-slice tool count — the Citizen slice's
+8 tools are not yet counted there (`ToolCatalogueProvider` computes only those
+three categories), so `tool_categories` undercounts the full 67-tool surface.
 
 A worked example session driving the TradeFinance walkthrough end-to-end via MCP
 is in `docs/mcp-server.md`, which also documents the three-state human-approval

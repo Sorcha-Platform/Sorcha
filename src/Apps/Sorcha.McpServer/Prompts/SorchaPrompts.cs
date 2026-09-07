@@ -119,6 +119,12 @@ public static class SorchaPrompts
             Assemble proof of transaction {transactionId} on register {registerId} for a
             regulator.
 
+            Steps 2-4 (sorcha_transaction_status, sorcha_transaction_inclusion_proof,
+            sorcha_transaction_verification_bundle) are Administrator-entitled tools. Prompts are
+            not entitlement-filtered the way tools are, so a designer- or participant-only caller
+            will be offered this recipe but find those three steps missing from their own tool
+            list — that is not a bug in the recipe, it means an administrator must run this part.
+
             1. Read sorcha://glossary if you need a refresher on docket, publicationTxId and
                execDefHash first — proof of a transaction is proof of the docket that sealed it.
             2. sorcha_transaction_status — confirm transaction {transactionId} is sealed, not
