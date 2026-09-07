@@ -1,7 +1,7 @@
 # Sorcha Platform - API Documentation
 
-**Version:** 2.5.0
-**Last Updated:** 2026-07-21
+**Version:** 2.6.0
+**Last Updated:** 2026-09-07
 **Status:** MVD Complete
 
 ---
@@ -25,9 +25,10 @@
 15. [Action Workflow API](#action-workflow-api)
 16. [Execution Helper API](#execution-helper-api)
 17. [Real-time Notifications (SignalR)](#real-time-notifications-signalr)
-18. [Error Handling](#error-handling)
-19. [Rate Limiting](#rate-limiting)
-20. [Code Examples](#code-examples)
+18. [MCP Server Tools](#mcp-server-tools)
+19. [Error Handling](#error-handling)
+20. [Rate Limiting](#rate-limiting)
+21. [Code Examples](#code-examples)
 
 ---
 
@@ -3271,6 +3272,33 @@ Typed failures (`422`, problem+json): `CERT_KEY_NOT_ELIGIBLE` (non-P-256 org key
 The HAIP verifier signs its OpenID4VP request object (ES256) with an X.509 **verifier certificate**, embeds the `x5c` chain, and identifies itself with a prefixed **`x509_san_dns:{host}`** `client_id` whose host equals the certificate SAN dNSName. Config: `Haip:VerifierCertificate` (PFX path or base64) + optional `Haip:VerifierCertificatePassword` + `Haip:PublicHost`; dev falls back to a self-signed certificate, prod/staging fail fast when unconfigured.
 
 The wallet authenticates the verifier before consent via `RequestObjectValidator` (`Sorcha.Verifier.Engine`, BouncyCastle / WASM-safe): ES256 JWS verify over the x5c leaf → leaf SAN equals the `client_id` host → chain-walk to a trusted-list anchor → three-state `VerifierAuthState` (`TrustedListVerified` / `AuthenticUntrusted` / `Unverifiable`). Tampered signature / SAN mismatch is a hard refusal (`REQUEST_OBJECT_INVALID` / `REQUEST_HOST_MISMATCH`); absent anchors never block. KB-JWT `aud` is the full prefixed `client_id`. Metric `sorcha_request_auth_total{state}` on `Sorcha.Trust`. Note: the anchor-fetch → `TrustedListVerified` path awaits a public anchors read endpoint (US3's is service-tier), so v1 renders valid signed requests as `AuthenticUntrusted`.
+
+---
+
+## MCP Server Tools
+
+The Sorcha MCP server (`src/Apps/Sorcha.McpServer`) wraps this REST/gRPC surface as tools, resources
+and prompts for AI-assistant clients. This section documents only the three **lifecycle** tools
+added to close the gap where no tool could create a register, publish a blueprint, or start an
+instance — for the full tool catalogue, do not hand-count from any document: query a live session's
+`tools/list`, or `GET /api/mcp/tools` on the gateway. Full narrative reference:
+`src/Apps/Sorcha.McpServer/README.md` and `docs/mcp-server.md`.
+
+| MCP tool | Backing endpoint(s) | Human gate |
+|---|---|---|
+| `sorcha_register_create` | `GET /api/organizations/{id}` (owning-wallet lookup) → `POST /api/registers/initiate` → `POST /api/v1/wallets/{address}/sign` → `POST /api/registers/finalize` | Always — creating a register is irreversible and establishes the register's governance keys. |
+| `sorcha_blueprint_publish` | `POST /api/blueprints/{id}/publish` (see [Blueprint Service API](#blueprint-service-api)) | Only when the executable-definition hash has no matching rehearsal (F142 `RehearsalPass`) — the endpoint returns `409 REHEARSAL_REQUIRED` and the tool asks a person before retrying with `override: { confirm: true, reason }`. |
+| `sorcha_instance_create` | `POST /api/instances/` | None — starting an instance is not irreversible the way register creation or an unrehearsed publish is. |
+
+Each tool signs or authorises with the caller's own forwarded bearer token, never a service
+credential (see the MCP server README's "Caller-token forwarding" section) — the backing endpoint
+enforces exactly the caller's tier/role, not the MCP server's own.
+
+The human gate (where present) is MCP elicitation: `IHumanApproval` /
+`ElicitationHumanApproval` (`src/Apps/Sorcha.McpServer/Services/`) distinguishes three client
+states — a client that never declared the `elicitation` capability (refused), a client that declared
+it but the request was declined or auto-cancelled, e.g. a headless client (refused), and an explicit
+`accept` (the only outcome that proceeds).
 
 ---
 

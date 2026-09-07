@@ -3,10 +3,73 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.27
-**Last Updated:** 2026-09-06
+**Version:** 7.28
+**Last Updated:** 2026-09-07
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
+
+> **2026-09-07 - MCP-P1: the completable surface — lifecycle tools, resources, prompts, human approval. ✅ DONE.**
+>
+> Closes the gap MCP-P0 restoration left standing: no tool could create a register, publish a
+> blueprint, or start an instance, so an agent could reach every read/participant surface but never
+> complete a workflow end to end. Three lifecycle tools ship, all in `Tools/Designer/`:
+> `sorcha_register_create` (the two-phase owner-attestation ceremony — initiate → sign → finalize —
+> run as one call, signing with the org's governance key), `sorcha_blueprint_publish` (Go-live;
+> defers to the F142 rehearsal gate and only asks a person to override an unrehearsed publish),
+> `sorcha_instance_create` (closes the loop `sorcha_action_submit` always had open — it required an
+> `instanceId` nothing on the surface produced). Registered tool count: **67** (Admin 35, Designer
+> 15, Participant 9, Citizen 8) — derived from `[McpServerToolType]` class attributes in
+> `src/Apps/Sorcha.McpServer/Tools/`, not carried forward from memory. Two further tools exist in
+> source but are deliberately unregistered: `sorcha_wallet_sign` (T029) and `sorcha_blueprint_diff`
+> (MCP-P0 Task 5, no `/diff` endpoint exists to back it — issue #1607).
+>
+> **Human approval has three client states, not two.** `IHumanApproval` /
+> `ElicitationHumanApproval` (`src/Apps/Sorcha.McpServer/Services/`) is the only place `ElicitAsync`
+> is called: `NotSupported` (the client never declared the `elicitation` capability at
+> `initialize`), `Refused` (declined, or a client that declares the capability but auto-cancels
+> headlessly — Claude Code `-p` mode does exactly this), `Approved` (explicit `accept` — the only
+> outcome that proceeds). Fail closed in every environment, no bypass flag. A created register's
+> `createdVia: "mcp"` metadata is an audit fact nothing may branch on (CLAUDE.md pattern 23).
+>
+> **Resources** (5, server was tools-only before this): `sorcha://schema/blueprint`,
+> `sorcha://examples/{name}` (assured-identity, encryption-at-rest, ping-pong), `sorcha://glossary`,
+> `sorcha://registers` (capped 50, `count`/`truncated` so absence is not evidence of non-existence),
+> `sorcha://instances`. A cold-start authoring A/B measured the blueprint schema resource as the
+> single intervention that closed the authoring gap. The schema is accurate but incomplete — it does
+> not yet define `routes`, `isStartingAction`, `credentialRequirements`, `credentialIssuanceConfig`,
+> `rejectionConfig`, `requiredPriorActions`, `instanceReference` (tracked as **#1609**).
+>
+> **Prompts** (3): `sorcha_two_party_exchange`, `sorcha_issue_credential`,
+> `sorcha_prove_to_regulator` — guided recipes naming the resources to read and the lifecycle tools
+> to call, in order. `ServerInstructions` (`Program.cs`) rewritten to match.
+>
+> Docs synced: MCP server README, `docs/reference/API-DOCUMENTATION.md` (new "MCP Server Tools"
+> section), `.claude/skills/sorcha-architecture/SKILL.md`, the `n1-deploy` skill (headless smoke
+> checks must assert the lifecycle tools' *refusal*, not treat it as a failure — a non-interactive
+> probe cannot declare the `elicitation` capability). `llms.txt` / `docs/llms-full.txt` corrected
+> from a stale "65 tools, tools-only" claim.
+>
+> **Deferred, tracked here rather than re-litigated per PR:**
+> - Rehearsal tools 📋 — let an agent clear the F142 publish gate properly (run + inspect a
+>   `RehearsalPass`) instead of always going through the human-override path.
+> - Longer-lived pending registration 📋 — `RegisterCreationOrchestrator`'s hard 5-minute TTL is
+>   spent against a human's thinking time during the elicit; it should not race the approval it is
+>   gating.
+> - P2 📋 — schema enrichment (an earlier audit counted ~149 tool parameters with 0 enums, formats
+>   or examples across the surface, though that predates these 3 tools and needs re-measuring), tool
+>   catalogue unification (the role normaliser and the tool catalogue each have two homes), and
+>   `/.well-known/oauth-protected-resource` metadata — today an unauthenticated `initialize` returns
+>   401 with an empty body and a bare `WWW-Authenticate: Bearer`, no `resource_metadata`.
+> - P3 📋 — tool-surface trimming; an earlier measurement put the served `tools/list` payload at
+>   ~14.8k tokens on connect (also predates these 3 tools).
+> - **#1609** 📋 — the blueprint schema resource has drifted from the models (no `routes` or
+>   credential-surface definitions); needs a currency gate.
+> - **#1610** 📋 — the MCP CI gates (`check-mcp-routes.ps1`, `check-mcp-response-shapes.ps1`) scan
+>   `Tools/**` only; `Resources/**` and `Prompts/**` are unguarded.
+>
+> ⚠ n1 currently runs a locally-built branch image pinned by `/opt/sorcha/docker-compose.mcpbranch.yml`
+> (see the MCP-P0 entry below) — Task 10 connects to n1 directly rather than assuming that pin has
+> been retired.
 
 > **2026-09-04 - Issue #1573: action schema was never enforced on the submission path. ✅ FIXED (engine + processor); rehearsal and /validate still open.**
 >

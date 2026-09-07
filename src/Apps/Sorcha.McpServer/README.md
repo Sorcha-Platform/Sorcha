@@ -165,8 +165,78 @@ served set.
 | Citizen | 8 | self-service wallet, devices (list/rename/revoke), credentials, persona |
 
 `tools/list` on a live session is **tier-filtered** (F136): a platform-tier token sees ~59 of 67;
-consumer-only tools require a consumer-tier token. One further tool (`sorcha_wallet_sign`) exists in
-source but is deliberately unregistered (T029 — signing stays in the Wallet Service).
+consumer-only tools require a consumer-tier token. Two further tools exist in source but are
+deliberately unregistered — no `[McpServerToolType]` on the class, so the assembly scan never
+discovers them: `sorcha_wallet_sign` (T029 — signing stays in the Wallet Service) and
+`sorcha_blueprint_diff` (MCP-P0 Task 5 — no `/diff` endpoint exists anywhere to back it; issue
+#1607 tracks removing the now-dead client method it would have called).
+
+## Lifecycle Tools (P1)
+
+Three tools close the gap MCP-P0 restoration left: no tool could create a register, publish a
+blueprint, or start an instance, so an agent could reach every read/participant surface but never
+complete a workflow end to end.
+
+| Tool | Slice | Backing endpoint(s) | Notes |
+|---|---|---|---|
+| `sorcha_register_create` | Designer (needs ADMIN role) | `GET /api/organizations/{id}` (owning-wallet lookup) → `POST /api/registers/initiate` → `POST /api/v1/wallets/{address}/sign` → `POST /api/registers/finalize` | The two-phase owner-attestation ceremony (initiate → sign → finalize) run as one call, signing with the organisation's *governance* key (`SorchaDerivationPaths.RegisterAttestation`, slot 100). Creating a register is irreversible and establishes the keys that authorise every later administrative change, so it **requires** a person to confirm it interactively before anything is created. |
+| `sorcha_blueprint_publish` | Designer (needs ADMIN + register-governance role) | `POST /api/blueprints/{id}/publish` | Always attempts the publish with no override first. A blueprint whose executable-definition hash has no matching rehearsal (F142 `RehearsalPass`) hits the soft `409 REHEARSAL_REQUIRED` gate — only then does this tool ask a person whether to publish anyway, proceeding only on an explicit `accept`. Governance (hard gate) is checked before rehearsal (soft gate), so nobody is asked to approve a publish that cannot succeed. |
+| `sorcha_instance_create` | Designer | `POST /api/instances/` | Starts a running instance from a blueprint already published to a register, returning the `instanceId` that `sorcha_action_submit` has always required but nothing on the surface produced until now. No human gate — starting an instance is not irreversible the way creating a register or an unrehearsed publish is. |
+
+`sorcha_register_create` and `sorcha_blueprint_publish` need organisation-administrator authority —
+not the designer role — even though both sit in the Designer workflow slice: their backing
+endpoints' own policies (`CanManageRegisters`, `CanPublishBlueprints`) accept `Administrator` /
+`SystemAdmin`, and `ToolEntitlements.IsPermitted` matches roles exactly, so entitling either on
+`sorcha:designer` would offer a tool a plain designer could never actually complete.
+
+## Resources
+
+Five resources — the server was tools-only (zero resources) until this branch. A cold-start
+authoring A/B measured the blueprint schema resource as the single intervention that closed the
+authoring gap.
+
+| URI | MIME type | What it returns |
+|---|---|---|
+| `sorcha://schema/blueprint` | `application/schema+json` | The embedded blueprint JSON Schema. Accurate and current for what it documents (participants, actions, data schemas, disclosure groups, action-level `condition` routing) — but **incomplete, not wrong**: it does not yet define `routes`, `isStartingAction`, `credentialRequirements`, `credentialIssuanceConfig`, `rejectionConfig`, `requiredPriorActions`, or `instanceReference`. |
+| `sorcha://examples/{name}` | `application/json` | A complete, working blueprint the walkthrough suite actually executes, using `routes` + `isStartingAction` — constructs the schema above does not yet define. Names: `assured-identity` (credential issuance with selective disclosure and `credentialIssuanceConfig`), `encryption-at-rest` (encrypted payloads and disclosure groups), `ping-pong` (the minimal two-party exchange). |
+| `sorcha://glossary` | `text/markdown` | What register, blueprint, action, participant, disclosure group, docket, `publicationTxId` and `execDefHash` mean. |
+| `sorcha://registers` | `application/json` | The caller's visible registers (their organisation's, plus system registers), newest first. Capped at 50 — the response carries `count` and `truncated`, so a register's absence from the list is **not** evidence it doesn't exist when `truncated` is true. |
+| `sorcha://instances` | `application/json` | The workflow instances visible to the calling identity right now. |
+
+`sorcha://schema/blueprint`'s gap is tracked as issue #1609: the schema has drifted from the current
+model (no `routes` definition, no credential surface) and needs a currency gate. The three worked
+examples are the reference for those constructs until it's fixed — complementary to the schema, not
+a correction of it.
+
+## Prompts
+
+Three guided recipes. Each returns a step-by-step brief naming the resources to read and the
+lifecycle tools to call, in order — none of them call a tool itself.
+
+| Prompt | Guides |
+|---|---|
+| `sorcha_two_party_exchange` | Setting up a two-party data exchange with selective disclosure, from an empty workspace to a running instance. |
+| `sorcha_issue_credential` | Issuing a verifiable credential from an issuer organisation to a subject via an action-level `credentialIssuanceConfig`, including the OID4VCI offer path (`sorcha_credential_offer`) for a subject holding a standards-compliant external wallet rather than a Sorcha participant identity. |
+| `sorcha_prove_to_regulator` | Assembling verifiable proof of a sealed transaction — inclusion proof, verification bundle, and any data the regulator is entitled to see — for a regulator or auditor. |
+
+Every prompt repeats the human-approval reminder below, so an agent reading only one of them still
+gets the full picture.
+
+## Human Approval Model
+
+Register creation, and publishing a blueprint that has never been rehearsed, put the decision to a
+real person via MCP elicitation. `IHumanApproval` / `ElicitationHumanApproval`
+(`src/Apps/Sorcha.McpServer/Services/`) is the **only** place `ElicitAsync` is called. There are
+**three client states, not two**:
+
+| State | When | Outcome |
+|---|---|---|
+| `NotSupported` | The client never declared the `elicitation` capability (form mode) at `initialize` | Refused before anything is created — "connect with a client that supports elicitation, or perform this step in the Sorcha UI" |
+| `Refused` | A person explicitly declined, or the client dismissed the request without a choice — **including a client that declares the capability but auto-cancels every request when running headlessly** (Claude Code in `-p` mode does exactly this) | Refused — nothing changed |
+| `Approved` | An explicit `accept` | The **only** outcome that permits the operation |
+
+Declaring the elicitation capability at `initialize` is not a promise a person will actually be
+asked. Fail closed everywhere, in every environment, with no bypass flag.
 
 ## Security
 

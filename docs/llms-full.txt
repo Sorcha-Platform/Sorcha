@@ -56,8 +56,10 @@ The **API Gateway** (YARP-based) is the single external surface. It aggregates t
 per-service OpenAPI documents into one well-known surface and proxies authenticated
 calls to the services behind it.
 
-The **MCP Server** exposes 65 tools across four role slices (admin, citizen, designer,
-participant) so AI agents can drive the platform end-to-end.
+The **MCP Server** exposes 67 tools across four role slices (admin, citizen, designer,
+participant), plus reference resources (a blueprint JSON Schema, worked examples, a
+glossary, the caller's own live registers and instances) and guided prompts, so AI
+agents can drive the platform end-to-end.
 
 Full architecture diagrams: `docs/architecture.md`.
 Service-to-service reference: `docs/reference/API-DOCUMENTATION.md`. Port assignments:
@@ -91,7 +93,7 @@ The MCP server speaks the Model Context Protocol over both stdio (for local agen
 hosts) and http+sse (for hosted agents). Authentication is JWT Bearer; obtain a token
 from the Tenant Service via `POST /api/tenant/api/service-auth/token`.
 
-Tool catalogue (65 tools across four role slices):
+Tool catalogue (67 tools across four role slices):
 
 - **Admin slice (35 tools).** Platform operation and oversight: audit query, health
   check, log query, metrics, platform settings; tenant list/create/update, user
@@ -102,18 +104,32 @@ Tool catalogue (65 tools across four role slices):
 - **Citizen slice (8 tools).** The wallet holder's own view: my credentials, my
   devices, device rename/revoke, my persona, my presentations, my invitations, and
   pending applications.
-- **Designer slice (13 tools).** Blueprint create/update/get/list/diff/export/validate,
+- **Designer slice (15 tools).** Blueprint create/update/get/list/export/validate,
   schema generate/validate, blueprint simulate, JsonLogic test, disclosure analysis,
-  workflow instances. Use these to author and refine blueprints before deployment.
+  workflow instances, plus three lifecycle tools that take a blueprint from draft to
+  running instance: register creation and blueprint publish (both put an irreversible
+  decision to a real person via MCP elicitation before proceeding) and instance
+  creation. Use these to author, publish, and start workflows end to end.
 - **Participant slice (9 tools).** Action validate/submit, action details, inbox
   list, transaction history, register query, wallet info, disclosed data,
   workflow status. Use these to drive a running workflow on behalf of a participant.
+
+Beyond tools, the server also serves **resources** — `sorcha://schema/blueprint`
+(the blueprint JSON Schema), `sorcha://examples/{name}` (three worked, walkthrough-
+executed blueprints), `sorcha://glossary`, `sorcha://registers` and
+`sorcha://instances` (the caller's own, live) — readable with no tool call, and
+three **prompts** (`sorcha_two_party_exchange`, `sorcha_issue_credential`,
+`sorcha_prove_to_regulator`) that return a step-by-step brief for the most common
+flows.
 
 The manifest at `/.well-known/mcp.json` names every transport, the JWT acquisition
 flow, and the per-slice tool count.
 
 A worked example session driving the TradeFinance walkthrough end-to-end via MCP
-is in `docs/mcp-server.md`.
+is in `docs/mcp-server.md`, which also documents the three-state human-approval
+model (client never declared elicitation / declined or auto-cancelled / explicit
+accept — only the last proceeds) behind register creation and an unrehearsed
+blueprint publish.
 
 ---
 

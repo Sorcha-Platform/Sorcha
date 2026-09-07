@@ -1,8 +1,8 @@
 ---
 title: Sorcha MCP Server
-description: Connection guide and worked-example session for the Sorcha MCP server — sorcha_-prefixed tools across admin, designer, participant, and citizen slices.
+description: Connection guide and worked-example session for the Sorcha MCP server — sorcha_-prefixed tools across admin, designer, participant, and citizen slices, plus its reference resources and guided prompts.
 standards: [OAuth 2.0]
-last_updated: 2026-09-05
+last_updated: 2026-09-07
 ---
 
 # Sorcha MCP Server
@@ -17,7 +17,8 @@ Sorcha is programmable proof infrastructure for multi-party workflows. Every act
 
 What you get from connecting:
 
-- **A `sorcha_`-prefixed tool per operation**, across admin, designer, participant, and citizen (consumer-tier) slices. Each tool's `[Description]` attribute names what it does *and* when an agent should call it versus a sibling. The live roster changes over time — don't hand-count from this doc; `GET /api/mcp/tools` (or a live `tools/list`) and [`src/Apps/Sorcha.McpServer/README.md`](../src/Apps/Sorcha.McpServer/README.md) are the sources that can't drift.
+- **A `sorcha_`-prefixed tool per operation**, across admin, designer, participant, and citizen (consumer-tier) slices — including three lifecycle tools (`sorcha_register_create`, `sorcha_blueprint_publish`, `sorcha_instance_create`) that close the loop from an empty workspace to a running, ledger-backed workflow. Each tool's `[Description]` attribute names what it does *and* when an agent should call it versus a sibling. The live roster changes over time — don't hand-count from this doc; `GET /api/mcp/tools` (or a live `tools/list`) and [`src/Apps/Sorcha.McpServer/README.md`](../src/Apps/Sorcha.McpServer/README.md) are the sources that can't drift.
+- **Reference resources and guided prompts.** `sorcha://schema/blueprint`, worked-example blueprints, a glossary, and the caller's own registers/instances are servable as MCP resources — no tool call needed. Three prompts (`sorcha_two_party_exchange`, `sorcha_issue_credential`, `sorcha_prove_to_regulator`) return a step-by-step brief for the most common flows. See [Resources](#resources) and [Prompts](#prompts) below.
 - **JWT-bearer auth.** The same JWT used for direct API calls works for MCP. One token, two surfaces.
 - **Two transports.** Stdio for local agent hosts (Claude Desktop, your own CLI agent), and **Streamable HTTP** for hosted agents (cloud orchestrators, server-side workflow engines) — served stateless behind the gateway's `/mcp` route, so it scales horizontally with no session affinity. (The manifest labels this transport `http+sse` — that's the FR-014 wire name, kept for compatibility; the endpoint speaks Streamable HTTP.)
 
@@ -147,6 +148,44 @@ reserved for a dedicated, security-reviewed wave. Don't call it or document a ma
 ### Citizen (consumer tier)
 
 Use this slice for an agent acting on behalf of an end-user's own wallet, devices, credentials, or persona — gated on a consumer-tier token (F136), not a role claim. Tools include `sorcha_my_credentials`, `sorcha_my_devices` / `sorcha_my_device_rename` / `sorcha_my_device_revoke`, `sorcha_my_persona`, `sorcha_my_presentations`, `sorcha_my_invitations`, and `sorcha_pending_applications`.
+
+## Resources
+
+Resources are read directly — no tool call, no round trip, no rate-limit spend. The server was tools-only (zero resources) until this surface was added; a cold-start authoring A/B measured `sorcha://schema/blueprint` as the single intervention that closed the authoring gap.
+
+| URI | Returns |
+|---|---|
+| `sorcha://schema/blueprint` | The embedded blueprint JSON Schema. Accurate and current for what it documents (participants, actions, data schemas, disclosure groups, action-level `condition` routing) — but **incomplete, not wrong**: it does not yet define `routes`, `isStartingAction`, `credentialRequirements`, `credentialIssuanceConfig`, `rejectionConfig`, `requiredPriorActions`, or `instanceReference`. Read this before writing any blueprint JSON. |
+| `sorcha://examples/{name}` | A complete, working blueprint the walkthrough suite actually executes, using `routes` + `isStartingAction` — the constructs the schema above doesn't yet define. Names: `assured-identity` (credential issuance with selective disclosure and `credentialIssuanceConfig`), `encryption-at-rest` (encrypted payloads and disclosure groups), `ping-pong` (the minimal two-party exchange). |
+| `sorcha://glossary` | What register, blueprint, action, participant, disclosure group, docket, `publicationTxId` and `execDefHash` mean. |
+| `sorcha://registers` | The caller's visible registers (their organisation's, plus system registers), newest first, as JSON. Capped at 50 — the response carries `count` and `truncated`, so a register's absence from the list is **not** evidence it doesn't exist when `truncated` is true. |
+| `sorcha://instances` | The workflow instances visible to the calling identity right now, as JSON. |
+
+Both live-state resources (`sorcha://registers`, `sorcha://instances`) require authentication and return a `note` explaining why when the caller isn't signed in, rather than an empty list that reads as "there are none".
+
+The blueprint-schema gap is tracked as issue #1609 — the schema has drifted from the current model and needs a currency gate; the three worked examples are the reference for the missing constructs until it's fixed, complementary to the schema rather than a correction of it.
+
+## Prompts
+
+Prompts are guided recipes: each returns a step-by-step brief naming the resources to read and the lifecycle tools to call, in order. A prompt never calls a tool itself — the agent still drives every step.
+
+| Prompt | Guides |
+|---|---|
+| `sorcha_two_party_exchange` | Setting up a two-party data exchange with selective disclosure, from an empty workspace to a running instance. |
+| `sorcha_issue_credential` | Issuing a verifiable credential from an issuer organisation to a subject via an action-level `credentialIssuanceConfig`, including the OID4VCI offer path (`sorcha_credential_offer`) when the subject holds a standards-compliant external wallet rather than a Sorcha participant identity. |
+| `sorcha_prove_to_regulator` | Assembling verifiable proof of a sealed transaction — inclusion proof, verification bundle, and any data the regulator is entitled to see — for a regulator or auditor. |
+
+## Human approval
+
+Two of the lifecycle tools above — `sorcha_register_create` always, `sorcha_blueprint_publish` only on an unrehearsed definition — put the decision to a real person via MCP elicitation rather than letting the agent decide alone: creating a register is irreversible and establishes the keys that authorise every later administrative change, and publishing an unrehearsed definition skips the only *behavioural* check a blueprint gets before it goes live. `IHumanApproval` / `ElicitationHumanApproval` (`src/Apps/Sorcha.McpServer/Services/`) is the **only** place `ElicitAsync` is called, and it resolves to **three** client states, not two:
+
+| State | When | What the agent sees |
+|---|---|---|
+| Not supported | The connecting client never declared the `elicitation` capability (form mode) at `initialize` | Refused before anything is created — connect with a client that supports elicitation, or perform this step in the Sorcha UI |
+| Refused | A person explicitly declined, or the client dismissed the request without a choice — **including a client that declares the capability but auto-cancels every request when running headlessly** (Claude Code in `-p` mode does exactly this) | Refused — nothing changed |
+| Approved | An explicit `accept` | The **only** outcome that proceeds |
+
+Declaring the `elicitation` capability at `initialize` is therefore not a promise a person will actually be asked — a headless client can declare it and still auto-refuse every request. Both tools fail closed in every environment, with no bypass flag.
 
 ## Worked example — a participant agent driving the TradeFinance walkthrough
 
