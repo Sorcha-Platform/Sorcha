@@ -49,6 +49,16 @@ namespace Sorcha.McpServer.Tools.Designer;
 /// exactly the class of defect this tool exists to avoid.
 /// </para>
 /// <para>
+/// <b>Entitlement is the ADMIN role, not the designer role</b>, even though this is a
+/// designer-workflow step. <c>POST /api/registers/initiate</c> sits behind the Register Service's
+/// <c>CanManageRegisters</c> policy (<c>org_id</c> plus <c>Administrator</c> or
+/// <c>SystemAdmin</c>), and <c>ToolEntitlements.IsPermitted</c> matches roles exactly —
+/// <c>sorcha:admin</c> does not imply <c>sorcha:designer</c> or vice versa. Entitling on the
+/// designer role would let a plain designer clear every local gate, interrupt a person, obtain
+/// their approval, and only then collect an opaque 403. Nobody may be asked to approve something
+/// that cannot succeed — the same reason the availability checks sit above the elicit.
+/// </para>
+/// <para>
 /// <b>Ordering.</b> The person is asked BEFORE <c>POST /api/registers/initiate</c>. The pending
 /// registration has a hard 5-minute TTL (<c>RegisterCreationOrchestrator</c>), and a human's
 /// thinking time must not be spent against it.
@@ -98,17 +108,17 @@ public sealed class RegisterCreateTool
     /// <summary>Creates a register, after a person confirms it.</summary>
     /// <param name="server">The live MCP server, injected by the SDK; used to reach the caller's client.</param>
     /// <param name="name">Register name (1-38 characters).</param>
-    /// <param name="description">What the register is for (max 500 characters).</param>
+    /// <param name="description">What the register is for (max 500 characters); may be omitted.</param>
     /// <param name="devMode">When true, payloads are stored as plaintext with read-time disclosure filtering.</param>
     /// <param name="advertise">When true, the register is advertised to the peer network.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The created register's id and genesis transaction id.</returns>
     [McpServerTool(Name = ToolName, Destructive = true, ReadOnly = false, Idempotent = false)]
-    [Description("Creates a new Sorcha register — the ledger a workflow's transactions are written to — and returns its registerId plus the id of the genesis transaction that was submitted for it. Call this when you are setting up a workflow from scratch and have no registerId yet: create the register first, then design a blueprint with sorcha_blueprint_create, and only then start work on it with sorcha_instance_create, which needs both ids. Creating a register is irreversible and establishes the governance keys that authorise every later administrative change, so it REQUIRES a person to confirm it interactively; if your MCP client does not support elicitation the call is refused before anything is created. The register is owned by YOUR organisation's signing wallet, which is resolved from your token rather than passed in. Set devMode only for development registers — it stores payloads as plaintext instead of encrypting them.")]
+    [Description("Creates a new Sorcha register — the ledger a workflow's transactions are written to — and returns its registerId plus the id of the genesis transaction that was submitted for it. Call this when you are setting up a workflow from scratch and have no registerId yet: create the register first, then design a blueprint with sorcha_blueprint_create, and only then start work on it with sorcha_instance_create, which needs both ids. Creating a register is irreversible and establishes the governance keys that authorise every later administrative change, so it REQUIRES a person to confirm it interactively; if your MCP client does not support elicitation the call is refused before anything is created. The register is owned by YOUR organisation's signing wallet, which is resolved from your token rather than passed in, and creating one needs organisation-administrator authority — a plain designer role is not enough, and the tool is not offered to one. Set devMode only for development registers — it stores payloads as plaintext instead of encrypting them.")]
     public async Task<RegisterCreateResult> CreateRegisterAsync(
         SdkMcpServer server,
         [Description("Register name, 1-38 characters")] string name,
-        [Description("What this register is for, max 500 characters")] string description,
+        [Description("What this register is for, max 500 characters")] string? description,
         [Description("Store payloads as plaintext instead of encrypting them. Development only.")] bool devMode = false,
         [Description("Advertise this register to the peer network")] bool advertise = false,
         CancellationToken cancellationToken = default)
@@ -116,7 +126,7 @@ public sealed class RegisterCreateTool
         // 1. Entitlement — cheap and local, so it precedes everything.
         if (!_authService.CanInvokeTool(ToolName))
         {
-            return Fail("Unauthorized", "Access denied. This tool requires the sorcha:designer role.");
+            return Fail("Unauthorized", "Access denied. Creating a register requires the sorcha:admin role — the same authority the register service's own CanManageRegisters policy demands (org Administrator or SystemAdmin).");
         }
 
         // 2. Validate against the real DataAnnotations on InitiateRegisterCreationRequest, so the
@@ -155,23 +165,44 @@ public sealed class RegisterCreateTool
                 + "the register. Sign in with a platform-tier account that belongs to an organisation.");
         }
 
+        bool organizationRead;
         string? walletAddress;
         try
         {
-            walletAddress = await ResolveOrgWalletAddressAsync(orgId, cancellationToken);
+            (organizationRead, walletAddress) = await ResolveOrgWalletAddressAsync(orgId, cancellationToken);
         }
         catch (Exception ex)
         {
             _availabilityTracker.RecordFailure("Tenant", ex);
             _logger.LogWarning(ex, "Could not resolve the owning organisation's wallet address");
-            return Fail("Error", $"Could not resolve your organisation's signing wallet: {ex.Message}");
+            return Fail("Error", $"Your organisation could not be read from the Tenant Service: {ex.Message}. Nothing was created.");
+        }
+
+        if (!organizationRead)
+        {
+            // "Could not read the organisation" and "the organisation has no wallet" MUST stay
+            // separate. GetRawAsync collapses 401 / 403 / 404 / 500 into the same null it returns
+            // for a body it could not fetch, so treating that null as "no wallet" would answer a
+            // transient Tenant outage with a confident, human-actionable instruction to go create
+            // a wallet that already exists. That is the same silent-wrong shape this tool rejected
+            // IOrgInfoClient for; a forwarded bearer makes 401 unlikely, which is a mitigation and
+            // not a distinction.
+            return Fail(
+                "Error",
+                $"Your organisation ('{orgId}') could not be read from the Tenant Service, so the "
+                + "owning wallet could not be resolved and the register was NOT created. This does "
+                + "NOT mean the organisation has no wallet — the read itself failed (the service may "
+                + "be unavailable, or your token may not be accepted for it). Retry; if it persists, "
+                + "ask an operator to check the Tenant Service.");
         }
 
         if (string.IsNullOrWhiteSpace(walletAddress))
         {
-            // A legitimate state, not a fault to repair (#1525). The wallet's BIP39 recovery phrase
-            // is shown exactly once and is the organisation's secret, so it is created by the org's
-            // own administrator — no service, and certainly no agent, may mint it on their behalf.
+            // Reached ONLY when the organisation was read successfully and genuinely carries no
+            // walletAddress. A legitimate state, not a fault to repair (#1525): the wallet's BIP39
+            // recovery phrase is shown exactly once and is the organisation's secret, so it is
+            // created by the org's own administrator — no service, and certainly no agent, may
+            // mint it on their behalf.
             return Fail(
                 "Error",
                 "Your organisation has no signing wallet yet, so it cannot own a register. This is not "
@@ -186,7 +217,7 @@ public sealed class RegisterCreateTool
         //    pending registration's 5-minute TTL.
         var approval = await _humanApproval.RequestAsync(server, new HumanApprovalRequest(
             $"Create a new Sorcha register '{name}'?\n\n" +
-            $"Purpose: {description}\n" +
+            $"Purpose: {DescriptionOrPlaceholder(description)}\n" +
             $"Owning organisation wallet: {walletAddress}\n" +
             (devMode
                 ? "Storage: DEVELOPMENT MODE — payloads stored as PLAINTEXT.\n"
@@ -328,14 +359,15 @@ public sealed class RegisterCreateTool
 
     private static InitiateRegisterCreationRequest BuildInitiateRequest(
         string name,
-        string description,
+        string? description,
         bool devMode,
         bool advertise,
         string orgId,
         string walletAddress) => new()
         {
             Name = name.Trim(),
-            Description = description.Trim(),
+            // The server's own Description is string? — a null stays null rather than becoming "".
+            Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim(),
             DevMode = devMode,
             Advertise = advertise,
             Purpose = RegisterPurpose.General,
@@ -361,31 +393,45 @@ public sealed class RegisterCreateTool
 
     /// <summary>
     /// Reads <c>walletAddress</c> off <c>GET /api/organizations/{id}</c>'s
-    /// <c>OrganizationResponse</c>. Null means the organisation is still awaiting its wallet.
+    /// <c>OrganizationResponse</c>.
     /// </summary>
-    private async Task<string?> ResolveOrgWalletAddressAsync(string orgId, CancellationToken cancellationToken)
+    /// <returns>
+    /// <c>OrganizationRead</c> is false when the organisation document could not be fetched at all
+    /// — <see cref="ITenantServiceClient.GetOrganizationAsync"/> returns null for every non-success
+    /// status (401, 403, 404, 500 alike), so the caller must NOT read that as "has no wallet".
+    /// <c>WalletAddress</c> is null only when the organisation WAS read and carries no wallet.
+    /// </returns>
+    private async Task<(bool OrganizationRead, string? WalletAddress)> ResolveOrgWalletAddressAsync(
+        string orgId, CancellationToken cancellationToken)
     {
         var body = await _tenantClient.GetOrganizationAsync(orgId, cancellationToken);
         if (string.IsNullOrWhiteSpace(body))
         {
-            return null;
+            return (false, null);
+        }
+
+        using var doc = JsonDocument.Parse(body);
+        if (doc.RootElement.ValueKind != JsonValueKind.Object)
+        {
+            // A success status carrying something that is not an organisation document is a read
+            // failure too, not evidence about a wallet.
+            return (false, null);
         }
 
         _availabilityTracker.RecordSuccess("Tenant");
 
-        using var doc = JsonDocument.Parse(body);
-        if (doc.RootElement.ValueKind == JsonValueKind.Object
-            && doc.RootElement.TryGetProperty("walletAddress", out var addressElement)
+        if (doc.RootElement.TryGetProperty("walletAddress", out var addressElement)
             && addressElement.ValueKind == JsonValueKind.String)
         {
             var address = addressElement.GetString();
-            return string.IsNullOrWhiteSpace(address) ? null : address;
+            return (true, string.IsNullOrWhiteSpace(address) ? null : address);
         }
 
-        return null;
+        // Object present, walletAddress absent or JSON null — the org genuinely has no wallet.
+        return (true, null);
     }
 
-    private static List<string> Validate(string name, string description)
+    private static List<string> Validate(string name, string? description)
     {
         var errors = new List<string>();
 
@@ -398,9 +444,9 @@ public sealed class RegisterCreateTool
             errors.Add($"name must not exceed {MaxNameLength} characters (was {name.Trim().Length})");
         }
 
-        if (description is not null && description.Trim().Length > MaxDescriptionLength)
+        if (description is { } d && d.Trim().Length > MaxDescriptionLength)
         {
-            errors.Add($"description must not exceed {MaxDescriptionLength} characters (was {description.Trim().Length})");
+            errors.Add($"description must not exceed {MaxDescriptionLength} characters (was {d.Trim().Length})");
         }
 
         return errors;
@@ -415,6 +461,10 @@ public sealed class RegisterCreateTool
         Enum.TryParse<SignatureAlgorithm>(algorithm, ignoreCase: true, out var parsed)
             ? parsed
             : SignatureAlgorithm.ED25519;
+
+    /// <summary>What the approval prompt shows when no description was supplied.</summary>
+    private static string DescriptionOrPlaceholder(string? description) =>
+        string.IsNullOrWhiteSpace(description) ? "(none given)" : description.Trim();
 
     private static RegisterCreateResult Fail(string status, string message) => new()
     {

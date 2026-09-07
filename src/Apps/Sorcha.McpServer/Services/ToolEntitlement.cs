@@ -97,9 +97,16 @@ public static class ToolEntitlements
         new("sorcha_jsonlogic_test", PlatformOnly, DesignerRole),
         new("sorcha_workflow_instances", PlatformOnly, DesignerRole),
         new("sorcha_instance_create", PlatformOnly, DesignerRole),
-        // Creates a register and establishes its governance roster. Additionally gated on a real
-        // person's confirmation at the client (IHumanApproval) — entitlement alone is not enough.
-        new("sorcha_register_create", PlatformOnly, DesignerRole),
+
+        // sorcha_register_create is a designer-workflow step but carries the ADMIN role, because
+        // that is the authority its endpoint actually demands: POST /api/registers/initiate sits
+        // behind the Register Service's CanManageRegisters policy (org_id + Administrator or
+        // SystemAdmin). IsPermitted does an exact roles.Contains, so entitling it on DesignerRole
+        // would let a plain Designer pass this gate, pass validation, INTERRUPT A PERSON, obtain
+        // their approval, and only then collect an opaque 403 — the one outcome the elicit-late
+        // ordering exists to prevent. The tool is listed under the designer category because that
+        // is the workflow it belongs to; the role is what the platform will actually accept.
+        new("sorcha_register_create", PlatformOnly, AdminRole),
 
         // Workflow participation + citizen read — cross-tier (consumer OR platform), no role
         new("sorcha_inbox_list", ConsumerAndPlatform, null),

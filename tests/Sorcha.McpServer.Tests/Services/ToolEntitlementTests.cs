@@ -61,6 +61,26 @@ public class ToolEntitlementTests
     }
 
     /// <summary>
+    /// sorcha_register_create is a designer-workflow step that carries the ADMIN role, because
+    /// POST /api/registers/initiate sits behind the Register Service's CanManageRegisters policy
+    /// (org_id + Administrator or SystemAdmin). IsPermitted matches roles exactly, so a plain
+    /// designer must NOT see it — otherwise they clear every local gate, interrupt a person for
+    /// approval, and only then collect an opaque 403.
+    /// </summary>
+    [Fact]
+    public void RegisterCreate_RequiresAdminRole_NotDesigner()
+    {
+        ToolEntitlements.IsPermitted("sorcha_register_create", Tier.Platform, ["sorcha:admin"]).Should().BeTrue();
+        ToolEntitlements.IsPermitted("sorcha_register_create", Tier.Platform, ["sorcha:designer"]).Should().BeFalse();
+        ToolEntitlements.IsPermitted("sorcha_register_create", Tier.Platform, []).Should().BeFalse();
+        ToolEntitlements.IsPermitted("sorcha_register_create", Tier.Consumer, ["sorcha:admin"]).Should().BeFalse();
+        ToolEntitlements.IsPermitted("sorcha_register_create", null, ["sorcha:admin"]).Should().BeFalse();
+
+        ToolEntitlements.VisibleTools(Tier.Platform, ["sorcha:designer"])
+            .Should().NotContain("sorcha_register_create");
+    }
+
+    /// <summary>
     /// The 8 Feature 140 Wave-3 citizen self-service tools are CONSUMER tier only: a consumer-tier
     /// caller may invoke them, a platform-admin context may NOT (they are the consumer-facing slice).
     /// </summary>

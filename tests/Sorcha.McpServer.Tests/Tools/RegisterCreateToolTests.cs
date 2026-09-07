@@ -165,6 +165,59 @@ public class RegisterCreateToolTests
     }
 
     [Fact]
+    public async Task CreateRegisterAsync_OrganisationCouldNotBeRead_DoesNotClaimTheOrgHasNoWallet()
+    {
+        // GetRawAsync collapses 401/403/404/500 into the same null it returns for an unreachable
+        // Tenant Service. Reading that as "no wallet" would answer a transient outage with a
+        // confident instruction to go create a wallet that already exists — the same silent-wrong
+        // shape this tool rejected IOrgInfoClient for.
+        var h = new Harness().WithApproval();
+        h.Tenant.Setup(t => t.GetOrganizationAsync(OrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+
+        var result = await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", "A register");
+
+        result.Status.Should().Be("Error");
+        result.Message.Should().ContainEquivalentOf("could not be read");
+        // It must NOT send anyone off to create a wallet — we do not know whether one exists.
+        result.Message.Should().NotContainEquivalentOf("recovery phrase");
+        result.Message.Should().NotContainEquivalentOf("has no signing wallet");
+        h.Approval.Verify(a => a.RequestAsync(
+            It.IsAny<SdkMcpServer>(), It.IsAny<HumanApprovalRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        h.Register.Verify(r => r.InitiateRegisterCreationAsync(
+            It.IsAny<InitiateRegisterCreationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateRegisterAsync_OrgReadButWalletAddressAbsent_StillGivesTheAdminHandoff()
+    {
+        // The other side of the same split: the organisation WAS read and genuinely has no wallet.
+        var h = new Harness().WithApproval();
+        h.Tenant.Setup(t => t.GetOrganizationAsync(OrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync($$"""{"id":"{{OrgId}}","name":"Acme"}""");
+
+        var result = await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", "A register");
+
+        result.Status.Should().Be("Error");
+        result.Message.Should().ContainEquivalentOf("recovery phrase");
+        result.Message.Should().ContainEquivalentOf("administrator");
+    }
+
+    [Fact]
+    public async Task CreateRegisterAsync_NullDescription_DoesNotThrowAfterApproval()
+    {
+        // description is nullable at runtime whatever the annotation says; the throw would land
+        // inside the try, i.e. AFTER a person had already approved.
+        var h = new Harness().WithApproval().WithInitiate(walletId: "ws11qorg", dataToSignHex: "aabb");
+
+        var result = await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", null);
+
+        result.Status.Should().Be("Success");
+        h.CapturedInitiateRequest!.Description.Should().BeNull();
+    }
+
+    [Fact]
     public async Task CreateRegisterAsync_NoOrgInToken_RefusesWithoutAskingAnybody()
     {
         var h = new Harness().WithApproval();
