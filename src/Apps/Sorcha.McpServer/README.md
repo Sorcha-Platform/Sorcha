@@ -152,19 +152,19 @@ To use the MCP server with Claude Desktop:
 
 ## Available Tools
 
-**64 registered tools**, auto-discovered from `[McpServerToolType]` classes. Do not hand-count from
+**67 registered tools**, auto-discovered from `[McpServerToolType]` classes. Do not hand-count from
 this README — the authoritative catalogue is `GET /api/mcp/tools` (or a live `tools/list`), and
 `ManifestIntegrityTests` fails the build if the gateway catalogue or `server.json` drifts from the
 served set.
 
 | Slice | Tools | Surface |
 |---|---|---|
-| Admin | 34 | health, logs, metrics, org/user admin + audit, platform settings, register stats/subscribe/sync/federation, validator control, credential lifecycle (offer/suspend/reinstate/revoke/refresh), presentations |
-| Designer | 13 | blueprint create/validate/simulate/version, schema + template management |
-| Participant | 10 | inbox, pending actions, action submission, transactions, wallet ops |
+| Admin | 35 | health, logs, metrics, org/user admin + audit, platform settings, register stats/subscribe/sync/federation, validator control, credential lifecycle (offer/suspend/reinstate/revoke/refresh), presentations |
+| Designer | 15 | blueprint create/validate/simulate/publish/export, schema + template management, instance + register creation. `sorcha_register_create` and `sorcha_blueprint_publish` sit in this slice but carry the ADMIN role — the category is the workflow slice, not the entitlement |
+| Participant | 9 | inbox, pending actions, action submission, transactions, wallet ops |
 | Citizen | 8 | self-service wallet, devices (list/rename/revoke), credentials, persona |
 
-`tools/list` on a live session is **tier-filtered** (F136): a platform-tier token sees ~56 of 64;
+`tools/list` on a live session is **tier-filtered** (F136): a platform-tier token sees ~59 of 67;
 consumer-only tools require a consumer-tier token. One further tool (`sorcha_wallet_sign`) exists in
 source but is deliberately unregistered (T029 — signing stays in the Wallet Service).
 

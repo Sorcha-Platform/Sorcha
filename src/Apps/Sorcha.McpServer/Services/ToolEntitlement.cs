@@ -108,6 +108,15 @@ public static class ToolEntitlements
         // is the workflow it belongs to; the role is what the platform will actually accept.
         new("sorcha_register_create", PlatformOnly, AdminRole),
 
+        // sorcha_blueprint_publish carries the ADMIN role for the same reason, and it is worth
+        // stating separately because the endpoint's policy LOOKS satisfiable without it:
+        // CanPublishBlueprints accepts a can_publish_blueprint=true claim OR the Administrator
+        // role — but the Tenant Service's TokenService never emits that claim, so the role is the
+        // only way through. A second, register-scoped gate follows it (PublishGate requires an
+        // Owner/Admin/Designer entry on the target register's governance roster), which is matched
+        // on wallet address / org id rather than JWT roles and so cannot be asserted here at all.
+        new("sorcha_blueprint_publish", PlatformOnly, AdminRole),
+
         // Workflow participation + citizen read — cross-tier (consumer OR platform), no role
         new("sorcha_inbox_list", ConsumerAndPlatform, null),
         new("sorcha_action_details", ConsumerAndPlatform, null),

@@ -20,6 +20,7 @@
     "sorcha_blueprint_export",
     "sorcha_blueprint_get",
     "sorcha_blueprint_list",
+    "sorcha_blueprint_publish",
     "sorcha_blueprint_simulate",
     "sorcha_blueprint_update",
     "sorcha_blueprint_validate",
