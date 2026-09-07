@@ -22,6 +22,15 @@ namespace Sorcha.McpServer.Resources;
 [McpServerResourceType]
 public sealed class LiveStateResources
 {
+    // GetRecentRegistersAsync truncates client-side with no total count available from the
+    // server (GET /api/registers/ returns the caller's whole visible set; the client does
+    // .OrderByDescending(CreatedAt).Take(limit) locally) — so silently capping at N would let an
+    // agent conclude "register X isn't in this list, so it doesn't exist", confidently wrong for
+    // any org with more than N registers. Requesting one MORE than we display turns that into an
+    // exact signal: if the extra item comes back, there are more than RegistersDisplayLimit
+    // registers, without a second endpoint call for a total the API doesn't otherwise expose.
+    private const int RegistersDisplayLimit = 50;
+
     private readonly IBlueprintServiceClient _blueprintClient;
     private readonly IRegisterServiceClient _registerClient;
     private readonly ICallerContext _callerContext;
@@ -81,7 +90,7 @@ public sealed class LiveStateResources
     /// The registers visible to the calling identity's organisation, plus system registers.
     /// </summary>
     [McpServerResource(UriTemplate = "sorcha://registers", Name = "Your registers", MimeType = "application/json")]
-    [Description("The registers visible to you right now (your organisation's registers, plus system registers), as JSON. Read this instead of spending a tool call when you only need to see what registers exist.")]
+    [Description("The registers visible to you right now (your organisation's registers, plus system registers), most-recently-created first, as JSON. Capped at 50 entries — the response carries `count` (how many are in this body) and `truncated` (true when more than 50 exist), so a register's absence from this list is NOT evidence it doesn't exist when `truncated` is true. Read this instead of spending a tool call when you only need to see what registers exist.")]
     public async Task<string> RegistersAsync(CancellationToken cancellationToken)
     {
         if (!_callerContext.IsAuthenticated)
@@ -96,12 +105,20 @@ public sealed class LiveStateResources
             // client itself swallows failures and returns an empty list rather than throwing, so
             // an empty result here is indistinguishable from "no registers"; the catch clauses
             // below are defensive against that contract changing, not evidence it currently fires.
-            var registers = await _registerClient.GetRecentRegistersAsync(cancellationToken: cancellationToken);
+            //
+            // Request one more than we display (see RegistersDisplayLimit) so truncation is an
+            // exact fact, not a guess.
+            var fetched = await _registerClient.GetRecentRegistersAsync(
+                limit: RegistersDisplayLimit + 1, cancellationToken: cancellationToken);
+            var truncated = fetched.Count > RegistersDisplayLimit;
+            var visible = truncated ? fetched.Take(RegistersDisplayLimit).ToList() : fetched;
 
             // SorchaJson.Options — camelCase, matching the wire format every other Sorcha JSON
             // payload uses (including the raw sorcha://instances body above), rather than the
             // PascalCase JsonSerializer.Serialize's own defaults would produce from RegisterSummaryInfo.
-            return JsonSerializer.Serialize(new { registers }, SorchaJson.Options);
+            return JsonSerializer.Serialize(
+                new { registers = visible, count = visible.Count, truncated },
+                SorchaJson.Options);
         }
         catch (HttpRequestException ex)
         {

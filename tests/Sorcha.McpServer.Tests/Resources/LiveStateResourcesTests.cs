@@ -120,6 +120,54 @@ public class LiveStateResourcesTests
         var registers = doc.RootElement.GetProperty("registers");
         registers.GetArrayLength().Should().Be(1);
         registers[0].GetProperty("id").GetString().Should().Be("reg-1");
+        doc.RootElement.GetProperty("count").GetInt32().Should().Be(1);
+        doc.RootElement.GetProperty("truncated").GetBoolean().Should().BeFalse(
+            "one register well under the display cap is not truncation");
+    }
+
+    // Regression guard for the "silent truncation" defect: GetRecentRegistersAsync truncates
+    // client-side with no total count available from the endpoint, so an agent seeing fewer
+    // registers than it expected has no way to tell "that's really all of them" apart from
+    // "there were more and they got cut" UNLESS the response says which. If this test is ever
+    // made to pass by simply omitting the `truncated`/`count` fields again, it is wrong to relax
+    // it — the fix is to keep reporting them honestly, matching the [Description] on RegistersAsync.
+    [Fact]
+    public async Task RegistersAsync_MoreRegistersThanDisplayLimit_ReportsTruncatedTrueAndCapsResultAtTheLimit()
+    {
+        Authenticate();
+        // One more than LiveStateResources' internal display cap (50) — the resource must detect
+        // this from the extra item coming back, not guess from a round number.
+        var oneOverTheLimit = Enumerable.Range(1, 51)
+            .Select(i => new RegisterSummaryInfo { Id = $"reg-{i}", Name = $"Register {i}", Status = "Active", TenantId = "org-1", Height = i })
+            .ToList();
+        _registerClientMock
+            .Setup(c => c.GetRecentRegistersAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(oneOverTheLimit);
+
+        var body = await CreateSut().RegistersAsync(CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(body);
+        doc.RootElement.GetProperty("registers").GetArrayLength().Should().Be(50,
+            "the response must still be capped, just not silently");
+        doc.RootElement.GetProperty("count").GetInt32().Should().Be(50);
+        doc.RootElement.GetProperty("truncated").GetBoolean().Should().BeTrue(
+            "an agent must be able to tell 'more exist' from 'that really is all of them'");
+    }
+
+    [Fact]
+    public async Task RegistersAsync_RequestsOneMoreThanTheDisplayLimit_SoTruncationCanBeDetectedExactly()
+    {
+        Authenticate();
+        _registerClientMock
+            .Setup(c => c.GetRecentRegistersAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        await CreateSut().RegistersAsync(CancellationToken.None);
+
+        // 51 = the 50-entry display cap + 1: asking for exactly the cap would make "got back
+        // fewer than requested" and "got back exactly the cap, more may exist" indistinguishable.
+        _registerClientMock.Verify(
+            c => c.GetRecentRegistersAsync(51, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

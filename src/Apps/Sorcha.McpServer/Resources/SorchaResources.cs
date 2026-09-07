@@ -40,14 +40,30 @@ public static class SorchaResources
     // and are what the walkthrough suite actually executes, so they are the reference for those
     // constructs — complementary to the schema, not a correction of it. Regenerating the platform's
     // published schema to cover the omitted constructs is separate work and out of scope here.
+    /// <summary>
+    /// Returns the embedded blueprint JSON Schema. Accurate for what it covers, but does not yet
+    /// define <c>routes</c>, <c>isStartingAction</c>, <c>credentialRequirements</c>,
+    /// <c>credentialIssuanceConfig</c>, <c>rejectionConfig</c>, <c>requiredPriorActions</c>, or
+    /// <c>instanceReference</c> — see <see cref="Example"/> for those.
+    /// </summary>
     [McpServerResource(UriTemplate = "sorcha://schema/blueprint", Name = "Blueprint JSON Schema", MimeType = "application/schema+json")]
     [Description("A JSON Schema for a Sorcha blueprint: everything it documents (participants, actions, data schemas, disclosure groups, action-level condition routing) is accurate and current. IMPORTANT: it is INCOMPLETE, not wrong — it does not yet define `routes`, `isStartingAction`, `credentialRequirements`, `credentialIssuanceConfig`, `rejectionConfig`, `requiredPriorActions`, or `instanceReference`. For those constructs, read sorcha://examples/{name} instead, which the walkthrough suite actually executes. Read this before writing any blueprint JSON — for the parts it covers, it is the difference between real JSON and a plausible-looking guess.")]
     public static string BlueprintSchema() => GetBlueprintSchema();
 
+    /// <summary>
+    /// Returns one of the three embedded, walkthrough-executed example blueprints
+    /// (<c>assured-identity</c>, <c>encryption-at-rest</c>, <c>ping-pong</c>), unwrapped from its
+    /// walkthrough-catalog envelope when it has one, or null when <paramref name="name"/> is not
+    /// one of those three.
+    /// </summary>
+    /// <param name="name">The example name.</param>
     [McpServerResource(UriTemplate = "sorcha://examples/{name}", Name = "Example blueprint", MimeType = "application/json")]
     [Description("A complete, working blueprint that the Sorcha walkthrough suite actually executes, using `routes` + `isStartingAction` to connect actions — constructs the embedded blueprint schema does not yet define, so read this alongside sorcha://schema/blueprint rather than in place of it. Available names: assured-identity (credential issuance with selective disclosure and credentialIssuanceConfig), encryption-at-rest (encrypted payloads and disclosure groups), ping-pong (the minimal two-party exchange).")]
     public static string? Example(string name) => GetExample(name);
 
+    /// <summary>
+    /// Returns the inline glossary of Sorcha's core terms as Markdown.
+    /// </summary>
     [McpServerResource(UriTemplate = "sorcha://glossary", Name = "Sorcha glossary", MimeType = "text/markdown")]
     [Description("What Sorcha's core terms mean: register, blueprint, action, participant, disclosure group, docket, publication id versus executable-definition hash.")]
     public static string Glossary() => GetGlossary();
