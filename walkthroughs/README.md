@@ -53,7 +53,7 @@ Verify infrastructure, UI gateway routing, and tooling integration. Single-scrip
 
 **Scenario.** Boot the platform, mint a JWT for a platform user, run the Sorcha MCP (Model Context Protocol) Server with that token, and exercise role-filtered tools through stdio. Designed to be the canonical "Claude Desktop talks to Sorcha" smoke test.
 
-**Technical capabilities.** JWT-based authentication for AI assistants, role-based tool filtering across 36 MCP tools (admin, operator, consumer slices), stdio transport, refresh-token handling.
+**Technical capabilities.** JWT-based authentication for AI assistants, role-based tool filtering across 67 MCP tools (admin, designer, participant, citizen slices), stdio transport, refresh-token handling.
 
 **Benefit.** Sorcha exposes its full surface area — registers, blueprints, instances, wallets, credentials — to AI assistants in a single secure, role-aware contract. This walkthrough proves the contract works end-to-end against real services rather than stubs.
 

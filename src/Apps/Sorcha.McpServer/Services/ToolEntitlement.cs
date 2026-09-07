@@ -96,6 +96,26 @@ public static class ToolEntitlements
         new("sorcha_schema_generate", PlatformOnly, DesignerRole),
         new("sorcha_jsonlogic_test", PlatformOnly, DesignerRole),
         new("sorcha_workflow_instances", PlatformOnly, DesignerRole),
+        new("sorcha_instance_create", PlatformOnly, DesignerRole),
+
+        // sorcha_register_create is a designer-workflow step but carries the ADMIN role, because
+        // that is the authority its endpoint actually demands: POST /api/registers/initiate sits
+        // behind the Register Service's CanManageRegisters policy (org_id + Administrator or
+        // SystemAdmin). IsPermitted does an exact roles.Contains, so entitling it on DesignerRole
+        // would let a plain Designer pass this gate, pass validation, INTERRUPT A PERSON, obtain
+        // their approval, and only then collect an opaque 403 — the one outcome the elicit-late
+        // ordering exists to prevent. The tool is listed under the designer category because that
+        // is the workflow it belongs to; the role is what the platform will actually accept.
+        new("sorcha_register_create", PlatformOnly, AdminRole),
+
+        // sorcha_blueprint_publish carries the ADMIN role for the same reason, and it is worth
+        // stating separately because the endpoint's policy LOOKS satisfiable without it:
+        // CanPublishBlueprints accepts a can_publish_blueprint=true claim OR the Administrator
+        // role — but the Tenant Service's TokenService never emits that claim, so the role is the
+        // only way through. A second, register-scoped gate follows it (PublishGate requires an
+        // Owner/Admin/Designer entry on the target register's governance roster), which is matched
+        // on wallet address / org id rather than JWT roles and so cannot be asserted here at all.
+        new("sorcha_blueprint_publish", PlatformOnly, AdminRole),
 
         // Workflow participation + citizen read — cross-tier (consumer OR platform), no role
         new("sorcha_inbox_list", ConsumerAndPlatform, null),

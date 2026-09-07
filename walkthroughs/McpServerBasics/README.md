@@ -135,32 +135,52 @@ The MCP Server starts with:
 
 ### 4. Available Tools (Based on Admin Role)
 
-The admin user has access to **all 36 MCP tools** across three categories:
+The MCP server exposes **67 tools total**, role-filtered per caller, split across four slices —
+plus resources and prompts (see "Resources and Prompts" below). An admin user sees the union of
+the Administrator, Designer and Participant slices (the Citizen slice is gated on the *consumer*
+trust tier — a citizen's own token — not a role, so it is not part of an admin's set):
 
-**Administrator Tools (13 tools):**
-- `get_platform_health` - Check overall platform status
-- `get_service_health` - Check individual service health
-- `get_platform_logs` - View system logs
-- `get_platform_metrics` - View performance metrics
-- `list_tenants` - List all tenants
-- `create_tenant` - Create new tenant
-- `list_users` - List users in organization
-- `create_user` - Create new user
-- And 5 more admin tools...
+**Administrator Tools (35 tools):**
+- `sorcha_health_check` - Per-service health snapshot plus an aggregate Healthy/Degraded/Unhealthy verdict
+- `sorcha_log_query` - Query platform logs
+- `sorcha_metrics` - Platform performance metrics
+- `sorcha_tenant_list` - List tenants (organisations)
+- `sorcha_tenant_create` - Provision a new tenant with its initial admin user
+- `sorcha_user_list` - List users in an organisation
+- `sorcha_user_provision` - Provision a user directly into an organisation
+- And 28 more admin tools (credentials, presentations, registers, transactions, validators, audit)...
 
-**Designer Tools (13 tools):**
-- `create_blueprint` - Create workflow blueprints
-- `validate_blueprint` - Validate blueprint schemas
-- `list_blueprints` - List all blueprints
-- `simulate_blueprint` - Test blueprint execution
-- And 9 more designer tools...
+**Designer Tools (15 tools):**
+- `sorcha_blueprint_create` - Create a workflow blueprint from a JSON definition
+- `sorcha_blueprint_validate` - Validate a JSON payload against an action's schema
+- `sorcha_blueprint_list` - List blueprint summaries
+- `sorcha_blueprint_simulate` - Dry-run an action's routing and calculations
+- `sorcha_register_create` - Create the register a workflow's transactions are written to
+- `sorcha_blueprint_publish` - Publish a draft blueprint to a register (go live)
+- `sorcha_instance_create` - Start a running workflow instance from a published blueprint
+- And 8 more designer tools...
 
-**Participant Tools (10 tools):**
-- `get_action_inbox` - View assigned actions
-- `submit_action` - Complete workflow actions
-- `query_register` - Search ledger data
-- `create_wallet` - Create crypto wallet
-- And 6 more participant tools...
+**Participant Tools (9 tools):**
+- `sorcha_inbox_list` - View actions assigned to the authenticated participant
+- `sorcha_action_submit` - Submit signed data for an action on a workflow instance
+- `sorcha_register_query` - Search the ledger's raw transactions
+- `sorcha_wallet_info` - Read a wallet's public metadata (algorithm, status) by address
+- And 5 more participant tools...
+
+**Citizen Tools (8 tools, consumer-tier only — not part of an admin's set):**
+- `sorcha_my_credentials` - List the credentials in the calling citizen's own wallet
+- `sorcha_my_devices` - List the citizen's own paired devices
+- `sorcha_pending_applications` - List the citizen's own pending applications
+- And 5 more citizen self-service tools...
+
+### 5. Resources and Prompts
+
+The server is not tools-only. It also serves:
+- **Resources** — read without spending a tool call, e.g. `sorcha://registers` (registers you can
+  see), `sorcha://instances` (your workflow instances), `sorcha://schema/blueprint` (the blueprint
+  JSON Schema), `sorcha://examples/{name}` (working example blueprints), `sorcha://glossary`.
+- **Prompts** — guided recipes for common multi-tool workflows: `sorcha_two_party_exchange`,
+  `sorcha_issue_credential`, `sorcha_prove_to_regulator`.
 
 ---
 
@@ -170,33 +190,35 @@ The admin user has access to **all 36 MCP tools** across three categories:
 
 When the MCP server is running, an AI assistant can use:
 ```
-Tool: get_platform_health
+Tool: sorcha_health_check
 ```
 
 This returns:
-- Overall platform status (healthy/degraded/unhealthy)
-- Individual service health checks
-- Total counts (blueprints, wallets, registers, etc.)
-- Connected peer count
+- An aggregate Healthy/Degraded/Unhealthy verdict, with a human-readable message
+- A per-service health snapshot (Blueprint, Register, Wallet, Tenant, Validator, Peer, API Gateway) with response times and any error messages
 
 ### Scenario 2: Create a Blueprint (Designer)
 
+`sorcha_blueprint_create` takes one argument, `blueprintJson` — the complete blueprint definition
+as a JSON string:
 ```
-Tool: create_blueprint
+Tool: sorcha_blueprint_create
 Input: {
-  "title": "Purchase Order Approval",
-  "participants": ["buyer", "approver"],
-  "actions": [...]
+  "blueprintJson": "{\"title\":\"Purchase Order Approval\",\"description\":\"Two-party purchase order approval workflow\",\"participants\":[{\"id\":\"buyer\",\"name\":\"Buyer\"},{\"id\":\"approver\",\"name\":\"Approver\"}],\"actions\":[...]}"
 }
 ```
+Returns the assigned blueprint ID, version (starts at 1), and participant/action counts. From
+there: `sorcha_register_create` (needs a human to confirm), `sorcha_blueprint_publish` (may need a
+human, if the definition has not been rehearsed), then `sorcha_instance_create`.
 
 ### Scenario 3: View Action Inbox (Participant)
 
 ```
-Tool: get_action_inbox
+Tool: sorcha_inbox_list
 ```
 
-Returns pending actions assigned to the authenticated user.
+Returns the workflow actions currently assigned to the authenticated participant, paginated —
+each row carries the instance id, action id, blueprint context, and urgency.
 
 ---
 

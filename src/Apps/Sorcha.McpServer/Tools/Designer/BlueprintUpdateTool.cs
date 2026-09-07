@@ -45,7 +45,7 @@ public sealed class BlueprintUpdateTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Result of the update operation.</returns>
     [McpServerTool(Name = "sorcha_blueprint_update")]
-    [Description("Replaces an existing blueprint's definition with a new complete JSON document and increments its version, returning the updated blueprint summary. Call this when revising a blueprint already registered under a known ID; use sorcha_blueprint_create instead for a brand-new blueprint that does not yet exist, and call sorcha_blueprint_diff before this rather than after to confirm the proposed change matches intent. The submitted JSON must be a full definition including title, description, at least 2 participants, and at least 1 action — partial patches are not supported.")]
+    [Description("Replaces an existing blueprint's definition with a new complete JSON document and increments its version, returning the updated blueprint summary. Call this when revising a blueprint already registered under a known ID; use sorcha_blueprint_create instead for a brand-new blueprint that does not yet exist. The submitted JSON must be a full definition including title, description, at least 2 participants, and at least 1 action — partial patches are not supported.")]
     public async Task<BlueprintUpdateResult> UpdateBlueprintAsync(
         [Description("The ID of the blueprint to update")] string blueprintId,
         [Description("Updated blueprint definition in JSON format")] string blueprintJson,
@@ -178,10 +178,7 @@ public sealed class BlueprintUpdateTool
             // Record success
             _availabilityTracker.RecordSuccess("Blueprint");
 
-            var result = JsonSerializer.Deserialize<BlueprintResponse>(responseContent, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            var result = ParseBlueprintResponse(responseContent);
 
             _logger.LogInformation(
                 "Blueprint {BlueprintId} updated successfully in {ElapsedMs}ms",
@@ -198,8 +195,7 @@ public sealed class BlueprintUpdateTool
                     Id = result.Id ?? blueprintId,
                     Title = result.Title ?? "",
                     Version = result.Version,
-                    Status = result.Status,
-                    ModifiedAt = result.ModifiedAt
+                    ModifiedAt = result.UpdatedAt
                 } : null
             };
         }
@@ -250,14 +246,26 @@ public sealed class BlueprintUpdateTool
         }
     }
 
-    // Internal response models
-    private sealed class BlueprintResponse
+    /// <summary>Deserializes the Blueprint Service's updated-blueprint response body. Returns null on unparseable input.</summary>
+    internal static BlueprintResponse? ParseBlueprintResponse(string body) =>
+        JsonSerializer.Deserialize<BlueprintResponse>(body, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        });
+
+    /// <summary>
+    /// Mirrors the fields this tool needs from <c>Sorcha.Blueprint.Models.Blueprint</c> (the type
+    /// <c>PUT /api/blueprints/{id}</c> returns — see
+    /// <c>src/Common/Sorcha.Blueprint.Models/Blueprint.cs</c>). That type has no <c>status</c>
+    /// property at all, so it is deliberately not modelled here; the wire property for the
+    /// modification timestamp is <c>updatedAt</c>, not <c>modifiedAt</c>.
+    /// </summary>
+    internal sealed class BlueprintResponse
     {
         public string? Id { get; set; }
         public string? Title { get; set; }
         public int Version { get; set; }
-        public string? Status { get; set; }
-        public DateTimeOffset? ModifiedAt { get; set; }
+        public DateTimeOffset? UpdatedAt { get; set; }
     }
 }
 
@@ -313,12 +321,8 @@ public sealed record UpdatedBlueprintInfo
     public int Version { get; init; }
 
     /// <summary>
-    /// The blueprint status.
-    /// </summary>
-    public string? Status { get; init; }
-
-    /// <summary>
-    /// When the blueprint was modified.
+    /// When the blueprint was modified. Sourced from the server's <c>updatedAt</c> field —
+    /// there is no <c>status</c> property on the underlying <c>Blueprint</c> type to surface here.
     /// </summary>
     public DateTimeOffset? ModifiedAt { get; init; }
 }

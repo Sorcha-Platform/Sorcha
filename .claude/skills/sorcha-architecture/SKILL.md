@@ -1122,7 +1122,7 @@ The AI-agent-facing surface every external consumer reads. Every artefact below 
 | `GET /.well-known/openapi.json` | Aggregated OpenAPI 3.1 with `info.x-mcp-server`, `info.x-standards`, version from assembly | `src/Services/Sorcha.ApiGateway/Discoverability/WellKnownOpenApiEndpoints.cs` |
 | `GET /.well-known/openapi.yaml` | YAML form of the same document | (same handler) |
 | `GET /.well-known/mcp.json` | MCP server manifest — transports, authentication, tool catalogue | `src/Services/Sorcha.ApiGateway/Discoverability/McpManifestEndpoint.cs` |
-| `GET /api/mcp/tools` | Full MCP tool catalogue (36 tools across admin/designer/participant slices) | `src/Services/Sorcha.ApiGateway/Discoverability/McpToolCatalogueEndpoint.cs` |
+| `GET /api/mcp/tools` | Full MCP tool catalogue across admin/designer/participant/citizen slices — do not hand-count a tool total from any document; this endpoint (or a live `tools/list`) is the source of truth | `src/Services/Sorcha.ApiGateway/Discoverability/McpToolCatalogueEndpoint.cs` |
 
 ### Repo-root files
 
@@ -1157,6 +1157,36 @@ Each published doc carries YAML frontmatter (`title`, `description`, `standards[
 ### Tone source for any new content
 
 `docs/strategic-context.md` — canonical voice and framing for every machine-readable artefact. Read before writing or revising `info.description`, `llms.txt`, MCP tool descriptions, or any of the published docs. Marketing adjectives (revolutionary, best-in-class, industry-leading, cutting-edge, world-class, seamless, game-changing, next-generation, state-of-the-art) are deny-listed and CI-enforced.
+
+## MCP lifecycle tools + human approval (spec 139 P1)
+
+Three tools close the gap where no MCP tool could create a register, publish a blueprint, or start
+an instance: `sorcha_register_create`, `sorcha_blueprint_publish`, `sorcha_instance_create`
+(`src/Apps/Sorcha.McpServer/Tools/Designer/`). Endpoint mapping and slice/role detail: the MCP server
+README (`src/Apps/Sorcha.McpServer/README.md`) and `docs/reference/API-DOCUMENTATION.md` §
+"MCP Server Tools". Resources (`sorcha://schema/blueprint`, `sorcha://examples/{name}`,
+`sorcha://glossary`, `sorcha://registers`, `sorcha://instances`) and prompts
+(`sorcha_two_party_exchange`, `sorcha_issue_credential`, `sorcha_prove_to_regulator`) are documented
+in the same two places — this section is the human-approval seam only.
+
+**`IHumanApproval` is the only place `ElicitAsync` is called.** `ElicitationHumanApproval`
+(`src/Apps/Sorcha.McpServer/Services/`) exists as a seam for two reasons: `McpServer.ElicitAsync` is
+non-virtual in SDK 2.2.0 and therefore untestable directly, and the platform genuinely cannot tell an
+agent from the human whose bearer token it forwards — sign-off has to happen at the client, where
+the person actually is. There are **three** outcomes, not two: `NotSupported` (the client never
+declared the `elicitation` capability, form mode, at `initialize`), `Refused` (a person explicitly
+declined, or the client dismissed the request without a choice — including a client that **declares**
+the capability but auto-cancels every request when running headlessly, which is what Claude Code in
+`-p` mode does), `Approved` (an explicit `accept` — the **only** outcome that permits the operation).
+A client that cannot elicit is refused before anything is created, in every environment, with no
+bypass flag.
+
+**`createdVia: "mcp"` (plus `mcpToolVersion`) on a created register's metadata is an audit fact,
+and nothing may branch on it.** It is a self-supplied label — `RegisterCreateTool.BuildInitiateRequest`
+sets it, unsigned, on the same request the caller shapes — so reading it to grant or withhold
+anything downstream would be exactly the defect CLAUDE.md pattern 23 (an exemption is granted from
+proved authority, never a claimed label) exists to prevent. `RegisterCreateToolTests` asserts no
+other file under `src/` so much as mentions the key.
 
 ## Council application enrolment gate (Feature 126)
 

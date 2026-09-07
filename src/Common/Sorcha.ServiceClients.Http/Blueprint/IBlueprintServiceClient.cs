@@ -165,6 +165,20 @@ public interface IBlueprintServiceClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Creates a workflow instance from a published blueprint. Calls <c>POST /api/instances/</c>.
+    /// </summary>
+    /// <param name="blueprintId">The blueprint to instantiate.</param>
+    /// <param name="registerId">The register the instance's transactions are written to.</param>
+    /// <param name="tenantId">Optional tenant id for isolation (server defaults to "default").</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The created-instance JSON body, or null on non-success.</returns>
+    Task<string?> CreateInstanceAsync(
+        string blueprintId,
+        string registerId,
+        string? tenantId = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets the renderable schema for a single action within a blueprint instance. Calls
     /// <c>GET /api/instances/{instanceId}/actions/{actionId}</c>.
     /// </summary>

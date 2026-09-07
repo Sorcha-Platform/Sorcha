@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.IO.Pipelines;
+
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
+using Sorcha.McpServer;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Tools.Admin;
 using Sorcha.McpServer.Tools.Participant;
@@ -128,5 +134,89 @@ public class HttpModeInvocationTests
         var result = await tool.ListInboxAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         result.Status.Should().Be("Unauthorized");
+    }
+
+    [Fact]
+    public async Task CallTool_MissingRequiredArgument_ReturnsTextNamingTheParameter()
+    {
+        // Regression guard: this must NOT be the same opaque string a dead surface produces.
+        var result = await InvokeToolAsync("sorcha_user_list", new Dictionary<string, object?>());
+
+        var text = string.Join(" ", result.Content.OfType<TextContentBlock>().Select(c => c.Text));
+        text.Should().Contain("organizationId");
+        text.Should().NotBe("An error occurred invoking 'sorcha_user_list'.");
+    }
+
+    /// <summary>
+    /// Drives a tool call through the REAL MCP dispatch pipeline (the SDK's <c>tools/call</c>
+    /// request handler, our filters included) rather than constructing the tool directly — the
+    /// argument-binding failure this test guards against happens inside the SDK's own reflection
+    /// binding, a layer that direct construction (as the other tests in this file use) bypasses
+    /// entirely. Wires a real client to a real in-process server over a pair of pipes, exactly as
+    /// Program.cs wires stdio/HTTP, just over <see cref="Pipe"/> instead of a socket or stdio.
+    /// </summary>
+    private static async Task<CallToolResult> InvokeToolAsync(
+        string toolName, Dictionary<string, object?> arguments)
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var clientToServer = new Pipe();
+        var serverToClient = new Pipe();
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["JwtSettings:InstallationName"] = "test",
+                ["ServiceClients:BlueprintService:Address"] = UnroutableAddress,
+                ["ServiceClients:RegisterService:Address"] = UnroutableAddress,
+                ["ServiceClients:WalletService:Address"] = UnroutableAddress,
+                ["ServiceClients:TenantService:Address"] = UnroutableAddress,
+                ["ServiceClients:ValidatorService:Address"] = UnroutableAddress,
+            })
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IConfiguration>(configuration);
+        McpServerHttpRegistration.ConfigureServices(services, configuration);
+        // Last registration wins: swap only the ambient identity, matching BuildHttpModeProvider.
+        services.AddSingleton<ICallerContext>(new StubCallerContext(Tier.Platform, "sorcha:admin"));
+
+        services
+            .AddMcpServer(options =>
+            {
+                options.ServerInfo = new Implementation { Name = "sorcha-mcp-test", Version = "1.0.0" };
+            })
+            .WithStreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream())
+            .WithToolsFromAssembly(typeof(UserListTool).Assembly)
+            .WithAuthorizationNarrowingListToolsFilter()
+            .WithToolInvocationAuditFilter()
+            .WithArgumentBindingErrorFilter();
+
+        await using var serverProvider = services.BuildServiceProvider();
+        var hostedServices = serverProvider.GetServices<IHostedService>().ToList();
+        foreach (var hostedService in hostedServices)
+        {
+            await hostedService.StartAsync(ct);
+        }
+
+        try
+        {
+            var clientTransport = new StreamClientTransport(
+                clientToServer.Writer.AsStream(),
+                serverToClient.Reader.AsStream(),
+                Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance);
+
+            await using var client = await McpClient.CreateAsync(clientTransport, cancellationToken: ct);
+
+            return await client.CallToolAsync(toolName, arguments, cancellationToken: ct);
+        }
+        finally
+        {
+            foreach (var hostedService in hostedServices)
+            {
+                await hostedService.StopAsync(ct);
+            }
+        }
     }
 }

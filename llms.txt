@@ -10,7 +10,7 @@
 - Selective disclosure: JSON Pointer paths with per-recipient symmetric key wrapping; the platform cannot read data it was not given the key for (architectural, not policy)
 - DID resolution: did:sorcha (org/holder), did:key, did:jwk, plus offline resolution for did:ethr / did:pkh
 - Blueprint workflows: multi-party processes declared as JSON — participants, actions, JSON Schema payloads, JSON Logic routing, credential issuance and requirement rules — published to a register as a signed transaction and executed by the workflow engine; an AI-assisted designer authors them from natural language
-- MCP server: 65 tools across admin, citizen, designer, and participant slices for AI-driven workflow automation
+- MCP server: 67 tools across admin, citizen, designer, and participant slices, plus reference resources (blueprint JSON Schema, worked examples, glossary, live registers/instances) and guided prompts, for AI-driven workflow automation
 - Multi-tenant authentication: OAuth 2.0 / JWT Bearer with tiered token audiences (consumer / platform / service), role-based access control, and platform-org topology
 
 ## Standards

@@ -55,6 +55,10 @@ public class TenantServiceClient : ITenantServiceClient
     }
 
     /// <inheritdoc />
+    public Task<string?> GetOrganizationAsync(string organizationId, CancellationToken cancellationToken = default) =>
+        GetRawAsync($"api/organizations/{Uri.EscapeDataString(organizationId)}", "get organization", cancellationToken);
+
+    /// <inheritdoc />
     public Task<string?> CreateOrganizationAsync(string requestJson, CancellationToken cancellationToken = default) =>
         SendRawAsync(HttpMethod.Post, "api/platform/organizations", requestJson, "create organization", cancellationToken);
 

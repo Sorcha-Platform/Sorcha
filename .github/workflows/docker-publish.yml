@@ -83,7 +83,11 @@ jobs:
           SERVICE_PATHS["peer-service"]="src/Services/Sorcha.Peer.Service/"
           SERVICE_PATHS["validator-service"]="src/Services/Sorcha.Validator.Service/"
           SERVICE_PATHS["api-gateway"]="src/Services/Sorcha.ApiGateway/"
-          SERVICE_PATHS["mcp-server"]="src/Apps/Sorcha.McpServer/"
+          # The mcp-server image EMBEDS the blueprint schema and three walkthrough example
+          # blueprints as MCP resources, so a change to any of them changes what the image
+          # serves. Without these paths the image would not rebuild and the served resource
+          # would silently diverge from the repo.
+          SERVICE_PATHS["mcp-server"]="src/Apps/Sorcha.McpServer/ src/Common/blueprint.schema.json walkthroughs/AssuredIdentity/blueprints/assured-identity.json walkthroughs/EncryptionAtRest/blueprints/encryption-at-rest.json walkthroughs/PingPongN1/blueprints/ping-pong.json"
           SERVICE_PATHS["ui-web"]="src/Apps/Sorcha.UI/"
           SERVICE_PATHS["haip-service"]="src/Services/Sorcha.Haip.Service/"
           # wallet-pwa + verifier both ProjectReference Sorcha.UI.Components.User.

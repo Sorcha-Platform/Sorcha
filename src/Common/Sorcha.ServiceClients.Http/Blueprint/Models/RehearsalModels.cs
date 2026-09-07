@@ -247,6 +247,39 @@ public sealed record PublishBlueprintResult
     [JsonPropertyName("version")]
     public int Version { get; init; }
 
+    /// <summary>
+    /// Feature 195 / CLAUDE.md pattern 22 — the publication transaction id, which IS the published
+    /// definition's identity. <see cref="Version"/> is a display label (insert order, re-derived on
+    /// recovery); this is what an instance is pinned to and what a caller needs to name this exact
+    /// definition later. Never confuse it with <see cref="ExecDefHash"/>.
+    /// </summary>
+    [JsonPropertyName("publicationTxId")]
+    public string? PublicationTxId { get; init; }
+
+    /// <summary>
+    /// The behavioural signature of the published definition (Feature 142) — the narrower
+    /// projection that decides whether a <c>RehearsalPass</c> survives a republish. It identifies
+    /// nothing: several publications may legitimately share one, and the same definition on two
+    /// registers has this hash twice with two different <see cref="PublicationTxId"/> values.
+    /// </summary>
+    [JsonPropertyName("execDefHash")]
+    public string? ExecDefHash { get; init; }
+
+    /// <summary>
+    /// True when the publish was DEDUPLICATED — this definition was already published to this
+    /// register and no new version was created. Without it a republish is indistinguishable from a
+    /// fresh publish: the response carries a perfectly valid version number either way.
+    /// </summary>
+    [JsonPropertyName("alreadyPublished")]
+    public bool AlreadyPublished { get; init; }
+
+    /// <summary>
+    /// Non-blocking publish warnings (e.g. cycle detection). Present only when the publish produced
+    /// any; absent means none, not "unknown".
+    /// </summary>
+    [JsonPropertyName("warnings")]
+    public IReadOnlyList<string> Warnings { get; init; } = [];
+
     /// <summary>The register the version was published to.</summary>
     [JsonPropertyName("registerId")]
     public string RegisterId { get; init; } = string.Empty;

@@ -116,6 +116,51 @@ public static class McpServerBuilderExtensions
     }
 
     /// <summary>
+    /// Converts an argument-binding failure into caller-actionable text (MCP-P1 Task 2). The SDK's
+    /// own <c>tools/call</c> dispatch (<c>McpServerImpl.BuildComposedCallToolHandler</c>) wraps the
+    /// entire ordinary filter chain — this filter included — in a catch that turns any
+    /// non-<see cref="ModelContextProtocol.McpException"/> into the generic
+    /// <c>"An error occurred invoking '{name}'."</c>, discarding the real exception message. A
+    /// missing required argument throws a plain <see cref="ArgumentException"/> from the SDK's own
+    /// reflection-based parameter binding ("The arguments dictionary is missing a value for the
+    /// required parameter '{name}'.") — indistinguishable, once genericised, from the byte-identical
+    /// string a wholly dead surface produced during a six-day outage. Catching it HERE — inside the
+    /// same ordinary filter chain the SDK's outer catch wraps — and returning a result instead of
+    /// rethrowing means the caller sees the real parameter name; the outer catch never runs because
+    /// no exception reaches it. Verified against the real SDK pipeline (decompiled + an in-memory
+    /// client/server round trip), not by inspection alone — see task-2-report.md.
+    /// </summary>
+    public static IMcpServerBuilder WithArgumentBindingErrorFilter(this IMcpServerBuilder builder)
+    {
+        return builder.WithRequestFilters(filters =>
+        {
+            filters.AddCallToolFilter(next => async (context, cancellationToken) =>
+            {
+                try
+                {
+                    return await next(context, cancellationToken);
+                }
+                catch (ArgumentException ex) when (ex.Message.Contains(
+                    "missing a value for the required parameter", StringComparison.Ordinal))
+                {
+                    return new ModelContextProtocol.Protocol.CallToolResult
+                    {
+                        IsError = true,
+                        Content =
+                        [
+                            new ModelContextProtocol.Protocol.TextContentBlock
+                            {
+                                Text = $"Missing a required argument for '{context.Params?.Name}'. {ex.Message} " +
+                                       "Call tools/list to see this tool's required parameters."
+                            }
+                        ]
+                    };
+                }
+            });
+        });
+    }
+
+    /// <summary>
     /// Derives the caller-facing outcome (and backend status, when distinct) from a tool result.
     /// Most Sorcha tools return an object with a <c>Status</c> field; that becomes both the outcome
     /// and the backend status. When there is no structured status, the protocol-level error flag is used.

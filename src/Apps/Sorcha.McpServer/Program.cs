@@ -74,8 +74,11 @@ static async Task<int> RunStdioAsync(string[] args)
         .AddMcpServer(ConfigureServerOptions)
         .WithStdioServerTransport()
         .WithToolsFromAssembly()
+        .WithResourcesFromAssembly()
+        .WithPromptsFromAssembly()
         .WithAuthorizationNarrowingListToolsFilter()
-        .WithToolInvocationAuditFilter();
+        .WithToolInvocationAuditFilter()
+        .WithArgumentBindingErrorFilter();
 
     var app = builder.Build();
 
@@ -130,8 +133,11 @@ static async Task<int> RunHttpAsync(string[] args)
         // tools/list filter and token forwarding work per-request automatically.
         .WithHttpTransport(o => o.Stateless = true)
         .WithToolsFromAssembly()
+        .WithResourcesFromAssembly()
+        .WithPromptsFromAssembly()
         .WithAuthorizationNarrowingListToolsFilter()
-        .WithToolInvocationAuditFilter();
+        .WithToolInvocationAuditFilter()
+        .WithArgumentBindingErrorFilter();
 
     var app = builder.Build();
 
@@ -197,15 +203,59 @@ static void ConfigureServerOptions(McpServerOptions options)
         // manifest's derived version (§14). One source now — see McpServerVersion.
         Version = Sorcha.McpServer.Infrastructure.McpServerVersion.Current
     };
+    // Task 8 (2026-09-07): this used to spend eight lines restating role names, one of which
+    // (sorcha:participant) gates zero tools — the code can no longer produce the denial message
+    // that names it. Replaced with a map of the lifecycle and the resources/prompts Task 7 and
+    // this task added, so an agent's FIRST read of the server does not undersell what
+    // sorcha://schema/blueprint covers (Ruling 2: it must agree with that resource's own
+    // [Description] in Resources/SorchaResources.cs and Resources/LiveStateResources.cs, not
+    // restate a weaker or stronger claim) or oversell what the human-approval gate guarantees
+    // (Ruling 5: three refusal states, not two — see SorchaPrompts.HumanGateReminder).
     options.ServerInstructions = """
-        Sorcha MCP Server - A Model Context Protocol server for the Sorcha decentralised register platform.
+        Sorcha MCP Server — a decentralised register platform for multi-party data flow with
+        cryptographically enforced selective disclosure.
 
-        Available tool categories based on your role:
-        - Administrator (sorcha:admin): Platform health, logs, metrics, tenant/user management
-        - Designer (sorcha:designer): Blueprint creation, validation, simulation, versioning
-        - Participant (sorcha:participant): Inbox, actions, transactions, wallet operations
+        THE LIFECYCLE, IN ORDER. Most tasks follow it end to end:
+          1. sorcha_blueprint_create   — define the workflow (participants, actions, disclosure)
+          2. sorcha_register_create    — create the ledger it runs on          [needs a human]
+          3. sorcha_blueprint_publish  — publish the definition to that register [may need a human]
+          4. sorcha_instance_create    — start a running instance
+          5. sorcha_action_submit      — perform an action on that instance
 
-        Use the appropriate tools based on your assigned role.
+        READ THESE FIRST — they are resources, not tool calls, so they cost you nothing:
+          sorcha://schema/blueprint   a JSON Schema for a blueprint. Everything it documents
+                                      (participants, actions, data schemas, disclosure groups,
+                                      action-level condition routing) is accurate and current —
+                                      but it is INCOMPLETE, not wrong: it does not yet define
+                                      `routes`, `isStartingAction`, `credentialRequirements`,
+                                      `credentialIssuanceConfig`, `rejectionConfig`,
+                                      `requiredPriorActions`, or `instanceReference`. Read the
+                                      examples below for those constructs; do not treat the
+                                      schema's silence on them as meaning they don't exist.
+          sorcha://examples/{name}    working blueprints that use the constructs above:
+                                      assured-identity, encryption-at-rest, ping-pong.
+          sorcha://glossary           what register, docket, disclosure group and the rest mean.
+          sorcha://registers          the registers you can see right now — capped at 50, with
+                                      `count` and `truncated`. When `truncated` is true, a
+                                      register's absence from this list is NOT evidence it
+                                      doesn't exist.
+          sorcha://instances          the workflow instances you can see right now.
+
+        GUIDED RECIPES are available as prompts: sorcha_two_party_exchange,
+        sorcha_issue_credential, sorcha_prove_to_regulator.
+
+        SOME STEPS NEED A PERSON. Creating a register, and publishing a blueprint that has not
+        been rehearsed, ask a person to confirm via MCP elicitation — only an explicit `accept`
+        proceeds. A decline, a silent cancel, and a client that never declared the elicitation
+        capability all refuse the same way; declaring the capability is not a promise a person
+        will be asked, because a client can auto-cancel every request when running headlessly
+        (Claude Code in `-p` mode does exactly this). Expect these tools to refuse cleanly
+        rather than proceed unsupervised — this is deliberate, since register creation and an
+        unrehearsed publish are both irreversible and establish governance.
+
+        WHAT YOU CAN SEE depends on your token's trust tier and roles; tools you are not entitled
+        to use are not listed. If a tool reports an error, read the message — a missing required
+        argument is reported as such and names the argument.
         """;
 }
 

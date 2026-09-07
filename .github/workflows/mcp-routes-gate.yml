@@ -14,6 +14,11 @@
 # surface (WalletSignTool, spec 139 T029) must not fail the gate for a route nobody can call.
 #
 # See scripts/check-mcp-routes.ps1 and .mcp-routes-allowlist (a ratchet: may only shrink).
+#
+# This workflow carries BOTH halves of the MCP tool<->service seam: the route gate (is the URL
+# mapped?) and the response-shape gate (does the tool read what that endpoint sends?). They are
+# siblings because they share a trigger set exactly — any change to a tool, a typed client, or a
+# service endpoint can break either one.
 
 name: mcp-routes-gate
 
@@ -23,9 +28,19 @@ on:
       - "src/Apps/Sorcha.McpServer/**/*.cs"
       - "src/Common/Sorcha.ServiceClients/**/*.cs"
       - "src/Common/Sorcha.ServiceClients.Http/**/*.cs"
+      # The response-shape gate builds its server type registry over ALL of src/Common, not just the
+      # two ServiceClients projects the route gate follows — a service DTO frequently lives in a
+      # shared contracts project (BlueprintUpdateTool pairs against
+      # src/Common/Sorcha.Blueprint.Models/Blueprint.cs). Without this line, renaming
+      # Blueprint.UpdatedAt would break that pairing and the gate that would have caught it would
+      # never run. Path filters are workflow-scoped in GitHub Actions, so this widens the route
+      # gate's trigger too; both jobs take ~30s, which is the cheaper side of the trade.
+      - "src/Common/**/*.cs"
       - "src/Services/**/*.cs"
       - "scripts/check-mcp-routes.ps1"
       - ".mcp-routes-allowlist"
+      - "scripts/check-mcp-response-shapes.ps1"
+      - ".mcp-response-shapes-allowlist"
       - ".github/workflows/mcp-routes-gate.yml"
   workflow_dispatch:
 
@@ -38,3 +53,18 @@ jobs:
       - name: Run MCP route contract gate
         shell: pwsh
         run: ./scripts/check-mcp-routes.ps1
+
+  # The route gate above proves the URL is mapped. It says NOTHING about whether the tool reads what
+  # that endpoint sends — which is how sorcha_tenant_list reported "Retrieved 0 tenant(s)" next to
+  # "totalCount": 27 with the route gate green, and how nine of the ten tools repointed in P0 were
+  # ALSO wrong about response shape once their URLs were right. This job closes that half of the
+  # seam, and it walks NESTED element types as well as the envelope: the tenant defect was present
+  # at both levels, and the element-level half survived the envelope fix.
+  mcp-response-shapes-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run MCP response shape contract gate
+        shell: pwsh
+        run: ./scripts/check-mcp-response-shapes.ps1

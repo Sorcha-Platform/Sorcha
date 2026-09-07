@@ -2,7 +2,7 @@
 title: Sorcha Quickstart
 description: Run a Sorcha instance locally, verify the install, and call the credential-issuance endpoint. Agent-runnable end to end.
 standards: [OAuth 2.0]
-last_updated: 2026-05-04
+last_updated: 2026-09-07
 ---
 
 # Sorcha Quickstart
@@ -92,7 +92,7 @@ curl -s http://localhost/llms.txt
 
 ## Next steps
 
-- **Agent integration.** Read `docs/mcp-server.md` for the MCP connection guide. The 36 tools across admin / designer / participant slices are how an AI agent drives the platform.
+- **Agent integration.** Read `docs/mcp-server.md` for the MCP connection guide. 67 tools across admin, designer, participant, and citizen slices — plus reference resources and guided prompts — are how an AI agent drives the platform.
 - **Walkthroughs.** `walkthroughs/TradeFinance/run.ps1` and `walkthroughs/AssuredIdentity/run-agents.ps1` are runnable end-to-end demonstrations of the cryptographic-proof workflows the platform is designed for.
 - **Deeper reading.** `STANDARDS.md` for the standards posture, [the architecture overview](./architecture.md) for the system architecture, `llms.txt` for the LLM-led entry point.
 

@@ -1,0 +1,81 @@
+# Response-shape gate ratchet. MAY ONLY SHRINK.
+# An entry here is a tool DTO property with no matching property on the server type its route
+# produces. Two kinds live here:
+#   (a) a genuine mismatch not yet fixed — fix it and delete the line;
+#   (b) a server shape the analyser cannot see statically (private record, anonymous
+#       Results.Ok(new { ... })) — the comment must say so.
+# NEVER add a line to make a build pass. Fix the DTO instead.
+#
+# Key format:
+#   <ToolClass>.<Dto>.<Property>   a property the paired server type does not send   (kind a)
+#   <ToolClass>.<Dto>              the server shape could not be resolved at all     (kind b)
+#
+# A kind (b) entry means that DTO is UNCHECKED, not that it is correct. It is listed rather than
+# skipped precisely so the unchecked surface stays visible and countable. The way to remove one is
+# to give the endpoint a named response type (.Produces<T>() or a typed result) — then the gate
+# checks it and the line goes.
+
+# ── (b) SERVER SHAPE NOT STATICALLY REACHABLE ──────────────────────────────────────────────────
+# Same limitation Sorcha.Cli.ContractTests documents in its NotAWireContract list: a handler
+# declared Task<IResult> returning Results.Ok(new { ... }) names no type, so there is nothing for
+# the tool DTO to be compared against.
+
+# GET /api/instances/{id}/actions/{actionId} — InstanceActionEndpoints.GetInstanceActionSchema is
+# Task<IResult>; the success body is assembled inline.
+ActionDetailsTool.ActionDetailsResponse
+
+# POST /api/execution/validate — Program.cs returns Results.Ok(new { isValid, errors = ... }).
+ActionValidateTool.ValidateResponse
+ActionValidateTool.ValidationErrorDto
+BlueprintValidateTool.ValidationResponse
+BlueprintValidateTool.ValidationResultDto
+BlueprintValidateTool.ValidationErrorDto
+BlueprintValidateTool.ErrorResponse
+
+# POST /api/execution/route and /api/execution/calculate — both return anonymous objects.
+BlueprintSimulateTool.RouteResponse
+BlueprintSimulateTool.RouteResultDto
+BlueprintSimulateTool.NextActionDto
+BlueprintSimulateTool.CalculateResponse
+BlueprintSimulateTool.CalculateResultDto
+
+# GET /api/workflows/{id}/disclosures and .../actions/{actionId}/disclosures —
+# WorkflowDisclosureEndpoints maps inline lambdas returning anonymous objects.
+DisclosedDataTool.DisclosedDataResponse
+DisclosedDataTool.DisclosureDto
+
+# POST /api/execution/disclose — anonymous object.
+DisclosureAnalysisTool.DisclosureResponse
+DisclosureAnalysisTool.DisclosureResultDto
+DisclosureAnalysisTool.DisclosureItemDto
+DisclosureAnalysisTool.DisclosureDto
+DisclosureAnalysisTool.ErrorResponse
+
+# GET /api/actions/pending — ActionEndpoints returns
+# Results.Ok(new { items, totalCount, page, pageSize }).
+InboxListTool.InboxResponse
+InboxListTool.InboxItemDto
+
+# GET /api/peers/health returns an anonymous object; GET /api/peers/stats returns the value of a
+# NON-async aggregator method, which the Task<T>-keyed return registry does not index.
+PeerStatusTool.PeerServiceStatsResponse
+PeerStatusTool.PeerStatsData
+PeerStatusTool.QualityStatsData
+PeerStatusTool.QueueStatsData
+PeerStatusTool.CircuitBreakerStatsData
+PeerStatusTool.PeerHealthResponse
+
+# POST /api/platform/organizations — PlatformOrgEndpoints.CreateOrganization is Task<IResult>.
+TenantCreateTool.CreateResponse
+
+# GET /api/validators/{id}/count produces `object`. The tool's other route is typed and is checked
+# (ValidatorPipelineStatus pairs 8/8 with ValidatorStatus); only the count shape is unreachable.
+ValidatorStatusTool.ValidatorCountInfo
+
+# GET /api/instances — InstanceReadEndpoints.ListInstances returns
+# Results.Ok(new { items, totalCount, pageNumber, pageSize }). The tool's element DTO IS checked
+# (WorkflowItemDto pairs 7/7 with Instance); only the envelope is unreachable.
+WorkflowInstancesTool.WorkflowListResponse
+
+# GET /api/instances/{instanceId} — InstanceReadEndpoints.GetInstance is Task<IResult>.
+WorkflowStatusTool.WorkflowStatusResponse

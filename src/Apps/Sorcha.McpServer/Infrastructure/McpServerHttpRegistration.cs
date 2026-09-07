@@ -53,6 +53,7 @@ public static class McpServerHttpRegistration
         services.AddSingleton<IToolAuditService, ToolAuditService>();
         services.AddSingleton<IMcpErrorHandler, McpErrorHandler>();
         services.AddSingleton<IServiceAvailabilityTracker, ServiceAvailabilityTracker>();
+        services.AddSingleton<IHumanApproval, ElicitationHumanApproval>();
 
         // Spec 139 US5: per-invocation observability. McpMetrics needs IMeterFactory (AddMetrics)
         // and is registered as a singleton; the central call-tool audit filter records every
