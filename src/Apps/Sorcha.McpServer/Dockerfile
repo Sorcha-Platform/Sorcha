@@ -22,6 +22,18 @@ RUN dotnet restore "Apps/Sorcha.McpServer/Sorcha.McpServer.csproj"
 # Copy source code
 COPY src/ .
 
+# The MCP server embeds the blueprint JSON Schema and three worked example blueprints as MCP
+# resources (Sorcha.McpServer.csproj -> Resources/SorchaResources.cs). The schema lives under src/
+# and arrives with the COPY above. The examples deliberately ARE the files the walkthrough suite
+# executes -- so a stale example fails a walkthrough instead of lying to an agent -- which means
+# they live at <root>/walkthroughs and `COPY src/ .` does not reach them. Without them
+# `dotnet publish` cannot resolve the EmbeddedResource includes and the image build fails.
+# The destination must be /walkthroughs to match the csproj's ..\..\..\walkthroughs, since
+# src/ is copied to /src and the repo root therefore maps to /.
+COPY walkthroughs/AssuredIdentity/blueprints/assured-identity.json /walkthroughs/AssuredIdentity/blueprints/
+COPY walkthroughs/EncryptionAtRest/blueprints/encryption-at-rest.json /walkthroughs/EncryptionAtRest/blueprints/
+COPY walkthroughs/PingPongN1/blueprints/ping-pong.json /walkthroughs/PingPongN1/blueprints/
+
 # Unified versioning: the root Directory.Build.props derives the version from
 # GITHUB_RUN_NUMBER / GITHUB_RUN_ATTEMPT (else <Major>.0.0-dev). MSBuild reads env
 # vars as properties, so surfacing the build-args as ENV here makes the published
