@@ -214,8 +214,23 @@ public class BlueprintPublishToolTests
         result.Version.Should().BeNull();
         result.PublishedWithoutRehearsal.Should().BeFalse();
         result.Message.Should().ContainEquivalentOf("cannot tell");
-        // It must NOT single out authorisation, which is only one of the possibilities.
-        result.Message.Should().NotMatchEquivalentOf("*you are not authorised to publish.*");
+
+        // Assert on MEANING, not punctuation. An earlier version of this guard was
+        // NotMatchEquivalentOf("*you are not authorised to publish.*"), which passed only because
+        // the real message ends that clause with an em dash — a reworded mutant that genuinely DID
+        // single out authorisation would have slipped straight through. Requiring at least three of
+        // the four causes to be named cannot be satisfied by a message that picks one.
+        var causesNamed = new[]
+        {
+            "authorised",            // (a) 403, either gate
+            "does not exist",        // (b) 404
+            "publish validation",    // (c) 400
+            "errored"                // (d) 5xx
+        }.Count(cause => result.Message.Contains(cause, StringComparison.OrdinalIgnoreCase));
+
+        causesNamed.Should().BeGreaterThanOrEqualTo(3,
+            "the message must enumerate the causes it cannot distinguish rather than assert one; "
+            + $"only {causesNamed} of the 4 were named in: {result.Message}");
         h.Approval.Verify(a => a.RequestAsync(
             It.IsAny<SdkMcpServer>(), It.IsAny<HumanApprovalRequest>(), It.IsAny<CancellationToken>()),
             Times.Never);
@@ -265,6 +280,76 @@ public class BlueprintPublishToolTests
         var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
 
         result.Status.Should().Be("Timeout");
+    }
+
+    [Fact]
+    public async Task PublishBlueprintAsync_Success_CarriesThePublicationIdNotJustTheVersionLabel()
+    {
+        // Pattern 22: publicationTxId IS the published definition's identity and is what an
+        // instance is pinned to; `version` is a display label re-derived on recovery. Dropping the
+        // id leaves an agent unable to name the definition it just created.
+        var h = new Harness().WithPublishSuccess(version: 3);
+
+        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+
+        result.PublicationTxId.Should().Be(Harness.PublicationTxId);
+        result.ExecDefHash.Should().Be(Harness.ExecDefHash);
+        result.PublicationTxId.Should().NotBe(result.ExecDefHash,
+            "they answer different questions and live in different value spaces");
+    }
+
+    [Fact]
+    public async Task PublishBlueprintAsync_DeduplicatedRepublish_SaysNoNewVersionWasCreated()
+    {
+        // A deduplicated republish carries a perfectly valid version number, so reporting it as
+        // "was published as version N" is a confident wrong answer about work that did not happen.
+        var h = new Harness().WithPublishSuccess(version: 3, alreadyPublished: true);
+
+        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+
+        result.Status.Should().Be("Success");
+        result.AlreadyPublished.Should().BeTrue();
+        result.Message.Should().ContainEquivalentOf("already published");
+        result.Message.Should().ContainEquivalentOf("no new version");
+    }
+
+    [Fact]
+    public async Task PublishBlueprintAsync_FreshPublish_DoesNotClaimItWasAlreadyPublished()
+    {
+        // The other side of the same split — otherwise the assertion above is satisfiable by a
+        // message that always says it.
+        var h = new Harness().WithPublishSuccess(version: 3);
+
+        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+
+        result.AlreadyPublished.Should().BeFalse();
+        result.Message.Should().NotContainEquivalentOf("already published");
+    }
+
+    [Fact]
+    public async Task PublishBlueprintAsync_Success_SurfacesPublishWarnings()
+    {
+        // Cycle detection and friends come back on the 200 body. Silently dropping them is exactly
+        // the "one signal, wrong meaning" class this tool exists to avoid.
+        var h = new Harness().WithPublishSuccess(version: 3, warnings: ["Cycle detected: A -> B -> A"]);
+
+        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+
+        result.Warnings.Should().ContainMatch("*Cycle detected*");
+    }
+
+    [Fact]
+    public async Task PublishBlueprintAsync_FirstAttemptFailure_PointsAtThisServersOwnLog()
+    {
+        // The status code is one frame below this tool: BlueprintServiceClient logs it in-process
+        // in the MCP server before collapsing the response to null. That log is nearer and certain;
+        // the Blueprint Service's own is a second, remote copy.
+        var h = new Harness().WithPublishFailure();
+
+        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+
+        result.Message.Should().ContainEquivalentOf("BlueprintServiceClient");
+        result.Message.Should().ContainEquivalentOf("this MCP server");
     }
 
     [Fact]
@@ -318,9 +403,13 @@ public class BlueprintPublishToolTests
             return this;
         }
 
-        public Harness WithPublishSuccess(int version = 1)
+        public const string PublicationTxId = "9f2c4e1a7b3d5068af12cd34ef56ab78";
+        public const string ExecDefHash = "e3b0c44298fc1c149afbf4c8996fb924";
+
+        public Harness WithPublishSuccess(
+            int version = 1, bool alreadyPublished = false, IReadOnlyList<string>? warnings = null)
         {
-            SetupSequence(_ => Success(version));
+            SetupSequence(_ => Success(version, alreadyPublished: alreadyPublished, warnings: warnings));
             return this;
         }
 
@@ -353,7 +442,11 @@ public class BlueprintPublishToolTests
                     (_, r, _) => CapturedRequests.Add(r))
                 .ReturnsAsync((string _, PublishBlueprintRequest r, CancellationToken _) => respond(r));
 
-        private static PublishBlueprintOutcome Success(int version, bool overridden = false) => new()
+        private static PublishBlueprintOutcome Success(
+            int version,
+            bool overridden = false,
+            bool alreadyPublished = false,
+            IReadOnlyList<string>? warnings = null) => new()
         {
             Result = new PublishBlueprintResult
             {
@@ -361,7 +454,11 @@ public class BlueprintPublishToolTests
                 Version = version,
                 RegisterId = "reg-1",
                 PublishedAt = DateTimeOffset.UtcNow,
-                Overridden = overridden
+                Overridden = overridden,
+                PublicationTxId = PublicationTxId,
+                ExecDefHash = ExecDefHash,
+                AlreadyPublished = alreadyPublished,
+                Warnings = warnings ?? []
             }
         };
 

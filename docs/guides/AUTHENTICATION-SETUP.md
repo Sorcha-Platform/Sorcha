@@ -344,7 +344,7 @@ curl https://localhost:7083/api/registers \
 |--------|-------------|-----------------|
 | `CanManageBlueprints` | Create, update, delete blueprints | (`token_type=service` AND `:service` aud) OR (`org_id` AND `:platform` aud) — Feature 147 |
 | `CanExecuteBlueprints` | Execute actions | Authenticated user |
-| `CanPublishBlueprints` | Publish blueprints | `can_publish_blueprint=true` OR `role=Administrator` |
+| `CanPublishBlueprints` | Publish blueprints | `can_publish_blueprint=true` OR `role=Administrator` OR `role=SystemAdmin` |
 | `RequireService` | Service operations | `token_type=service` |
 
 ### Wallet Service

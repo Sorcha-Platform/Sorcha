@@ -38,11 +38,24 @@ namespace Sorcha.McpServer.Tools.Designer;
 /// <b>Entitlement is the ADMIN role, not the designer role</b>, even though publishing is a
 /// designer-workflow step. <c>POST /api/blueprints/{id}/publish</c> sits behind the Blueprint
 /// Service's <c>CanPublishBlueprints</c> policy, which is satisfied by a
-/// <c>can_publish_blueprint=true</c> claim OR <c>IsInRole("Administrator")</c> — and the Tenant
-/// Service's <c>TokenService</c> never emits that claim, so in practice the <c>Administrator</c>
+/// <c>can_publish_blueprint=true</c> claim OR the <c>Administrator</c> / <c>SystemAdmin</c> role —
+/// and the Tenant Service's <c>TokenService</c> never emits that claim, so in practice an admin
 /// role is the only way through. <c>ToolEntitlements.IsPermitted</c> matches roles exactly, so
 /// entitling this on <c>sorcha:designer</c> would offer the tool to a caller the platform will
 /// always refuse.
+/// </para>
+/// <para>
+/// <b>SystemAdmin used to trip the circuit breaker.</b> <c>CanPublishBlueprints</c> accepted only
+/// the literal <c>Administrator</c> role, while <c>McpRoleNormalizer</c> maps <c>SystemAdmin</c> to
+/// <c>sorcha:admin</c> — so a SystemAdmin passed this tool's entitlement and was then refused by
+/// ASP.NET's authorization middleware, deterministically. That refusal arrives as the same null as
+/// every other failure, and the null path calls
+/// <see cref="IServiceAvailabilityTracker.RecordFailure(string, Exception?)"/>, which marks a
+/// service unavailable after three consecutive failures: three publish attempts silently disabled
+/// EVERY Blueprint MCP tool behind a false "Blueprint service is currently unavailable". Fixed at
+/// the root by widening the policy to match the shared
+/// <c>AuthorizationPolicies.RequireAdministrator</c> and the Register Service's
+/// <c>CanManageRegisters</c>, both of which already accept either role.
 /// </para>
 /// <para>
 /// <b>Nobody is asked to approve something that cannot succeed.</b> That property comes for free
@@ -117,7 +130,7 @@ public sealed class BlueprintPublishTool
                 "Unauthorized",
                 "Access denied. Publishing a blueprint requires the sorcha:admin role — the same "
                 + "authority the Blueprint Service's own CanPublishBlueprints policy demands "
-                + "(the Administrator role).");
+                + "(the Administrator or SystemAdmin role).");
         }
 
         var validationErrors = Validate(blueprintId, registerId);
@@ -291,12 +304,14 @@ public sealed class BlueprintPublishTool
                 $"Publishing blueprint '{blueprintId}' to register '{registerId}' failed and nothing "
                 + "was published. The Blueprint Service returned a failure the service client does "
                 + "not distinguish, so this tool cannot tell you which of these it was: (a) you are "
-                + "not authorised to publish — the endpoint needs the Administrator role, and "
+                + "not authorised to publish — the endpoint needs the Administrator or "
+                + "SystemAdmin role, and "
                 + "separately needs an Owner, Admin or Designer entry for you on that register's "
                 + "governance roster; (b) the blueprint does not exist; (c) the blueprint failed "
-                + "publish validation; or (d) the Blueprint Service errored. The Blueprint Service "
-                + "logged the actual HTTP status for this request — that log line is where the "
-                + "answer is.",
+                + "publish validation; or (d) the Blueprint Service errored. The HTTP status that "
+                + "settles it was logged by THIS MCP server, by BlueprintServiceClient, as a "
+                + "warning reading \"Blueprint publish failed: {StatusCode}\" — look there first; "
+                + "the Blueprint Service's own log corroborates it.",
             CheckedAt = DateTimeOffset.UtcNow,
             ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
         };
@@ -329,8 +344,8 @@ public sealed class BlueprintPublishTool
                   + "not used. Authorisation is not the cause: the rehearsal gate is only reached "
                   + "after the register's governance check has already passed. What remains is that "
                   + "the blueprint failed publish validation, or the Blueprint Service errored — "
-                  + "validate it with sorcha_blueprint_validate, and check the Blueprint Service log "
-                  + "for the HTTP status it recorded.",
+                  + "validate it with sorcha_blueprint_validate, and read this MCP server's own log "
+                  + "for the BlueprintServiceClient warning carrying the HTTP status.",
             CheckedAt = DateTimeOffset.UtcNow,
             ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
             ExecDefHash = outcome?.RehearsalRequired?.ExecDefHash
@@ -345,20 +360,34 @@ public sealed class BlueprintPublishTool
         {
             Status = "Success",
             // The publication is written to the register as a transaction; sealing is asynchronous
-            // (Feature 145), so this must not read as "settled".
-            Message = publishedWithoutRehearsal
-                ? $"Blueprint '{published.BlueprintId}' was published to register '{registerId}' as "
-                  + $"version {published.Version} WITHOUT a rehearsal pass, on an explicit human "
-                  + "override that has been recorded against the caller's account. Its behaviour has "
-                  + "never been executed. Start an instance with sorcha_instance_create."
-                : $"Blueprint '{published.BlueprintId}' was published to register '{registerId}' as "
-                  + $"version {published.Version}. Start an instance with sorcha_instance_create.",
+            // (Feature 145), so this must not read as "settled". `alreadyPublished` changes what is
+            // TRUE rather than merely how it reads: a deduplicated republish carries a perfectly
+            // valid version number, so without saying so, "was published as version N" is a
+            // confident wrong answer about work that did not happen.
+            Message = published.AlreadyPublished
+                ? $"Blueprint '{published.BlueprintId}' was ALREADY published to register "
+                  + $"'{registerId}' as version {published.Version} — this definition is unchanged, "
+                  + "so no new version was created and nothing was written to the ledger. Start an "
+                  + "instance with sorcha_instance_create."
+                : publishedWithoutRehearsal
+                    ? $"Blueprint '{published.BlueprintId}' was published to register '{registerId}' "
+                      + $"as version {published.Version} WITHOUT a rehearsal pass, on an explicit "
+                      + "human override that has been recorded against the caller's account. Its "
+                      + "behaviour has never been executed. Start an instance with "
+                      + "sorcha_instance_create."
+                    : $"Blueprint '{published.BlueprintId}' was published to register '{registerId}' "
+                      + $"as version {published.Version}. Start an instance with sorcha_instance_create.",
             CheckedAt = DateTimeOffset.UtcNow,
             ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
             BlueprintId = published.BlueprintId,
             RegisterId = string.IsNullOrWhiteSpace(published.RegisterId) ? registerId : published.RegisterId,
             Version = published.Version,
             PublishedAt = published.PublishedAt,
+            // Pattern 22: the id, not the version, is what an instance is pinned to.
+            PublicationTxId = published.PublicationTxId,
+            ExecDefHash = published.ExecDefHash,
+            AlreadyPublished = published.AlreadyPublished,
+            Warnings = published.Warnings,
             // The server's own `overridden` flag is authoritative; the local expectation is the
             // fallback for a body that omitted it.
             PublishedWithoutRehearsal = published.Overridden || publishedWithoutRehearsal
@@ -425,13 +454,30 @@ public sealed record BlueprintPublishResult
     public DateTimeOffset? PublishedAt { get; init; }
 
     /// <summary>
+    /// The publication transaction id — the published definition's IDENTITY (Feature 195 /
+    /// CLAUDE.md pattern 22). <see cref="Version"/> is a display label; this is what an instance is
+    /// pinned to and what names this exact definition later.
+    /// </summary>
+    public string? PublicationTxId { get; init; }
+
+    /// <summary>
+    /// True when this definition was ALREADY published to this register, so no new version was
+    /// created. The version number is real either way, which is exactly why this must be reported.
+    /// </summary>
+    public bool AlreadyPublished { get; init; }
+
+    /// <summary>Non-blocking publish warnings (e.g. cycle detection); empty when there were none.</summary>
+    public IReadOnlyList<string> Warnings { get; init; } = [];
+
+    /// <summary>
     /// True when this version went live without a rehearsal pass, on an explicit human override.
     /// </summary>
     public bool PublishedWithoutRehearsal { get; init; }
 
     /// <summary>
-    /// The executable-definition hash the rehearsal gate reported as unrehearsed, when the publish
-    /// was blocked. It is the behavioural signature of the version, not its publication identity.
+    /// The executable-definition hash — the version's BEHAVIOURAL signature, which is what the
+    /// rehearsal gate matches a <c>RehearsalPass</c> on. Populated on a successful publish and on a
+    /// rehearsal block alike. It is not an identity: see <see cref="PublicationTxId"/> for that.
     /// </summary>
     public string? ExecDefHash { get; init; }
 }
