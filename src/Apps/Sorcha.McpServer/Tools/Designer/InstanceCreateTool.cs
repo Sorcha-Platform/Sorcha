@@ -29,6 +29,7 @@ public sealed class InstanceCreateTool
     private readonly IBlueprintServiceClient _blueprintClient;
     private readonly ILogger<InstanceCreateTool> _logger;
 
+    /// <summary>Creates the tool.</summary>
     public InstanceCreateTool(
         IMcpAuthorizationService authService,
         IServiceAvailabilityTracker availabilityTracker,

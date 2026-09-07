@@ -66,8 +66,15 @@ public sealed class ElicitationHumanApproval : IHumanApproval
             return new ApprovalResult(ApprovalOutcome.Approved, "Approved by the user.");
         }
 
+        // Do not claim a person declined: `result.Action` can be "cancel" because a person
+        // actually chose Cancel, OR because a headless client (Claude Code in `-p` mode, for
+        // one) auto-answers every elicitation with "cancel" without a person ever seeing the
+        // request. Only "approved (action: accept)" is ever a safe claim about what happened.
         return new ApprovalResult(
             ApprovalOutcome.Refused,
-            $"The user did not approve this operation (action: {result.Action}). Nothing was changed.");
+            $"This operation was not approved (action: {result.Action}). This may be a person "
+            + "explicitly declining, or an MCP client that auto-answered without presenting the "
+            + "request to anyone — declaring elicitation support is not a guarantee a person is "
+            + "asked. Nothing was changed.");
     }
 }

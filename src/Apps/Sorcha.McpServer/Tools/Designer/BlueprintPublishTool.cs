@@ -116,7 +116,7 @@ public sealed class BlueprintPublishTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The published version, or the rehearsal block if a person declined to waive it.</returns>
     [McpServerTool(Name = ToolName, Destructive = true, ReadOnly = false, Idempotent = false)]
-    [Description("Publishes a draft blueprint to a register so workflow instances can be started from it, returning the immutable published version number. Call this when a draft blueprint is finished and ready to go live: it belongs after sorcha_blueprint_create and before sorcha_instance_create, which can only instantiate a blueprint that is already published. A blueprint that has not been rehearsed is blocked by a safety gate; when that happens this tool asks a person whether to publish anyway, and refuses if your MCP client cannot present that question. Publishing is recorded permanently on the register's ledger. Publishing needs organisation-administrator authority plus an Owner, Admin or Designer role on the target register's governance roster — a plain designer role is not enough, and the tool is not offered to one.")]
+    [Description("Publishes a draft blueprint to a register so workflow instances can be started from it, returning the immutable published version number. Call this when a draft blueprint is finished and ready to go live: it belongs after sorcha_blueprint_create and sorcha_register_create, and before sorcha_instance_create, which can only instantiate a blueprint that is already published. A blueprint that has not been rehearsed is blocked by a safety gate; when that happens this tool asks a person to confirm via MCP elicitation — only an explicit accept proceeds. A decline, a silent cancel, and a client that never declared the elicitation capability all refuse the same way, because a client can declare elicitation and still auto-cancel every request when running headlessly. Publishing is recorded permanently on the register's ledger. Publishing needs organisation-administrator authority plus an Owner, Admin or Designer role on the target register's governance roster — a plain designer role is not enough, and the tool is not offered to one.")]
     public async Task<BlueprintPublishResult> PublishBlueprintAsync(
         SdkMcpServer server,
         [Description("The draft blueprint's ID")] string blueprintId,
@@ -163,7 +163,15 @@ public sealed class BlueprintPublishTool
             if (outcome is null)
             {
                 stopwatch.Stop();
-                _availabilityTracker.RecordFailure("Blueprint");
+                // Deliberately NOT RecordFailure: a null outcome here is a deterministic HTTP
+                // response (403 governance refusal, 404, 400 publish-validation, or 5xx) that
+                // BlueprintServiceClient already logged — it is not evidence the service is DOWN.
+                // A governance-roster 403 is common (an admin who isn't on the target register's
+                // roster) and NOT cleared by the JWT policy widening this branch made — three
+                // such attempts used to trip FailureThreshold and take out every other Blueprint
+                // MCP tool behind a false "service unavailable". Only a transport-level fault
+                // (HttpRequestException / TaskCanceledException, caught below) evidences an
+                // outage.
                 return FirstAttemptFailed(blueprintId, registerId, stopwatch);
             }
 
@@ -230,7 +238,10 @@ public sealed class BlueprintPublishTool
 
             if (overridden?.Result is not { } overriddenResult)
             {
-                _availabilityTracker.RecordFailure("Blueprint");
+                // Deliberately NOT RecordFailure — same reasoning as the first-attempt null
+                // above. This retry reached here only after a 409 proved governance already
+                // passed, so a null now is a deterministic response the client already logged,
+                // not evidence of an outage.
                 return OverrideRetryFailed(blueprintId, registerId, overridden, stopwatch);
             }
 

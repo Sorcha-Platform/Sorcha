@@ -268,6 +268,52 @@ public class BlueprintPublishToolTests
     }
 
     [Fact]
+    public async Task PublishBlueprintAsync_ThrowsHttpRequestException_RecordsFailure()
+    {
+        // The only failure mode that actually evidences a Blueprint Service outage: a transport
+        // fault, not a deterministic HTTP response.
+        var h = new Harness();
+        h.Client.Setup(c => c.PublishBlueprintAsync(
+                It.IsAny<string>(), It.IsAny<PublishBlueprintRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("publish: ServiceUnavailable"));
+
+        await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+
+        h.Availability.Verify(a => a.RecordFailure("Blueprint", It.IsAny<Exception>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task PublishBlueprintAsync_FirstAttemptNull_DoesNotRecordFailure()
+    {
+        // A null first-attempt outcome is a deterministic response — most commonly a
+        // governance-roster 403 an org Administrator does not automatically clear — already
+        // logged by BlueprintServiceClient. Three such attempts used to trip
+        // FailureThreshold and silently disable every other Blueprint MCP tool behind a false
+        // "service unavailable", even though the Blueprint Service was never down.
+        var h = new Harness().WithPublishFailure();
+
+        await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+
+        h.Availability.Verify(
+            a => a.RecordFailure(It.IsAny<string>(), It.IsAny<Exception?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PublishBlueprintAsync_OverrideRetryNull_DoesNotRecordFailure()
+    {
+        // Same reasoning as the first-attempt case, for the override retry: reaching here proves
+        // governance already passed (the 409 that triggered the elicit is only reachable once
+        // PublishGate's governance hard gate has passed), so a null retry is a deterministic
+        // response too, not an outage signal.
+        var h = new Harness().WithRehearsalRequiredThenFailure().WithApproval(ApprovalOutcome.Approved);
+
+        await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+
+        h.Availability.Verify(
+            a => a.RecordFailure(It.IsAny<string>(), It.IsAny<Exception?>()), Times.Never);
+    }
+
+    [Fact]
     public async Task PublishBlueprintAsync_TimesOut_ReportsTimeoutRatherThanAFailure()
     {
         // BlueprintServiceClient catches HttpRequestException only, so a TaskCanceledException
