@@ -52,4 +52,14 @@
     </Content>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- MCP resources (Task 7): the blueprint JSON Schema plus worked examples the walkthrough
+         suite actually executes, so a stale example shows up as a failing walkthrough rather
+         than a silent lie. See Resources/SorchaResources.cs. -->
+    <EmbeddedResource Include="..\..\Common\blueprint.schema.json" LogicalName="Sorcha.McpServer.Resources.blueprint.schema.json" />
+    <EmbeddedResource Include="..\..\..\walkthroughs\AssuredIdentity\blueprints\assured-identity.json" LogicalName="Sorcha.McpServer.Resources.examples.assured-identity.json" />
+    <EmbeddedResource Include="..\..\..\walkthroughs\EncryptionAtRest\blueprints\encryption-at-rest.json" LogicalName="Sorcha.McpServer.Resources.examples.encryption-at-rest.json" />
+    <EmbeddedResource Include="..\..\..\walkthroughs\PingPongN1\blueprints\ping-pong.json" LogicalName="Sorcha.McpServer.Resources.examples.ping-pong.json" />
+  </ItemGroup>
+
 </Project>

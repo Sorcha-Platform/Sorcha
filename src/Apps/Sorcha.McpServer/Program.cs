@@ -74,6 +74,7 @@ static async Task<int> RunStdioAsync(string[] args)
         .AddMcpServer(ConfigureServerOptions)
         .WithStdioServerTransport()
         .WithToolsFromAssembly()
+        .WithResourcesFromAssembly()
         .WithAuthorizationNarrowingListToolsFilter()
         .WithToolInvocationAuditFilter()
         .WithArgumentBindingErrorFilter();
@@ -131,6 +132,7 @@ static async Task<int> RunHttpAsync(string[] args)
         // tools/list filter and token forwarding work per-request automatically.
         .WithHttpTransport(o => o.Stateless = true)
         .WithToolsFromAssembly()
+        .WithResourcesFromAssembly()
         .WithAuthorizationNarrowingListToolsFilter()
         .WithToolInvocationAuditFilter()
         .WithArgumentBindingErrorFilter();
