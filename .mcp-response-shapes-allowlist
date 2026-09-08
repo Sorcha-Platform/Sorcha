@@ -7,8 +7,18 @@
 # NEVER add a line to make a build pass. Fix the DTO instead.
 #
 # Key format:
-#   <ToolClass>.<Dto>.<Property>   a property the paired server type does not send   (kind a)
+#   <ToolClass>.<Dto>.<Property>   a property the paired server type does not send,  (kind a)
+#                                  OR one it sends in a form the client cannot read
 #   <ToolClass>.<Dto>              the server shape could not be resolved at all     (kind b)
+#
+# Service-client DTOs (src/Common/Sorcha.ServiceClients.Http) use the client CLASS as the first
+# segment, e.g. RegisterServiceClient.RegisterSummaryInfo.Status.
+#
+# A kind (a) line can now mean either of two failures, and BOTH are silent at runtime:
+#   - the property does not exist on the server type  -> it binds nothing
+#   - it exists but is typed to something that cannot hold what the server writes (a `string`
+#     against an enum the service emits as an integer) -> deserialization THROWS, and the client's
+#     catch-all turns that into an empty result. This is #1613; it is not fixable by renaming.
 #
 # A kind (b) entry means that DTO is UNCHECKED, not that it is correct. It is listed rather than
 # skipped precisely so the unchecked surface stays visible and countable. The way to remove one is

@@ -685,6 +685,50 @@ if (action.Form?.Schema == null) return ValidationResult.Valid();
 
 ---
 
+### 25. A client DTO must be typed to read what the service actually WRITES (#1613)
+
+There is **no platform-wide JSON enum convention**, so you cannot assume one. `AddServiceDefaults`
+configures no JSON at all; only the **Tenant** and **Wallet** services call `SorchaJson.Configure`.
+Every other service — Register, Blueprint, Validator, Peer, HAIP — serialises under the ASP.NET web
+defaults, where an enum **without its own `[JsonConverter]` goes on the wire as a bare integer**.
+
+```csharp
+// DON'T — GET /api/registers/ sends "status": 1. A Number cannot be read as a String, so the
+// WHOLE list throws and the client's catch-all hands the caller an empty one.
+public string Status { get; set; } = string.Empty;
+
+// DO — the enum accepts BOTH the integer and the name, so it survives either wire form.
+public RegisterStatus Status { get; set; } = RegisterStatus.Offline;
+```
+
+- **The failure is total and silent.** One unreadable property does not degrade one field — it
+  throws for the entire payload. `RegisterServiceClient.GetRecentRegistersAsync` caught it and
+  returned `[]`, so `sorcha_register_stats` reported "operational with 0 registers" and
+  `sorcha://registers` returned `{"registers":[],"count":0}` against a node holding **five**.
+- **A name check cannot see it.** `Status` existed on the server type and matched perfectly. This is
+  why the response-shape gate now asks *can it be read?* as well as *does it exist?*, deriving the
+  wire form from source in precedence order: property `[JsonConverter]` → enum `[JsonConverter]` →
+  owning service's JSON options.
+- **The inconsistency is per-property, not per-service.** One `Register` sends
+  `"purpose":"System"` (because `RegisterPurpose` carries an attribute) beside `"status":1` and
+  `"syncState":2` (because those enums do not). Check the property, never the service.
+- **`.Produces<object>` blinds every static check** — no named type means nothing to compare a
+  client DTO against. **94 endpoints** still declare it (Register 47 of 71; Tenant 0 of 161).
+  Declaring the type a handler already returns is metadata-only and costs nothing.
+- **Stringifying server-side is a per-endpoint patch, and patches get missed.**
+  `/api/internal/registers` carries an explicit `Status = r.Status.ToString()` *with a comment
+  describing this exact bug class* — applied there and not to its sibling `/api/registers/`, which
+  is #1613. Prefer typing the client to the enum, which is immune to both wire forms.
+- **A DTO must not declare what the server never sends.** `RegisterSummaryInfo.TenantId` had no
+  counterpart on `Register` at all, so it bound nothing and every consumer reported an empty owner.
+  Pin such a removal with a **reflection** test — a fixture would have to set the value the server
+  never sends, which is exactly why the old fixtures passed.
+- Enforced by `scripts/check-mcp-response-shapes.ps1` (CI: `mcp-response-shapes-gate`), which now
+  also scans `Sorcha.ServiceClients.Http` — the shared surface this defect lived on, previously
+  scanned by nothing. Unchecked DTOs are counted in its summary, not hidden.
+
+---
+
 ## Key Documentation
 
 | Document | Purpose |

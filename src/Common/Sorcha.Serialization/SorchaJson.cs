@@ -8,12 +8,26 @@ using System.Text.Json.Serialization.Metadata;
 namespace Sorcha.Serialization;
 
 /// <summary>
-/// The single source of truth for Sorcha's JSON wire format. Both sides derive from it so they can
-/// never drift:
+/// The shared definition of Sorcha's JSON wire format, applied by the hosts that opt in:
 /// <list type="bullet">
-///   <item>Services apply it to their serializer via <c>AddServiceDefaults</c> (server side).</item>
+///   <item>
+///     A service applies it by calling <see cref="Configure"/> from its own
+///     <c>ConfigureHttpJsonOptions</c>. <b>Only the Tenant and Wallet services do.</b>
+///     <c>AddServiceDefaults</c> configures no JSON at all, so every other service
+///     (Register, Blueprint, Validator, Peer, HAIP) serialises under the ASP.NET web defaults —
+///     where an enum WITHOUT its own <c>[JsonConverter]</c> goes on the wire as an <b>integer</b>.
+///   </item>
 ///   <item>UI clients deserialize responses with <see cref="Options"/> (client side).</item>
 /// </list>
+/// <para>
+/// <b>So the two sides can and do drift, and this type does not by itself prevent it.</b> An
+/// earlier version of this comment claimed services applied it via <c>AddServiceDefaults</c>; they
+/// never have. Reading it as a guarantee is how <c>RegisterSummaryInfo.Status</c> came to be typed
+/// <c>string</c> against a Register Service that sends <c>1</c> — deserialization threw, the client's
+/// catch-all returned an empty list, and every consumer reported "0 registers" against a node
+/// holding five (#1613). When binding a response from a service NOT listed above, type the property
+/// to the enum (which accepts both the integer and the name) rather than to <c>string</c>.
+/// </para>
 /// The format is <c>System.Text.Json</c> Web defaults (camelCase properties, case-insensitive
 /// matching) plus enums as <b>kebab-case strings</b> (e.g. <c>PersonaAttributeSource.SelfAsserted</c>
 /// → <c>"self-asserted"</c>; also required for the WebAuthn <c>"public-key"</c> credential type). A

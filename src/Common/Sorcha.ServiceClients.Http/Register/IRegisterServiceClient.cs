@@ -4,6 +4,7 @@
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.LocalRelationship;
 using Sorcha.Register.Models.Observations;
+using Sorcha.Register.Models.Enums;
 
 namespace Sorcha.ServiceClients.Register;
 
@@ -749,6 +750,19 @@ public class RegisterTransactionStatistics
 /// <summary>
 /// Summary information about a register for inventory listings.
 /// </summary>
+/// <remarks>
+/// Bound from <c>GET /api/registers/</c>, which serialises
+/// <see cref="Sorcha.Register.Models.Register"/> directly. Every property here must exist on that
+/// model, and must be typed to accept the token the Register Service actually writes — that service
+/// applies no JSON options, so an enum without its own converter goes on the wire as an INTEGER.
+/// <para>
+/// There is deliberately no <c>TenantId</c>: <see cref="Sorcha.Register.Models.Register"/> has no
+/// tenant or organisation field, and the endpoint sends none. It was declared here anyway and so
+/// bound to nothing, leaving every consumer reporting an empty owner for every register. A register
+/// is not owned by one tenant in this model — organisations SUBSCRIBE to registers — so there is no
+/// value to populate it from. Do not re-add it.
+/// </para>
+/// </remarks>
 public class RegisterSummaryInfo
 {
     /// <summary>Register unique identifier.</summary>
@@ -757,11 +771,15 @@ public class RegisterSummaryInfo
     /// <summary>Register display name.</summary>
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>Current status (Active, Inactive, etc.).</summary>
-    public string Status { get; set; } = string.Empty;
-
-    /// <summary>Owning tenant identifier.</summary>
-    public string TenantId { get; set; } = string.Empty;
+    /// <summary>
+    /// Current status. Typed as the enum, not a string: <c>GET /api/registers/</c> serialises this
+    /// as a NUMBER (the Register Service registers no JSON options, so enums go on the wire as
+    /// integers under the web defaults). A <c>string</c> here threw
+    /// <c>JsonException: Cannot get the value of a token type 'Number' as a string</c>, which
+    /// <see cref="RegisterServiceClient.GetRecentRegistersAsync"/> caught and turned into an empty
+    /// list — so every consumer reported "0 registers" on a node that had them (#1613).
+    /// </summary>
+    public RegisterStatus Status { get; set; } = RegisterStatus.Offline;
 
     /// <summary>Current chain height (number of dockets).</summary>
     public long Height { get; set; }

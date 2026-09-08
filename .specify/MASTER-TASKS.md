@@ -3,10 +3,69 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.28
-**Last Updated:** 2026-09-07
+**Version:** 7.29
+**Last Updated:** 2026-09-08
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
+
+> **2026-09-08 - #1613: a client DTO typed against a wire it cannot read; swept for siblings and the gate widened. ✅ DONE.**
+>
+> `GET /api/registers/` sends `"status": 1`; `RegisterSummaryInfo.Status` was `string`. A Number
+> cannot be read as a String, so the WHOLE list threw, `GetRecentRegistersAsync`'s catch-all returned
+> `[]`, and both consumers reported **0 registers against an n1 holding 5** — `sorcha_register_stats`
+> ("operational with 0 registers") and `sorcha://registers` (`{"registers":[],"count":0}`).
+> Pre-existing; MCP-P1 only added the second consumer that made it visible.
+>
+> **Why no gate saw it.** The response-shape gate compares property NAMES. `Status` existed on the
+> server type and matched perfectly — it simply could never be read. And the DTO lives in
+> `Sorcha.ServiceClients.Http`, which the gate did not scan at all: it collects DTOs declared inside
+> a `[McpServerToolType]` class, and this one is shared by the MCP server, UI, CLI and services.
+>
+> **The generator, named.** `AddServiceDefaults` configures no JSON. Only **Tenant and Wallet** call
+> `SorchaJson.Configure`, so Register / Blueprint / Validator / Peer / HAIP serialise enums as bare
+> integers unless the enum carries its own `[JsonConverter]`. One `Register` therefore sends
+> `"purpose":"System"` (attribute) beside `"status":1` and `"syncState":2` (no attribute).
+> `SorchaJson`'s own XML doc **claimed every service applied it via `AddServiceDefaults`** — it never
+> has; that false assurance is corrected in this PR.
+>
+> **Swept, not spot-checked.** Every `string`-typed property in `Sorcha.ServiceClients{,.Http}` whose
+> name matches a server property declared as an enum: **25 candidates, 24 cleared by tracing each to
+> its endpoint** — the server already stringifies at nearly every site (`/api/internal/registers`
+> carries an explicit `Status = r.Status.ToString()` **with a comment describing this exact bug
+> class**, applied to that one endpoint and not to its sibling `/api/registers/`). `GovernanceProposalView`
+> carries property-level converters; `SignatureAlgorithm` and `RegisterPurpose` carry type-level ones;
+> the subscription DTOs are the *same type* on both sides. The detector was control-tested: 26
+> candidates with the fix reverted, 25 with it applied, differing by exactly the known defect.
+>
+> **A second defect in the same DTO**: `RegisterSummaryInfo.TenantId` does not exist on
+> `Sorcha.Register.Models.Register` at all, so it bound nothing and every consumer reported an empty
+> owner for every register. Removed — a register is not owned by one tenant (organisations
+> *subscribe*) — and pinned by a reflection test, because a fixture would have to set the value the
+> server never sends, which is precisely why the old fixtures passed (`TenantId = "org-1"`).
+>
+> **Gate widened in both dimensions** (`scripts/check-mcp-response-shapes.ps1`):
+> 1. **Depth** — it now asks "can this property be READ?", not only "does it exist?". The wire form
+>    of an enum is derived from source (property attribute → enum attribute → owning service's JSON
+>    options), never assumed.
+> 2. **Coverage** — a new pass over `Sorcha.ServiceClients.Http`, pairing each `ReadFromJsonAsync<T>`
+>    with the nearest preceding api path in the same method. **19 client DTOs now checked where 0
+>    were**; 46 remain unchecked and are COUNTED in the summary, because their endpoints declare no
+>    named response type.
+>
+> **`.Produces<object>` is the blind spot, and it is measurable: 94 endpoints** (Register 47 of 71,
+> Wallet 16, Validator 15, Blueprint 10, HAIP 6; **Tenant 0 of 161**). `GET /api/registers/` was one,
+> so nothing could pair a client DTO against it. Typed to `.Produces<IEnumerable<Register>>` here —
+> metadata only, the handler already returned exactly that.
+>
+> **Both fixes proven load-bearing by control test**: revert the DTO ⇒ gate FAILS naming
+> `RegisterSummaryInfo.Status`; restore `.Produces<object>` with the defect still present ⇒ gate goes
+> blind and PASSES. Green: solution builds clean, 939 MCP + 368 ServiceClients + 483 Register.Service
+> + 396 Register.Models tests, route gate green.
+>
+> **Not done, deliberately — a decision for the maintainer.** The root fix is a uniform wire enum
+> format (every service calling `SorchaJson.Configure`, as Tenant and Wallet do). That would end the
+> class outright, but it changes `status` from `1` to `"online"` on live Register/Blueprint/Validator
+> responses and would break any consumer reading the integer. Flagged, not taken.
 
 > **2026-09-07 - MCP-P1: the completable surface — lifecycle tools, resources, prompts, human approval. ✅ DONE.**
 >

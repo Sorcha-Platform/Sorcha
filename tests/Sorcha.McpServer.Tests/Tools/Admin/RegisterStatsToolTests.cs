@@ -6,6 +6,7 @@ using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 using Sorcha.McpServer.Tools.Admin;
 using Sorcha.ServiceClients.Register;
+using Sorcha.Register.Models.Enums;
 
 namespace Sorcha.McpServer.Tests.Tools.Admin;
 
@@ -68,8 +69,8 @@ public class RegisterStatsToolTests
             .Setup(c => c.GetRecentRegistersAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<RegisterSummaryInfo>
             {
-                new() { Id = "reg-1", Name = "Test Register 1", Status = "Active", TenantId = "tenant-1", Height = 100, CreatedAt = DateTimeOffset.UtcNow.AddDays(-10) },
-                new() { Id = "reg-2", Name = "Test Register 2", Status = "Active", TenantId = "tenant-1", Height = 50, CreatedAt = DateTimeOffset.UtcNow.AddDays(-5) }
+                new() { Id = "reg-1", Name = "Test Register 1", Status = RegisterStatus.Online, Height = 100, CreatedAt = DateTimeOffset.UtcNow.AddDays(-10) },
+                new() { Id = "reg-2", Name = "Test Register 2", Status = RegisterStatus.Online, Height = 50, CreatedAt = DateTimeOffset.UtcNow.AddDays(-5) }
             });
 
         var result = await CreateTool().GetRegisterStatsAsync();
