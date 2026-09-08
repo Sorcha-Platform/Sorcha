@@ -926,17 +926,28 @@ blueprintGroup.MapPost("/{id}/publish", async (
     HttpRequest request) =>
 {
     // Read required registerId (+ optional override) from JSON body.
+    //
+    // Deliberately NOT gated on ContentLength. A chunked request carries no Content-Length, so
+    // `request.ContentLength > 0` is false for one and the body was never read — the endpoint then
+    // reported the caller's correctly-supplied registerId as MISSING. Refit and HttpClient send
+    // chunked by default, so this broke publish for BOTH first-party programmatic clients (the
+    // `sorcha_blueprint_publish` MCP tool and `sorcha blueprint publish`) while the browser-based
+    // UI kept working, because browsers set Content-Length (#1618).
+    //
+    // The message made it worse than a plain failure: naming the caller's own field sent everyone
+    // hunting in the client. During the MCP cold-start run it produced a confident misdiagnosis of
+    // "authorisation" and a proposal to mutate the register's governance roster to work around it.
+    //
+    // ReadFromJsonAsync already returns null for an absent body and throws for a malformed one, so
+    // the length check only ever removed the good case.
     PublishRequest? body = null;
-    if (request.ContentLength > 0)
+    try
     {
-        try
-        {
-            body = await request.ReadFromJsonAsync<PublishRequest>();
-        }
-        catch
-        {
-            return Results.BadRequest(new { error = "Invalid request body. Expected JSON with 'registerId' property." });
-        }
+        body = await request.ReadFromJsonAsync<PublishRequest>();
+    }
+    catch (System.Text.Json.JsonException)
+    {
+        return Results.BadRequest(new { error = "Invalid request body. Expected JSON with 'registerId' property." });
     }
 
     if (body is null || string.IsNullOrWhiteSpace(body.RegisterId))
