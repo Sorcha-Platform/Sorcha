@@ -1,0 +1,50 @@
+# `.Produces<object>` ratchet. MAY ONLY SHRINK.
+#
+# Each line is `<path>|<count>`: a file, and how many endpoints in it declare `.Produces<object>`
+# and therefore name NO response type. A named type is the only thing a static check can compare a
+# client DTO against, so every count here is response shape that nothing in this repo can see.
+#
+# This is not a style list. GET /api/registers/ was one of these, and RegisterSummaryInfo had
+# drifted from it in two ways at once — a `string` against an enum the service writes as `1`, and a
+# TenantId the server has never sent. Both silent; two consumers reported "0 registers" against a
+# node holding five, for weeks, every gate green (#1613). Typing that one endpoint is what made it
+# visible: with a real `.Produces<T>` the shape gate FAILS on it, and with `.Produces<object>` the
+# gate goes blind and PASSES with the identical defect present.
+#
+# TO REMOVE OR LOWER A LINE — the only correct direction — declare the type the handler already
+# returns. It is metadata only: no behaviour change, no wire change, no edit to the handler.
+#
+#     .Produces<object>(StatusCodes.Status200OK)
+#  -> .Produces<IEnumerable<Sorcha.Register.Models.Register>>(StatusCodes.Status200OK)
+#
+# Then lower the count here in the SAME PR. A mismatch fails in both directions: a higher real count
+# is a regression, a lower one is a stale entry that must be tightened, because a count left too
+# high silently buys back room for a regression.
+#
+# NEVER raise a count or add a file to make a build pass.
+#
+# Regenerate the current numbers with:
+#   pwsh scripts/check-produces-object.ps1 -Report
+#
+# Seeded 2026-09-08 at 93 across 19 files. Tenant Service is deliberately absent: it has 0 of its
+# 161 `.Produces<T>` untyped, which is the proof this is reachable rather than aspirational.
+
+src/Services/Sorcha.Blueprint.Service/Endpoints/CredentialEndpoints.cs|3
+src/Services/Sorcha.Blueprint.Service/Endpoints/OperationsEndpoints.cs|2
+src/Services/Sorcha.Blueprint.Service/Endpoints/SchemaLibraryEndpoints.cs|2
+src/Services/Sorcha.Blueprint.Service/Endpoints/StatusListEndpoints.cs|3
+src/Services/Sorcha.Haip.Service/Endpoints/CredentialEndpoints.cs|1
+src/Services/Sorcha.Haip.Service/Endpoints/MetadataEndpoints.cs|1
+src/Services/Sorcha.Haip.Service/Endpoints/NonceEndpoints.cs|1
+src/Services/Sorcha.Haip.Service/Endpoints/OfferEndpoints.cs|2
+src/Services/Sorcha.Haip.Service/Endpoints/VerifierEndpoints.cs|1
+src/Services/Sorcha.Register.Service/Endpoints/RecoveryHealthEndpoints.cs|1
+src/Services/Sorcha.Register.Service/Endpoints/SystemRegisterEndpoints.cs|7
+src/Services/Sorcha.Register.Service/Endpoints/VerificationEndpoints.cs|3
+src/Services/Sorcha.Register.Service/Program.cs|35
+src/Services/Sorcha.Validator.Service/Endpoints/ThresholdEndpoints.cs|1
+src/Services/Sorcha.Validator.Service/Endpoints/ValidationEndpoints.cs|1
+src/Services/Sorcha.Validator.Service/Endpoints/ValidatorRegistrationEndpoints.cs|13
+src/Services/Sorcha.Wallet.Service/Endpoints/CredentialEndpoints.cs|3
+src/Services/Sorcha.Wallet.Service/Endpoints/PresentationEndpoints.cs|5
+src/Services/Sorcha.Wallet.Service/Endpoints/WalletEndpoints.cs|8

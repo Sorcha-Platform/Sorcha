@@ -726,6 +726,11 @@ public RegisterStatus Status { get; set; } = RegisterStatus.Offline;
 - Enforced by `scripts/check-mcp-response-shapes.ps1` (CI: `mcp-response-shapes-gate`), which now
   also scans `Sorcha.ServiceClients.Http` — the shared surface this defect lived on, previously
   scanned by nothing. Unchecked DTOs are counted in its summary, not hidden.
+- `.Produces<object>` is ratcheted by `scripts/check-produces-object.ps1` (CI:
+  `produces-object-gate`), seeded at **93 across 19 files**. `.produces-object-allowlist` holds
+  `<path>|<count>` and **may only shrink**; a mismatch fails in *both* directions, because a count
+  left too high silently buys back room for a regression. Removing a line means declaring the type
+  the handler already returns — metadata only, no wire change.
 
 ---
 

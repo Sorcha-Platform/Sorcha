@@ -62,6 +62,14 @@
 > blind and PASSES. Green: solution builds clean, 939 MCP + 368 ServiceClients + 483 Register.Service
 > + 396 Register.Models tests, route gate green.
 >
+> **Follow-up shipped same day:** `.Produces<object>` is now ratcheted —
+> `scripts/check-produces-object.ps1` + `.produces-object-allowlist` (CI: `produces-object-gate`),
+> seeded at **93 across 19 files** (Register's `Program.cs` alone holds 35; Validator's
+> `ValidatorRegistrationEndpoints.cs` 13; **Tenant 0**, which is the proof this is reachable rather
+> than aspirational). `<path>|<count>`, and it fails in **both** directions — a higher real count is
+> a regression, a lower one is a stale entry that must be tightened, because a count left too high
+> silently buys back room for a regression. Control-tested both ways before shipping.
+>
 > **Not done, deliberately — a decision for the maintainer.** The root fix is a uniform wire enum
 > format (every service calling `SorchaJson.Configure`, as Tenant and Wallet do). That would end the
 > class outright, but it changes `status` from `1` to `"online"` on live Register/Blueprint/Validator

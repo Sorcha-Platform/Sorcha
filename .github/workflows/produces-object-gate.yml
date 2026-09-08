@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# `.Produces<object>` ratchet CI gate. Fails when a service endpoint adds a new `.Produces<object>`,
+# or when the allowlist is left higher than the real count.
+#
+# An endpoint declaring `.Produces<object>` names no response type, and a named type is the only
+# thing a static check can compare a client DTO against. GET /api/registers/ was one of these:
+# RegisterSummaryInfo had drifted from it in two ways at once (a `string` against an enum the
+# service writes as `1`, and a TenantId the server never sends), both silent, and two consumers
+# reported "0 registers" against a node holding five for weeks with every gate green (#1613).
+#
+# Typing that one endpoint is what made the defect visible to a gate — proven by control test in
+# both directions. See scripts/check-produces-object.ps1 and .produces-object-allowlist (a ratchet
+# that may only shrink).
+
+name: produces-object-gate
+
+on:
+  pull_request:
+    paths:
+      - "src/Services/**/*.cs"
+      - "scripts/check-produces-object.ps1"
+      - ".produces-object-allowlist"
+      - ".github/workflows/produces-object-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  produces-object:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run produces-object ratchet gate
+        shell: pwsh
+        run: ./scripts/check-produces-object.ps1
