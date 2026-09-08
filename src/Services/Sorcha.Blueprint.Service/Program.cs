@@ -962,7 +962,14 @@ blueprintGroup.MapPost("/{id}/publish", async (
     var caller = new Sorcha.Blueprint.Service.Services.Implementation.PublishCaller(
         PlatformUserId: platformUserId,
         OrganizationId: httpContext.GetOrganizationId(),
-        WalletAddress: httpContext.User.FindFirst("wallet_address")?.Value);
+        WalletAddress: httpContext.User.FindFirst("wallet_address")?.Value,
+        // Gates the ORGANISATION-wallet roster match only (#1620). A register owned by the org's
+        // signing wallet (#1525, and what the UI creates) has that wallet as its sole roster entry,
+        // and no user token ever carries it — wallet_address comes from the user's own participant
+        // wallet-links. Without an organisational match nobody can publish to such a register, not
+        // even the admin who created it. Restricted to Administrator/Designer so the fix does not
+        // quietly hand publish rights to every member of the organisation.
+        HoldsOrgPublishRole: httpContext.User.IsInRole("Administrator") || httpContext.User.IsInRole("Designer"));
 
     var overrideConfirmed = body.Override is { Confirm: true };
 
