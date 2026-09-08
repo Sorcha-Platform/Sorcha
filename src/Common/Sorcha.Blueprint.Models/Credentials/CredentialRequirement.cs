@@ -98,9 +98,11 @@ public class CredentialRequirement
 public enum PresentationSource
 {
     /// <summary>Internal Sorcha participant — matched against stored credentials.</summary>
+    [JsonStringEnumMemberName("SorchaInternal")]
     SorchaInternal = 0,
 
     /// <summary>External HAIP wallet — presented via OpenID4VP direct_post flow.</summary>
+    [JsonStringEnumMemberName("HaipExternalWallet")]
     HaipExternalWallet = 1,
 
     /// <summary>
@@ -110,5 +112,6 @@ public enum PresentationSource
     /// no external verifier service is involved. Introduced by Feature 127 as
     /// the first non-HAIP consumer in the F111 timebound presentation lifecycle.
     /// </summary>
+    [JsonStringEnumMemberName("SorchaWallet")]
     SorchaWallet = 2
 }

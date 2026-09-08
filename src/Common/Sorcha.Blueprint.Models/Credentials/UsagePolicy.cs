@@ -14,15 +14,18 @@ public enum UsagePolicy
     /// <summary>
     /// Credential can be presented an unlimited number of times.
     /// </summary>
+    [JsonStringEnumMemberName("Reusable")]
     Reusable = 0,
 
     /// <summary>
     /// Credential can be presented exactly once, then transitions to Consumed.
     /// </summary>
+    [JsonStringEnumMemberName("SingleUse")]
     SingleUse = 1,
 
     /// <summary>
     /// Credential can be presented N times (see MaxPresentations), then transitions to Consumed.
     /// </summary>
+    [JsonStringEnumMemberName("LimitedUse")]
     LimitedUse = 2
 }

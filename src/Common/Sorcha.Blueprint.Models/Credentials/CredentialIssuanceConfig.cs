@@ -179,9 +179,11 @@ public enum TargetAudience
     /// for all on-platform credential delivery.
     /// </summary>
     [Obsolete("Use SorchaLocalWallet instead. SorchaInternal bypasses the register and breaks on multi-node.")]
+    [JsonStringEnumMemberName("SorchaInternal")]
     SorchaInternal = 0,
 
     /// <summary>External HAIP wallet — credential issued via OpenID4VCI pre-authorized code flow.</summary>
+    [JsonStringEnumMemberName("HaipExternalWallet")]
     HaipExternalWallet = 1,
 
     /// <summary>
@@ -192,5 +194,6 @@ public enum TargetAudience
     /// peer-replicates through the register sync and is detected by the holder's Wallet Service
     /// regardless of whether the holder lives on the same node as the issuer.
     /// </summary>
+    [JsonStringEnumMemberName("SorchaLocalWallet")]
     SorchaLocalWallet = 2
 }
