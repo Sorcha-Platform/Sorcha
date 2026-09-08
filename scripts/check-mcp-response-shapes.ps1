@@ -29,6 +29,19 @@
 #   agent is handed a well-formed, empty, confident answer. This mirrors the Sorcha.Cli.ContractTests
 #   precedent (CLAUDE.md pattern 18) for CLI DTOs.
 #
+# WHAT IT CHECKS  (two questions, because answering only the first shipped #1613)
+#
+#   1. DOES THE PROPERTY EXIST?  A name the server never sends binds nothing, and the caller gets a
+#      well-formed, empty, confident answer.
+#
+#   2. CAN THE PROPERTY BE READ?  A name can agree perfectly and still be unreadable.
+#      RegisterSummaryInfo.Status was named right and typed `string`; GET /api/registers/ sends `1`.
+#      System.Text.Json cannot put a Number into a String, so the WHOLE list threw, the client's
+#      catch-all returned [], and every consumer reported "0 registers" against a node holding five.
+#      A name-only gate is green throughout. See ENUM WIRE FORM below for how the wire form of an
+#      enum is derived from source (property attribute, enum attribute, or the owning service's
+#      JSON options) rather than assumed — there is no platform-wide convention.
+#
 # WHAT IS SCANNED
 #
 #   Tool side    — only classes carrying [McpServerToolType] under
@@ -42,6 +55,16 @@
 #                  same file — those are the types a service body is actually bound into. Every
 #                  other local DTO is reached by WALKING properties from a root, so it is checked
 #                  against the corresponding nested server type rather than against the envelope.
+#
+#   Client side  — DTOs in src/Common/Sorcha.ServiceClients.Http/** that a client method binds a
+#                  response into. These are shared by the MCP server, the UI, the CLI and the
+#                  services, and were previously scanned by NOTHING — which is how #1613 shipped.
+#                  Pairing here is direct rather than heuristic: a client method holds the URL
+#                  literal and its ReadFromJsonAsync<T> a few lines apart, so each read is paired
+#                  with the nearest preceding api path. A pairing is only acted on when most of the
+#                  DTO's properties land on the candidate (see the ratio test) — scoring on raw
+#                  overlap alone matched RevokeTransactionResult to the Register model on the single
+#                  name 'Status' and reported a correct DTO as broken.
 #
 #   Server side  — every Map<Verb> route literal under src/Services/**, composed with its MapGroup
 #                  prefixes exactly as the route gate composes them, paired with the type(s) that
@@ -113,6 +136,7 @@ foreach ($required in @($toolsRoot, $servicesRoot)) {
 # every comparison was equal by construction). Do not lower these to make a build pass.
 $MinDtoCount = 20      # per the task brief
 $MinResolvedPairs = 10 # DTOs that actually got paired with a server type
+$MinClientResolvedPairs = 5 # service-client DTOs paired with a server type (the #1613 surface)
 
 # ---------------------------------------------------------------------------
 # Shared helpers (conventions mirrored from scripts/check-mcp-routes.ps1)
@@ -381,6 +405,7 @@ function Get-PropertiesFromBody {
             Name     = $m.Groups['name'].Value
             WireName = (Get-WireName -Attrs $attrs -Name $m.Groups['name'].Value)
             Type     = $m.Groups['type'].Value
+            Attrs    = $attrs
         }
     }
     return $props
@@ -412,6 +437,7 @@ function Get-PropertiesFromPositional {
             Name     = $m.Groups['name'].Value
             WireName = (Get-WireName -Attrs $attrs -Name $m.Groups['name'].Value)
             Type     = $m.Groups['type'].Value.Trim()
+            Attrs    = $attrs
         }
     }
     return $props
@@ -640,7 +666,7 @@ function Get-ServerWireProperties {
             foreach ($tp in $subs.Keys) {
                 $ptype = [regex]::Replace($ptype, "(?<![A-Za-z0-9_])$([regex]::Escape($tp))(?![A-Za-z0-9_])", $subs[$tp])
             }
-            $props += [pscustomobject]@{ Name = $p.Name; WireName = $p.WireName; Type = $ptype }
+            $props += [pscustomobject]@{ Name = $p.Name; WireName = $p.WireName; Type = $ptype; Attrs = $p.Attrs }
         }
 
         foreach ($b in $d.Bases) {
@@ -670,6 +696,78 @@ function Test-ServerTypeKnown {
     if ($opaqueTypes -contains $parsed.Name) { return $false }
     if (-not $serverTypes.ContainsKey((Resolve-TypeAlias $parsed.Name))) { return $false }
     return (@(Get-ServerWireProperties -TypeRef $TypeRef).Count -gt 0)
+}
+
+# ---------------------------------------------------------------------------
+# ENUM WIRE FORM — the #1613 class
+#
+# A property NAME check cannot see this one. RegisterSummaryInfo.Status was named exactly right and
+# typed `string`; GET /api/registers/ sends `1`. System.Text.Json cannot put a Number into a String,
+# so the WHOLE list threw, RegisterServiceClient's catch-all returned [], and both consumers reported
+# "0 registers" against a node holding five. Nothing failed, nothing logged, and the name gate was
+# green — the property existed on the server type, it just could never be read.
+#
+# Whether an enum reaches the wire as a number or a name is decided in three places, and this block
+# derives all three FROM SOURCE rather than assuming a platform-wide convention (there isn't one):
+#
+#   1. the property's own [JsonConverter(...)]          — wins over everything
+#   2. the enum type's [JsonConverter(...)]             — e.g. RegisterPurpose has one
+#   3. the owning service calling SorchaJson.Configure  — ONLY Tenant and Wallet do
+#
+# AddServiceDefaults configures no JSON at all, so Register / Blueprint / Validator / Peer / HAIP
+# serialise under the ASP.NET web defaults. The result is that ONE object can carry both forms:
+# a Register sends "purpose":"System" (attribute) next to "status":1 and "syncState":2 (no attribute).
+# That inconsistency is the generator of this defect class, which is why the check is per-property.
+# ---------------------------------------------------------------------------
+
+$enumIsStringSerialised = @{}
+$enumNames = [System.Collections.Generic.HashSet[string]]::new()
+
+foreach ($f in (Get-SourceFiles -Roots @($commonRoot, $servicesRoot))) {
+    # Comment-stripped so an attribute separated from its enum by an XML doc block is still adjacent.
+    $clean = Remove-LineComments (Get-Content -LiteralPath $f.FullName -Raw)
+    foreach ($m in [regex]::Matches($clean, '(?<attrs>(?:\[[^\]\r\n]*\]\s*)*)(?:public|internal)\s+enum\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)')) {
+        $name = $m.Groups['name'].Value
+        [void]$enumNames.Add($name)
+        if ($m.Groups['attrs'].Value -match 'JsonConverter') { $enumIsStringSerialised[$name] = $true }
+    }
+}
+
+# Which services apply the shared kebab-case-string wire format to their own responses.
+$serviceAppliesSorchaJson = @{}
+foreach ($f in (Get-SourceFiles -Roots @($servicesRoot))) {
+    if ($f.Name -ne 'Program.cs') { continue }
+    if ((Get-Content -LiteralPath $f.FullName -Raw) -notmatch 'SorchaJson\.Configure') { continue }
+    $owner = Get-ServiceOwnerFromPath $f.FullName
+    if ($owner) { $serviceAppliesSorchaJson[$owner] = $true }
+}
+
+# True only when the server writes this property as a bare INTEGER, so a client `string` cannot
+# read it. Every uncertainty resolves to $false: this gate misses rather than cries wolf.
+function Test-WireEnumIsNumeric {
+    param([string]$ServerPropType, [string]$ServerPropAttrs, [string[]]$Owners)
+
+    $bare = (Split-TypeRef (Resolve-ShapeTypeRef $ServerPropType)).Name
+    if (-not $enumNames.Contains($bare)) { return $false }
+    if ($ServerPropAttrs -and $ServerPropAttrs -match 'JsonConverter') { return $false }
+    if ($enumIsStringSerialised.ContainsKey($bare)) { return $false }
+
+    # Unknown owner, or ANY candidate owner that stringifies, withholds the verdict.
+    if (-not $Owners -or @($Owners).Count -eq 0) { return $false }
+    foreach ($o in $Owners) {
+        if (-not $o) { return $false }
+        if ($serviceAppliesSorchaJson.ContainsKey($o)) { return $false }
+    }
+    return $true
+}
+
+# A client property that can never hold what the server writes there.
+function Test-ClientTypeCannotBind {
+    param([string]$ClientPropType, [string]$ServerPropType, [string]$ServerPropAttrs, [string[]]$Owners)
+
+    $c = $ClientPropType.Trim().TrimEnd('?')
+    if ($c -ne 'string' -and $c -ne 'String') { return $false }
+    return (Test-WireEnumIsNumeric -ServerPropType $ServerPropType -ServerPropAttrs $ServerPropAttrs -Owners $Owners)
 }
 
 # ---------------------------------------------------------------------------
@@ -1327,6 +1425,11 @@ foreach ($tool in $tools) {
     $claimed = @{}
 
     # Pass 1: roots reached from a Deserialize<T>, then any orphan DTO.
+    # Owners of every route this tool calls. Used only to decide whether the owning service
+    # stringifies enums; a mixed or unknown set withholds the verdict.
+    $toolOwners = @()
+    foreach ($r in $tool.Routes) { if ($toolOwners -notcontains $r.Owner) { $toolOwners += $r.Owner } }
+
     foreach ($rootName in $rootNames) {
         if ($assigned.ContainsKey($rootName)) { continue }
         $dto = $tool.Dtos[$rootName]
@@ -1385,6 +1488,17 @@ foreach ($tool in $tools) {
                 }
                 $matched++
 
+                # The property EXISTS. Can it be read? (see ENUM WIRE FORM above)
+                $sp = $byWire[$key]
+                if (Test-ClientTypeCannotBind -ClientPropType $p.Type -ServerPropType $sp.Type `
+                        -ServerPropAttrs $sp.Attrs -Owners $toolOwners) {
+                    Add-Violation -Key "$($tool.Name).$($node.Dto).$($p.Name)" -Kind 'type' `
+                        -Tool $tool.Name -Dto $node.Dto -Property $p.Name -ServerType $node.Server `
+                        -Detail ("typed 'string', but $($node.Server).$($sp.WireName) is the enum '$($sp.Type)' " +
+                                 "and this service writes it as an INTEGER — deserialization throws and the caller sees an empty result")
+                    continue
+                }
+
                 # Descend into a nested tool DTO against the matching server property's type.
                 $nestedDto = (Split-TypeRef (Resolve-ShapeTypeRef $p.Type)).Name
                 if (-not $tool.Dtos.ContainsKey($nestedDto)) { continue }
@@ -1413,6 +1527,120 @@ foreach ($tool in $tools) {
     }
 }
 
+# ---------------------------------------------------------------------------
+# SERVICE-CLIENT DTOs  (the surface #1613 actually fell through)
+#
+# Everything above checks DTOs declared INSIDE a tool file. RegisterSummaryInfo is not one: it lives
+# in Sorcha.ServiceClients.Http and is shared by the MCP server, the UI, the CLI and the services
+# themselves. It was therefore never in scope, and a name-only gate would not have caught it anyway.
+#
+# Pairing here is DIRECT, not heuristic: a client method contains the URL literal and the
+# ReadFromJsonAsync<T> that binds that URL's body, a few lines apart. Each read is paired with the
+# nearest PRECEDING api path in the same file, which is the request it belongs to. That is a far
+# stronger join than the tool side's best-overlap guess, so a violation here is worth trusting.
+#
+# Unresolved client DTOs are COUNTED in the summary rather than allowlisted one by one: this surface
+# is new and mostly untyped on the server (94 endpoints still declare .Produces<object>), so an entry
+# per unchecked DTO would bury the ratchet. The count is stated so the unchecked surface stays
+# visible and can be driven down by typing endpoints.
+# ---------------------------------------------------------------------------
+
+$clientHttpRoot = Join-Path $repo 'src/Common/Sorcha.ServiceClients.Http'
+$clientDtoDecls = @{}
+foreach ($f in $clientFiles) {
+    foreach ($d in (Get-TypeDeclarations -Text $clientText[$f.FullName] -File $f.FullName)) {
+        if (-not $clientDtoDecls.ContainsKey($d.Name)) { $clientDtoDecls[$d.Name] = $d }
+    }
+}
+
+# Folder under ServiceClients.Http -> owning service, when the folder names one.
+$serviceDirNames = @{}
+foreach ($dir in (Get-ChildItem -Path $servicesRoot -Directory -ErrorAction SilentlyContinue)) {
+    if ($dir.Name -match '^Sorcha\.([A-Za-z0-9]+)\.Service$') { $serviceDirNames[$Matches[1]] = $true }
+}
+
+$readPattern = '(?:ReadFromJsonAsync|GetFromJsonAsync|Deserialize|DeserializeAsync)\s*<\s*(?<t>(?:[^<>]|<(?:[^<>]|<[^<>]*>)*>)+?)\s*>\s*\('
+$clientDtoCount = 0
+$clientResolvedPairs = 0
+$clientUnresolved = 0
+$clientPairings = @()
+
+foreach ($f in $clientFiles) {
+    if (-not $f.FullName.Replace('\', '/').StartsWith($clientHttpRoot.Replace('\', '/'))) { continue }
+
+    $raw = $clientText[$f.FullName]
+    $text = Remove-LineComments $raw
+
+    $rel = $f.FullName.Replace('\', '/').Substring($clientHttpRoot.Replace('\', '/').Length).TrimStart('/')
+    $folder = ($rel -split '/')[0]
+    $owner = if ($serviceDirNames.ContainsKey($folder)) { $folder } else { $null }
+
+    # Every api path in the file, by position. Matched directly rather than by parsing string
+    # literals first: in these clients an "api/..." run only ever occurs inside a request URL.
+    $pathAt = @()
+    foreach ($pm in [regex]::Matches($text, '(?<![A-Za-z0-9_.-])api/[A-Za-z0-9_./*{}-]*')) {
+        $pathAt += [pscustomobject]@{ Index = $pm.Index; Path = (Resolve-Holes $pm.Value) }
+    }
+    if ($pathAt.Count -eq 0) { continue }
+
+    $seenHere = @{}
+    foreach ($rm in [regex]::Matches($text, $readPattern)) {
+        $dtoName = (Split-TypeRef (Resolve-ShapeTypeRef $rm.Groups['t'].Value)).Name
+        if (-not $clientDtoDecls.ContainsKey($dtoName)) { continue }
+
+        # The request this read belongs to: nearest preceding api path in the same file.
+        $path = $null
+        foreach ($pa in $pathAt) { if ($pa.Index -lt $rm.Index) { $path = $pa.Path } else { break } }
+        if (-not $path) { continue }
+
+        $pairKey = "$dtoName|$path"
+        if ($seenHere.ContainsKey($pairKey)) { continue }
+        $seenHere[$pairKey] = $true
+        $clientDtoCount++
+
+        $dto = $clientDtoDecls[$dtoName]
+        $family = ConvertTo-RouteFamily $path
+        $candidates = Get-RouteCandidates -Family $family -Owner $owner
+        $pick = Select-BestServerType -Dto $dto -Candidates $candidates -Claimed $null
+
+        # A CONVINCING join, or none. Scoring by raw overlap accepted RevokeTransactionResult
+        # (RevocationTxId / OriginalTxId / Status) against the Register model on the strength of
+        # 'Status' alone, and then reported that correct DTO as broken. Requiring most of the
+        # client's own properties to land means a pairing is a shape match, not a name coincidence.
+        $ratio = if ($dto.Props.Count -gt 0) { $pick.Score / $dto.Props.Count } else { 0 }
+        if (-not $pick.Ref -or $pick.Score -lt 2 -or $ratio -lt 0.6) { $clientUnresolved++; continue }
+
+        $server = $pick.Ref
+        $serverProps = @(Get-ServerWireProperties -TypeRef $server)
+        $byWire = @{}
+        foreach ($sp in $serverProps) { $byWire[$sp.WireName.ToLowerInvariant()] = $sp }
+
+        $owners = if ($owner) { @($owner) } else { @() }
+        $label = [IO.Path]::GetFileNameWithoutExtension($f.FullName)
+
+        foreach ($cp in $dto.Props) {
+            $k = $cp.WireName.ToLowerInvariant()
+            if (-not $byWire.ContainsKey($k)) { continue }   # name gaps: reported by the CLI/tool gates
+            $sp = $byWire[$k]
+            if (Test-ClientTypeCannotBind -ClientPropType $cp.Type -ServerPropType $sp.Type `
+                    -ServerPropAttrs $sp.Attrs -Owners $owners) {
+                Add-Violation -Key "$label.$dtoName.$($cp.Name)" -Kind 'type' `
+                    -Tool $label -Dto $dtoName -Property $cp.Name -ServerType $server `
+                    -Detail ("typed 'string', but $server.$($sp.WireName) is the enum '$($sp.Type)' and the " +
+                             "$owner Service writes it as an INTEGER — deserialization throws and the caller sees an empty result")
+            }
+        }
+
+        $clientResolvedPairs++
+        $clientPairings += [pscustomobject]@{
+            Tool = $label; Dto = $dtoName; ServerType = $server
+            Depth = 0; Matched = $pick.Score; Total = $dto.Props.Count
+        }
+    }
+}
+
+$pairings += $clientPairings
+
 if ($ShowShapes) {
     Write-Host ""
     Write-Host "Resolved DTO -> server type pairings ($($pairings.Count)):" -ForegroundColor Cyan
@@ -1436,6 +1664,14 @@ if ($ShowShapes) {
 # ---------------------------------------------------------------------------
 # NON-VACUITY FLOOR (part 2): pairing actually happened
 # ---------------------------------------------------------------------------
+
+if ($clientResolvedPairs -lt $MinClientResolvedPairs) {
+    Write-Host ("FAIL: only {0} service-client DTO(s) were paired with a server type (floor {1}), out of {2} discovered." -f `
+            $clientResolvedPairs, $MinClientResolvedPairs, $clientDtoCount) -ForegroundColor Red
+    Write-Host "The client pass is the one that covers Sorcha.ServiceClients.Http, where #1613 lived. If it" -ForegroundColor Red
+    Write-Host "resolves nothing it reports nothing, which reads as a pass. Fix the pairing; do not lower the floor." -ForegroundColor Red
+    exit 1
+}
 
 if ($resolvedPairs -lt $MinResolvedPairs) {
     Write-Host ("FAIL: only {0} tool DTO(s) were paired with a server type (floor {1}), out of {2} discovered." -f `
@@ -1525,6 +1761,12 @@ Write-Host ("OK: mcp-response-shapes gate passed. {0} registered tool class(es),
     (@($pairings | Select-Object -ExpandProperty Depth) + 0 | Measure-Object -Maximum).Maximum,
         $allowed.Count,
         $uncheckedCount) -ForegroundColor Green
+
+# Stated, not inferred. The unchecked client count is the honest size of the remaining blind spot:
+# it is dominated by endpoints still declaring .Produces<object>, which name no type for a client DTO
+# to be compared against. Typing an endpoint moves a DTO from this number into the checked one.
+Write-Host ("  Service-client DTOs: {0} discovered, {1} checked against the type their endpoint produces, {2} UNCHECKED (endpoint declares no named response type)." -f `
+        $clientDtoCount, $clientResolvedPairs, $clientUnresolved) -ForegroundColor Green
 
 if ($allowed.Count -eq 0) {
     Write-Host "  Allowlist is empty — every MCP tool response DTO agrees with the shape its endpoint sends." -ForegroundColor Green

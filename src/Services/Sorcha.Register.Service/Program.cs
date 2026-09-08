@@ -735,7 +735,11 @@ registersGroup.MapGet("/", async (
 .WithName("GetAllRegisters")
 .WithSummary("Get accessible registers")
 .WithDescription("Returns registers the caller's organisation is subscribed to, plus all system registers.")
-.Produces<object>(StatusCodes.Status200OK)
+// Declares the type it ACTUALLY serialises. This is metadata only — the handler already returned
+// these objects — but `.Produces<object>` made the response shape invisible to every static
+// consumer: OpenAPI, and the response-shape gate, which can only compare a client DTO against a
+// named server type. RegisterSummaryInfo binds this body, and drifted from it unnoticed (#1613).
+.Produces<IEnumerable<Sorcha.Register.Models.Register>>(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>

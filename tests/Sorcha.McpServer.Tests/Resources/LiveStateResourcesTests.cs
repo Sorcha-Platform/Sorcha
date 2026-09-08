@@ -7,6 +7,7 @@ using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Resources;
 using Sorcha.ServiceClients.Blueprint;
 using Sorcha.ServiceClients.Register;
+using Sorcha.Register.Models.Enums;
 
 namespace Sorcha.McpServer.Tests.Resources;
 
@@ -118,7 +119,7 @@ public class LiveStateResourcesTests
             .Setup(c => c.GetRecentRegistersAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(
             [
-                new RegisterSummaryInfo { Id = "reg-1", Name = "Assured Identity Register", Status = "Active", TenantId = "org-1", Height = 42 }
+                new RegisterSummaryInfo { Id = "reg-1", Name = "Assured Identity Register", Status = RegisterStatus.Online, Height = 42 }
             ]);
 
         var body = await CreateSut().RegistersAsync(CancellationToken.None);
@@ -145,7 +146,7 @@ public class LiveStateResourcesTests
         // One more than LiveStateResources' internal display cap (50) — the resource must detect
         // this from the extra item coming back, not guess from a round number.
         var oneOverTheLimit = Enumerable.Range(1, 51)
-            .Select(i => new RegisterSummaryInfo { Id = $"reg-{i}", Name = $"Register {i}", Status = "Active", TenantId = "org-1", Height = i })
+            .Select(i => new RegisterSummaryInfo { Id = $"reg-{i}", Name = $"Register {i}", Status = RegisterStatus.Online, Height = i })
             .ToList();
         _registerClientMock
             .Setup(c => c.GetRecentRegistersAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))

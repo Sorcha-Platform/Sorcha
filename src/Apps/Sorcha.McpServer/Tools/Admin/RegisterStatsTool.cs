@@ -194,8 +194,7 @@ public sealed class RegisterStatsTool
                     {
                         RegisterId = r.Id,
                         Name = r.Name,
-                        Status = r.Status,
-                        TenantId = r.TenantId,
+                        Status = r.Status.ToString(),
                         Height = r.Height,
                         CreatedAt = r.CreatedAt
                     })
@@ -309,11 +308,6 @@ public sealed record RegisterSummary
     /// Current status (Active, Inactive, etc.).
     /// </summary>
     public string? Status { get; init; }
-
-    /// <summary>
-    /// Tenant ID.
-    /// </summary>
-    public string? TenantId { get; init; }
 
     /// <summary>
     /// Current chain height (number of dockets).
