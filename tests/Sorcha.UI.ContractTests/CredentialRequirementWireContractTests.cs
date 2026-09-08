@@ -70,17 +70,64 @@ public class CredentialRequirementWireContractTests
     }
 
     [Fact]
-    public void AnUnconfiguredBinderCannotReadIt_WhichIsWhyTheServiceMustConfigureJson()
+    public void PinnedVocabulary_IsNowReadableByAnyBinder_WhichIsWhyPinningIsTheRightMechanism()
     {
-        // Characterisation of the live failure. Kept so the REASON for the ConfigureHttpJsonOptions
-        // call is testable, rather than only asserted in a comment someone later tidies away.
+        // THIS TEST USED TO ASSERT THE OPPOSITE, and the change is deliberate.
+        //
+        // It characterised the live n1 failure above: SorchaJson's kebab converter outranked each
+        // enum's type-level [JsonConverter], so the client sent "sorcha-wallet" and an unconfigured
+        // binder threw. That was true while PresentationSource took whatever the ambient naming
+        // policy said.
+        //
+        // The blueprint AUTHORING VOCABULARY is now pinned per-member with [JsonStringEnumMemberName]
+        // (#1623), because it is a published contract: shipped walkthrough blueprints author these
+        // values literally, blueprint.schema.json advertises them to agents, and they are serialised
+        // into the canonical definition behind a publication id. A member name overrides the naming
+        // policy, so BOTH sides now write "SorchaWallet" — where the client used to write
+        // "sorcha-wallet" and blueprints wrote "SorchaWallet", two spellings for one value.
+        //
+        // The consequence is worth asserting rather than merely noting: a pinned value is readable
+        // by ANY binder, configured or not. Pinning does not just stabilise the spelling, it removes
+        // this entire class of binding failure for the values it covers.
         var json = JsonSerializer.Serialize(MakeCyberGateRequirement(), ClientOptions);
+
+        json.Should().Contain("\"SorchaWallet\"",
+            "the pin fixes the wire value against any naming policy");
 
         var act = () => JsonSerializer.Deserialize<CredentialRequirement>(json, UnconfiguredServerOptions);
 
+        act.Should().NotThrow(
+            "a pinned vocabulary value no longer depends on the reader being configured — which is "
+            + "precisely why pinning, not a naming policy, is what holds a published contract");
+    }
+
+    [Fact]
+    public void AnUnpinnedEnum_StillNeedsTheServiceToConfigureJson()
+    {
+        // The original hazard, preserved. It is closed for the pinned vocabulary and NOT closed in
+        // general: an enum that takes the ambient policy still reaches the wire kebab-cased, and a
+        // service that skips ConfigureHttpJsonOptions still cannot read it. Kept so the reason for
+        // that call remains testable rather than only asserted in a comment someone later tidies away.
+        var json = JsonSerializer.Serialize(
+            new UnpinnedProbe { Mode = UnpinnedMode.FailClosedProbe }, ClientOptions);
+
+        json.Should().Contain("fail-closed-probe", "an unpinned enum takes the ambient kebab policy");
+
+        var act = () => JsonSerializer.Deserialize<UnpinnedProbe>(json, UnconfiguredServerOptions);
+
         act.Should().Throw<JsonException>(
-            "default options know only the PascalCase enum names, so a service that skips "
-            + "ConfigureHttpJsonOptions rejects what every Sorcha client sends");
+            "default options know only the declared member names, so a service that skips "
+            + "ConfigureHttpJsonOptions still rejects what a Sorcha client sends for an unpinned enum");
+    }
+
+    private sealed class UnpinnedProbe
+    {
+        public UnpinnedMode Mode { get; set; }
+    }
+
+    private enum UnpinnedMode
+    {
+        FailClosedProbe,
     }
 
     [Fact]

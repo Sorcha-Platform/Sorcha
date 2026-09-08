@@ -60,7 +60,7 @@ public class RegisterApiTests : IClassFixture<RegisterServiceWebApplicationFacto
 
         // Act
         var response = await _client.PostAsJsonAsync("/api/registers/initiate", request);
-        var result = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        var result = await response.Content.ReadSorchaAsync<System.Text.Json.JsonElement>();
 
         // Assert
         result.GetProperty("registerId").GetString().Should().NotBeNullOrWhiteSpace();
@@ -133,7 +133,7 @@ public class RegisterApiTests : IClassFixture<RegisterServiceWebApplicationFacto
 
         // Act
         var response = await _client.GetAsync("/api/registers");
-        var registers = await response.Content.ReadFromJsonAsync<RegisterResponse[]>();
+        var registers = await response.Content.ReadSorchaAsync<RegisterResponse[]>();
 
         // Assert
         registers.Should().NotBeNull();
@@ -151,7 +151,7 @@ public class RegisterApiTests : IClassFixture<RegisterServiceWebApplicationFacto
 
         // Act
         var response = await _client.GetAsync("/api/registers");
-        var registers = await response.Content.ReadFromJsonAsync<RegisterResponse[]>();
+        var registers = await response.Content.ReadSorchaAsync<RegisterResponse[]>();
 
         // Assert
         registers.Should().NotBeNull();
@@ -169,7 +169,7 @@ public class RegisterApiTests : IClassFixture<RegisterServiceWebApplicationFacto
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var register = await response.Content.ReadFromJsonAsync<RegisterResponse>();
+        var register = await response.Content.ReadSorchaAsync<RegisterResponse>();
         register.Should().NotBeNull();
         register!.Id.Should().Be(created.Id);
         register.Name.Should().Be("Test Register");
@@ -202,7 +202,7 @@ public class RegisterApiTests : IClassFixture<RegisterServiceWebApplicationFacto
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var updated = await response.Content.ReadFromJsonAsync<RegisterResponse>();
+        var updated = await response.Content.ReadSorchaAsync<RegisterResponse>();
         updated!.Name.Should().Be("Updated Name");
         updated.Status.Should().Be(RegisterStatus.Online);
         updated.Advertise.Should().BeTrue();
@@ -281,7 +281,7 @@ public class RegisterApiTests : IClassFixture<RegisterServiceWebApplicationFacto
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var result = await response.Content.ReadFromJsonAsync<CountResponse>();
+        var result = await response.Content.ReadSorchaAsync<CountResponse>();
         result!.Count.Should().BeGreaterThanOrEqualTo(2);
     }
 
@@ -297,7 +297,7 @@ public class RegisterApiTests : IClassFixture<RegisterServiceWebApplicationFacto
         // Retrieve via API
         var getResponse = await _client.GetAsync($"/api/registers/{created.Id}");
         getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var retrieved = await getResponse.Content.ReadFromJsonAsync<RegisterResponse>();
+        var retrieved = await getResponse.Content.ReadSorchaAsync<RegisterResponse>();
 
         // Assert
         retrieved.Should().NotBeNull();
@@ -313,7 +313,7 @@ public class RegisterApiTests : IClassFixture<RegisterServiceWebApplicationFacto
 
         var updateResponse = await _client.PutAsJsonAsync($"/api/registers/{created.Id}", updateRequest);
         updateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var updated = await updateResponse.Content.ReadFromJsonAsync<RegisterResponse>();
+        var updated = await updateResponse.Content.ReadSorchaAsync<RegisterResponse>();
         updated!.Name.Should().Be("E2E Updated Name");
         updated.Status.Should().Be(RegisterStatus.Online);
 

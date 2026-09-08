@@ -47,7 +47,7 @@ public class CredentialAnchorEndpointTests : IClassFixture<RegisterServiceWebApp
 
         // Assert — 200 with the expected shape
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var result = await response.Content.ReadSorchaAsync<JsonElement>();
 
         result.GetProperty("registerId").GetString().Should().Be(_testRegisterId);
         result.GetProperty("credentialId").GetString().Should().Be(credentialId);
@@ -72,7 +72,7 @@ public class CredentialAnchorEndpointTests : IClassFixture<RegisterServiceWebApp
             proofPath = proofPath.EnumerateArray().Select(step => new
             {
                 hash = step.GetProperty("hash").GetString(),
-                position = step.GetProperty("position").GetInt32()
+                position = step.GetProperty("position")
             }).ToArray()
         };
 
@@ -81,7 +81,7 @@ public class CredentialAnchorEndpointTests : IClassFixture<RegisterServiceWebApp
 
         // Assert — the proof verifies
         verifyResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var verifyResult = await verifyResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var verifyResult = await verifyResponse.Content.ReadSorchaAsync<JsonElement>();
         verifyResult.GetProperty("isValid").GetBoolean().Should().BeTrue();
         verifyResult.GetProperty("computedRoot").GetString().Should().Be(merkleRoot);
     }

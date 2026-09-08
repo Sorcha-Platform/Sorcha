@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Serialization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -50,7 +51,7 @@ public class VerificationBundleTests : IClassFixture<RegisterServiceWebApplicati
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var result = await response.Content.ReadSorchaAsync<JsonElement>();
         result.GetProperty("version").GetInt32().Should().Be(1);
         result.GetProperty("transactionId").GetString().Should().Be(txId);
         result.GetProperty("registerId").GetString().Should().Be(_testRegisterId);
@@ -87,7 +88,7 @@ public class VerificationBundleTests : IClassFixture<RegisterServiceWebApplicati
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var result = await response.Content.ReadSorchaAsync<JsonElement>();
         result.GetProperty("error").GetString().Should().Contain("not been sealed");
     }
 
@@ -105,10 +106,10 @@ public class VerificationBundleTests : IClassFixture<RegisterServiceWebApplicati
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var result = await response.Content.ReadSorchaAsync<JsonElement>();
         var revocationStatus = result.GetProperty("revocationStatus");
         revocationStatus.GetProperty("transactionId").GetString().Should().Be(txId);
-        revocationStatus.GetProperty("status").GetInt32().Should().Be((int)TransactionLifecycleStatus.Active);
+        revocationStatus.GetProperty("status").Deserialize<TransactionLifecycleStatus>(SorchaJson.Options).Should().Be(TransactionLifecycleStatus.Active);
     }
 
     [Fact]
@@ -135,9 +136,9 @@ public class VerificationBundleTests : IClassFixture<RegisterServiceWebApplicati
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var result = await response.Content.ReadSorchaAsync<JsonElement>();
         var revocationStatus = result.GetProperty("revocationStatus");
-        revocationStatus.GetProperty("status").GetInt32().Should().Be((int)TransactionLifecycleStatus.Revoked);
+        revocationStatus.GetProperty("status").Deserialize<TransactionLifecycleStatus>(SorchaJson.Options).Should().Be(TransactionLifecycleStatus.Revoked);
         revocationStatus.GetProperty("revocationTxId").GetString().Should().NotBeNullOrWhiteSpace();
     }
 
@@ -155,7 +156,7 @@ public class VerificationBundleTests : IClassFixture<RegisterServiceWebApplicati
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var result = await response.Content.ReadSorchaAsync<JsonElement>();
         var keys = result.GetProperty("validatorPublicKeys");
         keys.GetArrayLength().Should().BeGreaterThan(0);
         var firstKey = keys[0];
@@ -232,7 +233,7 @@ public class VerificationBundleTests : IClassFixture<RegisterServiceWebApplicati
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var result = await response.Content.ReadSorchaAsync<JsonElement>();
         result.TryGetProperty("isValid", out _).Should().BeTrue();
         result.TryGetProperty("checks", out var checks).Should().BeTrue();
         checks.TryGetProperty("credentialSignatureValid", out _).Should().BeTrue();
@@ -307,7 +308,7 @@ public class VerificationBundleTests : IClassFixture<RegisterServiceWebApplicati
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var result = await response.Content.ReadSorchaAsync<JsonElement>();
         // The tampered root should cause the receipt merkle root consistency check to fail
         result.GetProperty("isValid").GetBoolean().Should().BeFalse();
         result.TryGetProperty("errors", out var errors).Should().BeTrue();
@@ -348,7 +349,7 @@ public class VerificationBundleTests : IClassFixture<RegisterServiceWebApplicati
 
         var response = await _client.PostAsJsonAsync(
             $"/api/registers/{_testRegisterId}/transactions", transaction);
-        var result = await response.Content.ReadFromJsonAsync<TransactionModel>();
+        var result = await response.Content.ReadSorchaAsync<TransactionModel>();
         return result!.TxId;
     }
 
