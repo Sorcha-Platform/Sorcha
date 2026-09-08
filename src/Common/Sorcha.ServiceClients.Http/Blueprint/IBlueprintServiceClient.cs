@@ -121,17 +121,6 @@ public interface IBlueprintServiceClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Computes the diff between two versions of a blueprint. Calls
-    /// <c>GET /api/blueprints/{id}/diff?from=&amp;to=</c> (to omitted compares against latest).
-    /// </summary>
-    /// <returns>The diff JSON body, or null on non-success.</returns>
-    Task<string?> GetBlueprintDiffAsync(
-        string blueprintId,
-        int fromVersion,
-        int? toVersion = null,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Simulates action routing for a blueprint. Calls <c>POST /api/execution/route</c>.
     /// </summary>
     /// <returns>The route-simulation JSON body, or null on non-success.</returns>

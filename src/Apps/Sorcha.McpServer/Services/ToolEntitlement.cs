@@ -21,7 +21,8 @@ public sealed record ToolEntitlement(string ToolName, Tier[] Tiers, string? Requ
 /// The static tier→tool entitlement table for the foundation tool surface. Mirrors
 /// <c>specs/139-mcp-foundation/contracts/transport-and-tools.md</c> §2.
 /// <c>sorcha_wallet_sign</c> is intentionally absent (deferred to a dedicated wave), and
-/// <c>sorcha_blueprint_diff</c> is intentionally absent (MCP P0 Task 5 — no backing route).
+/// <c>sorcha_blueprint_diff</c> is absent: no <c>/diff</c> route ever existed, and the tool,
+/// its client method and its mock-only tests were deleted in #1607.
 /// </summary>
 public static class ToolEntitlements
 {
@@ -89,8 +90,9 @@ public static class ToolEntitlements
         new("sorcha_blueprint_validate", PlatformOnly, DesignerRole),
         new("sorcha_blueprint_simulate", PlatformOnly, DesignerRole),
         new("sorcha_disclosure_analysis", PlatformOnly, DesignerRole),
-        // sorcha_blueprint_diff — REMOVED from the surface (MCP P0 Task 5): no /diff endpoint
-        // exists anywhere to back it. See BlueprintDiffTool and issue #1607.
+        // sorcha_blueprint_diff — DELETED (#1607). No /diff endpoint ever existed anywhere, so
+        // the tool, IBlueprintServiceClient.GetBlueprintDiffAsync and the mock-only tests are gone.
+        // Re-adding the tool means adding the server route first.
         new("sorcha_blueprint_export", PlatformOnly, DesignerRole),
         new("sorcha_schema_validate", PlatformOnly, DesignerRole),
         new("sorcha_schema_generate", PlatformOnly, DesignerRole),
