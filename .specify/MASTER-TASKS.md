@@ -3,10 +3,57 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.29
+**Version:** 7.30
 **Last Updated:** 2026-09-08
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
+
+> **2026-09-08 - MCP-P1 Task 10 step 5: the cold-start re-run. The agent was not the ceiling. ✅ MEASURED.**
+>
+> Re-ran the cold-start experiment on the deployed P1 surface. **It did not reach a running instance,
+> and the blocker was the platform, not the agent** — so no score is claimed against the 3/10
+> baseline, because the run could not make that comparison.
+>
+> **The P1 capability worked.** The agent read the resources unprompted (`dataPointers`,
+> `calculations`, `isStartingAction` — vocabulary absent from `llms.txt`), expressed **selective
+> disclosure correctly** where baseline agent #1 could not express it at all (withholding
+> `/commercial` and `/contact` from the regulator, disclosing a JSON-Logic-derived
+> `thresholdExceeded` instead — supervision without sealing the amount), created and **verified** the
+> blueprint by round-tripping the export, stopped itself at `register_create` citing the once-only
+> BIP39 phrase, and verified `devMode:false` in both the register record and its cryptoPolicy before
+> anything went on-ledger. It also caught that the UI silently dropped `advertise:false`.
+>
+> **Then it hit four walls, three of them previously unknown:**
+> - **Claude Code declares no MCP `elicitation.Form` capability**, so `IHumanApproval` returns
+>   `NotSupported`. **The entire P1 approval seam is unreachable from the flagship client** — invisible
+>   to Task 10's headless probe, where a refusal looked correct.
+> - **#1618** — publish silently dropped any **chunked** body and blamed the caller's own `registerId`.
+>   Broke the MCP tool AND the CLI; the UI worked only because browsers set `Content-Length`. Proven
+>   with one header (`Content-Length` ⇒ 404, chunked ⇒ 400). **Fixed, PR #1619.**
+> - **#1620** — a register owned by the **org signing wallet** cannot be published to by anyone: the
+>   gate matches the caller's *linked user wallet*, and no user token carries the org wallet. **The
+>   platform's own happy path — #1525 org wallet → org register → publish — does not connect.** OPEN.
+> - **#1617** / **#1616** — vacuous all-clears: "All 0 organisation(s) have a signing wallet" against
+>   27 tenants, and "0 registers" while listing five in the same response. OPEN.
+>
+> ⚠ **Both parties made the same reasoning error, from opposite sides.** The agent investigated the
+> register's half of the authorisation match exhaustively and never the caller's. The reviewing
+> session read the roster and three hours of logs, saw no 403, and concluded there was no auth
+> problem — when the right reading was *never reached*, because #1618 returned 400 first. The agent's
+> suspicion was correct and was scored wrong. **Absence of a refusal is not evidence of permission.**
+>
+> ⚠ **A surface that points at evidence it cannot provide is worse than one that points nowhere.**
+> `sorcha_blueprint_publish` writes an excellent error naming four candidate causes and the exact
+> deciding evidence — then `log_query` and `audit_query` both return `NotSupported`. That single
+> status code separates #1618 from #1620 instantly, and only SSH could get it.
+>
+> **Still open, deliberately recorded:** whether `simulate`/`validate` need a published blueprint, and
+> whether a calculated field is addressable as a disclosure pointer (`/thresholdExceeded`) — the most
+> interesting question in the design, unanswered, and evidence for **#1609**.
+>
+> **A re-run is required** once #1620 and the elicitation gap are addressed; until then the experiment
+> cannot reach an instance regardless of agent quality. Full write-up:
+> `docs/superpowers/specs/2026-09-06-mcp-p1-completable-surface-design.md` -> "Measured outcome".
 
 > **2026-09-08 - #1613: a client DTO typed against a wire it cannot read; swept for siblings and the gate widened. ✅ DONE.**
 >

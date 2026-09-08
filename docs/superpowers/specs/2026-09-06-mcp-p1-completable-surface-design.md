@@ -285,3 +285,104 @@ with only those confirmations supplied.
 - `sorcha_wallet_sign` remains unregistered.
 - Org wallet creation stays human-gated by design (#1525).
 - No `ServiceAuth__*` credentials for the MCP server, ever.
+
+---
+
+## Measured outcome (Task 10, step 5 — 2026-09-08)
+
+Re-ran the cold-start experiment against the deployed P1 surface on n1. Same one-line prompt as the
+baseline, a fresh Claude Code session in an empty directory holding only `llms.txt`, with
+`sorcha-n1` connected over Streamable HTTP and a platform-tier token.
+
+### The headline: the run did not reach a running instance, and the ceiling was NOT the agent
+
+**Baseline (3/10)** hard-stopped at *"no way to create a register or start an instance"* — a missing
+capability. P1 added that capability, and the agent used it. It then stopped anyway, on three
+platform defects and one client gap, none of which existed as known blockers when Task 10 was written:
+
+| # | Blocker | Nature |
+|---|---|---|
+| — | **Claude Code declares no MCP `elicitation.Form` capability** | Client gap. `IHumanApproval` returns `NotSupported`, surfaced as `ApprovalRequired`. **The entire P1 human-approval seam is unreachable from the flagship client.** |
+| #1618 | Publish dropped any **chunked** request body, reporting the caller's own `registerId` as missing | Platform. Broke `sorcha_blueprint_publish` AND `sorcha blueprint publish`; the browser UI worked because browsers set `Content-Length`. Fixed, PR #1619. |
+| #1620 | A register owned by the **org signing wallet** cannot be published to by anyone | Platform. The publish gate matches the caller's *linked user wallet*; no user token ever carries the org wallet. **The platform's own happy path — org wallet (#1525) → org register → publish — does not connect.** Open. |
+| #1617 | `sorcha_org_wallet_status` reported *"All 0 organisation(s) have a signing wallet"* and *"Organisation not found"* for an org that exists | Platform. Open. |
+| #1616 | `sorcha_register_stats` reported 0 registers while listing five in the same response | Platform. Open. |
+
+**So the question Task 10 set out to answer — can an agent get from cold start to a running instance
+— is still unanswered, because the path is broken.** Reporting a score against 3/10 would imply a
+comparison the run could not make. What can be said precisely is below.
+
+### What the agent achieved before the wall
+
+- **Read the resources unprompted.** Used `dataPointers`, `calculations`, `isStartingAction`,
+  `requiredPriorActions` — schema vocabulary absent from `llms.txt`. The P1 resources were consumed
+  without being mentioned.
+- **Expressed selective disclosure correctly**, which **baseline agent #1 could not do at all**.
+  Three-tier disclosure over four payload groups, withholding `/commercial` and `/contact` from the
+  regulator and disclosing a JSON-Logic–derived `thresholdExceeded` boolean instead — supervision
+  against a threshold without ever sealing the amount. It described the mechanism correctly:
+  *"scoped at seal time rather than filtered on read"*.
+- **Created and independently verified** the blueprint on n1, by round-tripping the export rather
+  than trusting the create response.
+- **Stopped itself at `sorcha_register_create`** and explained the once-only BIP39 phrase, reading
+  the constraint out of the tool description rather than discovering it by failing. The P1 approval
+  model worked exactly as designed — right up to the client that could not answer it.
+- **Verified `devMode: false` in both the register record and its cryptoPolicy** before letting
+  anything go on-ledger, and caught that the UI had silently dropped the `advertise: false` choice.
+- **Found #1617 unaided**, and correctly called the all-clear vacuous rather than reassuring.
+- **Inferred node state** — "freshly re-genesised, bootstrap not fully completed" — from uniform
+  timestamps and zero blueprints. n1 *was* re-genesised on 2026-08-29.
+
+### Human interventions, and why each was needed
+
+Four, none of them nudges about design:
+
+1. Two architectural questions answered with the agent's own recommendation (domain-neutral; silent
+   CC'd regulator) — deliberately choosing its option so the design stayed its judgement.
+2. **Org wallet creation** — human-gated by design (#1525). Correct.
+3. **Register creation via the UI** — forced by the elicitation client gap, not by design.
+4. **A factual correction about #1618** — given because the agent had explicitly flagged its
+   diagnosis as unproven and named the deciding evidence it lacked.
+
+Intervention 4 is itself a finding. The agent asked for the publish status code; `log_query` and
+`audit_query` both return `NotSupported`, so it could not get it. An operator with SSH could read it
+in seconds. **A surface that points at evidence it cannot then provide is worse than one that points
+nowhere** — the agent's own words, and it is right.
+
+### Where the agent's reasoning failed, in its own analysis
+
+Its postmortem is more useful than the score would have been:
+
+- It proposed **granting itself a Designer role** on the governance roster. The gate matches wallet
+  addresses, not roster roles, so the remedy did not follow from its own evidence.
+- It stated a **mechanism it had not observed** as fact — *"the CLI holds the value and doesn't
+  transmit it"* — when the observable was right and the cause was #1618.
+- It **decomposed by transport rather than by cause**, calling the MCP and CLI failures "two
+  independent blockers" when they shared one auth wall with a transport bug hiding it on one path.
+
+And the miss underneath all three, which is the most valuable sentence produced by the run:
+
+> *"Authorisation is a match between two sides. I investigated the register's side exhaustively —
+> roster, attestations, derived roles — and never once investigated the caller's."*
+
+Worth recording that **the reviewing session made the same error from the other direction**: it read
+the roster and three hours of logs, saw no 403, and concluded there was no authorisation problem —
+when the correct reading was *never reached*, because #1618 returned 400 first. The agent's
+suspicion was right and was scored wrong. Two independent parties looked at one half of a match.
+
+### Still open, recorded rather than dropped
+
+- Whether `simulate` / `validate` require a **published** blueprint (hypothesised, never tested).
+- Whether a **calculated field is addressable as a disclosure pointer** (`/thresholdExceeded`) —
+  the most interesting question in the design, and still unanswered. It bears directly on #1609,
+  the served schema being incomplete: the agent found the gap by hitting it.
+
+### What this changes
+
+1. **The elicitation gap is now the top P1 follow-up.** An approval seam only the UI can satisfy is
+   not an approval seam for agents. Either Claude Code must declare `elicitation.Form`, or the
+   lifecycle tools need a second, capability-independent confirmation path.
+2. **#1620 blocks the happy path** and should be fixed before any further cold-start measurement;
+   until then the experiment cannot reach an instance regardless of agent quality.
+3. **A re-run is required** once #1618 (merged), #1620 and the elicitation gap are addressed. Only
+   then does the 3/10 comparison become meaningful.
