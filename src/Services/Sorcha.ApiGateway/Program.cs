@@ -155,13 +155,30 @@ app.MapGet("/api/health", async (HealthAggregationService healthService) =>
 // System Statistics Endpoint
 // ===========================
 
-app.MapGet("/api/stats", async (HealthAggregationService healthService) =>
+// Served at /api/gateway/stats, NOT /api/stats (#1616).
+//
+// The gateway is a shared namespace: a path it answers itself is a path no backend can be reached
+// on. Four services map `/api/stats` — Register (registerCount/transactionCount), Blueprint, Wallet,
+// and this aggregation — and the gateway owning the bare path meant every client configured to
+// reach a backend THROUGH the gateway got this service-health body instead, whatever it asked for.
+//
+// The MCP server points every client at the gateway, so RegisterServiceClient.GetStatsAsync bound
+// `{totalServices, healthyServices, serviceMetrics}` into `{registerCount, transactionCount}`.
+// Neither field exists there, so both silently bound 0 and sorcha_register_stats reported
+// "operational with 0 registers" while listing five in the same response. n1 had 21.
+//
+// Moving this to its own namespace frees `/api/stats` to proxy to the Register Service, whose
+// version is the platform-wide public statistic that a gateway-level `/api/stats` should mean.
+app.MapGet("/api/gateway/stats", async (HealthAggregationService healthService) =>
 {
     var stats = await healthService.GetSystemStatisticsAsync();
     return Results.Ok(stats);
 })
 .WithName("SystemStatistics")
 .WithSummary("Get system-wide statistics from all services")
+.WithDescription(
+    "Gateway-level aggregation of every service's health and metrics. Distinct from /api/stats, "
+    + "which proxies to the Register Service's platform-wide register/transaction counts.")
 .WithTags("System");
 
 // ===========================
@@ -579,7 +596,7 @@ app.MapGet("/gateway", async (HealthAggregationService healthService, DashboardS
                 <a href="/api/client/download" class="btn btn-secondary">💾 Download Client</a>
                 <a href="/api/dashboard" class="btn btn-secondary">📊 Dashboard JSON</a>
                 <a href="/api/health" class="btn btn-secondary">🏥 Health Check</a>
-                <a href="/api/stats" class="btn btn-secondary">📈 System Stats</a>
+                <a href="/api/gateway/stats" class="btn btn-secondary">📈 System Stats</a>
                 <a href="/api/client/instructions" class="btn btn-secondary">📖 Installation Guide</a>
             </div>
 

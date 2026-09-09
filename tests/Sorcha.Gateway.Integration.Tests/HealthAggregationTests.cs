@@ -61,8 +61,11 @@ public class HealthAggregationTests : GatewayIntegrationTestBase
     {
         SkipIfInfrastructureUnavailable();
 
-        // Act
-        var response = await GatewayClient!.GetAsync("/api/stats");
+        // /api/gateway/stats, not /api/stats (#1616). The gateway used to answer the bare path
+        // itself, which meant no backend could be reached on it — every client pointed at the
+        // gateway got this aggregation whatever it asked for. The bare path now proxies to the
+        // Register Service.
+        var response = await GatewayClient!.GetAsync("/api/gateway/stats");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -74,6 +77,28 @@ public class HealthAggregationTests : GatewayIntegrationTestBase
         stats.RootElement.GetProperty("healthyServices").GetInt32().Should().BeGreaterThanOrEqualTo(0);
         stats.RootElement.GetProperty("unhealthyServices").GetInt32().Should().BeGreaterThanOrEqualTo(0);
         stats.RootElement.GetProperty("timestamp").GetDateTimeOffset().Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1));
+    }
+
+    [Fact]
+    public async Task GetStats_ProxiesToTheRegisterService_NotTheGatewayAggregation()
+    {
+        SkipIfInfrastructureUnavailable();
+
+        // The point of #1616: asking the gateway for /api/stats must reach the REGISTER Service's
+        // platform-wide counts. It previously returned the gateway's own service-health body, and
+        // RegisterServiceClient bound {registerCount, transactionCount} out of it — both absent, so
+        // both silently 0. sorcha_register_stats reported "operational with 0 registers" against a
+        // node holding 21.
+        var response = await GatewayClient!.GetAsync("/api/stats");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var stats = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        stats.RootElement.TryGetProperty("registerCount", out _).Should().BeTrue(
+            "the bare path must carry the Register Service's shape, or every client that binds it gets zeros");
+        stats.RootElement.TryGetProperty("totalServices", out _).Should().BeFalse(
+            "the gateway aggregation moved to /api/gateway/stats");
     }
 
     [Fact]

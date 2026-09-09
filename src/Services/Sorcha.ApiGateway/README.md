@@ -46,7 +46,7 @@ API Gateway (Single External Endpoint)
 │   └── Cluster Management
 ├── Gateway APIs
 │   ├── Health Aggregation (/api/health)
-│   ├── System Statistics (/api/stats)
+│   ├── System Statistics (/api/gateway/stats)
 │   ├── Client Download (/api/client/download)
 │   ├── Installation Instructions (/api/client/instructions)
 │   └── OpenAPI Aggregation (/openapi/aggregated.json)
@@ -100,7 +100,8 @@ Response → API Gateway → Client
 | `/api/peer/**` | Peer Service | `/api/**` | Peer discovery, gossip |
 | `/api/validator/**` | Validator Service | `/api/v1/**` | Transaction validation, consensus |
 | `/api/health` | API Gateway | - | Aggregated health from all services |
-| `/api/stats` | API Gateway | - | System-wide statistics |
+| `/api/gateway/stats` | API Gateway | - | Gateway-level aggregation of all services' health + metrics |
+| `/api/stats` | Register Service | - | Platform-wide register and transaction counts (proxied, #1616) |
 | `/api/client/download` | API Gateway | - | Blazor client package |
 | `/` | API Gateway | - | Landing page dashboard |
 
@@ -303,7 +304,8 @@ _serviceEndpoints = new Dictionary<string, string>
 |--------|----------|-------------|
 | GET | `/` | Landing page with system dashboard |
 | GET | `/api/health` | Aggregated health status from all services |
-| GET | `/api/stats` | System-wide statistics |
+| GET | `/api/gateway/stats` | Gateway-level aggregation of all services' health + metrics |
+| GET | `/api/stats` | Proxied to the Register Service - platform-wide register/transaction counts |
 | GET | `/api/dashboard` | Dashboard statistics (blueprints, wallets, registers, tenants, peers) |
 | GET | `/api/client/info` | Blazor client information |
 | GET | `/api/client/download` | Download Blazor client source code (ZIP) |
@@ -366,7 +368,7 @@ For detailed service endpoint documentation, visit `/scalar/v1`.
 
 ### System Statistics
 
-**Endpoint**: `GET /api/stats`
+**Endpoint**: `GET /api/gateway/stats`
 
 **Response Example:**
 ```json
