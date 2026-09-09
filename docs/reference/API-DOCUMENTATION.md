@@ -2656,11 +2656,15 @@ Client-side helpers for validating and processing actions before submission.
 POST /api/execution/validate
 ```
 
+Validates a payload against **every** schema the action declares on `dataSchemas` — the same rule
+`ValidationEngine.ValidateSchemaAsync` applies on the ledger.
+
 **Request Body:**
 ```json
 {
   "blueprintId": "bp-123",
   "actionId": "0",
+  "instanceId": "inst-456",
   "data": {
     "itemName": "Widget Pro",
     "quantity": 100,
@@ -2669,13 +2673,35 @@ POST /api/execution/validate
 }
 ```
 
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `blueprintId` | yes | The blueprint the action belongs to. |
+| `actionId` | yes | The action whose data contract the payload must satisfy. |
+| `data` | yes | The payload to validate. |
+| `instanceId` | no | Validate against the definition this instance is **pinned** to (Feature 194/195) instead of the blueprint's current draft. |
+
+**Which definition is answered for.** Supply `instanceId` whenever you are pre-flighting a payload
+for a running instance — that is the only mode whose verdict is guaranteed to match what submission
+actually does. Omit it and the payload is validated against the blueprint's current **draft**
+definition, which is the right contract for an authoring surface and the wrong one for an instance:
+on a blueprint edited since the instance started, a clean pass would not mean the submission is
+accepted. The response says which was used.
+
 **Response:** `200 OK`
 ```json
 {
   "isValid": true,
+  "definitionScope": "pinned",
   "errors": []
 }
 ```
+
+`definitionScope` is `pinned` or `draft`.
+
+**Errors:** `400` with an `error` message when the blueprint, action or instance cannot be resolved,
+when `instanceId` names an instance running a different blueprint, when that instance carries no pin,
+or when the pinned definition is not resolvable on this node. None of these fall back to another
+definition — a substituted answer would read as healthy.
 
 #### 2. Apply Calculations
 

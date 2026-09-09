@@ -53,11 +53,12 @@ public sealed class ActionValidateTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Validation result.</returns>
     [McpServerTool(Name = "sorcha_action_validate")]
-    [Description("Validate a candidate JSON payload against the input schema of a specific action without committing anything to the register. Returns a list of schema violations or a clean pass, leaving the action in its current pending state. Call this when an agent has drafted submission data and wants to confirm it will pass server-side schema validation; use this rather than sorcha_action_submit when you do not yet intend to advance the workflow, and call sorcha_action_details first when you need to see the schema itself before drafting input. IMPORTANT: this validates against the blueprint's LATEST published definition, not the definition an instance is pinned to (Feature 195 version pinning) — on a blueprint republished since an instance started, a clean pass here does not guarantee the same payload will pass when actually submitted against that instance's pinned definition. Tracked as issue #1606.")]
+    [Description("Validate a candidate JSON payload against every schema an action declares, without committing anything to the register. Returns a list of schema violations or a clean pass, leaving the action in its current pending state. Call this when an agent has drafted submission data and wants to confirm it will pass server-side schema validation; use this rather than sorcha_action_submit when you do not yet intend to advance the workflow, and call sorcha_action_details first when you need to see the schema itself before drafting input. IMPORTANT: pass instanceId whenever you are pre-flighting a payload for a RUNNING instance. That validates against the definition the instance is pinned to (Feature 194/195 version pinning), which is the only answer guaranteed to match what submission actually does. Without it the payload is validated against the blueprint's current DRAFT definition, so on a blueprint edited or republished since the instance started a clean pass here does not mean the same payload will be accepted. The result's definitionScope says which was used.")]
     public async Task<ActionValidateResult> ValidateActionDataAsync(
         [Description("The blueprint ID the action belongs to")] string blueprintId,
         [Description("The action's sequence number within the blueprint")] string actionId,
         [Description("The action data in JSON format")] string dataJson,
+        [Description("Optional. The workflow instance this payload is destined for. Supply it to validate against the definition that instance is PINNED to rather than the blueprint's current draft — the only mode whose verdict matches a real submission.")] string? instanceId = null,
         CancellationToken cancellationToken = default)
     {
         // Authorization check
@@ -149,12 +150,12 @@ public sealed class ActionValidateTool
 
             var url = $"{_blueprintServiceEndpoint.TrimEnd('/')}/api/execution/validate";
 
-            var requestBody = JsonSerializer.Serialize(new
-            {
-                blueprintId,
-                actionId,
-                data
-            });
+            // instanceId is omitted rather than sent null when absent: the server treats an absent
+            // value as "answer for the draft", and sending the key with no value would only invite a
+            // future reader to think one mode was requested when the other was.
+            var requestBody = string.IsNullOrWhiteSpace(instanceId)
+                ? JsonSerializer.Serialize(new { blueprintId, actionId, data })
+                : JsonSerializer.Serialize(new { blueprintId, actionId, data, instanceId });
 
             var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
             var response = await client.PostAsync(url, content, cancellationToken);
@@ -210,6 +211,7 @@ public sealed class ActionValidateTool
                     ? "Data is valid for submission."
                     : $"Data has {errorCount} validation error(s).",
                 IsValid = result.IsValid,
+                DefinitionScope = result.DefinitionScope,
                 CheckedAt = DateTimeOffset.UtcNow,
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
                 Errors = result.Errors?.Select(e => new ValidationError
@@ -266,6 +268,10 @@ public sealed class ActionValidateTool
     private sealed class ValidateResponse
     {
         public bool IsValid { get; set; }
+
+        /// <summary>Which definition the verdict is about — "pinned" or "draft".</summary>
+        public string? DefinitionScope { get; set; }
+
         public List<ValidationErrorDto>? Errors { get; set; }
     }
 
@@ -295,6 +301,13 @@ public sealed record ActionValidateResult
     /// Whether the data is valid for submission.
     /// </summary>
     public bool IsValid { get; init; }
+
+    /// <summary>
+    /// Which definition the verdict was produced against — <c>pinned</c> (the instance's own
+    /// definition) or <c>draft</c> (the blueprint's current working copy). A pre-flight answer is
+    /// only actionable if the caller knows what it was answered about.
+    /// </summary>
+    public string? DefinitionScope { get; init; }
 
     /// <summary>
     /// When the validation was performed.

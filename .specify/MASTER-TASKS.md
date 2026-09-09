@@ -226,7 +226,7 @@
 > (see the MCP-P0 entry below) — Task 10 connects to n1 directly rather than assuming that pin has
 > been retired.
 
-> **2026-09-04 - Issue #1573: action schema was never enforced on the submission path. ✅ FIXED (engine + processor + dry-run); `/validate` (#1606) still open.**
+> **2026-09-04 - Issue #1573: action schema was never enforced on the submission path. ✅ FIXED - engine + processor (#1604), dry-run (#1605), `/validate` (#1606). All four sites closed.**
 >
 > Blueprints declare their payload contract on `Action.DataSchemas`. `ExecutionEngine.ValidateAsync` and `ActionProcessor.ProcessAsync` validated `Action.Form.Schema` — a property **no** published blueprint sets, defaulting to null on a layout-only `Control`. Caller gated on one property, callee read the other, nothing verified the join, and it **failed open**: every payload validated successfully. On an encrypted (Normal) register the Validator then skips schema checks by design — precisely because it trusts that pre-validation — so **no component validated action payloads at all**.
 >
@@ -248,7 +248,15 @@
 >
 > ⚠ **Mutation-testing caught a vacuous guard before it was committed**, which is the reusable lesson: the first "field supplied only by an earlier action" test stayed **green** under the reintroduced defect, because its schema carried `additionalProperties: false` *and* the missing required field — so it failed for the other reason whichever data was validated. The fixture now leaves exactly ONE discriminator in play per test.
 >
-> **Still open**: `POST /api/execution/validate` (#1606) — answers `isValid: true` for anything, and resolves the **latest** definition rather than an instance's pin. Not covered by #1573's title.
+> **#1606 - `POST /api/execution/validate` FIXED (2026-09-09).** It answered `isValid: true` with an empty `errors` array for **any** payload against **any** action. Unlike the other two sites, which failed silently, this one actively asserted the opposite of the truth to a caller who had asked the question directly - the obvious reading of "Validate action data" is a pre-flight check, and the claim was in the published OpenAPI contract.
+>
+> **Two things settled, not one.** (1) The engine call is fixed by #1604, and now has its own guard - the handler moved out of the `Program.cs` lambda into `ExecutionValidationEndpoint` so a test can reach it, and the test uses the **real** `ExecutionEngine`: a mocked one asserts only that the endpoint returns what it is handed, which is exactly what the broken version did. (2) **Which definition it answers for** is now the caller's choice: `instanceId` validates against that instance's **pin** (F194/195) through the same `IActionResolverService` execution uses; omitting it validates the **draft**, which is what it always did and is right for an authoring surface. The response carries `definitionScope` so the answer is never ambiguous, and nothing falls back - an unpinned instance, an unresolvable pin, or a blueprint that disagrees with the instance is refused, because a substituted answer reads as healthy.
+>
+> The endpoint resolved `IBlueprintStore` - the **draft** store, not "latest published" as both the issue and the MCP tool description said. Corrected in both.
+>
+> `sorcha_action_validate` gained the optional `instanceId` and surfaces `definitionScope`; its `[Description]` carried the #1606 caveat and now carries the instruction instead. Docs: `API-DOCUMENTATION.md`, `docs/mcp-server.md`.
+>
+> Mutation-tested both properties: ignoring `instanceId` fails the 4 pin-mode tests; hard-coding `isValid = true` fails exactly the 2 that assert a violation, leaving the conforming-payload test green.
 
 > **2026-08-29 - Feature 196 (#1591): the validator granted six exemptions from an UNSIGNED field. ✅ DONE, LIVE-VERIFIED 18/18.**
 > **2026-09-05 - MCP-P0: the public MCP tool surface had been completely dead for 6+ days; restored, gated, and role-corrected. LIVE-VERIFIED ON n1 (2026-09-06).**
@@ -259,7 +267,7 @@
 >
 > **Ten tools called routes that were never mapped anywhere**, including the entire participant discovery loop — `sorcha_inbox_list`, `sorcha_workflow_status`, `sorcha_workflow_instances`, `sorcha_action_details`, `sorcha_action_validate` — so an agent could submit a workflow action but never discover or inspect one. Also broken: `sorcha_register_query` (invented OData shape against a route no service maps), `sorcha_user_list`/`sorcha_user_manage` (fictional flat `api/users` routes and an invented action vocabulary), `sorcha_token_revoke` (`api/tokens/revoke` never mapped). Each repointed at the real endpoint and response shape rather than patched to compile:
 > - `sorcha_action_details` now takes **both an instance id and an action id** (`GET /api/instances/{id}/actions/{id}`), not a bare action id.
-> - `sorcha_action_validate` now posts `{blueprintId, actionId, data}` to `POST /api/execution/validate` and documents that it validates against the blueprint's **latest** definition, not an instance's pinned one (#1606) — a gap the route gate cannot see, since the old broken route structurally collides with a real one.
+> - `sorcha_action_validate` now posts `{blueprintId, actionId, data}` to `POST /api/execution/validate` and documents that it validates against the blueprint's **latest** definition, not an instance's pinned one (#1606) — a gap the route gate cannot see, since the old broken route structurally collides with a real one. **(Superseded 2026-09-09: #1606 is fixed — the tool now takes an optional `instanceId` and validates against the instance's pin. Also, "latest published" was itself wrong; it resolved the DRAFT store.)**
 > - `sorcha_user_list`/`sorcha_user_manage` now require an `organizationId` (the real routes are org-scoped: `api/organizations/{organizationId}/users`); `sorcha_user_manage`'s action vocabulary is now the real `Suspend|Reactivate|Unlock|ChangeRole` (no `Activate`/`Deactivate`/`Lock`/`AddRole`/`RemoveRole` endpoint exists).
 > - `sorcha_blueprint_diff` is **withdrawn from the surface** (unregistered, not left advertised-and-broken) — no `/diff` endpoint exists anywhere to repoint it to. Follow-up to delete the now-dead client method: #1607.
 >
