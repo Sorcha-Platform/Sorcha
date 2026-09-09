@@ -168,7 +168,7 @@ served set.
 consumer-only tools require a consumer-tier token. Two further tools exist in source but are
 deliberately unregistered — no `[McpServerToolType]` on the class, so the assembly scan never
 discovers them: `sorcha_wallet_sign` (T029 — signing stays in the Wallet Service) and
-`sorcha_blueprint_diff` (MCP-P0 Task 5 — no `/diff` endpoint exists anywhere to back it; issue
+`sorcha_blueprint_diff` (deleted in #1607 — no `/diff` endpoint ever existed anywhere; issue
 #1607 tracks removing the now-dead client method it would have called).
 
 ## Lifecycle Tools (P1)

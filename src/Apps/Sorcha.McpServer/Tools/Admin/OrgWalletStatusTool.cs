@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.Serialization;
 using Sorcha.ServiceClients.Tenant;
 
 namespace Sorcha.McpServer.Tools.Admin;
@@ -76,7 +77,9 @@ public sealed class OrgWalletStatusTool
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            var body = await _tenantClient.ListOrganizationsAsync("page=1&pageSize=200", cancellationToken);
+            // pageNumber, NOT page — OrganizationEndpoints.ListOrganizations binds pageNumber, so
+            // "page=1" bound nothing and silently took the server default (#1617).
+            var body = await _tenantClient.ListOrganizationsAsync("pageNumber=1&pageSize=200", cancellationToken);
             stopwatch.Stop();
 
             if (string.IsNullOrWhiteSpace(body))
@@ -87,38 +90,66 @@ public sealed class OrgWalletStatusTool
 
             _availabilityTracker.RecordSuccess(ServiceName);
 
-            var orgs = new List<OrgWalletState>();
-            using var doc = JsonDocument.Parse(body);
-            var root = doc.RootElement;
-            var items = root.ValueKind == JsonValueKind.Array ? root
-                : root.TryGetProperty("items", out var it) ? it
-                : default;
-
-            if (items.ValueKind == JsonValueKind.Array)
+            // Typed, and bound to the property the endpoint actually sends. This previously hunted
+            // for an "items" envelope; GET /api/organizations/ sends "organizations"
+            // (OrganizationListResponse), so nothing ever matched and `orgs` stayed empty. That was
+            // then rendered TWICE as a confident positive: "Organisation not found" for an org that
+            // exists, and "All 0 organisation(s) have a signing wallet" as an all-clear over an
+            // empty set, on a node with 27 tenants (#1617).
+            //
+            // The identical defect was fixed in sorcha_tenant_list during MCP-P0 and this sibling,
+            // reading the SAME endpoint, was missed. Being typed also brings the shape under
+            // scripts/check-mcp-response-shapes.ps1, which cannot see hand-rolled JsonElement walks.
+            OrgListBody? parsed;
+            try
             {
-                foreach (var o in items.EnumerateArray())
+                parsed = JsonSerializer.Deserialize<OrgListBody>(body, SorchaJson.Options);
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Could not parse the organisation list body");
+                return Error("Error", "Could not read the organisation list from the Tenant service.");
+            }
+
+            if (parsed?.Organizations is null)
+            {
+                // Distinct from "there are none": the envelope did not parse, so we know nothing.
+                return Error("Error", "The organisation list came back in an unrecognised shape.");
+            }
+
+            var orgs = new List<OrgWalletState>();
+            foreach (var o in parsed.Organizations)
+            {
+                if (string.IsNullOrWhiteSpace(o.Id)) continue;
+                if (orgId is not null && !string.Equals(o.Id, orgId, StringComparison.OrdinalIgnoreCase)) continue;
+
+                orgs.Add(new OrgWalletState
                 {
-                    var id = o.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
-                    if (id is null) continue;
-                    if (orgId is not null && !string.Equals(id, orgId, StringComparison.OrdinalIgnoreCase)) continue;
-
-                    var address = o.TryGetProperty("walletAddress", out var w) && w.ValueKind == JsonValueKind.String
-                        ? w.GetString()
-                        : null;
-
-                    orgs.Add(new OrgWalletState
-                    {
-                        OrganizationId = id,
-                        Name = o.TryGetProperty("name", out var n) ? n.GetString() : null,
-                        HasWallet = !string.IsNullOrWhiteSpace(address),
-                        WalletAddress = address
-                    });
-                }
+                    OrganizationId = o.Id,
+                    Name = o.Name,
+                    HasWallet = !string.IsNullOrWhiteSpace(o.WalletAddress),
+                    WalletAddress = o.WalletAddress
+                });
             }
 
             if (orgId is not null && orgs.Count == 0)
             {
-                return Error("Error", $"Organisation '{orgId}' was not found.");
+                return Error("Error",
+                    $"Organisation '{orgId}' is not in this account's organisation list "
+                    + $"({parsed.Organizations.Count} listed).");
+            }
+
+            if (orgs.Count == 0)
+            {
+                // Never phrase an empty set as an all-clear.
+                return new OrgWalletStatusResult
+                {
+                    Status = "Success",
+                    Message = "No organisations were returned, so there is nothing to report on.",
+                    CheckedAt = DateTimeOffset.UtcNow,
+                    ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
+                    Organizations = orgs
+                };
             }
 
             var missing = orgs.Where(o => !o.HasWallet).ToList();
@@ -155,6 +186,32 @@ public sealed class OrgWalletStatusTool
         Message = message,
         CheckedAt = DateTimeOffset.UtcNow
     };
+}
+
+/// <summary>
+/// The Tenant Service list body (<c>OrganizationListResponse</c>). The collection property is
+/// <c>organizations</c> — NOT <c>items</c>; reading the wrong one is #1617.
+/// </summary>
+internal sealed class OrgListBody
+{
+    /// <summary>Organisations on this page.</summary>
+    public List<OrgListItem>? Organizations { get; set; }
+
+    /// <summary>Total across all pages.</summary>
+    public int TotalCount { get; set; }
+}
+
+/// <summary>One element of the Tenant Service's <c>organizations</c> array.</summary>
+internal sealed class OrgListItem
+{
+    /// <summary>Organisation id.</summary>
+    public string? Id { get; set; }
+
+    /// <summary>Display name.</summary>
+    public string? Name { get; set; }
+
+    /// <summary>The organisation's signing wallet, when it has one (#1525).</summary>
+    public string? WalletAddress { get; set; }
 }
 
 /// <summary>Result of <c>sorcha_org_wallet_status</c>.</summary>

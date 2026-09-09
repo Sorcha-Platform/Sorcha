@@ -378,14 +378,6 @@ public class BlueprintServiceClient : IBlueprintServiceClient
         SendRawAsync(HttpMethod.Put, $"api/blueprints/{Uri.EscapeDataString(blueprintId)}", blueprintJson, "update blueprint", cancellationToken);
 
     /// <inheritdoc />
-    public Task<string?> GetBlueprintDiffAsync(string blueprintId, int fromVersion, int? toVersion = null, CancellationToken cancellationToken = default)
-    {
-        var url = $"api/blueprints/{Uri.EscapeDataString(blueprintId)}/diff?from={fromVersion}";
-        if (toVersion is { } to && to > 0) url += $"&to={to}";
-        return GetRawAsync(url, "blueprint diff", cancellationToken);
-    }
-
-    /// <inheritdoc />
     public Task<string?> SimulateRouteAsync(string requestJson, CancellationToken cancellationToken = default) =>
         SendRawAsync(HttpMethod.Post, "api/execution/route", requestJson, "simulate route", cancellationToken);
 

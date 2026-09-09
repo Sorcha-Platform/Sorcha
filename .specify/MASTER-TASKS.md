@@ -3,10 +3,41 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.30
+**Version:** 7.31
 **Last Updated:** 2026-09-08
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
+
+> **▶ 2026-09-08 - OPEN TASK LIST: MCP follow-ups from the cold-start run.** One feature, three
+> decisions, three straight fixes. Ordered by what unblocks a meaningful cold-start re-run.
+>
+> | # | Item | Shape | Blocks re-run? |
+> |---|------|-------|----------------|
+> | **#1622** | P1 approval seam unreachable — Claude Code declares no MCP `elicitation.Form` | **FEATURE — needs design** | **YES** |
+> | **#1620** | Register owned by the org signing wallet is publish-dead for everyone | Fix, **needs a decision** | **YES** |
+> | **#1616** | MCP clients routed through the gateway, which owns `/api/stats` | Fix, **needs a decision** | no |
+> | **#1617** | `org_wallet_status` reads `items` from an endpoint sending `organizations` | Straight fix | no |
+> | **#1607** | Dead `GetBlueprintDiffAsync` + mock-only tests | Straight fix | no |
+> | (unfiled) | Peer `DistributeEndpoints.cs:26` — `ContentLength is null or 0`, the #1618 sibling | Straight fix | no |
+> | **#1623** | Uniform wire enums (PR open) | Review — changes live wire values | no |
+>
+> **#1622 is the only genuine feature.** Three routes: wait for upstream `elicitation.Form`; build a
+> capability-independent confirmation; or out-of-band approval (tool returns a URL, human confirms,
+> agent polls). ⚠ **The middle one is the trap** — a `confirm: true` argument is an approval the model
+> grants itself, which is worse than no gate because it looks like one. Any such path must carry
+> something only a human could have supplied.
+>
+> **#1620 decision** — (a) resolve the caller's ORG wallet in the gate (closest to intent, smallest);
+> (b) record an org-DID roster entry alongside the wallet DID; (c) attest the creating admin's linked
+> wallet at register creation. It is authorisation: widening it wrongly is worse than the outage.
+>
+> **#1616 decision** — rename the gateway aggregation to `/api/gateway/stats`, or point the MCP
+> server's register client at `register-service` directly as Tenant already does. The second is
+> smaller but leaves the collision for the next client.
+>
+> Not blocking, but recorded from the run: whether `simulate`/`validate` require a PUBLISHED blueprint,
+> and whether a calculated field is addressable as a disclosure pointer (`/thresholdExceeded`) —
+> unanswered, and direct evidence for **#1609**.
 
 > **2026-09-08 - MCP-P1 Task 10 step 5: the cold-start re-run. The agent was not the ceiling. ✅ MEASURED.**
 >
