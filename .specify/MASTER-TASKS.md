@@ -226,7 +226,7 @@
 > (see the MCP-P0 entry below) — Task 10 connects to n1 directly rather than assuming that pin has
 > been retired.
 
-> **2026-09-04 - Issue #1573: action schema was never enforced on the submission path. ✅ FIXED (engine + processor); rehearsal and /validate still open.**
+> **2026-09-04 - Issue #1573: action schema was never enforced on the submission path. ✅ FIXED (engine + processor + dry-run); `/validate` (#1606) still open.**
 >
 > Blueprints declare their payload contract on `Action.DataSchemas`. `ExecutionEngine.ValidateAsync` and `ActionProcessor.ProcessAsync` validated `Action.Form.Schema` — a property **no** published blueprint sets, defaulting to null on a layout-only `Control`. Caller gated on one property, callee read the other, nothing verified the join, and it **failed open**: every payload validated successfully. On an encrypted (Normal) register the Validator then skips schema checks by design — precisely because it trusts that pre-validation — so **no component validated action payloads at all**.
 >
@@ -242,7 +242,13 @@
 >
 > ⚠ A first pass reported 4 violations; 2 were `type: rejection` envelopes, which both paths legitimately skip. ⚠ And a first comparison blamed 38 `Blueprint.Service.Tests` failures on the fix — it compared an *isolated* baseline against a *full-solution* run. Under identical conditions that project is **1,244/0 either way**; the 38 are full-solution contention.
 >
-> **Still open**: `DryRunStepper` (the F142 rehearsal that gates go-live — it never checked a schema either) and `POST /api/execution/validate` (answers `isValid: true` for anything). Neither is covered by #1573's title.
+> **#1605 — `DryRunStepper` ✅ FIXED (2026-09-09).** It validated `mergedInput` (prior accumulated state with the submission merged on top) — a third, different answer to "what does this action's contract constrain?", where `ActionExecutionService` and `ValidationEngine` both validate the action's own submitted payload. Invisible while the engine read `Form.Schema` and everything passed; once #1604 made validation real the two disagreed **in both directions** — `additionalProperties: false` would pass rehearsal and fail submission, and a field supplied by an earlier action would pass rehearsal and fail submission. Now validates the submitted payload; `mergedInput` still feeds calculations, routing and disclosure, which legitimately read prior-action data.
+>
+> ⚠ **The issue's severity framing was WRONG and is corrected here: the quick dry-run does NOT gate go-live.** `DryRunStepper` has exactly one consumer, `DryRunHarness` (the designer's client-side dry-run). The Go-live unlock comes from the **full** server-side rehearsal — `RehearseStage.AfterRehearsalRefresh` → `RecordRehearsalPassed`, on `RehearsalOutcome.Passed` from `RehearsalOrchestrationService`, which submits through `ActionExecutionService` and so was already fixed by #1604. The only other `RecordRehearsalPassed` call site is a `#if DEBUG || E2E_TEST_HOOKS` seam. The defect was a confidently-wrong predictor, not an unearned pass.
+>
+> ⚠ **Mutation-testing caught a vacuous guard before it was committed**, which is the reusable lesson: the first "field supplied only by an earlier action" test stayed **green** under the reintroduced defect, because its schema carried `additionalProperties: false` *and* the missing required field — so it failed for the other reason whichever data was validated. The fixture now leaves exactly ONE discriminator in play per test.
+>
+> **Still open**: `POST /api/execution/validate` (#1606) — answers `isValid: true` for anything, and resolves the **latest** definition rather than an instance's pin. Not covered by #1573's title.
 
 > **2026-08-29 - Feature 196 (#1591): the validator granted six exemptions from an UNSIGNED field. ✅ DONE, LIVE-VERIFIED 18/18.**
 > **2026-09-05 - MCP-P0: the public MCP tool surface had been completely dead for 6+ days; restored, gated, and role-corrected. LIVE-VERIFIED ON n1 (2026-09-06).**
