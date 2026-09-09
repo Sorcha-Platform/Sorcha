@@ -134,9 +134,12 @@ Use this slice for an agent acting on behalf of an end-user participant in a run
 
 `sorcha_action_details` takes **both an instance id and an action id** (`instanceId`, `actionId`) —
 it reads `GET /api/instances/{instanceId}/actions/{actionId}`, not a bare action id. `sorcha_action_validate`
-takes `blueprintId`, `actionId`, and `dataJson`, posting to `POST /api/execution/validate`; it validates
-against the blueprint's **latest published definition**, not an instance's pinned one (issue #1606) —
-an agent checking a running instance's own pinned version should not treat a pass here as final.
+takes `blueprintId`, `actionId`, `dataJson` and an optional `instanceId`, posting to
+`POST /api/execution/validate`. **Pass `instanceId` when pre-flighting a payload for a running
+instance** — that validates against the definition that instance is pinned to (Feature 194/195),
+which is the only answer guaranteed to match what submission does. Without it the payload is checked
+against the blueprint's current **draft** definition, so on a blueprint edited since the instance
+started a pass here is not final. The result's `definitionScope` says which was used.
 
 Signing an action is **implicit inside `sorcha_action_submit`** — there is no separate "sign, then submit"
 step for an agent to orchestrate. A `sorcha_wallet_sign` tool exists in source
