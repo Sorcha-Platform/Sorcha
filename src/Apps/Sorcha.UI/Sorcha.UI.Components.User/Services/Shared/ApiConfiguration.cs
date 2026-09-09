@@ -101,10 +101,15 @@ public static class ApiConfiguration
         string.IsNullOrEmpty(GatewayBaseUrl) ? "/api/health" : $"{GatewayBaseUrl}/api/health";
 
     /// <summary>
-    /// System statistics endpoint (via gateway)
+    /// Gateway-level aggregation of every service's health and metrics.
     /// </summary>
-    public static string StatsUrl =>
-        string.IsNullOrEmpty(GatewayBaseUrl) ? "/api/stats" : $"{GatewayBaseUrl}/api/stats";
+    /// <remarks>
+    /// <c>/api/gateway/stats</c>, not <c>/api/stats</c> (#1616). The bare path now proxies to the
+    /// Register Service's platform-wide register/transaction counts; the gateway owning it meant
+    /// every client reaching a backend THROUGH the gateway got this body instead.
+    /// </remarks>
+    public static string GatewayStatsUrl =>
+        string.IsNullOrEmpty(GatewayBaseUrl) ? "/api/gateway/stats" : $"{GatewayBaseUrl}/api/gateway/stats";
 
     /// <summary>
     /// Blueprint service status endpoint
