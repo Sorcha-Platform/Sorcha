@@ -18,7 +18,7 @@
 > | **#1616** | MCP clients routed through the gateway, which owns `/api/stats` | Fix, **needs a decision** | no |
 > | **#1617** | `org_wallet_status` reads `items` from an endpoint sending `organizations` | Straight fix | no |
 > | **#1607** | Dead `GetBlueprintDiffAsync` + mock-only tests | Straight fix | no |
-> | (unfiled) | Peer `DistributeEndpoints.cs:26` — `ContentLength is null or 0`, the #1618 sibling | Straight fix | no |
+> | **#1624** | Peer `DistributeEndpoints.cs:26` — `ContentLength is null or 0`, the #1618 sibling | Straight fix — **✅ DONE** | no |
 > | **#1623** | Uniform wire enums (PR open) | Review — changes live wire values | no |
 >
 > **#1622 is the only genuine feature.** Three routes: wait for upstream `elicitation.Form`; build a
