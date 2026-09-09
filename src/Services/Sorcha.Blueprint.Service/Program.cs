@@ -1992,56 +1992,25 @@ var executionGroup = app.MapGroup("/api/execution")
 // <summary>
 // Validate action data against schema (helper endpoint)
 // </summary>
-executionGroup.MapPost("/validate", async (
+executionGroup.MapPost("/validate", (
     ValidateRequest request,
     IBlueprintStore blueprintStore,
-    Sorcha.Blueprint.Engine.Interfaces.IExecutionEngine executionEngine) =>
-{
-    try
-    {
-        // Get blueprint
-        var blueprint = await blueprintStore.GetAsync(request.BlueprintId);
-        if (blueprint == null)
-        {
-            return Results.BadRequest(new { error = "Blueprint not found" });
-        }
-
-        // Get action (parse ActionId string to int)
-        if (!int.TryParse(request.ActionId, out var actionIdInt))
-        {
-            return Results.BadRequest(new { error = "Invalid action ID format" });
-        }
-
-        var action = blueprint.Actions.FirstOrDefault(a => a.Id == actionIdInt);
-        if (action == null)
-        {
-            return Results.BadRequest(new { error = "Action not found in blueprint" });
-        }
-
-        // Validate
-        var result = await executionEngine.ValidateAsync(request.Data, action);
-
-        return Results.Ok(new
-        {
-            isValid = result.IsValid,
-            errors = result.Errors.Select(e => new
-            {
-                path = e.InstanceLocation,
-                message = e.Message,
-                schemaLocation = e.SchemaLocation,
-                keyword = e.Keyword
-            })
-        });
-    }
-    catch (Exception ex)
-    {
-        logger.LogWarning(ex, "Request failed");
-        return Results.Problem("An error occurred processing the request.", statusCode: 400);
-    }
-})
+    Sorcha.Blueprint.Service.Storage.IInstanceStore instanceStore,
+    Sorcha.Blueprint.Service.Services.Interfaces.IActionResolverService actionResolver,
+    Sorcha.Blueprint.Engine.Interfaces.IExecutionEngine executionEngine,
+    CancellationToken ct) =>
+        Sorcha.Blueprint.Service.Endpoints.ExecutionValidationEndpoint.HandleAsync(
+            request, blueprintStore, instanceStore, actionResolver, executionEngine, logger, ct))
 .WithName("ValidateAction")
 .WithSummary("Validate action data")
-.WithDescription("Validate action data against the action's JSON Schema without executing the full workflow");
+.WithDescription(
+    "Validate a payload against every schema an action declares on dataSchemas, without executing "
+    + "the workflow. Supply instanceId to validate against the definition that instance is PINNED "
+    + "to (Feature 194) — the only mode whose answer is guaranteed to match what submission "
+    + "actually does. Omit it and the payload is validated against the blueprint's current DRAFT "
+    + "definition, which is the right contract for an authoring surface and the wrong one for "
+    + "pre-flighting against a running instance. The response says which it answered for, in "
+    + "definitionScope (pinned | draft).");
 
 // <summary>
 // Apply calculations to action data (helper endpoint)
@@ -4265,9 +4234,27 @@ public record PublishResult
 /// </summary>
 public record ValidateRequest
 {
+    /// <summary>The blueprint the action belongs to.</summary>
     public required string BlueprintId { get; init; }
+
+    /// <summary>The action whose data contract the payload must satisfy.</summary>
     public required string ActionId { get; init; }
+
+    /// <summary>The payload to validate.</summary>
     public required Dictionary<string, object> Data { get; init; }
+
+    /// <summary>
+    /// Optional. The instance to answer for — when supplied, the payload is validated against the
+    /// definition that instance is PINNED to (Feature 194) rather than the current draft, which is
+    /// the only mode whose verdict is guaranteed to match a real submission (#1606).
+    /// </summary>
+    /// <remarks>
+    /// Optional rather than required because the authoring surfaces that call this endpoint are
+    /// pre-flighting a payload against a blueprint being edited, which has no instance. Making it
+    /// required would break them; leaving it absent silently answering for a different definition
+    /// is what this field exists to end.
+    /// </remarks>
+    public string? InstanceId { get; init; }
 }
 
 /// <summary>
