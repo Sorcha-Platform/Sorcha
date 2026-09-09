@@ -51,8 +51,15 @@ public class SerilogSingleWriterTests
                 .CreateLogger("Probe.Category")
                 .LogInformation("SENTINEL {Value}", "abc");
 
-            // Deterministic flush — the console processor drains on dispose, so this does not race.
-            app.Services.GetRequiredService<ILoggerFactory>().Dispose();
+            // Deterministic flush — and it has to be the HOST, not the logger factory.
+            // ConsoleLoggerProvider writes from a background thread that is drained by its own
+            // Dispose(), and it is owned by the DI container: LoggerFactory disposes only the
+            // providers handed to it through AddProvider(), never the ones injected into its
+            // constructor. Disposing the factory therefore drains nothing, and reading the buffer
+            // straight after races the write — which is why AHostThatDoesNotUseSerilog flaked under
+            // CI load while its two siblings never did (Serilog's console sink writes synchronously
+            // on the calling thread, so only the console-provider assertion was ever exposed).
+            ((IDisposable)app).Dispose();
             Serilog.Log.CloseAndFlush();
 
             return (buffer.ToString(), providers);
