@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Sorcha.Blueprint.Engine.Implementation;
 using Sorcha.Blueprint.Engine.Interfaces;
@@ -399,5 +400,167 @@ public class DryRunStepperTests
         state.GetAccumulatedState().Should().BeEmpty();
         state.CompletedActionIds.Should().BeEmpty();
         state.CurrentActionId.Should().BeNull();
+    }
+
+    // === Issue #1605: rehearsal must validate what real execution validates ===
+
+    /// <summary>
+    /// Two actions in the shape a PUBLISHED blueprint actually has — the contract on
+    /// <c>dataSchemas</c>, not on <c>form.schema</c>. Both schemas set
+    /// <c>additionalProperties: false</c>, which is what makes the difference between validating the
+    /// submitted payload and validating the merged input observable at all.
+    /// </summary>
+    /// <remarks>
+    /// The older fixture above declares its contract on <c>Form.Schema</c>, a shape no blueprint in
+    /// the repo produces (CLAUDE.md pattern 24). A test written against it would exercise the
+    /// fallback arm of <c>ActionSchemaValidation</c> and prove nothing about the published path,
+    /// which is the trap #1573 was hidden behind.
+    /// </remarks>
+    /// <param name="reviewRequired">The review action's <c>required</c> list.</param>
+    /// <param name="reviewForbidsExtras">
+    /// Whether the review action sets <c>additionalProperties: false</c>. Each test below leaves
+    /// exactly ONE discriminator in play — extras or a missing required field, never both — because
+    /// a schema carrying both fails for either reason and the test then passes whichever data the
+    /// stepper validates. Mutation-testing caught precisely that: the second direction was green
+    /// under the reintroduced defect.
+    /// </param>
+    private static BpModels.Blueprint CreatePublishedShapeBlueprint(
+        string[] reviewRequired, bool reviewForbidsExtras)
+    {
+        return new BpModels.Blueprint
+        {
+            Id = "published-shape-bp",
+            Title = "Published Shape",
+            Description = "Two steps whose contracts live on dataSchemas, as published blueprints do",
+            Version = 1,
+            Participants =
+            [
+                new BpModels.Participant { Id = "applicant", Name = "Applicant", WalletAddress = "wallet-applicant" },
+                new BpModels.Participant { Id = "reviewer", Name = "Reviewer", WalletAddress = "wallet-reviewer" },
+            ],
+            Actions =
+            [
+                new BpModels.Action
+                {
+                    Id = 0,
+                    Title = "Apply",
+                    Sender = "applicant",
+                    IsStartingAction = true,
+                    DataSchemas =
+                    [
+                        JsonDocument.Parse("""
+                        {
+                            "type": "object",
+                            "properties": {
+                                "amount": { "type": "integer" },
+                                "name": { "type": "string" }
+                            },
+                            "required": ["amount", "name"],
+                            "additionalProperties": false
+                        }
+                        """),
+                    ],
+                    Routes = [new BpModels.Route { Id = "to-review", NextActionIds = [1], IsDefault = true }],
+                },
+                new BpModels.Action
+                {
+                    Id = 1,
+                    Title = "Review",
+                    Sender = "reviewer",
+                    DataSchemas =
+                    [
+                        JsonDocument.Parse($$"""
+                        {
+                            "type": "object",
+                            "properties": { "decision": { "type": "string" }, "name": { "type": "string" } },
+                            "required": {{System.Text.Json.JsonSerializer.Serialize(reviewRequired)}},
+                            "additionalProperties": {{(reviewForbidsExtras ? "false" : "true")}}
+                        }
+                        """),
+                    ],
+                    Routes = [new BpModels.Route { Id = "done", NextActionIds = [], IsDefault = true }],
+                },
+            ],
+        };
+    }
+
+    private static readonly Dictionary<string, object> ConformingApplication =
+        new() { ["amount"] = 100, ["name"] = "Ada" };
+
+    [Fact]
+    public async Task ProcessStep_PayloadOmittingARequiredFieldOfDataSchemas_Fails()
+    {
+        var (_, stepper, _) = CreateHarness();
+        var blueprint = CreatePublishedShapeBlueprint(["decision"], reviewForbidsExtras: false);
+
+        // "name" is required and absent.
+        var step = await stepper.ProcessStepAsync(
+            blueprint, blueprint.Actions.First(a => a.Id == 0),
+            new Dictionary<string, object> { ["amount"] = 100 });
+
+        step.Status.Should().Be(DryRunStepStatus.Failed,
+            "go-live is gated on a RehearsalPass, so a rehearsal that cannot fail on a schema "
+            + "violation is not evidence that the definition is executable (#1605)");
+        step.Validation!.IsValid.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ProcessStep_ConformingPayload_Passes()
+    {
+        // Anti-vacuity for the test above: without this, a stepper that failed everything would
+        // satisfy it.
+        var (_, stepper, _) = CreateHarness();
+        var blueprint = CreatePublishedShapeBlueprint(["decision"], reviewForbidsExtras: false);
+
+        var step = await stepper.ProcessStepAsync(
+            blueprint, blueprint.Actions.First(a => a.Id == 0), ConformingApplication);
+
+        step.Status.Should().Be(DryRunStepStatus.Done);
+        step.Validation!.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ProcessStep_ValidatesTheSubmittedPayload_NotTheAccumulatedStateMergedWithIt()
+    {
+        var (_, stepper, state) = CreateHarness();
+        var blueprint = CreatePublishedShapeBlueprint(["decision"], reviewForbidsExtras: true);
+
+        var apply = await stepper.ProcessStepAsync(
+            blueprint, blueprint.Actions.First(a => a.Id == 0), ConformingApplication);
+        apply.Status.Should().Be(DryRunStepStatus.Done);
+
+        // The walk now carries amount + name, and the review schema forbids them.
+        state.GetAccumulatedState().Should().ContainKeys("amount", "name");
+
+        var review = await stepper.ProcessStepAsync(
+            blueprint, blueprint.Actions.First(a => a.Id == 1),
+            new Dictionary<string, object> { ["decision"] = "approve" });
+
+        review.Status.Should().Be(DryRunStepStatus.Done,
+            "real execution validates the action's own submitted payload, so rehearsing the merged "
+            + "input would fail a step that submits cleanly against a live register (#1605)");
+        review.Validation!.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ProcessStep_FieldSuppliedOnlyByAnEarlierAction_StillFails()
+    {
+        // The other direction, and the reason the pair matters: validating the merged input would
+        // pass this, and the submission it predicts would then be refused.
+        var (_, stepper, _) = CreateHarness();
+        var blueprint = CreatePublishedShapeBlueprint(["decision", "name"], reviewForbidsExtras: false);
+
+        var apply = await stepper.ProcessStepAsync(
+            blueprint, blueprint.Actions.First(a => a.Id == 0), ConformingApplication);
+        apply.Status.Should().Be(DryRunStepStatus.Done);
+
+        var review = await stepper.ProcessStepAsync(
+            blueprint, blueprint.Actions.First(a => a.Id == 1),
+            new Dictionary<string, object> { ["decision"] = "approve" });
+
+        review.Status.Should().Be(DryRunStepStatus.Failed,
+            "\"name\" is required by the review action and was supplied by an earlier one, so the "
+            + "merged input would satisfy it while a real submission would not");
+        review.Validation!.IsValid.Should().BeFalse();
     }
 }

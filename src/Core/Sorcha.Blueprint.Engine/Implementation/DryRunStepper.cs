@@ -25,10 +25,13 @@ namespace Sorcha.Blueprint.Engine.Implementation;
 /// exercising the credential pipeline (Clarification Q3 / FR-018).
 /// </para>
 /// <para>
-/// The routing and disclosure outcomes this driver produces are exactly the engine's canonical
-/// outcomes — it calls <see cref="IExecutionEngine.DetermineRoutingAsync"/> and
-/// <see cref="IExecutionEngine.ApplyDisclosures"/> directly, so the dry-run cannot diverge from
-/// real execution for the behaviours it covers.
+/// The validation, routing and disclosure outcomes this driver produces are exactly the engine's
+/// canonical outcomes — it calls <see cref="IExecutionEngine.ValidateAsync"/>,
+/// <see cref="IExecutionEngine.DetermineRoutingAsync"/> and
+/// <see cref="IExecutionEngine.ApplyDisclosures"/> directly, <b>on the same data those steps see in
+/// real execution</b>, so the dry-run cannot diverge from it for the behaviours it covers. That last
+/// clause is load-bearing and was not always true: see the note on the validation step below
+/// (#1605).
 /// </para>
 /// <para>WASM-safe: no <c>HttpClient</c>, no platform APIs.</para>
 /// </remarks>
@@ -85,21 +88,42 @@ public sealed class DryRunStepper
 
         _walkState.SetCurrentAction(action.Id);
 
+        var payload = new Dictionary<string, object>(submittedPayload, StringComparer.Ordinal);
+
         var step = new DryRunStep
         {
             ActionId = action.Id,
             Title = action.Title,
             ActingRole = action.Sender,
             Status = DryRunStepStatus.Current,
-            SubmittedPayload = new Dictionary<string, object>(submittedPayload, StringComparer.Ordinal),
+            SubmittedPayload = payload,
             CredentialNote = BuildCredentialNote(action),
         };
 
         // Build the merged input: prior accumulated state + this step's submission.
         var mergedInput = _walkState.BuildMergedInput(submittedPayload);
 
-        // 1. Schema validation (canonical engine outcome).
-        var validation = await _engine.ValidateAsync(mergedInput, action, ct);
+        // 1. Schema validation (canonical engine outcome) — of the action's own SUBMITTED PAYLOAD,
+        //    which is what both halves of the platform validate: ActionExecutionService on
+        //    submission, and ValidationEngine.ValidateSchemaAsync on the ledger. This step used to
+        //    validate `mergedInput` instead, which is prior accumulated state with the submission
+        //    merged on top — a third, different answer to "what does this action's contract
+        //    constrain?" (#1605).
+        //
+        //    That divergence was invisible while the engine read Action.Form.Schema, because no
+        //    published blueprint sets it and every payload validated (#1573). Now that the contract
+        //    is read from dataSchemas the two disagree in both directions: an `additionalProperties:
+        //    false` schema would pass here (carried prior fields are present and permitted by
+        //    nothing) and fail real execution, while a schema requiring a field an earlier action
+        //    supplied would pass here and fail on submission.
+        //
+        //    It matters more than an ordinary validation gap because go-live is gated on a
+        //    RehearsalPass. A rehearsal that predicts the wrong verdict is worse than one that
+        //    checks nothing, because people act on it.
+        //
+        //    mergedInput is still what calculations, routing and disclosure see — they legitimately
+        //    read prior-action data, and that is why it is built.
+        var validation = await _engine.ValidateAsync(payload, action, ct);
         step.Validation = validation;
         if (!validation.IsValid)
         {
