@@ -39,6 +39,16 @@
 > and whether a calculated field is addressable as a disclosure pointer (`/thresholdExceeded`) —
 > unanswered, and direct evidence for **#1609**.
 
+> **2026-09-09 - CI flake fixed; it was a real test defect, not load. ✅ DONE.**
+> `SerilogSingleWriterTests.AHostThatDoesNotUseSerilog_KeepsItsConsoleProvider` read the captured
+> console buffer immediately after `ILoggerFactory.Dispose()`, believing that drained the console
+> provider. It drains nothing: `LoggerFactory` disposes only providers handed to it through
+> `AddProvider()`, never the ones injected into its constructor — and `ConsoleLoggerProvider`, which
+> the DI container owns, writes from a background thread drained by its own `Dispose()`. The test now
+> disposes the **host**. Only that one assertion could ever flake, which is what identified it:
+> its two siblings assert Serilog's output, and Serilog's console sink writes synchronously on the
+> calling thread. First observed on PR #1627, whose change (ApiGateway only) could not have caused it.
+
 > **2026-09-08 - MCP-P1 Task 10 step 5: the cold-start re-run. The agent was not the ceiling. ✅ MEASURED.**
 >
 > Re-ran the cold-start experiment on the deployed P1 surface. **It did not reach a running instance,
