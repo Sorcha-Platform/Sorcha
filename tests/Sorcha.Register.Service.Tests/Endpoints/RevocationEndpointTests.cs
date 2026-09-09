@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Serialization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -53,7 +54,7 @@ public class RevocationEndpointTests : IClassFixture<RegisterServiceWebApplicati
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Accepted);
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var result = await response.Content.ReadSorchaAsync<JsonElement>();
         result.GetProperty("originalTxId").GetString().Should().Be(txId);
         result.GetProperty("status").GetString().Should().Be("submitted");
         result.GetProperty("revocationTxId").GetString().Should().NotBeNullOrWhiteSpace();
@@ -100,7 +101,7 @@ public class RevocationEndpointTests : IClassFixture<RegisterServiceWebApplicati
 
         // Assert
         secondResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        var result = await secondResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var result = await secondResponse.Content.ReadSorchaAsync<JsonElement>();
         result.GetProperty("error").GetString().Should().Contain("already revoked");
     }
 
@@ -162,9 +163,9 @@ public class RevocationEndpointTests : IClassFixture<RegisterServiceWebApplicati
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var result = await response.Content.ReadSorchaAsync<JsonElement>();
         result.GetProperty("transactionId").GetString().Should().Be(txId);
-        result.GetProperty("status").GetInt32().Should().Be((int)TransactionLifecycleStatus.Active);
+        result.GetProperty("status").Deserialize<TransactionLifecycleStatus>(SorchaJson.Options).Should().Be(TransactionLifecycleStatus.Active);
     }
 
     [Fact]
@@ -188,9 +189,9 @@ public class RevocationEndpointTests : IClassFixture<RegisterServiceWebApplicati
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var result = await response.Content.ReadSorchaAsync<JsonElement>();
         result.GetProperty("transactionId").GetString().Should().Be(txId);
-        result.GetProperty("status").GetInt32().Should().Be((int)TransactionLifecycleStatus.Revoked);
+        result.GetProperty("status").Deserialize<TransactionLifecycleStatus>(SorchaJson.Options).Should().Be(TransactionLifecycleStatus.Revoked);
         result.GetProperty("revocationTxId").GetString().Should().NotBeNullOrWhiteSpace();
     }
 
@@ -217,9 +218,9 @@ public class RevocationEndpointTests : IClassFixture<RegisterServiceWebApplicati
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var result = await response.Content.ReadSorchaAsync<JsonElement>();
         result.GetProperty("transactionId").GetString().Should().Be(originalTxId);
-        result.GetProperty("status").GetInt32().Should().Be((int)TransactionLifecycleStatus.Superseded);
+        result.GetProperty("status").Deserialize<TransactionLifecycleStatus>(SorchaJson.Options).Should().Be(TransactionLifecycleStatus.Superseded);
         result.GetProperty("supersededByTxId").GetString().Should().Be(supersedingTxId);
     }
 
@@ -271,7 +272,7 @@ public class RevocationEndpointTests : IClassFixture<RegisterServiceWebApplicati
 
         var response = await _client.PostAsJsonAsync(
             $"/api/registers/{_testRegisterId}/transactions", transaction);
-        var result = await response.Content.ReadFromJsonAsync<TransactionModel>();
+        var result = await response.Content.ReadSorchaAsync<TransactionModel>();
         return result!.TxId;
     }
 }

@@ -99,21 +99,25 @@ public enum LayoutTypes
     /// <summary>
     /// Arranges elements vertically (stacked top to bottom)
     /// </summary>
+    [JsonStringEnumMemberName("VerticalLayout")]
     VerticalLayout,
 
     /// <summary>
     /// Arranges elements horizontally (side by side)
     /// </summary>
+    [JsonStringEnumMemberName("HorizontalLayout")]
     HorizontalLayout,
 
     /// <summary>
     /// Groups multiple elements together (many items)
     /// </summary>
+    [JsonStringEnumMemberName("Group")]
     Group,
 
     /// <summary>
     /// Categorization layout (one of many selections)
     /// </summary>
+    [JsonStringEnumMemberName("Categorization")]
     Categorization
 }
 
@@ -127,60 +131,70 @@ public enum ControlTypes
     /// Container control for organizing other controls
     /// </summary>
     [DataAnnotations.Display(Name = "Layout")]
+    [JsonStringEnumMemberName("Layout")]
     Layout,
 
     /// <summary>
     /// Read-only text label for displaying information
     /// </summary>
     [DataAnnotations.Display(Name = "Label")]
+    [JsonStringEnumMemberName("Label")]
     Label,
 
     /// <summary>
     /// Single-line text input field
     /// </summary>
     [DataAnnotations.Display(Name = "Single Line Text")]
+    [JsonStringEnumMemberName("TextLine")]
     TextLine,
 
     /// <summary>
     /// Multi-line text input area for longer content
     /// </summary>
     [DataAnnotations.Display(Name = "Text Area")]
+    [JsonStringEnumMemberName("TextArea")]
     TextArea,
 
     /// <summary>
     /// Numeric input field for integer or decimal values
     /// </summary>
     [DataAnnotations.Display(Name = "Number")]
+    [JsonStringEnumMemberName("Numeric")]
     Numeric,
 
     /// <summary>
     /// Date and time picker control
     /// </summary>
     [DataAnnotations.Display(Name = "Date/Time")]
+    [JsonStringEnumMemberName("DateTime")]
     DateTime,
 
     /// <summary>
     /// File upload control for selecting and uploading files
     /// </summary>
     [DataAnnotations.Display(Name = "File")]
+    [JsonStringEnumMemberName("File")]
     File,
 
     /// <summary>
     /// Multiple choice selection (radio buttons or checkboxes)
     /// </summary>
     [DataAnnotations.Display(Name = "Multiple Choice")]
+    [JsonStringEnumMemberName("Choice")]
     Choice,
 
     /// <summary>
     /// Boolean checkbox for true/false values
     /// </summary>
     [DataAnnotations.Display(Name = "Checkbox")]
+    [JsonStringEnumMemberName("Checkbox")]
     Checkbox,
 
     /// <summary>
     /// Dropdown selection list for choosing from predefined options
     /// </summary>
     [DataAnnotations.Display(Name = "Selection")]
+    [JsonStringEnumMemberName("Selection")]
     Selection,
 
     /// <summary>
@@ -191,6 +205,7 @@ public enum ControlTypes
     /// is configured. Feature 103 US3.
     /// </summary>
     [DataAnnotations.Display(Name = "Postcode Lookup")]
+    [JsonStringEnumMemberName("PostcodeLookup")]
     PostcodeLookup,
 
     /// <summary>
@@ -204,6 +219,7 @@ public enum ControlTypes
     /// cannot edit it. Feature 137 (cross-node submission, C3).
     /// </summary>
     [DataAnnotations.Display(Name = "Holder Key")]
+    [JsonStringEnumMemberName("HolderKey")]
     HolderKey,
 
     /// <summary>
@@ -218,6 +234,7 @@ public enum ControlTypes
     /// Public material only — the user cannot edit it.
     /// </summary>
     [DataAnnotations.Display(Name = "Device Key")]
+    [JsonStringEnumMemberName("DeviceKey")]
     DeviceKey,
 
     /// <summary>
@@ -229,5 +246,6 @@ public enum ControlTypes
     /// carries only <c>step</c> and the optional end labels. Feature AIAS M2.
     /// </summary>
     [DataAnnotations.Display(Name = "Slider")]
+    [JsonStringEnumMemberName("Slider")]
     Slider
 }

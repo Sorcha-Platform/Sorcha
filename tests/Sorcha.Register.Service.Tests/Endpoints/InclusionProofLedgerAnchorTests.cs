@@ -140,7 +140,7 @@ public class InclusionProofLedgerAnchorTests : IClassFixture<RegisterServiceWebA
         var response = await _client.GetAsync(
             $"/api/registers/{_registerId}/transactions/{txId}/inclusion-proof");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        return await response.Content.ReadFromJsonAsync<JsonElement>();
+        return await response.Content.ReadSorchaAsync<JsonElement>();
     }
 
     private async Task<JsonElement> VerifyAsync(JsonElement proof, long? docketNumber)
@@ -152,7 +152,7 @@ public class InclusionProofLedgerAnchorTests : IClassFixture<RegisterServiceWebA
             proofPath = proof.GetProperty("proofPath").EnumerateArray().Select(step => new
             {
                 hash = step.GetProperty("hash").GetString(),
-                position = step.GetProperty("position").GetInt32()
+                position = step.GetProperty("position")
             }).ToArray(),
             docketNumber
         };
@@ -160,7 +160,7 @@ public class InclusionProofLedgerAnchorTests : IClassFixture<RegisterServiceWebA
         var response = await _client.PostAsJsonAsync(
             $"/api/registers/{_registerId}/inclusion-proofs/verify", request);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        return await response.Content.ReadFromJsonAsync<JsonElement>();
+        return await response.Content.ReadSorchaAsync<JsonElement>();
     }
 
     private static int _nextDocketNumber;

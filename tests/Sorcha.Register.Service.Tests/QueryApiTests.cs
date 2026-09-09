@@ -43,7 +43,7 @@ public class QueryApiTests : IClassFixture<RegisterServiceWebApplicationFactory>
         // Act
         var response = await _client.GetAsync(
             $"/api/query/wallets/{_testWalletAddress}/transactions?registerId={_testRegisterId}&page=1&pageSize=2");
-        var result = await response.Content.ReadFromJsonAsync<PaginatedResponse>();
+        var result = await response.Content.ReadSorchaAsync<PaginatedResponse>();
 
         // Assert
         result.Should().NotBeNull();
@@ -83,7 +83,7 @@ public class QueryApiTests : IClassFixture<RegisterServiceWebApplicationFactory>
         // Act
         var response = await _client.GetAsync(
             $"/api/query/senders/{_testWalletAddress}/transactions?registerId={_testRegisterId}&page=1&pageSize=20");
-        var result = await response.Content.ReadFromJsonAsync<PaginatedResponse>();
+        var result = await response.Content.ReadSorchaAsync<PaginatedResponse>();
 
         // Assert
         result!.Items.Should().OnlyContain(t => t.SenderWallet == _testWalletAddress);
@@ -113,7 +113,7 @@ public class QueryApiTests : IClassFixture<RegisterServiceWebApplicationFactory>
         // Act — blueprint endpoint returns IEnumerable<TransactionModel>, not paginated
         var response = await _client.GetAsync(
             $"/api/query/blueprints/{blueprintId}/transactions?registerId={_testRegisterId}&instanceId={instanceId}");
-        var result = await response.Content.ReadFromJsonAsync<TransactionModel[]>();
+        var result = await response.Content.ReadSorchaAsync<TransactionModel[]>();
 
         // Assert
         result.Should().NotBeNull();
@@ -141,7 +141,7 @@ public class QueryApiTests : IClassFixture<RegisterServiceWebApplicationFactory>
     {
         // Act
         var response = await _client.GetAsync($"/api/query/stats?registerId={_testRegisterId}");
-        var stats = await response.Content.ReadFromJsonAsync<TransactionStatistics>();
+        var stats = await response.Content.ReadSorchaAsync<TransactionStatistics>();
 
         // Assert
         stats.Should().NotBeNull();
@@ -160,11 +160,11 @@ public class QueryApiTests : IClassFixture<RegisterServiceWebApplicationFactory>
         // Act
         var page1Response = await _client.GetAsync(
             $"/api/query/wallets/{_testWalletAddress}/transactions?registerId={_testRegisterId}&page=1&pageSize=1");
-        var page1 = await page1Response.Content.ReadFromJsonAsync<PaginatedResponse>();
+        var page1 = await page1Response.Content.ReadSorchaAsync<PaginatedResponse>();
 
         var page2Response = await _client.GetAsync(
             $"/api/query/wallets/{_testWalletAddress}/transactions?registerId={_testRegisterId}&page=2&pageSize=1");
-        var page2 = await page2Response.Content.ReadFromJsonAsync<PaginatedResponse>();
+        var page2 = await page2Response.Content.ReadSorchaAsync<PaginatedResponse>();
 
         // Assert
         page1!.Page.Should().Be(1);
@@ -181,11 +181,11 @@ public class QueryApiTests : IClassFixture<RegisterServiceWebApplicationFactory>
         // Act
         var page1Response = await _client.GetAsync(
             $"/api/query/senders/{_testWalletAddress}/transactions?registerId={_testRegisterId}&page=1&pageSize=1");
-        var page1 = await page1Response.Content.ReadFromJsonAsync<PaginatedResponse>();
+        var page1 = await page1Response.Content.ReadSorchaAsync<PaginatedResponse>();
 
         var page2Response = await _client.GetAsync(
             $"/api/query/senders/{_testWalletAddress}/transactions?registerId={_testRegisterId}&page=2&pageSize=1");
-        var page2 = await page2Response.Content.ReadFromJsonAsync<PaginatedResponse>();
+        var page2 = await page2Response.Content.ReadSorchaAsync<PaginatedResponse>();
 
         // Assert
         page1!.Page.Should().Be(1);
@@ -209,7 +209,7 @@ public class QueryApiTests : IClassFixture<RegisterServiceWebApplicationFactory>
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var result = await response.Content.ReadFromJsonAsync<TransactionModel[]>();
+        var result = await response.Content.ReadSorchaAsync<TransactionModel[]>();
         result.Should().NotBeNull();
         result!.Length.Should().BeGreaterThanOrEqualTo(0);
     }

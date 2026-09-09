@@ -16,11 +16,13 @@ public enum RevocationCheckPolicy
     /// Block the action until revocation status can be confirmed.
     /// This is the default and recommended setting for high-security scenarios.
     /// </summary>
+    [JsonStringEnumMemberName("FailClosed")]
     FailClosed = 0,
 
     /// <summary>
     /// Allow the action to proceed with an audit warning recorded on the ledger.
     /// The credential is flagged as "revocation status unverified" in the transaction record.
     /// </summary>
+    [JsonStringEnumMemberName("FailOpen")]
     FailOpen = 1
 }

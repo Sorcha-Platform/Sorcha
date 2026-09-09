@@ -49,7 +49,7 @@ public class TransactionApiTests : IClassFixture<RegisterServiceWebApplicationFa
 
         // Act
         var response = await _client.PostAsJsonAsync($"/api/registers/{_testRegisterId}/transactions", transaction);
-        var result = await response.Content.ReadFromJsonAsync<TransactionModel>();
+        var result = await response.Content.ReadSorchaAsync<TransactionModel>();
 
         // Assert
         result.Should().NotBeNull();
@@ -93,14 +93,14 @@ public class TransactionApiTests : IClassFixture<RegisterServiceWebApplicationFa
         // Arrange
         var transaction = CreateValidTransactionRequest();
         var submitResponse = await _client.PostAsJsonAsync($"/api/registers/{_testRegisterId}/transactions", transaction);
-        var submitted = await submitResponse.Content.ReadFromJsonAsync<TransactionModel>();
+        var submitted = await submitResponse.Content.ReadSorchaAsync<TransactionModel>();
 
         // Act
         var response = await _client.GetAsync($"/api/registers/{_testRegisterId}/transactions/{submitted!.TxId}");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var result = await response.Content.ReadFromJsonAsync<TransactionModel>();
+        var result = await response.Content.ReadSorchaAsync<TransactionModel>();
         result!.TxId.Should().Be(submitted.TxId);
     }
 
@@ -137,7 +137,7 @@ public class TransactionApiTests : IClassFixture<RegisterServiceWebApplicationFa
 
         // Act
         var response = await _client.GetAsync($"/api/registers/{_testRegisterId}/transactions?$skip=0&$top=2");
-        var result = await response.Content.ReadFromJsonAsync<PaginatedTransactionResponse>();
+        var result = await response.Content.ReadSorchaAsync<PaginatedTransactionResponse>();
 
         // Assert
         result.Should().NotBeNull();
@@ -159,7 +159,7 @@ public class TransactionApiTests : IClassFixture<RegisterServiceWebApplicationFa
 
         // Act
         var response = await _client.GetAsync($"/api/registers/{_testRegisterId}/transactions?page=1&pageSize=10");
-        var result = await response.Content.ReadFromJsonAsync<PaginatedTransactionResponse>();
+        var result = await response.Content.ReadSorchaAsync<PaginatedTransactionResponse>();
 
         // Assert
         result!.Transactions.Should().BeInDescendingOrder(t => t.TimeStamp);
@@ -181,12 +181,12 @@ public class TransactionApiTests : IClassFixture<RegisterServiceWebApplicationFa
 
         var submitResponse = await _client.PostAsJsonAsync($"/api/registers/{_testRegisterId}/transactions", transaction);
         submitResponse.StatusCode.Should().Be(HttpStatusCode.Created);
-        var submitted = await submitResponse.Content.ReadFromJsonAsync<TransactionModel>();
+        var submitted = await submitResponse.Content.ReadSorchaAsync<TransactionModel>();
 
         // Retrieve
         var getResponse = await _client.GetAsync($"/api/registers/{_testRegisterId}/transactions/{submitted!.TxId}");
         getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var retrieved = await getResponse.Content.ReadFromJsonAsync<TransactionModel>();
+        var retrieved = await getResponse.Content.ReadSorchaAsync<TransactionModel>();
 
         // Assert
         retrieved.Should().NotBeNull();
@@ -225,7 +225,7 @@ public class TransactionApiTests : IClassFixture<RegisterServiceWebApplicationFa
 
         // Act
         var response = await _client.PostAsJsonAsync($"/api/registers/{_testRegisterId}/transactions", transaction);
-        var result = await response.Content.ReadFromJsonAsync<TransactionModel>();
+        var result = await response.Content.ReadSorchaAsync<TransactionModel>();
 
         // Assert
         result!.Payloads.Should().HaveCount(2);
@@ -244,7 +244,7 @@ public class TransactionApiTests : IClassFixture<RegisterServiceWebApplicationFa
 
         // Act
         var response = await _client.PostAsJsonAsync($"/api/registers/{_testRegisterId}/transactions", transaction);
-        var result = await response.Content.ReadFromJsonAsync<TransactionModel>();
+        var result = await response.Content.ReadSorchaAsync<TransactionModel>();
 
         // Assert
         result!.RecipientsWallets.Should().HaveCount(3);
@@ -257,7 +257,7 @@ public class TransactionApiTests : IClassFixture<RegisterServiceWebApplicationFa
     {
         var transaction = CreateValidTransactionRequest();
         var response = await _client.PostAsJsonAsync($"/api/registers/{_testRegisterId}/transactions", transaction);
-        return (await response.Content.ReadFromJsonAsync<TransactionModel>())!;
+        return (await response.Content.ReadSorchaAsync<TransactionModel>())!;
     }
 
     private TransactionModel CreateValidTransactionRequest()

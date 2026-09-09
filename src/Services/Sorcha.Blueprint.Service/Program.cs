@@ -31,6 +31,21 @@ var builder = WebApplication.CreateBuilder(args);
 // Add service defaults (OpenTelemetry, health checks, service discovery)
 builder.AddServiceDefaults();
 
+// Wire format: the shared SorchaJson shape (camelCase properties + kebab-case string enums).
+//
+// Minimal APIs already default to JsonSerializerDefaults.Web, so property casing is UNCHANGED by
+// this call. The one real delta is enums: without it an enum with no converter of its own goes on
+// the wire as a bare INTEGER, and a client property typed `string` then cannot read it at all —
+// System.Text.Json throws for the WHOLE payload, the client's catch-all returns an empty result,
+// and the caller is handed a confident falsehood (#1613).
+//
+// Standards-facing and blueprint-authoring values are NOT at risk: they pin each member with
+// [JsonStringEnumMemberName], which overrides any naming policy. See
+// BlueprintVocabularyWireValueTests.
+builder.Services.ConfigureHttpJsonOptions(
+    options => Sorcha.Serialization.SorchaJson.Configure(options.SerializerOptions));
+
+
 // Add structured logging with Serilog (OPS-001)
 builder.AddSerilogLogging();
 

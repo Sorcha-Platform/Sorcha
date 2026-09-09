@@ -52,6 +52,27 @@ var builder = WebApplication.CreateBuilder(args);
 // Add service defaults (OpenTelemetry, health checks, service discovery)
 builder.AddServiceDefaults();
 
+// Wire format: the shared SorchaJson shape (camelCase properties + kebab-case string enums).
+//
+// Minimal APIs already default to JsonSerializerDefaults.Web, so property casing is UNCHANGED by
+// this call. The one real delta is enums: without it an enum with no converter of its own goes on
+// the wire as a bare INTEGER, and a client property typed `string` then cannot read it at all —
+// System.Text.Json throws for the WHOLE payload, the client's catch-all returns an empty result,
+// and the caller is handed a confident falsehood. That is #1613, where two consumers reported
+// "0 registers" against a node holding five.
+//
+// It also ends a per-object inconsistency: one Register serialised "purpose":"System" (its enum
+// carries a [JsonConverter]) next to "status":1 and "syncState":2 (theirs do not).
+//
+// Standards-facing values are NOT at risk — CredentialFormat and friends pin each member with
+// [JsonStringEnumMemberName] ("sd-jwt-vc", and "mso_mdoc" with an UNDERSCORE for ISO 18013-5),
+// which overrides any naming policy. And the converter READS PascalCase, kebab and lowercase
+// alike, so every blueprint already authored with "TextLine" / "FailClosed" still parses; only
+// what we WRITE changes.
+builder.Services.ConfigureHttpJsonOptions(
+    options => Sorcha.Serialization.SorchaJson.Configure(options.SerializerOptions));
+
+
 // Add structured logging with Serilog (OPS-001)
 builder.AddSerilogLogging();
 
