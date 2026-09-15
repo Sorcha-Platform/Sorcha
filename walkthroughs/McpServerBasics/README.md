@@ -142,7 +142,8 @@ trust tier — a citizen's own token — not a role, so it is not part of an adm
 
 **Administrator Tools (35 tools):**
 - `sorcha_health_check` - Per-service health snapshot plus an aggregate Healthy/Degraded/Unhealthy verdict
-- `sorcha_log_query` - Query platform logs
+- `sorcha_log_query` - Always NotSupported (raw logs are operator-only); use `sorcha_audit_query` to find out why something was refused
+- `sorcha_audit_query` - Your organisation's audit log, including refusals and their reasons
 - `sorcha_metrics` - Platform performance metrics
 - `sorcha_tenant_list` - List tenants (organisations)
 - `sorcha_tenant_create` - Provision a new tenant with its initial admin user

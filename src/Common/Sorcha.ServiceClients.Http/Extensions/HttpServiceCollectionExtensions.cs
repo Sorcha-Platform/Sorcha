@@ -95,6 +95,10 @@ public static class HttpServiceCollectionExtensions
         services.AddHttpClient<OrgInfo.OrgInfoClient>();
         services.AddScoped<OrgInfo.IOrgInfoClient, OrgInfo.OrgInfoClient>();
 
+        // #1648: services report refusals into the refused caller's organisation audit log.
+        services.AddHttpClient<Audit.RefusalAuditClient>();
+        services.AddScoped<Audit.IRefusalAuditClient, Audit.RefusalAuditClient>();
+
         // Feature 114: Citizen wallet client used by the PWA to call Wallet Service.
         // Caller-supplied JWT (no service-principal injection — citizen audience required).
         services.AddHttpClient<CitizenWalletClient>();

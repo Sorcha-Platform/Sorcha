@@ -160,6 +160,30 @@ public class TenantServiceClient : ITenantServiceClient
     public Task<string?> ResetPlatformUserPasswordAsync(string userId, string requestJson, CancellationToken cancellationToken = default) =>
         SendRawAsync(HttpMethod.Put, $"api/platform/users/{Uri.EscapeDataString(userId)}/password", requestJson, "reset platform user password", cancellationToken);
 
+    /// <inheritdoc />
+    public async Task<(System.Net.HttpStatusCode StatusCode, string? Body)> GetOrganizationAuditEventsAsync(
+        string organizationId,
+        string? queryString = null,
+        CancellationToken cancellationToken = default)
+    {
+        var url = $"api/organizations/{Uri.EscapeDataString(organizationId)}/audit";
+        if (!string.IsNullOrWhiteSpace(queryString))
+        {
+            url += "?" + queryString;
+        }
+
+        await SetAuthHeaderAsync(cancellationToken);
+        using var response = await _httpClient.GetAsync(url, cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Tenant get organization audit events failed: {StatusCode}", response.StatusCode);
+            return (response.StatusCode, null);
+        }
+
+        return (response.StatusCode, await response.Content.ReadAsStringAsync(cancellationToken));
+    }
+
     private async Task<string?> GetRawAsync(string url, string operation, CancellationToken cancellationToken)
     {
         try

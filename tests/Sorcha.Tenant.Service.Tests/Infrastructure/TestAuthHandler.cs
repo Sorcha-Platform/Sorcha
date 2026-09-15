@@ -77,6 +77,14 @@ public class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions
             claims.Add(new Claim("token_type", tokenType));
         }
 
+        // #1648: service tokens identify the calling service by client_id. Tests pass
+        // X-Test-Client-Id so an endpoint can be shown to take the writer from the TOKEN.
+        var clientId = Request.Headers["X-Test-Client-Id"].ToString();
+        if (!string.IsNullOrEmpty(clientId))
+        {
+            claims.Add(new Claim("client_id", clientId));
+        }
+
         // Feature 157: X-Test-Email-Verified injects the email_verified claim so /api/auth/me
         // tests can assert the EmailVerified field on CurrentUserResponse.
         var emailVerifiedHeader = Request.Headers["X-Test-Email-Verified"].ToString();

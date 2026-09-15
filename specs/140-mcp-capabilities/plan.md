@@ -75,7 +75,7 @@ All scoped to the calling citizen by the platform; cross-citizen access impossib
 | `sorcha_validator_control` (start/stop/restart) | validator orchestration | **add** `IValidatorServiceClient` admin methods (`/api/admin/validators/*`) |
 | `sorcha_user_provision` / `sorcha_user_password_reset` | platform user mgmt | **add** tenant platform-user methods |
 
-`audit_query`/`log_query`/`metrics` remain NotSupported until a real observability/audit surface exists (F139 decision).
+`audit_query`/`log_query`/`metrics` remain NotSupported until a real observability/audit surface exists (F139 decision). *Superseded for `audit_query` by #1648 (2026-09-15): it reads the Tenant organisation audit log, which existed all along.*
 
 ## Out of scope (unchanged)
 Raw `wallet_sign` (dedicated security-reviewed wave), full OAuth 2.1 AS (backlog), node-lifecycle tools (operator-only).

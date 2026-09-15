@@ -217,4 +217,22 @@ public interface ITenantServiceClient
         string userId,
         string requestJson,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reads an organisation's audit log (#1648). Calls
+    /// <c>GET /api/organizations/{organizationId}/audit</c> with the caller's forwarded token.
+    /// </summary>
+    /// <remarks>
+    /// Returns the status alongside the body, unlike the other raw reads here: "you need the Auditor
+    /// role" (403) and "the Tenant Service is down" must not collapse into the same null, or an agent is
+    /// told to fix its permissions during an outage. Transport failures are rethrown.
+    /// </remarks>
+    /// <param name="organizationId">Organisation ID.</param>
+    /// <param name="queryString">Already-built query string (without leading '?'), or null.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The HTTP status, and the audit-log JSON body when the status is a success.</returns>
+    Task<(System.Net.HttpStatusCode StatusCode, string? Body)> GetOrganizationAuditEventsAsync(
+        string organizationId,
+        string? queryString = null,
+        CancellationToken cancellationToken = default);
 }

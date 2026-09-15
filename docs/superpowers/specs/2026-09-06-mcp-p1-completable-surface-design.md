@@ -431,7 +431,7 @@ does send JSON `true`, which was the one thing no headless probe could establish
 | #1633 | No gateway route for `/api/execution/*`, so every rehearsal tool (validate, simulate, disclosure analysis) got a bare 404. The note that "MCP tools call Blueprint directly" was wrong: the compose block routes every client through the gateway. | Fixed (PR #1636), **live** |
 | #1643 | `sorcha_register_create` **can never sign**. `WalletEndpoints.SignTransaction` lets a user token sign only with a wallet it owns, and an org's signing wallet is owned by the org (#1525). Found only after the first real approval; every earlier probe stopped before signing, and the tests mock the wallet client. | **Open: needs an authorisation decision** |
 | #1641 | `sorcha_blueprint_publish` discards `PublishGate`'s exact refusal reason and hands the agent a four-way guess pointing at logs it cannot read. The 403 itself was correct: the 09-08 register is owned by another wallet. | Open |
-| #1648 | `sorcha_audit_query` / `sorcha_log_query` are `NotSupported`, so an MCP-only caller has no diagnostic path for any refusal. **This is why the run ended at "ask the user".** | Open |
+| #1648 | `sorcha_audit_query` / `sorcha_log_query` are `NotSupported`, so an MCP-only caller has no diagnostic path for any refusal. **This is why the run ended at "ask the user".** | Fixed (2026-09-15): Wallet and Blueprint refusals are recorded in the caller's org audit log, and `sorcha_audit_query` reads it. `sorcha_log_query` stays NotSupported by design. |
 
 ### Misleading surfaces it met, and was misled by
 

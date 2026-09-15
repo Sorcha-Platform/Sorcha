@@ -605,8 +605,23 @@ Seed-time only — admin UI/API toggles win on subsequent boots.
 | `/api/organizations/{orgId}/audit` | GET | Query audit events (paginated, filterable by date/type/user) |
 | `/api/organizations/{orgId}/audit/retention` | GET | Get audit retention configuration |
 | `/api/organizations/{orgId}/audit/retention` | PUT | Update audit retention period (1-120 months) |
+| `/api/internal/audit/refusals` | POST | **Service token only.** Record a refusal in the refused caller's org log (#1648) |
 
 **Max page size:** 200 events. Audit events older than the retention period are automatically purged daily.
+
+**Refusals from other services (#1648).** A refusal a person needs to act on happens in the service that
+refuses it: the Wallet Service refusing a signature, the Blueprint Service refusing a publish. Those services
+report it through `IRefusalAuditClient` (`Sorcha.ServiceClients.Audit`) to `POST /api/internal/audit/refusals`.
+The body is a `RefusalAuditReport` (organisation, platform user, action, resource, reason), and this service
+binds the same type.
+
+Each report becomes a `PermissionDenied` entry with `Success = false` and these details:
+`source = service-refusal`, `service`, `action`, `resourceType`, `resourceId`, `reason`. `service` is taken
+from the caller's **token** (`client_id`), never the body. An unknown organisation is a 404.
+
+Read refusals with `GET /api/organizations/{orgId}/audit?eventType=PermissionDenied`, or with the MCP tool
+`sorcha_audit_query`. Action names live in `RefusalAuditActions`: `wallet.sign`, `wallet.access`,
+`blueprint.publish` and `blueprint.amend`.
 
 ### Platform Organisation Management
 

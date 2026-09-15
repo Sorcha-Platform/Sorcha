@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
+using Sorcha.ServiceClients.Audit;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 
@@ -103,6 +104,17 @@ public static class WalletOwnershipGate
         Logger(http).LogWarning(
             "SEC-AUDIT: caller {Caller} attempted {Method} {Path} on wallet {Wallet} owned by {Owner}",
             caller, http.Request.Method, http.Request.Path, walletAddress, wallet.Owner);
+
+        // #1648: the refused person cannot read this service's logs, so tell their organisation's
+        // audit log too. Deliberately omits the owner: the refused caller learns what was refused,
+        // not who holds a wallet they have no rights over.
+        await RefusalAudit.ReportAsync(
+            http,
+            RefusalAuditActions.WalletAccess,
+            walletAddress,
+            $"{http.Request.Method} {http.Request.Path} requires ownership of this wallet"
+                + (allowOrganizationAdministrators ? " or Administrator of the organisation that owns it" : string.Empty),
+            ct);
 
         return Results.Forbid();
     }

@@ -35,6 +35,9 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
     public Mock<HttpMessageHandler> MockWalletHttpHandler { get; } = new();
     public Mock<HttpMessageHandler> MockRegisterHttpHandler { get; } = new();
 
+    /// <summary>#1648: records refusal reports so tests can assert a refusal was audited.</summary>
+    public Mock<Sorcha.ServiceClients.Audit.IRefusalAuditClient> MockRefusalAudit { get; } = new();
+
     /// <summary>The owner id (NameIdentifier) the <see cref="TestAuthenticationHandler"/> principal carries.</summary>
     public const string TestPrincipalOwnerId = "00000000-0000-0000-0000-000000000123";
 
@@ -319,6 +322,16 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
         services.AddSingleton<IWalletServiceClient>(mockWalletClient.Object);
         services.AddSingleton<IRegisterServiceClient>(mockRegisterClient.Object);
         services.AddSingleton<IParticipantServiceClient>(mockParticipantClient.Object);
+
+        // #1648: refusal reports go to the Tenant Service, which does not run here.
+        services.RemoveAll<Sorcha.ServiceClients.Audit.IRefusalAuditClient>();
+        services.AddSingleton<Sorcha.ServiceClients.Audit.IRefusalAuditClient>(MockRefusalAudit.Object);
+
+        // The publish gate resolves an Administrator's org wallet via Tenant when no cheaper roster
+        // match holds. There is no Tenant here, so a refused publish would spend its time retrying a
+        // host that does not exist. Resolve to "no wallet" (the gate's fail-closed branch) instead.
+        services.RemoveAll<Sorcha.ServiceClients.OrgInfo.IOrgInfoClient>();
+        services.AddSingleton(Mock.Of<Sorcha.ServiceClients.OrgInfo.IOrgInfoClient>());
 
         // Feature 142 — the existing publish-path integration tests do not run a rehearsal, so
         // replace the rehearsal-pass store with a stub that always reports a matching pass. This

@@ -1003,10 +1003,16 @@ blueprintGroup.MapPost("/{id}/publish", async (
     switch (decision.Outcome)
     {
         case Sorcha.Blueprint.Service.Services.Implementation.PublishGateOutcome.Forbidden:
-            // FR-027 — hard refuse; no record written, no publish.
-            return Results.Json(
-                new { error = decision.Reason ?? "Caller lacks register governance publish rights." },
-                statusCode: StatusCodes.Status403Forbidden);
+        {
+            // FR-027 — hard refuse; no publish. #1648: the same reason goes to the caller's
+            // organisation audit log, the only place a refused agent can read it.
+            var reason = decision.Reason ?? "Caller lacks register governance publish rights.";
+            await Sorcha.Blueprint.Service.Services.Implementation.PublishRefusalAudit.ReportAsync(
+                httpContext, Sorcha.ServiceClients.Audit.RefusalAuditActions.BlueprintPublish,
+                body.RegisterId, reason, httpContext.RequestAborted);
+
+            return Results.Json(new { error = reason }, statusCode: StatusCodes.Status403Forbidden);
+        }
 
         case Sorcha.Blueprint.Service.Services.Implementation.PublishGateOutcome.RehearsalRequired:
             // FR-032 — soft gate blocked; resend with override to proceed. No publish.
