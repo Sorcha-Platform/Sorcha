@@ -307,6 +307,13 @@ $null = New-SorchaOrgWallet -TenantUrl $env.TenantUrl -WalletUrl $env.WalletUrl 
   issued under the old one and every roster entry matched against it.
 - **There is no safety net any more.** `OrgWalletReconciliationService` swept every 60s and silently made
   org wallets appear; it is deleted. Miss this step and the failure is visible, which is the point.
+- **Signing with it is delegated (#1643).** No person owns an org wallet, so `POST /v1/wallets/{addr}/sign`
+  as the org admin succeeds only under a grant scoped to the context being signed. The admin who **created**
+  the wallet is granted `sorcha:register-attestation` automatically (90 days), which is exactly what
+  `New-SorchaRegister` signs at. Any other admin, or any other context, needs an explicit
+  `POST /v1/wallets/{addr}/access` with `allowedDerivationContexts`. Every sign also re-checks the caller's
+  **current** `org_id` and `Administrator` role, so a session in another org 403s even with a grant.
+  ⚠ A wallet created before #1643 has **no** creator grant: grant it once, or register creation 403s at the sign step.
 
 #### REQUIRED: a credential-ISSUING org must provision a Feature 083 master key
 

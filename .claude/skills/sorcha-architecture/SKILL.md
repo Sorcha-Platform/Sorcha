@@ -3109,3 +3109,43 @@ assertion, and removing the `Transfer` carve-out must red the sole-owner Transfe
 `Add` sibling stays green. A `Transfer` test built on a two-member roster cannot separate "the
 override was withheld" from "there were not enough votes" — the sole-owner roster is the only shape
 where the override is the sole thing between zero approvals and a register changing hands.
+
+---
+
+## Organisation-wallet delegated signing (#1643)
+
+An organisation's signing wallet is **owned by the organisation** (`Wallets.Owner` = org id, #1525), so
+owner-equality never matches a person. A person signs with it only under a **scoped delegation**,
+decided by `OrganizationWalletDelegation` (`src/Services/Sorcha.Wallet.Service/Authorization/`).
+
+**At `POST /api/v1/wallets/{address}/sign`, for a non-owner, ALL must hold** (else 403 + `SEC-AUDIT`):
+
+| # | Check | Why it is not optional |
+|---|---|---|
+| 1 | Active `ReadWrite` `WalletAccess` grant whose `Subject` = caller `platform_user_id` | the grant is the delegation |
+| 2 | Current token `org_id` == wallet owner **and** role `Administrator` | a grant alone outlives membership; this makes a departed/demoted admin's grant inert with no revoke |
+| 3 | Grant has `AllowedDerivationContexts`, and `derivationPath` resolves into one | an unscoped grant reaches governance, issuance and every other org key: the #1397 signing oracle with a user token |
+| 4 | `derivationPath` present; `hybridMode` false | the default key is never delegated |
+
+**Grant side.** `/api/v1/wallets/{walletAddress}/access` uses `RequireWalletOwnership(allowOrganizationAdministrators: true)`.
+`ValidateGrant` rejects contexts that are not named Sorcha contexts (raw `m/…` paths refused). A grant made
+**by an org admin** (grantor ≠ owner) must be scoped and may not be `Owner`. Every other
+`RequireWalletOwnership()` route stays owner-only; the flag is opt-in per group and pinned by a test.
+
+**Creator grant.** `CreateWallet` with `organizationId` writes `ReadWrite` scoped to
+`OrganizationWalletDelegation.CreatorGrantContexts` (= `sorcha:register-attestation` only) for
+`CreatorGrantLifetime` (90 days). A failure is logged and never fails creation. Wallets created before
+#1643 have no creator grant. The MCP `sorcha_register_create` tool, `sorcha register create`, the
+`CreateRegisterWizard` and the walkthrough `New-SorchaRegister` all sign at exactly that context.
+
+**Schema.** `WalletAccess.AllowedDerivationContexts` is `text[]` NULL, folded into `InitialCreate`.
+Existing DBs need `ALTER TABLE wallet."WalletAccess" ADD COLUMN IF NOT EXISTS "AllowedDerivationContexts" text[] NULL;`
+or a recreate (CLAUDE.md #19).
+
+⚠ **`InMemoryWalletRepository.UpdateAsync` used to delete every grant** whenever `wallet.Delegates` was
+empty, and `WalletManager.GetWalletAsync` always writes back a delegate-less wallet. So on the
+in-memory backend any wallet read wiped the grants, and a delegation test passed or failed depending on
+call order. Fixed. `CloneAccess` also dropped `Id` and `Reason`.
+
+Mutation-tested: dropping any of checks 1–4, the hybrid refusal, the gate opt-in, the Owner-grant refusal,
+or the handler's delegation branch each reds a named test.
