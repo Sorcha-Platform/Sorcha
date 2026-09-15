@@ -67,6 +67,14 @@
 > Not blocking, but recorded from the run: whether `simulate`/`validate` require a PUBLISHED blueprint,
 > and whether a calculated field is addressable as a disclosure pointer (`/thresholdExceeded`) —
 > unanswered, and direct evidence for **#1609**.
+>
+> **2026-09-15 - #1638: the MCP audit outcome was meaningless for every tool. ✅ CODE DONE (branch
+> `fix/1638-audit-outcome`).** `DeriveOutcome` read `status` only from `StructuredContent`, which no
+> tool emits, so `Error` / `Refused` / `Unauthorized` all recorded as `success`. While #1633 had every
+> rehearsal tool dead on n1, the audit trail recorded them all as working. It now reads the status from
+> the serialised result (top-level scan only). An MRTR approval question records `input-required`, not
+> `exception`. Two new tests run through the REAL dispatch pipeline; the old `ToolAuditServiceTests`
+> fed values the filter never produces.
 
 > **2026-09-09 - CI flake fixed; it was a real test defect, not load. ✅ DONE.**
 > `SerilogSingleWriterTests.AHostThatDoesNotUseSerilog_KeepsItsConsoleProvider` read the captured

@@ -93,7 +93,9 @@ public sealed record ToolOutcomeRecord
     /// <summary>
     /// The caller-facing outcome. Mirrors the tool result <c>Status</c> where one exists
     /// (e.g. <c>Success</c> / <c>Healthy</c> / <c>Unauthorized</c> / <c>Unavailable</c> /
-    /// <c>Error</c>), or a filter-derived value (<c>error</c>) when the protocol result is an error.
+    /// <c>Error</c>), read from the serialised result record (#1638). Otherwise a filter-derived value:
+    /// <c>error</c> or <c>success</c> from the protocol error flag, <c>input-required</c> when the tool
+    /// asked the client for a person's approval (MRTR round 1), or <c>exception</c> when it threw.
     /// </summary>
     public required string Outcome { get; init; }
 
