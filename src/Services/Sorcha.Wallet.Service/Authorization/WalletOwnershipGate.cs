@@ -38,7 +38,15 @@ public static class WalletOwnershipGate
     /// Decides whether the caller may act on the wallet named in the route.
     /// Returns <c>null</c> to allow the request through, or the <see cref="IResult"/> to short-circuit with.
     /// </summary>
-    public static async Task<IResult?> EvaluateAsync(HttpContext http, CancellationToken ct = default)
+    public static Task<IResult?> EvaluateAsync(HttpContext http, CancellationToken ct = default) =>
+        EvaluateAsync(http, allowOrganizationAdministrators: false, ct);
+
+    /// <summary>
+    /// Decides whether the caller may act on the wallet named in the route, optionally also admitting
+    /// an Administrator of the organisation that owns it (#1643).
+    /// </summary>
+    public static async Task<IResult?> EvaluateAsync(
+        HttpContext http, bool allowOrganizationAdministrators, CancellationToken ct = default)
     {
         var walletAddress = ResolveRouteWalletAddress(http);
         if (string.IsNullOrWhiteSpace(walletAddress))
@@ -79,6 +87,15 @@ public static class WalletOwnershipGate
         }
 
         if (string.Equals(wallet.Owner, caller, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        // #1643: an organisation's wallet is owned by the organisation, so no person is ever its
+        // literal owner. Routes that opt in (the access-grant routes) also admit a CURRENT
+        // Administrator of that organisation, so admins can be granted and revoked.
+        if (allowOrganizationAdministrators
+            && OrganizationWalletDelegation.IsAdministratorOfOwningOrganisation(http.User, wallet.Owner))
         {
             return null;
         }

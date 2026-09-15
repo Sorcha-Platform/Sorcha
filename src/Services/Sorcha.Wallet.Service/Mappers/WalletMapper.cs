@@ -49,7 +49,8 @@ public static class WalletMapper
             GrantedAt = access.GrantedAt,
             ExpiresAt = access.ExpiresAt,
             IsActive = access.IsActive,
-            Reason = access.Reason
+            Reason = access.Reason,
+            AllowedDerivationContexts = access.AllowedDerivationContexts
         };
     }
 

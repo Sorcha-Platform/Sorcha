@@ -28,10 +28,14 @@ public static class DelegationEndpoints
         // someone else's wallet. That is a privilege-escalation path which would also defeat an
         // ownership check built on delegation, so it is fixed in the same change as the credentials
         // group rather than after it.
+        //
+        // #1643: these routes also admit a current Administrator of the organisation that owns the
+        // wallet. An organisation's wallet has no human owner, so without this nobody could grant or
+        // revoke who may sign for it. GrantAccess narrows what that path may grant.
         var delegationGroup = app.MapGroup("/api/v1/wallets/{walletAddress}/access")
             .WithTags("Delegation")
             .RequireAuthorization("CanManageWallets")
-            .RequireWalletOwnership();
+            .RequireWalletOwnership(allowOrganizationAdministrators: true);
 
         // POST /api/v1/wallets/{walletAddress}/access - Grant access
         delegationGroup.MapPost("/", GrantAccess)
@@ -80,6 +84,7 @@ public static class DelegationEndpoints
         string walletAddress,
         [FromBody] GrantAccessRequest request,
         DelegationService delegationService,
+        WalletManager walletManager,
         HttpContext context,
         ILogger<Program> logger,
         CancellationToken cancellationToken = default)
@@ -100,9 +105,31 @@ public static class DelegationEndpoints
                 });
             }
 
+            // #1643: the ownership gate admitted this caller either as the wallet's owner or as an
+            // Administrator of the organisation that owns it. The second path may only grant scoped,
+            // non-Owner rights, so an admin cannot hand out the organisation's whole key.
+            var wallet = await walletManager.GetWalletAsync(walletAddress, cancellationToken);
+            if (wallet is null)
+                return Results.NotFound();
+
+            var viaOrganisationAdministrator = !string.Equals(wallet.Owner, grantedBy, StringComparison.Ordinal);
+            var grantProblem = OrganizationWalletDelegation.ValidateGrant(
+                accessRight, request.AllowedDerivationContexts, viaOrganisationAdministrator);
+            if (grantProblem is not null)
+            {
+                return Results.BadRequest(new ProblemDetails
+                {
+                    Title = "Invalid Access Grant",
+                    Detail = grantProblem,
+                    Status = StatusCodes.Status400BadRequest
+                });
+            }
+
             logger.LogInformation(
-                "Granting {AccessRight} access on wallet {WalletAddress} to {Subject}",
-                accessRight, walletAddress, request.Subject);
+                "Granting {AccessRight} access on wallet {WalletAddress} to {Subject} (scope: {Scope}, viaOrgAdministrator: {ViaOrgAdmin})",
+                accessRight, walletAddress, request.Subject,
+                request.AllowedDerivationContexts is { Count: > 0 } scope ? string.Join(",", scope) : "unscoped",
+                viaOrganisationAdministrator);
 
             var access = await delegationService.GrantAccessAsync(
                 walletAddress,
@@ -111,6 +138,7 @@ public static class DelegationEndpoints
                 grantedBy,
                 request.Reason,
                 request.ExpiresAt,
+                request.AllowedDerivationContexts,
                 cancellationToken);
 
             return Results.Created(
@@ -267,9 +295,15 @@ public static class DelegationEndpoints
     }
 
     // Helper methods for authentication/authorization
+    //
+    // MUST resolve the caller the same way WalletOwnershipGate and WalletEndpoints.GetCurrentUser do
+    // (platform_user_id, then NameIdentifier). GrantAccess compares this to the wallet's Owner to tell
+    // an owner from an organisation Administrator (#1643); reading only NameIdentifier would misread
+    // every post-#878 owner as an administrator and demand a scope on their own grants.
     private static string? GetCurrentUser(HttpContext context)
     {
-        return context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return context.User.FindFirstValue("platform_user_id")
+            ?? context.User.FindFirstValue(ClaimTypes.NameIdentifier);
     }
 }
 

@@ -937,6 +937,9 @@ namespace Sorcha.Wallet.Core.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.PrimitiveCollection<List<string>>("AllowedDerivationContexts")
+                        .HasColumnType("text[]");
+
                     b.Property<DateTime?>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 

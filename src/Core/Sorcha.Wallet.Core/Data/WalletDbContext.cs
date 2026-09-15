@@ -450,6 +450,10 @@ public class WalletDbContext : DbContext
             entity.Property(e => e.RevokedBy)
                 .HasMaxLength(256);
 
+            // #1643: the derivation contexts a delegation may sign at (native Postgres text[]).
+            entity.PrimitiveCollection(e => e.AllowedDerivationContexts)
+                .HasColumnType("text[]");
+
             // Timestamps
             entity.Property(e => e.GrantedAt)
                 .HasDefaultValueSql("CURRENT_TIMESTAMP");

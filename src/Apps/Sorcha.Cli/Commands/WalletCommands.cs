@@ -1010,6 +1010,7 @@ public class WalletAccessGrantCommand : Command
     private readonly Option<string> _subjectOption;
     private readonly Option<string> _rightOption;
     private readonly Option<string?> _reasonOption;
+    private readonly Option<string[]> _contextOption;
 
     public WalletAccessGrantCommand(
         HttpClientFactory clientFactory,
@@ -1021,11 +1022,18 @@ public class WalletAccessGrantCommand : Command
         _subjectOption = new Option<string>("--subject", "-s") { Description = "Subject (user ID) to grant access to", Required = true };
         _rightOption = new Option<string>("--right", "-r") { Description = "Access right: Owner, ReadWrite, ReadOnly", Required = true };
         _reasonOption = new Option<string?>("--reason") { Description = "Reason for granting access" };
+        _contextOption = new Option<string[]>("--context")
+        {
+            Description = "Derivation context the grant may sign at (repeatable), e.g. sorcha:register-attestation. "
+                          + "Required when granting on an organisation's wallet.",
+            AllowMultipleArgumentsPerToken = true
+        };
 
         Options.Add(_addressOption);
         Options.Add(_subjectOption);
         Options.Add(_rightOption);
         Options.Add(_reasonOption);
+        Options.Add(_contextOption);
 
         this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
@@ -1033,6 +1041,7 @@ public class WalletAccessGrantCommand : Command
             var subject = parseResult.GetValue(_subjectOption)!;
             var right = parseResult.GetValue(_rightOption)!;
             var reason = parseResult.GetValue(_reasonOption);
+            var contexts = parseResult.GetValue(_contextOption);
 
             try
             {
@@ -1050,16 +1059,21 @@ public class WalletAccessGrantCommand : Command
                 {
                     Subject = subject,
                     AccessRight = right,
-                    Reason = reason
+                    Reason = reason,
+                    AllowedDerivationContexts = contexts is { Length: > 0 } ? [.. contexts] : null
                 };
 
                 var grant = await client.GrantAccessAsync(address, request, $"Bearer {token}");
-                ConsoleHelper.WriteSuccess($"Access granted: {grant.Subject} → {grant.AccessRight} on {address}");
+                var scope = grant.AllowedDerivationContexts is { Count: > 0 } granted
+                    ? $" (scope: {string.Join(", ", granted)})"
+                    : string.Empty;
+                ConsoleHelper.WriteSuccess($"Access granted: {grant.Subject} → {grant.AccessRight} on {address}{scope}");
                 return ExitCodes.Success;
             }
             catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
             {
-                ConsoleHelper.WriteError("Permission denied: you are not the owner of this wallet.");
+                ConsoleHelper.WriteError(
+                    "Permission denied: you must own this wallet, or be an Administrator of the organisation that owns it.");
                 return ExitCodes.AuthenticationError;
             }
             catch (ApiException ex)

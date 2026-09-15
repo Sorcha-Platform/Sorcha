@@ -19,6 +19,10 @@ public interface IDelegationService
     /// <param name="grantedBy">Subject granting the access</param>
     /// <param name="reason">Reason for granting access</param>
     /// <param name="expiresAt">Optional expiration time</param>
+    /// <param name="allowedDerivationContexts">
+    /// Optional Sorcha derivation contexts the grant may sign at (#1643). Required for delegated
+    /// signing with an organisation-owned wallet.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Created access entry</returns>
     Task<WalletAccess> GrantAccessAsync(
@@ -28,6 +32,7 @@ public interface IDelegationService
         string grantedBy,
         string? reason = null,
         DateTime? expiresAt = null,
+        IReadOnlyList<string>? allowedDerivationContexts = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

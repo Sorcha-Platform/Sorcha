@@ -46,4 +46,9 @@ public class WalletAccessDto
     /// Whether this access is currently active
     /// </summary>
     public bool IsActive { get; set; }
+
+    /// <summary>
+    /// Sorcha derivation contexts the grant may sign at; null when unscoped (#1643).
+    /// </summary>
+    public List<string>? AllowedDerivationContexts { get; set; }
 }

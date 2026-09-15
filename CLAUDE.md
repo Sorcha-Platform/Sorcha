@@ -537,6 +537,13 @@ org.WalletAddress = wallet.Address;
   missing step.
 - Walkthroughs: pass `-WalletUrl` to `New-SorchaOrganization`, or call `New-SorchaOrgWallet` once an
   admin session exists. See the **`walkthrough-builder`** skill.
+- **A person signs with the org wallet only under a scoped delegation (#1643).** Owner-equality can
+  never match an org-owned wallet, so `SignTransaction` consults `OrganizationWalletDelegation`:
+  active `ReadWrite` grant **and** current token `org_id` == owner **and** `Administrator` role
+  **and** the path inside the grant's `AllowedDerivationContexts`. Do not "fix" a refusal by
+  dropping the scope or the membership check. An unscoped grant is the #1397 signing oracle with a
+  user token, and a grant alone would outlive the admin's membership. The creator's automatic grant
+  is `sorcha:register-attestation` only; widening it is a decision, pinned by a test.
 
 ---
 

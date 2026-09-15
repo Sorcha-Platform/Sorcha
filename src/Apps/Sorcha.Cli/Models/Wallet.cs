@@ -80,6 +80,13 @@ public class GrantAccessRequest
 
     [JsonPropertyName("expiresAt")]
     public DateTime? ExpiresAt { get; set; }
+
+    /// <summary>
+    /// Sorcha derivation contexts the grant may sign at (e.g. <c>sorcha:register-attestation</c>).
+    /// Required when an organisation Administrator grants access to the organisation's wallet (#1643).
+    /// </summary>
+    [JsonPropertyName("allowedDerivationContexts")]
+    public List<string>? AllowedDerivationContexts { get; set; }
 }
 
 /// <summary>
@@ -110,6 +117,10 @@ public class WalletAccessGrant
 
     [JsonPropertyName("isActive")]
     public bool IsActive { get; set; }
+
+    /// <summary>Sorcha derivation contexts the grant may sign at; null when unscoped (#1643).</summary>
+    [JsonPropertyName("allowedDerivationContexts")]
+    public List<string>? AllowedDerivationContexts { get; set; }
 }
 
 /// <summary>

@@ -30,4 +30,10 @@ public class GrantAccessRequest
     /// Optional expiration date/time
     /// </summary>
     public DateTime? ExpiresAt { get; set; }
+
+    /// <summary>
+    /// Sorcha derivation contexts (e.g. <c>sorcha:register-attestation</c>) the grant may sign at.
+    /// Required when an organisation Administrator grants access to the organisation's wallet (#1643).
+    /// </summary>
+    public List<string>? AllowedDerivationContexts { get; set; }
 }

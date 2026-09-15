@@ -205,4 +205,63 @@ public class WalletOwnershipGateTests
 
         result.Should().NotBeNull("a mis-wired gate must fail closed, not open");
     }
+
+    // ---- #1643: organisation-owned wallets ----
+
+    private const string OrgWallet = "ws1orgwallet";
+    private const string OwningOrg = "00000000-0000-0000-0000-0000000000aa";
+    private const string OtherOrg = "00000000-0000-0000-0000-0000000000bb";
+
+    private static Claim[] OrgMember(string userId, string orgId, params string[] roles) =>
+    [
+        new("platform_user_id", userId),
+        new("org_id", orgId),
+        .. roles.Select(r => new Claim(ClaimTypes.Role, r))
+    ];
+
+    [Fact]
+    public async Task OrgAdministrator_OfTheOwningOrganisation_IsAllowed_WhenTheRouteAdmitsOrgAdministrators()
+    {
+        // An org wallet is owned by the organisation, so without this no person could ever manage
+        // who may sign for it (#1643).
+        var http = Context(OrgWallet, OrgMember("org-admin", OwningOrg, "Administrator"), Wallet(OrgWallet, OwningOrg));
+
+        var result = await WalletOwnershipGate.EvaluateAsync(http, allowOrganizationAdministrators: true);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task OrgAdministrator_IsDenied_OnRoutesThatDoNotAdmitOrgAdministrators()
+    {
+        // Every other wallet-scoped route keeps the strict owner-only rule.
+        var http = Context(OrgWallet, OrgMember("org-admin", OwningOrg, "Administrator"), Wallet(OrgWallet, OwningOrg));
+
+        var result = await WalletOwnershipGate.EvaluateAsync(http);
+
+        result.Should().NotBeNull();
+        result!.GetType().Name.Should().Contain("Forbid");
+    }
+
+    [Fact]
+    public async Task OrgMemberWithoutAdministrator_IsDenied_EvenWhenOrgAdministratorsAreAdmitted()
+    {
+        var http = Context(OrgWallet, OrgMember("org-designer", OwningOrg, "Designer"), Wallet(OrgWallet, OwningOrg));
+
+        var result = await WalletOwnershipGate.EvaluateAsync(http, allowOrganizationAdministrators: true);
+
+        result.Should().NotBeNull();
+        result!.GetType().Name.Should().Contain("Forbid");
+    }
+
+    [Fact]
+    public async Task AdministratorOfAnotherOrganisation_IsDenied_EvenWhenOrgAdministratorsAreAdmitted()
+    {
+        var http = Context(OrgWallet, OrgMember("other-admin", OtherOrg, "Administrator"), Wallet(OrgWallet, OwningOrg));
+
+        var result = await WalletOwnershipGate.EvaluateAsync(http, allowOrganizationAdministrators: true);
+
+        result.Should().NotBeNull();
+        result!.GetType().Name.Should().Contain("Forbid");
+    }
 }

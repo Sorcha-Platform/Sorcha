@@ -397,6 +397,7 @@ public static class WalletEndpoints
         IWalletUtilities walletUtilities,
         Sorcha.Wallet.Service.Services.Interfaces.IHolderAddressLookup holderAddressLookup,
         IServiceScopeFactory serviceScopeFactory,
+        DelegationService delegationService,
         HttpContext context,
         ILogger<Program> logger,
         CancellationToken cancellationToken = default)
@@ -475,6 +476,32 @@ public static class WalletEndpoints
                     logger.LogWarning(ex,
                         "Failed to pre-populate CitizenHolderIndex for wallet {Address} platformUser {PlatformUserId} — projector fallback will retry",
                         wallet.Address, platformUserId);
+                }
+            }
+
+            // #1643: the Administrator who creates an organisation's wallet is granted signing for
+            // register creation only, for a limited time. Without a grant no person could ever sign with
+            // the organisation's wallet. A failure here must NOT fail the creation: the recovery phrase
+            // is returned exactly once, below, and the grant can be made later via the access endpoints.
+            if (request.OrganizationId is not null && GetCurrentUser(context) is { } creator)
+            {
+                try
+                {
+                    await delegationService.GrantAccessAsync(
+                        wallet.Address,
+                        creator,
+                        AccessRight.ReadWrite,
+                        grantedBy: creator,
+                        reason: "Organisation wallet creator: signing for register creation (#1643)",
+                        expiresAt: DateTime.UtcNow.Add(OrganizationWalletDelegation.CreatorGrantLifetime),
+                        allowedDerivationContexts: OrganizationWalletDelegation.CreatorGrantContexts,
+                        cancellationToken: cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex,
+                        "Organisation wallet {Address} was created, but its creator's signing delegation could not be granted — grant it through the wallet access endpoint",
+                        wallet.Address);
                 }
             }
 
@@ -878,16 +905,17 @@ public static class WalletEndpoints
         // so the Wallet Service could not run on the in-memory storage path at all, which
         // Pattern #13 explicitly supports outside Production. Nullable resolves via GetService.
         [FromServices] Sorcha.Wallet.Core.Data.WalletDbContext? dbContext,
+        DelegationService delegationService,
         HttpContext context,
         ILogger<Program> logger,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            // SEC-CRITICAL: Verify caller owns the wallet before signing.
+            // SEC-CRITICAL: Verify caller owns the wallet, or holds a delegation that authorises this
+            // exact signature, before signing.
             // Service tokens (token_type=service) bypass this check — they are trusted
             // internal service-to-service calls (e.g., Blueprint Service signing actions).
-            // User tokens must own the wallet or have delegated access.
             var isService = context.User.Claims.Any(c => c.Type == "token_type" && c.Value == "service");
             if (!isService)
             {
@@ -906,10 +934,35 @@ public static class WalletEndpoints
 
                 if (wallet.Owner != currentUser)
                 {
+                    // #1643: an organisation's wallet is owned by the organisation, so no person is its
+                    // owner. A CURRENT Administrator of that organisation may sign with it under an
+                    // active grant scoped to the derivation context being signed at. Everything else,
+                    // including every personal wallet the caller does not own, is refused as before.
+                    var grants = await delegationService.GetActiveAccessAsync(address, cancellationToken);
+                    var decision = OrganizationWalletDelegation.EvaluateSigning(
+                        context.User, currentUser, wallet.Owner, grants, request.DerivationPath);
+
+                    // Hybrid mode also signs request.PqcWalletAddress, which this check never covers.
+                    if (decision.Allowed && request.HybridMode)
+                    {
+                        decision = decision with
+                        {
+                            Allowed = false,
+                            Reason = "hybrid signing is not available under delegation"
+                        };
+                    }
+
+                    if (!decision.Allowed)
+                    {
+                        logger.LogWarning(
+                            "SEC-AUDIT: User {User} attempted to sign with wallet {Wallet} owned by {Owner} — refused: {Reason}",
+                            currentUser, address, wallet.Owner, decision.Reason);
+                        return Results.Forbid();
+                    }
+
                     logger.LogWarning(
-                        "SEC-AUDIT: User {User} attempted to sign with wallet {Wallet} owned by {Owner}",
-                        currentUser, address, wallet.Owner);
-                    return Results.Forbid();
+                        "SEC-AUDIT: delegated signature — user {User} signed with organisation wallet {Wallet} (owner {Owner}) at {DerivationPath} under grant {GrantId}",
+                        currentUser, address, wallet.Owner, request.DerivationPath, decision.Grant?.Id);
                 }
             }
             else
@@ -2325,7 +2378,7 @@ public static class WalletEndpoints
                 userId,
                 $"Preserved during recovery (original: {delegation.Reason})",
                 delegation.ExpiresAt,
-                cancellationToken);
+                cancellationToken: cancellationToken);
             preserved++;
         }
 

@@ -30,13 +30,20 @@ public static class WalletOwnershipEndpointExtensions
     /// <c>CanManageWallets</c> establishes that the caller is a legitimate wallet-API caller at all;
     /// this establishes that they may act on <em>this</em> wallet.
     /// </remarks>
-    public static TBuilder RequireWalletOwnership<TBuilder>(this TBuilder builder)
+    /// <param name="builder">The endpoint or group builder.</param>
+    /// <param name="allowOrganizationAdministrators">
+    /// Also admit a current Administrator of the organisation that owns the wallet (#1643). Opt in only
+    /// on routes that manage who may act for an organisation's wallet; every other route stays
+    /// owner-only.
+    /// </param>
+    public static TBuilder RequireWalletOwnership<TBuilder>(
+        this TBuilder builder, bool allowOrganizationAdministrators = false)
         where TBuilder : IEndpointConventionBuilder
     {
         builder.AddEndpointFilter(async (context, next) =>
         {
             var denial = await WalletOwnershipGate.EvaluateAsync(
-                context.HttpContext, context.HttpContext.RequestAborted);
+                context.HttpContext, allowOrganizationAdministrators, context.HttpContext.RequestAborted);
 
             return denial ?? await next(context);
         });
