@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
@@ -14,11 +15,6 @@ using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Tenant;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.Wallet.Contracts.Constants;
-
-// The project namespace Sorcha.McpServer shadows the SDK type
-// ModelContextProtocol.Server.McpServer, so an unqualified `McpServer` in this file is CS0118
-// ("namespace used like a type"). Alias it once rather than fully qualifying every mention.
-using SdkMcpServer = ModelContextProtocol.Server.McpServer;
 
 namespace Sorcha.McpServer.Tools.Designer;
 
@@ -106,7 +102,7 @@ public sealed class RegisterCreateTool
     }
 
     /// <summary>Creates a register, after a person confirms it.</summary>
-    /// <param name="server">The live MCP server, injected by the SDK; used to reach the caller's client.</param>
+    /// <param name="context">The tool invocation's request context, injected by the SDK; carries the person's answer on the second round.</param>
     /// <param name="name">Register name (1-38 characters).</param>
     /// <param name="description">What the register is for (max 500 characters); may be omitted.</param>
     /// <param name="devMode">When true, payloads are stored as plaintext with read-time disclosure filtering.</param>
@@ -114,9 +110,9 @@ public sealed class RegisterCreateTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The created register's id and genesis transaction id.</returns>
     [McpServerTool(Name = ToolName, Destructive = true, ReadOnly = false, Idempotent = false)]
-    [Description("Creates a new Sorcha register — the ledger a workflow's transactions are written to — and returns its registerId plus the id of the genesis transaction that was submitted for it. Call this when you are setting up a workflow from scratch and have no registerId yet: design the blueprint first with sorcha_blueprint_create, create the register here, publish that blueprint to it with sorcha_blueprint_publish, and only then start work on it with sorcha_instance_create, which needs both ids. Creating a register is irreversible and establishes the governance keys that authorise every later administrative change, so it REQUIRES a person to confirm it via MCP elicitation — only an explicit accept proceeds; a decline, a silent cancel, and a client that never declared the elicitation capability all refuse the same way, because a client can declare elicitation and still auto-cancel every request when running headlessly. The register is owned by YOUR organisation's signing wallet, which is resolved from your token rather than passed in, and creating one needs organisation-administrator authority — a plain designer role is not enough, and the tool is not offered to one. Set devMode only for development registers — it stores payloads as plaintext instead of encrypting them.")]
+    [Description("Creates a new Sorcha register — the ledger a workflow's transactions are written to — and returns its registerId plus the id of the genesis transaction that was submitted for it. Call this when you are setting up a workflow from scratch and have no registerId yet: design the blueprint first with sorcha_blueprint_create, create the register here, publish that blueprint to it with sorcha_blueprint_publish, and only then start work on it with sorcha_instance_create, which needs both ids. Creating a register is irreversible and establishes the governance keys that authorise every later administrative change, so it REQUIRES a person to confirm it via MCP elicitation, carried as a multi round-trip request (protocol revision 2026-07-28) — only an explicit accept with the confirm box set proceeds; a decline, a silent cancel, and a client that cannot carry the request all refuse the same way, because a client can support elicitation and still auto-cancel every request when running headlessly. The register is owned by YOUR organisation's signing wallet, which is resolved from your token rather than passed in, and creating one needs organisation-administrator authority — a plain designer role is not enough, and the tool is not offered to one. Set devMode only for development registers — it stores payloads as plaintext instead of encrypting them.")]
     public async Task<RegisterCreateResult> CreateRegisterAsync(
-        SdkMcpServer server,
+        RequestContext<CallToolRequestParams> context,
         [Description("Register name, 1-38 characters")] string name,
         [Description("What this register is for, max 500 characters")] string? description,
         [Description("Store payloads as plaintext instead of encrypting them. Development only.")] bool devMode = false,
@@ -215,7 +211,12 @@ public sealed class RegisterCreateTool
 
         // 4. Ask a person. BEFORE /initiate, so their thinking time does not run against the
         //    pending registration's 5-minute TTL.
-        var approval = await _humanApproval.RequestAsync(server, new HumanApprovalRequest(
+        //
+        //    On the first round Evaluate THROWS InputRequiredException — that is how a stateless MCP
+        //    server hands the question to the client (MRTR, #1622). It must reach the SDK, which is
+        //    why this call sits OUTSIDE the try below. The client then re-invokes this whole method
+        //    with the person's answer, so steps 1-3 run again: they must stay side-effect free.
+        var approval = _humanApproval.Evaluate(context, new HumanApprovalRequest(
             $"Create a new Sorcha register '{name}'?\n\n" +
             $"Purpose: {DescriptionOrPlaceholder(description)}\n" +
             $"Owning organisation wallet: {walletAddress}\n" +
@@ -226,7 +227,7 @@ public sealed class RegisterCreateTool
                 ? "Visibility: advertised to the peer network.\n"
                 : "Visibility: private.\n") +
             "\nThis is irreversible and establishes the register's governance.",
-            "Create the register"), cancellationToken);
+            "Create the register"));
 
         if (approval.Outcome != ApprovalOutcome.Approved)
         {

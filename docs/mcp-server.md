@@ -180,15 +180,17 @@ Prompts are guided recipes: each returns a step-by-step brief naming the resourc
 
 ## Human approval
 
-Two of the lifecycle tools above — `sorcha_register_create` always, `sorcha_blueprint_publish` only on an unrehearsed definition — put the decision to a real person via MCP elicitation rather than letting the agent decide alone: creating a register is irreversible and establishes the keys that authorise every later administrative change, and publishing an unrehearsed definition skips the only *behavioural* check a blueprint gets before it goes live. `IHumanApproval` / `ElicitationHumanApproval` (`src/Apps/Sorcha.McpServer/Services/`) is the **only** place `ElicitAsync` is called, and it resolves to **three** client states, not two:
+Two of the lifecycle tools above — `sorcha_register_create` always, `sorcha_blueprint_publish` only on an unrehearsed definition — put the decision to a real person via MCP elicitation rather than letting the agent decide alone: creating a register is irreversible and establishes the keys that authorise every later administrative change, and publishing an unrehearsed definition skips the only *behavioural* check a blueprint gets before it goes live. `IHumanApproval` / `ElicitationHumanApproval` (`src/Apps/Sorcha.McpServer/Services/`) is the **only** place a question is put to a client.
+
+The question travels as an MCP **Multi Round-Trip Request** (MRTR, protocol revision `2026-07-28`): the first call returns an input-required result carrying the confirmation form, and the client re-sends the same tool call with the person's answer. It is not a server-to-client `elicitation/create` request, because the HTTP transport is stateless and the SDK disables those there (#1622). The answer is bound to exactly the question shown — one carrying no state, or state for a different question, is refused rather than applied. It resolves to **three** client states, not two:
 
 | State | When | What the agent sees |
 |---|---|---|
-| Not supported | The connecting client never declared the `elicitation` capability (form mode) at `initialize` | Refused before anything is created — connect with a client that supports elicitation, or perform this step in the Sorcha UI |
-| Refused | A person explicitly declined, or the client dismissed the request without a choice — **including a client that declares the capability but auto-cancels every request when running headlessly** (Claude Code in `-p` mode does exactly this) | Refused — nothing changed |
-| Approved | An explicit `accept` | The **only** outcome that proceeds |
+| Not supported | The client cannot carry an MRTR elicitation (a protocol revision before `2026-07-28`) | Refused before anything is created — connect with a client that supports it, or perform this step in the Sorcha UI |
+| Refused | A person declined, the client dismissed the request, the form came back without the confirm box set, or the answer was not for this exact question — **including a client that supports elicitation but auto-cancels every request when running headlessly** (Claude Code in `-p` mode does exactly this) | Refused — nothing changed |
+| Approved | An explicit `accept` with the confirm box set | The **only** outcome that proceeds |
 
-Declaring the `elicitation` capability at `initialize` is therefore not a promise a person will actually be asked — a headless client can declare it and still auto-refuse every request. Both tools fail closed in every environment, with no bypass flag.
+Supporting elicitation is therefore not a promise a person will actually be asked — a headless client can support it and still auto-refuse every request. Both tools fail closed in every environment, with no bypass flag.
 
 ## Worked example — a participant agent driving the TradeFinance walkthrough
 

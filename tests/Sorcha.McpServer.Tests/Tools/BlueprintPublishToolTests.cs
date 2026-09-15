@@ -10,7 +10,7 @@ using Sorcha.McpServer.Tools.Designer;
 using Sorcha.ServiceClients.Blueprint;
 using Sorcha.ServiceClients.Blueprint.Models;
 
-using SdkMcpServer = ModelContextProtocol.Server.McpServer;
+using ModelContextProtocol.Server;
 
 namespace Sorcha.McpServer.Tests.Tools;
 
@@ -28,7 +28,7 @@ public class BlueprintPublishToolTests
         // raised and nobody would ever be asked.
         var h = new Harness().WithPublishSuccess();
 
-        await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         h.Client.Verify(c => c.PublishBlueprintAsync(
             "bp-1",
@@ -41,13 +41,13 @@ public class BlueprintPublishToolTests
     {
         var h = new Harness().WithPublishSuccess(version: 7);
 
-        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         result.Status.Should().Be("Success");
         result.Version.Should().Be(7);
         result.PublishedWithoutRehearsal.Should().BeFalse();
-        h.Approval.Verify(a => a.RequestAsync(
-            It.IsAny<SdkMcpServer>(), It.IsAny<HumanApprovalRequest>(), It.IsAny<CancellationToken>()),
+        h.Approval.Verify(a => a.Evaluate(
+            It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()),
             Times.Never);
     }
 
@@ -56,7 +56,7 @@ public class BlueprintPublishToolTests
     {
         var h = new Harness().WithRehearsalRequiredThenSuccess().WithApproval(ApprovalOutcome.Approved);
 
-        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         result.Status.Should().Be("Success");
         result.PublishedWithoutRehearsal.Should().BeTrue();
@@ -73,7 +73,7 @@ public class BlueprintPublishToolTests
         // reason is the only free text on it, so it must say where the confirmation came from.
         var h = new Harness().WithRehearsalRequiredThenSuccess().WithApproval(ApprovalOutcome.Approved);
 
-        await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         h.CapturedRequests.Should().HaveCount(2);
         var retry = h.CapturedRequests[1];
@@ -83,6 +83,29 @@ public class BlueprintPublishToolTests
         retry.Override.Reason.Should().ContainEquivalentOf("MCP");
     }
 
+    /// <summary>
+    /// MRTR (#1622): the first round asks by THROWING, and in this tool the ask sits inside a try
+    /// whose catch (Exception) would swallow it into a false "unexpected error" — and record a
+    /// failure against the availability breaker for a service that is perfectly healthy.
+    /// </summary>
+    [Fact]
+    public async Task PublishBlueprintAsync_PersonNotYetAsked_LetsTheQuestionReachTheClient()
+    {
+        var h = new Harness().WithRehearsalRequiredThenSuccess();
+        h.Approval.Setup(a => a.Evaluate(
+                It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()))
+            .Throws(new InputRequiredException(null, "ask-the-person"));
+
+        var act = () => h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
+
+        await act.Should().ThrowAsync<InputRequiredException>();
+        h.Client.Verify(c => c.PublishBlueprintAsync(
+            It.IsAny<string>(),
+            It.Is<PublishBlueprintRequest>(r => r.Override != null),
+            It.IsAny<CancellationToken>()), Times.Never);
+        h.Availability.Verify(a => a.RecordFailure(It.IsAny<string>(), It.IsAny<Exception?>()), Times.Never);
+    }
+
     [Theory]
     [InlineData(ApprovalOutcome.Refused)]
     [InlineData(ApprovalOutcome.NotSupported)]
@@ -90,7 +113,7 @@ public class BlueprintPublishToolTests
     {
         var h = new Harness().WithRehearsalRequiredThenSuccess().WithApproval(outcome);
 
-        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         result.Status.Should().BeOneOf("RehearsalRequired", "ApprovalRequired");
         result.PublishedWithoutRehearsal.Should().BeFalse();
@@ -110,9 +133,9 @@ public class BlueprintPublishToolTests
         var cannotAsk = new Harness().WithRehearsalRequiredThenSuccess()
             .WithApproval(ApprovalOutcome.NotSupported, "This client does not support elicitation.");
 
-        (await refused.Sut().PublishBlueprintAsync(refused.Server, "bp-1", "reg-1"))
+        (await refused.Sut().PublishBlueprintAsync(refused.Context, "bp-1", "reg-1"))
             .Status.Should().Be("RehearsalRequired");
-        (await cannotAsk.Sut().PublishBlueprintAsync(cannotAsk.Server, "bp-1", "reg-1"))
+        (await cannotAsk.Sut().PublishBlueprintAsync(cannotAsk.Context, "bp-1", "reg-1"))
             .Status.Should().Be("ApprovalRequired");
     }
 
@@ -121,13 +144,12 @@ public class BlueprintPublishToolTests
     {
         var h = new Harness().WithRehearsalRequiredThenSuccess().WithApproval(ApprovalOutcome.Approved);
 
-        await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
-        h.Approval.Verify(a => a.RequestAsync(
-            It.IsAny<SdkMcpServer>(),
+        h.Approval.Verify(a => a.Evaluate(
+            It.IsAny<RequestContext<CallToolRequestParams>>(),
             It.Is<HumanApprovalRequest>(r =>
-                r.Message.Contains("not been rehearsed") && r.Message.Contains("bp-1")),
-            It.IsAny<CancellationToken>()), Times.Once);
+                r.Message.Contains("not been rehearsed") && r.Message.Contains("bp-1"))), Times.Once);
     }
 
     [Fact]
@@ -137,7 +159,7 @@ public class BlueprintPublishToolTests
         // it lands, makes the confirmation ceremonial.
         var h = new Harness().WithRehearsalRequiredThenSuccess().WithApproval(ApprovalOutcome.Approved);
 
-        await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         h.CapturedApprovalRequest.Should().NotBeNull();
         var message = h.CapturedApprovalRequest!.Message;
@@ -154,14 +176,14 @@ public class BlueprintPublishToolTests
         var h = new Harness().WithPublishSuccess();
         h.Auth.Setup(a => a.CanInvokeTool("sorcha_blueprint_publish")).Returns(false);
 
-        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         result.Status.Should().Be("Unauthorized");
         h.Client.Verify(c => c.PublishBlueprintAsync(
             It.IsAny<string>(), It.IsAny<PublishBlueprintRequest>(), It.IsAny<CancellationToken>()),
             Times.Never);
-        h.Approval.Verify(a => a.RequestAsync(
-            It.IsAny<SdkMcpServer>(), It.IsAny<HumanApprovalRequest>(), It.IsAny<CancellationToken>()),
+        h.Approval.Verify(a => a.Evaluate(
+            It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()),
             Times.Never);
     }
 
@@ -175,14 +197,14 @@ public class BlueprintPublishToolTests
     {
         var h = new Harness().WithPublishSuccess();
 
-        var result = await h.Sut().PublishBlueprintAsync(h.Server, blueprintId, registerId);
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, blueprintId, registerId);
 
         result.Status.Should().Be("ValidationError");
         h.Client.Verify(c => c.PublishBlueprintAsync(
             It.IsAny<string>(), It.IsAny<PublishBlueprintRequest>(), It.IsAny<CancellationToken>()),
             Times.Never);
-        h.Approval.Verify(a => a.RequestAsync(
-            It.IsAny<SdkMcpServer>(), It.IsAny<HumanApprovalRequest>(), It.IsAny<CancellationToken>()),
+        h.Approval.Verify(a => a.Evaluate(
+            It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()),
             Times.Never);
     }
 
@@ -192,11 +214,11 @@ public class BlueprintPublishToolTests
         var h = new Harness().WithPublishSuccess();
         h.Availability.Setup(a => a.IsServiceAvailable("Blueprint")).Returns(false);
 
-        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         result.Status.Should().Be("Unavailable");
-        h.Approval.Verify(a => a.RequestAsync(
-            It.IsAny<SdkMcpServer>(), It.IsAny<HumanApprovalRequest>(), It.IsAny<CancellationToken>()),
+        h.Approval.Verify(a => a.Evaluate(
+            It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()),
             Times.Never);
     }
 
@@ -208,7 +230,7 @@ public class BlueprintPublishToolTests
         // Naming any single one of them would be a confident wrong answer.
         var h = new Harness().WithPublishFailure();
 
-        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         result.Status.Should().Be("Error");
         result.Version.Should().BeNull();
@@ -231,8 +253,8 @@ public class BlueprintPublishToolTests
         causesNamed.Should().BeGreaterThanOrEqualTo(3,
             "the message must enumerate the causes it cannot distinguish rather than assert one; "
             + $"only {causesNamed} of the 4 were named in: {result.Message}");
-        h.Approval.Verify(a => a.RequestAsync(
-            It.IsAny<SdkMcpServer>(), It.IsAny<HumanApprovalRequest>(), It.IsAny<CancellationToken>()),
+        h.Approval.Verify(a => a.Evaluate(
+            It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()),
             Times.Never);
     }
 
@@ -245,7 +267,7 @@ public class BlueprintPublishToolTests
         // between an actionable message and a shrug.
         var h = new Harness().WithRehearsalRequiredThenFailure().WithApproval(ApprovalOutcome.Approved);
 
-        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         result.Status.Should().Be("Error");
         result.PublishedWithoutRehearsal.Should().BeFalse();
@@ -261,7 +283,7 @@ public class BlueprintPublishToolTests
                 It.IsAny<string>(), It.IsAny<PublishBlueprintRequest>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("publish: ServiceUnavailable"));
 
-        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         result.Status.Should().Be("Error");
         result.Version.Should().BeNull();
@@ -277,7 +299,7 @@ public class BlueprintPublishToolTests
                 It.IsAny<string>(), It.IsAny<PublishBlueprintRequest>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("publish: ServiceUnavailable"));
 
-        await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         h.Availability.Verify(a => a.RecordFailure("Blueprint", It.IsAny<Exception>()), Times.Once);
     }
@@ -292,7 +314,7 @@ public class BlueprintPublishToolTests
         // "service unavailable", even though the Blueprint Service was never down.
         var h = new Harness().WithPublishFailure();
 
-        await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         h.Availability.Verify(
             a => a.RecordFailure(It.IsAny<string>(), It.IsAny<Exception?>()), Times.Never);
@@ -307,7 +329,7 @@ public class BlueprintPublishToolTests
         // response too, not an outage signal.
         var h = new Harness().WithRehearsalRequiredThenFailure().WithApproval(ApprovalOutcome.Approved);
 
-        await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         h.Availability.Verify(
             a => a.RecordFailure(It.IsAny<string>(), It.IsAny<Exception?>()), Times.Never);
@@ -323,7 +345,7 @@ public class BlueprintPublishToolTests
                 It.IsAny<string>(), It.IsAny<PublishBlueprintRequest>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new TaskCanceledException("timed out"));
 
-        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         result.Status.Should().Be("Timeout");
     }
@@ -336,7 +358,7 @@ public class BlueprintPublishToolTests
         // id leaves an agent unable to name the definition it just created.
         var h = new Harness().WithPublishSuccess(version: 3);
 
-        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         result.PublicationTxId.Should().Be(Harness.PublicationTxId);
         result.ExecDefHash.Should().Be(Harness.ExecDefHash);
@@ -351,7 +373,7 @@ public class BlueprintPublishToolTests
         // "was published as version N" is a confident wrong answer about work that did not happen.
         var h = new Harness().WithPublishSuccess(version: 3, alreadyPublished: true);
 
-        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         result.Status.Should().Be("Success");
         result.AlreadyPublished.Should().BeTrue();
@@ -366,7 +388,7 @@ public class BlueprintPublishToolTests
         // message that always says it.
         var h = new Harness().WithPublishSuccess(version: 3);
 
-        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         result.AlreadyPublished.Should().BeFalse();
         result.Message.Should().NotContainEquivalentOf("already published");
@@ -379,7 +401,7 @@ public class BlueprintPublishToolTests
         // the "one signal, wrong meaning" class this tool exists to avoid.
         var h = new Harness().WithPublishSuccess(version: 3, warnings: ["Cycle detected: A -> B -> A"]);
 
-        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         result.Warnings.Should().ContainMatch("*Cycle detected*");
     }
@@ -392,7 +414,7 @@ public class BlueprintPublishToolTests
         // the Blueprint Service's own is a second, remote copy.
         var h = new Harness().WithPublishFailure();
 
-        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         result.Message.Should().ContainEquivalentOf("BlueprintServiceClient");
         result.Message.Should().ContainEquivalentOf("this MCP server");
@@ -405,7 +427,7 @@ public class BlueprintPublishToolTests
         // settled by the time this returns.
         var h = new Harness().WithPublishSuccess();
 
-        var result = await h.Sut().PublishBlueprintAsync(h.Server, "bp-1", "reg-1");
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
 
         result.Message.Should().NotContainEquivalentOf("confirmed");
         result.Message.Should().NotContainEquivalentOf("sealed");
@@ -422,30 +444,31 @@ public class BlueprintPublishToolTests
         public HumanApprovalRequest? CapturedApprovalRequest { get; private set; }
 
         /// <summary>
-        /// A real <c>McpServer</c> stand-in rather than null: the tool hands this straight to
-        /// <see cref="IHumanApproval"/>, and the SDK type is non-mockable.
+        /// A real request context rather than null: the tool hands it straight to
+        /// <see cref="IHumanApproval"/>, which is mocked, so its contents never matter here.
         /// </summary>
-        public SdkMcpServer Server { get; } = new FakeMcpServer(new ClientCapabilities());
+        public RequestContext<CallToolRequestParams> Context { get; } =
+            FakeMcpServer.ContextFor("sorcha_blueprint_publish");
 
         public Harness()
         {
             Auth.Setup(a => a.CanInvokeTool("sorcha_blueprint_publish")).Returns(true);
             Availability.Setup(a => a.IsServiceAvailable(It.IsAny<string>())).Returns(true);
 
-            Approval.Setup(a => a.RequestAsync(
-                    It.IsAny<SdkMcpServer>(), It.IsAny<HumanApprovalRequest>(), It.IsAny<CancellationToken>()))
-                .Callback<SdkMcpServer, HumanApprovalRequest, CancellationToken>(
-                    (_, r, _) => CapturedApprovalRequest = r)
-                .ReturnsAsync(new ApprovalResult(ApprovalOutcome.Refused, "default: not approved"));
+            Approval.Setup(a => a.Evaluate(
+                    It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()))
+                .Callback<RequestContext<CallToolRequestParams>, HumanApprovalRequest>(
+                    (_, r) => CapturedApprovalRequest = r)
+                .Returns(new ApprovalResult(ApprovalOutcome.Refused, "default: not approved"));
         }
 
         public Harness WithApproval(ApprovalOutcome outcome, string detail = "resolved by the harness")
         {
-            Approval.Setup(a => a.RequestAsync(
-                    It.IsAny<SdkMcpServer>(), It.IsAny<HumanApprovalRequest>(), It.IsAny<CancellationToken>()))
-                .Callback<SdkMcpServer, HumanApprovalRequest, CancellationToken>(
-                    (_, r, _) => CapturedApprovalRequest = r)
-                .ReturnsAsync(new ApprovalResult(outcome, detail));
+            Approval.Setup(a => a.Evaluate(
+                    It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()))
+                .Callback<RequestContext<CallToolRequestParams>, HumanApprovalRequest>(
+                    (_, r) => CapturedApprovalRequest = r)
+                .Returns(new ApprovalResult(outcome, detail));
             return this;
         }
 

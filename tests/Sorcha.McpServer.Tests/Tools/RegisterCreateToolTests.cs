@@ -3,6 +3,7 @@
 
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 using Sorcha.McpServer.Tests.Services;
@@ -13,8 +14,6 @@ using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Tenant;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.Wallet.Contracts.Constants;
-
-using SdkMcpServer = ModelContextProtocol.Server.McpServer;
 
 namespace Sorcha.McpServer.Tests.Tools;
 
@@ -33,7 +32,7 @@ public class RegisterCreateToolTests
     {
         var h = new Harness().WithApprovalOutcome(ApprovalOutcome.NotSupported, "no elicitation");
 
-        var result = await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", "A register");
+        var result = await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register");
 
         result.Status.Should().Be("ApprovalRequired");
         h.Register.Verify(r => r.InitiateRegisterCreationAsync(
@@ -43,6 +42,25 @@ public class RegisterCreateToolTests
             It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    /// <summary>
+    /// MRTR (#1622): the first round asks by THROWING. If the tool swallowed that exception the
+    /// person would never be asked — and nothing may be created before they are.
+    /// </summary>
+    [Fact]
+    public async Task CreateRegisterAsync_PersonNotYetAsked_LetsTheQuestionReachTheClientAndCreatesNothing()
+    {
+        var h = new Harness();
+        h.Approval.Setup(a => a.Evaluate(
+                It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()))
+            .Throws(new InputRequiredException(null, "ask-the-person"));
+
+        var act = () => h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register");
+
+        await act.Should().ThrowAsync<InputRequiredException>();
+        h.Register.Verify(r => r.InitiateRegisterCreationAsync(
+            It.IsAny<InitiateRegisterCreationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     [Theory]
     [InlineData(ApprovalOutcome.Refused)]
     [InlineData(ApprovalOutcome.NotSupported)]
@@ -50,7 +68,7 @@ public class RegisterCreateToolTests
     {
         var h = new Harness().WithApprovalOutcome(outcome, "nope");
 
-        await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", "A register");
+        await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register");
 
         h.Register.Verify(r => r.InitiateRegisterCreationAsync(
             It.IsAny<InitiateRegisterCreationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -66,7 +84,7 @@ public class RegisterCreateToolTests
         // deliberate decline, or to go find a person for a client that can never reach one.
         var h = new Harness().WithApprovalOutcome(ApprovalOutcome.Refused, "the user declined");
 
-        var result = await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", "A register");
+        var result = await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register");
 
         result.Status.Should().Be("Refused");
         result.Message.Should().Contain("declined");
@@ -79,7 +97,7 @@ public class RegisterCreateToolTests
         // and the register is silently ungovernable from creation. Nothing else catches this.
         var h = new Harness().WithApproval().WithInitiate(walletId: "ws11qorg", dataToSignHex: "aabb");
 
-        await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", "A register");
+        await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register");
 
         h.Wallet.Verify(w => w.SignTransactionAsync(
             "ws11qorg",
@@ -94,7 +112,7 @@ public class RegisterCreateToolTests
     {
         var h = new Harness().WithApproval().WithInitiate(walletId: "ws11qorg", dataToSignHex: "aabb");
 
-        await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", "A register");
+        await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register");
 
         h.Tenant.Verify(t => t.GetOrganizationAsync(OrgId, It.IsAny<CancellationToken>()), Times.Once);
         h.CapturedInitiateRequest.Should().NotBeNull();
@@ -107,7 +125,7 @@ public class RegisterCreateToolTests
     {
         var h = new Harness().WithApproval().WithInitiate(walletId: "ws11qorg", dataToSignHex: "aabb");
 
-        await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", "A register");
+        await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register");
 
         h.CapturedInitiateRequest!.Metadata.Should().NotBeNull();
         h.CapturedInitiateRequest.Metadata!.Should().ContainKey("createdVia")
@@ -120,7 +138,7 @@ public class RegisterCreateToolTests
     {
         var h = new Harness().WithApproval().WithInitiate(walletId: "ws11qorg", dataToSignHex: "aabb");
 
-        var result = await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", "A register");
+        var result = await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register");
 
         result.Status.Should().Be("Success");
         result.RegisterId.Should().Be(Harness.RegisterId);
@@ -138,7 +156,7 @@ public class RegisterCreateToolTests
         // as "done" invites the agent to immediately query state that does not exist yet.
         var h = new Harness().WithApproval().WithInitiate(walletId: "ws11qorg", dataToSignHex: "aabb");
 
-        var result = await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", "A register");
+        var result = await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register");
 
         result.Message.Should().NotContainEquivalentOf("confirmed");
     }
@@ -153,12 +171,12 @@ public class RegisterCreateToolTests
         h.Tenant.Setup(t => t.GetOrganizationAsync(OrgId, It.IsAny<CancellationToken>()))
             .ReturnsAsync($$"""{"id":"{{OrgId}}","name":"Acme","walletAddress":null}""");
 
-        var result = await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", "A register");
+        var result = await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register");
 
         result.Status.Should().Be("Error");
         result.Message.Should().ContainEquivalentOf("administrator");
-        h.Approval.Verify(a => a.RequestAsync(
-            It.IsAny<SdkMcpServer>(), It.IsAny<HumanApprovalRequest>(), It.IsAny<CancellationToken>()),
+        h.Approval.Verify(a => a.Evaluate(
+            It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()),
             Times.Never);
         h.Register.Verify(r => r.InitiateRegisterCreationAsync(
             It.IsAny<InitiateRegisterCreationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -175,15 +193,15 @@ public class RegisterCreateToolTests
         h.Tenant.Setup(t => t.GetOrganizationAsync(OrgId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((string?)null);
 
-        var result = await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", "A register");
+        var result = await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register");
 
         result.Status.Should().Be("Error");
         result.Message.Should().ContainEquivalentOf("could not be read");
         // It must NOT send anyone off to create a wallet — we do not know whether one exists.
         result.Message.Should().NotContainEquivalentOf("recovery phrase");
         result.Message.Should().NotContainEquivalentOf("has no signing wallet");
-        h.Approval.Verify(a => a.RequestAsync(
-            It.IsAny<SdkMcpServer>(), It.IsAny<HumanApprovalRequest>(), It.IsAny<CancellationToken>()),
+        h.Approval.Verify(a => a.Evaluate(
+            It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()),
             Times.Never);
         h.Register.Verify(r => r.InitiateRegisterCreationAsync(
             It.IsAny<InitiateRegisterCreationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -197,7 +215,7 @@ public class RegisterCreateToolTests
         h.Tenant.Setup(t => t.GetOrganizationAsync(OrgId, It.IsAny<CancellationToken>()))
             .ReturnsAsync($$"""{"id":"{{OrgId}}","name":"Acme"}""");
 
-        var result = await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", "A register");
+        var result = await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register");
 
         result.Status.Should().Be("Error");
         result.Message.Should().ContainEquivalentOf("recovery phrase");
@@ -211,7 +229,7 @@ public class RegisterCreateToolTests
         // inside the try, i.e. AFTER a person had already approved.
         var h = new Harness().WithApproval().WithInitiate(walletId: "ws11qorg", dataToSignHex: "aabb");
 
-        var result = await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", null);
+        var result = await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", null);
 
         result.Status.Should().Be("Success");
         h.CapturedInitiateRequest!.Description.Should().BeNull();
@@ -223,12 +241,12 @@ public class RegisterCreateToolTests
         var h = new Harness().WithApproval();
         h.Caller.SetupGet(c => c.OrganizationId).Returns((string?)null);
 
-        var result = await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", "A register");
+        var result = await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register");
 
         result.Status.Should().Be("Error");
         result.Message.Should().ContainEquivalentOf("organisation");
-        h.Approval.Verify(a => a.RequestAsync(
-            It.IsAny<SdkMcpServer>(), It.IsAny<HumanApprovalRequest>(), It.IsAny<CancellationToken>()),
+        h.Approval.Verify(a => a.Evaluate(
+            It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()),
             Times.Never);
     }
 
@@ -239,11 +257,11 @@ public class RegisterCreateToolTests
     {
         var h = new Harness().WithApproval();
 
-        var result = await h.Sut().CreateRegisterAsync(h.Server, name, "A register");
+        var result = await h.Sut().CreateRegisterAsync(h.Context, name, "A register");
 
         result.Status.Should().Be("ValidationError");
-        h.Approval.Verify(a => a.RequestAsync(
-            It.IsAny<SdkMcpServer>(), It.IsAny<HumanApprovalRequest>(), It.IsAny<CancellationToken>()),
+        h.Approval.Verify(a => a.Evaluate(
+            It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()),
             Times.Never);
     }
 
@@ -254,7 +272,7 @@ public class RegisterCreateToolTests
         // Stating it beats making the agent decode a 400.
         var h = new Harness().WithApproval();
 
-        var result = await h.Sut().CreateRegisterAsync(h.Server, new string('x', 39), "A register");
+        var result = await h.Sut().CreateRegisterAsync(h.Context, new string('x', 39), "A register");
 
         result.Status.Should().Be("ValidationError");
         result.ValidationErrors.Should().ContainMatch("*38*");
@@ -265,7 +283,7 @@ public class RegisterCreateToolTests
     {
         var h = new Harness().WithApproval();
 
-        var result = await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", new string('x', 501));
+        var result = await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", new string('x', 501));
 
         result.Status.Should().Be("ValidationError");
         result.ValidationErrors.Should().ContainMatch("*500*");
@@ -277,11 +295,11 @@ public class RegisterCreateToolTests
         var h = new Harness().WithApproval();
         h.Auth.Setup(a => a.CanInvokeTool("sorcha_register_create")).Returns(false);
 
-        var result = await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", "A register");
+        var result = await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register");
 
         result.Status.Should().Be("Unauthorized");
-        h.Approval.Verify(a => a.RequestAsync(
-            It.IsAny<SdkMcpServer>(), It.IsAny<HumanApprovalRequest>(), It.IsAny<CancellationToken>()),
+        h.Approval.Verify(a => a.Evaluate(
+            It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()),
             Times.Never);
     }
 
@@ -291,11 +309,11 @@ public class RegisterCreateToolTests
         var h = new Harness().WithApproval();
         h.Availability.Setup(a => a.IsServiceAvailable("Register")).Returns(false);
 
-        var result = await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", "A register");
+        var result = await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register");
 
         result.Status.Should().Be("Unavailable");
-        h.Approval.Verify(a => a.RequestAsync(
-            It.IsAny<SdkMcpServer>(), It.IsAny<HumanApprovalRequest>(), It.IsAny<CancellationToken>()),
+        h.Approval.Verify(a => a.Evaluate(
+            It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()),
             Times.Never);
     }
 
@@ -306,7 +324,7 @@ public class RegisterCreateToolTests
         // makes the confirmation ceremonial.
         var h = new Harness().WithApproval().WithInitiate(walletId: "ws11qorg", dataToSignHex: "aabb");
 
-        await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", "A register", devMode: true);
+        await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register", devMode: true);
 
         h.CapturedApprovalRequest.Should().NotBeNull();
         h.CapturedApprovalRequest!.Message.Should().Contain("Acme Supply");
@@ -322,7 +340,7 @@ public class RegisterCreateToolTests
                 It.IsAny<FinalizeRegisterCreationRequest>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("finalize: RequestTimeout"));
 
-        var result = await h.Sut().CreateRegisterAsync(h.Server, "Acme Supply", "A register");
+        var result = await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register");
 
         result.Status.Should().Be("Error");
         result.RegisterId.Should().BeNull();
@@ -403,10 +421,11 @@ public class RegisterCreateToolTests
         public HumanApprovalRequest? CapturedApprovalRequest { get; private set; }
 
         /// <summary>
-        /// A real <c>McpServer</c> stand-in rather than null: the tool hands this straight to
-        /// <see cref="IHumanApproval"/>, and the SDK type is non-mockable.
+        /// A real request context rather than null: the tool hands it straight to
+        /// <see cref="IHumanApproval"/>, which is mocked, so its contents never matter here.
         /// </summary>
-        public SdkMcpServer Server { get; } = new FakeMcpServer(new ClientCapabilities());
+        public RequestContext<CallToolRequestParams> Context { get; } =
+            FakeMcpServer.ContextFor("sorcha_register_create");
 
         public Harness()
         {
@@ -417,30 +436,30 @@ public class RegisterCreateToolTests
             Tenant.Setup(t => t.GetOrganizationAsync(OrgId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync($$"""{"id":"{{OrgId}}","name":"Acme","walletAddress":"ws11qorg"}""");
 
-            Approval.Setup(a => a.RequestAsync(
-                    It.IsAny<SdkMcpServer>(), It.IsAny<HumanApprovalRequest>(), It.IsAny<CancellationToken>()))
-                .Callback<SdkMcpServer, HumanApprovalRequest, CancellationToken>(
-                    (_, r, _) => CapturedApprovalRequest = r)
-                .ReturnsAsync(new ApprovalResult(ApprovalOutcome.Refused, "default: not approved"));
+            Approval.Setup(a => a.Evaluate(
+                    It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()))
+                .Callback<RequestContext<CallToolRequestParams>, HumanApprovalRequest>(
+                    (_, r) => CapturedApprovalRequest = r)
+                .Returns(new ApprovalResult(ApprovalOutcome.Refused, "default: not approved"));
         }
 
         public Harness WithApproval()
         {
-            Approval.Setup(a => a.RequestAsync(
-                    It.IsAny<SdkMcpServer>(), It.IsAny<HumanApprovalRequest>(), It.IsAny<CancellationToken>()))
-                .Callback<SdkMcpServer, HumanApprovalRequest, CancellationToken>(
-                    (_, r, _) => CapturedApprovalRequest = r)
-                .ReturnsAsync(new ApprovalResult(ApprovalOutcome.Approved, "Approved by the user."));
+            Approval.Setup(a => a.Evaluate(
+                    It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()))
+                .Callback<RequestContext<CallToolRequestParams>, HumanApprovalRequest>(
+                    (_, r) => CapturedApprovalRequest = r)
+                .Returns(new ApprovalResult(ApprovalOutcome.Approved, "Approved by the user."));
             return this;
         }
 
         public Harness WithApprovalOutcome(ApprovalOutcome outcome, string detail)
         {
-            Approval.Setup(a => a.RequestAsync(
-                    It.IsAny<SdkMcpServer>(), It.IsAny<HumanApprovalRequest>(), It.IsAny<CancellationToken>()))
-                .Callback<SdkMcpServer, HumanApprovalRequest, CancellationToken>(
-                    (_, r, _) => CapturedApprovalRequest = r)
-                .ReturnsAsync(new ApprovalResult(outcome, detail));
+            Approval.Setup(a => a.Evaluate(
+                    It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()))
+                .Callback<RequestContext<CallToolRequestParams>, HumanApprovalRequest>(
+                    (_, r) => CapturedApprovalRequest = r)
+                .Returns(new ApprovalResult(outcome, detail));
             return this;
         }
 

@@ -4,16 +4,12 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 using Sorcha.ServiceClients.Blueprint;
 using Sorcha.ServiceClients.Blueprint.Models;
-
-// The project namespace Sorcha.McpServer shadows the SDK type
-// ModelContextProtocol.Server.McpServer, so an unqualified `McpServer` in this file is CS0118
-// ("namespace used like a type"). Alias it once rather than fully qualifying every mention.
-using SdkMcpServer = ModelContextProtocol.Server.McpServer;
 
 namespace Sorcha.McpServer.Tools.Designer;
 
@@ -110,15 +106,15 @@ public sealed class BlueprintPublishTool
     }
 
     /// <summary>Publishes a draft blueprint to a register (Go live).</summary>
-    /// <param name="server">The live MCP server, injected by the SDK; used to reach the caller's client.</param>
+    /// <param name="context">The tool invocation's request context, injected by the SDK; carries the person's answer on the second round.</param>
     /// <param name="blueprintId">The draft blueprint to publish.</param>
     /// <param name="registerId">The register to publish it to.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The published version, or the rehearsal block if a person declined to waive it.</returns>
     [McpServerTool(Name = ToolName, Destructive = true, ReadOnly = false, Idempotent = false)]
-    [Description("Publishes a draft blueprint to a register so workflow instances can be started from it, returning the immutable published version number. Call this when a draft blueprint is finished and ready to go live: it belongs after sorcha_blueprint_create and sorcha_register_create, and before sorcha_instance_create, which can only instantiate a blueprint that is already published. A blueprint that has not been rehearsed is blocked by a safety gate; when that happens this tool asks a person to confirm via MCP elicitation — only an explicit accept proceeds. A decline, a silent cancel, and a client that never declared the elicitation capability all refuse the same way, because a client can declare elicitation and still auto-cancel every request when running headlessly. Publishing is recorded permanently on the register's ledger. Publishing needs organisation-administrator authority plus an Owner, Admin or Designer role on the target register's governance roster — a plain designer role is not enough, and the tool is not offered to one.")]
+    [Description("Publishes a draft blueprint to a register so workflow instances can be started from it, returning the immutable published version number. Call this when a draft blueprint is finished and ready to go live: it belongs after sorcha_blueprint_create and sorcha_register_create, and before sorcha_instance_create, which can only instantiate a blueprint that is already published. A blueprint that has not been rehearsed is blocked by a safety gate; when that happens this tool asks a person to confirm via MCP elicitation, carried as a multi round-trip request (protocol revision 2026-07-28) — only an explicit accept with the confirm box set proceeds. A decline, a silent cancel, and a client that cannot carry the request all refuse the same way, because a client can support elicitation and still auto-cancel every request when running headlessly. Publishing is recorded permanently on the register's ledger. Publishing needs organisation-administrator authority plus an Owner, Admin or Designer role on the target register's governance roster — a plain designer role is not enough, and the tool is not offered to one.")]
     public async Task<BlueprintPublishResult> PublishBlueprintAsync(
-        SdkMcpServer server,
+        RequestContext<CallToolRequestParams> context,
         [Description("The draft blueprint's ID")] string blueprintId,
         [Description("The register to publish to")] string registerId,
         CancellationToken cancellationToken = default)
@@ -186,7 +182,12 @@ public sealed class BlueprintPublishTool
             // 3. Blocked on the rehearsal soft gate. Ask a person, naming precisely what is waived.
             //    Reaching here PROVES the governance hard gate passed (PublishGate evaluates it
             //    first), so this question can actually be acted on.
-            var approval = await _humanApproval.RequestAsync(server, new HumanApprovalRequest(
+            //
+            //    On the first round Evaluate THROWS InputRequiredException to hand the question to
+            //    the client (MRTR, #1622); the rethrow catch below lets it reach the SDK. The client
+            //    re-invokes this whole method with the answer, so the override-free attempt above
+            //    runs again — harmless, it is a read of the gate that changes nothing.
+            var approval = _humanApproval.Evaluate(context, new HumanApprovalRequest(
                 $"Publish blueprint '{blueprintId}' to register '{registerId}' WITHOUT rehearsing it?\n\n"
                 + "This blueprint version has not been rehearsed, so its routing, disclosure and "
                 + "credential-issuance rules have never been executed even once. Nothing has checked "
@@ -195,7 +196,7 @@ public sealed class BlueprintPublishTool
                 + "Publishing is recorded permanently on the register's ledger, and this waiver is "
                 + "audited against your account.\n\n"
                 + "The safer option is to cancel and rehearse it first in the Sorcha designer.",
-                "Publish without rehearsing"), cancellationToken);
+                "Publish without rehearsing"));
 
             if (approval.Outcome != ApprovalOutcome.Approved)
             {
@@ -251,6 +252,13 @@ public sealed class BlueprintPublishTool
                 blueprintId, overriddenResult.Version, registerId);
 
             return Published(overriddenResult, registerId, publishedWithoutRehearsal: true, stopwatch);
+        }
+        catch (InputRequiredException)
+        {
+            // Not a failure: it carries the approval question to the client (MRTR, #1622). It MUST
+            // precede catch (Exception) below, which would otherwise swallow the question — the
+            // person would never be asked and the agent would see a false "unexpected error".
+            throw;
         }
         catch (TaskCanceledException)
         {
