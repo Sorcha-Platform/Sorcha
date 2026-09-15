@@ -997,6 +997,9 @@ services:
       ServiceClients__RegisterService__Address: http://api-gateway:8080
       ServiceClients__TenantService__Address: http://api-gateway:8080
       ServiceClients__ValidatorService__Address: http://api-gateway:8080
+      # The gateway itself: sorcha_health_check reads per-service health from its aggregated
+      # /api/health (#1635). Without this key it falls back to localhost:80 inside the container.
+      ServiceClients__ApiGateway__Address: http://api-gateway:8080
     depends_on:
       - api-gateway
       - aspire-dashboard
