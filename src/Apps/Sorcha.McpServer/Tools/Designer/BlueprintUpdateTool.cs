@@ -45,7 +45,7 @@ public sealed class BlueprintUpdateTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Result of the update operation.</returns>
     [McpServerTool(Name = "sorcha_blueprint_update")]
-    [Description("Replaces an existing blueprint's definition with a new complete JSON document and increments its version, returning the updated blueprint summary. Call this when revising a blueprint already registered under a known ID; use sorcha_blueprint_create instead for a brand-new blueprint that does not yet exist. The submitted JSON must be a full definition including title, description, at least 2 participants, and at least 1 action — partial patches are not supported.")]
+    [Description("Replaces an existing DRAFT blueprint's definition with a new complete JSON document, returning the updated blueprint's id, title and modification time. Call this when revising a blueprint already registered under a known ID; use sorcha_blueprint_create instead for a brand-new blueprint that does not yet exist. The submitted JSON must be a full definition including title, description, at least 2 participants, and at least 1 action — partial patches are not supported. Updating a draft does not create a version: version numbers are assigned only when a blueprint is published to a register with sorcha_blueprint_publish, and each publication is identified by its publicationTxId.")]
     public async Task<BlueprintUpdateResult> UpdateBlueprintAsync(
         [Description("The ID of the blueprint to update")] string blueprintId,
         [Description("Updated blueprint definition in JSON format")] string blueprintJson,
@@ -194,7 +194,6 @@ public sealed class BlueprintUpdateTool
                 {
                     Id = result.Id ?? blueprintId,
                     Title = result.Title ?? "",
-                    Version = result.Version,
                     ModifiedAt = result.UpdatedAt
                 } : null
             };
@@ -260,11 +259,15 @@ public sealed class BlueprintUpdateTool
     /// property at all, so it is deliberately not modelled here; the wire property for the
     /// modification timestamp is <c>updatedAt</c>, not <c>modifiedAt</c>.
     /// </summary>
+    /// <remarks>
+    /// <c>version</c> is deliberately not read (#1640). Updating a draft never changes it: a version
+    /// number is assigned only at publication. The value on a PUT response is whatever the caller
+    /// submitted, so surfacing it read as a server-assigned increment and misled a cold-start agent.
+    /// </remarks>
     internal sealed class BlueprintResponse
     {
         public string? Id { get; set; }
         public string? Title { get; set; }
-        public int Version { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }
     }
 }
@@ -314,11 +317,6 @@ public sealed record UpdatedBlueprintInfo
     /// The blueprint title.
     /// </summary>
     public required string Title { get; init; }
-
-    /// <summary>
-    /// The new version number.
-    /// </summary>
-    public int Version { get; init; }
 
     /// <summary>
     /// When the blueprint was modified. Sourced from the server's <c>updatedAt</c> field —
