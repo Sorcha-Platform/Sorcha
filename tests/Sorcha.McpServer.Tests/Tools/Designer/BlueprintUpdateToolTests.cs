@@ -118,7 +118,6 @@ public class BlueprintUpdateToolTests
         result.Status.Should().Be("Success");
         result.Blueprint!.Id.Should().Be("bp-123");
         result.Blueprint.Title.Should().Be("Updated Blueprint");
-        result.Blueprint.Version.Should().Be(2);
         result.Blueprint.ModifiedAt.Should().Be(updatedAt);
     }
 
@@ -206,5 +205,32 @@ public sealed class BlueprintUpdateResponseParsingTests
         var properties = typeof(BlueprintUpdateTool.BlueprintResponse).GetProperties();
 
         properties.Should().NotContain(p => p.Name == "Status");
+    }
+
+    /// <summary>
+    /// #1640: updating a draft never changes its version (a version number is assigned only at
+    /// publication), so a Version on the result could only echo the request, and it read as a
+    /// server-assigned increment to a cold-start agent.
+    /// </summary>
+    [Fact]
+    public void UpdateResult_CarriesNoVersion()
+    {
+        typeof(UpdatedBlueprintInfo).GetProperties().Should().NotContain(p => p.Name == "Version",
+            "a draft update never changes the version; a Version here is an echo that reads as an increment");
+        typeof(BlueprintUpdateTool.BlueprintResponse).GetProperties().Should().NotContain(p => p.Name == "Version");
+    }
+
+    [Fact]
+    public void ToolDescription_DoesNotClaimAnUpdateIncrementsTheVersion()
+    {
+        var description = typeof(BlueprintUpdateTool)
+            .GetMethod(nameof(BlueprintUpdateTool.UpdateBlueprintAsync))!
+            .GetCustomAttributes(typeof(System.ComponentModel.DescriptionAttribute), inherit: false)
+            .Cast<System.ComponentModel.DescriptionAttribute>()
+            .Single()
+            .Description;
+
+        description.Should().NotContainEquivalentOf("increments its version");
+        description.Should().ContainEquivalentOf("does not create a version");
     }
 }

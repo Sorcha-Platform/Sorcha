@@ -50,6 +50,8 @@
 > | **#1624** | Peer `DistributeEndpoints.cs:26` — `ContentLength is null or 0`, the #1618 sibling | Straight fix — **✅ DONE** | no |
 > | **#1623** | Uniform wire enums | **✅ MERGED** | — |
 > | **#1635** | `sorcha_health_check` gave a meaningless all-clear: five "Healthy" rows were one gateway probe; Peer/gateway fell back to localhost | Fix — **✅ CODE DONE 2026-09-15** (reads the gateway's aggregated `/api/health`; Unknown is never green; 7 tests, mutation-tested vs the old tool) | no |
+> | **#1640** | `sorcha_blueprint_update` claimed it "increments its version"; drafts are unversioned (versions assigned at publish), so the returned Version was an echo of the request | Fix — **✅ CODE DONE 2026-09-15** (description corrected, Version dropped from the result, reflection guards) | no |
+> | **#1641** | `sorcha_blueprint_publish` discards the server's refusal reason (client collapses every failure to null) — drove the cold-start agent to SSH | Fix — **📋 OPEN** (shared ServiceClients change; typed failure through the client) | no |
 >
 > **#1622 was framed as a feature and turned out to be a fix.** The three routes weighed here (wait for
 > upstream `elicitation.Form`; a capability-independent confirmation; out-of-band approval) all assumed
