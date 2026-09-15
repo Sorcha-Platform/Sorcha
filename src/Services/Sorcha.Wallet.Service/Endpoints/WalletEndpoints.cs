@@ -4,6 +4,7 @@
 #pragma warning disable ASPDEPR002 // WithOpenApi is deprecated; using it for co-located endpoint examples until transformer API stabilizes
 
 using System.Security.Claims;
+using Sorcha.ServiceClients.Audit;
 using Sorcha.ServiceClients.Auth;
 using System.Security.Cryptography;
 
@@ -957,6 +958,12 @@ public static class WalletEndpoints
                         logger.LogWarning(
                             "SEC-AUDIT: User {User} attempted to sign with wallet {Wallet} owned by {Owner} — refused: {Reason}",
                             currentUser, address, wallet.Owner, decision.Reason);
+
+                        // #1648: the same reason, where the refused person can read it.
+                        await RefusalAudit.ReportAsync(
+                            context, RefusalAuditActions.WalletSign, address,
+                            $"signature refused: {decision.Reason}", cancellationToken);
+
                         return Results.Forbid();
                     }
 

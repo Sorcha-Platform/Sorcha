@@ -3149,3 +3149,43 @@ call order. Fixed. `CloneAccess` also dropped `Id` and `Reason`.
 
 Mutation-tested: dropping any of checks 1–4, the hybrid refusal, the gate opt-in, the Owner-grant refusal,
 or the handler's delegation branch each reds a named test.
+
+---
+
+## Refusals a person must act on are recorded in their organisation's audit log (#1648)
+
+A refusal is only useful to someone who can read its reason. The Wallet and Blueprint services logged
+theirs as `SEC-AUDIT` / warning lines, which no refused person could read and no MCP agent ever can. The
+2026-09-15 cold-start run ended there: `sorcha_register_create` got a bare 403, and the only diagnostic
+tools returned NotSupported.
+
+**There was no need for a new store.** The Tenant Service has had an org-scoped audit log since
+Feature 054: `AuditLogEntry`, `GET /api/organizations/{organizationId}/audit` (RequireAuditor +
+platform tier), retention and cleanup. Spec 139 locked `sorcha_audit_query` as NotSupported after checking
+`/api/audit`, a route that does not exist. The UI's audit *writer* still POSTs there (#1655).
+
+| Piece | Where |
+|---|---|
+| Wire contract (one home) | `Sorcha.ServiceClients.Audit.RefusalAuditReport` + `RefusalAuditActions` |
+| Write endpoint | Tenant `POST /api/internal/audit/refusals` (RequireService), binds the report type directly |
+| Writer client | `IRefusalAuditClient` / `RefusalAuditClient`: never throws, 3 s timeout, returns false on any failure |
+| Wallet | `Authorization/RefusalAudit.ReportAsync`, called by `WalletOwnershipGate` (`wallet.access`) and `SignTransaction`'s delegation refusal (`wallet.sign`) |
+| Blueprint | `PublishRefusalAudit.ReportAsync`, called on the publish-gate `Forbidden` (`blueprint.publish`) and the amend governance refusal (`blueprint.amend`) |
+| Read | MCP `sorcha_audit_query` → `ITenantServiceClient.GetOrganizationAuditEventsAsync` (returns the status, not a null) |
+
+- **Every entry is `PermissionDenied` with `Success = false`, and the writer is taken from the token**
+  (`client_id` → `service_name` → `sub`), never the body. A compromised service can add refusal noise, but
+  cannot forge a record that something was allowed or attribute it to another service.
+- **The org is the refused caller's**, from their token. No org claim means no report: the log is per
+  organisation. The MCP tool takes the org from the caller's token too, and has no org argument, because
+  `RequireCallerOrganization` exempts SystemAdmins.
+- **Best-effort, on the refusal path.** A missing client, a Tenant outage or an unknown org (404) leaves the 403
+  unchanged. Do not make the refusal wait on, or fail on, the report.
+- **Reasons must be actionable and must not leak.** The wallet gate names the operation and what it requires,
+  but not the wallet's owner.
+- **Adding a refusal site:** call the service's `ReportAsync` helper beside the `SEC-AUDIT` line, using a
+  `RefusalAuditActions` constant (add one if needed). Assert the report in the handler test.
+- ⚠ **Blueprint test factory time bomb:** a Redis background subscriber throws an NRE shortly after startup,
+  and `StopHost` then disposes the shared host. Any test slow enough (for example a refused publish that
+  tries a real Tenant org-wallet lookup) kills every later test in the class with `ObjectDisposedException`.
+  The factory now mocks `IOrgInfoClient` and `IRefusalAuditClient`.

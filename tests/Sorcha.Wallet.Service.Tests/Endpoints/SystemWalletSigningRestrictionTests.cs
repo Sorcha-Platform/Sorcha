@@ -7,6 +7,7 @@ using System.Security.Claims;
 using FluentAssertions;
 
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -225,6 +226,35 @@ public sealed class SystemWalletSigningRestrictionTests
         var result = await InvokeSignTransactionAsync(address, SignAt(RegisterAttestation), context);
 
         result.Should().BeOfType<Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult>();
+    }
+
+    /// <summary>
+    /// #1648: the reason a delegated signature was refused reaches the caller's organisation audit
+    /// log. Before this it existed only as a SEC-AUDIT line no refused person or agent could read,
+    /// which is where the 2026-09-15 cold-start run stopped.
+    /// </summary>
+    [Fact]
+    public async Task SignTransaction_Refused_ReportsTheReasonToTheCallersOrganisation()
+    {
+        var address = await CreateOrgWalletAsync(RegisterAttestation);
+        var context = BuildUserHttpContext(OrgAdmin, OrgId, "Administrator");
+        var audit = new Mock<Sorcha.ServiceClients.Audit.IRefusalAuditClient>();
+        context.RequestServices = new Microsoft.Extensions.DependencyInjection.ServiceCollection()
+            .AddSingleton(audit.Object)
+            .BuildServiceProvider();
+
+        var result = await InvokeSignTransactionAsync(
+            address, SignAt(Sorcha.Wallet.Contracts.Constants.SorchaDerivationPaths.DocketSigning), context);
+
+        result.Should().BeOfType<Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult>();
+        audit.Verify(a => a.RecordAsync(
+            It.Is<Sorcha.ServiceClients.Audit.RefusalAuditReport>(r =>
+                r.OrganizationId == Guid.Parse(OrgId)
+                && r.Action == Sorcha.ServiceClients.Audit.RefusalAuditActions.WalletSign
+                && r.ResourceType == "wallet"
+                && r.ResourceId == address
+                && r.Reason.Contains("outside the delegation's scope")),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

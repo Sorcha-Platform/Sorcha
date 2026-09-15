@@ -139,9 +139,15 @@ public static class BlueprintFromPublishedEndpoint
                 "Amend refused (governance) — caller (user {UserId}, org {OrgId}) lacks a publish-governance role on register {RegisterId}",
                 caller.PlatformUserId, caller.OrganizationId, body.RegisterId);
 
-            return Results.Json(
-                new { error = "You do not hold a publish-governance role (Owner, Admin, or Designer) on the source register." },
-                statusCode: StatusCodes.Status403Forbidden);
+            const string reason =
+                "You do not hold a publish-governance role (Owner, Admin, or Designer) on the source register.";
+
+            // #1648: readable by the refused caller through their organisation's audit log.
+            await Sorcha.Blueprint.Service.Services.Implementation.PublishRefusalAudit.ReportAsync(
+                httpContext, Sorcha.ServiceClients.Audit.RefusalAuditActions.BlueprintAmend,
+                body.RegisterId, reason, cancellationToken);
+
+            return Results.Json(new { error = reason }, statusCode: StatusCodes.Status403Forbidden);
         }
 
         // -- 4) Deep-clone the Blueprint POCO ---------------------------------

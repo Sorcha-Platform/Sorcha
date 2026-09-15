@@ -125,6 +125,17 @@ public class FromPublishedEndpointTests : IClassFixture<BlueprintServiceWebAppli
 
             response.StatusCode.Should().Be(HttpStatusCode.Forbidden,
                 "the source-register governance check MUST refuse callers without a publish-governance role.");
+
+            // #1648: the refused caller's organisation audit log records why.
+            _factory.MockRefusalAudit.Verify(a => a.RecordAsync(
+                It.Is<Sorcha.ServiceClients.Audit.RefusalAuditReport>(r =>
+                    r.OrganizationId == Guid.Parse("00000000-0000-0000-0000-000000000456")
+                    && r.PlatformUserId == Guid.Parse("00000000-0000-0000-0000-000000000123")
+                    && r.Action == Sorcha.ServiceClients.Audit.RefusalAuditActions.BlueprintAmend
+                    && r.ResourceType == "register"
+                    && r.ResourceId == source.RegisterId
+                    && r.Reason.Contains("publish-governance role")),
+                It.IsAny<CancellationToken>()), Times.Once);
         }
         finally
         {
@@ -147,6 +158,62 @@ public class FromPublishedEndpointTests : IClassFixture<BlueprintServiceWebAppli
                     },
                 });
         }
+    }
+
+    /// <summary>
+    /// #1648: a publish refused by the governance gate is reported to the caller's organisation
+    /// audit log with the gate's own reason. That reason was the one the cold-start agent needed,
+    /// and could only reach over SSH.
+    /// </summary>
+    [Fact]
+    public async Task Publish_CallerLacksGovernance_IsRefusedAndReportedToTheCallersOrganisation()
+    {
+        const string registerId = "registers-publish-403";
+
+        using var scope = _factory.Services.CreateScope();
+        var mockRegisterClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+        Mock.Get(mockRegisterClient)
+            .Setup(c => c.GetGovernanceRosterAsync(registerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GovernanceRosterResponse
+            {
+                RegisterId = registerId,
+                MemberCount = 1,
+                Members =
+                {
+                    new RosterMember
+                    {
+                        Subject = "did:sorcha:org:99999999-9999-9999-9999-999999999999",
+                        Role = "Owner",
+                        Algorithm = "ED25519",
+                        GrantedAt = DateTimeOffset.UtcNow,
+                    }
+                },
+            });
+
+        var createResponse = await _client.PostAsJsonAsync("/api/blueprints", new
+        {
+            title = $"publish-403-{Guid.NewGuid():N}",
+            description = "Refused publish.",
+            participants = new object[] { new { id = "a", name = "A" }, new { id = "b", name = "B" } },
+            actions = new object[]
+            {
+                new { id = 0, title = "Start", sender = "a", isStartingAction = true, routes = Array.Empty<object>() }
+            }
+        });
+        createResponse.EnsureSuccessStatusCode();
+        var created = await createResponse.Content.ReadFromJsonAsync<BlueprintModel>();
+
+        var response = await _client.PostAsJsonAsync($"/api/blueprints/{created!.Id}/publish", new { registerId });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        _factory.MockRefusalAudit.Verify(a => a.RecordAsync(
+            It.Is<Sorcha.ServiceClients.Audit.RefusalAuditReport>(r =>
+                r.OrganizationId == Guid.Parse("00000000-0000-0000-0000-000000000456")
+                && r.Action == Sorcha.ServiceClients.Audit.RefusalAuditActions.BlueprintPublish
+                && r.ResourceType == "register"
+                && r.ResourceId == registerId
+                && !string.IsNullOrWhiteSpace(r.Reason)),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

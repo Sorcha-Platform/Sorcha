@@ -588,6 +588,13 @@ Query audit events and manage retention policy for the organization.
 | GET | `/api/organizations/{organizationId}/audit` | Auditor | Query audit events (filter by date, event type, user; max 200/page) |
 | GET | `/api/organizations/{organizationId}/audit/retention` | Administrator | Get audit retention period (months) |
 | PUT | `/api/organizations/{organizationId}/audit/retention` | Administrator | Update audit retention period (1-120 months) |
+| POST | `/api/internal/audit/refusals` | Service token | Record a refusal reported by another service (#1648). Not routed by the gateway |
+
+**Refusals (#1648).** Services report refusals a person needs to act on as `PermissionDenied` entries with
+`success: false`. So far that means Wallet `wallet.sign` and `wallet.access`, and Blueprint
+`blueprint.publish` and `blueprint.amend`. The `details` carry `action`, `resourceType`, `resourceId`,
+`reason` and `service`, where `service` is taken from the reporting service's token. Query them with
+`?eventType=PermissionDenied`.
 
 ### Admin Dashboard
 

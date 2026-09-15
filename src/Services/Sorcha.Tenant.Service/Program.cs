@@ -307,6 +307,7 @@ app.MapInvitationEndpoints();
 app.MapDashboardEndpoints();
 app.MapCustomDomainEndpoints();
 app.MapInternalEndpoints();
+app.MapInternalRefusalAuditEndpoints(); // #1648: services record refusals into the org audit log
 app.MapPushSubscriptionEndpoints();
 app.MapRegisterSubscriptionEndpoints();
 app.MapRegisterInvitationEndpoints();

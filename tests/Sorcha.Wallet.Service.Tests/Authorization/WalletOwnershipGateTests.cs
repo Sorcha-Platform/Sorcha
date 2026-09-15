@@ -50,7 +50,8 @@ public class WalletOwnershipGateTests
     private static HttpContext Context(
         string? routeWalletAddress,
         IEnumerable<Claim> claims,
-        WalletEntity? stored)
+        WalletEntity? stored,
+        Sorcha.ServiceClients.Audit.IRefusalAuditClient? refusalAudit = null)
     {
         var repository = new Mock<IWalletRepository>();
         repository
@@ -63,6 +64,10 @@ public class WalletOwnershipGateTests
         var services = new ServiceCollection();
         services.AddSingleton(repository.Object);
         services.AddSingleton<Microsoft.Extensions.Logging.ILoggerFactory>(NullLoggerFactory.Instance);
+        if (refusalAudit is not null)
+        {
+            services.AddSingleton(refusalAudit);
+        }
 
         var http = new DefaultHttpContext
         {
@@ -97,6 +102,55 @@ public class WalletOwnershipGateTests
 
         result.Should().NotBeNull("a citizen must not act on a wallet they do not own");
         result.Should().BeAssignableTo<IResult>();
+        result!.GetType().Name.Should().Contain("Forbid");
+    }
+
+    /// <summary>
+    /// #1648: a person refused here has no other way to learn why, so the refusal is reported to
+    /// THEIR organisation's audit log, naming the wallet and the operation.
+    /// </summary>
+    [Fact]
+    public async Task ForeignWallet_Denied_ReportsTheRefusalToTheCallersOrganisation()
+    {
+        var audit = new Mock<Sorcha.ServiceClients.Audit.IRefusalAuditClient>();
+        var http = Context(VictimWallet, [
+            new("platform_user_id", "00000000-0000-0001-0000-000000000009"),
+            new("org_id", "00000000-0000-0000-0000-000000000001")
+        ], Wallet(VictimWallet, VictimOwner), audit.Object);
+
+        await WalletOwnershipGate.EvaluateAsync(http);
+
+        audit.Verify(a => a.RecordAsync(
+            It.Is<Sorcha.ServiceClients.Audit.RefusalAuditReport>(r =>
+                r.OrganizationId == Guid.Parse("00000000-0000-0000-0000-000000000001")
+                && r.PlatformUserId == Guid.Parse("00000000-0000-0001-0000-000000000009")
+                && r.Action == Sorcha.ServiceClients.Audit.RefusalAuditActions.WalletAccess
+                && r.ResourceType == "wallet"
+                && r.ResourceId == VictimWallet
+                && r.Reason.Contains("/api/v1/wallets/x/credentials")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task OwnWallet_Allowed_ReportsNothing()
+    {
+        var audit = new Mock<Sorcha.ServiceClients.Audit.IRefusalAuditClient>();
+        var http = Context(VictimWallet, Citizen(VictimOwner), Wallet(VictimWallet, VictimOwner), audit.Object);
+
+        await WalletOwnershipGate.EvaluateAsync(http);
+
+        audit.Verify(a => a.RecordAsync(
+            It.IsAny<Sorcha.ServiceClients.Audit.RefusalAuditReport>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>The report is best-effort: with no audit client registered the refusal still stands.</summary>
+    [Fact]
+    public async Task ForeignWallet_Denied_WithoutAnAuditClient_IsStillDenied()
+    {
+        var http = Context(VictimWallet, Citizen(Attacker), Wallet(VictimWallet, VictimOwner));
+
+        var result = await WalletOwnershipGate.EvaluateAsync(http);
+
         result!.GetType().Name.Should().Contain("Forbid");
     }
 

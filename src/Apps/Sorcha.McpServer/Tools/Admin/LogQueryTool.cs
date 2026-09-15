@@ -43,7 +43,7 @@ public sealed class LogQueryTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A NotSupported result until a log-query API exists.</returns>
     [McpServerTool(Name = "sorcha_log_query")]
-    [Description("Returns application log entries from one or all Sorcha services, filtered by service name, log level, time window, or free-text search. NOTE: the platform exposes no log-query API yet, so this tool currently returns a NotSupported result; it will be wired up when an observability/log surface lands. Call this when diagnosing a specific error or tracing a request through the platform; prefer this over sorcha_audit_query when the question is about service-level diagnostic output rather than user or admin behaviour.")]
+    [Description("Always returns NotSupported: raw service logs are an operator surface and are deliberately not exposed to agents. Do not call this to find out why an action was refused. Use sorcha_audit_query instead of this tool for that, because services record refusals (wallet signing, blueprint publish and amend) with their reason in your organisation's audit log.")]
     public Task<LogQueryResult> QueryLogsAsync(
         [Description("Filter by service name (e.g., Blueprint, Register, Wallet)")] string? service = null,
         [Description("Filter by log level: Debug, Info, Warning, Error")] string? level = null,

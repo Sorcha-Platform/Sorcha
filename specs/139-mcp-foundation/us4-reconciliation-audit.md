@@ -58,6 +58,7 @@ Legend: ✅ existing client method · ➕ add a client method · 🔧 drifted/ne
 - ✅ **Batch 4 (validator + phantom)** complete:
   - `validator_status` — **left on bare HttpClient** (token still forwards via the default-client handler). It composes three distinct endpoints (`/health`, `/api/admin/validators/{id}/status`, `/api/validators/{id}/count`) into a bespoke result; `IValidatorServiceClient` has no status endpoint and adding one would force an MCP-specific composite shape into the shared client. Noted, not force-fitted.
   - `audit_query`, `log_query`, `metrics` — **marked `NotSupported`** (LOCKED DECISION). Auth gate kept; dead backend-call code, unused ctor deps, and private DTOs removed; tests assert the NotSupported + auth-gate behaviour. Tools stay advertised.
+    - ⚠ **Corrected 2026-09-15 (#1648): the `audit_query` half of this decision rested on a wrong premise.** It looked for `/api/audit`, which does not exist. The Tenant Service already had `GET /api/organizations/{organizationId}/audit` (Feature 054), with filters, retention and a `PermissionDenied` event type. `sorcha_audit_query` now reads it for the caller's own organisation, and services write their refusals into it. `log_query` and `metrics` remain NotSupported.
 
 ## Suggested execution order (T023–T030)
 
