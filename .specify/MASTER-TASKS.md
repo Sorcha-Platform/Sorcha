@@ -8,8 +8,26 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
+> **▶ 2026-09-15 - MCP cold-start run #2: CLOSED. The approval seam works with a real person; the
+> ceiling is still the platform.** Write-up: `docs/superpowers/specs/2026-09-06-mcp-p1-completable-surface-design.md`
+> → "Measured outcome: cold-start run #2". No score claimed: it still did not reach an instance.
+> Fixed and live on n1 the same day: #1622 (PR #1634), #1633 (#1636), #1635 (#1637), #1638 (#1639), #1640 (#1642).
+>
+> | # | Open item from the run | Shape |
+> |---|---|---|
+> | **#1643** | `sorcha_register_create` can never sign: Wallet Service lets a user sign only wallets it owns; org wallets are owned by the org | **DECISION NEEDED** (authorisation). Recommended: Register Service signs the owner attestation after verifying org Administrator |
+> | **#1648** | `sorcha_audit_query` / `sorcha_log_query` are NotSupported, so MCP agents have no diagnostic path for refusals (why the run ended) | Feature: caller-scoped refusal audit surface |
+> | **#1641** | Publish discards `PublishGate`'s refusal reason; drove the agent to SSH | Fix: typed failure through the client |
+> | **#1644** | Disclosure preview skips calculations (real execution computes first) | Fix (#1605 class) |
+> | **#1645** | `sorcha_org_user_audit` roles disagree with `sorcha_user_list` and the token | Fix |
+> | **#1646** | `sorcha://instances` reports a healthy Blueprint service as unavailable (400 collapsed to null) | Fix |
+> | **#1647** | No MCP tool for "who governs this register" | Small feature (endpoint exists) |
+>
+> **Run #3 harness:** state MCP-only up front; no global Sorcha skills or SSH; dedicated org-admin identity;
+> clear the 09-08 draft and register. Only comparable to 3/10 once #1643 lands.
+
 > **2026-09-15 - #1622: the MCP human-approval seam now works over HTTP — it was OUR transport, not
-> Claude Code. ✅ CODE DONE (branch `fix/1622-mrtr-elicitation`); interactive live check pending.**
+> Claude Code. ✅ DONE + LIVE + VERIFIED INTERACTIVELY** (a person accepted the form in Claude Code; round 2 reached `initiate` → 200).
 > The issue blamed Claude Code for declaring no `elicitation.Form`. Measured instead: the MCP server
 > runs `WithHttpTransport(o => o.Stateless = true)`, and in stateless mode SDK 2.2.0 disables every
 > server-to-client request (`ElicitAsync` included) and leaves `McpServer.ClientCapabilities` **null

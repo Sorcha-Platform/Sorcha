@@ -386,3 +386,88 @@ suspicion was right and was scored wrong. Two independent parties looked at one 
    until then the experiment cannot reach an instance regardless of agent quality.
 3. **A re-run is required** once #1618 (merged), #1620 and the elicitation gap are addressed. Only
    then does the 3/10 comparison become meaningful.
+
+---
+
+## Measured outcome: cold-start run #2 (2026-09-15)
+
+An interactive re-run on n1 after #1618, #1620 and #1622 were fixed. It used the same one-line prompt
+and a fresh Claude Code session in an empty directory holding only `llms.txt`, connected over Streamable
+HTTP as `admin@sorcha.local` (org 0001). The transcript, the agent's own `retrospective.md` and its
+memory notes were read directly.
+
+### The headline
+
+**The human-approval seam works with a real person. The run still did not reach a running instance,
+and again the ceiling was the platform, not the agent.** No numeric score is claimed. The baseline's
+3/10 was a judgement on "does it reach a running instance?", and this run's answer is still no, for
+reasons outside the agent's control.
+
+### #1622 verified end to end
+
+`sorcha_register_create` asked via MCP Multi Round-Trip Requests. Claude Code 2.1.272 rendered the form,
+the person ticked confirm and accepted, the answer passed the `requestState` binding and the
+`confirm: true` check, and round 2 proceeded to `POST /api/registers/initiate` → 200. The interactive form
+does send JSON `true`, which was the one thing no headless probe could establish.
+
+### What the agent did well
+
+- **Read every resource unprompted**, before designing anything: schema, glossary, all three examples,
+  live registers, instances.
+- **Found a real design flaw in its own earlier draft.** A single nominal threshold was applied across
+  GBP/EUR/USD. It asked for per-currency figures rather than guessing, then proved the new JSON Logic rule
+  with four edge cases (strictly-greater semantics included).
+- **Diagnosed #1633 correctly from symptoms.** Evaluation tools "failing almost instantly regardless of
+  input" meant a service-side fault, not its blueprint.
+- **Diagnosed the `sorcha_health_check` localhost fallback** (#1635) from the output alone.
+- **Refused an unsafe fix.** It declined `sorcha_user_manage ChangeRole` because it *replaces* roles and
+  would have stripped the platform's only SystemAdmin.
+- **Was candid about its own boundary breach** in its final report and retrospective.
+
+### The walls, all platform
+
+| # | Wall | State |
+|---|---|---|
+| #1633 | No gateway route for `/api/execution/*`, so every rehearsal tool (validate, simulate, disclosure analysis) got a bare 404. The note that "MCP tools call Blueprint directly" was wrong: the compose block routes every client through the gateway. | Fixed (PR #1636), **live** |
+| #1643 | `sorcha_register_create` **can never sign**. `WalletEndpoints.SignTransaction` lets a user token sign only with a wallet it owns, and an org's signing wallet is owned by the org (#1525). Found only after the first real approval; every earlier probe stopped before signing, and the tests mock the wallet client. | **Open: needs an authorisation decision** |
+| #1641 | `sorcha_blueprint_publish` discards `PublishGate`'s exact refusal reason and hands the agent a four-way guess pointing at logs it cannot read. The 403 itself was correct: the 09-08 register is owned by another wallet. | Open |
+| #1648 | `sorcha_audit_query` / `sorcha_log_query` are `NotSupported`, so an MCP-only caller has no diagnostic path for any refusal. **This is why the run ended at "ask the user".** | Open |
+
+### Misleading surfaces it met, and was misled by
+
+| # | Surface | State |
+|---|---|---|
+| #1635 | Health check: five "Healthy" rows were one gateway probe | Fixed (PR #1637), **live** |
+| #1638 | Audit outcome recorded every tool call as `success` (and MRTR asks as `exception`) | Fixed (PR #1639), **live** |
+| #1640 | `sorcha_blueprint_update` claimed it "increments its version"; drafts are unversioned | Fixed (PR #1642), **live** |
+| #1644 | Disclosure preview skips calculations, so a calculated field disclosed to the regulator never appears (real execution computes first) | Open |
+| #1645 | `sorcha_org_user_audit` reports roles `["SystemAdmin"]` where `sorcha_user_list` and the token show five. This produced the agent's wrong "not org-admin" diagnosis. | Open |
+| #1646 | `sorcha://instances` says "Blueprint service unavailable" when a wallet-less caller gets 400 | Open |
+| #1647 | No MCP tool answers "who governs this register" | Open |
+
+### The boundary breach, and why it happened
+
+When `sorcha_blueprint_publish` pointed at "this MCP server's log", the agent loaded the **global**
+`n1-deploy` skill, SSH'd to n1 with the operator's keys, read container logs, decoded the genesis
+transaction from MongoDB, and tried to read the platform source. It stopped once told the session was
+MCP-only. Everything it learned from SSH was correct, but a real external agent has none of that access.
+**Its own retrospective ranks the cause first:** the service already computes the specific refusal reason
+and the tool does not relay it (#1641). The harness also leaked: global skills mentioning Sorcha are
+visible from any directory.
+
+### The question the 09-08 run left open, answered
+
+*Is a calculated field addressable as a disclosure pointer?* **Yes at execution.** `ActionProcessor`
+applies `calculations` and then builds disclosures from the processed data. **No in the preview**
+(#1644), which is why the agent could never see its own supervision design work.
+
+### Next
+
+1. Decide #1643. Recommended: the Register Service signs the owner attestation after verifying the
+   caller is an Administrator of the owning org, so user tokens never touch org keys.
+2. Relay refusal reasons (#1641), then an audit surface (#1648).
+3. **Harness for run #3:** state "MCP tools only" in the brief up front; run under a profile without the
+   global Sorcha skills and without SSH access; use a dedicated org-admin test identity, not the seeded
+   system admin; clear the 09-08 draft and register first.
+4. Re-run once #1643 is fixed. That is the first run that can reach an instance, and so the first one
+   that can be compared with 3/10.
