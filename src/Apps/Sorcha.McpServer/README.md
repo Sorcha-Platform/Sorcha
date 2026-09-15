@@ -226,17 +226,35 @@ gets the full picture.
 
 Register creation, and publishing a blueprint that has never been rehearsed, put the decision to a
 real person via MCP elicitation. `IHumanApproval` / `ElicitationHumanApproval`
-(`src/Apps/Sorcha.McpServer/Services/`) is the **only** place `ElicitAsync` is called. There are
-**three client states, not two**:
+(`src/Apps/Sorcha.McpServer/Services/`) is the **only** place a question is put to a client.
+
+**The elicitation travels as a Multi Round-Trip Request (MRTR), never `ElicitAsync` (#1622).** The
+HTTP transport is stateless, and there SDK 2.2.0 disables every server-to-client request and leaves
+`McpServer.ClientCapabilities` null for every client — which is why a capability check once refused
+Claude Code permanently. Instead, the first round of the tool call *throws* `InputRequiredException`
+carrying the question; the client puts it to a person and re-sends the same tool call with the
+answer. Two consequences for any tool that asks:
+
+- **The whole tool method runs again on the second round**, so everything before the approval point
+  must be side-effect free.
+- **No `catch (Exception)` may swallow `InputRequiredException`** — rethrow it first, or the person
+  is never asked.
+
+The returned `requestState` is a digest of exactly what the person was shown: an answer with no
+state, or with state for a different question (another register name, another storage mode), is
+refused rather than applied. MRTR needs protocol revision `2026-07-28`; Claude Code 2.1.272
+negotiates it over HTTP.
+
+There are **three client states, not two**:
 
 | State | When | Outcome |
 |---|---|---|
-| `NotSupported` | The client never declared the `elicitation` capability (form mode) at `initialize` | Refused before anything is created — "connect with a client that supports elicitation, or perform this step in the Sorcha UI" |
-| `Refused` | A person explicitly declined, or the client dismissed the request without a choice — **including a client that declares the capability but auto-cancels every request when running headlessly** (Claude Code in `-p` mode does exactly this) | Refused — nothing changed |
-| `Approved` | An explicit `accept` | The **only** outcome that permits the operation |
+| `NotSupported` | The client cannot carry an MRTR elicitation (a protocol revision before `2026-07-28` against the stateless transport) | Refused before anything is created — "connect with a client that supports it, or perform this step in the Sorcha UI" |
+| `Refused` | A person declined, the client dismissed the request, the form came back without the confirm box set, or the answer was not for this exact question — **including a client that supports elicitation but auto-cancels every request when running headlessly** (Claude Code in `-p` mode does exactly this) | Refused — nothing changed |
+| `Approved` | An explicit `accept` with the confirm box set | The **only** outcome that permits the operation |
 
-Declaring the elicitation capability at `initialize` is not a promise a person will actually be
-asked. Fail closed everywhere, in every environment, with no bypass flag.
+Supporting elicitation is not a promise a person will actually be asked. Fail closed everywhere, in
+every environment, with no bypass flag.
 
 ## Security
 

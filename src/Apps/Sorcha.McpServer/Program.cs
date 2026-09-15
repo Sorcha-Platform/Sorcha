@@ -245,10 +245,11 @@ static void ConfigureServerOptions(McpServerOptions options)
         sorcha_issue_credential, sorcha_prove_to_regulator.
 
         SOME STEPS NEED A PERSON. Creating a register, and publishing a blueprint that has not
-        been rehearsed, ask a person to confirm via MCP elicitation — only an explicit `accept`
-        proceeds. A decline, a silent cancel, and a client that never declared the elicitation
-        capability all refuse the same way; declaring the capability is not a promise a person
-        will be asked, because a client can auto-cancel every request when running headlessly
+        been rehearsed, ask a person to confirm via MCP elicitation, carried as a multi
+        round-trip request (protocol revision 2026-07-28) — only an explicit `accept` with the
+        confirm box set proceeds. A decline, a silent cancel, and a client that cannot carry the
+        request all refuse the same way; supporting elicitation is not a promise a person will
+        be asked, because a client can auto-cancel every request when running headlessly
         (Claude Code in `-p` mode does exactly this). Expect these tools to refuse cleanly
         rather than proceed unsupervised — this is deliberate, since register creation and an
         unrehearsed publish are both irreversible and establish governance.

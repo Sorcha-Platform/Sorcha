@@ -3320,11 +3320,14 @@ Each tool signs or authorises with the caller's own forwarded bearer token, neve
 credential (see the MCP server README's "Caller-token forwarding" section) — the backing endpoint
 enforces exactly the caller's tier/role, not the MCP server's own.
 
-The human gate (where present) is MCP elicitation: `IHumanApproval` /
+The human gate (where present) is MCP elicitation carried as a Multi Round-Trip Request (protocol
+revision `2026-07-28`): the first `tools/call` returns an input-required result, and the client
+re-sends the same call with the person's answer and the echoed `requestState`. `IHumanApproval` /
 `ElicitationHumanApproval` (`src/Apps/Sorcha.McpServer/Services/`) distinguishes three client
-states — a client that never declared the `elicitation` capability (refused), a client that declared
-it but the request was declined or auto-cancelled, e.g. a headless client (refused), and an explicit
-`accept` (the only outcome that proceeds).
+states — a client that cannot carry an MRTR elicitation (refused), a request that was declined,
+auto-cancelled (e.g. a headless client), submitted without the confirm box, or answered for a
+different question (refused), and an explicit `accept` with the confirm box set (the only outcome
+that proceeds).
 
 ---
 

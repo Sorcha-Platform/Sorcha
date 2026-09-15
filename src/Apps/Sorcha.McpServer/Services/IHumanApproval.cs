@@ -1,18 +1,30 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+
 namespace Sorcha.McpServer.Services;
 
 /// <summary>How a request for human approval resolved.</summary>
 public enum ApprovalOutcome
 {
-    /// <summary>A person explicitly accepted. The ONLY outcome that permits the operation.</summary>
+    /// <summary>
+    /// A person explicitly accepted AND set the confirm field. The ONLY outcome that permits the
+    /// operation.
+    /// </summary>
     Approved,
 
-    /// <summary>A person declined, or the client dismissed the request without a choice.</summary>
+    /// <summary>
+    /// A person declined, the client dismissed the request without a choice, the form came back
+    /// without the confirm field set, or the answer was not for this exact request.
+    /// </summary>
     Refused,
 
-    /// <summary>The client did not declare the elicitation capability, so no person can be asked.</summary>
+    /// <summary>
+    /// The client cannot carry an elicitation as a multi round-trip request (a protocol revision
+    /// earlier than 2026-07-28 against the stateless HTTP transport), so no person can be asked.
+    /// </summary>
     NotSupported
 }
 
@@ -29,22 +41,35 @@ public sealed record ApprovalResult(ApprovalOutcome Outcome, string Detail);
 /// <summary>
 /// Obtains a real person's approval before an operationally-consequential act.
 /// <para>
-/// This exists as a seam for two reasons. First, <c>McpServer.ElicitAsync</c> is non-virtual in
-/// SDK 2.2.0 and therefore cannot be mocked, so a tool calling it directly is untestable.
-/// Second, the platform genuinely cannot tell an agent from the human whose bearer token it
-/// forwards — so the sign-off must happen at the client, where the person actually is, and this
-/// is the single place that contract is expressed.
+/// This exists as a seam for two reasons. First, the SDK's round-trip machinery is awkward to drive
+/// from a tool test, so tools depend on this and the mechanics are tested once, here. Second, the
+/// platform genuinely cannot tell an agent from the human whose bearer token it forwards — so the
+/// sign-off must happen at the client, where the person actually is, and this is the single place
+/// that contract is expressed.
 /// </para>
 /// </summary>
 public interface IHumanApproval
 {
-    /// <summary>Asks the caller's client to put <paramref name="request"/> to a person.</summary>
-    /// <param name="server">The live MCP server for this invocation (from <c>RequestContext.Server</c>).</param>
+    /// <summary>
+    /// Resolves approval for <paramref name="request"/> — or, when the person has not been asked
+    /// yet, asks by THROWING.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// On the first round this throws <see cref="InputRequiredException"/>. That is not an error: it
+    /// is how a stateless MCP server hands a question to the client (Multi Round-Trip Requests). The
+    /// client puts it to a person and re-invokes the SAME tool call with the answer, at which point
+    /// this returns an outcome.
+    /// </para>
+    /// <para>
+    /// <b>Callers MUST let that exception reach the SDK.</b> A <c>catch (Exception)</c> around this
+    /// call swallows the question, and the person is never asked. And because the whole tool method
+    /// runs again on the second round, everything before this call must be side-effect free.
+    /// </para>
+    /// </remarks>
+    /// <param name="context">The tool invocation's request context, injected by the SDK.</param>
     /// <param name="request">What the person is being asked.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The approval outcome. Treat anything but <see cref="ApprovalOutcome.Approved"/> as a refusal.</returns>
-    Task<ApprovalResult> RequestAsync(
-        ModelContextProtocol.Server.McpServer server,
-        HumanApprovalRequest request,
-        CancellationToken cancellationToken = default);
+    /// <exception cref="InputRequiredException">The person has not been asked yet; let it propagate.</exception>
+    ApprovalResult Evaluate(RequestContext<CallToolRequestParams> context, HumanApprovalRequest request);
 }

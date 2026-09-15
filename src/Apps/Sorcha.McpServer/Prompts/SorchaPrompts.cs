@@ -17,20 +17,21 @@ namespace Sorcha.McpServer.Prompts;
 public static class SorchaPrompts
 {
     // Ruling 5 (task-8): "your client does not support elicitation" understates the failure
-    // surface — a client can DECLARE the elicitation capability and still refuse every request
-    // automatically when running headlessly (Claude Code in `-p` mode answers `cancel` to every
-    // elicit without a person ever seeing it). Only an explicit `accept` approves; `decline`, a
-    // silent `cancel`, and "capability never declared" are three different states that all
-    // refuse the same way. Every prompt repeats this so an agent reading only one of them still
-    // gets the full picture.
+    // surface — a client can SUPPORT elicitation and still refuse every request automatically
+    // when running headlessly (Claude Code in `-p` mode answers `cancel` to every elicit without
+    // a person ever seeing it). Only an explicit `accept` approves; `decline`, a silent `cancel`,
+    // and "client cannot carry the request" are three different states that all refuse the same
+    // way. Every prompt repeats this so an agent reading only one of them still gets the full
+    // picture. The elicitation is a multi round-trip request, not a server-to-client call (#1622).
     private const string HumanGateReminder =
         "Register creation, and publishing a blueprint that has never been rehearsed, put the " +
-        "decision to a person via MCP elicitation and proceed only on an explicit `accept` to " +
-        "confirm — a decline, a silent cancel, and a client that never declared the elicitation " +
-        "capability all refuse in the same way. A client can declare the capability and still " +
-        "auto-cancel every request when running headlessly (Claude Code in `-p` mode does " +
-        "exactly this), so do not assume elicitation support means a person will actually be " +
-        "asked; expect the tool to refuse cleanly rather than proceed unsupervised.";
+        "decision to a person via MCP elicitation (carried as a multi round-trip request, " +
+        "protocol revision 2026-07-28) and proceed only on an explicit `accept` with the confirm " +
+        "box set — a decline, a silent cancel, and a client that cannot carry the request all " +
+        "refuse in the same way. A client can support elicitation and still auto-cancel every " +
+        "request when running headlessly (Claude Code in `-p` mode does exactly this), so do not " +
+        "assume elicitation support means a person will actually be asked; expect the tool to " +
+        "refuse cleanly rather than proceed unsupervised.";
 
     /// <summary>
     /// Guides an agent through setting up a two-party data exchange with selective disclosure,
