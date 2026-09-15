@@ -155,12 +155,123 @@ public sealed class SystemWalletSigningRestrictionTests
             request,
             _walletManager,
             null, // WalletDbContext? — in-memory storage path
+            new DelegationService(_repository, NullLogger<DelegationService>.Instance),
             context,
             NullLogger<Program>.Instance,
             CancellationToken.None
         ]);
 
         return await (Task<IResult>)result!;
+    }
+
+    // ---- #1643: delegated signing with an organisation-owned wallet, through the real handler ----
+    //
+    // OrganizationWalletDelegationTests pin the rule in isolation. These pin the JOIN: that
+    // SignTransaction actually consults the grants and the rule for a user token. #1643 itself was a
+    // join nobody exercised (the MCP tool's tests mocked the wallet client).
+
+    private const string OrgId = "00000000-0000-0000-0000-00000000c0de";
+    private const string OtherOrgId = "00000000-0000-0000-0000-00000000beef";
+    private const string OrgAdmin = "org-admin-platform-user";
+
+    private static HttpContext BuildUserHttpContext(string platformUserId, string orgId, params string[] roles)
+    {
+        var claims = new List<Claim> { new("platform_user_id", platformUserId), new("org_id", orgId) };
+        claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
+        return new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity(claims, "Test")) };
+    }
+
+    private async Task<string> CreateOrgWalletAsync(string? grantContext)
+    {
+        // Owner = the organisation id, exactly as #1525 creation stamps it.
+        var (wallet, _) = await _walletManager.CreateWalletAsync("Org signing wallet", "ED25519", OrgId, OrgId);
+
+        if (grantContext is not null)
+        {
+            await new DelegationService(_repository, NullLogger<DelegationService>.Instance).GrantAccessAsync(
+                wallet.Address,
+                OrgAdmin,
+                Sorcha.Wallet.Core.Domain.AccessRight.ReadWrite,
+                OrgAdmin,
+                allowedDerivationContexts: [grantContext]);
+        }
+
+        return wallet.Address;
+    }
+
+    private static SignTransactionRequest SignAt(string derivationPath) =>
+        ValidSignRequest() with { DerivationPath = derivationPath };
+
+    private const string RegisterAttestation = Sorcha.Wallet.Contracts.Constants.SorchaDerivationPaths.RegisterAttestation;
+
+    [Fact]
+    public async Task SignTransaction_OrgAdministratorWithScopedGrant_OrgWallet_IsNotRefused()
+    {
+        var address = await CreateOrgWalletAsync(RegisterAttestation);
+        var context = BuildUserHttpContext(OrgAdmin, OrgId, "Administrator");
+
+        var result = await InvokeSignTransactionAsync(address, SignAt(RegisterAttestation), context);
+
+        result.Should().NotBeOfType<Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult>(
+            "an Administrator of the owning organisation holding a grant scoped to this context must be able to sign");
+    }
+
+    [Fact]
+    public async Task SignTransaction_OrgAdministratorWithoutGrant_OrgWallet_Returns403()
+    {
+        var address = await CreateOrgWalletAsync(grantContext: null);
+        var context = BuildUserHttpContext(OrgAdmin, OrgId, "Administrator");
+
+        var result = await InvokeSignTransactionAsync(address, SignAt(RegisterAttestation), context);
+
+        result.Should().BeOfType<Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult>();
+    }
+
+    [Fact]
+    public async Task SignTransaction_OrgAdministratorOutsideGrantScope_Returns403()
+    {
+        var address = await CreateOrgWalletAsync(RegisterAttestation);
+        var context = BuildUserHttpContext(OrgAdmin, OrgId, "Administrator");
+
+        var result = await InvokeSignTransactionAsync(
+            address, SignAt(Sorcha.Wallet.Contracts.Constants.SorchaDerivationPaths.DocketSigning), context);
+
+        result.Should().BeOfType<Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult>();
+    }
+
+    [Fact]
+    public async Task SignTransaction_AdministratorOfAnotherOrganisation_Returns403()
+    {
+        var address = await CreateOrgWalletAsync(RegisterAttestation);
+        var context = BuildUserHttpContext(OrgAdmin, OtherOrgId, "Administrator");
+
+        var result = await InvokeSignTransactionAsync(address, SignAt(RegisterAttestation), context);
+
+        result.Should().BeOfType<Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult>();
+    }
+
+    [Fact]
+    public async Task SignTransaction_OrgMemberWhoIsNoLongerAnAdministrator_Returns403()
+    {
+        var address = await CreateOrgWalletAsync(RegisterAttestation);
+        var context = BuildUserHttpContext(OrgAdmin, OrgId, "Designer");
+
+        var result = await InvokeSignTransactionAsync(address, SignAt(RegisterAttestation), context);
+
+        result.Should().BeOfType<Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult>();
+    }
+
+    [Fact]
+    public async Task SignTransaction_DelegatedHybridMode_Returns403()
+    {
+        // Hybrid mode also signs request.PqcWalletAddress, which the delegation check never covers.
+        var address = await CreateOrgWalletAsync(RegisterAttestation);
+        var context = BuildUserHttpContext(OrgAdmin, OrgId, "Administrator");
+
+        var result = await InvokeSignTransactionAsync(
+            address, SignAt(RegisterAttestation) with { HybridMode = true, PqcWalletAddress = "ws2someotherwallet" }, context);
+
+        result.Should().BeOfType<Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult>();
     }
 
     [Fact]

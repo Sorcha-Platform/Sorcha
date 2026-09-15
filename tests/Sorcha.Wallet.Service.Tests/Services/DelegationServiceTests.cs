@@ -122,6 +122,43 @@ public class DelegationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GrantAccessAsync_PersistsTheAllowedDerivationContexts()
+    {
+        // #1643: the scope is what stops a delegation on an organisation wallet reaching every key.
+        await CreateTestWalletAsync();
+
+        await _delegationService.GrantAccessAsync(
+            _testWallet.Address,
+            "delegate-user",
+            AccessRight.ReadWrite,
+            "owner-user",
+            allowedDerivationContexts: [Sorcha.Wallet.Contracts.Constants.SorchaDerivationPaths.RegisterAttestation]);
+
+        var stored = (await _delegationService.GetActiveAccessAsync(_testWallet.Address))
+            .Single(a => a.Subject == "delegate-user");
+        stored.AllowedDerivationContexts.Should()
+            .Equal([Sorcha.Wallet.Contracts.Constants.SorchaDerivationPaths.RegisterAttestation]);
+    }
+
+    [Fact]
+    public async Task GetWalletAsync_DoesNotWipeTheWalletsDelegations()
+    {
+        // GetWalletAsync loads the wallet WITHOUT its delegates, stamps LastAccessedAt and writes it back.
+        // The in-memory repository treated that empty, unloaded collection as "no grants" and deleted
+        // them, so reading a wallet destroyed every delegation on it. Found by #1643, whose delegated
+        // signing reads the wallet before its grants.
+        await CreateTestWalletAsync();
+        await _delegationService.GrantAccessAsync(
+            _testWallet.Address, "delegate-user", AccessRight.ReadWrite, "owner-user");
+
+        await _walletManager.GetWalletAsync(_testWallet.Address);
+
+        (await _delegationService.GetActiveAccessAsync(_testWallet.Address))
+            .Should().ContainSingle(a => a.Subject == "delegate-user",
+                "reading a wallet must never delete its access grants");
+    }
+
+    [Fact]
     public async Task GrantAccessAsync_ShouldSetExpiration_WhenProvided()
     {
         // Arrange

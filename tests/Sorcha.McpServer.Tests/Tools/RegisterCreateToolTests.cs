@@ -347,6 +347,50 @@ public class RegisterCreateToolTests
     }
 
     /// <summary>
+    /// #1643: the organisation's wallet is owned by the organisation, so a person's signature with
+    /// it is produced under a scoped delegation. A refusal at that step, arriving after a person has
+    /// already approved, must say what is missing: an opaque 403 sends the agent looking elsewhere.
+    /// </summary>
+    [Fact]
+    public async Task CreateRegisterAsync_SignRefused_ExplainsTheScopedDelegationAndCreatesNothing()
+    {
+        var h = new Harness().WithApproval().WithInitiate(walletId: "ws11qorg", dataToSignHex: "aabb");
+        h.Wallet.Setup(w => w.SignTransactionAsync(
+                It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException(
+                "Response status code does not indicate success: 403 (Forbidden).", null,
+                System.Net.HttpStatusCode.Forbidden));
+
+        var result = await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register");
+
+        result.Status.Should().Be("Unauthorized");
+        result.Message.Should().Contain(SorchaDerivationPaths.RegisterAttestation);
+        result.Message.Should().ContainEquivalentOf("delegation");
+        result.Message.Should().Contain("sorcha wallet access grant");
+        result.Message.Should().Contain("ws11qorg");
+        result.RegisterId.Should().BeNull();
+        h.Register.Verify(r => r.FinalizeRegisterCreationAsync(
+            It.IsAny<FinalizeRegisterCreationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateRegisterAsync_InitiateRefused_DoesNotBlameTheWalletDelegation()
+    {
+        // The counterfactual: a 403 from the REGISTER service has a different cause
+        // (CanManageRegisters). Pointing the operator at wallet grants would be a confident wrong answer.
+        var h = new Harness().WithApproval().WithInitiate(walletId: "ws11qorg", dataToSignHex: "aabb");
+        h.Register.Setup(r => r.InitiateRegisterCreationAsync(
+                It.IsAny<InitiateRegisterCreationRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("403", null, System.Net.HttpStatusCode.Forbidden));
+
+        var result = await h.Sut().CreateRegisterAsync(h.Context, "Acme Supply", "A register");
+
+        result.Status.Should().Be("Error");
+        result.Message.Should().NotContainEquivalentOf("delegation");
+    }
+
+    /// <summary>
     /// Pattern 23: a self-supplied label may be recorded as an audit fact, but the moment
     /// anything branches on it, it becomes an authority claim the agent controls.
     /// </summary>

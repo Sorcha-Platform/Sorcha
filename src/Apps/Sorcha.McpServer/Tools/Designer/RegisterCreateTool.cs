@@ -55,6 +55,14 @@ namespace Sorcha.McpServer.Tools.Designer;
 /// that cannot succeed — the same reason the availability checks sit above the elicit.
 /// </para>
 /// <para>
+/// <b>The signature is delegated (#1643).</b> The organisation owns its wallet, so the Wallet
+/// Service signs for the caller only under a <c>WalletAccess</c> grant scoped to
+/// <see cref="SorchaDerivationPaths.RegisterAttestation"/>, and only while the caller's token is
+/// an Administrator of that organisation. The creating admin is granted it automatically. A 403
+/// from the sign call, and only from that call, is reported as a missing delegation with the grant
+/// command; a 403 from the register service has a different cause.
+/// </para>
+/// <para>
 /// <b>Ordering.</b> The person is asked BEFORE <c>POST /api/registers/initiate</c>. The pending
 /// registration has a hard 5-minute TTL (<c>RegisterCreationOrchestrator</c>), and a human's
 /// thinking time must not be spent against it.
@@ -110,7 +118,7 @@ public sealed class RegisterCreateTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The created register's id and genesis transaction id.</returns>
     [McpServerTool(Name = ToolName, Destructive = true, ReadOnly = false, Idempotent = false)]
-    [Description("Creates a new Sorcha register — the ledger a workflow's transactions are written to — and returns its registerId plus the id of the genesis transaction that was submitted for it. Call this when you are setting up a workflow from scratch and have no registerId yet: design the blueprint first with sorcha_blueprint_create, create the register here, publish that blueprint to it with sorcha_blueprint_publish, and only then start work on it with sorcha_instance_create, which needs both ids. Creating a register is irreversible and establishes the governance keys that authorise every later administrative change, so it REQUIRES a person to confirm it via MCP elicitation, carried as a multi round-trip request (protocol revision 2026-07-28) — only an explicit accept with the confirm box set proceeds; a decline, a silent cancel, and a client that cannot carry the request all refuse the same way, because a client can support elicitation and still auto-cancel every request when running headlessly. The register is owned by YOUR organisation's signing wallet, which is resolved from your token rather than passed in, and creating one needs organisation-administrator authority — a plain designer role is not enough, and the tool is not offered to one. Set devMode only for development registers — it stores payloads as plaintext instead of encrypting them.")]
+    [Description("Creates a new Sorcha register — the ledger a workflow's transactions are written to — and returns its registerId plus the id of the genesis transaction that was submitted for it. Call this when you are setting up a workflow from scratch and have no registerId yet: design the blueprint first with sorcha_blueprint_create, create the register here, publish that blueprint to it with sorcha_blueprint_publish, and only then start work on it with sorcha_instance_create, which needs both ids. Creating a register is irreversible and establishes the governance keys that authorise every later administrative change, so it REQUIRES a person to confirm it via MCP elicitation, carried as a multi round-trip request (protocol revision 2026-07-28) — only an explicit accept with the confirm box set proceeds; a decline, a silent cancel, and a client that cannot carry the request all refuse the same way, because a client can support elicitation and still auto-cancel every request when running headlessly. The register is owned by YOUR organisation's signing wallet, which is resolved from your token rather than passed in, and creating one needs organisation-administrator authority — a plain designer role is not enough, and the tool is not offered to one. Because the organisation, not you, owns that wallet, its signature is made under a delegation scoped to sorcha:register-attestation, which the administrator who created the wallet holds automatically; if the wallet service refuses it, the result says a delegation is missing and how to grant one, and nothing is created. Set devMode only for development registers — it stores payloads as plaintext instead of encrypting them.")]
     public async Task<RegisterCreateResult> CreateRegisterAsync(
         RequestContext<CallToolRequestParams> context,
         [Description("Register name, 1-38 characters")] string name,
@@ -257,12 +265,33 @@ public sealed class RegisterCreateTool
                 // validator authorises later governance transactions by matching it. A wrong
                 // value does not throw; it derives a different valid key and the register is
                 // silently ungovernable. Never a literal (CLAUDE.md pattern 15).
-                var signResult = await _walletClient.SignTransactionAsync(
-                    attestation.WalletId,
-                    Convert.FromHexString(attestation.DataToSign),
-                    SorchaDerivationPaths.RegisterAttestation,
-                    isPreHashed: true,
-                    cancellationToken);
+                WalletSignResult signResult;
+                try
+                {
+                    signResult = await _walletClient.SignTransactionAsync(
+                        attestation.WalletId,
+                        Convert.FromHexString(attestation.DataToSign),
+                        SorchaDerivationPaths.RegisterAttestation,
+                        isPreHashed: true,
+                        cancellationToken);
+                }
+                catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                {
+                    // #1643: the organisation owns this wallet, so the Wallet Service signs for a person
+                    // only under a delegation scoped to this context, and only while their token is an
+                    // Administrator of the organisation. Scoped to THIS call: a 403 from the register
+                    // service has a different cause and must not be reported as a missing delegation.
+                    stopwatch.Stop();
+                    _logger.LogWarning(ex, "Wallet service refused the register attestation signature for {Wallet}", attestation.WalletId);
+
+                    return new RegisterCreateResult
+                    {
+                        Status = "Unauthorized",
+                        Message = DelegationRefusedMessage(attestation.WalletId),
+                        CheckedAt = DateTimeOffset.UtcNow,
+                        ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
+                    };
+                }
 
                 signedAttestations.Add(new SignedAttestation
                 {
@@ -462,6 +491,23 @@ public sealed class RegisterCreateTool
         Enum.TryParse<SignatureAlgorithm>(algorithm, ignoreCase: true, out var parsed)
             ? parsed
             : SignatureAlgorithm.ED25519;
+
+    /// <summary>
+    /// What the agent is told when the Wallet Service refuses the attestation signature (#1643). It
+    /// names the missing delegation and how to obtain it, because the refusal arrives after a person
+    /// has approved and an opaque 403 at that point is unactionable.
+    /// </summary>
+    private static string DelegationRefusedMessage(string walletAddress) =>
+        $"The Wallet Service refused to sign with your organisation's wallet ('{walletAddress}'), so the "
+        + "register was NOT created (the pending registration expires on its own within five minutes). "
+        + "The organisation owns that wallet, so a person signs with it only under a delegation scoped to "
+        + $"'{SorchaDerivationPaths.RegisterAttestation}', and only while their token is an Administrator "
+        + "of that organisation (#1643). The administrator who created the wallet holds that delegation "
+        + "automatically; wallets created before it was introduced, and every other administrator, need one "
+        + "granted by an Administrator of the organisation: "
+        + $"sorcha wallet access grant --address {walletAddress} --subject <platform user id> --right ReadWrite "
+        + $"--context {SorchaDerivationPaths.RegisterAttestation}. It also means this if your session is no "
+        + "longer an Administrator of the organisation. This tool cannot grant it for you.";
 
     /// <summary>What the approval prompt shows when no description was supplied.</summary>
     private static string DescriptionOrPlaceholder(string? description) =>

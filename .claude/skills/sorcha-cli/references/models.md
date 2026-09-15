@@ -189,6 +189,24 @@ public class SignTransactionResponse
     [JsonPropertyName("algorithm")]
     public string Algorithm { get; set; } = string.Empty;
 }
+
+// Wallet access delegation (`sorcha wallet access grant|list|revoke|check`).
+public class GrantAccessRequest
+{
+    [JsonPropertyName("subject")] public string Subject { get; set; } = string.Empty;
+    [JsonPropertyName("accessRight")] public string AccessRight { get; set; } = string.Empty;   // Owner | ReadWrite | ReadOnly
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
+    [JsonPropertyName("expiresAt")] public DateTime? ExpiresAt { get; set; }
+    // #1643: named Sorcha contexts the grant may sign at (--context, repeatable). REQUIRED when an
+    // org Administrator grants on the org's wallet; signing with an org wallet refuses unscoped grants.
+    [JsonPropertyName("allowedDerivationContexts")] public List<string>? AllowedDerivationContexts { get; set; }
+}
+
+public class WalletAccessGrant
+{
+    // id, subject, accessRight, grantedBy, reason, grantedAt, expiresAt, isActive, plus:
+    [JsonPropertyName("allowedDerivationContexts")] public List<string>? AllowedDerivationContexts { get; set; }  // null = unscoped
+}
 ```
 
 ### Refit Client DTOs

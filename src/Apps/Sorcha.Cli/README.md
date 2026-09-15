@@ -411,6 +411,20 @@ This is useful for:
 | `sorcha wallet sign` | Sign data with wallet |
 | `sorcha wallet verify` | Verify signature |
 | `sorcha wallet delete` | Delete wallet |
+| `sorcha wallet access grant` | Grant another identity access (`--address --subject --right [--reason] [--context <ctx>...]`) |
+| `sorcha wallet access list` / `revoke` / `check` | Inspect, revoke or test access grants |
+
+**Organisation wallets (#1643).** An organisation owns its wallet, so a person signs with it only under
+a grant scoped to named derivation contexts, and only while their token is an `Administrator` of that
+organisation. The admin who creates the wallet (`sorcha org wallet create`) gets
+`sorcha:register-attestation` automatically for 90 days. To let another admin create registers:
+
+```bash
+sorcha wallet access grant --address <orgWallet> --subject <platformUserId> --right ReadWrite \
+  --context sorcha:register-attestation --reason "register creation"
+```
+
+A grant made by an org admin must name at least one `--context` and cannot be `Owner`.
 
 ### Register Commands
 

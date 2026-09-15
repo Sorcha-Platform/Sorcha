@@ -261,6 +261,31 @@ unchanged.
 | DELETE | `/api/v1/wallets/{walletAddress}/access/{subject}` | Revoke access |
 | GET | `/api/v1/wallets/{walletAddress}/access/{subject}/check` | Check if subject has access |
 
+**Signing with an organisation's wallet (#1643).** An organisation wallet is owned by the organisation
+(#1525), so no person owns it and, before this, no user token could sign with it:
+`sorcha_register_create` could never succeed. A person now signs with one under a **delegation**, and
+`POST /{address}/sign` checks all of the following at signing time:
+
+1. an active `ReadWrite` grant for the caller (`platform_user_id`);
+2. the caller's **current** token names the owning organisation (`org_id`) **and** carries the
+   `Administrator` role, so a departed or demoted admin's grant stops working at once, with no revoke
+   needed;
+3. the grant is **scoped** (`allowedDerivationContexts`) and the requested `derivationPath` resolves
+   to one of those contexts. An unscoped grant, a missing path (the default key) and hybrid mode are
+   all refused.
+
+Refusals are **403** with a `SEC-AUDIT` log line naming the reason; successes log the grant id.
+
+- **Grants.** The `/access` group admits an Administrator of the owning organisation as well as the
+  owner. Grants made that way must name contexts and may not grant `Owner`. Contexts must be named
+  Sorcha contexts (`sorcha:register-attestation`), never raw BIP44 paths.
+- **Creator grant.** Creating a wallet with `organizationId` automatically grants its creator
+  `ReadWrite` scoped to `sorcha:register-attestation` for 90 days. Failure to write the grant is
+  logged and never fails the creation. Anything wider is a deliberate grant through `/access`
+  (`sorcha wallet access grant … --context <ctx>`).
+- **Schema.** `WalletAccess.AllowedDerivationContexts` (`text[]`, nullable) is folded into
+  `InitialCreate` (CLAUDE.md #19), so an existing database needs the column added or recreated.
+
 ### Citizen Wallet — Server-Custody KB-JWT Signing (#1195 Phase 2)
 
 | Method | Endpoint | Description |

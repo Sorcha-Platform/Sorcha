@@ -58,6 +58,13 @@ public class WalletAccess
     public string? RevokedBy { get; set; }
 
     /// <summary>
+    /// Sorcha derivation contexts (e.g. <c>sorcha:register-attestation</c>) this grant may sign at.
+    /// Null or empty means unscoped. Delegated signing with an organisation-owned wallet requires a
+    /// non-empty scope, so a delegation cannot reach the organisation's other keys (#1643).
+    /// </summary>
+    public List<string>? AllowedDerivationContexts { get; set; }
+
+    /// <summary>
     /// Is this access currently active?
     /// </summary>
     public bool IsActive => RevokedAt == null && (ExpiresAt == null || ExpiresAt > DateTime.UtcNow);

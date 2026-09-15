@@ -1529,6 +1529,31 @@ POST /api/wallets/{id}/sign
 }
 ```
 
+**Signing with an organisation-owned wallet (#1643).** When the caller does not own the wallet, the
+signature is produced only if **all** of these hold at signing time; otherwise `403 Forbidden` plus a
+`SEC-AUDIT` log line:
+
+- the caller holds an active `ReadWrite` grant on the wallet (`POST /api/v1/wallets/{address}/access`);
+- the caller's current token `org_id` equals the owning organisation and carries the `Administrator` role;
+- the grant has `allowedDerivationContexts` and `derivationPath` resolves to one of them;
+- `hybridMode` is not requested.
+
+Grant request (made by the owner or an Administrator of the owning organisation; the latter must scope
+it and may not grant `Owner`):
+
+```json
+POST /api/v1/wallets/{address}/access
+{
+  "subject": "<platform user id>",
+  "accessRight": "ReadWrite",
+  "reason": "register creation",
+  "expiresAt": "2026-12-31T00:00:00Z",
+  "allowedDerivationContexts": ["sorcha:register-attestation"]
+}
+```
+
+Creating a wallet with `organizationId` grants its creator exactly this scope for 90 days.
+
 #### 3. Encrypt Payload
 
 ```http
@@ -3318,7 +3343,7 @@ instance — for the full tool catalogue, do not hand-count from any document: q
 
 | MCP tool | Backing endpoint(s) | Human gate |
 |---|---|---|
-| `sorcha_register_create` | `GET /api/organizations/{id}` (owning-wallet lookup) → `POST /api/registers/initiate` → `POST /api/v1/wallets/{address}/sign` → `POST /api/registers/finalize` | Always — creating a register is irreversible and establishes the register's governance keys. |
+| `sorcha_register_create` | `GET /api/organizations/{id}` (owning-wallet lookup) → `POST /api/registers/initiate` → `POST /api/v1/wallets/{address}/sign` → `POST /api/registers/finalize` | Always — creating a register is irreversible and establishes the register's governance keys. The sign step uses the organisation's wallet, so the caller needs a delegation scoped to `sorcha:register-attestation` (granted automatically to the admin who created the wallet — #1643). |
 | `sorcha_blueprint_publish` | `POST /api/blueprints/{id}/publish` (see [Blueprint Service API](#blueprint-service-api)) | Only when the executable-definition hash has no matching rehearsal (F142 `RehearsalPass`) — the endpoint returns `409 REHEARSAL_REQUIRED` and the tool asks a person before retrying with `override: { confirm: true, reason }`. |
 | `sorcha_instance_create` | `POST /api/instances/` | None — starting an instance is not irreversible the way register creation or an unrehearsed publish is. |
 

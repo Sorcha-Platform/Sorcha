@@ -31,7 +31,12 @@ public static class SorchaPrompts
         "refuse in the same way. A client can support elicitation and still auto-cancel every " +
         "request when running headlessly (Claude Code in `-p` mode does exactly this), so do not " +
         "assume elicitation support means a person will actually be asked; expect the tool to " +
-        "refuse cleanly rather than proceed unsupervised.";
+        "refuse cleanly rather than proceed unsupervised. Register creation also signs with your " +
+        "organisation's wallet, which the organisation (not you) owns: that needs a delegation scoped " +
+        "to sorcha:register-attestation while you are an Administrator of the organisation. The " +
+        "administrator who created the wallet holds it automatically; anyone else needs one granted " +
+        "(`sorcha wallet access grant --context sorcha:register-attestation`). If it is missing the " +
+        "tool says so after approval and creates nothing.";
 
     /// <summary>
     /// Guides an agent through setting up a two-party data exchange with selective disclosure,

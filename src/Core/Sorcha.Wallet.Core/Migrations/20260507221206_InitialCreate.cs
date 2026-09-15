@@ -348,7 +348,8 @@ namespace Sorcha.Wallet.Core.Migrations
                     GrantedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP"),
                     ExpiresAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     RevokedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    RevokedBy = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true)
+                    RevokedBy = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
+                    AllowedDerivationContexts = table.Column<List<string>>(type: "text[]", nullable: true)
                 },
                 constraints: table =>
                 {

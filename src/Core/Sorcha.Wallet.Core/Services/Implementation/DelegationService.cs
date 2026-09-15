@@ -38,6 +38,7 @@ public class DelegationService : IDelegationService
         string grantedBy,
         string? reason = null,
         DateTime? expiresAt = null,
+        IReadOnlyList<string>? allowedDerivationContexts = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(walletAddress))
@@ -73,7 +74,10 @@ public class DelegationService : IDelegationService
                 GrantedBy = grantedBy,
                 Reason = reason,
                 GrantedAt = DateTime.UtcNow,
-                ExpiresAt = expiresAt
+                ExpiresAt = expiresAt,
+                AllowedDerivationContexts = allowedDerivationContexts is { Count: > 0 }
+                    ? [.. allowedDerivationContexts]
+                    : null
             };
 
             await _repository.AddAccessAsync(walletAddress, access, cancellationToken);

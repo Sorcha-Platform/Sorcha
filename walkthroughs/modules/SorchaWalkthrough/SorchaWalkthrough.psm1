@@ -1364,12 +1364,14 @@ function New-SorchaRegister {
         [Parameter(Mandatory)][hashtable]$Headers,
         # Optional auth context for the wallet attestation sign call. Register
         # creation (initiate/finalize) is an org-admin operation, but the
-        # `/v1/wallets/{addr}/sign` call requires the wallet OWNER. When the
-        # owner wallet belongs to a different user from the caller (e.g.
-        # walkthroughs where each participant owns their own wallet but the
-        # org admin sets up the register), pass that user's session headers
-        # here. Defaults to the same Headers when not supplied — preserves
-        # the older "admin owns everything" calling pattern.
+        # `/v1/wallets/{addr}/sign` call requires the wallet OWNER — or, for an
+        # ORGANISATION-owned wallet, an Administrator of that org holding a
+        # delegation scoped to sorcha:register-attestation (#1643; the admin who
+        # created the org wallet gets one automatically). When the owner wallet
+        # belongs to a different user from the caller (e.g. walkthroughs where
+        # each participant owns their own wallet but the org admin sets up the
+        # register), pass that user's session headers here. Defaults to the
+        # same Headers when not supplied.
         [hashtable]$WalletSignerHeaders,
         [hashtable]$Metadata = @{},
         # Optional: tenant URL used to auto-subscribe the Sorcha Public Org

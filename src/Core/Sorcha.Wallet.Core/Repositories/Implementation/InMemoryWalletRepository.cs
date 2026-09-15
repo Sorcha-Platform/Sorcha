@@ -70,13 +70,14 @@ public class InMemoryWalletRepository : IWalletRepository
             _addresses.TryRemove(wallet.Address, out _);
         }
 
+        // An empty Delegates collection usually means "not loaded" (GetByAddressAsync without
+        // includeDelegates), not "no grants". Treating it as the latter deleted every delegation
+        // whenever a wallet was read and written back — WalletManager.GetWalletAsync does exactly that
+        // to stamp LastAccessedAt (found by #1643). Grants are changed only through the access methods,
+        // matching EfCoreWalletRepository, where Update never deletes rows absent from a collection.
         if (wallet.Delegates.Any())
         {
             _accessGrants[wallet.Address] = wallet.Delegates.ToList();
-        }
-        else
-        {
-            _accessGrants.TryRemove(wallet.Address, out _);
         }
 
         return Task.CompletedTask;
@@ -439,16 +440,23 @@ public class InMemoryWalletRepository : IWalletRepository
 
     private static WalletAccess CloneAccess(WalletAccess access)
     {
+        // Every persisted field must be copied: a clone that drops one silently changes the grant on
+        // every read. Id and Reason were dropped until #1643 found AllowedDerivationContexts missing.
         return new WalletAccess
         {
+            Id = access.Id,
             ParentWalletAddress = access.ParentWalletAddress,
             Subject = access.Subject,
             AccessRight = access.AccessRight,
+            Reason = access.Reason,
             GrantedBy = access.GrantedBy,
             GrantedAt = access.GrantedAt,
             ExpiresAt = access.ExpiresAt,
             RevokedAt = access.RevokedAt,
-            RevokedBy = access.RevokedBy
+            RevokedBy = access.RevokedBy,
+            AllowedDerivationContexts = access.AllowedDerivationContexts is null
+                ? null
+                : [.. access.AllowedDerivationContexts]
         };
     }
 }
