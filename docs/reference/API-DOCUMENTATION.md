@@ -2648,6 +2648,12 @@ GET /api/actions/{walletAddress}/{registerAddress}/{transactionHash}
 
 Client-side helpers for validating and processing actions before submission.
 
+Reachable through the API Gateway (`blueprint-execution` route, `RequireAuthenticated` at the edge)
+since #1633. Before that fix, the gateway had no route for this prefix, so every call through it got a
+bodiless 404 from the SPA catch-all. That included the MCP server's `sorcha_blueprint_validate`,
+`sorcha_action_validate`, `sorcha_blueprint_simulate` and `sorcha_disclosure_analysis`, which reach the
+Blueprint Service via the gateway.
+
 ### Endpoints
 
 #### 1. Validate Action Data
