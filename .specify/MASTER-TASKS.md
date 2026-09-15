@@ -23,6 +23,19 @@
 > requires the confirm box. `BlueprintPublishTool` rethrows `InputRequiredException` ahead of its
 > `catch (Exception)`. Stays stateless (multi-node). Tests 939 → 944, all green.
 > **Remaining:** deploy `mcp-server-http` to n1, then the INTERACTIVE cold-start re-run vs 3/10.
+> ✅ Deployed + live A/B verified 2026-09-15 (headless `ApprovalRequired` → `Refused (action: cancel)`);
+> interactive run in progress.
+
+> **2026-09-15 - #1633: the gateway had no `/api/execution/*` route, so every MCP rehearsal tool was
+> dead. ✅ CODE DONE (branch `fix/1633-gateway-execution-route`).** Found by the cold-start agent: it
+> could not rehearse before publishing because `sorcha_blueprint_validate`, `sorcha_action_validate`,
+> `sorcha_blueprint_simulate` and `sorcha_disclosure_analysis` all returned a bare 404. Proved on n1:
+> through the gateway 404, straight at `blueprint-service:8080` 401. The earlier note that "MCP tools
+> call blueprint-service directly" was wrong: the `mcp-server-http` compose block sends every client
+> through the gateway. Added route `blueprint-execution` (`RequireAuthenticated`) and
+> `ExecutionRouteTests`. ⚠ Gate gap still open: `check-mcp-routes` checks that the SERVICE maps a
+> route, never that the gateway the MCP server uses routes it. Also filed from the same run: **#1635**
+> (`sorcha_health_check` gives a meaningless all-clear).
 
 > **▶ 2026-09-08 - OPEN TASK LIST: MCP follow-ups from the cold-start run.** One feature, three
 > decisions, three straight fixes. Ordered by what unblocks a meaningful cold-start re-run.
