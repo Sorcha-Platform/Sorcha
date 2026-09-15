@@ -32,6 +32,11 @@ namespace Sorcha.McpServer.Tools.Admin;
 /// is the only honest source. A backend the aggregate does not vouch for is <c>Unknown</c>, never
 /// <c>Healthy</c>.
 /// </para>
+/// <para>
+/// The aggregate is read with <see cref="JsonDocument"/> into named tuples rather than records:
+/// <c>check-mcp-response-shapes</c> pairs any record declared in a tool file with the endpoint's
+/// top-level response type, which a hand-parsed helper record does not (and should not) match.
+/// </para>
 /// </remarks>
 [McpServerToolType]
 public sealed class HealthCheckTool
@@ -116,7 +121,7 @@ public sealed class HealthCheckTool
 
         var aggregate = await aggregateTask;
         var services = BackendServices
-            .Select(backend => ToServiceHealth(backend.AggregateKey, backend.Name, aggregate))
+            .Select(backend => ToServiceHealth(backend.AggregateKey, backend.Name, aggregate.Services, aggregate.Failure))
             .ToList();
         services.Add(await gatewayTask);
 
@@ -260,7 +265,12 @@ public sealed class HealthCheckTool
     /// Reads the gateway's aggregated <c>/api/health</c>. Both 200 (healthy or degraded) and 503
     /// (unhealthy) carry the per-service body, so the status code alone decides nothing.
     /// </summary>
-    private async Task<AggregateRead> ReadAggregateAsync(CancellationToken cancellationToken)
+    /// <returns>
+    /// The per-service entries keyed by the aggregate's service key, or <c>Services</c> null with
+    /// <c>Failure</c> saying why they could not be read.
+    /// </returns>
+    private async Task<(Dictionary<string, (string Status, string? Endpoint, string? Error)>? Services, string? Failure)>
+        ReadAggregateAsync(CancellationToken cancellationToken)
     {
         var url = $"{_gatewayAddress}/api/health";
 
@@ -278,10 +288,11 @@ public sealed class HealthCheckTool
                 || !document.RootElement.TryGetProperty("services", out var servicesElement)
                 || servicesElement.ValueKind != JsonValueKind.Object)
             {
-                return new AggregateRead(null, $"HTTP {(int)response.StatusCode} from {url} carried no per-service detail");
+                return (null, $"HTTP {(int)response.StatusCode} from {url} carried no per-service detail");
             }
 
-            var entries = new Dictionary<string, BackendEntry>(StringComparer.OrdinalIgnoreCase);
+            var entries = new Dictionary<string, (string Status, string? Endpoint, string? Error)>(
+                StringComparer.OrdinalIgnoreCase);
             foreach (var property in servicesElement.EnumerateObject())
             {
                 if (property.Value.ValueKind != JsonValueKind.Object)
@@ -289,34 +300,38 @@ public sealed class HealthCheckTool
                     continue;
                 }
 
-                entries[property.Name] = new BackendEntry(
+                entries[property.Name] = (
                     ReadString(property.Value, "status") ?? "unknown",
                     ReadString(property.Value, "endpoint"),
                     ReadString(property.Value, "error"));
             }
 
-            return new AggregateRead(entries, null);
+            return (entries, null);
         }
         catch (JsonException)
         {
             _logger.LogWarning("API gateway aggregated health at {Url} did not return JSON", url);
-            return new AggregateRead(null, $"{url} did not return JSON");
+            return (null, $"{url} did not return JSON");
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning("API gateway aggregated health at {Url} timed out", url);
-            return new AggregateRead(null, $"{url} timed out");
+            return (null, $"{url} timed out");
         }
         catch (HttpRequestException ex)
         {
             _logger.LogWarning(ex, "API gateway aggregated health at {Url} could not be read", url);
-            return new AggregateRead(null, ex.Message);
+            return (null, ex.Message);
         }
     }
 
-    private ServiceHealth ToServiceHealth(string aggregateKey, string name, AggregateRead aggregate)
+    private ServiceHealth ToServiceHealth(
+        string aggregateKey,
+        string name,
+        Dictionary<string, (string Status, string? Endpoint, string? Error)>? aggregateServices,
+        string? aggregateFailure)
     {
-        if (aggregate.Services is null)
+        if (aggregateServices is null)
         {
             // Not evidence against the service, so nothing is recorded with the availability tracker.
             return new ServiceHealth
@@ -324,11 +339,11 @@ public sealed class HealthCheckTool
                 Name = name,
                 Status = "Unknown",
                 ResponseTimeMs = 0,
-                ErrorMessage = $"Not checked: per-service health could not be read from the API gateway ({aggregate.Failure})."
+                ErrorMessage = $"Not checked: per-service health could not be read from the API gateway ({aggregateFailure})."
             };
         }
 
-        if (!aggregate.Services.TryGetValue(aggregateKey, out var entry))
+        if (!aggregateServices.TryGetValue(aggregateKey, out var entry))
         {
             return new ServiceHealth
             {
@@ -370,12 +385,6 @@ public sealed class HealthCheckTool
         element.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
-
-    /// <summary>The aggregate's per-service entries, or why they could not be read.</summary>
-    private sealed record AggregateRead(IReadOnlyDictionary<string, BackendEntry>? Services, string? Failure);
-
-    /// <summary>One backend as the gateway reported it.</summary>
-    private sealed record BackendEntry(string Status, string? Endpoint, string? Error);
 }
 
 /// <summary>
