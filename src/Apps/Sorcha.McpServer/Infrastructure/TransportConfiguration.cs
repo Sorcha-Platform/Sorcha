@@ -99,6 +99,21 @@ public static class McpServerBuilderExtensions
 
                     return result;
                 }
+                catch (ModelContextProtocol.Protocol.InputRequiredException)
+                {
+                    // Not a failure: round 1 of a tool asking a person to approve, carried to the
+                    // client as a multi round-trip request (#1622). Recording it as "exception" would
+                    // count every approval prompt as a tool failure (#1638).
+                    stopwatch.Stop();
+                    audit?.RecordOutcome(new ToolOutcomeRecord
+                    {
+                        CallerTier = caller?.Tier,
+                        ToolName = toolName,
+                        Outcome = "input-required",
+                        Duration = stopwatch.Elapsed,
+                    });
+                    throw;
+                }
                 catch
                 {
                     stopwatch.Stop();
@@ -163,18 +178,79 @@ public static class McpServerBuilderExtensions
     /// <summary>
     /// Derives the caller-facing outcome (and backend status, when distinct) from a tool result.
     /// Most Sorcha tools return an object with a <c>Status</c> field; that becomes both the outcome
-    /// and the backend status. When there is no structured status, the protocol-level error flag is used.
+    /// and the backend status. When there is no status, the protocol-level error flag is used.
     /// </summary>
+    /// <remarks>
+    /// <b>The status is read from the serialised result, not only from <c>StructuredContent</c>
+    /// (#1638).</b> No Sorcha tool declares structured output, so the SDK returns each tool's result
+    /// record as JSON in a text content block and <c>StructuredContent</c> is always null. Reading
+    /// only that property made every tool that returned normally (<c>Error</c>, <c>Refused</c>,
+    /// <c>Unauthorized</c> alike) audit as <c>success</c>, and left the backend-call metric unemitted.
+    /// </remarks>
     private static (string Outcome, string? BackendStatus) DeriveOutcome(
         ModelContextProtocol.Protocol.CallToolResult result)
     {
-        var status = TryReadStatus(result.StructuredContent);
+        var status = TryReadStatus(result.StructuredContent) ?? TryReadStatusFromText(result);
         if (!string.IsNullOrWhiteSpace(status))
         {
             return (status!, status);
         }
 
         return result.IsError == true ? ("error", null) : ("success", null);
+    }
+
+    private static string? TryReadStatusFromText(ModelContextProtocol.Protocol.CallToolResult result)
+    {
+        foreach (var block in result.Content)
+        {
+            if (block is ModelContextProtocol.Protocol.TextContentBlock { Text: { } text }
+                && text.TrimStart().StartsWith('{'))
+            {
+                return ReadTopLevelStatus(text);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Scans only the top level of a JSON object for a string <c>status</c> (or <c>Status</c>)
+    /// without materialising the document: some tool results are large (a blueprint export), and
+    /// this runs on every invocation.
+    /// </summary>
+    private static string? ReadTopLevelStatus(string json)
+    {
+        try
+        {
+            var reader = new Utf8JsonReader(System.Text.Encoding.UTF8.GetBytes(json));
+            if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+            {
+                return null;
+            }
+
+            while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+            {
+                var isStatus = reader.ValueTextEquals("status") || reader.ValueTextEquals("Status");
+                if (!reader.Read())
+                {
+                    return null;
+                }
+
+                if (isStatus && reader.TokenType == JsonTokenType.String)
+                {
+                    return reader.GetString();
+                }
+
+                // Skips a nested object or array wholesale; a no-op on a primitive value.
+                reader.Skip();
+            }
+        }
+        catch (JsonException)
+        {
+            // Not JSON after all: fall back to the protocol error flag.
+        }
+
+        return null;
     }
 
     private static string? TryReadStatus(JsonElement? structured)

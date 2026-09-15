@@ -148,6 +148,76 @@ public class HttpModeInvocationTests
     }
 
     /// <summary>
+    /// #1638: the audit outcome must mirror the tool's own <c>Status</c>, through the REAL dispatch
+    /// pipeline. No tool emits structured content, so a filter reading only
+    /// <c>StructuredContent</c> recorded every normally-returning call as <c>success</c>, whatever the
+    /// tool actually reported.
+    /// </summary>
+    [Fact]
+    public async Task CallTool_ToolReportsUnauthorized_AuditRecordsUnauthorizedNotSuccess()
+    {
+        var audit = new RecordingToolAuditService();
+
+        var result = await InvokeToolAsync(
+            "sorcha_inbox_list",
+            new Dictionary<string, object?>(),
+            caller: new StubCallerContext(Tier.Service),
+            audit: audit);
+
+        // Precondition: the tool itself really reported Unauthorized, or the assertion below is vacuous.
+        string.Join(" ", result.Content.OfType<TextContentBlock>().Select(c => c.Text))
+            .Should().Contain("Unauthorized");
+
+        audit.Outcomes.Should().ContainSingle(o => o.ToolName == "sorcha_inbox_list")
+            .Which.Outcome.Should().Be("Unauthorized");
+    }
+
+    [Fact]
+    public async Task CallTool_ToolReportsError_AuditRecordsErrorAndTheBackendStatus()
+    {
+        var audit = new RecordingToolAuditService();
+
+        await InvokeToolAsync(
+            "sorcha_user_list",
+            new Dictionary<string, object?> { ["organizationId"] = "11111111-1111-1111-1111-111111111111" },
+            audit: audit);
+
+        var outcome = audit.Outcomes.Should().ContainSingle(o => o.ToolName == "sorcha_user_list").Which;
+        outcome.Outcome.Should().Be("Error",
+            "nothing listens on the unroutable Tenant address and the tool reports Error; recording "
+            + "'success' is the #1638 defect");
+        outcome.BackendStatus.Should().Be("Error");
+    }
+
+    private sealed class RecordingToolAuditService : Sorcha.McpServer.Services.IToolAuditService
+    {
+        private readonly List<Sorcha.McpServer.Services.ToolOutcomeRecord> _outcomes = [];
+
+        public IReadOnlyList<Sorcha.McpServer.Services.ToolOutcomeRecord> Outcomes
+        {
+            get
+            {
+                lock (_outcomes)
+                {
+                    return _outcomes.ToList();
+                }
+            }
+        }
+
+        public void RecordInvocation(Sorcha.McpServer.Services.ToolInvocationRecord record)
+        {
+        }
+
+        public void RecordOutcome(Sorcha.McpServer.Services.ToolOutcomeRecord outcome)
+        {
+            lock (_outcomes)
+            {
+                _outcomes.Add(outcome);
+            }
+        }
+    }
+
+    /// <summary>
     /// Drives a tool call through the REAL MCP dispatch pipeline (the SDK's <c>tools/call</c>
     /// request handler, our filters included) rather than constructing the tool directly — the
     /// argument-binding failure this test guards against happens inside the SDK's own reflection
@@ -156,7 +226,10 @@ public class HttpModeInvocationTests
     /// Program.cs wires stdio/HTTP, just over <see cref="Pipe"/> instead of a socket or stdio.
     /// </summary>
     private static async Task<CallToolResult> InvokeToolAsync(
-        string toolName, Dictionary<string, object?> arguments)
+        string toolName,
+        Dictionary<string, object?> arguments,
+        ICallerContext? caller = null,
+        Sorcha.McpServer.Services.IToolAuditService? audit = null)
     {
         var ct = TestContext.Current.CancellationToken;
 
@@ -180,7 +253,11 @@ public class HttpModeInvocationTests
         services.AddSingleton<IConfiguration>(configuration);
         McpServerHttpRegistration.ConfigureServices(services, configuration);
         // Last registration wins: swap only the ambient identity, matching BuildHttpModeProvider.
-        services.AddSingleton<ICallerContext>(new StubCallerContext(Tier.Platform, "sorcha:admin"));
+        services.AddSingleton<ICallerContext>(caller ?? new StubCallerContext(Tier.Platform, "sorcha:admin"));
+        if (audit is not null)
+        {
+            services.AddSingleton(audit);
+        }
 
         services
             .AddMcpServer(options =>
