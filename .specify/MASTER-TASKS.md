@@ -20,7 +20,7 @@
 >
 > | # | Found | Shape |
 > |---|---|---|
-> | **#1658** | `sorcha_action_submit` posts only the payload as the whole body; the endpoint binds `ActionSubmissionRequest` (requires `blueprintId`, `actionId`, `senderWallet`, `registerAddress`) → 400 in <3 ms, surfaced as a bare "Action submission failed." **No agent can advance any instance.** | Fix (join never verified; `senderWallet` resolution is the open question) |
+> | **#1658** | `sorcha_action_submit` posts only the payload as the whole body; the endpoint binds `ActionSubmissionRequest` (requires `blueprintId`, `actionId`, `senderWallet`, `registerAddress`) → 400 in <3 ms, surfaced as a bare "Action submission failed." **No agent can advance any instance.** | 🚧 Fixed on `fix/1658-action-submit-request-body`: `GET /api/instances/{id}/actions/{actionId}` returns a `submission` block (`blueprintId`, `registerId`, `senderWallet` + `resolved/ambiguous/notYours/noWallet`, one rule in `SenderWalletResolver`); the client sends the real `ActionSubmissionRequest` + the required `X-Delegation-Token` (a SECOND 400 behind the first) and returns status + body; the tool passes the service reason through. Wire-contract test binds real client bytes into the server request; 20/20 mutations killed. Deploy to n1 pending approval |
 > | **#1659** | The publish refusal reason was WRONG: the roster was merely unsealed (docket 0 built 4 s later; the retry published), but `PublishGate` reports "you do not hold a publish-governance role". A roster that is absent, or unreadable, is reported as an authority failure | Fix (#1641/#1646 class; now more visible because #1648 records the reason) |
 >
 > Retrospective not yet captured: that session hit an Opus safeguard error on the retrospective prompt.

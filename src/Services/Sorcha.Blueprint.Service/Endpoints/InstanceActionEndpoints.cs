@@ -3,6 +3,7 @@
 
 using Sorcha.Blueprint.Service.Models.Responses;
 using Sorcha.Blueprint.Service.Services.Infrastructure;
+using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
 using Sorcha.ServiceClients.Wallet;
@@ -49,7 +50,12 @@ public static class InstanceActionEndpoints
                 + "blueprint, or action is not found. A STARTING action whose sender is an open "
                 + "participant (no wallet bound in the published blueprint, Feature 103) is readable "
                 + "by any authenticated caller, because the citizen it exists for is not late-bound "
-                + "into the instance until they submit and its schema is a blank form.")
+                + "into the instance until they submit and its schema is a blank form. The `submission` "
+                + "block carries what POST .../execute requires beyond the payload: `blueprintId`, "
+                + "`registerId`, and `senderWallet` with a `senderWalletStatus` of resolved, ambiguous "
+                + "(several of the caller's wallets could bind; see `candidateWallets`), notYours (the "
+                + "sender is bound to a wallet the caller does not hold) or noWallet. It only ever names "
+                + "the caller's own wallets.")
             .Produces<InstanceActionSchemaResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound);
@@ -135,6 +141,7 @@ public static class InstanceActionEndpoints
             Calculations = action.Calculations,
             CredentialRequirements = action.CredentialRequirements,
             CredentialIssuanceConfig = action.CredentialIssuanceConfig,
+            Submission = SenderWalletResolver.Resolve(blueprint, action, instance, callerWallets),
         };
 
         return Results.Ok(response);

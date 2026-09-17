@@ -912,9 +912,36 @@ tokens (every real PWA sign-in, Feature 136) never carry, so every genuine citiz
   "dataSchemas": [ { "type": "object", "properties": { "email": { "type": "string" } } } ],
   "calculations": null,
   "credentialRequirements": null,
-  "credentialIssuanceConfig": { "credentialType": "AssuredIdentityCredential", "vct": "https://sorcha.dev/vc/assured-identity/v1", "displayName": "Assured Identity", "claimMappings": [ ], "recipientParticipantId": "citizen" }
+  "credentialIssuanceConfig": { "credentialType": "AssuredIdentityCredential", "vct": "https://sorcha.dev/vc/assured-identity/v1", "displayName": "Assured Identity", "claimMappings": [ ], "recipientParticipantId": "citizen" },
+  "submission": {
+    "blueprintId": "aias-assured-identity",
+    "registerId": "85ecc0df95174c4faf3fc7a232c9bb77",
+    "senderWalletStatus": "resolved",
+    "senderWallet": "ws11qpc7fmcyt0sg7z6q6ucv8ugtw04kz0epjd6zsqtp78vmk7t42k6y6dk6n6m",
+    "candidateWallets": []
+  }
 }
 ```
+
+**`submission` (#1658)** carries what `POST /api/instances/{instanceId}/actions/{actionId}/execute`
+requires beyond the payload, which a participant holding only an instance id and an action id could
+not otherwise learn. `senderWalletStatus` is a string (`resolved` | `ambiguous` | `notYours` |
+`noWallet`) worked out by `SenderWalletResolver`, in the same order the execute path checks the sender:
+
+| Status | Meaning | `senderWallet` |
+|---|---|---|
+| `resolved` | Exactly one of the caller's wallets can submit: the wallet hard-coded on the sender participant in the published blueprint, else the wallet the instance already binds to that participant, else the caller's only wallet | set |
+| `ambiguous` | The sender is unbound and the caller holds several wallets. Submitting binds the chosen one for the life of the instance, so the caller must choose from `candidateWallets` | null |
+| `notYours` | The sender is bound to a wallet the caller does not hold | null |
+| `noWallet` | No wallet resolved for the caller | null |
+
+It is advice, not authority: the execute path still enforces wallet ownership, a hard-coded participant
+wallet and an existing binding, and the Wallet Service checks ownership again when signing. Only the
+caller's own wallets are ever listed.
+
+The execute endpoint also refuses a request with no `X-Delegation-Token` header (`400`). Its value is
+not validated today: the Wallet Service ignores the token it is eventually passed, and both the web UI
+and the shared `BlueprintServiceClient` send a fixed marker rather than copying the caller's bearer.
 
 Deliberately **narrow** — this is not the full `Action` model and not a blueprint wrapper. It carries
 only what `SorchaFormRenderer` reads to render and validate the form for this one action. It does

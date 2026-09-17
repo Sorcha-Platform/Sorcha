@@ -201,17 +201,31 @@ public interface IBlueprintServiceClient
 
     /// <summary>
     /// Executes (submits) an action against a workflow instance. Calls
-    /// <c>POST /api/instances/{instanceId}/actions/{actionId}/execute</c>.
+    /// <c>POST /api/instances/{instanceId}/actions/{actionId}/execute</c> with the
+    /// <c>ActionSubmissionRequest</c> shape and the <c>X-Delegation-Token</c> header the endpoint requires.
     /// </summary>
     /// <param name="instanceId">Workflow instance ID.</param>
     /// <param name="actionId">Action ID within the instance.</param>
-    /// <param name="payloadJson">Action payload as a JSON object.</param>
+    /// <param name="request">The submission: ids, sender wallet and the action data.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The execution-result JSON body, or null on non-success.</returns>
-    Task<string?> ExecuteActionAsync(
+    /// <returns>
+    /// The HTTP status and the response body, which is present on a refusal as well as on success (#1658):
+    /// the endpoint's reason is what tells a caller what to change.
+    /// </returns>
+    Task<(System.Net.HttpStatusCode StatusCode, string? Body)> ExecuteActionAsync(
         string instanceId,
         string actionId,
-        string payloadJson,
+        Sorcha.ServiceClients.Blueprint.Models.ExecuteActionRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reads an instance's action together with its submission context (blueprint id, register id and
+    /// which of the caller's wallets to send). Calls <c>GET /api/instances/{instanceId}/actions/{actionId}</c>.
+    /// </summary>
+    /// <returns>The HTTP status and the response body, present on a refusal as well as on success.</returns>
+    Task<(System.Net.HttpStatusCode StatusCode, string? Body)> GetActionForSubmissionAsync(
+        string instanceId,
+        string actionId,
         CancellationToken cancellationToken = default);
 
     // =========================================================================
