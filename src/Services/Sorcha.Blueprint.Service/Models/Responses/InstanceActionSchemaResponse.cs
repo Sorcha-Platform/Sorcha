@@ -35,6 +35,12 @@ namespace Sorcha.Blueprint.Service.Models.Responses;
 /// <c>AdditionalProperties</c> / <c>Notification</c> (authoring/bookkeeping metadata the renderer never
 /// reads).
 /// </para>
+/// <para>
+/// <b>#1658 — <see cref="Submission"/>.</b> The blueprint id and register id DO appear, but only inside
+/// <see cref="Submission"/>, because <c>POST …/execute</c> requires both and a participant had no other way
+/// to learn them. Neither is a secret to a participant (both are on the instance record). The sender
+/// participant's role name is still not disclosed, and only the caller's own wallets are ever listed.
+/// </para>
 /// </remarks>
 public sealed record InstanceActionSchemaResponse
 {
@@ -58,4 +64,10 @@ public sealed record InstanceActionSchemaResponse
 
     /// <summary>Configuration for a credential minted when this action executes (drives the review UI).</summary>
     public CredentialIssuanceConfig? CredentialIssuanceConfig { get; init; }
+
+    /// <summary>
+    /// What the caller needs to submit this action: the blueprint and register ids and which of the
+    /// caller's wallets to send as <c>senderWallet</c> (#1658).
+    /// </summary>
+    public ActionSubmissionContext? Submission { get; init; }
 }

@@ -479,4 +479,62 @@ public sealed class InstanceActionEndpointsTests
 
         result.GetType().Name.Should().Contain("NotFound");
     }
+
+    [Fact]
+    public async Task GetInstanceActionSchema_CarriesSubmissionContextForTheExecuteRequest()
+    {
+        // #1658: POST .../execute requires blueprintId, registerAddress and senderWallet beyond the payload,
+        // and a participant holding only an instance id and an action id had no way to learn them.
+        var instance = MakeInstance(CitizenWallet);
+        var action = MakeAction();
+        var blueprint = new BlueprintModel { Id = "bp-1", Title = "AIAS", Description = "desc-desc", Actions = [action] };
+
+        var instanceStore = new Mock<IInstanceStore>();
+        instanceStore.Setup(s => s.GetAsync("inst-1", It.IsAny<CancellationToken>())).ReturnsAsync(instance);
+
+        var resolver = new Mock<IActionResolverService>();
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetActionDefinition(blueprint, "1")).Returns(action);
+
+        var walletClient = WalletClientReturning(PlatformUserId, OtherWallet, CitizenWallet);
+
+        var result = await InvokeAsync(
+            ConsumerTierContext(), "inst-1", 1, instanceStore.Object, resolver.Object, walletClient.Object);
+
+        var submission = result.Should().BeOfType<Ok<InstanceActionSchemaResponse>>().Subject.Value!.Submission;
+        submission.Should().NotBeNull();
+        submission!.BlueprintId.Should().Be("bp-1");
+        submission.RegisterId.Should().Be("reg-1");
+        submission.SenderWalletStatus.Should().Be(SenderWalletStatus.Resolved);
+        submission.SenderWallet.Should().Be(CitizenWallet,
+            "the action's sender 'citizen' is bound to this wallet on the instance, so it is the only one execute accepts");
+    }
+
+    [Fact]
+    public async Task GetInstanceActionSchema_SubmissionContext_SerialisesStatusAsAName()
+    {
+        var instance = MakeInstance(CitizenWallet);
+        var action = MakeAction();
+        var blueprint = new BlueprintModel { Id = "bp-1", Title = "AIAS", Description = "desc-desc", Actions = [action] };
+
+        var instanceStore = new Mock<IInstanceStore>();
+        instanceStore.Setup(s => s.GetAsync("inst-1", It.IsAny<CancellationToken>())).ReturnsAsync(instance);
+        var resolver = new Mock<IActionResolverService>();
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetActionDefinition(blueprint, "1")).Returns(action);
+
+        var result = await InvokeAsync(
+            ConsumerTierContext(), "inst-1", 1, instanceStore.Object, resolver.Object,
+            WalletClientReturning(PlatformUserId, CitizenWallet).Object);
+
+        // Web defaults are what the Blueprint Service actually uses (CLAUDE.md pattern 25).
+        var json = JsonSerializer.Serialize(
+            result.Should().BeOfType<Ok<InstanceActionSchemaResponse>>().Subject.Value, JsonSerializerOptions.Web);
+        using var doc = JsonDocument.Parse(json);
+        var submission = doc.RootElement.GetProperty("submission");
+        submission.GetProperty("senderWalletStatus").GetString().Should().Be("resolved");
+        submission.GetProperty("senderWallet").GetString().Should().Be(CitizenWallet);
+        submission.GetProperty("blueprintId").GetString().Should().Be("bp-1");
+        submission.GetProperty("registerId").GetString().Should().Be("reg-1");
+    }
 }

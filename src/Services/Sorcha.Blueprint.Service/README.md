@@ -242,8 +242,12 @@ claim fast path, else Wallet-Service-by-owner fallback — the same seam `GET /a
 the Feature 176 disclosures endpoint use, since consumer-tier tokens never carry `wallet_address`,
 Feature 136) — and returns only the form-relevant subset of the action (`InstanceActionSchemaResponse`:
 title, form layout, data schemas, calculations, and this action's own credential requirements/issuance
-config) — never routing rules, other participants, or any other action's content. See
-`docs/reference/API-DOCUMENTATION.md` for the full response shape and exclusion list.
+config) — never routing rules, other participants, or any other action's content. Since #1658 it also
+carries a `submission` block (`blueprintId`, `registerId`, `senderWallet`, `senderWalletStatus`,
+`candidateWallets`) so a caller can build the execute request: `SenderWalletResolver` picks which of the
+caller's wallets to send using the same precedence the execute path enforces (hard-coded participant
+wallet, then instance binding, then the caller's only wallet) and never lists another participant's
+wallet. See `docs/reference/API-DOCUMENTATION.md` for the full response shape and exclusion list.
 
 > **Note:** the participant-check gap this section used to record on `GET /api/instances/{instanceId}`
 > is **closed** — issue #1182 added `InstanceParticipantGate` to all three instance reads.
