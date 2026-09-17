@@ -60,12 +60,16 @@ public static class BlueprintFromPublishedEndpoint
                 "fresh rehearsal — its executable-definition hash has no recorded RehearsalPass. The " +
                 "caller MUST hold a publish-governance role on the source register; otherwise 403 is " +
                 "returned and no draft is written. Returns 404 when the (registerId, blueprintId, " +
-                "version) triple does not resolve to a published blueprint.")
+                "version) triple does not resolve to a published blueprint. When authority cannot be " +
+                "checked it is not reported as a missing role: 503 with code GOVERNANCE_ROSTER_NOT_SEALED " +
+                "and Retry-After when the source register has no sealed governance roster yet, or code " +
+                "GOVERNANCE_ROSTER_UNAVAILABLE when the roster could not be read.")
             .Accepts<CloneFromPublishedRequestBody>("application/json")
             .Produces<CloneFromPublishedResponseBody>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status503ServiceUnavailable)
             .RequireAuthorization("CanManageBlueprints", "RequirePlatformAudience");
     }
 
@@ -131,9 +135,41 @@ public static class BlueprintFromPublishedEndpoint
         }
 
         // -- 3) Governance HARD gate on the SOURCE register -------------------
-        var roster = await registerClient.GetGovernanceRosterAsync(body.RegisterId, cancellationToken);
+        var lookup = await registerClient.GetGovernanceRosterAsync(body.RegisterId, cancellationToken);
         var caller = ResolveCaller(httpContext);
-        if (!CallerHoldsPublishingRole(roster, caller))
+
+        // #1659: no sealed roster, or an unreadable one, is not the caller lacking a role. Refuse with
+        // the reason that is true (still fail closed).
+        if (lookup.Status != GovernanceRosterLookupStatus.Found)
+        {
+            var notSealed = lookup.Status == GovernanceRosterLookupStatus.NotFound;
+            var uncheckedReason = notSealed
+                ? $"Register {body.RegisterId} has no sealed governance roster yet, so amend authority cannot be checked. "
+                    + "A newly created register has none until its genesis seals: retry shortly. If this persists, check the register id."
+                : $"The governance roster for register {body.RegisterId} could not be read"
+                    + (lookup.HttpStatus is { } status ? $" (the Register Service returned HTTP {status})" : " (the Register Service could not be reached)")
+                    + ", so amend authority cannot be checked. Nothing was created; retry later.";
+
+            logger.LogWarning(
+                "Amend refused (governance) — roster for register {RegisterId} is {LookupStatus}",
+                body.RegisterId, lookup.Status);
+
+            await Sorcha.Blueprint.Service.Services.Implementation.PublishRefusalAudit.ReportAsync(
+                httpContext, Sorcha.ServiceClients.Audit.RefusalAuditActions.BlueprintAmend,
+                body.RegisterId, uncheckedReason, cancellationToken);
+
+            // 503 for both, told apart by code, matching the publish endpoint (where 409 means REHEARSAL_REQUIRED).
+            if (notSealed)
+            {
+                httpContext.Response.Headers.RetryAfter = "5";
+            }
+
+            return Results.Json(
+                new { code = notSealed ? "GOVERNANCE_ROSTER_NOT_SEALED" : "GOVERNANCE_ROSTER_UNAVAILABLE", error = uncheckedReason },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        if (!CallerHoldsPublishingRole(lookup.Roster, caller))
         {
             logger.LogWarning(
                 "Amend refused (governance) — caller (user {UserId}, org {OrgId}) lacks a publish-governance role on register {RegisterId}",

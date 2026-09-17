@@ -263,7 +263,7 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
         // makes this principal an Owner.
         mockRegisterClient
             .Setup(x => x.GetGovernanceRosterAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string regId, CancellationToken _) => new GovernanceRosterResponse
+            .ReturnsAsync((string regId, CancellationToken _) => GovernanceRosterLookup.Found(new GovernanceRosterResponse
             {
                 RegisterId = regId,
                 MemberCount = 1,
@@ -277,7 +277,7 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
                         GrantedAt = DateTimeOffset.UtcNow,
                     }
                 }
-            });
+            }));
 
         // Create mock participant service client
         var mockParticipantClient = new Mock<IParticipantServiceClient>();

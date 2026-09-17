@@ -251,12 +251,16 @@ public interface IRegisterServiceClient
     // =========================================================================
 
     /// <summary>
-    /// Gets the governance roster for a register
+    /// Gets the governance roster for a register.
     /// </summary>
     /// <param name="registerId">Register ID</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Governance roster response, or null if not found</returns>
-    Task<GovernanceRosterResponse?> GetGovernanceRosterAsync(
+    /// <returns>
+    /// Which of three things happened (#1659): the roster was read; the register has no sealed roster
+    /// (404: an unknown register, or one whose genesis has not sealed yet); or it could not be read.
+    /// These used to collapse into one null, and callers reported all three as the caller lacking a role.
+    /// </returns>
+    Task<GovernanceRosterLookup> GetGovernanceRosterAsync(
         string registerId,
         CancellationToken cancellationToken = default);
 
@@ -884,6 +888,46 @@ public class GovernanceRosterResponse
     public int ControlTransactionCount { get; set; }
     /// <summary>Identifier of the last control tx.</summary>
     public string? LastControlTxId { get; set; }
+}
+
+/// <summary>The outcome of reading a register's governance roster (#1659).</summary>
+public enum GovernanceRosterLookupStatus
+{
+    /// <summary>The roster was read. <see cref="GovernanceRosterLookup.Roster"/> is set.</summary>
+    Found,
+
+    /// <summary>
+    /// The Register Service holds no sealed roster for the register: the register is unknown, or its
+    /// genesis has not sealed yet. The second is transient; a new register's genesis seals in seconds.
+    /// </summary>
+    NotFound,
+
+    /// <summary>The roster could not be read: a non-404 failure status or a transport error.</summary>
+    Unavailable,
+}
+
+/// <summary>
+/// Result of <see cref="IRegisterServiceClient.GetGovernanceRosterAsync"/>. Keeps "no roster yet" and
+/// "could not read it" apart from "read it", so a caller never reports either as an authority failure.
+/// </summary>
+/// <param name="Status">What happened.</param>
+/// <param name="Roster">The roster, when <paramref name="Status"/> is <see cref="GovernanceRosterLookupStatus.Found"/>.</param>
+/// <param name="HttpStatus">The Register Service's status code when it responded with a failure; null for a transport error.</param>
+public sealed record GovernanceRosterLookup(
+    GovernanceRosterLookupStatus Status,
+    GovernanceRosterResponse? Roster = null,
+    int? HttpStatus = null)
+{
+    /// <summary>The roster was read.</summary>
+    public static GovernanceRosterLookup Found(GovernanceRosterResponse roster) =>
+        new(GovernanceRosterLookupStatus.Found, roster ?? throw new ArgumentNullException(nameof(roster)));
+
+    /// <summary>No sealed roster exists for the register.</summary>
+    public static GovernanceRosterLookup NotFound() => new(GovernanceRosterLookupStatus.NotFound, null, 404);
+
+    /// <summary>The roster could not be read.</summary>
+    public static GovernanceRosterLookup Unavailable(int? httpStatus = null) =>
+        new(GovernanceRosterLookupStatus.Unavailable, null, httpStatus);
 }
 
 /// <summary>

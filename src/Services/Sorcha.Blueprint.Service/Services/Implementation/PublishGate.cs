@@ -87,6 +87,20 @@ public enum PublishGateOutcome
     /// <summary>Caller lacks register governance publish rights — refuse (HTTP 403). No record written.</summary>
     Forbidden,
 
+    /// <summary>
+    /// The register has no sealed governance roster, so authority cannot be checked yet (HTTP 503
+    /// <c>GOVERNANCE_ROSTER_NOT_SEALED</c> with <c>Retry-After</c>; not 409, which publish clients read as
+    /// <c>REHEARSAL_REQUIRED</c>). A new register's genesis seals within seconds, so this is
+    /// usually worth retrying; it is never reported as the caller lacking a role (#1659).
+    /// </summary>
+    RosterNotSealed,
+
+    /// <summary>
+    /// The governance roster could not be read, so authority cannot be checked (HTTP 503
+    /// <c>GOVERNANCE_ROSTER_UNAVAILABLE</c>). Fails closed without blaming the caller (#1659).
+    /// </summary>
+    RosterUnavailable,
+
     /// <summary>No matching rehearsal pass and no confirmed override — block (HTTP 409 REHEARSAL_REQUIRED).</summary>
     RehearsalRequired,
 
@@ -110,7 +124,10 @@ public sealed class PublishGateDecision
     /// <summary>The computed executable-definition hash of the publishing blueprint version.</summary>
     public string ExecDefHash { get; init; } = string.Empty;
 
-    /// <summary>A human-readable reason, populated for <see cref="PublishGateOutcome.Forbidden"/>.</summary>
+    /// <summary>
+    /// A human-readable reason, populated for <see cref="PublishGateOutcome.Forbidden"/>,
+    /// <see cref="PublishGateOutcome.RosterNotSealed"/> and <see cref="PublishGateOutcome.RosterUnavailable"/>.
+    /// </summary>
     public string? Reason { get; init; }
 }
 
@@ -173,7 +190,44 @@ public sealed class PublishGate : IPublishGate
         var execDefHash = _hasher.ComputeHash(blueprint);
 
         // ---- 1) Governance HARD gate (FR-027/D5) ----------------------------------------
-        var roster = await _registerClient.GetGovernanceRosterAsync(registerId, cancellationToken);
+        var lookup = await _registerClient.GetGovernanceRosterAsync(registerId, cancellationToken);
+
+        // #1659: a roster that does not exist yet, or cannot be read, is not evidence the caller lacks a
+        // role. Both still refuse (fail closed), but with the reason that is actually true. Reporting them
+        // as an authority failure told a cold-start agent to go and find a role it already held, and
+        // #1648 then wrote that false reason into the caller's audit log.
+        if (lookup.Status == GovernanceRosterLookupStatus.NotFound)
+        {
+            _logger.LogWarning(
+                "Publish refused (governance) — register {RegisterId} has no sealed governance roster", registerId);
+
+            return new PublishGateDecision
+            {
+                Outcome = PublishGateOutcome.RosterNotSealed,
+                ExecDefHash = execDefHash,
+                Reason = $"Register {registerId} has no sealed governance roster yet, so publish authority cannot be checked. "
+                    + "A newly created register has none until its genesis seals, which usually takes a few seconds: retry shortly. "
+                    + "If this persists, check the register id.",
+            };
+        }
+
+        if (lookup.Status == GovernanceRosterLookupStatus.Unavailable)
+        {
+            _logger.LogWarning(
+                "Publish refused (governance) — governance roster for register {RegisterId} could not be read (status {Status})",
+                registerId, lookup.HttpStatus?.ToString() ?? "transport error");
+
+            return new PublishGateDecision
+            {
+                Outcome = PublishGateOutcome.RosterUnavailable,
+                ExecDefHash = execDefHash,
+                Reason = $"The governance roster for register {registerId} could not be read"
+                    + (lookup.HttpStatus is { } status ? $" (the Register Service returned HTTP {status})" : " (the Register Service could not be reached)")
+                    + ", so publish authority cannot be checked. Nothing was published; retry later.",
+            };
+        }
+
+        var roster = lookup.Roster;
 
         // Free matches first — the caller's own linked wallet, or an org-DID subject. Only if none
         // of those hold do we pay for a Tenant round trip to resolve the organisation's wallet.

@@ -83,12 +83,12 @@ public class PublishGateTests
     private void SetRoster(params RosterMember[] members) =>
         _registerClient
             .Setup(c => c.GetGovernanceRosterAsync(RegisterId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new GovernanceRosterResponse
+            .ReturnsAsync(GovernanceRosterLookup.Found(new GovernanceRosterResponse
             {
                 RegisterId = RegisterId,
                 Members = members.ToList(),
                 MemberCount = members.Length,
-            });
+            }));
 
     private static RosterMember Member(string subject, string role) => new()
     {
@@ -153,17 +153,62 @@ public class PublishGateTests
         decision.Outcome.Should().Be(PublishGateOutcome.Forbidden);
     }
 
+    // #1659 — cold-start run #3 was refused "you do not hold a publish-governance role" at 12:31:47;
+    // docket 0 was built at 12:31:51 and the retry published. The roster was merely unsealed. These
+    // replace a test that asserted exactly that defect: a missing roster reported as Forbidden.
+
     [Fact]
-    public async Task Evaluate_NullRoster_FailsClosedForbidden()
+    public async Task Evaluate_RosterNotSealedYet_IsRefusedAsNotSealed_NotAsAMissingRole()
     {
         _registerClient
             .Setup(c => c.GetGovernanceRosterAsync(RegisterId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((GovernanceRosterResponse?)null);
+            .ReturnsAsync(GovernanceRosterLookup.NotFound());
         var gate = CreateGate();
 
-        var decision = await gate.EvaluateAsync(AuthorisedCaller(), BlueprintId, RegisterId, overrideConfirmed: false);
+        var decision = await gate.EvaluateAsync(AuthorisedCaller(), BlueprintId, RegisterId, overrideConfirmed: true);
 
-        decision.Outcome.Should().Be(PublishGateOutcome.Forbidden);
+        decision.Outcome.Should().Be(PublishGateOutcome.RosterNotSealed, "fail closed, even with an override confirmed");
+        decision.Reason.Should().Contain("no sealed governance roster").And.Contain("retry");
+        decision.Reason.Should().NotContain("do not hold");
+        decision.ExecDefHash.Should().Be(ExpectedHash());
+    }
+
+    [Theory]
+    [InlineData(500)]
+    [InlineData(null)]
+    public async Task Evaluate_RosterUnreadable_IsRefusedAsUnavailable_NotAsAMissingRole(int? httpStatus)
+    {
+        _registerClient
+            .Setup(c => c.GetGovernanceRosterAsync(RegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(GovernanceRosterLookup.Unavailable(httpStatus));
+        var gate = CreateGate();
+
+        var decision = await gate.EvaluateAsync(AuthorisedCaller(), BlueprintId, RegisterId, overrideConfirmed: true);
+
+        decision.Outcome.Should().Be(PublishGateOutcome.RosterUnavailable);
+        decision.Reason.Should().Contain("could not be read");
+        decision.Reason.Should().NotContain("do not hold");
+        if (httpStatus is { } status)
+        {
+            decision.Reason.Should().Contain($"HTTP {status}");
+        }
+    }
+
+    [Fact]
+    public async Task Evaluate_RosterNotChecked_NeverConsultsTheOrgWalletOrRehearsalPass()
+    {
+        await SeedPassAsync();
+        OrgResolvesToItsWallet();
+        _registerClient
+            .Setup(c => c.GetGovernanceRosterAsync(RegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(GovernanceRosterLookup.NotFound());
+        var gate = CreateGate();
+
+        var decision = await gate.EvaluateAsync(OrgAdminWithoutOwnWallet(), BlueprintId, RegisterId, overrideConfirmed: false);
+
+        decision.Outcome.Should().Be(PublishGateOutcome.RosterNotSealed, "a matching rehearsal pass must not turn this into Proceed");
+        _orgInfoClient.Verify(
+            c => c.ResolveCanonicalWalletAddressAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

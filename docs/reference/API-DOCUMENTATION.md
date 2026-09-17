@@ -1457,6 +1457,16 @@ Responses:
 | `200 OK` | `{ blueprintId, version, registerId, publishedAt, overridden, warnings? }` | Cleared — either via a matching `RehearsalPass` or via an authorised override (audited). |
 | `403 Forbidden` | `{ error: "…" }` | Caller does not hold a publish-governance role (Owner / Admin / Designer) on the target register's roster. No record written. |
 | `409 Conflict` | `{ code: "REHEARSAL_REQUIRED", execDefHash, message }` | No matching `RehearsalPass` for this exec-def hash and no override confirmed. Resend with `override.confirm=true` to proceed. |
+| `503 Service Unavailable` + `Retry-After` | `{ code: "GOVERNANCE_ROSTER_NOT_SEALED", error }` | The register has no sealed governance roster yet, so authority cannot be checked. A new register's genesis seals within seconds: retry. Also returned for an unknown register id (the Register Service cannot tell the two apart). Not a statement about the caller's role. |
+| `503 Service Unavailable` | `{ code: "GOVERNANCE_ROSTER_UNAVAILABLE", error }` | The roster could not be read (a non-404 failure or transport error). Fails closed; not a statement about the caller's role. |
+
+**#1659.** The two `503` rows used to be reported as `403` "you do not hold a publish-governance role", because the
+roster client returned the same `null` for a missing, an unreadable and a genuinely empty roster. A cold-start agent
+was refused that way four seconds before its register's genesis sealed, and #1648 wrote the false reason into its
+organisation's audit log. Both are still refused and still recorded there, now with the true reason.
+**They are `503`, never `409`:** every publish client in the platform reads any `409` as `REHEARSAL_REQUIRED`, so a
+`409` would have the MCP publish tool ask a person to waive a rehearsal instead of retrying. `from-published`
+returns the same two `503` responses for its source register.
 
 Override paths write a `PublishOverride` audit row (`OverriddenByPlatformUserId`, `OverriddenAt`, `RegisterId`, `ExecDefHash`, optional `Reason`). Observability: counters `rehearsal_run_total`, `publish_override_total`, `sandbox_provision_total` and histogram `rehearsal_duration_seconds` on the `Sorcha.Blueprint.Designer` meter.
 

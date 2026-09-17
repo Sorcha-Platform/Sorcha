@@ -843,7 +843,7 @@ public class RegisterServiceClient : IRegisterServiceClient
     // Blueprint Publishing
     // =========================================================================
 
-    public async Task<GovernanceRosterResponse?> GetGovernanceRosterAsync(
+    public async Task<GovernanceRosterLookup> GetGovernanceRosterAsync(
         string registerId,
         CancellationToken cancellationToken = default)
     {
@@ -861,27 +861,29 @@ public class RegisterServiceClient : IRegisterServiceClient
             {
                 if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
                 {
-                    _logger.LogDebug("No governance roster found for register {RegisterId}", registerId);
-                    return null;
+                    _logger.LogDebug("No sealed governance roster for register {RegisterId}", registerId);
+                    return GovernanceRosterLookup.NotFound();
                 }
 
                 _logger.LogWarning(
                     "Failed to get governance roster for register {RegisterId}: {StatusCode}",
                     registerId, response.StatusCode);
-                return null;
+                return GovernanceRosterLookup.Unavailable((int)response.StatusCode);
             }
 
-            return await response.Content.ReadFromJsonAsync<GovernanceRosterResponse>(SorchaJson.Options, cancellationToken);
+            var roster = await response.Content.ReadFromJsonAsync<GovernanceRosterResponse>(SorchaJson.Options, cancellationToken);
+            return roster is null
+                ? GovernanceRosterLookup.Unavailable((int)response.StatusCode)
+                : GovernanceRosterLookup.Found(roster);
         }
-        catch (HttpRequestException ex)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            _logger.LogError(ex, "HTTP error getting governance roster for register {RegisterId}", registerId);
-            return null;
+            throw;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get governance roster for register {RegisterId}", registerId);
-            return null;
+            return GovernanceRosterLookup.Unavailable();
         }
     }
 

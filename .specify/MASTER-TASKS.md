@@ -21,7 +21,7 @@
 > | # | Found | Shape |
 > |---|---|---|
 > | **#1658** | `sorcha_action_submit` posts only the payload as the whole body; the endpoint binds `ActionSubmissionRequest` (requires `blueprintId`, `actionId`, `senderWallet`, `registerAddress`) → 400 in <3 ms, surfaced as a bare "Action submission failed." **No agent can advance any instance.** | Fix (join never verified; `senderWallet` resolution is the open question) |
-> | **#1659** | The publish refusal reason was WRONG: the roster was merely unsealed (docket 0 built 4 s later; the retry published), but `PublishGate` reports "you do not hold a publish-governance role". A roster that is absent, or unreadable, is reported as an authority failure | Fix (#1641/#1646 class; now more visible because #1648 records the reason) |
+> | **#1659** | The publish refusal reason was WRONG: the roster was merely unsealed (docket 0 built 4 s later; the retry published), but `PublishGate` reports "you do not hold a publish-governance role". A roster that is absent, or unreadable, is reported as an authority failure | 🚧 Fixed on `fix/1659-publish-refusal-cause`: `GetGovernanceRosterAsync` returns a `GovernanceRosterLookup` (Found / NotFound / Unavailable); `PublishGate` gains `RosterNotSealed` + `RosterUnavailable`, both `503` with a `code` (not-sealed carries `Retry-After`) on publish AND `from-published`, audited with the TRUE reason. Deliberately not `409`: every publish client reads any 409 as REHEARSAL_REQUIRED. 12/12 mutations killed |
 >
 > Retrospective not yet captured: that session hit an Opus safeguard error on the retrospective prompt.
 > Re-run it with `claude --continue --model sonnet` in the run folder; the JSONL transcript is saved either way.
