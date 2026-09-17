@@ -427,9 +427,14 @@ public class PublicKeyResolutionTests
     }
 
     [Fact]
-    public async Task ResolveRecipientKeys_NotFoundWithoutExternal_SkippedWithWarning()
+    public async Task ResolveRecipientKeys_NotFoundWithoutExternal_RefusesTheWholeSubmission()
     {
-        // Arrange
+        // CHANGED by #1581 (Stuart's ruling, 2026-09-17). This test used to assert that a recipient whose
+        // key could not be resolved was dropped and the submission proceeded for everyone else. Two things
+        // were wrong with that: a participant silently received nothing, and when NO recipient resolved the
+        // encryption step was skipped entirely and the payload was written to an encrypted register in
+        // PLAINTEXT (confirmed live in cold-start run #4). An encrypted register now refuses a payload it
+        // cannot encrypt for every intended recipient.
         var service = CreateService();
         var instanceId = "test-instance";
         var actionId = 1;
@@ -467,7 +472,7 @@ public class PublicKeyResolutionTests
         SetupRoutingAndDisclosureTwoWallets(blueprint, action, knownWallet, unknownWallet);
         SetupFullTransactionFlow(instance);
 
-        // Register returns one found, one not found
+        // One resolves, one does not.
         _mockRegisterClient
             .Setup(x => x.ResolvePublicKeysBatchAsync(
                 registerId,
@@ -491,44 +496,17 @@ public class PublicKeyResolutionTests
                 Revoked = []
             });
 
-        // Capture encryption pipeline call — should proceed with only the known wallet
-        DisclosureGroup[]? capturedGroups = null;
-        _mockEncryptionPipeline
-            .Setup(x => x.EncryptDisclosedPayloadsAsync(
-                It.IsAny<DisclosureGroup[]>(),
-                It.IsAny<CancellationToken>()))
-            .Callback<DisclosureGroup[], CancellationToken>((groups, _) => capturedGroups = groups)
-            .ReturnsAsync((DisclosureGroup[] groups, CancellationToken _) =>
-            {
-                // Pipeline reports skipped recipients
-                return EncryptionResult.Succeeded(
-                    CreateTestEncryptedGroups(knownWallet),
-                    [unknownWallet]);
-            });
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ExecuteAsync(instanceId, actionId, request, "test-token"));
 
-        // Act
-        var result = await service.ExecuteAsync(instanceId, actionId, request, "test-token");
+        ex.Message.Should().Contain(unknownWallet, because: "the caller must be told which recipient has no key");
+        ex.Message.Should().Contain("participant record", because: "the message must say how to fix it");
 
-        // Assert — should succeed despite unknown wallet
-        result.Should().NotBeNull();
-        result.TransactionId.Should().NotBeNullOrEmpty();
-
-        // The unknown wallet should NOT be in any recipient list
-        if (capturedGroups != null)
-        {
-            var allRecipientWallets = capturedGroups.SelectMany(g => g.Recipients).Select(r => r.WalletAddress);
-            allRecipientWallets.Should().NotContain(unknownWallet);
-        }
-
-        // Verify warning was logged about skipped recipients
-        _mockLogger.Verify(
-            x => x.Log(
-                LogLevel.Warning,
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Skipped") || v.ToString()!.Contains("not found")),
-                It.IsAny<Exception>(),
-                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.AtLeastOnce);
+        // Nothing partial was written: no encryption, no transaction.
+        _mockEncryptionPipeline.Verify(x => x.EncryptDisclosedPayloadsAsync(
+            It.IsAny<DisclosureGroup[]>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockValidatorClient.Verify(x => x.SubmitTransactionAsync(
+            It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     #endregion

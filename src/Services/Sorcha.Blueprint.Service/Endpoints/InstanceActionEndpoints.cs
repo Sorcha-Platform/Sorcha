@@ -6,6 +6,7 @@ using Sorcha.Blueprint.Service.Services.Infrastructure;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
+using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Wallet;
 
 namespace Sorcha.Blueprint.Service.Endpoints;
@@ -73,6 +74,7 @@ public static class InstanceActionEndpoints
         IInstanceStore instanceStore,
         IActionResolverService actionResolver,
         IWalletServiceClient walletClient,
+        IRegisterServiceClient registerClient,
         ILogger<InstanceActionEndpointsLogCategory> logger,
         CancellationToken cancellationToken)
     {
@@ -141,10 +143,58 @@ public static class InstanceActionEndpoints
             Calculations = action.Calculations,
             CredentialRequirements = action.CredentialRequirements,
             CredentialIssuanceConfig = action.CredentialIssuanceConfig,
-            Submission = SenderWalletResolver.Resolve(blueprint, action, instance, callerWallets),
+            Submission = SenderWalletResolver.Resolve(
+                blueprint, action, instance, callerWallets,
+                await ResolvePublishedAddressesAsync(registerClient, instance, blueprint, action, logger, cancellationToken)),
         };
 
         return Results.Ok(response);
+    }
+
+    /// <summary>
+    /// The addresses on the participant record published to the register for this action's sender, or null
+    /// when none is published or the lookup fails.
+    /// </summary>
+    /// <remarks>
+    /// This is the validator's Tier 2 (<c>VAL_BP_002</c>): it resolves by the blueprint's participant id
+    /// and, when the blueprint names one, the participant's organisation — matching
+    /// <c>ParticipantIndexService.Resolve</c>, which also accepts the record's name as the id. A failure
+    /// returns null, which can only make the answer MORE conservative (the role reads as unbound), never
+    /// offer a wallet the validator would refuse.
+    /// </remarks>
+    private static async Task<IReadOnlyCollection<string>?> ResolvePublishedAddressesAsync(
+        IRegisterServiceClient registerClient,
+        Sorcha.Blueprint.Service.Models.Instance instance,
+        Sorcha.Blueprint.Models.Blueprint blueprint,
+        Sorcha.Blueprint.Models.Action action,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(action.Sender) || string.IsNullOrWhiteSpace(instance.RegisterId))
+        {
+            return null;
+        }
+
+        var organisation = blueprint.Participants?
+            .FirstOrDefault(p => string.Equals(p.Id, action.Sender, StringComparison.OrdinalIgnoreCase))?
+            .Organisation;
+
+        try
+        {
+            var record = await registerClient.ResolveParticipantAsync(
+                instance.RegisterId, action.Sender, organisation, cancellationToken);
+
+            // A revoked record binds nobody; the client surfaces it as null (410), so this is the
+            // published-and-active case only.
+            return record?.Addresses.Select(a => a.WalletAddress).Where(a => !string.IsNullOrWhiteSpace(a)).ToList();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "Could not resolve the published participant record for {ParticipantId} on register {RegisterId}",
+                action.Sender, instance.RegisterId);
+            return null;
+        }
     }
 
     /// <summary>

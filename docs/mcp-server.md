@@ -147,7 +147,11 @@ it reads the blueprint, the register and which of the caller's wallets signs fro
 context, so an agent never has to work out participant bindings. `senderWallet` is optional and needed
 only when the tool reports several candidate wallets, because the first submission binds that wallet to
 the participant for the life of the instance. A refusal carries the Blueprint Service's own reason
-(#1658); `Refused` means the service refused this caller, so do not retry unchanged. A `sorcha_wallet_sign` tool exists in source
+(#1658); `Refused` means the service refused this caller, so do not retry unchanged. One refusal is worth
+knowing by name: when the action's sender is a participant nothing binds to a wallet yet, the tool refuses
+before submitting and names the role. A participant record must be published for that role on the register
+first — by the organisation acting as it, in its own MCP session — because that record is both what
+authorises the sender and what their disclosures are encrypted to (#1664). A `sorcha_wallet_sign` tool exists in source
 (`src/Apps/Sorcha.McpServer/Tools/Participant/WalletSignTool.cs`) but is deliberately **not registered**
 (spec 139 T029): it is intentionally omitted from `[McpServerToolType]` discovery, so it never reaches
 `/api/mcp/tools`, the manifest catalogue, or a live `tools/list`. Direct signing is a high-risk operation

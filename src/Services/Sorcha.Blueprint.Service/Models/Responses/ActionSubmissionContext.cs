@@ -13,10 +13,10 @@ namespace Sorcha.Blueprint.Service.Models.Responses;
 /// </summary>
 /// <remarks>
 /// The sender wallet is ADVICE, not authority. The execute path still checks that the caller owns the
-/// wallet (SEC-006), that it matches a hard-coded participant wallet, and that it matches an existing
-/// instance binding, and the Wallet Service checks ownership again at signing time. The value here is
-/// computed by <see cref="Services.Implementation.SenderWalletResolver"/> to agree with those checks, so a
-/// client that follows it is not refused for picking the wrong wallet.
+/// wallet (SEC-006), the validator re-checks sender authorisation on the ledger (<c>VAL_BP_002</c>), and
+/// the Wallet Service checks ownership again at signing time. The value here is computed by
+/// <see cref="Services.Implementation.SenderWalletResolver"/> to agree with the VALIDATOR's rule, so a
+/// client that follows it is not accepted and then silently refused (#1664).
 /// </remarks>
 public sealed record ActionSubmissionContext
 {
@@ -40,6 +40,13 @@ public sealed record ActionSubmissionContext
     /// them. Only ever the caller's wallets: another participant's wallet is never listed.
     /// </summary>
     public IReadOnlyList<string> CandidateWallets { get; init; } = [];
+
+    /// <summary>
+    /// The blueprint participant this action's sender names, when nothing binds it to a wallet yet
+    /// (<see cref="SenderWalletStatus.AwaitingParticipantRecord"/>). It is the role a participant record
+    /// must be published for, so the caller knows exactly what is missing. Null otherwise.
+    /// </summary>
+    public string? UnboundParticipantId { get; init; }
 }
 
 /// <summary>Outcome of choosing which of the caller's wallets submits an action.</summary>
@@ -64,4 +71,14 @@ public enum SenderWalletStatus
     /// <summary>No wallet could be resolved for the caller.</summary>
     [JsonStringEnumMemberName("noWallet")]
     NoWallet,
+
+    /// <summary>
+    /// Nothing binds this action's sender to a wallet, and the action is not a starting action, so it
+    /// cannot late-bind one (#1664). NOBODY can submit it until the participating organisation publishes a
+    /// participant record for <see cref="ActionSubmissionContext.UnboundParticipantId"/> on this register.
+    /// Submitting anyway is accepted with a 202 and then refused by the validator with <c>VAL_BP_002</c>,
+    /// a refusal that reaches no audit log.
+    /// </summary>
+    [JsonStringEnumMemberName("awaitingParticipantRecord")]
+    AwaitingParticipantRecord,
 }
