@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
@@ -22,6 +23,9 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     private readonly IServiceAuthClient _serviceAuth;
     private readonly ILogger<BlueprintServiceClient> _logger;
     private readonly string _serviceAddress;
+
+    private const string DelegationTokenHeader = "X-Delegation-Token";
+    private const string DelegationTokenMarker = "delegate";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -429,13 +433,58 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     }
 
     /// <inheritdoc />
-    public Task<string?> ExecuteActionAsync(string instanceId, string actionId, string payloadJson, CancellationToken cancellationToken = default) =>
-        SendRawAsync(
+    public async Task<(HttpStatusCode StatusCode, string? Body)> ExecuteActionAsync(
+        string instanceId,
+        string actionId,
+        ExecuteActionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        await SetAuthHeaderAsync(cancellationToken);
+
+        using var message = new HttpRequestMessage(
             HttpMethod.Post,
-            $"api/instances/{Uri.EscapeDataString(instanceId)}/actions/{Uri.EscapeDataString(actionId)}/execute",
-            payloadJson,
-            "execute action",
+            $"api/instances/{Uri.EscapeDataString(instanceId)}/actions/{Uri.EscapeDataString(actionId)}/execute")
+        {
+            Content = new StringContent(
+                JsonSerializer.Serialize(request, JsonOptions), System.Text.Encoding.UTF8, "application/json"),
+        };
+
+        // The endpoint refuses a request without this header. Its value is not validated: the Wallet
+        // Service ignores the delegation token it is eventually passed to, and the web UI sends the same
+        // fixed marker. The caller's bearer is deliberately not copied into it.
+        message.Headers.Add(DelegationTokenHeader, DelegationTokenMarker);
+
+        using var response = await _httpClient.SendAsync(message, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Blueprint execute action failed: {StatusCode}", response.StatusCode);
+        }
+
+        return (response.StatusCode, body);
+    }
+
+    /// <inheritdoc />
+    public async Task<(HttpStatusCode StatusCode, string? Body)> GetActionForSubmissionAsync(
+        string instanceId,
+        string actionId,
+        CancellationToken cancellationToken = default)
+    {
+        await SetAuthHeaderAsync(cancellationToken);
+
+        using var response = await _httpClient.GetAsync(
+            $"api/instances/{Uri.EscapeDataString(instanceId)}/actions/{Uri.EscapeDataString(actionId)}",
             cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Blueprint get action for submission failed: {StatusCode}", response.StatusCode);
+        }
+
+        return (response.StatusCode, body);
+    }
 
     // =========================================================================
     // Feature 140 Wave 2 — credential & presentation lifecycle MCP surface.

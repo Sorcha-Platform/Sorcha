@@ -142,7 +142,12 @@ against the blueprint's current **draft** definition, so on a blueprint edited s
 started a pass here is not final. The result's `definitionScope` says which was used.
 
 Signing an action is **implicit inside `sorcha_action_submit`** — there is no separate "sign, then submit"
-step for an agent to orchestrate. A `sorcha_wallet_sign` tool exists in source
+step for an agent to orchestrate. The tool takes `instanceId`, `actionId` and `dataJson` (a JSON object);
+it reads the blueprint, the register and which of the caller's wallets signs from the action's submission
+context, so an agent never has to work out participant bindings. `senderWallet` is optional and needed
+only when the tool reports several candidate wallets, because the first submission binds that wallet to
+the participant for the life of the instance. A refusal carries the Blueprint Service's own reason
+(#1658); `Refused` means the service refused this caller, so do not retry unchanged. A `sorcha_wallet_sign` tool exists in source
 (`src/Apps/Sorcha.McpServer/Tools/Participant/WalletSignTool.cs`) but is deliberately **not registered**
 (spec 139 T029): it is intentionally omitted from `[McpServerToolType]` discovery, so it never reaches
 `/api/mcp/tools`, the manifest catalogue, or a live `tools/list`. Direct signing is a high-risk operation

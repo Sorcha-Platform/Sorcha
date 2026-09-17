@@ -140,9 +140,12 @@ minimal two-participant blueprint you can use as the target.
 2. sorcha_action_details(actionInstanceId)  → the action's JSON input schema, prompt copy, and
                                                any upstream data disclosed to this participant.
 
-3. sorcha_action_submit(workflowInstanceId, actionId, dataJson)
-                                             → submits the payload, completes the action, and
-                                               advances the workflow. Signing happens implicitly
+3. sorcha_action_submit(instanceId, actionId, dataJson[, senderWallet])
+                                             → submits the payload. The tool works out the
+                                               blueprint, register and signing wallet itself;
+                                               senderWallet is only needed when it reports several
+                                               candidates. Acceptance is asynchronous: the instance
+                                               advances once the transaction seals. Signing happens implicitly
                                                inside this call — there is no separate "sign, then
                                                submit" step for an agent to orchestrate. (Direct
                                                signing exists in source as sorcha_wallet_sign but is
@@ -163,8 +166,8 @@ then step 4 shows the instance in its terminal state.
 
 ## What success looks like
 
-- `sorcha_action_submit`'s response includes a `transactionId` and, if the workflow continues, a
-  `nextActions` list naming the action(s) it triggered.
+- `sorcha_action_submit`'s response includes a `transactionId`. It does not report what the submission
+  triggered: the instance advances once the transaction seals, so `nextActions` is empty on a live call.
 - `sorcha_workflow_status` on the same `workflowInstanceId` shows the action you just completed is no
   longer pending, and (once every action in the blueprint has completed) the instance in its terminal
   state.
@@ -192,7 +195,8 @@ silently.
 | `401`/`403` from a tool call | Your token's tier or role doesn't cover that tool — see the scoping table in `docs/mcp-server.md`. |
 | "JWT token is required" from the MCP server process | Token wasn't passed via `--jwt-token` or `SORCHA_JWT_TOKEN`. |
 | Connection refused | Services aren't up yet — `docker-compose ps`, then `docker-compose logs -f <service>`. See [`docs/quickstart.md`](../quickstart.md) for the full failure-mode list. |
-| `sorcha_action_submit` succeeds but the workflow doesn't advance | Check the response's `nextActions` — an empty list on a non-terminal action usually means a routing condition wasn't met, not that the submission failed. |
+| `sorcha_action_submit` succeeds but the workflow doesn't advance | Submission is asynchronous — poll `sorcha_workflow_status`. If it never advances, the transaction may have been refused at sealing; an empty `nextActions` in the submit response is normal and says nothing either way. |
+| `sorcha_action_submit` returns `Refused` or `Error` | The message carries the Blueprint Service's own reason (for example "not a current action", or a wallet you do not hold). `Refused` refuses this caller, so do not retry unchanged. |
 
 ## Known doc drift found while writing this guide
 
