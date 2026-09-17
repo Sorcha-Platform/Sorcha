@@ -118,7 +118,7 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
         // by the base factory's AlwaysPassRehearsalPassStore.)
         RegisterClient
             .Setup(r => r.GetGovernanceRosterAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string regId, CancellationToken _) => new GovernanceRosterResponse
+            .ReturnsAsync((string regId, CancellationToken _) => GovernanceRosterLookup.Found(new GovernanceRosterResponse
             {
                 RegisterId = regId,
                 MemberCount = 1,
@@ -132,7 +132,7 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
                         GrantedAt = DateTimeOffset.UtcNow,
                     }
                 }
-            });
+            }));
         RegisterClient
             .Setup(r => r.GetTransactionsByInstanceIdAsync(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))

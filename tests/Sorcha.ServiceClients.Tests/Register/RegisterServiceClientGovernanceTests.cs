@@ -273,4 +273,64 @@ public class RegisterServiceClientGovernanceTests
     }
 
     #endregion
+
+    #region GetGovernanceRosterAsync Tests (#1659)
+
+    // The three outcomes used to collapse into one null, and the publish gate reported all of them as
+    // the caller lacking a governance role.
+
+    [Fact]
+    public async Task GetGovernanceRosterAsync_Success_IsFoundWithTheRoster()
+    {
+        var handler = CreateMockHandler(HttpStatusCode.OK, new
+        {
+            registerId = "reg-1",
+            members = new[] { new { subject = "did:sorcha:w:ws11qexample", role = "Owner", algorithm = "ED25519", grantedAt = DateTimeOffset.UtcNow } },
+            memberCount = 1,
+        });
+
+        var lookup = await CreateClient(handler).GetGovernanceRosterAsync("reg-1");
+
+        lookup.Status.Should().Be(GovernanceRosterLookupStatus.Found);
+        lookup.Roster!.Members.Should().ContainSingle(m => m.Role == "Owner");
+    }
+
+    [Fact]
+    public async Task GetGovernanceRosterAsync_NotFound_IsNotFound()
+    {
+        var handler = CreateMockHandler(HttpStatusCode.NotFound, new { error = "No governance roster found for register 'reg-1'" });
+
+        var lookup = await CreateClient(handler).GetGovernanceRosterAsync("reg-1");
+
+        lookup.Status.Should().Be(GovernanceRosterLookupStatus.NotFound);
+        lookup.Roster.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public async Task GetGovernanceRosterAsync_OtherFailureStatus_IsUnavailableWithThatStatus(HttpStatusCode status)
+    {
+        var lookup = await CreateClient(CreateMockHandler(status)).GetGovernanceRosterAsync("reg-1");
+
+        lookup.Status.Should().Be(GovernanceRosterLookupStatus.Unavailable);
+        lookup.HttpStatus.Should().Be((int)status);
+    }
+
+    [Fact]
+    public async Task GetGovernanceRosterAsync_TransportError_IsUnavailableWithNoStatus()
+    {
+        var handler = new Mock<HttpMessageHandler>();
+        handler.Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("Connection refused"));
+
+        var lookup = await CreateClient(handler).GetGovernanceRosterAsync("reg-1");
+
+        lookup.Status.Should().Be(GovernanceRosterLookupStatus.Unavailable);
+        lookup.HttpStatus.Should().BeNull();
+    }
+
+    #endregion
 }

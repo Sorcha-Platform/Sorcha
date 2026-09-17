@@ -100,7 +100,7 @@ public class FromPublishedEndpointTests : IClassFixture<BlueprintServiceWebAppli
         var mockRegisterClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
         Mock.Get(mockRegisterClient)
             .Setup(c => c.GetGovernanceRosterAsync(source.RegisterId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new GovernanceRosterResponse
+            .ReturnsAsync(GovernanceRosterLookup.Found(new GovernanceRosterResponse
             {
                 RegisterId = source.RegisterId,
                 MemberCount = 1,
@@ -115,7 +115,7 @@ public class FromPublishedEndpointTests : IClassFixture<BlueprintServiceWebAppli
                         GrantedAt = DateTimeOffset.UtcNow,
                     }
                 },
-            });
+            }));
 
         try
         {
@@ -142,7 +142,7 @@ public class FromPublishedEndpointTests : IClassFixture<BlueprintServiceWebAppli
             // Restore the default roster mock so this test does not pollute the shared fixture.
             Mock.Get(mockRegisterClient)
                 .Setup(c => c.GetGovernanceRosterAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((string regId, CancellationToken _) => new GovernanceRosterResponse
+                .ReturnsAsync((string regId, CancellationToken _) => GovernanceRosterLookup.Found(new GovernanceRosterResponse
                 {
                     RegisterId = regId,
                     MemberCount = 1,
@@ -156,7 +156,7 @@ public class FromPublishedEndpointTests : IClassFixture<BlueprintServiceWebAppli
                             GrantedAt = DateTimeOffset.UtcNow,
                         }
                     },
-                });
+                }));
         }
     }
 
@@ -174,7 +174,7 @@ public class FromPublishedEndpointTests : IClassFixture<BlueprintServiceWebAppli
         var mockRegisterClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
         Mock.Get(mockRegisterClient)
             .Setup(c => c.GetGovernanceRosterAsync(registerId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new GovernanceRosterResponse
+            .ReturnsAsync(GovernanceRosterLookup.Found(new GovernanceRosterResponse
             {
                 RegisterId = registerId,
                 MemberCount = 1,
@@ -188,7 +188,7 @@ public class FromPublishedEndpointTests : IClassFixture<BlueprintServiceWebAppli
                         GrantedAt = DateTimeOffset.UtcNow,
                     }
                 },
-            });
+            }));
 
         var createResponse = await _client.PostAsJsonAsync("/api/blueprints", new
         {
@@ -214,6 +214,79 @@ public class FromPublishedEndpointTests : IClassFixture<BlueprintServiceWebAppli
                 && r.ResourceId == registerId
                 && !string.IsNullOrWhiteSpace(r.Reason)),
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// #1659: when the register has no sealed roster yet, the publish is refused as retryable, with the
+    /// true reason, and that same reason is what reaches the caller's organisation audit log.
+    /// </summary>
+    [Theory]
+    [InlineData(false, HttpStatusCode.ServiceUnavailable, "GOVERNANCE_ROSTER_NOT_SEALED", "no sealed governance roster")]
+    [InlineData(true, HttpStatusCode.ServiceUnavailable, "GOVERNANCE_ROSTER_UNAVAILABLE", "could not be read")]
+    public async Task Publish_RosterNotChecked_IsNotReportedAsAMissingRole(
+        bool unreadable, HttpStatusCode expectedStatus, string expectedCode, string expectedReason)
+    {
+        var registerId = $"registers-publish-1659-{(unreadable ? "unavailable" : "notsealed")}";
+
+        using var scope = _factory.Services.CreateScope();
+        var mockRegisterClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+        Mock.Get(mockRegisterClient)
+            .Setup(c => c.GetGovernanceRosterAsync(registerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(unreadable ? GovernanceRosterLookup.Unavailable(500) : GovernanceRosterLookup.NotFound());
+
+        var createResponse = await _client.PostAsJsonAsync("/api/blueprints", new
+        {
+            title = $"publish-1659-{Guid.NewGuid():N}",
+            description = "Publish before the roster is readable.",
+            participants = new object[] { new { id = "a", name = "A" }, new { id = "b", name = "B" } },
+            actions = new object[]
+            {
+                new { id = 0, title = "Start", sender = "a", isStartingAction = true, routes = Array.Empty<object>() }
+            }
+        });
+        createResponse.EnsureSuccessStatusCode();
+        var created = await createResponse.Content.ReadFromJsonAsync<BlueprintModel>();
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/blueprints/{created!.Id}/publish", new { registerId, @override = new { confirm = true } });
+
+        // Never 409: the shared publish client (and so the MCP publish tool) reads any 409 as
+        // REHEARSAL_REQUIRED and would ask a person to waive a rehearsal instead of retrying.
+        response.StatusCode.Should().Be(expectedStatus);
+        response.Headers.Contains("Retry-After").Should().Be(!unreadable, "only the not-yet-sealed case is known to be transient");
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("code").GetString().Should().Be(expectedCode);
+        var error = body.RootElement.GetProperty("error").GetString();
+        error.Should().Contain(expectedReason).And.NotContain("do not hold");
+
+        _factory.MockRefusalAudit.Verify(a => a.RecordAsync(
+            It.Is<Sorcha.ServiceClients.Audit.RefusalAuditReport>(r =>
+                r.Action == Sorcha.ServiceClients.Audit.RefusalAuditActions.BlueprintPublish
+                && r.ResourceId == registerId
+                && r.Reason == error),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task FromPublished_SourceRosterNotSealed_Returns503NotAMissingRole()
+    {
+        var source = await CreateAndPublishSourceAsync("from-pub-1659", "registers-1659-source");
+
+        using var scope = _factory.Services.CreateScope();
+        var mockRegisterClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+        Mock.Get(mockRegisterClient)
+            .Setup(c => c.GetGovernanceRosterAsync(source.RegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(GovernanceRosterLookup.NotFound());
+
+        var response = await _client.PostAsJsonAsync(
+            "/api/blueprints/from-published",
+            new { registerId = source.RegisterId, blueprintId = source.BlueprintId, publicationTxId = source.PublicationTxId });
+
+        response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        response.Headers.Contains("Retry-After").Should().BeTrue();
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("code").GetString().Should().Be("GOVERNANCE_ROSTER_NOT_SEALED");
+        body.RootElement.GetProperty("error").GetString().Should().NotContain("do not hold");
     }
 
     [Fact]

@@ -1014,6 +1014,32 @@ blueprintGroup.MapPost("/{id}/publish", async (
             return Results.Json(new { error = reason }, statusCode: StatusCodes.Status403Forbidden);
         }
 
+        case Sorcha.Blueprint.Service.Services.Implementation.PublishGateOutcome.RosterNotSealed:
+        case Sorcha.Blueprint.Service.Services.Implementation.PublishGateOutcome.RosterUnavailable:
+        {
+            // #1659: authority could not be checked. Refused, but not as a missing role. Still reported
+            // to the caller's organisation audit log, with the true reason, because that log is where a
+            // refused MCP agent reads why (#1641: the publish tool does not surface the body).
+            var notSealed = decision.Outcome
+                == Sorcha.Blueprint.Service.Services.Implementation.PublishGateOutcome.RosterNotSealed;
+            var reason = decision.Reason ?? "Publish authority could not be checked.";
+            await Sorcha.Blueprint.Service.Services.Implementation.PublishRefusalAudit.ReportAsync(
+                httpContext, Sorcha.ServiceClients.Audit.RefusalAuditActions.BlueprintPublish,
+                body.RegisterId, reason, httpContext.RequestAborted);
+
+            // 503, never 409: every existing publish client (the shared BlueprintServiceClient, so the MCP
+            // publish tool, and the UI) reads ANY 409 as REHEARSAL_REQUIRED and would ask a person to waive
+            // a rehearsal. The code field says which case this is; Retry-After marks the transient one.
+            if (notSealed)
+            {
+                httpContext.Response.Headers.RetryAfter = "5";
+            }
+
+            return Results.Json(
+                new { code = notSealed ? "GOVERNANCE_ROSTER_NOT_SEALED" : "GOVERNANCE_ROSTER_UNAVAILABLE", error = reason },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
         case Sorcha.Blueprint.Service.Services.Implementation.PublishGateOutcome.RehearsalRequired:
             // FR-032 — soft gate blocked; resend with override to proceed. No publish.
             return Results.Json(
@@ -1093,6 +1119,10 @@ blueprintGroup.MapPost("/{id}/publish", async (
 .WithSummary("Publish blueprint (governance-hard + rehearsal-soft gated)")
 .WithDescription("Validate and publish a blueprint to a register. Requires { registerId } in the body. "
     + "Enforces register governance rights server-side (403 if the caller lacks Owner/Admin/Designer on the register). "
+    + "When authority cannot be checked it is not reported as a missing role: 503 with code GOVERNANCE_ROSTER_NOT_SEALED "
+    + "and Retry-After when the register has no sealed governance roster yet (a new register's genesis seals within "
+    + "seconds), or code GOVERNANCE_ROSTER_UNAVAILABLE when the roster could not be read. 409 is reserved for "
+    + "REHEARSAL_REQUIRED. "
     + "Then checks the rehearsal soft gate: the publishing version's executable-definition hash must match a recorded "
     + "rehearsal pass, otherwise 409 REHEARSAL_REQUIRED unless { override: { confirm: true, reason? } } is sent, which "
     + "publishes and records an audited override. The 200 response carries 'overridden'.")
