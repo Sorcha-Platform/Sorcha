@@ -8,6 +8,24 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
+> **▶ 2026-09-17 - MCP cold-start run #3: it reached a RUNNING INSTANCE. New wall: action submit.**
+> Harness: dedicated org identity (`Cold-start Run 3`, Administrator+Designer+Auditor), MCP-only enforced
+> (shell / web / skills / subagents denied in the agent folder), fresh folder, no prior state. Sequence:
+> blueprint created + rehearsed → register created (genesis sealed) → published (409 rehearsal gate, then a
+> human override) → **instance created and active**. Then `sorcha_action_submit` failed twice and it stopped.
+>
+> **#1648 paid for itself in this run:** the publish refusal was written to the org audit log and the agent
+> READ it back with `sorcha_audit_query` (2 calls, both Success) instead of reaching for SSH — which is what
+> ended run #2. Two new issues came straight out of the run:
+>
+> | # | Found | Shape |
+> |---|---|---|
+> | **#1658** | `sorcha_action_submit` posts only the payload as the whole body; the endpoint binds `ActionSubmissionRequest` (requires `blueprintId`, `actionId`, `senderWallet`, `registerAddress`) → 400 in <3 ms, surfaced as a bare "Action submission failed." **No agent can advance any instance.** | Fix (join never verified; `senderWallet` resolution is the open question) |
+> | **#1659** | The publish refusal reason was WRONG: the roster was merely unsealed (docket 0 built 4 s later; the retry published), but `PublishGate` reports "you do not hold a publish-governance role". A roster that is absent, or unreadable, is reported as an authority failure | Fix (#1641/#1646 class; now more visible because #1648 records the reason) |
+>
+> Retrospective not yet captured: that session hit an Opus safeguard error on the retrospective prompt.
+> Re-run it with `claude --continue --model sonnet` in the run folder; the JSONL transcript is saved either way.
+
 > **▶ 2026-09-15 - MCP cold-start run #2: CLOSED. The approval seam works with a real person; the
 > ceiling is still the platform.** Write-up: `docs/superpowers/specs/2026-09-06-mcp-p1-completable-surface-design.md`
 > → "Measured outcome: cold-start run #2". No score claimed: it still did not reach an instance.
