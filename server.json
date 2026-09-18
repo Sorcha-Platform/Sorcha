@@ -36,6 +36,8 @@
     "sorcha_instance_create",
     "sorcha_jsonlogic_test",
     "sorcha_log_query",
+    "sorcha_participant_list",
+    "sorcha_participant_publish",
     "sorcha_metrics",
     "sorcha_my_credentials",
     "sorcha_my_device_rename",

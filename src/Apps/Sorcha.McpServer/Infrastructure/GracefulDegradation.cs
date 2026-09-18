@@ -149,6 +149,8 @@ public sealed class ServiceAvailabilityTracker : IServiceAvailabilityTracker
         ["sorcha_inbox_list"] = ["Blueprint"],
         ["sorcha_action_details"] = ["Blueprint", "Register"],
         ["sorcha_action_submit"] = ["Blueprint", "Register", "Wallet"],
+        ["sorcha_participant_publish"] = ["Tenant", "Wallet", "Register"],
+        ["sorcha_participant_list"] = ["Register"],
         ["sorcha_action_validate"] = ["Blueprint"],
         ["sorcha_transaction_history"] = ["Register"],
         ["sorcha_workflow_status"] = ["Blueprint", "Register"],

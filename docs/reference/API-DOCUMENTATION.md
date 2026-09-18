@@ -923,6 +923,12 @@ tokens (every real PWA sign-in, Feature 136) never carry, so every genuine citiz
 }
 ```
 
+**Encrypted registers refuse what they cannot encrypt (#1581).** On a register with `devMode: false`, if any
+intended recipient's public key cannot be resolved — no published participant record and no external key
+supplied — the submission is refused with `400` naming the participants, and nothing is written. It previously
+logged a warning, dropped that recipient, and (when no recipient resolved at all) skipped encryption entirely
+and stored the payload **in plaintext** on an encrypted register.
+
 **`submission` (#1658)** carries what `POST /api/instances/{instanceId}/actions/{actionId}/execute`
 requires beyond the payload, which a participant holding only an instance id and an action id could
 not otherwise learn. `senderWalletStatus` is a string (`resolved` | `ambiguous` | `notYours` |
@@ -930,14 +936,32 @@ not otherwise learn. `senderWalletStatus` is a string (`resolved` | `ambiguous` 
 
 | Status | Meaning | `senderWallet` |
 |---|---|---|
-| `resolved` | Exactly one of the caller's wallets can submit: the wallet hard-coded on the sender participant in the published blueprint, else the wallet the instance already binds to that participant, else the caller's only wallet | set |
-| `ambiguous` | The sender is unbound and the caller holds several wallets. Submitting binds the chosen one for the life of the instance, so the caller must choose from `candidateWallets` | null |
+| `resolved` | Exactly one of the caller's wallets can submit | set |
+| `ambiguous` | A **starting** action's sender is unbound and the caller holds several wallets. Submitting binds the chosen one for the life of the instance, so the caller must choose from `candidateWallets` | null |
 | `notYours` | The sender is bound to a wallet the caller does not hold | null |
 | `noWallet` | No wallet resolved for the caller | null |
+| `awaitingParticipantRecord` | Nothing binds this action's sender to a wallet, and the action is not a starting action, so it cannot late-bind one. **Nobody can submit it** until a participant record is published for `unboundParticipantId` on this register | null |
 
-It is advice, not authority: the execute path still enforces wallet ownership, a hard-coded participant
-wallet and an existing binding, and the Wallet Service checks ownership again when signing. Only the
-caller's own wallets are ever listed.
+`SenderWalletResolver` mirrors **the validator's** `VAL_BP_002` rule, in its order: (1) a wallet hard-coded on
+the participant in the published blueprint; (2) the participant record published to the register for that role
+— resolved by the participant id and, when the blueprint sets one, the participant's `organisation` — where the
+signer must be one of its published addresses; (3) a wallet already bound to the role earlier in this instance.
+A later action whose sender is bound by none of those cannot be submitted by anyone, and the response names the
+role in `unboundParticipantId`.
+
+⚠ **#1664.** This originally mirrored the EXECUTE path, which accepts any wallet the caller owns for an unbound
+sender. The validator does not: the submission was accepted with `202` and then refused with `VAL_BP_002`, a
+refusal that reaches no audit log, so the caller saw success followed by silence. Mirroring execute is not
+enough — execute admits transactions the ledger then refuses.
+
+It is advice, not authority: the execute path still enforces wallet ownership, the validator re-checks sender
+authorisation on the ledger, and the Wallet Service checks ownership again when signing. Only the caller's own
+wallets are ever listed.
+
+**Publishing a participant record is what binds a role to a wallet** (`POST /api/organizations/{orgId}/participants/publish`),
+and it is its own transaction on the register. So after a register is created, each participating organisation
+must publish a record binding its role to its wallet **before** the first action that role sends. That record
+also carries the public key the role's disclosures are encrypted to — see the fail-closed rule below.
 
 The execute endpoint also refuses a request with no `X-Delegation-Token` header (`400`). Its value is
 not validated today: the Wallet Service ignores the token it is eventually passed, and both the web UI

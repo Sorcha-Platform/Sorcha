@@ -244,10 +244,13 @@ Feature 136) — and returns only the form-relevant subset of the action (`Insta
 title, form layout, data schemas, calculations, and this action's own credential requirements/issuance
 config) — never routing rules, other participants, or any other action's content. Since #1658 it also
 carries a `submission` block (`blueprintId`, `registerId`, `senderWallet`, `senderWalletStatus`,
-`candidateWallets`) so a caller can build the execute request: `SenderWalletResolver` picks which of the
-caller's wallets to send using the same precedence the execute path enforces (hard-coded participant
-wallet, then instance binding, then the caller's only wallet) and never lists another participant's
-wallet. See `docs/reference/API-DOCUMENTATION.md` for the full response shape and exclusion list.
+`candidateWallets`, `unboundParticipantId`) so a caller can build the execute request. `SenderWalletResolver`
+mirrors the VALIDATOR's `VAL_BP_002` precedence — hard-coded participant wallet, then the participant record
+published to the register, then a binding made earlier in this instance — and never lists another
+participant's wallet. A later action whose sender is bound by none of those reports
+`awaitingParticipantRecord`: nobody can submit it until the participating organisation publishes a
+participant record for that role (#1664). Mirroring the execute path instead was wrong, because execute
+admits submissions the validator then refuses after the 202. See `docs/reference/API-DOCUMENTATION.md` for the full response shape and exclusion list.
 
 > **Note:** the participant-check gap this section used to record on `GET /api/instances/{instanceId}`
 > is **closed** — issue #1182 added `InstanceParticipantGate` to all three instance reads.

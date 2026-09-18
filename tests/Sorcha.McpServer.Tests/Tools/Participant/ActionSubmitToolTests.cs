@@ -45,7 +45,8 @@ public sealed class ActionSubmitToolTests
         _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Blueprint")).Returns(true);
     }
 
-    private static string ContextBody(string status, string? senderWallet = null, string[]? candidates = null) =>
+    private static string ContextBody(
+        string status, string? senderWallet = null, string[]? candidates = null, string? unboundParticipantId = null) =>
         JsonSerializer.Serialize(new
         {
             actionId = 2,
@@ -57,6 +58,7 @@ public sealed class ActionSubmitToolTests
                 senderWalletStatus = status,
                 senderWallet,
                 candidateWallets = candidates ?? [],
+                unboundParticipantId,
             },
         });
 
@@ -186,6 +188,36 @@ public sealed class ActionSubmitToolTests
         result.Status.Should().Be("Refused");
         result.Message.Should().Contain("bound to a wallet you do not hold");
         VerifyNeverSubmitted();
+    }
+
+    [Fact]
+    public async Task SubmitActionAsync_AwaitingParticipantRecord_IsRefused_AndNamesTheRoleAndRemedy()
+    {
+        // #1664: submitting anyway is accepted with a 202 and then refused by the validator with
+        // VAL_BP_002, which reaches no audit log. Cold-start run #4 retried that blind, twice.
+        Allow();
+        ContextReturns(HttpStatusCode.OK, ContextBody("awaitingParticipantRecord", unboundParticipantId: "provider"));
+
+        var result = await _tool.SubmitActionAsync("wf-1", "2", "{}");
+
+        result.Status.Should().Be("Refused");
+        result.Message.Should().Contain("provider").And.Contain("participant record").And.Contain("reg-1");
+        result.Message.Should().Contain("Nobody can submit this action");
+        VerifyNeverSubmitted();
+    }
+
+    [Fact]
+    public async Task SubmitActionAsync_AwaitingParticipantRecord_ExplicitSenderWalletStillSubmits()
+    {
+        // The override stays available: the server and validator remain the authority, and a caller who
+        // knows better (a record published moments ago) must not be blocked by the tool's own advice.
+        Allow();
+        ContextReturns(HttpStatusCode.OK, ContextBody("awaitingParticipantRecord", unboundParticipantId: "provider"));
+        ExecuteReturns(HttpStatusCode.OK, AcceptedBody);
+
+        var result = await _tool.SubmitActionAsync("wf-1", "2", "{}", senderWallet: Mine);
+
+        result.Status.Should().Be("Success");
     }
 
     [Fact]

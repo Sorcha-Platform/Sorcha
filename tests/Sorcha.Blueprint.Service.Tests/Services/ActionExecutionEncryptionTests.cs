@@ -319,6 +319,64 @@ public class ActionExecutionEncryptionTests
 
     #endregion
 
+    #region #1581 — an encrypted register must never fall back to plaintext
+
+    [Fact]
+    public async Task ExecuteAsync_EncryptedRegisterAndNoKeyForARecipient_RefusesAndSubmitsNothing()
+    {
+        // #1581, confirmed live in cold-start run #4: the unresolvable recipient was logged and dropped,
+        // which left NO recipients, which skipped encryption entirely — and the action was written to a
+        // devMode=false register in PLAINTEXT, silently.
+        var service = CreateService();
+        const string instanceId = "test-instance";
+        const int actionId = 1;
+        const string registerId = "register-1";
+        const string senderWallet = "wallet-sender";
+
+        var request = new ActionSubmissionRequest
+        {
+            BlueprintId = "blueprint-1",
+            ActionId = "1",
+            SenderWallet = senderWallet,
+            RegisterAddress = registerId,
+            PayloadData = new Dictionary<string, object> { ["field1"] = "value1" }
+        };
+
+        var instance = CreateTestInstance(instanceId, "blueprint-1", registerId,
+            new Dictionary<string, string> { ["applicant"] = senderWallet });
+        var blueprint = CreateTestBlueprint(senderWallet);
+        var action = blueprint.Actions!.First(a => a.Id == actionId);
+
+        SetupCommonMocks(instanceId, instance, blueprint, action);
+        SetupRoutingAndDisclosure(blueprint, action);
+        SetupFullTransactionFlow(instance);
+
+        // The register holds no published record for the recipient: nothing resolves.
+        _mockRegisterClient
+            .Setup(x => x.ResolvePublicKeysBatchAsync(
+                registerId, It.IsAny<BatchPublicKeyRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BatchPublicKeyResponse
+            {
+                Resolved = new Dictionary<string, PublicKeyResolution>(),
+                NotFound = [senderWallet],
+                Revoked = []
+            });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ExecuteAsync(instanceId, actionId, request, "test-token"));
+
+        ex.Message.Should().Contain("encrypted").And.Contain(senderWallet);
+        ex.Message.Should().Contain("participant record", "the message must say what is missing");
+
+        // Nothing reached the ledger: no signing, no validator submission, no plaintext transaction.
+        _mockValidatorClient.Verify(x => x.SubmitTransactionAsync(
+            It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockEncryptionPipeline.Verify(x => x.EncryptDisclosedPayloadsAsync(
+            It.IsAny<DisclosureGroup[]>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    #endregion
+
     #region Mixed sources (external bindings + register)
 
     [Fact]

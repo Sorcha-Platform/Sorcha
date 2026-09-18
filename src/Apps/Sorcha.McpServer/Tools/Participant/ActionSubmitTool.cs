@@ -140,7 +140,7 @@ public sealed class ActionSubmitTool
                     + "register and sender wallet cannot be determined. The service predates #1658 and needs updating."), stopwatch);
             }
 
-            var (blueprintId, registerId, walletStatus, resolvedWallet, candidates) = context.Value;
+            var (blueprintId, registerId, walletStatus, resolvedWallet, candidates, unboundParticipantId) = context.Value;
             var chosenWallet = string.IsNullOrWhiteSpace(senderWallet) ? null : senderWallet.Trim();
 
             if (chosenWallet is null)
@@ -151,7 +151,9 @@ public sealed class ActionSubmitTool
                 }
                 else
                 {
-                    return Timed(NoWalletChosen(walletStatus, candidates, instanceId, actionId), stopwatch);
+                    return Timed(
+                        NoWalletChosen(walletStatus, candidates, instanceId, actionId, unboundParticipantId, registerId),
+                        stopwatch);
                 }
             }
 
@@ -220,8 +222,23 @@ public sealed class ActionSubmitTool
     /// guessing would bind the guessed wallet to the participant for the life of the instance.
     /// </summary>
     private static ActionSubmitResult NoWalletChosen(
-        string walletStatus, IReadOnlyList<string> candidates, string instanceId, string actionId) => walletStatus switch
+        string walletStatus,
+        IReadOnlyList<string> candidates,
+        string instanceId,
+        string actionId,
+        string? unboundParticipantId,
+        string registerId) => walletStatus switch
     {
+        // #1664: nothing on the ledger binds this role, and only a starting action can late-bind one. Any
+        // submission would be accepted with a 202 and then refused by the validator (VAL_BP_002), a refusal
+        // no tool can read — so refuse here, where the reason can still be given.
+        "awaitingParticipantRecord" => Result("Refused",
+            $"Action {actionId} is sent by participant '{unboundParticipantId ?? "unknown"}', and nothing binds that "
+            + $"role to a wallet on register {registerId} yet: the published blueprint names no wallet for it, no "
+            + "participant record is published for it, and it has not acted earlier in this instance. Nobody can "
+            + "submit this action — including you — until the organisation acting as that participant publishes a "
+            + "participant record binding the role to their wallet on this register. That record is also what the "
+            + "payload is encrypted to."),
         "ambiguous" => Result("Error",
             "You hold several wallets and this action's sender is not yet bound to one. Submitting binds the wallet "
             + "you choose to your participant role for the life of the instance, so call again with senderWallet "
@@ -321,7 +338,8 @@ public sealed class ActionSubmitTool
     /// purpose: the MCP response-shape gate pairs every record declared in a tool file with the endpoint's
     /// response type, and this is a hand-parsed projection of one nested member.
     /// </summary>
-    internal static (string BlueprintId, string RegisterId, string Status, string? SenderWallet, IReadOnlyList<string> Candidates)?
+    internal static (string BlueprintId, string RegisterId, string Status, string? SenderWallet,
+        IReadOnlyList<string> Candidates, string? UnboundParticipantId)?
         ReadSubmissionContext(string? body)
     {
         if (string.IsNullOrWhiteSpace(body))
@@ -352,7 +370,8 @@ public sealed class ActionSubmitTool
                     ? list.EnumerateArray().Where(c => c.ValueKind == JsonValueKind.String).Select(c => c.GetString()!).ToList()
                     : [];
 
-            return (blueprintId, registerId, status, ReadString(submission, "senderWallet"), candidates);
+            return (blueprintId, registerId, status, ReadString(submission, "senderWallet"), candidates,
+                ReadString(submission, "unboundParticipantId"));
         }
         catch (JsonException)
         {

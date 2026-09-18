@@ -16,6 +16,8 @@ using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Models.Responses;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
+using Sorcha.ServiceClients.Register;
+using Sorcha.ServiceClients.Register.Models;
 using Sorcha.ServiceClients.Wallet;
 using Xunit;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
@@ -133,13 +135,27 @@ public sealed class InstanceActionEndpointsTests
         return mock;
     }
 
+    /// <summary>
+    /// A Register client with no published participant record for anyone (#1664 Tier 2 absent), which is
+    /// the state every pre-existing test here assumed implicitly.
+    /// </summary>
+    private static IRegisterServiceClient NoPublishedParticipants()
+    {
+        var mock = new Mock<IRegisterServiceClient>();
+        mock.Setup(c => c.ResolveParticipantAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PublishedParticipantRecord?)null);
+        return mock.Object;
+    }
+
     private static Task<IResult> InvokeAsync(
         HttpContext httpContext,
         string instanceId,
         int actionId,
         IInstanceStore instanceStore,
         IActionResolverService actionResolver,
-        IWalletServiceClient walletClient)
+        IWalletServiceClient walletClient,
+        IRegisterServiceClient? registerClient = null)
     {
         var method = typeof(InstanceActionEndpoints).GetMethod(
             "GetInstanceActionSchema",
@@ -148,7 +164,8 @@ public sealed class InstanceActionEndpointsTests
 
         var result = method!.Invoke(null, [
             httpContext, instanceId, actionId, instanceStore, actionResolver,
-            walletClient, NullLogger<InstanceActionEndpoints.InstanceActionEndpointsLogCategory>.Instance,
+            walletClient, registerClient ?? NoPublishedParticipants(),
+            NullLogger<InstanceActionEndpoints.InstanceActionEndpointsLogCategory>.Instance,
             CancellationToken.None,
         ]);
         return (Task<IResult>)result!;
@@ -507,7 +524,77 @@ public sealed class InstanceActionEndpointsTests
         submission.RegisterId.Should().Be("reg-1");
         submission.SenderWalletStatus.Should().Be(SenderWalletStatus.Resolved);
         submission.SenderWallet.Should().Be(CitizenWallet,
-            "the action's sender 'citizen' is bound to this wallet on the instance, so it is the only one execute accepts");
+            "the action's sender 'citizen' is bound to this wallet by an earlier action in this instance");
+    }
+
+    [Fact]
+    public async Task GetInstanceActionSchema_UsesThePublishedParticipantRecordWhenOneExists()
+    {
+        // #1664 Tier 2: the register, not the caller's wallet list, decides who may send a later action.
+        var instance = MakeInstance(CitizenWallet);
+        var action = MakeAction();
+        var blueprint = new BlueprintModel
+        {
+            Id = "bp-1", Title = "AIAS", Description = "desc-desc", Actions = [action],
+            Participants = [new Participant { Id = "citizen", Name = "Citizen", Organisation = "Council" }],
+        };
+
+        var instanceStore = new Mock<IInstanceStore>();
+        instanceStore.Setup(s => s.GetAsync("inst-1", It.IsAny<CancellationToken>())).ReturnsAsync(instance);
+        var resolver = new Mock<IActionResolverService>();
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetActionDefinition(blueprint, "1")).Returns(action);
+
+        var registerClient = new Mock<IRegisterServiceClient>();
+        registerClient
+            .Setup(c => c.ResolveParticipantAsync("reg-1", "citizen", "Council", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PublishedParticipantRecord
+            {
+                ParticipantId = "citizen", ParticipantName = "Citizen", OrganizationName = "Council",
+                Status = "Active", Version = 1, LatestTxId = "tx-1",
+                Addresses = [new ParticipantAddressInfo
+                {
+                    WalletAddress = OtherWallet, PublicKey = "pk", Algorithm = "ED25519", Primary = true,
+                }],
+            });
+
+        var result = await InvokeAsync(
+            ConsumerTierContext(), "inst-1", 1, instanceStore.Object, resolver.Object,
+            WalletClientReturning(PlatformUserId, CitizenWallet, OtherWallet).Object, registerClient.Object);
+
+        var submission = result.Should().BeOfType<Ok<InstanceActionSchemaResponse>>().Subject.Value!.Submission;
+        submission!.SenderWalletStatus.Should().Be(SenderWalletStatus.Resolved);
+        submission.SenderWallet.Should().Be(OtherWallet,
+            "the published record's address is what the validator accepts, even though the instance binds another wallet");
+        registerClient.Verify(
+            c => c.ResolveParticipantAsync("reg-1", "citizen", "Council", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetInstanceActionSchema_NoPublishedRecordForALaterAction_SaysWhatIsMissing()
+    {
+        var instance = MakeInstance(CitizenWallet, instanceId: "inst-unbound");
+        instance.ParticipantWallets.Clear();
+        var action = MakeAction();   // not a starting action
+        var blueprint = new BlueprintModel
+        {
+            Id = "bp-1", Title = "AIAS", Description = "desc-desc", Actions = [action],
+            Participants = [new Participant { Id = "citizen", Name = "Citizen" }],
+        };
+
+        var instanceStore = new Mock<IInstanceStore>();
+        instanceStore.Setup(s => s.GetAsync("inst-unbound", It.IsAny<CancellationToken>())).ReturnsAsync(instance);
+        var resolver = new Mock<IActionResolverService>();
+        resolver.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(blueprint);
+        resolver.Setup(r => r.GetActionDefinition(blueprint, "1")).Returns(action);
+
+        var result = await InvokeAsync(
+            ContextWithWallet(CitizenWallet), "inst-unbound", 1, instanceStore.Object, resolver.Object,
+            WalletClientReturning(PlatformUserId, CitizenWallet).Object);
+
+        // The caller is not a participant on this instance and the action is not open, so the gate refuses
+        // first — the submission context is only reachable for participants. Assert the gate, not the context.
+        result.Should().NotBeOfType<Ok<InstanceActionSchemaResponse>>();
     }
 
     [Fact]

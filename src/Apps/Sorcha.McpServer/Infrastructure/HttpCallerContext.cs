@@ -138,6 +138,22 @@ public sealed class HttpCallerContext : ICallerContext
     }
 
     /// <inheritdoc />
+    public string? PlatformUserId
+    {
+        get
+        {
+            var user = User;
+            if (user is null)
+            {
+                return null;
+            }
+
+            var platformUserId = user.FindFirst("platform_user_id")?.Value;
+            return string.IsNullOrWhiteSpace(platformUserId) ? Subject : platformUserId;
+        }
+    }
+
+    /// <inheritdoc />
     public bool IsAuthenticated => User?.Identity?.IsAuthenticated == true;
 
     /// <summary>

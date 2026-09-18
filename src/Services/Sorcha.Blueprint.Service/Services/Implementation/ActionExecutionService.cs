@@ -1084,11 +1084,36 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                 effectiveExternalKeys.TryAdd(localWalletRecipient, crossNodeDeliveryKey);
             }
 
-            var (recipients, resolveError) = await ResolveRecipientKeysAsync(
+            var (recipients, resolveError, unresolvedRecipients) = await ResolveRecipientKeysAsync(
                 disclosedPayloads.Keys, effectiveExternalKeys, instance.RegisterId, cancellationToken);
             if (resolveError != null)
             {
                 throw new InvalidOperationException(resolveError);
+            }
+
+            // #1581 — FAIL CLOSED. A recipient whose key cannot be resolved used to be logged and dropped;
+            // if that left NO recipients at all, the encryption block below was skipped entirely and the
+            // payload was written to an encrypted register IN PLAINTEXT. Confirmed live in cold-start run
+            // #4: a devMode=false register whose participants had no published record stored its first
+            // action in the clear, and nothing said so. Refusing here costs a submission; the alternative
+            // silently publishes the data the register exists to protect.
+            if (unresolvedRecipients.Count > 0)
+            {
+                var named = string.Join(", ", unresolvedRecipients.Select(w => walletToNameForError(w)));
+                throw new InvalidOperationException(
+                    $"This register stores data encrypted, but no encryption key could be resolved for {named}. "
+                    + "Nothing was submitted. Each recipient needs a participant record published on this register "
+                    + "(that record carries the public key their disclosure is encrypted to), or an external key "
+                    + "supplied with the submission.");
+
+                string walletToNameForError(string wallet)
+                {
+                    var participant = blueprint.Participants?.FirstOrDefault(p =>
+                        string.Equals(p.WalletAddress, wallet, StringComparison.OrdinalIgnoreCase)
+                        || (instance.ParticipantWallets.TryGetValue(p.Id, out var bound)
+                            && string.Equals(bound, wallet, StringComparison.OrdinalIgnoreCase)));
+                    return participant is null ? wallet : $"participant '{participant.Id}' ({wallet})";
+                }
             }
 
             // T008: Populate DisplayName on RecipientInfo for UI progress events
@@ -3001,7 +3026,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
     /// External keys take precedence over register-published keys per FR-010.
     /// Revoked participants cause a hard failure. Not-found wallets without external keys are skipped with a warning.
     /// </summary>
-    private async Task<(RecipientInfo[] Recipients, string? Error)> ResolveRecipientKeysAsync(
+    private async Task<(RecipientInfo[] Recipients, string? Error, IReadOnlyList<string> Unresolved)> ResolveRecipientKeysAsync(
         IEnumerable<string> walletAddresses,
         Dictionary<string, ExternalKeyInfo>? externalKeys,
         string registerId,
@@ -3056,7 +3081,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             if (batchResponse.Revoked.Length > 0)
             {
                 var revokedList = string.Join(", ", batchResponse.Revoked);
-                return ([], $"Recipient {revokedList} has been revoked and cannot receive encrypted payloads");
+                return ([], $"Recipient {revokedList} has been revoked and cannot receive encrypted payloads", []);
             }
 
             // Step 5: Add resolved keys from register
@@ -3093,7 +3118,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             }
         }
 
-        return (recipients.ToArray(), null);
+        return (recipients.ToArray(), null, skippedRecipients);
     }
 
     /// <summary>

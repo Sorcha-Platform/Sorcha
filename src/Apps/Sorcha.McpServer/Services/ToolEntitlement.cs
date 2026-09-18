@@ -129,6 +129,11 @@ public static class ToolEntitlements
         new("sorcha_transaction_history", ConsumerAndPlatform, null),
         new("sorcha_register_query", ConsumerAndPlatform, null),
         new("sorcha_wallet_info", ConsumerAndPlatform, null),
+        // #1664 — publishing binds a role to a wallet for the CALLER'S organisation, so it needs the
+        // platform tier and an admin role, matching the Tenant endpoint (RequireAdministrator).
+        new("sorcha_participant_publish", PlatformOnly, AdminRole),
+        // Reading who is bound is ordinary participant context: any authenticated caller.
+        new("sorcha_participant_list", ConsumerAndPlatform, null),
         // sorcha_wallet_sign — REMOVED from the surface (deferred to a dedicated security-reviewed wave)
 
         // Citizen self-service (Feature 140 Wave 3) — consumer tier ONLY, no role.

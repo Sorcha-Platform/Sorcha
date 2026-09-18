@@ -184,6 +184,32 @@ public class TenantServiceClient : ITenantServiceClient
         return (response.StatusCode, await response.Content.ReadAsStringAsync(cancellationToken));
     }
 
+    /// <inheritdoc />
+    public async Task<(System.Net.HttpStatusCode StatusCode, string? Body)> PublishParticipantRecordAsync(
+        string organizationId,
+        string requestJson,
+        CancellationToken cancellationToken = default)
+    {
+        await SetAuthHeaderAsync(cancellationToken);
+
+        using var message = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"api/organizations/{Uri.EscapeDataString(organizationId)}/participants/publish")
+        {
+            Content = new StringContent(requestJson, System.Text.Encoding.UTF8, "application/json"),
+        };
+
+        using var response = await _httpClient.SendAsync(message, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Tenant publish participant record failed: {StatusCode}", response.StatusCode);
+        }
+
+        return (response.StatusCode, body);
+    }
+
     private async Task<string?> GetRawAsync(string url, string operation, CancellationToken cancellationToken)
     {
         try

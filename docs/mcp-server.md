@@ -130,7 +130,9 @@ tool. Tracked for removal of the now-dead client method: issue #1607.
 
 ### Participant
 
-Use this slice for an agent acting on behalf of an end-user participant in a running workflow. Tools include `sorcha_inbox_list` (actions awaiting this participant), `sorcha_action_details` / `sorcha_action_validate` / `sorcha_action_submit` (the action lifecycle), `sorcha_wallet_info` (wallet/address lookup), `sorcha_register_query` and `sorcha_transaction_history` (read-side ledger access), `sorcha_disclosed_data` (decrypt payloads disclosed to this participant), `sorcha_workflow_status` (instance progress).
+Use this slice for an agent acting on behalf of an end-user participant in a running workflow. Tools include `sorcha_inbox_list` (actions awaiting this participant), `sorcha_action_details` / `sorcha_action_validate` / `sorcha_action_submit` (the action lifecycle), `sorcha_wallet_info` (wallet/address lookup), `sorcha_register_query` and `sorcha_transaction_history` (read-side ledger access), `sorcha_disclosed_data` (decrypt payloads disclosed to this participant), `sorcha_workflow_status` (instance progress), `sorcha_participant_publish` / `sorcha_participant_list` (bind a blueprint role to a wallet on a register, and see which roles are bound).
+
+**Binding a role is a first-class step, and each organisation does its own (#1664).** A blueprint participant can send an action only once something on the ledger binds that role to a wallet: a wallet written into the blueprint, a participant record published to the register, or a wallet that role already used in this instance. `sorcha_participant_publish` writes that record for the organisation in the caller's token — it takes no organisation argument, because the record binds a role to *that* organisation's wallet. So a two-party exchange needs **one MCP session per participating organisation**, each publishing its own role. Publishing is a register transaction and takes a few seconds to seal; poll `sorcha_participant_list` until the record appears before submitting that role's action. Until it does, `sorcha_action_submit` refuses with `awaitingParticipantRecord` and names the role.
 
 `sorcha_action_details` takes **both an instance id and an action id** (`instanceId`, `actionId`) —
 it reads `GET /api/instances/{instanceId}/actions/{actionId}`, not a bare action id. `sorcha_action_validate`
@@ -147,7 +149,11 @@ it reads the blueprint, the register and which of the caller's wallets signs fro
 context, so an agent never has to work out participant bindings. `senderWallet` is optional and needed
 only when the tool reports several candidate wallets, because the first submission binds that wallet to
 the participant for the life of the instance. A refusal carries the Blueprint Service's own reason
-(#1658); `Refused` means the service refused this caller, so do not retry unchanged. A `sorcha_wallet_sign` tool exists in source
+(#1658); `Refused` means the service refused this caller, so do not retry unchanged. One refusal is worth
+knowing by name: when the action's sender is a participant nothing binds to a wallet yet, the tool refuses
+before submitting and names the role. A participant record must be published for that role on the register
+first — by the organisation acting as it, in its own MCP session — because that record is both what
+authorises the sender and what their disclosures are encrypted to (#1664). A `sorcha_wallet_sign` tool exists in source
 (`src/Apps/Sorcha.McpServer/Tools/Participant/WalletSignTool.cs`) but is deliberately **not registered**
 (spec 139 T029): it is intentionally omitted from `[McpServerToolType]` discovery, so it never reaches
 `/api/mcp/tools`, the manifest catalogue, or a live `tools/list`. Direct signing is a high-risk operation

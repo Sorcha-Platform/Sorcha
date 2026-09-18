@@ -63,6 +63,7 @@ public class TokenForwardingIntegrationTests : McpIntegrationTestBase
         public IReadOnlyCollection<string> Roles => [];
         public string? OrganizationId => null;
         public string? Subject => "integration-test";
+        public string? PlatformUserId => "integration-test";
         public bool IsAuthenticated => token is not null;
     }
 }

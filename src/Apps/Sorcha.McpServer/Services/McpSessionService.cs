@@ -170,6 +170,12 @@ public sealed class McpSessionService : IMcpSessionService, ICallerContext
     public string? Subject => _currentSession?.UserId;
 
     /// <inheritdoc />
+    /// <remarks>
+    /// The stdio session carries one user identity, so the platform user id is that user id.
+    /// </remarks>
+    public string? PlatformUserId => _currentSession?.UserId;
+
+    /// <inheritdoc />
     public bool IsAuthenticated => _currentSession is not null && !IsTokenExpired();
 
     private static string? GetClaimValue(ClaimsPrincipal principal, string claimType)
