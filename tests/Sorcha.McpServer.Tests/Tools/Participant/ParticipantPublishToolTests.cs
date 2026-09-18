@@ -52,8 +52,12 @@ public sealed class ParticipantPublishToolTests
     };
 
     private void CallerHolds(params string[] addresses) =>
-        _wallet.Setup(w => w.GetWalletsByOwnerAsync("user-1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(addresses.Select(Wallet).ToList());
+        _wallet.Setup(w => w.GetMyWalletsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CallerWalletLookup.Answered(addresses.Select(Wallet).ToList()));
+
+    private void CallerWalletsUnreadable(string reason = "the wallet service answered 403") =>
+        _wallet.Setup(w => w.GetMyWalletsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CallerWalletLookup.Unavailable(reason));
 
     private void TenantReturns(HttpStatusCode status, string body) =>
         _tenant.Setup(t => t.PublishParticipantRecordAsync(Org, It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -176,7 +180,52 @@ public sealed class ParticipantPublishToolTests
 
         result.Status.Should().Be("Success");
         result.WalletAddress.Should().Be(AlsoMine);
-        _wallet.Verify(w => w.GetWalletsByOwnerAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _wallet.Verify(w => w.GetMyWalletsAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Publish_ResolvesTheCallersWalletsOverTheCallerScopedRoute_NotTheServiceOnlyOne()
+    {
+        // The MCP server holds no identity of its own and forwards the caller's bearer, so a
+        // service-only lookup can never succeed. Run #5: every caller got 403 from by-owner.
+        Allow();
+        CallerHolds(Mine);
+        TenantReturns(HttpStatusCode.Accepted, Accepted);
+
+        await _tool.PublishParticipantAsync("reg-1", "provider", "Provider Org");
+
+        _wallet.Verify(w => w.GetMyWalletsAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _wallet.Verify(
+            w => w.GetWalletsByOwnerAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Publish_WhenTheCallersWalletsCannotBeRead_SaysSoRatherThanClaimingTheyHoldNone()
+    {
+        // The run #5 defect in one assertion. A refused lookup reported as "you hold no wallet" sent
+        // both agents to bind their ORGANISATION's wallet instead of the personal one they held.
+        Allow();
+        CallerWalletsUnreadable("the wallet service answered 403");
+
+        var result = await _tool.PublishParticipantAsync("reg-1", "provider", "Provider Org");
+
+        result.Status.Should().Be("Error");
+        result.Message.Should().Contain("could not be read").And.Contain("403");
+        result.Message.Should().NotContain("You hold no wallet");
+        _tenant.Verify(t => t.PublishParticipantRecordAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Publish_WhenTheCallersWalletsCannotBeRead_PointsAtTheWayForward()
+    {
+        // A refusal that names no next step strands the caller exactly where run #5 stalled.
+        Allow();
+        CallerWalletsUnreadable();
+
+        var result = await _tool.PublishParticipantAsync("reg-1", "provider", "Provider Org");
+
+        result.Message.Should().Contain("walletAddress");
     }
 
     [Fact]

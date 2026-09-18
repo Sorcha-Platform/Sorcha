@@ -604,6 +604,41 @@ public class WalletServiceClient : IWalletServiceClient
         }
     }
 
+    public async Task<CallerWalletLookup> GetMyWalletsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Listing the caller's own wallets");
+
+            await SetAuthHeaderAsync(cancellationToken);
+
+            // The caller-scoped route. by-owner is RequireService and would 403 a forwarded user token.
+            var response = await _httpClient.GetAsync("/api/v1/wallets", cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                // Never collapse a refusal into "no wallets" — the caller would report an absence
+                // it never established.
+                _logger.LogWarning(
+                    "Could not list the caller's wallets: {Status}", (int)response.StatusCode);
+                return CallerWalletLookup.Unavailable(
+                    $"the wallet service answered {(int)response.StatusCode}");
+            }
+
+            var wallets = await response.Content.ReadFromJsonAsync<List<WalletInfo>>(
+                SorchaJson.Options, cancellationToken);
+
+            return wallets is null
+                ? CallerWalletLookup.Unavailable("the wallet service sent no readable wallet list")
+                : CallerWalletLookup.Answered(wallets);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Failed to list the caller's own wallets");
+            return CallerWalletLookup.Unavailable("the wallet service could not be reached");
+        }
+    }
+
     public async Task<IReadOnlyList<WalletInfo>> GetWalletsByOwnerAsync(
         string ownerId,
         CancellationToken cancellationToken = default)

@@ -223,13 +223,18 @@ public sealed class ParticipantPublishTool
                 : (named.Address, named.PublicKey, named.Algorithm, null);
         }
 
-        var owner = _callerContext.PlatformUserId;
-        if (string.IsNullOrWhiteSpace(owner))
+        // The caller's own bearer is what reaches the wallet service, so this must be the
+        // caller-scoped route. Asking by-owner (RequireService) refused every caller with a 403
+        // that then read as "you hold no wallet" — cold-start run #5.
+        var lookup = await _walletClient.GetMyWalletsAsync(cancellationToken);
+        if (lookup.Status == CallerWalletLookupStatus.Unavailable)
         {
-            return ("", "", "", "No walletAddress was given and your token carries no user id to resolve one from.");
+            return ("", "", "", $"Your wallets could not be read ({lookup.Reason}), so which wallet to "
+                + "bind is unknown — this is not the same as holding none. Name one in walletAddress, "
+                + "or retry once the wallet service answers.");
         }
 
-        var owned = await _walletClient.GetWalletsByOwnerAsync(owner, cancellationToken);
+        var owned = lookup.Wallets;
         return owned.Count switch
         {
             0 => ("", "", "", "You hold no wallet to bind. Create one first, then publish the record."),
