@@ -140,6 +140,14 @@ minimal two-participant blueprint you can use as the target.
 2. sorcha_action_details(actionInstanceId)  → the action's JSON input schema, prompt copy, and
                                                any upstream data disclosed to this participant.
 
+2b. sorcha_participant_publish(registerId, participantId, organisationName)
+                                             → binds a blueprint role to your wallet on the register.
+                                               Needed before any action whose sender is a role nothing
+                                               binds yet; each organisation publishes its own role from
+                                               its own session. Poll sorcha_participant_list until the
+                                               record appears — it is a register transaction and must
+                                               seal before that role can act.
+
 3. sorcha_action_submit(instanceId, actionId, dataJson[, senderWallet])
                                              → submits the payload. The tool works out the
                                                blueprint, register and signing wallet itself;

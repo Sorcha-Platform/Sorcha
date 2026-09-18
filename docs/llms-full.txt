@@ -56,7 +56,7 @@ The **API Gateway** (YARP-based) is the single external surface. It aggregates t
 per-service OpenAPI documents into one well-known surface and proxies authenticated
 calls to the services behind it.
 
-The **MCP Server** exposes 67 tools across four role slices (admin, citizen, designer,
+The **MCP Server** exposes 69 tools across four role slices (admin, citizen, designer,
 participant), plus reference resources (a blueprint JSON Schema, worked examples, a
 glossary, the caller's own live registers and instances) and guided prompts, so AI
 agents can drive the platform end-to-end.
@@ -93,7 +93,7 @@ The MCP server speaks the Model Context Protocol over both stdio (for local agen
 hosts) and http+sse (for hosted agents). Authentication is JWT Bearer; obtain a token
 from the Tenant Service via `POST /api/tenant/api/service-auth/token`.
 
-Tool catalogue (67 tools across four role slices):
+Tool catalogue (69 tools across four role slices):
 
 - **Admin slice (35 tools).** Platform operation and oversight: audit query, health
   check, log query, metrics, platform settings; tenant list/create/update, user
@@ -110,9 +110,12 @@ Tool catalogue (67 tools across four role slices):
   running instance: register creation and blueprint publish (both put an irreversible
   decision to a real person via MCP elicitation before proceeding) and instance
   creation. Use these to author, publish, and start workflows end to end.
-- **Participant slice (9 tools).** Action validate/submit, action details, inbox
+- **Participant slice (11 tools).** Action validate/submit, action details, inbox
   list, transaction history, register query, wallet info, disclosed data,
-  workflow status. Use these to drive a running workflow on behalf of a participant.
+  workflow status, and participant publish/list — which bind a blueprint role to a
+  wallet on a register and show which roles are bound. A role must be bound before it
+  can send an action, and each organisation publishes its own role from its own
+  session. Use these to drive a running workflow on behalf of a participant.
 
 Beyond tools, the server also serves **resources** — `sorcha://schema/blueprint`
 (the blueprint JSON Schema), `sorcha://examples/{name}` (three worked, walkthrough-

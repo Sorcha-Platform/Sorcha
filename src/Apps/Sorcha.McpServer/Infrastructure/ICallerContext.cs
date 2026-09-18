@@ -35,6 +35,14 @@ public interface ICallerContext
     /// <summary>The caller's subject identifier (<c>sub</c>), if any.</summary>
     string? Subject { get; }
 
+    /// <summary>
+    /// The caller's platform user id (<c>platform_user_id</c>), falling back to <see cref="Subject"/>.
+    /// This is what a wallet's <c>Owner</c> holds, so it is how the caller's own wallets are found —
+    /// the same resolution order the services' own <c>ParticipantWalletResolver</c> uses, because a
+    /// consumer-tier token carries no <c>wallet_address</c> claim (Feature 136).
+    /// </summary>
+    string? PlatformUserId { get; }
+
     /// <summary>True when a valid, unexpired token is resolved for this caller.</summary>
     bool IsAuthenticated { get; }
 }

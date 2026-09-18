@@ -57,6 +57,7 @@ public class HttpModeInvocationTests
         public string? OrganizationId => "11111111-1111-1111-1111-111111111111";
 
         public string? Subject => "test-subject";
+        public string? PlatformUserId => "test-subject";
 
         public bool IsAuthenticated => true;
     }

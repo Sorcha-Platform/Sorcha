@@ -235,4 +235,22 @@ public interface ITenantServiceClient
         string organizationId,
         string? queryString = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Publishes a participant record to a register, binding a blueprint role to wallet addresses
+    /// on-ledger (#1664). Calls <c>POST /api/organizations/{organizationId}/participants/publish</c>.
+    /// </summary>
+    /// <remarks>
+    /// The record is what the validator resolves for sender authorisation (<c>VAL_BP_002</c> Tier 2) and
+    /// what a recipient's disclosures are encrypted to, so it must exist before the role's first action.
+    /// Returns the status with the body: a <c>409</c> ("already claimed") and a <c>400</c> (validation)
+    /// need different answers, and neither is an outage.
+    /// </remarks>
+    /// <param name="organizationId">The publishing organisation — the caller's own.</param>
+    /// <param name="requestJson">The <c>PublishParticipantRequest</c> body.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<(System.Net.HttpStatusCode StatusCode, string? Body)> PublishParticipantRecordAsync(
+        string organizationId,
+        string requestJson,
+        CancellationToken cancellationToken = default);
 }
