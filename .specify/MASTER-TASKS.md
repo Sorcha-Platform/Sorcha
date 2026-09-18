@@ -8,6 +8,24 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
+> **▶ 2026-09-18 - MCP cold-start run #5: the first TWO-ORGANISATION run. Both roles bound on the ledger.**
+> Two orgs, two MCP sessions, one register (`4145b4e7…`): the Provider designed the exchange, created the
+> register, published, bound its role and created the instance; the Recipient published its own participant
+> record from its own session. Both records are Active on the register with public keys. Two defects found,
+> both fixed on `fix/mcp-caller-own-wallets`:
+>
+> | # | Found | Shape |
+> |---|---|---|
+> | **caller wallets** | BOTH agents reported "You hold no wallet to bind" and bound their ORGANISATION's wallet instead of the personal wallet each actually held. `ParticipantPublishTool` resolved the caller's wallets via `GET /api/v1/wallets/by-owner/{ownerId}` — `RequireService`, documented "never exposed to end users". The MCP server forwards the caller's own bearer, so it 403'd every caller, always; the client then swallowed the 403 into an empty list, turning an authorisation failure into an established absence | ✅ Fixed: new `GetMyWalletsAsync` over the caller-scoped `GET /api/v1/wallets`, returning a `CallerWalletLookup` that separates "answered, holds none" from "could not be answered". 5/5 mutations killed. The old tool tests mocked `IWalletServiceClient`, so the authorisation seam was never exercised |
+> | **#1641** | The Blueprint Service said "register … has no sealed governance roster" (#1659) and the agent was told only that publishing "failed" — it then spent six tool calls rediscovering the reason it had already been given. One fix silently cancelled out the other | ✅ Fixed: `PublishBlueprintOutcome` gains a `Refusal` arm carrying status + code + the server's reason; the tool passes it through and distinguishes a retryable 503 (roster unreadable) from a 403 (not on the roster). 8/8 mutations killed |
+>
+> Still open from this run: `sorcha_org_wallet_status` returns every organisation's wallet address to any
+> platform-tier caller (200 per page) — that is how the Provider learned the counterparty's address; the
+> `sorcha_blueprint_simulate` "No routing configured" false alarm and `sorcha_blueprint_get` omitting routes
+> (four wasted calls); `GET /api/instances/` still 400s on a missing required `page` (#1646). Harness note:
+> `connect.ps1` must not run while a Claude session is open in that folder — the running session rewrites
+> `~/.claude.json` and silently drops the MCP registration.
+>
 > **▶ 2026-09-17 - MCP cold-start run #3: it reached a RUNNING INSTANCE. New wall: action submit.**
 > Harness: dedicated org identity (`Cold-start Run 3`, Administrator+Designer+Auditor), MCP-only enforced
 > (shell / web / skills / subagents denied in the agent folder), fresh folder, no prior state. Sequence:
@@ -93,7 +111,7 @@
 > | **#1623** | Uniform wire enums | **✅ MERGED** | — |
 > | **#1635** | `sorcha_health_check` gave a meaningless all-clear: five "Healthy" rows were one gateway probe; Peer/gateway fell back to localhost | Fix — **✅ CODE DONE 2026-09-15** (reads the gateway's aggregated `/api/health`; Unknown is never green; 7 tests, mutation-tested vs the old tool) | no |
 > | **#1640** | `sorcha_blueprint_update` claimed it "increments its version"; drafts are unversioned (versions assigned at publish), so the returned Version was an echo of the request | Fix — **✅ CODE DONE 2026-09-15** (description corrected, Version dropped from the result, reflection guards) | no |
-> | **#1641** | `sorcha_blueprint_publish` discards the server's refusal reason (client collapses every failure to null) — drove the cold-start agent to SSH | Fix — **📋 OPEN** (shared ServiceClients change; typed failure through the client) | no |
+> | **#1641** | `sorcha_blueprint_publish` discards the server's refusal reason (client collapses every failure to null) — drove the cold-start agent to SSH | ✅ **FIXED** on `fix/mcp-caller-own-wallets` (cold-start run #5): `PublishBlueprintOutcome.Refusal` carries status + code + the server's reason; 8/8 mutations killed | no |
 >
 > **#1622 was framed as a feature and turned out to be a fix.** The three routes weighed here (wait for
 > upstream `elicitation.Form`; a capability-independent confirmation; out-of-band approval) all assumed

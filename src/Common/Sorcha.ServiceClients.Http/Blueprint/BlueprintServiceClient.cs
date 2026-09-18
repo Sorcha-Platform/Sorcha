@@ -703,14 +703,20 @@ public class BlueprintServiceClient : IBlueprintServiceClient
                 return new PublishBlueprintOutcome { RehearsalRequired = rehearsal ?? new RehearsalRequiredError() };
             }
 
-            // 403 = governance-hard gate (caller lacks Owner/Admin/Designer on the register) and any
-            // other non-success: surface as null (the outcome type models success vs rehearsal-required only).
+            // 403 = governance-hard gate (caller lacks Owner/Admin/Designer on the register), 503 =
+            // the roster could not be checked (#1659), plus 400/404/5xx. The server explains each of
+            // these in the body; carry that through instead of logging it and returning null (#1641).
             if (!response.IsSuccessStatusCode)
             {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                var (code, reason) = ReadRefusal(body);
                 _logger.LogWarning(
-                    "Blueprint publish failed: {StatusCode} (blueprint {BlueprintId}, register {RegisterId})",
-                    response.StatusCode, blueprintId, request.RegisterId);
-                return null;
+                    "Blueprint publish failed: {StatusCode} (blueprint {BlueprintId}, register {RegisterId}): {Reason}",
+                    response.StatusCode, blueprintId, request.RegisterId, reason ?? "no reason given");
+                return new PublishBlueprintOutcome
+                {
+                    Refusal = new PublishRefusal((int)response.StatusCode, code, reason)
+                };
             }
 
             var result = await response.Content
@@ -721,6 +727,51 @@ public class BlueprintServiceClient : IBlueprintServiceClient
         {
             _logger.LogError(ex, "Blueprint publish request failed for {BlueprintId}", blueprintId);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads the machine code and the human reason out of a refusal body, across the shapes the
+    /// Blueprint Service uses: its own <c>{ code, message }</c> and RFC 7807 problem+json.
+    /// </summary>
+    /// <remarks>
+    /// Returns a null reason rather than the raw body when nothing readable is found — handing back
+    /// undigested JSON looks like an explanation without being one, and a caller pasting it into a
+    /// message makes an assertion about the text pass for the wrong reason.
+    /// </remarks>
+    internal static (string? Code, string? Reason) ReadRefusal(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return (null, null);
+        }
+
+        var trimmed = body.Trim();
+        if (trimmed[0] is not ('{' or '['))
+        {
+            return (null, trimmed);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(trimmed);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return (null, null);
+            }
+
+            string? Read(string name) =>
+                document.RootElement.TryGetProperty(name, out var value)
+                && value.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(value.GetString())
+                    ? value.GetString()
+                    : null;
+
+            return (Read("code"), Read("message") ?? Read("detail") ?? Read("title") ?? Read("error"));
+        }
+        catch (JsonException)
+        {
+            return (null, null);
         }
     }
 

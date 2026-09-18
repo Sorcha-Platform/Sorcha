@@ -433,6 +433,73 @@ public class BlueprintPublishToolTests
         result.Message.Should().NotContainEquivalentOf("sealed");
     }
 
+    /// <summary>
+    /// #1641 — the Blueprint Service's own reason must reach the agent. Cold-start run #5: the
+    /// service said "register … has no sealed governance roster" (#1659) and the agent was told
+    /// only that publishing failed, so the earlier fix bought nothing end to end.
+    /// </summary>
+    [Fact]
+    public async Task PublishBlueprintAsync_WhenRefused_SaysWhatTheServiceSaid()
+    {
+        const string Reason = "register 4145b4e7 has no sealed governance roster yet";
+        var h = new Harness().WithPublishRefusal(503, Reason, code: "ROSTER_UNAVAILABLE");
+
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
+
+        result.Message.Should().Contain(Reason);
+        // The old behaviour enumerated four possibilities and sent the agent to read this
+        // server's logs, which an external agent cannot do.
+        result.Message.Should().NotContain("does not distinguish");
+    }
+
+    [Fact]
+    public async Task PublishBlueprintAsync_WhenTheRosterCannotBeRead_IsReportedAsTemporary()
+    {
+        // 503 is "the roster could not be checked", which clears; 403 is "you are not on it",
+        // which does not. An agent that cannot tell them apart either gives up or retries forever.
+        var h = new Harness().WithPublishRefusal(503, "the governance roster could not be read");
+
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
+
+        result.Status.Should().Be("Unavailable");
+        result.Message.Should().Contain("try again");
+    }
+
+    [Fact]
+    public async Task PublishBlueprintAsync_WhenRefusedOnAuthority_IsNotReportedAsTemporary()
+    {
+        var h = new Harness().WithPublishRefusal(403, "you hold no publish-governance role on this register");
+
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
+
+        result.Status.Should().Be("Error");
+        result.Message.Should().NotContain("try again");
+    }
+
+    [Fact]
+    public async Task PublishBlueprintAsync_WhenRefusedWithoutAReason_SaysTheStatusRatherThanInventingOne()
+    {
+        var h = new Harness().WithPublishRefusal(400, reason: null);
+
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
+
+        result.Message.Should().Contain("400");
+        result.Status.Should().Be("Error");
+    }
+
+    [Fact]
+    public async Task PublishBlueprintAsync_WhenRefused_PublishesNothingAndDoesNotAskAnybody()
+    {
+        var h = new Harness().WithPublishRefusal(403, "not on the roster");
+
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
+
+        result.Version.Should().BeNull();
+        h.CapturedRequests.Should().ContainSingle().Which.Override.Should().BeNull();
+        h.Approval.Verify(a => a.Evaluate(
+            It.IsAny<RequestContext<CallToolRequestParams>>(), It.IsAny<HumanApprovalRequest>()), Times.Never);
+    }
+
     private sealed class Harness
     {
         public Mock<IMcpAuthorizationService> Auth { get; } = new();
@@ -485,6 +552,15 @@ public class BlueprintPublishToolTests
         public Harness WithPublishFailure()
         {
             SetupSequence(_ => null);
+            return this;
+        }
+
+        public Harness WithPublishRefusal(int status, string? reason, string? code = null)
+        {
+            SetupSequence(_ => new PublishBlueprintOutcome
+            {
+                Refusal = new PublishRefusal(status, code, reason)
+            });
             return this;
         }
 

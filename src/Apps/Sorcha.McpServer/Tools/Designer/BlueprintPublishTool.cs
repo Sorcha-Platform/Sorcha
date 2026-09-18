@@ -156,6 +156,14 @@ public sealed class BlueprintPublishTool
                 new PublishBlueprintRequest { RegisterId = registerId },
                 cancellationToken);
 
+            if (outcome?.Refusal is { } refusal)
+            {
+                stopwatch.Stop();
+                // #1641: the server explained itself. Say what it said rather than listing what it
+                // might have meant. A 503 here is the roster being uncheckable, not a denial (#1659).
+                return Refused(blueprintId, registerId, refusal, stopwatch);
+            }
+
             if (outcome is null)
             {
                 stopwatch.Stop();
@@ -315,6 +323,39 @@ public sealed class BlueprintPublishTool
     /// failure the endpoint can produce, so the message enumerates them in the order the server
     /// evaluates them instead of picking one.
     /// </summary>
+    /// <summary>
+    /// The Blueprint Service refused, and said why. Pass its reason through verbatim.
+    /// </summary>
+    /// <remarks>
+    /// #1641. Cold-start run #5 hit this: the service was already reporting "register … has no
+    /// sealed governance roster" (#1659) and the agent was told only that publishing "failed",
+    /// so it spent six tool calls rediscovering a reason it had already been given.
+    /// </remarks>
+    private static BlueprintPublishResult Refused(
+        string blueprintId, string registerId, PublishRefusal refusal, Stopwatch stopwatch)
+    {
+        // 503 means the governance roster could not be READ, which is transient and worth retrying;
+        // 403 means it was read and the caller is not on it, which never clears by retrying.
+        var retryable = refusal.StatusCode == 503;
+
+        var reason = string.IsNullOrWhiteSpace(refusal.Reason)
+            ? $"the Blueprint Service answered {refusal.StatusCode} without an explanation"
+            : refusal.Reason;
+
+        return new BlueprintPublishResult
+        {
+            Status = retryable ? "Unavailable" : "Error",
+            Message = $"Publishing blueprint '{blueprintId}' to register '{registerId}' was refused and "
+                + $"nothing was published. {reason}"
+                + (retryable
+                    ? " This is a temporary condition rather than a decision about you — wait a few "
+                      + "seconds and try again."
+                    : string.Empty),
+            CheckedAt = DateTimeOffset.UtcNow,
+            ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
+        };
+    }
+
     private static BlueprintPublishResult FirstAttemptFailed(
         string blueprintId, string registerId, Stopwatch stopwatch) => new()
         {
