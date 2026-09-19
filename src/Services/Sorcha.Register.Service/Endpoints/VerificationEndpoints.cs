@@ -332,6 +332,7 @@ public static class VerificationEndpoints
         // T035: GET /api/registers/{registerId}/transactions/{txId}/status
         app.MapGet("/api/registers/{registerId}/transactions/{txId}/status", async (
             IRegisterRepository repository,
+            ITransactionRejectionLog rejectionLog,
             string registerId,
             string txId,
             CancellationToken cancellationToken) =>
@@ -340,7 +341,33 @@ public static class VerificationEndpoints
             var transaction = await repository.GetTransactionAsync(registerId, txId, cancellationToken);
             if (transaction is null)
             {
-                return Results.NotFound(new { error = $"Transaction '{txId}' not found in register '{registerId}'" });
+                // Absent from the chain is exactly the state a REJECTED transaction leaves behind
+                // (#1669). Submission is async, so the caller was handed a 202 and this txid and had
+                // no other way to learn the validator refused it — the operation simply never
+                // happened. Answer with the reason when we have one.
+                var rejection = await rejectionLog.FindAsync(registerId, txId, cancellationToken);
+                if (rejection is not null)
+                {
+                    return Results.Ok(new TransactionStatusResponse
+                    {
+                        TransactionId = txId,
+                        Status = TransactionLifecycleStatus.Rejected,
+                        RejectionCode = rejection.Code,
+                        RejectionReason = rejection.Message,
+                        RejectedAt = rejection.RejectedAt
+                    });
+                }
+
+                // No record either way. Deliberately still a 404 and NOT "accepted": a rejection
+                // record can expire, and the transaction may simply be unknown to this node.
+                return Results.NotFound(new
+                {
+                    error = $"Transaction '{txId}' not found in register '{registerId}'",
+                    detail = "It is not on the chain and no rejection is recorded for it. It may still "
+                        + "be awaiting validation, may have been rejected longer ago than rejections "
+                        + "are retained, or may never have reached this node. This is not evidence "
+                        + "that it was accepted."
+                });
             }
 
             // Check for revocation

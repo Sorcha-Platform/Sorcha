@@ -10,6 +10,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The rejection log's key format and retention are contract, and pinned by tests. -->
+    <InternalsVisibleTo Include="Sorcha.Register.Storage.Redis.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="StackExchange.Redis" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />

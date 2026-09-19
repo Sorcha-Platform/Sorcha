@@ -15,7 +15,20 @@ public enum TransactionLifecycleStatus
     Revoked = 1,
 
     /// <summary>Transaction has been replaced by a newer transaction.</summary>
-    Superseded = 2
+    Superseded = 2,
+
+    /// <summary>
+    /// The validator refused the transaction after it was accepted for validation, so it is not on
+    /// the chain and never will be (#1669).
+    /// </summary>
+    /// <remarks>
+    /// Appended deliberately. The Register Service applies <c>SorchaJson.Configure</c> to its HTTP
+    /// JSON options, so this goes out as the NAME — but the enum carries no <c>[JsonConverter]</c>
+    /// of its own, so any consumer serialising it under the web defaults gets the integer instead
+    /// (CLAUDE.md §25). Appending is safe for both; reordering would silently reinterpret every
+    /// numeric response ever written.
+    /// </remarks>
+    Rejected = 3
 }
 
 /// <summary>
@@ -41,4 +54,15 @@ public record TransactionStatusResponse
 
     /// <summary>Revocation reason (if revoked or superseded).</summary>
     public RevocationReason? Reason { get; init; }
+
+    /// <summary>
+    /// The validation code that caused a rejection, e.g. <c>VAL_CHAIN_FORK</c> (if rejected).
+    /// </summary>
+    public string? RejectionCode { get; init; }
+
+    /// <summary>The validator's own explanation of the rejection (if rejected).</summary>
+    public string? RejectionReason { get; init; }
+
+    /// <summary>When the validator refused the transaction (if rejected).</summary>
+    public DateTimeOffset? RejectedAt { get; init; }
 }

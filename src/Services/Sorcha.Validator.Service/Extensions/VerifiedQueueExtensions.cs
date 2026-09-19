@@ -64,6 +64,10 @@ public static class VerifiedQueueExtensions
                 });
             }
             services.AddSingleton<IVerifiedTransactionQueue, RedisVerifiedTransactionQueue>();
+            // #1669 — a rejection after the 202 must be discoverable by whoever submitted it.
+            // Redis is the seam: the validator writes here, the register's status endpoint reads.
+            services.AddSingleton<Sorcha.Register.Models.ITransactionRejectionLog,
+                Sorcha.Register.Storage.Redis.RedisTransactionRejectionLog>();
             storageLog.RegisterPersistent(
                 interfaceName,
                 typeof(RedisVerifiedTransactionQueue).FullName!,
@@ -72,6 +76,10 @@ public static class VerifiedQueueExtensions
         else
         {
             services.AddSingleton<IVerifiedTransactionQueue, InMemoryVerifiedTransactionQueue>();
+            // No Redis: rejections keep going to the log and nowhere else. The null log says so
+            // per rejection rather than letting the gap look like "nothing was rejected".
+            services.AddSingleton<Sorcha.Register.Models.ITransactionRejectionLog,
+                Sorcha.Register.Storage.Redis.NullTransactionRejectionLog>();
             storageLog.RegisterInMemory(
                 interfaceName,
                 typeof(InMemoryVerifiedTransactionQueue).FullName!,

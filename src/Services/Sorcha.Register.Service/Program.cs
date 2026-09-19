@@ -198,6 +198,21 @@ builder.Services.AddScoped<IRegisterCreationOrchestrator, RegisterCreationOrches
 // Redis client for distributed state (pending registrations, caching)
 builder.AddRedisClient("redis");
 
+// #1669 — the validator records why it refused a transaction; this service serves that back on the
+// transaction-status endpoint, which is the one place a caller holding a txid already looks.
+// Falls back to the null log when no Redis multiplexer is registered, so the status endpoint keeps
+// working (answering "not known", never "accepted") rather than failing to resolve.
+builder.Services.AddSingleton<Sorcha.Register.Models.ITransactionRejectionLog>(sp =>
+{
+    var redis = sp.GetService<StackExchange.Redis.IConnectionMultiplexer>();
+    return redis is null
+        ? new Sorcha.Register.Storage.Redis.NullTransactionRejectionLog(
+            sp.GetRequiredService<ILogger<Sorcha.Register.Storage.Redis.NullTransactionRejectionLog>>())
+        : new Sorcha.Register.Storage.Redis.RedisTransactionRejectionLog(
+            redis,
+            sp.GetRequiredService<ILogger<Sorcha.Register.Storage.Redis.RedisTransactionRejectionLog>>());
+});
+
 // Pending registration storage (Redis-backed for multi-instance deployments)
 builder.Services.AddSingleton<IPendingRegistrationStore, PendingRegistrationStore>();
 
