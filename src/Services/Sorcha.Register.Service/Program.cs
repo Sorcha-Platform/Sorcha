@@ -327,6 +327,11 @@ builder.Services.AddHostedService<SystemRegisterBootstrapper>();
 // Participant index service (in-memory address → participant mapping)
 builder.Services.AddSingleton<ParticipantIndexService>();
 
+// ...and the startup replay that makes it survive a restart (#1667). Without this the index is
+// populated only by live docket ingest, so every published participant record on every register is
+// silently forgotten whenever this service restarts.
+builder.Services.AddHostedService<Sorcha.Register.Service.Services.Implementation.ParticipantIndexStartupRebuildService>();
+
 // Register advertisement resync background service (FR-003, FR-004)
 builder.Services.AddHostedService<AdvertisementResyncService>();
 
