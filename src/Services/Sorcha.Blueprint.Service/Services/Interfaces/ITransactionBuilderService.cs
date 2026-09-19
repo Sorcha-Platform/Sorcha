@@ -299,6 +299,16 @@ public static class TransactionBuilderServiceExtensions
     /// Builds a rejection transaction using orchestration context.
     /// Serializes rejection data into transaction data for signing and submission.
     /// </summary>
+    /// <summary>
+    /// The literal that marks a transaction as a rejection, on both the payload and the metadata.
+    /// </summary>
+    /// <remarks>
+    /// One constant for both so they cannot drift apart: the Validator classifies from the payload
+    /// and the projection fold from the metadata, and a rejection that only one of them recognises
+    /// is how #1672 recorded rejected instances as Completed.
+    /// </remarks>
+    internal const string RejectionDiscriminator = "rejection";
+
     public static Task<BuiltTransaction> BuildRejectionTransactionAsync(
         this ITransactionBuilderService service,
         BlueprintModel blueprint,
@@ -314,13 +324,20 @@ public static class TransactionBuilderServiceExtensions
             ["actionId"] = action.Id,
             ["instanceId"] = instance.Id,
             ["previousTxId"] = previousTransactionId ?? "",
-            ["rejectionReason"] = rejectionData.GetValueOrDefault("rejectionReason", "")!
+            ["rejectionReason"] = rejectionData.GetValueOrDefault("rejectionReason", "")!,
+            // #1672 — the discriminator must ride the METADATA, not only the payload below.
+            // ToTransactionSubmission's whitelist copies Metadata["type"] onto the sealed
+            // TransactionMetaData.TrackingData (the Feature 155 channel); the payload copy is
+            // visible to the Validator's own classifier and to nothing else. Without this the
+            // projection fold never learns the transaction is a rejection, takes the "no next
+            // action" branch, and records a REJECTED instance as Completed.
+            ["type"] = RejectionDiscriminator
         };
 
         // Serialize the rejection data into transaction data bytes
         var transactionPayload = new
         {
-            type = "rejection",
+            type = RejectionDiscriminator,
             blueprintId = blueprint.Id,
             actionId = action.Id,
             instanceId = instance.Id,

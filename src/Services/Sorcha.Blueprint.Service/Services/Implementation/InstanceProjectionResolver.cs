@@ -78,6 +78,12 @@ public static class InstanceProjectionResolver
             CompletedActionId: completedActionId,
             NextActionIds: nextActionIds,
             ParticipantBindings: bindings,
+            // #1672 — without this the fold cannot tell a rejection from an ordinary terminal
+            // action: it takes the "no next action" branch and records a REJECTED instance as
+            // Completed, which for a refused application is the wrong outcome, not a wrong label.
+            // The discriminator rides TrackingData["type"], copied there by
+            // ToTransactionSubmission's whitelist (the Feature 155 channel).
+            IsRejection: IsRejectionTransaction(tx),
             // Feature 186: carry the decision's route and reason code through to the fold. Both ride
             // the transaction in the clear and are inside RoutingDecision.ComputeSignableBytes, so
             // they are signed and every node folding this transaction records the same pair.
@@ -91,6 +97,19 @@ public static class InstanceProjectionResolver
 
         return new ResolvedProjection(blueprintId, instanceId, ResolveTenantId(tx), projected);
     }
+
+    /// <summary>
+    /// True when this transaction is a rejection.
+    /// </summary>
+    /// <remarks>
+    /// Reads the sealed <c>TrackingData["type"]</c>. The Validator classifies the same transaction
+    /// from its payload copy, which never reaches here — that split is exactly how a rejection
+    /// could be correct on the ledger and wrong in the projection (#1672).
+    /// </remarks>
+    private static bool IsRejectionTransaction(Sorcha.Register.Models.TransactionModel tx) =>
+        tx.MetaData?.TrackingData is { } tracking
+        && tracking.TryGetValue("type", out var domainType)
+        && string.Equals(domainType, "rejection", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Reads the carried <see cref="RoutingDecision"/> — preferring the typed

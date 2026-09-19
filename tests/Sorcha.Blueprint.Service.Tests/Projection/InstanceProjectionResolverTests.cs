@@ -561,4 +561,36 @@ public class InstanceProjectionResolverTests
             "ws-sales",
             "action 3 is waiting for sales-mgr; the participant map is what authorises them to see it");
     }
+
+    /// <summary>
+    /// #1672 — the resolver must carry the rejection discriminator into the fold.
+    /// </summary>
+    /// <remarks>
+    /// It omitted <c>IsRejection</c> entirely, so the parameter took its <c>false</c> default and
+    /// the fold's rejection branch was unreachable. The Validator classifies the same transaction
+    /// from its payload copy, which never reaches here — so the ledger was right and the
+    /// projection recorded every rejected instance as Completed.
+    /// </remarks>
+    [Fact]
+    public async Task ResolveAsync_RejectionTransaction_CarriesTheRejectionFlag()
+    {
+        var tx = Tx(TransactionType.Action, Decision(2));
+        tx.MetaData!.TrackingData = new Dictionary<string, string> { ["type"] = "rejection" };
+
+        var resolved = await InstanceProjectionResolver.ResolveAsync(
+            tx, NoActionResolver, NullLogger.Instance, CancellationToken.None);
+
+        resolved.Should().NotBeNull();
+        resolved!.Tx.IsRejection.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_OrdinaryActionTransaction_IsNotARejection()
+    {
+        // The counterfactual: every ordinary action must keep folding as one.
+        var resolved = await InstanceProjectionResolver.ResolveAsync(
+            Tx(TransactionType.Action, Decision(2)), NoActionResolver, NullLogger.Instance, CancellationToken.None);
+
+        resolved!.Tx.IsRejection.Should().BeFalse();
+    }
 }

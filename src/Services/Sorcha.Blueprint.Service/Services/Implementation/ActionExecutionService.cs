@@ -1563,19 +1563,15 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         // Poll for confirmation
         await WaitForTransactionConfirmationAsync(instance.RegisterId, transaction.TxId, cancellationToken);
 
-        // 9. Update instance state
-        if (actionDef.RejectionConfig.IsTerminal)
-        {
-            instance.State = InstanceState.Rejected;
-            instance.CompletedAt = DateTimeOffset.UtcNow;
-        }
-        else
-        {
-            // Route to target action
-            instance.CurrentActionIds = [actionDef.RejectionConfig.TargetActionId];
-        }
-        instance.LastTransactionId = transaction.TxId;
-        instance = await PersistInstanceAsync(instance, cancellationToken);
+        // 9. Update instance state, tolerating the F145 projector having got there first.
+        //
+        //    #1672: this used to persist BARE. The projector folds the sealed docket and advances
+        //    the instance on its own, so on a fast node it wins the race, bumps the version, and
+        //    this write threw ConcurrencyException — which is an InvalidOperationException, so the
+        //    endpoint answered 400 for a rejection that had fully succeeded and was sealed on the
+        //    ledger. The execute path never had this problem because it persists through a
+        //    retry-and-re-read helper; the reject path simply never got one.
+        instance = await UpdateInstanceAfterRejectionAsync(instance, actionDef, transaction.TxId, cancellationToken);
 
         // 10. Notify target participant via thin signal
         var targetParticipantId = actionDef.RejectionConfig.TargetParticipantId ?? targetAction.Sender;
@@ -2175,6 +2171,63 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
     };
 
     private const int MaxConcurrencyRetries = 3;
+
+    /// <summary>
+    /// Applies a rejection's state change, re-reading and retrying when the F145 projector has
+    /// already advanced the instance from the same sealed transaction.
+    /// </summary>
+    /// <remarks>
+    /// The projector is the other writer and it is not a competitor: when it has already applied
+    /// THIS transaction the work is done, and reporting a conflict would tell the caller a
+    /// rejection failed that is sealed on the ledger (#1672).
+    /// </remarks>
+    private async Task<Instance> UpdateInstanceAfterRejectionAsync(
+        Instance instance,
+        Sorcha.Blueprint.Models.Action actionDef,
+        string transactionId,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt <= MaxConcurrencyRetries; attempt++)
+        {
+            if (attempt > 0)
+            {
+                _logger.LogWarning(
+                    "Concurrency conflict rejecting on instance {InstanceId}, retry {Attempt}/{Max}",
+                    instance.Id, attempt, MaxConcurrencyRetries);
+                instance = (await _instanceStore.GetAsync(instance.Id, cancellationToken))!;
+            }
+
+            // The projector already folded this transaction — nothing left to write.
+            if (string.Equals(instance.LastTransactionId, transactionId, StringComparison.Ordinal))
+            {
+                return instance;
+            }
+
+            if (actionDef.RejectionConfig!.IsTerminal)
+            {
+                instance.State = InstanceState.Rejected;
+                instance.CompletedAt ??= DateTimeOffset.UtcNow;
+            }
+            else
+            {
+                instance.CurrentActionIds = [actionDef.RejectionConfig.TargetActionId];
+            }
+            instance.LastTransactionId = transactionId;
+
+            try
+            {
+                return await PersistInstanceAsync(instance, cancellationToken);
+            }
+            catch (ConcurrencyException) when (attempt < MaxConcurrencyRetries)
+            {
+                // Retry against fresh state.
+            }
+        }
+
+        // Every retry lost the race, which means the other writer is applying the same sealed
+        // transaction. Report what the ledger says rather than failing a rejection that happened.
+        return (await _instanceStore.GetAsync(instance.Id, cancellationToken))!;
+    }
 
     private async Task<Instance> UpdateInstanceAfterExecutionAsync(
         Instance instance,
