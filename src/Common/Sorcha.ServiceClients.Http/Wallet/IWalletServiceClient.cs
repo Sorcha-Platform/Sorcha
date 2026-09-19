@@ -350,6 +350,27 @@ public interface IWalletServiceClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Lists the wallets held by the CALLER, over <c>GET /api/v1/wallets</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Use this — not <see cref="GetWalletsByOwnerAsync"/> — whenever the caller's own bearer is
+    /// being forwarded, as the MCP server does. The two endpoints resolve the owner identically
+    /// (<c>platform_user_id</c> falling back to <c>NameIdentifier</c>) and return the same data, but
+    /// <c>by-owner</c> enforces <c>RequireService</c> and refuses a user token outright. Sending a
+    /// person's token there yields 403 for every caller, always.
+    /// </para>
+    /// <para>
+    /// The result separates "answered, and the caller holds none" from "could not be answered",
+    /// because those demand opposite responses: the first is a fact to act on, the second is a
+    /// failure to report. Collapsing them is what made an authorisation refusal read as an absence.
+    /// </para>
+    /// </remarks>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The lookup outcome, and any wallets it found.</returns>
+    Task<CallerWalletLookup> GetMyWalletsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates a new wallet
     /// </summary>
     /// <param name="name">Wallet name</param>
@@ -535,6 +556,40 @@ public class CredentialIssuanceResult
     /// register envelope can carry it to the citizen entity. Null when no display name was supplied.
     /// </summary>
     public string? DisplayConfigJson { get; init; }
+}
+
+/// <summary>
+/// Whether a caller-wallet lookup was answered at all.
+/// </summary>
+public enum CallerWalletLookupStatus
+{
+    /// <summary>The service answered. <see cref="CallerWalletLookup.Wallets"/> is the complete truth,
+    /// and an empty list genuinely means the caller holds no wallet.</summary>
+    Found = 0,
+
+    /// <summary>The lookup could not be answered — refused, unreachable, or unreadable. Nothing at
+    /// all is known about what the caller holds, and an empty list must NOT be reported as "none".</summary>
+    Unavailable = 1,
+}
+
+/// <summary>
+/// The outcome of asking which wallets the caller holds.
+/// </summary>
+/// <param name="Status">Whether the question was answered.</param>
+/// <param name="Wallets">The wallets found; always empty when <paramref name="Status"/> is Unavailable.</param>
+/// <param name="Reason">Why the lookup failed, when it did; null otherwise.</param>
+public sealed record CallerWalletLookup(
+    CallerWalletLookupStatus Status,
+    IReadOnlyList<WalletInfo> Wallets,
+    string? Reason)
+{
+    /// <summary>An answered lookup.</summary>
+    public static CallerWalletLookup Answered(IReadOnlyList<WalletInfo> wallets) =>
+        new(CallerWalletLookupStatus.Found, wallets, null);
+
+    /// <summary>A lookup that could not be answered.</summary>
+    public static CallerWalletLookup Unavailable(string reason) =>
+        new(CallerWalletLookupStatus.Unavailable, Array.Empty<WalletInfo>(), reason);
 }
 
 /// <summary>

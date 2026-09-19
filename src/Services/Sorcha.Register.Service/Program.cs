@@ -3296,21 +3296,21 @@ participantsGroup.MapGet("/resolve", (
             detail: $"Participant '{record.ParticipantId}' has been revoked");
     }
 
-    return Results.Ok(new
-    {
-        participantId = record.ParticipantId,
-        participantName = record.ParticipantName,
-        organisationName = record.OrganizationName,
-        status = record.Status,
-        addresses = record.Addresses.Select(a => new
-        {
-            walletAddress = a.WalletAddress,
-            publicKey = a.PublicKey,
-            algorithm = a.Algorithm,
-            primary = a.Primary
-        })
-    });
+    // Return the record itself. ParticipantIndexService.Resolve already produces the very type the
+    // callers deserialise into, and the hand-written projection this replaces was a lossy, misspelled
+    // copy of it: it emitted "organisationName" where the DTO requires "organizationName", and
+    // omitted "version" and "latestTxId" entirely. All three are `required`, so a single missing one
+    // threw for the WHOLE payload — ResolveParticipantAsync never returned a record to anybody.
+    //
+    // That silently disabled every consumer: recipient-key resolution in ActionDisclosureResolver
+    // (so an encrypted register had no key to encrypt to), the published-record tier of
+    // SenderWalletResolver (#1664), and VAL_BP_002's published-record tier in the Validator. Binding
+    // a role to a wallet by publishing a participant record therefore never worked end to end.
+    // Cold-start run #5 found it; the tests could not, because all three consumers mock the client
+    // and an anonymous return type is invisible to the response-shape gate (CLAUDE.md §25).
+    return Results.Ok(record);
 })
+.Produces<Sorcha.ServiceClients.Register.Models.PublishedParticipantRecord>(StatusCodes.Status200OK)
 .WithName("ResolveParticipant")
 .WithSummary("Resolve participant by role ID and organisation")
 .WithDescription("Resolves a participant by their blueprint role ID and optional organisation name. Returns the published participant record with wallet addresses.")

@@ -314,9 +314,24 @@ public sealed record RehearsalRequiredError
 }
 
 /// <summary>
+/// Why a publish was refused, as the server said it.
+/// </summary>
+/// <param name="StatusCode">The HTTP status the Blueprint Service returned.</param>
+/// <param name="Code">The machine-readable code from the body, when it carried one.</param>
+/// <param name="Reason">The server's own explanation, or null when it gave none.</param>
+/// <remarks>
+/// #1641. The reason used to be logged by the client and then dropped, so the caller could only
+/// say "publishing failed" and list the possibilities. That silently cancelled out #1659, which
+/// had just made the server explain itself: the Blueprint Service was reporting "register X has
+/// no sealed governance roster" while the agent was told nothing at all.
+/// </remarks>
+public sealed record PublishRefusal(int StatusCode, string? Code, string? Reason);
+
+/// <summary>
 /// Discriminated outcome of a publish attempt (Feature 142). Either the publish succeeded
-/// (<see cref="Result"/> set) or it was blocked by the rehearsal soft gate
-/// (<see cref="RehearsalRequired"/> set, HTTP 409).
+/// (<see cref="Result"/> set), it was blocked by the rehearsal soft gate
+/// (<see cref="RehearsalRequired"/> set, HTTP 409), or the service refused it
+/// (<see cref="Refusal"/> set).
 /// </summary>
 public sealed record PublishBlueprintOutcome
 {
@@ -325,6 +340,9 @@ public sealed record PublishBlueprintOutcome
 
     /// <summary>The soft-gate 409 body, or null when the publish succeeded.</summary>
     public RehearsalRequiredError? RehearsalRequired { get; init; }
+
+    /// <summary>The service's refusal, or null when it did not refuse.</summary>
+    public PublishRefusal? Refusal { get; init; }
 
     /// <summary>True when the publish was blocked by the rehearsal soft gate (HTTP 409).</summary>
     public bool IsRehearsalRequired => RehearsalRequired is not null;

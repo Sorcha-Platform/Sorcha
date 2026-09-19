@@ -291,14 +291,20 @@ public class BlueprintServiceClientRehearsalTests
     }
 
     [Fact]
-    public async Task PublishBlueprintAsync_Forbidden_ReturnsNull()
+    public async Task PublishBlueprintAsync_Forbidden_ReportsTheRefusalRatherThanNull()
     {
-        // 403 governance-hard gate — the outcome type models success vs rehearsal-required only.
+        // Was PublishBlueprintAsync_Forbidden_ReturnsNull, asserting the behaviour #1641 fixed:
+        // collapsing the 403 governance-hard-gate refusal into a bare null threw away the server's
+        // explanation, leaving the caller to list what the failure might have been. The outcome type
+        // now carries a refusal arm, and a body-less 403 still reports its status.
         var handler = CreateMockHandler(HttpStatusCode.Forbidden);
         var client = CreateClient(handler);
 
         var result = await client.PublishBlueprintAsync("bp-1", new PublishBlueprintRequest { RegisterId = "reg-1" });
 
-        Assert.Null(result);
+        Assert.NotNull(result);
+        Assert.Equal(403, result.Refusal!.StatusCode);
+        Assert.False(result.IsRehearsalRequired);
+        Assert.Null(result.Result);
     }
 }

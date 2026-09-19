@@ -66,9 +66,47 @@ public class ParticipantResolveEndpointTests : IClassFixture<RegisterServiceWebA
         var json = JsonSerializer.Deserialize<JsonElement>(body, JsonOptions);
         json.GetProperty("participantId").GetString().Should().Be("id-dept");
         json.GetProperty("participantName").GetString().Should().Be("Identity Department");
-        json.GetProperty("organisationName").GetString().Should().Be("AshwickCouncil");
+        // organizationName, not organisationName. This test used to assert the British spelling the
+        // endpoint's hand-written projection emitted — pinning the defect rather than catching it,
+        // because it compared the server's bytes only against themselves.
+        json.GetProperty("organizationName").GetString().Should().Be("AshwickCouncil");
         json.GetProperty("status").GetString().Should().Be("Active");
         json.GetProperty("addresses").GetArrayLength().Should().Be(2);
+        // version and latestTxId were absent entirely, and both are `required` on the client DTO.
+        json.GetProperty("version").GetInt32().Should().Be(1);
+        json.GetProperty("latestTxId").GetString().Should().Be("tx-id-dept-1");
+    }
+
+    /// <summary>
+    /// The join itself: these bytes must bind into the type every consumer deserialises them into.
+    /// </summary>
+    /// <remarks>
+    /// Cold-start run #5. Asserting property names against a <see cref="JsonElement"/> cannot catch a
+    /// `required` property the server never sends — one missing one throws for the WHOLE payload, so
+    /// <c>ResolveParticipantAsync</c> returned a record to nobody, on any register, ever. That
+    /// silently disabled recipient-key resolution, #1664's published-record tier, and VAL_BP_002's.
+    /// </remarks>
+    [Fact]
+    public async Task Resolve_ExistingParticipant_BindsIntoTheTypeItsConsumersRead()
+    {
+        var response = await _client.GetAsync(
+            $"/api/registers/{_registerId}/participants/resolve?participantId=id-dept&orgName=AshwickCouncil");
+
+        var body = await response.Content.ReadAsStringAsync();
+        response.StatusCode.Should().Be(HttpStatusCode.OK, because: $"Response body: {body}");
+
+        var record = JsonSerializer.Deserialize<Sorcha.ServiceClients.Register.Models.PublishedParticipantRecord>(
+            body, Sorcha.Serialization.SorchaJson.Options);
+
+        record.Should().NotBeNull();
+        record!.OrganizationName.Should().Be("AshwickCouncil");
+        record.ParticipantName.Should().Be("Identity Department");
+        record.Version.Should().Be(1);
+        record.LatestTxId.Should().NotBeNullOrWhiteSpace();
+        // The public key is what an encrypted register needs; without it there is nothing to
+        // encrypt a recipient's disclosure to.
+        record.Addresses.Should().HaveCount(2);
+        record.Addresses[0].PublicKey.Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]
