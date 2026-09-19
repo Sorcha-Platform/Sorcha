@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Blueprint.Models;
 using Sorcha.McpServer.Tools.Participant;
 using Sorcha.ServiceClients.Blueprint;
 
@@ -102,7 +104,7 @@ public sealed class ActionDetailsToolTests
         });
         _blueprintClientMock
             .Setup(c => c.GetActionDetailsAsync("instance-123", "1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(response);
+            .ReturnsAsync(new BlueprintReadResult(HttpStatusCode.OK, response));
 
         var result = await _tool.GetActionDetailsAsync("instance-123", "1");
 
@@ -130,7 +132,7 @@ public sealed class ActionDetailsToolTests
         });
         _blueprintClientMock
             .Setup(c => c.GetActionDetailsAsync("instance-123", "2", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(response);
+            .ReturnsAsync(new BlueprintReadResult(HttpStatusCode.OK, response));
 
         var result = await _tool.GetActionDetailsAsync("instance-123", "2");
 
@@ -144,7 +146,7 @@ public sealed class ActionDetailsToolTests
         Allow();
         _blueprintClientMock
             .Setup(c => c.GetActionDetailsAsync("instance-invalid", "1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string?)null);
+            .ReturnsAsync(new BlueprintReadResult(HttpStatusCode.NotFound, null));
 
         var result = await _tool.GetActionDetailsAsync("instance-invalid", "1");
 

@@ -89,22 +89,26 @@ public sealed class WorkflowStatusTool
         try
         {
             // Typed client forwards the caller's bearer and pins the route (GET api/instances/{id}).
-            var responseContent = await _blueprintClient.GetWorkflowStatusAsync(workflowInstanceId, cancellationToken);
+            var read = await _blueprintClient.GetWorkflowStatusAsync(workflowInstanceId, cancellationToken);
 
             stopwatch.Stop();
 
-            if (string.IsNullOrWhiteSpace(responseContent))
+            if (!read.IsSuccess || string.IsNullOrWhiteSpace(read.Body))
             {
                 _availabilityTracker.RecordSuccess("Blueprint");
 
+                // Say WHICH failure it was. Reporting a 403 as "not found" sent cold-start run #5's
+                // counterparty hunting for a missing instance that was there all along.
                 return new WorkflowStatusResult
                 {
-                    Status = "Error",
-                    Message = "Workflow not found.",
+                    Status = read.IsForbidden ? "Refused" : "Error",
+                    Message = BlueprintReadExplanation.ForInstance(read, workflowInstanceId),
                     CheckedAt = DateTimeOffset.UtcNow,
                     ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                 };
             }
+
+            var responseContent = read.Body;
 
             // Record success
             _availabilityTracker.RecordSuccess("Blueprint");

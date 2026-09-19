@@ -79,6 +79,7 @@
     "sorcha_validator_control",
     "sorcha_validator_status",
     "sorcha_wallet_info",
+    "sorcha_my_wallets",
     "sorcha_workflow_instances",
     "sorcha_workflow_status"
   ],

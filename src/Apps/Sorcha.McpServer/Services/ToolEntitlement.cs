@@ -129,6 +129,9 @@ public static class ToolEntitlements
         new("sorcha_transaction_history", ConsumerAndPlatform, null),
         new("sorcha_register_query", ConsumerAndPlatform, null),
         new("sorcha_wallet_info", ConsumerAndPlatform, null),
+        // Run #5: an agent could not discover its own signing identity at all without writing to
+        // the register. Same tiers as wallet_info — it exposes nothing the caller does not hold.
+        new("sorcha_my_wallets", ConsumerAndPlatform, null),
         // #1664 — publishing binds a role to a wallet for the CALLER'S organisation, so it needs the
         // platform tier and an admin role, matching the Tenant endpoint (RequireAdministrator).
         new("sorcha_participant_publish", PlatformOnly, AdminRole),
