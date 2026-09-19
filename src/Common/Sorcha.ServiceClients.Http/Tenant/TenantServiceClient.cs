@@ -6,6 +6,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceClients.Shared;
 using Sorcha.ServiceClients.Helpers;
 using Sorcha.ServiceClients.Configuration;
 
@@ -67,7 +68,7 @@ public class TenantServiceClient : ITenantServiceClient
         SendRawAsync(HttpMethod.Put, $"api/organizations/{Uri.EscapeDataString(organizationId)}", requestJson, "update organization", cancellationToken);
 
     /// <inheritdoc />
-    public Task<string?> ListUsersAsync(string organizationId, string? queryString = null, CancellationToken cancellationToken = default)
+    public Task<ServiceReadResult> ListUsersAsync(string organizationId, string? queryString = null, CancellationToken cancellationToken = default)
     {
         var url = $"api/organizations/{Uri.EscapeDataString(organizationId)}/users";
         if (!string.IsNullOrWhiteSpace(queryString))
@@ -75,7 +76,7 @@ public class TenantServiceClient : ITenantServiceClient
             url += $"?{queryString}";
         }
 
-        return GetRawAsync(url, "list users", cancellationToken);
+        return GetRawWithStatusAsync(url, "list users", cancellationToken);
     }
 
     /// <inheritdoc />
@@ -144,12 +145,12 @@ public class TenantServiceClient : ITenantServiceClient
         SendRawAsync(HttpMethod.Put, "api/platform/settings/public-org", requestJson, "update public org settings", cancellationToken);
 
     /// <inheritdoc />
-    public Task<string?> GetOrganizationUsersAsync(string organizationId, string? queryString = null, CancellationToken cancellationToken = default)
+    public Task<ServiceReadResult> GetOrganizationUsersAsync(string organizationId, string? queryString = null, CancellationToken cancellationToken = default)
     {
         var url = string.IsNullOrWhiteSpace(queryString)
             ? $"api/platform/organizations/{Uri.EscapeDataString(organizationId)}/users"
             : $"api/platform/organizations/{Uri.EscapeDataString(organizationId)}/users?{queryString}";
-        return GetRawAsync(url, "get organization users", cancellationToken);
+        return GetRawWithStatusAsync(url, "get organization users", cancellationToken);
     }
 
     /// <inheritdoc />
@@ -208,6 +209,32 @@ public class TenantServiceClient : ITenantServiceClient
         }
 
         return (response.StatusCode, body);
+    }
+
+    /// <summary>
+    /// A GET that reports WHICH failure occurred, not merely that one did.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="GetRawAsync"/> collapses 403, 404 and 5xx alike into null, so its callers can only
+    /// say "not found". Cold-start run #6: an agent looked at another organisation and was correctly
+    /// refused (403) — and <c>sorcha_org_user_audit</c> reported "NotFound", i.e. that the
+    /// organisation did not exist. In a two-party exchange that is a conclusion an agent acts on.
+    /// Same defect class as #1659, #1641 and the Blueprint reads (#1670).
+    /// </remarks>
+    private async Task<ServiceReadResult> GetRawWithStatusAsync(
+        string url, string operation, CancellationToken cancellationToken)
+    {
+        await SetAuthHeaderAsync(cancellationToken);
+        var response = await _httpClient.GetAsync(url, cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Tenant {Operation} failed: {StatusCode}", operation, response.StatusCode);
+            return new ServiceReadResult(response.StatusCode, null);
+        }
+
+        return new ServiceReadResult(
+            response.StatusCode, await response.Content.ReadAsStringAsync(cancellationToken));
     }
 
     private async Task<string?> GetRawAsync(string url, string operation, CancellationToken cancellationToken)

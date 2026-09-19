@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ServiceClients.Shared;
 using System.Net;
 
 using Sorcha.ServiceClients.Blueprint.Models;
@@ -26,7 +27,7 @@ namespace Sorcha.McpServer.Infrastructure;
 internal static class BlueprintReadExplanation
 {
     /// <summary>Explains a failed read of a whole instance.</summary>
-    internal static string ForInstance(BlueprintReadResult read, string instanceId) => read.Status switch
+    internal static string ForInstance(ServiceReadResult read, string instanceId) => read.Status switch
     {
         HttpStatusCode.Forbidden =>
             $"You are not permitted to read instance '{instanceId}'. It exists — this is an "
@@ -45,7 +46,7 @@ internal static class BlueprintReadExplanation
     };
 
     /// <summary>Explains a failed read of one action on an instance.</summary>
-    internal static string ForAction(BlueprintReadResult read, string instanceId, string actionId) =>
+    internal static string ForAction(ServiceReadResult read, string instanceId, string actionId) =>
         read.Status switch
         {
             HttpStatusCode.Forbidden =>

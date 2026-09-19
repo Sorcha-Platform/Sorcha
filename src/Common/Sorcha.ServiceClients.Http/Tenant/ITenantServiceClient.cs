@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ServiceClients.Shared;
+
 namespace Sorcha.ServiceClients.Tenant;
 
 /// <summary>
@@ -74,7 +76,7 @@ public interface ITenantServiceClient
     /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The user-list JSON body, or null on non-success.</returns>
-    Task<string?> ListUsersAsync(
+    Task<ServiceReadResult> ListUsersAsync(
         string organizationId,
         string? queryString = null,
         CancellationToken cancellationToken = default);
@@ -189,7 +191,7 @@ public interface ITenantServiceClient
     /// <param name="queryString">Already-built query string (without leading '?'), or null.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The org-user-list JSON body, or null on non-success.</returns>
-    Task<string?> GetOrganizationUsersAsync(
+    Task<ServiceReadResult> GetOrganizationUsersAsync(
         string organizationId,
         string? queryString = null,
         CancellationToken cancellationToken = default);

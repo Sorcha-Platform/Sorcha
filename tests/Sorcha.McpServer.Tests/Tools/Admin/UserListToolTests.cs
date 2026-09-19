@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 using Sorcha.McpServer.Tools.Admin;
+using Sorcha.ServiceClients.Shared;
 using Sorcha.ServiceClients.Tenant;
 
 namespace Sorcha.McpServer.Tests.Tools.Admin;
@@ -120,7 +122,7 @@ public class UserListToolTests
         });
         _tenantClientMock
             .Setup(c => c.ListUsersAsync(OrgId, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(response);
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, response));
 
         var result = await CreateTool().ListUsersAsync(OrgId);
 
@@ -139,7 +141,7 @@ public class UserListToolTests
         Allow();
         _tenantClientMock
             .Setup(c => c.ListUsersAsync(OrgId, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(JsonSerializer.Serialize(new { Users = Array.Empty<object>(), TotalCount = 0, PendingInvitations = Array.Empty<object>(), PendingInvitationCount = 0 }));
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, JsonSerializer.Serialize(new { Users = Array.Empty<object>(), TotalCount = 0, PendingInvitations = Array.Empty<object>(), PendingInvitationCount = 0 })));
 
         await CreateTool().ListUsersAsync(OrgId, includeInactive: true, emailVerified: true, provisionedVia: "Local", includePending: true);
 
@@ -161,7 +163,7 @@ public class UserListToolTests
         Allow();
         _tenantClientMock
             .Setup(c => c.ListUsersAsync(OrgId, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string?)null);
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.NotFound, null));
 
         var result = await CreateTool().ListUsersAsync(OrgId);
 

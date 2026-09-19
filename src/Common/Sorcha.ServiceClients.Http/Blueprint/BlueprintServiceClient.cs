@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ServiceClients.Shared;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -397,7 +398,7 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     }
 
     /// <inheritdoc />
-    public Task<BlueprintReadResult> GetWorkflowStatusAsync(string workflowInstanceId, CancellationToken cancellationToken = default) =>
+    public Task<ServiceReadResult> GetWorkflowStatusAsync(string workflowInstanceId, CancellationToken cancellationToken = default) =>
         GetRawWithStatusAsync($"api/instances/{Uri.EscapeDataString(workflowInstanceId)}", "workflow status", cancellationToken);
 
     /// <inheritdoc />
@@ -413,7 +414,7 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     }
 
     /// <inheritdoc />
-    public Task<BlueprintReadResult> GetActionDetailsAsync(string instanceId, string actionId, CancellationToken cancellationToken = default) =>
+    public Task<ServiceReadResult> GetActionDetailsAsync(string instanceId, string actionId, CancellationToken cancellationToken = default) =>
         GetRawWithStatusAsync($"api/instances/{Uri.EscapeDataString(instanceId)}/actions/{Uri.EscapeDataString(actionId)}", "action details", cancellationToken);
 
     /// <inheritdoc />
@@ -424,7 +425,7 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     }
 
     /// <inheritdoc />
-    public Task<BlueprintReadResult> GetDisclosedDataAsync(string workflowInstanceId, string? actionInstanceId = null, CancellationToken cancellationToken = default)
+    public Task<ServiceReadResult> GetDisclosedDataAsync(string workflowInstanceId, string? actionInstanceId = null, CancellationToken cancellationToken = default)
     {
         var url = string.IsNullOrWhiteSpace(actionInstanceId)
             ? $"api/workflows/{Uri.EscapeDataString(workflowInstanceId)}/disclosures"
@@ -821,7 +822,7 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     /// hypothesising that the instance predated its own participant record. An authorisation
     /// failure reported as absence is the same defect class as #1659 and #1641.
     /// </remarks>
-    private async Task<BlueprintReadResult> GetRawWithStatusAsync(
+    private async Task<ServiceReadResult> GetRawWithStatusAsync(
         string url, string operation, CancellationToken cancellationToken)
     {
         await SetAuthHeaderAsync(cancellationToken);
@@ -830,10 +831,10 @@ public class BlueprintServiceClient : IBlueprintServiceClient
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogWarning("Blueprint {Operation} failed: {StatusCode}", operation, response.StatusCode);
-            return new BlueprintReadResult(response.StatusCode, null);
+            return new ServiceReadResult(response.StatusCode, null);
         }
 
-        return new BlueprintReadResult(
+        return new ServiceReadResult(
             response.StatusCode, await response.Content.ReadAsStringAsync(cancellationToken));
     }
 

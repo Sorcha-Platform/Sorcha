@@ -95,16 +95,26 @@ public sealed class OrgUserAuditTool
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            var body = await _tenantClient.GetOrganizationUsersAsync(orgId, queryString, cancellationToken);
+            var read = await _tenantClient.GetOrganizationUsersAsync(orgId, queryString, cancellationToken);
+            var body = read.Body;
             stopwatch.Stop();
 
-            if (body is null)
+            if (!read.IsSuccess || body is null)
             {
                 _availabilityTracker.RecordFailure(ServiceName);
+
+                // #1673 — a 403 here means the organisation exists and you may not read it, which
+                // is the ORG BOUNDARY working. Reporting that as "not found" told run #6's agent
+                // the counterparty organisation did not exist.
                 return new OrgUserAuditResult
                 {
-                    Status = "NotFound",
-                    Message = $"Organisation '{orgId}' was not found or has no accessible user list.",
+                    Status = read.IsForbidden ? "Refused" : "NotFound",
+                    Message = read.IsForbidden
+                        ? $"You are not permitted to read the user list for organisation '{orgId}'. "
+                          + "It exists — this is an authorisation refusal, not a missing "
+                          + "organisation. Only an administrator of that organisation can audit its "
+                          + "users."
+                        : $"Organisation '{orgId}' was not found or has no accessible user list.",
                     CheckedAt = DateTimeOffset.UtcNow,
                     ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                 };

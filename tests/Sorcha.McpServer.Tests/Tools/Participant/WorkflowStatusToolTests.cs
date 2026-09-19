@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ServiceClients.Shared;
 using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -90,7 +91,7 @@ public sealed class WorkflowStatusToolTests
         });
         _blueprintClientMock
             .Setup(c => c.GetWorkflowStatusAsync("wf-123", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BlueprintReadResult(HttpStatusCode.OK, response));
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, response));
 
         var result = await _tool.GetWorkflowStatusAsync("wf-123");
 
@@ -119,7 +120,7 @@ public sealed class WorkflowStatusToolTests
         });
         _blueprintClientMock
             .Setup(c => c.GetWorkflowStatusAsync("wf-456", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BlueprintReadResult(HttpStatusCode.OK, response));
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, response));
 
         var result = await _tool.GetWorkflowStatusAsync("wf-456");
 
@@ -134,7 +135,7 @@ public sealed class WorkflowStatusToolTests
         Allow();
         _blueprintClientMock
             .Setup(c => c.GetWorkflowStatusAsync("wf-invalid", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BlueprintReadResult(HttpStatusCode.NotFound, null));
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.NotFound, null));
 
         var result = await _tool.GetWorkflowStatusAsync("wf-invalid");
 

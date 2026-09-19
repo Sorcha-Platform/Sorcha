@@ -122,23 +122,30 @@ public sealed class UserListTool
 
             // Typed client forwards the caller's bearer and pins the route
             // (GET api/organizations/{organizationId}/users).
-            var responseContent = await _tenantClient.ListUsersAsync(
+            var read = await _tenantClient.ListUsersAsync(
                 organizationId, string.Join("&", queryParams), cancellationToken);
 
             stopwatch.Stop();
 
-            if (string.IsNullOrWhiteSpace(responseContent))
+            if (!read.IsSuccess || string.IsNullOrWhiteSpace(read.Body))
             {
                 _availabilityTracker.RecordSuccess("Tenant");
 
+                // #1673 — "Failed to retrieve users" for a 403 hides the one thing worth knowing:
+                // the organisation is real and this caller is not entitled to read it.
                 return new UserListResult
                 {
-                    Status = "Error",
-                    Message = "Failed to retrieve users.",
+                    Status = read.IsForbidden ? "Refused" : "Error",
+                    Message = read.IsForbidden
+                        ? $"You are not permitted to list users for organisation '{organizationId}'. "
+                          + "It exists — this is an authorisation refusal, not a missing organisation."
+                        : "Failed to retrieve users.",
                     CheckedAt = DateTimeOffset.UtcNow,
                     ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                 };
             }
+
+            var responseContent = read.Body;
 
             _availabilityTracker.RecordSuccess("Tenant");
 
