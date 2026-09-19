@@ -8,6 +8,23 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
+> **▶ 2026-09-19 - Run #5 BLOCKER SWEEP: six fixes, all merged-ready on `fix/run6-blockers`.**
+> Run #5 reached a sealed, encrypted action 1 across two organisations and then wedged. Fixing what
+> it found, before run #6:
+>
+> | # | Defect | Fix | Mutations |
+> |---|---|---|---|
+> | **#1667** | The participant index is in-memory with no replay, so a register-service restart silently unbinds every role on every register. Hit live during the #1666 deploy | Startup replay from the ledger, in the shape of the bloom/register recovery services that already ran. Replay order pinned — newest-first resurrects revoked bindings | 4/4 |
+> | **#1668** | Republishing a role created a parallel Active record; resolution returned the older one, and the duplicate chained from the SAME prevTxId so revoking the original forked forever. A mis-bound role was permanent | Publish supersedes the existing record for that role+org. Revoked treated as absent; a failed lookup does not block a first publish | 3/3 |
+> | **#1669** | A transaction rejected AFTER its 202 was invisible: no error, no status change, nothing to query. Only a WRN in the validator's log | Validator records code+reason; the transaction-status endpoint serves it on the path that used to 404. An unknown txid stays 404 and says that is NOT evidence of acceptance | 10/10 |
+> | run #5 | A 403 reported as "Workflow not found" / "Action not found" — sent the counterparty hunting a missing instance that was there. Third time in this workstream an authorisation failure was reported as an absence | Blueprint reads carry the status; refusals say the instance exists and name `sorcha_participant_list`; 401 says the token expired | 11/11 (with the two below) |
+> | run #5 | An empty disclosure read as "nothing was disclosed to you" when action 1 HAD been encrypted to that org's other wallet | Message scoped to "the wallet this session controls" | ↑ |
+> | run #5 | No way to see your own wallets — `sorcha_wallet_info` is a lookup by address. Both agents concluded they held none and bound the ORG wallet | New `sorcha_my_wallets`, read-only. Unreadable lookup reports "unknown", never "none" | ↑ |
+>
+> ⚠ CLAUDE.md §25 was **stale** and is corrected: all seven services now call `SorchaJson.Configure`,
+> so their enums are camelCase names, not the bare integers the section described. Discovered by
+> asserting the documented behaviour and being proved wrong by the real bytes.
+>
 > **▶ 2026-09-18 - MCP cold-start run #5: the first TWO-ORGANISATION run. Both roles bound on the ledger.**
 > Two orgs, two MCP sessions, one register (`4145b4e7…`): the Provider designed the exchange, created the
 > register, published, bound its role and created the instance; the Recipient published its own participant

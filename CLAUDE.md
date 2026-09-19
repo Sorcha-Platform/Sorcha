@@ -694,10 +694,17 @@ if (action.Form?.Schema == null) return ValidationResult.Valid();
 
 ### 25. A client DTO must be typed to read what the service actually WRITES (#1613)
 
-There is **no platform-wide JSON enum convention**, so you cannot assume one. `AddServiceDefaults`
-configures no JSON at all; only the **Tenant** and **Wallet** services call `SorchaJson.Configure`.
-Every other service — Register, Blueprint, Validator, Peer, HAIP — serialises under the ASP.NET web
-defaults, where an enum **without its own `[JsonConverter]` goes on the wire as a bare integer**.
+**Check what the endpoint writes; never assume a convention.** `AddServiceDefaults` configures no
+JSON at all, so an enum **without its own `[JsonConverter]` goes on the wire as a bare integer**
+unless the owning service opts in. As of 2026-09-19 **all seven services** (Register, Blueprint,
+Validator, Peer, HAIP, Tenant, Wallet) call `SorchaJson.Configure` in their own `Program.cs`, so
+their enums currently serialise as **camelCase names** — `"status":"rejected"`, not `"status":3`.
+
+That is per-service opt-in, not a platform guarantee: a new service, a non-HTTP serializer, or any
+consumer serialising the same type under the web defaults still produces the integer. **Type the
+client to the enum**, which reads both forms, and pin the wire value in a test that binds real
+bytes. (This section originally read "only Tenant and Wallet" — true when #1613 was filed, and
+stale by the time run #5 asserted it and was proved wrong by the actual response.)
 
 ```csharp
 // DON'T — GET /api/registers/ sends "status": 1. A Number cannot be read as a String, so the
