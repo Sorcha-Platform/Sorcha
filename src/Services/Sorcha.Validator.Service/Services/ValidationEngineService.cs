@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Register.Models;
 using Microsoft.Extensions.Options;
 using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Services;
@@ -20,6 +21,7 @@ public class ValidationEngineService : BackgroundService
     private readonly IRegisterMonitoringRegistry _monitoringRegistry;
     private readonly ValidationEngineConfiguration _config;
     private readonly ValidatorMempoolMetrics _metrics;
+    private readonly ITransactionRejectionLog _rejectionLog;
     private readonly ILogger<ValidationEngineService> _logger;
 
     // Track active registers being validated, keyed by when processing STARTED (issue #814).
@@ -45,6 +47,7 @@ public class ValidationEngineService : BackgroundService
         IRegisterMonitoringRegistry monitoringRegistry,
         IOptions<ValidationEngineConfiguration> config,
         ValidatorMempoolMetrics metrics,
+        ITransactionRejectionLog rejectionLog,
         ILogger<ValidationEngineService> logger)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
@@ -53,6 +56,7 @@ public class ValidationEngineService : BackgroundService
         _monitoringRegistry = monitoringRegistry ?? throw new ArgumentNullException(nameof(monitoringRegistry));
         _config = config?.Value ?? throw new ArgumentNullException(nameof(config));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
+        _rejectionLog = rejectionLog ?? throw new ArgumentNullException(nameof(rejectionLog));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -208,8 +212,21 @@ public class ValidationEngineService : BackgroundService
                         "Transaction {TransactionId} failed validation: {Errors}",
                         tx.TransactionId, errorSummary);
 
+                    // ...and record it where the SUBMITTER can find it (#1669). Until this existed,
+                    // a rejection after the 202 produced no error, no observable status change and
+                    // nothing to query — the operation simply never happened, and this log line was
+                    // the only evidence anywhere. Best-effort: recording must never fail validation.
+                    var first = result.Errors.FirstOrDefault();
+                    await _rejectionLog.RecordAsync(
+                        new TransactionRejection(
+                            tx.TransactionId,
+                            registerId,
+                            first?.Code ?? "VAL_UNKNOWN",
+                            errorSummary,
+                            DateTimeOffset.UtcNow),
+                        opCt);
+
                     // Don't return invalid transactions to pool - they're rejected
-                    // In production, might want to store rejection reason
                 }
             }
 

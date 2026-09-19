@@ -58,14 +58,47 @@ public class ParticipantPublishingService : IParticipantPublishingService
             "Publishing participant record to register {RegisterId} for org {OrgName}",
             request.RegisterId, request.OrganizationName);
 
-        // 0. Check wallet address uniqueness on the register (FR-010)
+        // 0. Is this role already published for this organisation? If so this is a CORRECTION, and
+        //    it must supersede the existing record rather than sit beside it (#1668).
+        //
+        //    Creating a second Active record for one role did three things, each worse than the
+        //    last: the register accumulated duplicates; resolution silently returned one of them
+        //    (in practice the older, so the correction was ignored); and the new record chained
+        //    from the SAME prevTxId as the original, so every later write against the original —
+        //    revoke included — forked and was refused forever. A mis-bound role became permanent,
+        //    with no way back short of a new register. Found by cold-start run #5.
+        var existing = await FindPublishedRoleAsync(
+            request.RegisterId, request.ParticipantName, request.OrganizationName, cancellationToken);
+
+        if (existing is not null)
+        {
+            _logger.LogInformation(
+                "Participant role '{ParticipantName}' for org '{OrgName}' is already published on "
+                + "register {RegisterId} as {ParticipantId} (v{Version}); superseding it rather than "
+                + "publishing a duplicate.",
+                request.ParticipantName, request.OrganizationName, request.RegisterId,
+                existing.ParticipantId, existing.Version);
+
+            return await UpdateParticipantAsync(new UpdatePublishedParticipantRequest
+            {
+                RegisterId = request.RegisterId,
+                ParticipantId = existing.ParticipantId,
+                ParticipantName = request.ParticipantName,
+                OrganizationName = request.OrganizationName,
+                Addresses = request.Addresses,
+                SignerWalletAddress = request.SignerWalletAddress,
+                Metadata = request.Metadata,
+            }, cancellationToken);
+        }
+
+        // 1. Check wallet address uniqueness on the register (FR-010)
         await ValidateAddressUniquenessAsync(
             request.RegisterId, request.Addresses, excludeParticipantId: null, cancellationToken);
 
-        // 1. Generate participant identity anchor (UUID)
+        // 2. Generate participant identity anchor (UUID)
         var participantId = Guid.NewGuid().ToString();
 
-        // 2. Build the participant record payload
+        // 3. Build the participant record payload
         var record = new ParticipantRecord
         {
             ParticipantId = participantId,
@@ -83,10 +116,10 @@ public class ParticipantPublishingService : IParticipantPublishingService
             Metadata = request.Metadata
         };
 
-        // 3. Fetch latest Control TX for PrevTxId chain (first publish chains from Control TX)
+        // 4. Fetch latest Control TX for PrevTxId chain (first publish chains from Control TX)
         var prevTxId = await GetLatestControlTxIdAsync(request.RegisterId, cancellationToken);
 
-        // 4. Submit via shared logic
+        // 5. Submit via shared logic
         return await SubmitParticipantRecord(
             record, request.RegisterId, request.SignerWalletAddress,
             prevTxId, cancellationToken);
@@ -201,6 +234,42 @@ public class ParticipantPublishingService : IParticipantPublishingService
     /// Validates that none of the proposed wallet addresses are already claimed by another
     /// active participant on the same register. Throws InvalidOperationException (409) on conflict.
     /// </summary>
+    /// <summary>
+    /// Finds the live published record for a role on a register, or null if the role is unpublished.
+    /// </summary>
+    /// <remarks>
+    /// A Revoked record is deliberately treated as absent: revocation is how a role is retired, so
+    /// re-publishing afterwards is a fresh binding and should start a new record, not resurrect the
+    /// retired one. A lookup failure also returns null — publishing a first record must not be
+    /// blocked because the register could not be consulted, and the address-uniqueness check below
+    /// still guards the case that matters.
+    /// </remarks>
+    private async Task<Sorcha.ServiceClients.Register.Models.PublishedParticipantRecord?> FindPublishedRoleAsync(
+        string registerId, string participantName, string organizationName, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var existing = await _registerClient.ResolveParticipantAsync(
+                registerId, participantName, organizationName, cancellationToken);
+
+            if (existing is null ||
+                string.Equals(existing.Status, "Revoked", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return existing;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Could not check whether role '{ParticipantName}' is already published on register "
+                + "{RegisterId}; treating it as unpublished.",
+                participantName, registerId);
+            return null;
+        }
+    }
+
     private async Task ValidateAddressUniquenessAsync(
         string registerId,
         IReadOnlyList<ParticipantAddressRequest> addresses,

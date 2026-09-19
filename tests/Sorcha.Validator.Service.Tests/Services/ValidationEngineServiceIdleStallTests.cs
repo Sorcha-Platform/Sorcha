@@ -62,6 +62,7 @@ public sealed class ValidationEngineServiceIdleStallTests : IDisposable
         Mock.Of<IRegisterMonitoringRegistry>(),
         Options.Create(new ValidationEngineConfiguration { ValidationTimeout = timeout ?? TimeSpan.FromMilliseconds(300) }),
         _metrics,
+        Mock.Of<Sorcha.Register.Models.ITransactionRejectionLog>(),
         NullLogger<ValidationEngineService>.Instance);
 
     [Fact]

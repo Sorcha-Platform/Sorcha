@@ -102,22 +102,26 @@ public sealed class ActionDetailsTool
         {
             // Typed client forwards the caller's bearer and pins the route
             // (GET api/instances/{instanceId}/actions/{actionId}).
-            var responseContent = await _blueprintClient.GetActionDetailsAsync(instanceId, actionId, cancellationToken);
+            var read = await _blueprintClient.GetActionDetailsAsync(instanceId, actionId, cancellationToken);
 
             stopwatch.Stop();
 
-            if (string.IsNullOrWhiteSpace(responseContent))
+            if (!read.IsSuccess || string.IsNullOrWhiteSpace(read.Body))
             {
                 _availabilityTracker.RecordSuccess("Blueprint");
 
+                // Say WHICH failure it was: "Action not found" for a 403 is how run #5's
+                // counterparty concluded the instance did not exist.
                 return new ActionDetailsResult
                 {
-                    Status = "Error",
-                    Message = "Action not found.",
+                    Status = read.IsForbidden ? "Refused" : "Error",
+                    Message = BlueprintReadExplanation.ForAction(read, instanceId, actionId),
                     CheckedAt = DateTimeOffset.UtcNow,
                     ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                 };
             }
+
+            var responseContent = read.Body;
 
             // Record success
             _availabilityTracker.RecordSuccess("Blueprint");

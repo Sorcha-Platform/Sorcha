@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Blueprint.Models;
 using Sorcha.McpServer.Tools.Participant;
 using Sorcha.ServiceClients.Blueprint;
 
@@ -82,7 +84,7 @@ public sealed class DisclosedDataToolTests
         });
         _blueprintClientMock
             .Setup(c => c.GetDisclosedDataAsync("wf-123", null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(response);
+            .ReturnsAsync(new BlueprintReadResult(HttpStatusCode.OK, response));
 
         var result = await _tool.GetDisclosedDataAsync("wf-123");
 
@@ -100,7 +102,7 @@ public sealed class DisclosedDataToolTests
         Allow();
         _blueprintClientMock
             .Setup(c => c.GetDisclosedDataAsync("wf-123", null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(JsonSerializer.Serialize(new { disclosures = Array.Empty<object>() }));
+            .ReturnsAsync(new BlueprintReadResult(HttpStatusCode.OK, JsonSerializer.Serialize(new { disclosures = Array.Empty<object>() })));
 
         var result = await _tool.GetDisclosedDataAsync("wf-123");
 
@@ -114,7 +116,7 @@ public sealed class DisclosedDataToolTests
         Allow();
         _blueprintClientMock
             .Setup(c => c.GetDisclosedDataAsync("wf-123", "action-456", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(JsonSerializer.Serialize(new { disclosures = Array.Empty<object>() }));
+            .ReturnsAsync(new BlueprintReadResult(HttpStatusCode.OK, JsonSerializer.Serialize(new { disclosures = Array.Empty<object>() })));
 
         await _tool.GetDisclosedDataAsync("wf-123", "action-456");
 
@@ -128,7 +130,7 @@ public sealed class DisclosedDataToolTests
         Allow();
         _blueprintClientMock
             .Setup(c => c.GetDisclosedDataAsync("wf-invalid", null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string?)null);
+            .ReturnsAsync(new BlueprintReadResult(HttpStatusCode.NotFound, null));
 
         var result = await _tool.GetDisclosedDataAsync("wf-invalid");
 

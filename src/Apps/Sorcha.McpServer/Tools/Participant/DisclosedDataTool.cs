@@ -93,23 +93,25 @@ public sealed class DisclosedDataTool
         try
         {
             // Typed client forwards the caller's bearer and pins the route (GET api/workflows/{id}/disclosures).
-            var responseContent = await _blueprintClient.GetDisclosedDataAsync(
+            var read = await _blueprintClient.GetDisclosedDataAsync(
                 workflowInstanceId, actionInstanceId, cancellationToken);
 
             stopwatch.Stop();
 
-            if (string.IsNullOrWhiteSpace(responseContent))
+            if (!read.IsSuccess || string.IsNullOrWhiteSpace(read.Body))
             {
                 _availabilityTracker.RecordSuccess("Blueprint");
 
                 return new DisclosedDataResult
                 {
-                    Status = "Error",
-                    Message = "Failed to retrieve disclosed data.",
+                    Status = read.IsForbidden ? "Refused" : "Error",
+                    Message = BlueprintReadExplanation.ForInstance(read, workflowInstanceId),
                     CheckedAt = DateTimeOffset.UtcNow,
                     ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                 };
             }
+
+            var responseContent = read.Body;
 
             // Record success
             _availabilityTracker.RecordSuccess("Blueprint");
@@ -139,9 +141,19 @@ public sealed class DisclosedDataTool
             return new DisclosedDataResult
             {
                 Status = "Success",
+                // An empty result is ambiguous and reads as fact, so say what else it can mean.
+                // Cold-start run #5: the counterparty saw zero fields and concluded nothing had
+                // been disclosed to it. Action 1 had in fact been encrypted to its organisation's
+                // wallet — just not to the wallet its session controls, because disclosures are
+                // matched on that.
                 Message = disclosureCount > 0
                     ? $"Retrieved {disclosureCount} disclosure(s)."
-                    : "No data has been disclosed to you for this workflow.",
+                    : "No data has been disclosed to the wallet this session controls. That is not "
+                      + "the same as nothing having been disclosed to your organisation: disclosures "
+                      + "are matched on the wallet you hold, so if your role is bound to a different "
+                      + "wallet you will see nothing here. Check with sorcha_participant_list which "
+                      + "wallet your role is bound to. It may also simply be that no action has "
+                      + "disclosed anything to you yet.",
                 CheckedAt = DateTimeOffset.UtcNow,
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
                 Disclosures = result.Disclosures?.Select(d => new DisclosureItem

@@ -397,8 +397,8 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     }
 
     /// <inheritdoc />
-    public Task<string?> GetWorkflowStatusAsync(string workflowInstanceId, CancellationToken cancellationToken = default) =>
-        GetRawAsync($"api/instances/{Uri.EscapeDataString(workflowInstanceId)}", "workflow status", cancellationToken);
+    public Task<BlueprintReadResult> GetWorkflowStatusAsync(string workflowInstanceId, CancellationToken cancellationToken = default) =>
+        GetRawWithStatusAsync($"api/instances/{Uri.EscapeDataString(workflowInstanceId)}", "workflow status", cancellationToken);
 
     /// <inheritdoc />
     public Task<string?> CreateInstanceAsync(string blueprintId, string registerId, string? tenantId = null, CancellationToken cancellationToken = default)
@@ -413,8 +413,8 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     }
 
     /// <inheritdoc />
-    public Task<string?> GetActionDetailsAsync(string instanceId, string actionId, CancellationToken cancellationToken = default) =>
-        GetRawAsync($"api/instances/{Uri.EscapeDataString(instanceId)}/actions/{Uri.EscapeDataString(actionId)}", "action details", cancellationToken);
+    public Task<BlueprintReadResult> GetActionDetailsAsync(string instanceId, string actionId, CancellationToken cancellationToken = default) =>
+        GetRawWithStatusAsync($"api/instances/{Uri.EscapeDataString(instanceId)}/actions/{Uri.EscapeDataString(actionId)}", "action details", cancellationToken);
 
     /// <inheritdoc />
     public Task<string?> GetInboxAsync(string? queryString = null, CancellationToken cancellationToken = default)
@@ -424,12 +424,12 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     }
 
     /// <inheritdoc />
-    public Task<string?> GetDisclosedDataAsync(string workflowInstanceId, string? actionInstanceId = null, CancellationToken cancellationToken = default)
+    public Task<BlueprintReadResult> GetDisclosedDataAsync(string workflowInstanceId, string? actionInstanceId = null, CancellationToken cancellationToken = default)
     {
         var url = string.IsNullOrWhiteSpace(actionInstanceId)
             ? $"api/workflows/{Uri.EscapeDataString(workflowInstanceId)}/disclosures"
             : $"api/workflows/{Uri.EscapeDataString(workflowInstanceId)}/actions/{Uri.EscapeDataString(actionInstanceId)}/disclosures";
-        return GetRawAsync(url, "disclosed data", cancellationToken);
+        return GetRawWithStatusAsync(url, "disclosed data", cancellationToken);
     }
 
     /// <inheritdoc />
@@ -809,6 +809,32 @@ public class BlueprintServiceClient : IBlueprintServiceClient
             _logger.LogError(ex, "Failed Blueprint CloneFromPublished");
             return null;
         }
+    }
+
+    /// <summary>
+    /// A GET that reports WHICH failure occurred, not merely that one did.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="GetRawAsync"/> collapses 403, 404 and 5xx alike into null, so its callers can only
+    /// say "not found". Cold-start run #5: a counterparty was refused an instance it is a
+    /// participant on (403) and the tool told it "Workflow not found", which sent it off
+    /// hypothesising that the instance predated its own participant record. An authorisation
+    /// failure reported as absence is the same defect class as #1659 and #1641.
+    /// </remarks>
+    private async Task<BlueprintReadResult> GetRawWithStatusAsync(
+        string url, string operation, CancellationToken cancellationToken)
+    {
+        await SetAuthHeaderAsync(cancellationToken);
+        var response = await _httpClient.GetAsync(url, cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Blueprint {Operation} failed: {StatusCode}", operation, response.StatusCode);
+            return new BlueprintReadResult(response.StatusCode, null);
+        }
+
+        return new BlueprintReadResult(
+            response.StatusCode, await response.Content.ReadAsStringAsync(cancellationToken));
     }
 
     private async Task<string?> GetRawAsync(string url, string operation, CancellationToken cancellationToken)

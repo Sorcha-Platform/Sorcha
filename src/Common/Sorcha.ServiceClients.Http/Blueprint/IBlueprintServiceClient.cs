@@ -149,7 +149,7 @@ public interface IBlueprintServiceClient
     /// Gets a workflow instance's current status. Calls <c>GET /api/instances/{id}</c>.
     /// </summary>
     /// <returns>The workflow-status JSON body, or null on non-success.</returns>
-    Task<string?> GetWorkflowStatusAsync(
+    Task<BlueprintReadResult> GetWorkflowStatusAsync(
         string workflowInstanceId,
         CancellationToken cancellationToken = default);
 
@@ -174,7 +174,7 @@ public interface IBlueprintServiceClient
     /// <param name="instanceId">The workflow instance ID the action belongs to.</param>
     /// <param name="actionId">The action's sequence number within the blueprint.</param>
     /// <returns>The action-details JSON body, or null on non-success.</returns>
-    Task<string?> GetActionDetailsAsync(
+    Task<BlueprintReadResult> GetActionDetailsAsync(
         string instanceId,
         string actionId,
         CancellationToken cancellationToken = default);
@@ -194,7 +194,7 @@ public interface IBlueprintServiceClient
     /// Calls <c>GET /api/workflows/{id}/disclosures</c> (or the action-scoped variant).
     /// </summary>
     /// <returns>The disclosures JSON body, or null on non-success.</returns>
-    Task<string?> GetDisclosedDataAsync(
+    Task<BlueprintReadResult> GetDisclosedDataAsync(
         string workflowInstanceId,
         string? actionInstanceId = null,
         CancellationToken cancellationToken = default);
