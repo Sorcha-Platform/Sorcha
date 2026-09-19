@@ -614,6 +614,129 @@ public class ParticipantPublishingServiceTests
 
     #region Helper Methods
 
+    #region Superseding an already-published role (#1668)
+
+    /// <summary>
+    /// Publishing a role that is already published is a CORRECTION, not a second binding.
+    /// </summary>
+    /// <remarks>
+    /// Cold-start run #5: the second publish created a parallel Active record; resolution returned
+    /// the older one, so the correction was silently ignored; and because the new record chained
+    /// from the SAME prevTxId as the original, every later write against the original — revoke
+    /// included — forked with VAL_CHAIN_FORK and was refused forever. A mis-bound role became
+    /// permanent, recoverable only by abandoning the register.
+    /// </remarks>
+    [Fact]
+    public async Task PublishParticipantAsync_WhenTheRoleIsAlreadyPublished_SupersedesItRatherThanDuplicating()
+    {
+        ExistingRole("participant-1", version: 1, latestTxId: "tx-v1");
+
+        var result = await _service.PublishParticipantAsync(CreateValidRequest());
+
+        // Same record, next version — not a new identity.
+        result.ParticipantId.Should().Be("participant-1");
+        result.Version.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task PublishParticipantAsync_WhenSuperseding_ChainsFromTheExistingRecordNotTheControlTx()
+    {
+        // This is what stops the fork. Chaining a correction from the Control TX puts two
+        // transactions on one parent, and the ledger refuses the second of them forever.
+        ExistingRole("participant-1", version: 1, latestTxId: "tx-v1");
+        TransactionSubmission? submitted = null;
+        _validatorClientMock.Setup(v => v.SubmitTransactionAsync(
+                It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()))
+            .Callback((TransactionSubmission s, CancellationToken _) => submitted = s)
+            .ReturnsAsync(new TransactionSubmissionResult
+            {
+                Success = true, TransactionId = "tx-v2", RegisterId = "test-register",
+                AddedAt = DateTimeOffset.UtcNow
+            });
+
+        await _service.PublishParticipantAsync(CreateValidRequest());
+
+        submitted!.PreviousTransactionId.Should().Be("tx-v1");
+        _registerClientMock.Verify(r => r.GetControlTransactionsAsync(
+            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PublishParticipantAsync_WhenNoRoleIsPublishedYet_StillCreatesAFirstRecord()
+    {
+        // The counterfactual: superseding must not swallow a genuine first publish.
+        NoExistingRole();
+
+        var result = await _service.PublishParticipantAsync(CreateValidRequest());
+
+        result.Version.Should().Be(1);
+        result.ParticipantId.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public async Task PublishParticipantAsync_WhenTheExistingRoleWasRevoked_PublishesAFreshRecord()
+    {
+        // Revocation is how a role is retired, so re-publishing afterwards is a NEW binding.
+        // Superseding a revoked record would resurrect the retirement as an active version.
+        ExistingRole("participant-1", version: 3, latestTxId: "tx-v3", status: "Revoked");
+
+        var result = await _service.PublishParticipantAsync(CreateValidRequest());
+
+        result.Version.Should().Be(1);
+        result.ParticipantId.Should().NotBe("participant-1");
+    }
+
+    [Fact]
+    public async Task PublishParticipantAsync_WhenTheRegisterCannotBeConsulted_StillPublishes()
+    {
+        // A lookup failure must not block a first publish; address uniqueness still guards the
+        // case that matters, and refusing here would make an unreachable register unusable.
+        _registerClientMock.Setup(r => r.ResolveParticipantAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("register unreachable"));
+
+        var result = await _service.PublishParticipantAsync(CreateValidRequest());
+
+        result.Version.Should().Be(1);
+    }
+
+    private void ExistingRole(string participantId, int version, string latestTxId, string status = "Active")
+    {
+        _registerClientMock.Setup(r => r.ResolveParticipantAsync(
+                "test-register", "Alice", "Acme Corp", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.ServiceClients.Register.Models.PublishedParticipantRecord
+            {
+                ParticipantId = participantId,
+                ParticipantName = "Alice",
+                OrganizationName = "Acme Corp",
+                Status = status,
+                Version = version,
+                LatestTxId = latestTxId,
+                Addresses = [],
+            });
+
+        // The update path re-reads the record by id to derive the next version.
+        _registerClientMock.Setup(r => r.GetPublishedParticipantByIdAsync(
+                "test-register", participantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.ServiceClients.Register.Models.PublishedParticipantRecord
+            {
+                ParticipantId = participantId,
+                ParticipantName = "Alice",
+                OrganizationName = "Acme Corp",
+                Status = status,
+                Version = version,
+                LatestTxId = latestTxId,
+                Addresses = [],
+            });
+    }
+
+    private void NoExistingRole() =>
+        _registerClientMock.Setup(r => r.ResolveParticipantAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Sorcha.ServiceClients.Register.Models.PublishedParticipantRecord?)null);
+
+    #endregion
+
     private static PublishParticipantRequest CreateValidRequest(
         string? registerId = null,
         string? signerWallet = null)
