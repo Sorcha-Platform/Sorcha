@@ -99,7 +99,16 @@ public sealed class BlueprintInboxWriter : IBlueprintInboxWriter
             var viaParticipant = await _inbox.ResolvePlatformUserIdAsync(participant.UserId, ct).ConfigureAwait(false);
             if (viaParticipant is not null)
             {
-                return viaParticipant;
+                var verified = await VerifyPlatformUserExistsAsync(
+                    viaParticipant.Value, walletAddress, "decision-notice (participant link)", ct).ConfigureAwait(false);
+                if (verified is not null)
+                {
+                    return verified;
+                }
+
+                // Fall through to the wallet-owner path below rather than returning null here — a
+                // dangling participant→PlatformUser link does not mean the wallet's OWNER can't
+                // still be resolved.
             }
         }
 
@@ -134,7 +143,12 @@ public sealed class BlueprintInboxWriter : IBlueprintInboxWriter
         var viaOwnerIdentity = await _inbox.ResolvePlatformUserIdAsync(ownerId, ct).ConfigureAwait(false);
         if (viaOwnerIdentity is not null)
         {
-            return viaOwnerIdentity;
+            var verified = await VerifyPlatformUserExistsAsync(
+                viaOwnerIdentity.Value, walletAddress, "decision-notice (owner identity link)", ct).ConfigureAwait(false);
+            if (verified is not null)
+            {
+                return verified;
+            }
         }
 
         if (await _inbox.PlatformUserExistsAsync(ownerId, ct).ConfigureAwait(false))
@@ -146,6 +160,39 @@ public sealed class BlueprintInboxWriter : IBlueprintInboxWriter
             "Inbox skip — wallet {Wallet} owner {Owner} is neither a resolvable UserIdentity nor a "
             + "known PlatformUser, so there is nobody to notify",
             walletAddress, ownerId);
+        return null;
+    }
+
+    /// <summary>
+    /// #1682 — confirms a PlatformUserId returned by <see cref="IPlatformInboxClient.ResolvePlatformUserIdAsync"/>
+    /// actually names a platform user before it is used to build a write request.
+    /// </summary>
+    /// <remarks>
+    /// <c>UserIdentity.PlatformUserId</c> is a plain FK column, not verified at read time —
+    /// <c>ResolvePlatformUserIdAsync</c> only confirms the UserIdentity row exists and hands back
+    /// whatever value that column holds, dangling or not. A recipient seeded without ever being
+    /// provisioned as a real platform user (cold-start run #7's "filing" participant, modelled with
+    /// no organisation and no platform user behind it) resolves successfully here and only fails two
+    /// hops later — a 400 from the internal inbox endpoint's own #1506 existence guard, thrown as an
+    /// <see cref="HttpRequestException"/> by <c>WriteAsync</c>'s <c>EnsureSuccessStatusCode</c> and
+    /// swallowed whole by the caller's try/catch (CLAUDE.md pattern 12 — correctly, so the write
+    /// failure cannot roll back the submission). That correctness is exactly why the loss was
+    /// invisible: nothing named which recipient caused it. Checking existence HERE, before the
+    /// request is even built, turns a swallowed exception into a deliberate, logged skip.
+    /// </remarks>
+    private async Task<Guid?> VerifyPlatformUserExistsAsync(
+        Guid candidate, string walletAddress, string context, CancellationToken ct)
+    {
+        if (await _inbox.PlatformUserExistsAsync(candidate, ct).ConfigureAwait(false))
+        {
+            return candidate;
+        }
+
+        _logger.LogWarning(
+            "Inbox skip — resolved PlatformUserId {PlatformUserId} for wallet {Wallet} ({Context}) does "
+            + "not name a known platform user (a stale or dangling UserIdentity→PlatformUser link). "
+            + "Skipping the write rather than sending a request the server is guaranteed to reject.",
+            candidate, walletAddress, context);
         return null;
     }
 
@@ -184,9 +231,19 @@ public sealed class BlueprintInboxWriter : IBlueprintInboxWriter
                 return;
             }
 
+            // #1682 — a resolved PlatformUserId can still be dangling (see VerifyPlatformUserExistsAsync).
+            // Confirm before building the request rather than sending one the server is guaranteed to
+            // reject: that is the "one inbox notification lost on every action submission" defect.
+            var verifiedPlatformUserId = await VerifyPlatformUserExistsAsync(
+                platformUserId.Value, walletAddress, "action-available", ct).ConfigureAwait(false);
+            if (verifiedPlatformUserId is null)
+            {
+                return;
+            }
+
             var sourceEventId = DeterministicSourceEventId(walletAddress, instanceId, actionId);
             var payload = new InboxWritePayload(
-                PlatformUserId: platformUserId.Value,
+                PlatformUserId: verifiedPlatformUserId.Value,
                 Category: "Action",
                 Severity: "ActionRequired",
                 CorrelationKey: $"action:{instanceId}:{actionId}",
