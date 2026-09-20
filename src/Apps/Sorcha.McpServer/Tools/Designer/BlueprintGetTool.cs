@@ -216,7 +216,18 @@ public sealed class BlueprintGetTool
                     IsStartingAction = a.IsStartingAction,
                     RequiredActionData = a.RequiredActionData?.ToList() ?? [],
                     AdditionalRecipients = a.AdditionalRecipients?.ToList() ?? [],
-                    DisclosureCount = a.Disclosures?.Count() ?? 0
+                    DisclosureCount = a.Disclosures?.Count() ?? 0,
+                    // Routes are what decides which action runs next. Omitting them made this tool
+                    // useless for understanding a workflow's shape: cold-start runs #5 and #6 both
+                    // called sorcha_blueprint_export immediately afterwards purely to see them.
+                    Routes = a.Routes?.Select(r => new RouteInfo
+                    {
+                        Id = r.Id,
+                        NextActionIds = r.NextActionIds?.ToList() ?? [],
+                        IsDefault = r.IsDefault,
+                        Description = r.Description,
+                        HasCondition = r.Condition is not null
+                    }).ToList() ?? []
                 }).ToList() ?? []
             };
         }
@@ -267,6 +278,16 @@ public sealed class BlueprintGetTool
         public IEnumerable<string>? RequiredActionData { get; set; }
         public IEnumerable<string>? AdditionalRecipients { get; set; }
         public IEnumerable<object>? Disclosures { get; set; }
+        public IEnumerable<RouteDto>? Routes { get; set; }
+    }
+
+    private sealed class RouteDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public IEnumerable<int>? NextActionIds { get; set; }
+        public bool IsDefault { get; set; }
+        public string? Description { get; set; }
+        public System.Text.Json.Nodes.JsonNode? Condition { get; set; }
     }
 }
 
@@ -437,4 +458,38 @@ public sealed record ActionInfo
     /// Number of disclosure rules defined for this action.
     /// </summary>
     public int DisclosureCount { get; init; }
+
+    /// <summary>
+    /// The routes out of this action — which action runs next, and on what condition.
+    /// </summary>
+    /// <remarks>
+    /// Without these the tool cannot answer "what happens after this action", which is most of
+    /// what a workflow IS. Cold-start runs #5 and #6 both called <c>sorcha_blueprint_export</c>
+    /// straight afterwards purely to read them.
+    /// </remarks>
+    public IReadOnlyList<RouteInfo> Routes { get; init; } = [];
+}
+
+/// <summary>
+/// A route out of an action: where it leads and whether it is conditional.
+/// </summary>
+public sealed record RouteInfo
+{
+    /// <summary>Route identifier, as the sealed routing decision records it.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>The actions this route leads to. Several means a parallel branch.</summary>
+    public IReadOnlyList<int> NextActionIds { get; init; } = [];
+
+    /// <summary>True when this is the fallback taken if no conditional route matches.</summary>
+    public bool IsDefault { get; init; }
+
+    /// <summary>Human-readable description of when this route is taken.</summary>
+    public string? Description { get; init; }
+
+    /// <summary>
+    /// True when the route carries a condition. The condition expression itself is not returned —
+    /// use sorcha_blueprint_export for the full definition.
+    /// </summary>
+    public bool HasCondition { get; init; }
 }
