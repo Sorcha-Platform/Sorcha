@@ -122,18 +122,29 @@ public sealed class TenantCreateTool
 
             // Typed client forwards the caller's bearer and pins the correct route
             // (POST api/platform/organizations).
-            var responseContent = await _tenantClient.CreateOrganizationAsync(requestBody, cancellationToken);
+            var read = await _tenantClient.CreateOrganizationAsync(requestBody, cancellationToken);
+            var responseContent = read.Body;
 
             stopwatch.Stop();
 
-            if (string.IsNullOrWhiteSpace(responseContent))
+            if (!read.IsSuccess || string.IsNullOrWhiteSpace(responseContent))
             {
                 _availabilityTracker.RecordSuccess("Tenant");
 
+                // #1685(a). This route is SystemAdmin-only. An org Administrator who is not a
+                // platform SystemAdmin gets a 403 — a correct refusal, but "Tenant creation
+                // failed" with no detail reads as a problem with the INPUT, so an agent varies
+                // name/email/admin-name instead of learning it needs different authority.
                 return new TenantCreateResult
                 {
-                    Status = "Error",
-                    Message = "Tenant creation failed.",
+                    Status = read.IsForbidden ? "Refused" : "Error",
+                    Message = read.IsForbidden
+                        ? $"Tenant creation was refused: the Tenant Service answered HTTP 403. "
+                          + "This operation requires platform-system-admin authority, which the "
+                          + "calling account does not hold — varying the tenant name, admin email "
+                          + "or admin name will not change this."
+                        : $"Tenant creation failed: the Tenant Service answered HTTP "
+                          + $"{(int)read.Status} with no usable body.",
                     CheckedAt = DateTimeOffset.UtcNow,
                     ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                 };

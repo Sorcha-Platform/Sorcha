@@ -128,7 +128,7 @@ public class UserListToolTests
 
         result.Status.Should().Be("Success");
         result.Users.Should().HaveCount(2);
-        result.Users[0].UserId.Should().Be("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        result.Users[0].UserIdentityId.Should().Be("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
         result.Users[0].Email.Should().Be("user1@test.com");
         result.Users[0].Roles.Should().Contain("Administrator");
         result.TotalCount.Should().Be(2);

@@ -16,6 +16,14 @@ namespace Sorcha.McpServer.Tools.Admin;
 /// <summary>
 /// Admin tool for reading the caller's organisation audit log, including refusals (#1648).
 /// </summary>
+/// <remarks>
+/// #1686. This is the Tenant Service's ADMINISTRATIVE audit log — logins, membership/invitation
+/// changes, and permission refusals — not a ledger transaction trail. A cold-start run submitted a
+/// register creation, a blueprint publish, an instance creation and three action submissions and
+/// got back three unrelated entries (two refusals and one OrganizationCreated); an agent reading
+/// "no entry for my action" as "my action was not recorded" would be wrong. <c>sorcha_transaction_history</c>
+/// is the tool that answers what happened on the ledger.
+/// </remarks>
 [McpServerToolType]
 public sealed class AuditQueryTool
 {
@@ -52,7 +60,7 @@ public sealed class AuditQueryTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The audit entries.</returns>
     [McpServerTool(Name = ToolName)]
-    [Description("Returns paged entries from YOUR organisation's audit log, newest first: logins, membership and invitation changes, and refusals. Services record refusals with their reason as PermissionDenied entries, naming the action (wallet.sign, wallet.access, blueprint.publish, blueprint.amend), the resource and the refusing service. Use this when an action was refused (a 403, or a tool reporting Unauthorized) and you need to know why: filter eventType=PermissionDenied and a startTime just before the attempt. The organisation always comes from your token; it cannot read another organisation's log. It requires the Auditor, Administrator or SystemAdmin role in that organisation. Prefer this instead of sorcha_log_query, which does not expose raw service logs.")]
+    [Description("Returns paged entries from YOUR organisation's TENANT-SERVICE audit log, newest first: logins, membership and invitation changes, and refusals (services record a refusal's reason as a PermissionDenied entry naming the action — wallet.sign, wallet.access, blueprint.publish, blueprint.amend — the resource and the refusing service). This is NOT a ledger transaction trail: register creation, blueprint publication, instance creation and action submissions do not appear here even when they succeeded, because they are recorded on the register's ledger, not the Tenant organisation log. An empty or unrelated result means only 'no Tenant-service admin/permission event matched', never 'nothing happened' — for what happened on the ledger, use sorcha_transaction_history instead. Use THIS tool when an action was refused (a 403, or a tool reporting Unauthorized) and you need to know why: filter eventType=PermissionDenied and a startTime just before the attempt. The organisation always comes from your token; it cannot read another organisation's log. It requires the Auditor, Administrator or SystemAdmin role in that organisation. Prefer this instead of sorcha_log_query, which does not expose raw service logs.")]
     public async Task<AuditQueryResult> QueryAuditLogsAsync(
         [Description("Filter by event type, e.g. PermissionDenied for refusals, Login, UserAddedToOrganization")] string? eventType = null,
         [Description("Filter by platform user id (a GUID)")] string? userId = null,
@@ -219,7 +227,7 @@ public sealed class AuditQueryTool
                         ? when
                         : null,
                     EventType = type,
-                    UserId = String(item, "identityId"),
+                    PlatformUserId = String(item, "identityId"),
                     Success = item.TryGetProperty("success", out var ok) && ok.ValueKind == JsonValueKind.True,
                     Action = (details is { } a ? String(a, "action") : null) ?? type,
                     ResourceType = details is { } rt ? String(rt, "resourceType") : null,
@@ -240,8 +248,14 @@ public sealed class AuditQueryTool
             Message = entries.Count == 0
                 ? refusalsOnly
                     ? "No refusals are recorded for your organisation in this window."
-                    : "No audit entries match this filter for your organisation."
-                : $"{entries.Count} of {total} audit entr{(total == 1 ? "y" : "ies")} for your organisation, newest first.",
+                    : "No Tenant-service admin/permission entries match this filter for your "
+                      + "organisation in this window. This does NOT mean nothing happened: ledger "
+                      + "events (register creation, blueprint publication, instance creation, "
+                      + "action submissions) are never recorded here — use sorcha_transaction_history "
+                      + "for those."
+                : $"{entries.Count} of {total} Tenant-service audit entr{(total == 1 ? "y" : "ies")} "
+                  + "for your organisation, newest first. This log covers admin/permission events "
+                  + "only; ledger activity is not included here — use sorcha_transaction_history for that.",
             CheckedAt = DateTimeOffset.UtcNow,
             ResponseTimeMs = elapsed,
             OrganizationId = orgId,
@@ -313,8 +327,12 @@ public sealed record AuditEntry
     /// <summary>Event type, e.g. Login or PermissionDenied.</summary>
     public required string EventType { get; init; }
 
-    /// <summary>The platform user the event concerns, when known.</summary>
-    public string? UserId { get; init; }
+    /// <summary>
+    /// The cross-org <c>PlatformUser</c> id the event concerns, when known. #1686: this is a
+    /// DIFFERENT id from the org-scoped <c>UserIdentity</c> id <c>sorcha_user_list</c> reports for
+    /// the same human — the two were both unlabelled "UserId" in their respective tool outputs.
+    /// </summary>
+    public string? PlatformUserId { get; init; }
 
     /// <summary>False for refusals and failures.</summary>
     public bool Success { get; init; }

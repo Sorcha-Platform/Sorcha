@@ -3,11 +3,37 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.32
-**Last Updated:** 2026-09-15
+**Version:** 7.33
+**Last Updated:** 2026-09-20
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
+> **▶ 2026-09-20 - Cold-start run #7 legibility sweep: #1680, #1685, #1686 — MCP refusals say what happened and why.**
+> Same root cause across all three: the MCP surface turned a refusal, a scope limit, or a store
+> boundary into an absence or a bare error, so an agent could not tell what happened or what to do.
+> Branch `fix/1680-1685-1686-mcp-refusal-legibility`.
+>
+> | # | Defect | Fix | Mutation-tested |
+> |---|---|---|---|
+> | **#1680** | `GET .../verification-bundle` answered 409 (not sealed / wrong reason) FOUR TIMES; `sorcha_transaction_verification_bundle` collapsed every non-success into `NotFound … not yet sealed` — a fabricated excuse the server never gave, once on a transaction sealed 5 minutes earlier. Read as transient, so the agent retried | `GetVerificationBundleAsync` now returns a `VerificationBundleOutcome` (`Bundle` or `Refusal{StatusCode, Reason}`, mirroring `PublishBlueprintOutcome` from #1641) carrying the real status + the server's own body text. 404 stays `NotFound`; everything else is `Refused` with the verbatim reason | ✅ 2 mutations (tool-level collapse, client-level collapse), each RED then GREEN |
+> | **#1685(a)** | `sorcha_tenant_create` returned `"Tenant creation failed."` with no detail, 3× — the real cause was a 403 (SystemAdmin-only route, org-Administrator caller). Agent varied inputs instead of learning it needed different authority | `CreateOrganizationAsync` returns `ServiceReadResult` (the #1673 pattern) instead of a bare string; a 403 is reported as `Refused`, naming platform-system-admin authority explicitly | ✅ 1 mutation, RED then GREEN |
+> | **#1685(b)** | Four tools each cost a wasted, sub-ms call on a wrong argument name (`orgId`/`organizationId`, `address`/`walletAddress`, `instanceId`/`workflowInstanceId`, `logic`+`data`/`ruleJson`+`dataJson`) — the SDK's binding error named only the one parameter it happened to check first | Central fix, no per-tool changes and NO parameter renamed (that is a contract change, deliberately out of scope — see rename recommendations below): `WithArgumentBindingErrorFilter` now consults a new `ToolParameterCatalog` (reflects every `[McpServerTool]` method once at first use) and lists every parameter the tool actually binds in the error text, so the first wrong guess is self-correcting instead of the second. Also fixes the same class on `sorcha_blueprint_validate`, `sorcha_disclosed_data`, `sorcha_transaction_status` for free | ✅ 2 mutations (filter guidance text, catalog required-marker), each RED then GREEN |
+> | **#1686** | `sorcha_audit_query` returned 3 unrelated entries for a session that created a register, published a blueprint, created an instance and submitted 3 actions — correct (it's the Tenant ORG log, not a ledger trail) but read as "my actions were not recorded" | Description + empty/non-empty `Message` now say what it covers and point at `sorcha_transaction_history` for ledger activity | ✅ 2 mutations (description text, empty-message text), each RED then GREEN |
+> | **#1686** | `sorcha_blueprint_publish`'s override message claimed the override "has been recorded against the caller's account" — `sorcha_audit_query` shows nothing for it, so the claim looked false. It isn't: blueprint-service writes it to its own `PublishOverride` table (F142), a different store | Message now names that table and says explicitly it will not appear in `sorcha_audit_query` (chose to fix the message, not the store — it was the truthful, cheap fix) | ✅ 1 mutation, RED then GREEN |
+> | **#1686** | `sorcha_user_list` and `sorcha_audit_query` both reported an unlabelled `UserId` for the same human — one is the org-scoped `UserIdentity` id, the other the cross-org `PlatformUser` id | Renamed to `UserIdentityId` / `PlatformUserId` respectively, each documenting the other | ✅ 1 mutation (dropped the mapping), RED then GREEN |
+>
+> **Renames recommended but NOT implemented** (would change the published tool-parameter contract —
+> flagged for a deliberate, separate breaking-change pass): `sorcha_user_list(orgId→organizationId)`,
+> `sorcha_wallet_info(address→walletAddress)`, `sorcha_workflow_status(instanceId→workflowInstanceId)`,
+> `sorcha_jsonlogic_test(logic→ruleJson, data→dataJson)`. Also reported, not fixed:
+> `sorcha_org_status` reads as a getter but requires a `status` argument (it is a setter — suspend/
+> reactivate); it is referenced in `server.json` + the gateway's tool catalogue + tests, so it is
+> NOT "genuinely unused elsewhere" and a rename needs its own pass, not a drive-by in this one.
+>
+> ⚠ `scripts/check-mcp-response-shapes.ps1` and `scripts/check-mcp-routes.ps1` both pass unchanged —
+> no tool name, route, or DTO/server-type pairing moved; only descriptions, messages and two internal
+> result-record property names changed.
+>
 > **▶ 2026-09-19 - Run #5 BLOCKER SWEEP: six fixes, all merged-ready on `fix/run6-blockers`.**
 > Run #5 reached a sealed, encrypted action 1 across two organisations and then wedged. Fixing what
 > it found, before run #6:

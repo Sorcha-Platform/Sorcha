@@ -5,6 +5,7 @@ using Sorcha.Register.Models;
 using Sorcha.Register.Models.LocalRelationship;
 using Sorcha.Register.Models.Observations;
 using Sorcha.Register.Models.Enums;
+using Sorcha.ServiceClients.Register.Models;
 
 namespace Sorcha.ServiceClients.Register;
 
@@ -664,8 +665,13 @@ public interface IRegisterServiceClient
     /// <param name="registerId">Register containing the transaction.</param>
     /// <param name="transactionId">Transaction ID to export a bundle for.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The verification bundle, or null if the transaction was not found, not yet sealed, or the call failed.</returns>
-    Task<VerificationBundle?> GetVerificationBundleAsync(
+    /// <returns>
+    /// The outcome: the bundle on success, or a <see cref="VerificationBundleRefusal"/> carrying
+    /// the Register Service's actual HTTP status and reason (#1680 — a 404 "no such transaction"
+    /// and a 409 "not sealed yet" are different situations and must not be collapsed together).
+    /// Null only when the response itself could not be read (deserialize failure, transport error).
+    /// </returns>
+    Task<VerificationBundleOutcome?> GetVerificationBundleAsync(
         string registerId,
         string transactionId,
         CancellationToken cancellationToken = default);
