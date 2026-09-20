@@ -8,6 +8,40 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
+> **▶ 2026-09-20 - The org issuer cert co-key could never derive: `AlgorithmMapper` had no "ES256" alias.**
+> Live on n1 for every organisation: `OrgIssuerCertKeyService`'s HaipCoKey branch (F181 US4/US5) passed
+> the literal `"ES256"` into `KeyManagementService.DeriveKeyAtPathAsync`, but `AlgorithmMapper.TryParseAlgorithm`
+> only accepted `"NISTP256" | "NIST-P256" | "P-256" | "P256" | "ECDSA-P256"` for `WalletNetworks.NISTP256` —
+> no "ES256" (the JOSE/COSE name for the same algorithm). `ParseAlgorithm` threw, `TryResolveAsync` caught
+> and logged it, and the `/issuer-cert-key` endpoint still answered 200 with "not eligible" — a refusal
+> presenting as an absence for essentially every ED25519-primary org.
+>
+> Fix: added `"ES256"` to the `NISTP256` alias arm (`Sorcha.Cryptography.Utilities.AlgorithmMapper`),
+> branch `fix/algorithm-mapper-es256-alias`. Same one-line fix also repairs `HaipIssuerCoKeyService`,
+> `HolderBindingKeyService`, `HolderKeyService`, and `CitizenStatusListPublisher` — all four resolve their
+> PQC-primary co-key derivation algorithm via `WalletAlgorithmClassification.DefaultClassicalAlgorithm`,
+> which is the literal `"ES256"`, so they hit the identical mapper gap through the same
+> `DeriveKeyAtPathAsync` seam. It also repairs any call site that forwards `wallet.Algorithm` verbatim
+> (`WalletManager`, `WalletGrpcService`, `TransactionService`) for a wallet whose stored primary algorithm
+> is literally `"ES256"` — a value multiple services already treat as a valid primary spelling.
+>
+> Two tests added: a mapper unit test (`AlgorithmMapperTests`) and a **seam test**
+> (`OrgIssuerCertKeyServiceSeamTests`) that wires a REAL `KeyManagementService` (real `CryptoModule`, real
+> `LocalEncryptionProvider`) rather than mocking `IKeyManagementService.DeriveKeyAtPathAsync` — the
+> existing `OrgIssuerCertKeyServiceTests.Resolve_Ed25519Primary_DerivesHaipCoKey_And_SignVerifies` mocks
+> exactly that method and stayed green throughout the live outage, which is why a mapper-only unit test
+> was judged insufficient. Both mutation-tested (revert fix → RED for the right reason → restore → GREEN).
+>
+> ⚠ **Found, NOT fixed here (separate defect, reported for follow-up):**
+> `CryptoModule.GenerateNISTP256KeySetAsync` ignores its `seed` parameter entirely and always generates a
+> fresh random P-256 keypair — unlike `GenerateED25519KeySetAsync`, which genuinely derives from the seed.
+> This means the HaipCoKey "derivation" is not actually deterministic: two calls to
+> `OrgIssuerCertKeyService.TryResolveAsync` for the same wallet (e.g. one from `ResolveAsync`, one from a
+> later `SignPreHashedAsync`) now succeed but return **different, unrelated P-256 keypairs**. A cert issued
+> against the SPKI from `ResolveAsync` can never be validated against a signature produced by a later
+> `SignPreHashedAsync` call. Confirmed with a throwaway same-seed-twice repro against the real
+> `CryptoModule` before being removed from the final test suite. Needs its own issue/fix.
+>
 > **▶ 2026-09-19 - Run #5 BLOCKER SWEEP: six fixes, all merged-ready on `fix/run6-blockers`.**
 > Run #5 reached a sealed, encrypted action 1 across two organisations and then wedged. Fixing what
 > it found, before run #6:
