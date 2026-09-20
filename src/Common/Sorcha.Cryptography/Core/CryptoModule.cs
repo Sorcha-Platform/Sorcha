@@ -4,6 +4,9 @@ using System;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using Org.BouncyCastle.Asn1.Nist;
+using Org.BouncyCastle.Asn1.X9;
+using Org.BouncyCastle.Math;
 using Sodium;
 using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
@@ -20,6 +23,14 @@ public class CryptoModule : ICryptoModule
 {
     private readonly PqcSignatureProvider _pqcSignatureProvider = new();
     private readonly PqcEncapsulationProvider _pqcEncapsulationProvider = new();
+
+    /// <summary>
+    /// NIST P-256 (secp256r1) domain parameters, used to deterministically derive a P-256 keypair
+    /// from a seed in <see cref="GenerateNISTP256KeySetAsync"/> — the same role NBitcoin/libsodium
+    /// play for the secp256k1 and ED25519 derivations elsewhere in this class.
+    /// </summary>
+    private static readonly X9ECParameters NistP256Parameters = NistNamedCurves.GetByName("P-256");
+
     /// <summary>
     /// Generates a new cryptographic key pair.
     /// </summary>
@@ -554,16 +565,40 @@ public class CryptoModule : ICryptoModule
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-            var parameters = ecdsa.ExportParameters(true);
+            byte[] privateKey;
+            byte[] publicKey;
 
-            // Private key is the D parameter
-            var privateKey = parameters.D!;
+            if (seed != null && seed.Length > 0)
+            {
+                // Deterministically derive from the seed — mirrors GenerateED25519KeySetAsync's
+                // contract above (#1679). D is validated to actually lie in [1, n-1] rather than
+                // trusting that 32 arbitrary bytes happen to be a valid scalar (see
+                // DeriveP256PrivateScalar), and Q = D*G is computed directly via BouncyCastle's EC
+                // math — .NET's ECDsa has no "generate from seed" entry point for P-256, only
+                // "generate randomly" or "import an already-known D/Q pair".
+                var d = DeriveP256PrivateScalar(seed);
+                var q = NistP256Parameters.G.Multiply(d).Normalize();
 
-            // Public key is X and Y coordinates concatenated
-            var publicKey = new byte[64];
-            Array.Copy(parameters.Q.X!, 0, publicKey, 0, 32);
-            Array.Copy(parameters.Q.Y!, 0, publicKey, 32, 32);
+                privateKey = ToFixedLengthUnsignedBytes(d, 32);
+                publicKey = new byte[64];
+                var xBytes = ToFixedLengthUnsignedBytes(q.AffineXCoord.ToBigInteger(), 32);
+                var yBytes = ToFixedLengthUnsignedBytes(q.AffineYCoord.ToBigInteger(), 32);
+                Array.Copy(xBytes, 0, publicKey, 0, 32);
+                Array.Copy(yBytes, 0, publicKey, 32, 32);
+            }
+            else
+            {
+                using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+                var parameters = ecdsa.ExportParameters(true);
+
+                // Private key is the D parameter
+                privateKey = parameters.D!;
+
+                // Public key is X and Y coordinates concatenated
+                publicKey = new byte[64];
+                Array.Copy(parameters.Q.X!, 0, publicKey, 0, 32);
+                Array.Copy(parameters.Q.Y!, 0, publicKey, 32, 32);
+            }
 
             var keySet = new KeySet
             {
@@ -573,6 +608,59 @@ public class CryptoModule : ICryptoModule
 
             return CryptoResult<KeySet>.Success(keySet);
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Deterministically derives a valid P-256 private scalar from an arbitrary-length seed.
+    /// </summary>
+    /// <remarks>
+    /// The seed is normalized to exactly 32 bytes (truncate/zero-pad — the same convention
+    /// <c>GenerateED25519KeySetAsync</c> uses) and interpreted as a big-endian unsigned integer. That
+    /// candidate is then validated against the curve order <c>n</c>: a raw 256-bit value is
+    /// astronomically likely to already land in [1, n-1] since n is within 2^-32 of 2^256, but
+    /// "astronomically likely" is not "always", and using zero or an out-of-range scalar as an EC
+    /// private key is a hard cryptographic error, not a rounding issue worth ignoring. When the
+    /// candidate is out of range, this deterministically re-hashes (domain-separated by an attempt
+    /// counter) and retries, so the whole derivation remains a pure function of the seed.
+    /// </remarks>
+    private static BigInteger DeriveP256PrivateScalar(byte[] seed)
+    {
+        var n = NistP256Parameters.N;
+
+        var normalizedSeed = new byte[32];
+        Array.Copy(seed, 0, normalizedSeed, 0, Math.Min(seed.Length, 32));
+
+        var candidate = new BigInteger(1, normalizedSeed);
+        var attempt = 0;
+        while (candidate.SignValue == 0 || candidate.CompareTo(n) >= 0)
+        {
+            attempt++;
+            var attemptBytes = BitConverter.GetBytes(attempt);
+            var material = new byte[normalizedSeed.Length + attemptBytes.Length];
+            Array.Copy(normalizedSeed, 0, material, 0, normalizedSeed.Length);
+            Array.Copy(attemptBytes, 0, material, normalizedSeed.Length, attemptBytes.Length);
+            candidate = new BigInteger(1, SHA256.HashData(material));
+        }
+
+        return candidate;
+    }
+
+    /// <summary>
+    /// Renders a non-negative <see cref="BigInteger"/> as an exactly-<paramref name="length"/>-byte
+    /// big-endian array, left-padding with zero bytes — <c>ToByteArrayUnsigned()</c> alone can return
+    /// fewer bytes than the curve's field size when the leading bytes happen to be zero.
+    /// </summary>
+    private static byte[] ToFixedLengthUnsignedBytes(BigInteger value, int length)
+    {
+        var unsigned = value.ToByteArrayUnsigned();
+        if (unsigned.Length == length)
+        {
+            return unsigned;
+        }
+
+        var result = new byte[length];
+        Array.Copy(unsigned, 0, result, length - unsigned.Length, unsigned.Length);
+        return result;
     }
 
     private Task<CryptoResult<byte[]>> SignNISTP256Async(byte[] hash, byte[] privateKey, CancellationToken cancellationToken)

@@ -98,20 +98,16 @@ public class OrgIssuerCertKeyServiceSeamTests
         var rawPoint = parameters.Q.X!.Concat(parameters.Q.Y!).ToArray();
         rawPoint.Should().HaveCount(64, "a P-256 public point is 32-byte X concatenated with 32-byte Y");
 
-        // And prove the derived key is actually usable for signing — the co-key derivation, not just its
-        // shape, must be real.
-        // Separately exercise the OTHER branch of TryResolveAsync (needPrivate: true) end-to-end — it
-        // re-derives independently of ResolveAsync's derivation, so this proves the sign path completes
-        // the real ES256 derivation and produces a well-formed P-256 signature, without assuming the two
-        // derivations yield the same keypair.
-        //
-        // NOTE: they do NOT currently yield the same keypair — see the "found but out of scope" defect
-        // recorded in the PR description: CryptoModule.GenerateNISTP256KeySetAsync ignores its seed
-        // parameter entirely and always generates a fresh random P-256 key, unlike GenerateED25519KeySetAsync
-        // which genuinely derives from the seed. That is a second, separate defect this seam test surfaced;
-        // fixing it is out of scope for the ES256 alias fix.
+        // And prove the derived key is actually usable end to end: TryResolveAsync is called AGAIN,
+        // independently, by SignPreHashedAsync (needPrivate: true) — a fresh master-key decrypt and a
+        // fresh HaipCoKey derivation, not a cached value from the ResolveAsync call above. The signature
+        // it produces must verify against the SPKI ResolveAsync returned, proving the derivation is
+        // genuinely deterministic (#1679 — CryptoModule.GenerateNISTP256KeySetAsync used to ignore its
+        // seed and hand back a fresh random P-256 key on every call, so this round trip could never pass;
+        // fixed alongside the #1687 ES256 alias fix in this PR).
         var digest = SHA256.HashData("seam-test-payload"u8.ToArray());
         var signature = await service.SignPreHashedAsync("ws1qseam", digest);
-        signature.Should().HaveCount(64, "a P-256 IEEE P1363 signature is a 32-byte r concatenated with a 32-byte s");
+        ecdsa.VerifyHash(digest, signature).Should().BeTrue(
+            "the HaipCoKey derivation must be deterministic — a later independent derivation must sign with the SAME key ResolveAsync reported");
     }
 }
