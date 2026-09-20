@@ -35,6 +35,9 @@ public class ParticipantIndexStartupRebuildTests
 {
     private const string RegisterId = "4145b4e7102246ae997f2510acba2220";
 
+    /// <summary>One record's identity across its versions.</summary>
+    private const string Same = "c5aff551-03cc-482e-9562-72a24b54dec7";
+
     [Fact]
     public void Replay_RestoresRecordsIntoAnIndexThatNeverSawThemIngested()
     {
@@ -70,8 +73,8 @@ public class ParticipantIndexStartupRebuildTests
         ParticipantIndexStartupRebuildService.Replay(
             index, RegisterId,
             [
-                ParticipantTx("tx-1", "recipient", "Recipient Org", "Active", 1, "ws11q-first"),
-                ParticipantTx("tx-2", "recipient", "Recipient Org", "Active", 2, "ws11q-second"),
+                ParticipantTx("tx-1", "recipient", "Recipient Org", "Active", 1, "ws11q-first", Same),
+                ParticipantTx("tx-2", "recipient", "Recipient Org", "Active", 2, "ws11q-second", Same),
             ],
             NullLogger.Instance);
 
@@ -119,11 +122,15 @@ public class ParticipantIndexStartupRebuildTests
     }
 
     private static TransactionModel ParticipantTx(
-        string txId, string participantName, string organizationName, string status, int version, string walletAddress)
+        string txId, string participantName, string organizationName, string status, int version,
+        string walletAddress, string? participantId = null)
     {
         var payload = new
         {
-            participantId = Guid.NewGuid().ToString(),
+            // Defaults to a fresh id, but a version bump of the SAME record must pass the SAME id:
+            // two ids sharing a name are two participants, and which one resolves is then
+            // arbitrary. That made the ordering test below pass locally and fail in CI.
+            participantId = participantId ?? Guid.NewGuid().ToString(),
             participantName,
             organizationName,
             status,
