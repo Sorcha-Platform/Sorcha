@@ -831,25 +831,10 @@ blueprintGroup.MapGet("/", async (
 // <summary>
 // Get blueprint by ID
 // Supports JSON-LD via Accept: application/ld+json header
+// Falls back to the published definition on a register the caller participates in when the
+// caller's own organisation does not own the draft (#1683).
 // </summary>
-blueprintGroup.MapGet("/{id}", async (HttpContext context, string id, IBlueprintService service) =>
-{
-    var orgId = context.IsServiceToken() ? null : context.GetOrganizationId();
-    var blueprint = await service.GetByIdAsync(id, orgId);
-    if (blueprint is null) return Results.NotFound();
-
-    // Add JSON-LD context if requested
-    if (context.AcceptsJsonLd())
-    {
-        blueprint = JsonLdHelper.EnsureJsonLdContext(blueprint);
-    }
-
-    return Results.Ok(blueprint);
-})
-.WithName("GetBlueprintById")
-.WithSummary("Get blueprint by ID")
-.WithDescription("Retrieve a specific blueprint by its unique identifier. Supports JSON-LD via Accept: application/ld+json header.")
-.CacheOutput(policy => policy.Expire(TimeSpan.FromMinutes(5)).Tag("blueprints"));
+blueprintGroup.MapBlueprintGetEndpoint();
 
 // <summary>
 // Create new blueprint

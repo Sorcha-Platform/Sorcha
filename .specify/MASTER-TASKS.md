@@ -8,6 +8,12 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
+> **▶ 2026-09-20 - Run #7 refusal-legibility fixes: #1683 + #1682, on `fix/1683-1682-blueprint-read-and-inbox`.**
+>
+> | # | Defect | Fix | Mutations |
+> |---|---|---|---|
+> | **#1683** | `GET /api/blueprints/{id}` served only the org-scoped DRAFT store, so a counterparty bound as a register participant on a PUBLISHED definition got a 404 for a blueprint that plainly exists — the #1673 class (a scoping refusal presented as an absence) | New `Endpoints/BlueprintGetEndpoint.cs`: when the caller's org does not own the draft, falls back to the published definition on a register one of the caller's resolved wallets is an active participant on (`IPublishedBlueprintStore` + `IRegisterServiceClient.GetPublishedParticipantByAddressAsync` — Feature 195's existing plumbing). 403 (not 404) when a publication exists but the caller isn't a participant on any register carrying it; 404 only when nothing resolves at all | 5/5 (BlueprintGetEndpointTests, 7 tests total) |
+>
 > **▶ 2026-09-19 - Run #5 BLOCKER SWEEP: six fixes, all merged-ready on `fix/run6-blockers`.**
 > Run #5 reached a sealed, encrypted action 1 across two organisations and then wedged. Fixing what
 > it found, before run #6:
