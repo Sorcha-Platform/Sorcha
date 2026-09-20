@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ServiceClients.Shared;
 using Sorcha.ServiceClients.Blueprint.Models;
 
 namespace Sorcha.ServiceClients.Blueprint;
@@ -149,7 +150,7 @@ public interface IBlueprintServiceClient
     /// Gets a workflow instance's current status. Calls <c>GET /api/instances/{id}</c>.
     /// </summary>
     /// <returns>The workflow-status JSON body, or null on non-success.</returns>
-    Task<BlueprintReadResult> GetWorkflowStatusAsync(
+    Task<ServiceReadResult> GetWorkflowStatusAsync(
         string workflowInstanceId,
         CancellationToken cancellationToken = default);
 
@@ -174,7 +175,7 @@ public interface IBlueprintServiceClient
     /// <param name="instanceId">The workflow instance ID the action belongs to.</param>
     /// <param name="actionId">The action's sequence number within the blueprint.</param>
     /// <returns>The action-details JSON body, or null on non-success.</returns>
-    Task<BlueprintReadResult> GetActionDetailsAsync(
+    Task<ServiceReadResult> GetActionDetailsAsync(
         string instanceId,
         string actionId,
         CancellationToken cancellationToken = default);
@@ -194,7 +195,7 @@ public interface IBlueprintServiceClient
     /// Calls <c>GET /api/workflows/{id}/disclosures</c> (or the action-scoped variant).
     /// </summary>
     /// <returns>The disclosures JSON body, or null on non-success.</returns>
-    Task<BlueprintReadResult> GetDisclosedDataAsync(
+    Task<ServiceReadResult> GetDisclosedDataAsync(
         string workflowInstanceId,
         string? actionInstanceId = null,
         CancellationToken cancellationToken = default);

@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Net;
 using Microsoft.Extensions.Logging;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 using Sorcha.McpServer.Tools.Admin;
+using Sorcha.ServiceClients.Shared;
 using Sorcha.ServiceClients.Tenant;
 
 namespace Sorcha.McpServer.Tests.Tools.Admin;
@@ -70,7 +72,7 @@ public class OrgUserAuditToolTests
         Allow();
         _tenantClientMock.Setup(c => c.GetOrganizationUsersAsync(
                 "org-1", "page=2&pageSize=10", It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"items\":[]}");
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, "{\"items\":[]}"));
 
         var result = await CreateTool().InvokeAsync("org-1", page: 2, pageSize: 10);
 
@@ -87,7 +89,7 @@ public class OrgUserAuditToolTests
         Allow();
         _tenantClientMock.Setup(c => c.GetOrganizationUsersAsync(
                 It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string?)null);
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.NotFound, null));
 
         var result = await CreateTool().InvokeAsync("org-1");
 

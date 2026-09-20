@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ServiceClients.Shared;
 using System.Net;
 using System.Text.Json;
 
@@ -53,7 +54,7 @@ public sealed class RefusalIsNotAbsenceTests
     {
         Allow("sorcha_workflow_status");
         _client.Setup(c => c.GetWorkflowStatusAsync(InstanceId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BlueprintReadResult(HttpStatusCode.Forbidden, null));
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.Forbidden, null));
 
         var result = await WorkflowTool().GetWorkflowStatusAsync(InstanceId);
 
@@ -70,7 +71,7 @@ public sealed class RefusalIsNotAbsenceTests
         // The counterfactual: the fix must not turn a real 404 into a refusal.
         Allow("sorcha_workflow_status");
         _client.Setup(c => c.GetWorkflowStatusAsync(InstanceId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BlueprintReadResult(HttpStatusCode.NotFound, null));
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.NotFound, null));
 
         var result = await WorkflowTool().GetWorkflowStatusAsync(InstanceId);
 
@@ -85,7 +86,7 @@ public sealed class RefusalIsNotAbsenceTests
         // Run #5 lost two hours to an expired token that surfaced as something else entirely.
         Allow("sorcha_workflow_status");
         _client.Setup(c => c.GetWorkflowStatusAsync(InstanceId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BlueprintReadResult(HttpStatusCode.Unauthorized, null));
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.Unauthorized, null));
 
         var result = await WorkflowTool().GetWorkflowStatusAsync(InstanceId);
 
@@ -97,7 +98,7 @@ public sealed class RefusalIsNotAbsenceTests
     {
         Allow("sorcha_action_details");
         _client.Setup(c => c.GetActionDetailsAsync(InstanceId, "2", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BlueprintReadResult(HttpStatusCode.Forbidden, null));
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.Forbidden, null));
 
         var result = await ActionTool().GetActionDetailsAsync(InstanceId, "2");
 
@@ -111,7 +112,7 @@ public sealed class RefusalIsNotAbsenceTests
     {
         Allow("sorcha_disclosed_data");
         _client.Setup(c => c.GetDisclosedDataAsync(InstanceId, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BlueprintReadResult(HttpStatusCode.Forbidden, null));
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.Forbidden, null));
 
         var result = await DisclosedTool().GetDisclosedDataAsync(InstanceId);
 
@@ -126,7 +127,7 @@ public sealed class RefusalIsNotAbsenceTests
         // disclosed to us", when action 1 HAD been encrypted to that organisation's other wallet.
         Allow("sorcha_disclosed_data");
         _client.Setup(c => c.GetDisclosedDataAsync(InstanceId, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BlueprintReadResult(
+            .ReturnsAsync(new ServiceReadResult(
                 HttpStatusCode.OK,
                 JsonSerializer.Serialize(new { disclosures = Array.Empty<object>() })));
 

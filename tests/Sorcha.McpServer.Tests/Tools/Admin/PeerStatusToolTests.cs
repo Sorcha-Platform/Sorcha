@@ -30,9 +30,10 @@ public class PeerStatusToolTests
         _configurationMock = new Mock<IConfiguration>();
         _loggerMock = new Mock<ILogger<PeerStatusTool>>();
 
-        // Default configuration
-        _configurationMock.Setup(c => c["ServiceClients:PeerService:Address"])
-            .Returns("http://localhost:5002");
+        // No gateway address configured, so the tool falls back to its local-dev default of
+        // http://localhost:80 — which Uri normalises to "http://localhost". These tests cover
+        // status mapping; PeerStatusGoesThroughTheGatewayTests covers which address is called.
+        _configurationMock.Setup(c => c["ServiceClients:ApiGateway:Address"]).Returns((string?)null);
     }
 
     private PeerStatusTool CreateTool()
@@ -125,8 +126,8 @@ public class PeerStatusToolTests
         };
 
         var httpClient = CreateMockHttpClient(
-            ("http://localhost:5002/api/peers/stats", JsonSerializer.Serialize(statsResponse)),
-            ("http://localhost:5002/api/peers/health", JsonSerializer.Serialize(healthResponse)));
+            ("http://localhost/api/peers/stats", JsonSerializer.Serialize(statsResponse)),
+            ("http://localhost/api/peers/health", JsonSerializer.Serialize(healthResponse)));
 
         _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
         var tool = CreateTool();
@@ -173,8 +174,8 @@ public class PeerStatusToolTests
         };
 
         var httpClient = CreateMockHttpClient(
-            ("http://localhost:5002/api/peers/stats", JsonSerializer.Serialize(statsResponse)),
-            ("http://localhost:5002/api/peers/health", JsonSerializer.Serialize(healthResponse)));
+            ("http://localhost/api/peers/stats", JsonSerializer.Serialize(statsResponse)),
+            ("http://localhost/api/peers/health", JsonSerializer.Serialize(healthResponse)));
 
         _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
         var tool = CreateTool();
@@ -209,8 +210,8 @@ public class PeerStatusToolTests
         };
 
         var httpClient = CreateMockHttpClient(
-            ("http://localhost:5002/api/peers/stats", JsonSerializer.Serialize(statsResponse)),
-            ("http://localhost:5002/api/peers/health", JsonSerializer.Serialize(healthResponse)));
+            ("http://localhost/api/peers/stats", JsonSerializer.Serialize(statsResponse)),
+            ("http://localhost/api/peers/health", JsonSerializer.Serialize(healthResponse)));
 
         _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
         var tool = CreateTool();
@@ -344,8 +345,8 @@ public class PeerStatusToolTests
         var healthResponse = new { TotalPeers = 1, HealthyPeers = 1, UnhealthyPeers = 0, HealthPercentage = 100.0 };
 
         var httpClient = CreateMockHttpClient(
-            ("http://localhost:5002/api/peers/stats", "{}"),
-            ("http://localhost:5002/api/peers/health", JsonSerializer.Serialize(healthResponse)));
+            ("http://localhost/api/peers/stats", "{}"),
+            ("http://localhost/api/peers/health", JsonSerializer.Serialize(healthResponse)));
 
         _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
         var tool = CreateTool();

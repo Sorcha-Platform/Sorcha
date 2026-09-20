@@ -40,7 +40,17 @@ public sealed class PeerStatusTool
         _httpClientFactory = httpClientFactory;
         _logger = logger;
 
-        _peerServiceEndpoint = SorchaServiceAddresses.TryResolve(configuration, SorchaService.Peer) ?? "http://localhost:5002";
+        // Through the GATEWAY, like every other client here, so the forwarded caller token is
+        // authorised by the platform rather than by anonymous service-to-service trust. The
+        // gateway routes /api/peers/** (policy RequireAuthenticated).
+        //
+        // This used to resolve SorchaService.Peer, which is the peer's gRPC address and is
+        // deliberately NOT the same key as its HTTP one (CLAUDE.md pattern 17) — these calls are
+        // HTTP. The MCP server sets no peer address at all, so it fell through to
+        // http://localhost:5002 and every call inside the container died with "Connection
+        // refused", reported to the agent as Unknown. Seen in cold-start run #6.
+        _peerServiceEndpoint = (SorchaServiceAddresses.TryResolve(configuration, SorchaService.ApiGateway)
+                                ?? "http://localhost:80").TrimEnd('/');
     }
 
     /// <summary>

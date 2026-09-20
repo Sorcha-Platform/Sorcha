@@ -2626,6 +2626,10 @@ instancesGroup.MapPost("/{instanceId}/actions/{actionId}/reject", async (
     }
     catch (InvalidOperationException ex)
     {
+        // #1672 — this branch used to log NOTHING, so a 400 whose reason reached the client never
+        // reached the operator: a rejection that had sealed on the ledger answered 400 and the
+        // server log showed only the status, with no error line anywhere to explain it.
+        logger.LogWarning(ex, "Rejecting action {ActionId} on instance {InstanceId} failed", actionId, instanceId);
         return Results.BadRequest(new { error = ex.Message });
     }
     catch (KeyNotFoundException ex)
