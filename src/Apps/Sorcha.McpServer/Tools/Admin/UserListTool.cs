@@ -177,7 +177,7 @@ public sealed class UserListTool
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
                 Users = result.Users?.Select(u => new UserInfo
                 {
-                    UserId = u.Id.ToString(),
+                    UserIdentityId = u.Id.ToString(),
                     OrganizationId = u.OrganizationId.ToString(),
                     Email = u.Email ?? "",
                     DisplayName = u.DisplayName ?? "",
@@ -338,9 +338,12 @@ public sealed record UserListResult
 public sealed record UserInfo
 {
     /// <summary>
-    /// Unique user ID.
+    /// The org-scoped <c>UserIdentity</c> id. #1686: this is a DIFFERENT id from the cross-org
+    /// <c>PlatformUserId</c> that <c>sorcha_audit_query</c> reports for the same human — the two
+    /// were both unlabelled "UserId" in their respective tool outputs, so correlating a refusal to
+    /// a user required already knowing the platform's two-id identity model.
     /// </summary>
-    public required string UserId { get; init; }
+    public required string UserIdentityId { get; init; }
 
     /// <summary>
     /// Organisation ID this user belongs to.

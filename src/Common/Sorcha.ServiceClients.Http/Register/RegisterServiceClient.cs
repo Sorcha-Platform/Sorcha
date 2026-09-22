@@ -11,6 +11,7 @@ using Sorcha.Register.Models.Observations;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Configuration;
 using Sorcha.ServiceClients.Helpers;
+using Sorcha.ServiceClients.Register.Models;
 using Sorcha.Serialization;
 
 namespace Sorcha.ServiceClients.Register;
@@ -2168,7 +2169,7 @@ public class RegisterServiceClient : IRegisterServiceClient
     }
 
     /// <inheritdoc />
-    public async Task<VerificationBundle?> GetVerificationBundleAsync(
+    public async Task<VerificationBundleOutcome?> GetVerificationBundleAsync(
         string registerId,
         string transactionId,
         CancellationToken cancellationToken = default)
@@ -2181,19 +2182,24 @@ public class RegisterServiceClient : IRegisterServiceClient
                 $"api/registers/{Uri.EscapeDataString(registerId)}/transactions/{Uri.EscapeDataString(transactionId)}/verification-bundle",
                 cancellationToken);
 
-            // 404 (no such tx) and 409 (not sealed yet) both map to "no bundle available".
-            if (response.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Conflict)
-                return null;
-
+            // #1680: 404 (no such tx) and 409 (not sealed yet) are DIFFERENT situations — one is
+            // permanent, one may clear on retry — and the server explains each in its body. Carry
+            // both the real status and the real reason through instead of collapsing them to null.
             if (!response.IsSuccessStatusCode)
             {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                var reason = ReadErrorReason(body);
                 _logger.LogWarning(
-                    "GetVerificationBundleAsync failed for {TransactionId} on register {RegisterId}: {StatusCode}",
-                    transactionId, registerId, response.StatusCode);
-                return null;
+                    "GetVerificationBundleAsync refused for {TransactionId} on register {RegisterId}: {StatusCode} - {Reason}",
+                    transactionId, registerId, response.StatusCode, reason ?? "no reason given");
+                return new VerificationBundleOutcome
+                {
+                    Refusal = new VerificationBundleRefusal((int)response.StatusCode, reason)
+                };
             }
 
-            return await response.Content.ReadFromJsonAsync<VerificationBundle>(SorchaJson.Options, cancellationToken);
+            var bundle = await response.Content.ReadFromJsonAsync<VerificationBundle>(SorchaJson.Options, cancellationToken);
+            return bundle is null ? null : new VerificationBundleOutcome { Bundle = bundle };
         }
         catch (Exception ex)
         {
@@ -2201,6 +2207,42 @@ public class RegisterServiceClient : IRegisterServiceClient
                 "Failed to get verification bundle for {TransactionId} on register {RegisterId}",
                 transactionId, registerId);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads the human reason out of a refusal body, across the shapes Register Service endpoints
+    /// use: its own <c>{ error, ... }</c> and RFC 7807 problem+json (<c>detail</c> / <c>title</c>).
+    /// </summary>
+    private static string? ReadErrorReason(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+            return null;
+
+        var trimmed = body.Trim();
+        if (trimmed[0] is not ('{' or '['))
+            return trimmed;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(trimmed);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                return trimmed;
+
+            foreach (var propertyName in new[] { "error", "detail", "title", "message" })
+            {
+                if (doc.RootElement.TryGetProperty(propertyName, out var value)
+                    && value.ValueKind == JsonValueKind.String)
+                {
+                    return value.GetString();
+                }
+            }
+
+            return trimmed;
+        }
+        catch (JsonException)
+        {
+            return trimmed;
         }
     }
 

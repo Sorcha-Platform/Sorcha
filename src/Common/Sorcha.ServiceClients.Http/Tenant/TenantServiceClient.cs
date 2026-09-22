@@ -60,8 +60,8 @@ public class TenantServiceClient : ITenantServiceClient
         GetRawAsync($"api/organizations/{Uri.EscapeDataString(organizationId)}", "get organization", cancellationToken);
 
     /// <inheritdoc />
-    public Task<string?> CreateOrganizationAsync(string requestJson, CancellationToken cancellationToken = default) =>
-        SendRawAsync(HttpMethod.Post, "api/platform/organizations", requestJson, "create organization", cancellationToken);
+    public Task<ServiceReadResult> CreateOrganizationAsync(string requestJson, CancellationToken cancellationToken = default) =>
+        SendRawWithStatusAsync(HttpMethod.Post, "api/platform/organizations", requestJson, "create organization", cancellationToken);
 
     /// <inheritdoc />
     public Task<string?> UpdateOrganizationAsync(string organizationId, string requestJson, CancellationToken cancellationToken = default) =>
@@ -226,6 +226,31 @@ public class TenantServiceClient : ITenantServiceClient
     {
         await SetAuthHeaderAsync(cancellationToken);
         var response = await _httpClient.GetAsync(url, cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Tenant {Operation} failed: {StatusCode}", operation, response.StatusCode);
+            return new ServiceReadResult(response.StatusCode, null);
+        }
+
+        return new ServiceReadResult(
+            response.StatusCode, await response.Content.ReadAsStringAsync(cancellationToken));
+    }
+
+    /// <summary>
+    /// A write (POST/PUT) that reports WHICH failure occurred, not merely that one did — the
+    /// write-side counterpart of <see cref="GetRawWithStatusAsync"/> (#1685(a)).
+    /// </summary>
+    private async Task<ServiceReadResult> SendRawWithStatusAsync(
+        HttpMethod method, string url, string bodyJson, string operation, CancellationToken cancellationToken)
+    {
+        await SetAuthHeaderAsync(cancellationToken);
+
+        using var request = new HttpRequestMessage(method, url)
+        {
+            Content = new StringContent(bodyJson, Encoding.UTF8, "application/json")
+        };
+        var response = await _httpClient.SendAsync(request, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {

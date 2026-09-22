@@ -145,6 +145,18 @@ public static class McpServerBuilderExtensions
     /// no exception reaches it. Verified against the real SDK pipeline (decompiled + an in-memory
     /// client/server round trip), not by inspection alone — see task-2-report.md.
     /// </summary>
+    /// <remarks>
+    /// #1685(b). The SDK's message names only the one missing parameter it happened to bind first,
+    /// which is not the same failure as "you guessed the wrong name" — cold-start run #7 passed
+    /// <c>orgId</c> to a tool wanting <c>organizationId</c> and was told a parameter was missing,
+    /// with no hint that a DIFFERENTLY-NAMED parameter would have worked. This is deliberately a
+    /// central filter fix rather than a per-tool one: it applies to every tool's argument-binding
+    /// failure without touching each tool's own code, and it does so WITHOUT renaming any published
+    /// parameter (a contract change, out of scope here — see the PR report for what a later,
+    /// contract-breaking pass should rename). <see cref="ToolParameterCatalog"/> lists every
+    /// parameter the tool actually binds so the caller does not need a second <c>tools/list</c> call
+    /// to find out.
+    /// </remarks>
     public static IMcpServerBuilder WithArgumentBindingErrorFilter(this IMcpServerBuilder builder)
     {
         return builder.WithRequestFilters(filters =>
@@ -158,6 +170,12 @@ public static class McpServerBuilderExtensions
                 catch (ArgumentException ex) when (ex.Message.Contains(
                     "missing a value for the required parameter", StringComparison.Ordinal))
                 {
+                    var toolName = context.Params?.Name;
+                    var parameterList = ToolParameterCatalog.DescribeParameters(toolName);
+                    var guidance = parameterList is not null
+                        ? $"This tool's parameters are: {parameterList}."
+                        : "Call tools/list to see this tool's required parameters.";
+
                     return new ModelContextProtocol.Protocol.CallToolResult
                     {
                         IsError = true,
@@ -165,8 +183,7 @@ public static class McpServerBuilderExtensions
                         [
                             new ModelContextProtocol.Protocol.TextContentBlock
                             {
-                                Text = $"Missing a required argument for '{context.Params?.Name}'. {ex.Message} " +
-                                       "Call tools/list to see this tool's required parameters."
+                                Text = $"Missing a required argument for '{toolName}'. {ex.Message} {guidance}"
                             }
                         ]
                     };

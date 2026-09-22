@@ -66,6 +66,25 @@ public class BlueprintPublishToolTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>
+    /// #1686. The message used to say the override "has been recorded against the caller's
+    /// account" with no surface named. sorcha_audit_query (the Tenant organisation log) shows
+    /// nothing for it, so from an agent's side the claim was unverifiable and looked false. It is
+    /// not false — the Blueprint Service writes it to its own PublishOverride table (F142) — so the
+    /// message must name THAT surface, not the one that will never show it.
+    /// </summary>
+    [Fact]
+    public async Task PublishBlueprintAsync_OverrideUsed_MessageNamesTheActualStorageSurface()
+    {
+        var h = new Harness().WithRehearsalRequiredThenSuccess().WithApproval(ApprovalOutcome.Approved);
+
+        var result = await h.Sut().PublishBlueprintAsync(h.Context, "bp-1", "reg-1");
+
+        result.Message.Should().Contain("PublishOverride");
+        result.Message.Should().Contain("sorcha_audit_query");
+        result.Message.Should().NotContain("recorded against the caller's account");
+    }
+
     [Fact]
     public async Task PublishBlueprintAsync_Override_ConfirmsAndCarriesAnAttributableReason()
     {

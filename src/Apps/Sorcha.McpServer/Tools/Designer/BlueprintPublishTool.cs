@@ -429,11 +429,19 @@ public sealed class BlueprintPublishTool
                   + $"'{registerId}' as version {published.Version} — this definition is unchanged, "
                   + "so no new version was created and nothing was written to the ledger. Start an "
                   + "instance with sorcha_instance_create."
+                // #1686. This used to say the override "has been recorded against the caller's
+                // account" without saying where — sorcha_audit_query (the Tenant organisation log)
+                // shows nothing for it, so from the agent's side the claim looked false. It is not:
+                // the Blueprint Service logs it and writes it to its own PublishOverride table
+                // (Feature 142). Naming that surface is the truthful, cheap fix; audit_query was
+                // never going to read across services to find it.
                 : publishedWithoutRehearsal
                     ? $"Blueprint '{published.BlueprintId}' was published to register '{registerId}' "
                       + $"as version {published.Version} WITHOUT a rehearsal pass, on an explicit "
-                      + "human override that has been recorded against the caller's account. Its "
-                      + "behaviour has never been executed. Start an instance with "
+                      + "human override. The Blueprint Service logged it and recorded it in its own "
+                      + "PublishOverride table (Feature 142) — this is NOT in the Tenant "
+                      + "organisation audit log sorcha_audit_query reads, so it will not appear "
+                      + "there. Its behaviour has never been executed. Start an instance with "
                       + "sorcha_instance_create."
                     : $"Blueprint '{published.BlueprintId}' was published to register '{registerId}' "
                       + $"as version {published.Version}. Start an instance with sorcha_instance_create.",
