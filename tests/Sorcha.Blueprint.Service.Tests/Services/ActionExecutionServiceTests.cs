@@ -2,8 +2,10 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Security.Claims;
+using System.Threading.Channels;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.ServiceClients.Register;
@@ -15,6 +17,7 @@ using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
 using Sorcha.Blueprint.Models.Credentials;
+using Sorcha.TransactionHandler.Encryption;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 using ActionModel = Sorcha.Blueprint.Models.Action;
 using ParticipantModel = Sorcha.Blueprint.Models.Participant;
@@ -1437,6 +1440,150 @@ public class ActionExecutionServiceTests
         var ex = await Assert.ThrowsAnyAsync<Exception>(() =>
             service.ExecuteAsync(instanceId, actionId, request, "token", caller));
         Assert.IsNotType<UnauthorizedAccessException>(ex);
+    }
+
+    #endregion
+
+    #region Async Encryption Path — #1703 EncryptionWorkItem.UserId claim source
+
+    /// <summary>
+    /// #1703 — the async-encryption path (a real <see cref="Channel{T}"/> injected, exercised by
+    /// production registers with an encryption pipeline) used to populate
+    /// <see cref="EncryptionWorkItem.UserId"/> from the JWT <c>sub</c>/<c>ClaimTypes.NameIdentifier</c>
+    /// claim — the org-scoped <c>UserIdentity.Id</c> — instead of <c>platform_user_id</c> (the
+    /// account-wide <c>PlatformUser.Id</c> that <c>EncryptionBackgroundService</c> hands to
+    /// <c>IEncryptionInboxWriter</c> to address the encryption-complete/-failed inbox notification).
+    /// The two ids are deliberately DISTINCT here — if the test used the same value for both claims it
+    /// could not tell the fix from the bug, since either claim would satisfy the assertion.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_AsyncEncryptionPath_QueuesWorkItemWithPlatformUserId_NotUserIdentityId()
+    {
+        // Arrange
+        var instanceId = "test-instance";
+        var actionId = 1;
+        var request = CreateTestRequest();
+        var delegationToken = "test-token";
+        var instance = CreateTestInstance(instanceId, "blueprint-1");
+        var blueprint = CreateTestBlueprint();
+        var action = blueprint.Actions!.First(a => a.Id == actionId);
+
+        SetupCommonMocks(instanceId, instance, blueprint, action);
+
+        _mockExecutionEngine
+            .Setup(x => x.DetermineRoutingWithMappingAsync(
+                blueprint, action, It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<System.Text.Json.Nodes.JsonObject?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Blueprint.Engine.Models.RoutingResult
+            {
+                NextActions = [],
+                IsParallel = false
+            });
+
+        // No blueprint-defined disclosure rules — triggers the "default to full disclosure under
+        // sender's wallet" fallback (ActionExecutionService step 9b), which is what makes
+        // disclosedPayloads / recipients non-empty below.
+        _mockExecutionEngine
+            .Setup(x => x.ApplyDisclosures(It.IsAny<Dictionary<string, object>>(), action))
+            .Returns(new List<Sorcha.Blueprint.Engine.Models.DisclosureResult>());
+
+        // Feature 145 — instanceReference generation (step 9b-ter) round-trips the instance
+        // through UpdateAsync before the encrypted path is reached.
+        _mockInstanceStore
+            .Setup(x => x.UpdateAsync(It.IsAny<Instance>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Instance i, CancellationToken _) => i);
+
+        // Register is NOT DevMode, so the encrypted path is taken (step 9c/9d).
+        _mockRegisterClient
+            .Setup(x => x.GetRegisterAsync(instance.RegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.Register { DevMode = false });
+
+        // The sender's wallet resolves a recipient key from the register, so recipients.Length > 0
+        // and a disclosure group is built (step 9d).
+        _mockRegisterClient
+            .Setup(x => x.ResolvePublicKeysBatchAsync(
+                instance.RegisterId,
+                It.IsAny<Sorcha.ServiceClients.Register.Models.BatchPublicKeyRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.ServiceClients.Register.Models.BatchPublicKeyResponse
+            {
+                Resolved = new Dictionary<string, Sorcha.ServiceClients.Register.Models.PublicKeyResolution>
+                {
+                    [request.SenderWallet] = new Sorcha.ServiceClients.Register.Models.PublicKeyResolution
+                    {
+                        ParticipantId = "applicant",
+                        ParticipantName = "Applicant",
+                        WalletAddress = request.SenderWallet,
+                        PublicKey = Convert.ToBase64String(new byte[32]),
+                        Algorithm = "ED25519",
+                        Status = "Active",
+                    }
+                },
+                NotFound = [],
+                Revoked = [],
+            });
+
+        var operationStoreMock = new Mock<IEncryptionOperationStore>();
+        operationStoreMock
+            .Setup(s => s.CreateAsync(It.IsAny<EncryptionOperation>()))
+            .ReturnsAsync((EncryptionOperation op) => op);
+
+        // A REAL channel — the thing under test is what gets written to it, not just that
+        // WriteAsync was called.
+        var channel = Channel.CreateUnbounded<EncryptionWorkItem>();
+
+        var service = new ActionExecutionService(
+            _mockActionResolver.Object,
+            _mockStateReconstruction.Object,
+            _mockTransactionBuilder.Object,
+            _mockRegisterClient.Object,
+            _mockValidatorClient.Object,
+            _mockWalletClient.Object,
+            _mockParticipantClient.Object,
+            _mockNotificationService.Object,
+            _mockInstanceStore.Object,
+            _mockActionStore.Object,
+            _mockExecutionEngine.Object,
+            _mockLogger.Object,
+            new ConfigurationBuilder().Build(),
+            encryptionPipeline: Mock.Of<IEncryptionPipelineService>(),
+            encryptionChannel: channel,
+            encryptionOperationStore: operationStoreMock.Object,
+            walletOwnershipSettings: Microsoft.Extensions.Options.Options.Create(
+                new Sorcha.Blueprint.Service.Configuration.WalletOwnershipSettings
+                {
+                    EnforcementMode = Sorcha.Blueprint.Service.Configuration.WalletOwnershipEnforcementMode.FailOpen,
+                    AllowMissingParticipant = true,
+                    AllowUnlinkedWallet = true,
+                }));
+
+        // Two DISTINCT ids in two DIFFERENT claims — the whole point of the test. If these were the
+        // same value, reading the wrong claim would still produce a "correct-looking" result.
+        var platformUserId = Guid.NewGuid();
+        var userIdentityId = Guid.NewGuid();
+        platformUserId.Should().NotBe(userIdentityId, "the test cannot distinguish the fix from the bug otherwise");
+
+        var caller = new ClaimsPrincipal(new ClaimsIdentity(
+            new[]
+            {
+                new Claim("sub", userIdentityId.ToString()),
+                new Claim(TokenClaimConstants.PlatformUserId, platformUserId.ToString()),
+            },
+            "test"));
+
+        // Act
+        var response = await service.ExecuteAsync(instanceId, actionId, request, delegationToken, caller);
+
+        // Assert
+        response.IsAsync.Should().BeTrue("the injected channel routes this submission through the async path");
+        channel.Reader.TryRead(out var workItem).Should().BeTrue(
+            "the async encryption path must queue exactly one work item");
+
+        workItem!.UserId.Should().Be(platformUserId.ToString(),
+            "EncryptionBackgroundService addresses the encryption-complete/-failed inbox notification by " +
+            "PlatformUser id, read from the platform_user_id claim");
+        workItem.UserId.Should().NotBe(userIdentityId.ToString(),
+            "#1703 — the sub claim (UserIdentity id) must never be used to address the PlatformUser inbox");
     }
 
     #endregion

@@ -50,6 +50,21 @@
 > right reason → restore → GREEN). Recommend a follow-up issue for a typed `PlatformUserId` wrapper
 > (readonly record struct) so Class B becomes a compile error — touches roughly a dozen call sites
 > across Wallet/Blueprint/Tenant services; not implemented here (blast radius).
+>
+> **Follow-up (same PR): the `ActionExecutionService.cs:1223` root-cause fix now has its own direct
+> regression test.** `ActionExecutionServiceTests.ExecuteAsync_AsyncEncryptionPath_QueuesWorkItemWithPlatformUserId_NotUserIdentityId`
+> constructs a real `ActionExecutionService` with an injected `Channel<EncryptionWorkItem>` (the
+> constructor's async-encryption params are optional and nothing in the existing suite exercised
+> them), drives a caller principal with two DISTINCT ids under `sub` and `platform_user_id`, and
+> asserts the queued `EncryptionWorkItem.UserId` equals the platform_user_id value — not the sub
+> value. Mutation-tested: reverting line 1223 to the old `sub`/`ClaimTypes.NameIdentifier` read turns
+> the test RED, naming the wrong (UserIdentity) id in the failure message. Also checked whether the
+> sibling call site at line 613 (already correct) has any test pinning it: yes —
+> `ActionExecutionLiveClaimSourceTests.cs` (9 tests, pre-existing, issue #1264) already asserts both
+> directions AND that a missing `platform_user_id` claim fails closed rather than falling back to
+> `sub` (`ExecuteAsync_CallerHasNoPlatformUserId_FailsTheSubmission`) — confirmed by the same
+> mutation technique that reintroducing the `sub` fallback at line 613 turns that test RED too. No
+> new assertion needed there.
 
 > **▶ 2026-09-20 - The org issuer cert co-key could never derive, and once it could, it wasn't stable
 > (#1687 + #1679, PR #1677).**
