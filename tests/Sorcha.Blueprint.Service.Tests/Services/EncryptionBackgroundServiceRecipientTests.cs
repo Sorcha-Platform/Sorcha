@@ -141,10 +141,8 @@ public class EncryptionBackgroundServiceRecipientTests
             Groups = [new EncryptedPayloadGroup
             {
                 GroupId = "g1",
-                DisclosedFields = ["/name", "/email"],
                 Ciphertext = new byte[64],
                 Nonce = new byte[12],
-                PlaintextHash = new byte[32],
                 EncryptionAlgorithm = Sorcha.Cryptography.Enums.EncryptionType.XCHACHA20_POLY1305,
                 WrappedKeys =
                 [

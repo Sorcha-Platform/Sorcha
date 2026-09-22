@@ -3,8 +3,8 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.32
-**Last Updated:** 2026-09-15
+**Version:** 7.33
+**Last Updated:** 2026-09-22
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
@@ -66,6 +66,30 @@
 > DIFFERENT keys than the pre-fix random behaviour would have. Acceptable pre-release under CLAUDE.md
 > §19 (recreate, don't migrate) — flagged explicitly rather than left implicit.
 >
+> **▶ 2026-09-22 - #1695 + #1684 L1: two sealed-envelope leaks closed, disclosureMetadata policy scaffolded.**
+> Branch `feat/1684-1695-disclosure-metadata-l1`, two commits, not yet deployed.
+>
+> | # | Leak | Fix |
+> |---|---|---|
+> | **#1695** | `EncryptedPayloadGroup.PlaintextHash` — an unsalted SHA-256 over each disclosure group's plaintext, published beside the ciphertext. A confirmation oracle (test a guessed plaintext without a key) and redundant against the XCHACHA20_POLY1305 AEAD tag | Dropped from newly written envelopes; the post-decryption check in `TransactionRetrievalService` removed (tampering still caught by the AEAD tag failing first). Prospective only — the ledger is immutable, and no read path ever deserialized JSON into this field, so legacy envelopes decode unaffected |
+> | **#1684 L1** | `EncryptedPayloadGroup.DisclosedFields` — the plaintext field-name list for a group, published beside the ciphertext, leaking disclosure *shape* to every reader including a SyncOnly replica party to nothing | Same treatment: dropped from newly written envelopes, group selection was already by `wrappedKeys[].walletAddress` alone on every read path |
+>
+> Also added the agreed policy scaffold: `RegisterPolicy.DisclosureMetadata` (`Public` default / `Minimal`
+> reserved). `Minimal` is refused at policy-set time (`RegisterPolicyEndpoints.ValidateDisclosureMetadata`)
+> — deliberately NOT implemented, since it would move recipient notification from server-side resolution to
+> client-side scanning (a separate, larger piece of work, L2, scoped independently). Carried through
+> governance enactment via `RegisterControlRecord.ShallowCopy()` — no new plumbing needed, just a fixture
+> populated with a non-default value to make the existing reflective guard (`ApplyOperationPreservesRegisterConfigurationTests`)
+> actually exercise it.
+>
+> TEST-FIRST throughout; every new/changed test mutation-tested (revert → RED for the right reason →
+> restore → GREEN). One mutation attempt (mutating `RegisterPolicy` in place post-`ShallowCopy()`) silently
+> passed because `ShallowCopy()` is a `MemberwiseClone()` — the nested `RegisterPolicy` is a SHARED
+> reference between before/after, so mutating it in place changes both sides identically. Had to rebuild
+> `RegisterPolicy` via an object initializer (mirroring the actual #1463 bug shape) to get a real RED.
+> `docs/security-model.md` updated with the disclosure-metadata position (values protected, sender/timing/
+> group-count/ciphertext-size/chain-position/recipient-address still visible).
+
 > **▶ 2026-09-19 - Run #5 BLOCKER SWEEP: six fixes, all merged-ready on `fix/run6-blockers`.**
 > Run #5 reached a sealed, encrypted action 1 across two organisations and then wedged. Fixing what
 > it found, before run #6:

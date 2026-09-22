@@ -25,7 +25,6 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
 
     private readonly ISymmetricCrypto _symmetricCrypto;
     private readonly ICryptoModule _cryptoModule;
-    private readonly IHashProvider _hashProvider;
     private readonly ILogger<EncryptionPipelineService> _logger;
 
     /// <summary>
@@ -48,17 +47,14 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
     /// </summary>
     /// <param name="symmetricCrypto">Symmetric encryption provider.</param>
     /// <param name="cryptoModule">Asymmetric encryption provider for key wrapping.</param>
-    /// <param name="hashProvider">Hash provider for plaintext integrity hashes.</param>
     /// <param name="logger">Logger instance.</param>
     public EncryptionPipelineService(
         ISymmetricCrypto symmetricCrypto,
         ICryptoModule cryptoModule,
-        IHashProvider hashProvider,
         ILogger<EncryptionPipelineService> logger)
     {
         _symmetricCrypto = symmetricCrypto ?? throw new ArgumentNullException(nameof(symmetricCrypto));
         _cryptoModule = cryptoModule ?? throw new ArgumentNullException(nameof(cryptoModule));
-        _hashProvider = hashProvider ?? throw new ArgumentNullException(nameof(hashProvider));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -200,10 +196,7 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
             group.GroupId, plaintextBytes.Length, group.Recipients.Length);
         groupActivity?.SetTag("encryption.plaintext_bytes", plaintextBytes.Length);
 
-        // Step 2: Compute SHA-256 hash of plaintext for post-decryption integrity
-        var plaintextHash = _hashProvider.ComputeHash(plaintextBytes, HashType.SHA256);
-
-        // Step 3: Symmetric encryption (generate random key + encrypt)
+        // Step 2: Symmetric encryption (generate random key + encrypt)
         var symResult = await _symmetricCrypto.EncryptAsync(
             plaintextBytes,
             EncryptionType.XCHACHA20_POLY1305,
@@ -218,7 +211,7 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
         using var ciphertext = symResult.Value!;
         var symmetricKey = ciphertext.Key;
 
-        // Step 4: Wrap symmetric key for each recipient, tracking per-recipient progress
+        // Step 3: Wrap symmetric key for each recipient, tracking per-recipient progress
         var wrappedKeys = new List<WrappedKey>(group.Recipients.Length);
         var recipientProgress = new List<RecipientProgress>(group.Recipients.Length);
 
@@ -275,15 +268,13 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
             });
         }
 
-        // Step 5: Assemble encrypted payload group
+        // Step 4: Assemble encrypted payload group
         // Clone Data and IV because SymmetricCiphertext.Dispose() will zeroize them
         var encryptedGroup = new EncryptedPayloadGroup
         {
             GroupId = group.GroupId,
-            DisclosedFields = group.DisclosedFields,
             Ciphertext = (byte[])ciphertext.Data.Clone(),
             Nonce = (byte[])ciphertext.IV.Clone(),
-            PlaintextHash = plaintextHash,
             EncryptionAlgorithm = EncryptionType.XCHACHA20_POLY1305,
             WrappedKeys = wrappedKeys.ToArray()
         };

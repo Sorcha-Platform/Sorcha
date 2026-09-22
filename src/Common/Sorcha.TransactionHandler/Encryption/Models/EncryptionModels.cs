@@ -14,12 +14,18 @@ public sealed class EncryptedPayloadGroup
     /// <summary>
     /// Deterministic SHA-256 hex hash of sorted disclosed field names.
     /// </summary>
+    /// <remarks>
+    /// Issue #1684 L1: this type previously also carried <c>DisclosedFields</c> — the plaintext list
+    /// of field names for this group, published in the clear beside the ciphertext. It leaked the
+    /// disclosure *shape* (which fields were withheld from which recipient, and to whom) to every
+    /// reader of the transaction, including a SyncOnly replica party to nothing — and it was
+    /// redundant: the field names are inside the ciphertext anyway, recoverable the moment a
+    /// recipient decrypts their own group. Removed for newly written envelopes; already-sealed
+    /// transactions keep the field forever (the ledger is immutable), but the group is still located
+    /// by <see cref="WrappedKey.WalletAddress"/> alone on every read path, so decoding a legacy
+    /// envelope is unaffected.
+    /// </remarks>
     public required string GroupId { get; init; }
-
-    /// <summary>
-    /// Sorted list of JSON Pointer paths included in this group.
-    /// </summary>
-    public required string[] DisclosedFields { get; init; }
 
     /// <summary>
     /// Encrypted payload data (XChaCha20-Poly1305 or AES-256-GCM).
@@ -32,13 +38,18 @@ public sealed class EncryptedPayloadGroup
     public required byte[] Nonce { get; init; }
 
     /// <summary>
-    /// SHA-256 hash of plaintext for post-decryption integrity verification.
-    /// </summary>
-    public required byte[] PlaintextHash { get; init; }
-
-    /// <summary>
     /// Symmetric cipher used for payload encryption.
     /// </summary>
+    /// <remarks>
+    /// Issue #1695: this type previously also carried a <c>PlaintextHash</c> — an unsalted SHA-256
+    /// over the group's plaintext, published in the clear beside the ciphertext. It was a
+    /// confirmation oracle (anyone with ledger access could test a guessed plaintext without a key)
+    /// and cryptographically redundant: <see cref="EncryptionAlgorithm"/> is an AEAD cipher whose
+    /// authentication tag already guarantees integrity — tampered ciphertext fails to decrypt, a
+    /// wrong key fails to decrypt. Removed for newly written envelopes; already-sealed transactions
+    /// keep the field forever (the ledger is immutable), but nothing on the read path ever
+    /// deserializes JSON into this type, so decoding a legacy envelope is unaffected.
+    /// </remarks>
     public required EncryptionType EncryptionAlgorithm { get; init; }
 
     /// <summary>
