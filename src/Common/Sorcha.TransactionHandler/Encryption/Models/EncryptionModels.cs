@@ -32,13 +32,18 @@ public sealed class EncryptedPayloadGroup
     public required byte[] Nonce { get; init; }
 
     /// <summary>
-    /// SHA-256 hash of plaintext for post-decryption integrity verification.
-    /// </summary>
-    public required byte[] PlaintextHash { get; init; }
-
-    /// <summary>
     /// Symmetric cipher used for payload encryption.
     /// </summary>
+    /// <remarks>
+    /// Issue #1695: this type previously also carried a <c>PlaintextHash</c> — an unsalted SHA-256
+    /// over the group's plaintext, published in the clear beside the ciphertext. It was a
+    /// confirmation oracle (anyone with ledger access could test a guessed plaintext without a key)
+    /// and cryptographically redundant: <see cref="EncryptionAlgorithm"/> is an AEAD cipher whose
+    /// authentication tag already guarantees integrity — tampered ciphertext fails to decrypt, a
+    /// wrong key fails to decrypt. Removed for newly written envelopes; already-sealed transactions
+    /// keep the field forever (the ledger is immutable), but nothing on the read path ever
+    /// deserializes JSON into this type, so decoding a legacy envelope is unaffected.
+    /// </remarks>
     public required EncryptionType EncryptionAlgorithm { get; init; }
 
     /// <summary>

@@ -25,7 +25,6 @@ public class MixedAlgorithmEncryptionTests
 {
     private readonly ICryptoModule _cryptoModule;
     private readonly ISymmetricCrypto _symmetricCrypto;
-    private readonly IHashProvider _hashProvider;
     private readonly EncryptionPipelineService _sut;
 
     /// <summary>
@@ -46,12 +45,10 @@ public class MixedAlgorithmEncryptionTests
     {
         _cryptoModule = new CryptoModule();
         _symmetricCrypto = new SymmetricCrypto();
-        _hashProvider = new HashProvider();
 
         _sut = new EncryptionPipelineService(
             _symmetricCrypto,
             _cryptoModule,
-            _hashProvider,
             new Mock<ILogger<EncryptionPipelineService>>().Object);
     }
 
@@ -179,11 +176,6 @@ public class MixedAlgorithmEncryptionTests
             var originalJson = Encoding.UTF8.GetString(expectedPlaintextBytes);
             decryptedJson.Should().Be(originalJson,
                 $"Decrypted plaintext should match original for {wrappedKey.WalletAddress}");
-
-            // Verify integrity hash
-            var hash = _hashProvider.ComputeHash(decryptResult.Value!, HashType.SHA256);
-            hash.Should().BeEquivalentTo(result.Groups[0].PlaintextHash,
-                $"Plaintext hash should match for {wrappedKey.WalletAddress}");
         }
     }
 
@@ -276,7 +268,6 @@ public class MixedAlgorithmEncryptionTests
         encryptedGroup.EncryptionAlgorithm.Should().Be(EncryptionType.XCHACHA20_POLY1305);
         encryptedGroup.Ciphertext.Should().NotBeNullOrEmpty();
         encryptedGroup.Nonce.Should().NotBeNullOrEmpty();
-        encryptedGroup.PlaintextHash.Should().NotBeNullOrEmpty();
         encryptedGroup.WrappedKeys[0].WalletAddress.Should().Be($"ws1q_{algorithm}");
         encryptedGroup.WrappedKeys[0].Algorithm.Should().Be(algorithm);
 
@@ -309,11 +300,6 @@ public class MixedAlgorithmEncryptionTests
         var expectedJson = Encoding.UTF8.GetString(expectedPlaintextBytes);
         decryptedJson.Should().Be(expectedJson,
             $"Decrypted plaintext should match original for {algorithm}");
-
-        // Verify integrity hash
-        var hash = _hashProvider.ComputeHash(decryptResult.Value!, HashType.SHA256);
-        hash.Should().BeEquivalentTo(encryptedGroup.PlaintextHash,
-            $"SHA-256 hash of decrypted plaintext should match PlaintextHash for {algorithm}");
     }
 
     /// <summary>

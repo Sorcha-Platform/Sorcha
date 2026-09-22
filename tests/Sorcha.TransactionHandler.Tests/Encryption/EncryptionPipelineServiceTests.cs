@@ -21,7 +21,6 @@ public class EncryptionPipelineServiceTests
 {
     private readonly Mock<ISymmetricCrypto> _symmetricCryptoMock;
     private readonly Mock<ICryptoModule> _cryptoModuleMock;
-    private readonly Mock<IHashProvider> _hashProviderMock;
     private readonly Mock<ILogger<EncryptionPipelineService>> _loggerMock;
     private readonly EncryptionPipelineService _sut;
 
@@ -29,20 +28,13 @@ public class EncryptionPipelineServiceTests
     private static readonly byte[] FakeSymmetricKey = new byte[32];
     private static readonly byte[] FakeNonce = new byte[24];
     private static readonly byte[] FakeCiphertext = [0xDE, 0xAD, 0xBE, 0xEF];
-    private static readonly byte[] FakePlaintextHash = new byte[32];
     private static readonly byte[] FakeWrappedKey = [0xCA, 0xFE, 0xBA, 0xBE];
 
     public EncryptionPipelineServiceTests()
     {
         _symmetricCryptoMock = new Mock<ISymmetricCrypto>();
         _cryptoModuleMock = new Mock<ICryptoModule>();
-        _hashProviderMock = new Mock<IHashProvider>();
         _loggerMock = new Mock<ILogger<EncryptionPipelineService>>();
-
-        // Default: hash provider returns a stable 32-byte hash
-        _hashProviderMock
-            .Setup(h => h.ComputeHash(It.IsAny<byte[]>(), HashType.SHA256))
-            .Returns(FakePlaintextHash);
 
         // Default: symmetric encryption succeeds
         _symmetricCryptoMock
@@ -72,14 +64,13 @@ public class EncryptionPipelineServiceTests
         _sut = new EncryptionPipelineService(
             _symmetricCryptoMock.Object,
             _cryptoModuleMock.Object,
-            _hashProviderMock.Object,
             _loggerMock.Object);
     }
 
     #region Single group, single recipient
 
     [Fact]
-    public async Task EncryptDisclosedPayloadsAsync_SingleGroupOneRecipient_ReturnsCiphertextNonceWrappedKeyAndHash()
+    public async Task EncryptDisclosedPayloadsAsync_SingleGroupOneRecipient_ReturnsCiphertextNonceAndWrappedKey()
     {
         // Arrange
         var groups = new[]
@@ -101,31 +92,11 @@ public class EncryptionPipelineServiceTests
         group.DisclosedFields.Should().BeEquivalentTo(["/name", "/age"]);
         group.Ciphertext.Should().BeEquivalentTo(FakeCiphertext);
         group.Nonce.Should().BeEquivalentTo(FakeNonce);
-        group.PlaintextHash.Should().BeEquivalentTo(FakePlaintextHash);
         group.EncryptionAlgorithm.Should().Be(EncryptionType.XCHACHA20_POLY1305);
         group.WrappedKeys.Should().HaveCount(1);
         group.WrappedKeys[0].WalletAddress.Should().Be("ws1qrecip1");
         group.WrappedKeys[0].EncryptedKey.Should().BeEquivalentTo(FakeWrappedKey);
         group.WrappedKeys[0].Algorithm.Should().Be(WalletNetworks.ED25519);
-    }
-
-    [Fact]
-    public async Task EncryptDisclosedPayloadsAsync_SingleGroupOneRecipient_ComputesHashFromSerializedPayload()
-    {
-        // Arrange
-        var payload = new Dictionary<string, object> { ["field"] = "value" };
-        var groups = new[]
-        {
-            CreateDisclosureGroup("g1", ["/field"], payload,
-                CreateRecipient("ws1qa", WalletNetworks.NISTP256))
-        };
-
-        // Act
-        await _sut.EncryptDisclosedPayloadsAsync(groups);
-
-        // Assert — verify hash was computed on serialized bytes
-        _hashProviderMock.Verify(h =>
-            h.ComputeHash(It.IsAny<byte[]>(), HashType.SHA256), Times.Once);
     }
 
     [Fact]
@@ -265,37 +236,6 @@ public class EncryptionPipelineServiceTests
                 null,
                 It.IsAny<CancellationToken>()),
             Times.Exactly(3));
-    }
-
-    #endregion
-
-    #region Plaintext hash verification
-
-    [Fact]
-    public async Task EncryptDisclosedPayloadsAsync_PlaintextHash_IsSha256OfSerializedPayload()
-    {
-        // Arrange — set up specific hash return
-        var expectedHash = new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-                                        0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
-                                        0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
-                                        0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20 };
-        _hashProviderMock
-            .Setup(h => h.ComputeHash(It.IsAny<byte[]>(), HashType.SHA256))
-            .Returns(expectedHash);
-
-        var groups = new[]
-        {
-            CreateDisclosureGroup("g1", ["/field"],
-                new Dictionary<string, object> { ["field"] = "value" },
-                CreateRecipient("ws1q1", WalletNetworks.ED25519))
-        };
-
-        // Act
-        var result = await _sut.EncryptDisclosedPayloadsAsync(groups);
-
-        // Assert
-        result.Success.Should().BeTrue();
-        result.Groups[0].PlaintextHash.Should().BeEquivalentTo(expectedHash);
     }
 
     #endregion

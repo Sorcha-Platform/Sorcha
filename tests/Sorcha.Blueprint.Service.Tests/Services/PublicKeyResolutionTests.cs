@@ -914,7 +914,6 @@ public class PublicKeyResolutionTests
                 DisclosedFields = ["field1"],
                 Ciphertext = new byte[64],
                 Nonce = new byte[12],
-                PlaintextHash = new byte[32],
                 EncryptionAlgorithm = EncryptionType.AES_GCM,
                 WrappedKeys = wrappedKeys
             }

@@ -4,7 +4,6 @@
 using System.Text.Json;
 using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Interfaces;
-using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
 using Sorcha.Cryptography.Models;
 using Sorcha.ServiceClients.Wallet;
@@ -21,7 +20,6 @@ public class TransactionRetrievalService : ITransactionRetrievalService
 {
     private readonly IWalletServiceClient _walletClient;
     private readonly ISymmetricCrypto _symmetricCrypto;
-    private readonly IHashProvider _hashProvider;
     private readonly ILogger<TransactionRetrievalService> _logger;
 
     /// <summary>
@@ -29,17 +27,14 @@ public class TransactionRetrievalService : ITransactionRetrievalService
     /// </summary>
     /// <param name="walletClient">Client for wallet decryption operations.</param>
     /// <param name="symmetricCrypto">Symmetric cryptography provider.</param>
-    /// <param name="hashProvider">Hash computation provider.</param>
     /// <param name="logger">Logger instance.</param>
     public TransactionRetrievalService(
         IWalletServiceClient walletClient,
         ISymmetricCrypto symmetricCrypto,
-        IHashProvider hashProvider,
         ILogger<TransactionRetrievalService> logger)
     {
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
         _symmetricCrypto = symmetricCrypto ?? throw new ArgumentNullException(nameof(symmetricCrypto));
-        _hashProvider = hashProvider ?? throw new ArgumentNullException(nameof(hashProvider));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -120,16 +115,12 @@ public class TransactionRetrievalService : ITransactionRetrievalService
 
             var decryptedBytes = decryptResult.Value;
 
-            // 2e. T055: Verify SHA-256 integrity hash
-            var actualHash = _hashProvider.ComputeHash(decryptedBytes, HashType.SHA256);
-            if (!actualHash.SequenceEqual(group.PlaintextHash))
-            {
-                _logger.LogError(
-                    "Integrity verification failed for group {GroupId}: hash mismatch indicates payload tampering",
-                    group.GroupId);
-                return DecryptionResult.Failed(
-                    "Integrity verification failed: payload may have been tampered with");
-            }
+            // 2e. Issue #1695: a separate plaintext-hash check used to run here. It was both
+            // redundant (the AEAD tag verified above already guarantees integrity — tampered
+            // ciphertext or a wrong key fails to decrypt) and a confirmation oracle (an unsalted
+            // hash published in the clear let anyone with ledger access test a guessed plaintext
+            // without ever needing a key). Tampering is still caught: it fails the AEAD decrypt at
+            // 2d, above, before this point is ever reached.
 
             // 2f. Deserialize decrypted bytes to Dictionary<string, object>
             var groupPayload = JsonSerializer.Deserialize<Dictionary<string, object>>(decryptedBytes);

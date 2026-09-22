@@ -337,6 +337,111 @@ public class StateReconstructionServiceTests
     }
 
     [Fact]
+    public async Task ReconstructAsync_LegacyEnvelopeCarryingPlaintextHash_StillDecryptsCorrectly()
+    {
+        // Issue #1695 backward compatibility — every transaction sealed before this change carries
+        // a "plaintextHash" field on its disclosure group forever (the ledger is immutable).
+        // Decoding MUST still work: this decode path reads only wrappedKeys/ciphertext/nonce and
+        // never looks at plaintextHash at all, so a legacy envelope's extra field is simply ignored.
+        // (The sibling "disclosedFields" field — dropped in #1684 L1 — is already covered by
+        // ReconstructAsync_WithDisclosureGroupEnvelope_DecryptsAsLocalParticipant above, which
+        // still carries it unmodified and still passes.)
+
+        var blueprint = CreateTestBlueprintWithRoutes();
+        var instanceId = "test-instance";
+        var currentActionId = 2;
+        var registerId = "test-register";
+        var delegationToken = "test-delegation-token";
+        var participantWallets = new Dictionary<string, string>
+        {
+            ["applicant"] = "wallet-applicant",
+            ["officer"] = "wallet-officer"
+        };
+
+        var wrappedKeyBytes = Encoding.UTF8.GetBytes("wrapped-symmetric-key");
+        var symmetricKeyBytes = Encoding.UTF8.GetBytes("the-unwrapped-symmetric-key-3232");
+        var ciphertextBytes = Encoding.UTF8.GetBytes("group-ciphertext");
+        var nonceBytes = Encoding.UTF8.GetBytes("group-nonce-24bytes-padxxx");
+        var plaintextJson = JsonSerializer.SerializeToUtf8Bytes(new { loanAmount = 50000, applicantName = "John Doe" });
+
+        // Legacy shape — both fields #1695/#1684 stop writing are still present, exactly as a
+        // pre-change sealed transaction has them.
+        var legacyEnvelope = new
+        {
+            type = "action",
+            contentEncoding = "encrypted",
+            encryptedPayloads = new[]
+            {
+                new
+                {
+                    groupId = "g1",
+                    disclosedFields = new[] { "loanAmount", "applicantName" },
+                    ciphertext = Convert.ToBase64String(ciphertextBytes),
+                    nonce = Convert.ToBase64String(nonceBytes),
+                    plaintextHash = Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(plaintextJson)),
+                    encryptionAlgorithm = "XCHACHA20_POLY1305",
+                    wrappedKeys = new[]
+                    {
+                        new
+                        {
+                            walletAddress = "wallet-officer",
+                            encryptedKey = Convert.ToBase64String(wrappedKeyBytes),
+                            algorithm = "ED25519"
+                        }
+                    }
+                }
+            }
+        };
+        var envelopeBytes = JsonSerializer.SerializeToUtf8Bytes(legacyEnvelope);
+
+        var transactions = new List<TransactionModel>
+        {
+            new TransactionModel
+            {
+                TxId = "tx-legacy-001",
+                RegisterId = registerId,
+                TimeStamp = DateTime.UtcNow.AddMinutes(-10),
+                MetaData = new TransactionMetaData { ActionId = 1 },
+                Payloads = new[]
+                {
+                    new PayloadModel
+                    {
+                        Data = Convert.ToBase64String(envelopeBytes),
+                        WalletAccess = Array.Empty<string>()
+                    }
+                }
+            }
+        };
+
+        _mockRegisterClient
+            .Setup(x => x.GetTransactionsByInstanceIdAsync(registerId, instanceId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(transactions);
+
+        _mockWalletClient
+            .Setup(x => x.DecryptWithDelegationAsync(
+                "wallet-officer",
+                It.Is<byte[]>(b => b.SequenceEqual(wrappedKeyBytes)),
+                delegationToken,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(symmetricKeyBytes);
+
+        _mockSymmetricCrypto
+            .Setup(x => x.DecryptAsync(It.IsAny<Sorcha.Cryptography.Models.SymmetricCiphertext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Sorcha.Cryptography.Models.CryptoResult<byte[]>.Success(plaintextJson));
+
+        // Act
+        var result = await _service.ReconstructAsync(
+            blueprint, instanceId, currentActionId, registerId, delegationToken, participantWallets);
+
+        // Assert — decodes and decrypts exactly as it would without the legacy fields present.
+        result.Should().NotBeNull();
+        result.ActionCount.Should().Be(1);
+        result.ActionData.Should().ContainKey("1");
+        result.ActionData["1"].GetProperty("loanAmount").GetInt32().Should().Be(50000);
+        result.PreviousTransactionId.Should().Be("tx-legacy-001");
+    }
+
+    [Fact]
     public async Task ReconstructAsync_DevModeRegister_WithPlaintextPayloadsEnvelope_ExtractsFields()
     {
         // Feature 137 — a DevMode register stores payloads as PLAINTEXT (encryption skipped):

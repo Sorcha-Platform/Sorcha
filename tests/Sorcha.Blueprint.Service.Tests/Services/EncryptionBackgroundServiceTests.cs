@@ -126,7 +126,6 @@ public class EncryptionBackgroundServiceTests
                 DisclosedFields = ["field1"],
                 Ciphertext = new byte[64],
                 Nonce = new byte[12],
-                PlaintextHash = new byte[32],
                 EncryptionAlgorithm = Sorcha.Cryptography.Enums.EncryptionType.AES_GCM,
                 WrappedKeys = [new WrappedKey
                 {
