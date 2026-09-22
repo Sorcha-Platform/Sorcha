@@ -16,6 +16,7 @@
     "sorcha_action_submit",
     "sorcha_action_validate",
     "sorcha_audit_query",
+    "sorcha_await_condition",
     "sorcha_blueprint_create",
     "sorcha_blueprint_export",
     "sorcha_blueprint_get",

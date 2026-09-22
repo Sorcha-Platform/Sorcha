@@ -8,6 +8,51 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
+> **▶ 2026-09-23 - #1707: an agent can now WAIT for a ledger event instead of a human relaying it.**
+>
+> Cold-start run #8's transcript showed two of three human interventions were pure event relay
+> ("recipient has published their participant record, go ahead" / "recipient has acknowledged, go
+> ahead") — the platform already knew both facts before the human did, but no tool let an agent wait
+> for them. New MCP tool `sorcha_await_condition` (participant tier — `Tools/Participant/AwaitConditionTool.cs`)
+> is a bounded, server-side poll over ONE typed `condition` discriminator covering the three things
+> run #8 actually waited on: `ParticipantActive` (a role becomes Active on a register), `InstanceReachesAction`
+> (an instance reaches a given action id as current, or completes when no actionId is given), and
+> `TransactionSeals` (a transaction acquires a docket number). One tool, not three — the catalogue is
+> already ~69 tools (#1685) and the discoverability risk that issue documents is inconsistent
+> PARAMETER NAMES, not parameter count, so this tool reuses `workflowInstanceId`/`registerId`/`transactionId`
+> exactly as `sorcha_workflow_status`/`sorcha_transaction_history` already spell them.
+>
+> **Tri-state, not boolean** — `Met` / `NotYet` (call again) / `Unreachable` (waiting is futile: instance
+> already advanced past the awaited action while still Active, rejected/timed-out/cancelled, or
+> completed without ever reaching the target action). Each condition has its own reachability rule;
+> `TransactionSeals` deliberately has NO "will never seal" signal beyond a not-found id, because a
+> validator schema-violation refusal is silent by design (CLAUDE.md pattern) — that gap is documented
+> in the tool's own XML doc, not hidden.
+>
+> **Bounded**: default 25s, hard cap 55s (5s margin under the common ~60s MCP client call timeout —
+> the SERVER must always return before the CLIENT gives up), ~1s poll interval, modelled on
+> `RehearsalOrchestrationService`'s own wait-for-projection loop but far tighter since this is a live
+> inbound MCP call, not an internal service call with a 90s budget. Stateless-safe: the whole wait
+> lives inside one request/one `Task.Delay` loop, no per-session state, compatible with
+> `WithHttpTransport(o => o.Stateless = true)`.
+>
+> Reuses the exact reads the equivalent tools already use — `IRegisterServiceClient.GetPublishedParticipantsAsync`/`GetRegisterAsync`
+> (`sorcha_participant_list`'s join), `IBlueprintServiceClient.GetWorkflowStatusAsync` (`sorcha_workflow_status`'s
+> read), `IRegisterServiceClient.GetTransactionsByInstanceIdAsync`/`GetTransactionAsync` (`sorcha_transaction_history`/`sorcha_transaction_status`'s
+> reads) — no second source of truth. 24 new tests (`AwaitConditionToolTests.cs`), all 24 individually
+> mutation-tested in grouped batches (revert → RED for the right reason, confirmed no unrelated test
+> moved → restore → GREEN, 0 build warnings confirming a clean revert); tests inject a 10ms poll
+> interval so none of the "met after delay"/"times out" tests sleep for anywhere near the real
+> 25s/55s. `check-mcp-routes.ps1` and `check-mcp-response-shapes.ps1` both
+> green — the latter needed the tool's JSON parsing done by hand (`JsonDocument`, not
+> `JsonSerializer.Deserialize<T>` into a declared DTO) because the gate pools candidate server types
+> across every route a FILE calls, and this tool calls both Register- and Blueprint-owned routes from
+> one file, which mis-paired a naively-declared `Instance` mirror DTO against the wrong service's type.
+>
+> PR: branch `feat/1707-agent-await`, not merged. Follow-up, deliberately out of scope: push-based
+> notification for events an agent did NOT cause (needs the identity-routing problem #1622/MRTR
+> already routes around for elicitation).
+
 > **▶ 2026-09-20 - The org issuer cert co-key could never derive, and once it could, it wasn't stable
 > (#1687 + #1679, PR #1677).**
 >
