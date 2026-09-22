@@ -89,6 +89,26 @@
 > `RegisterPolicy` via an object initializer (mirroring the actual #1463 bug shape) to get a real RED.
 > `docs/security-model.md` updated with the disclosure-metadata position (values protected, sender/timing/
 > group-count/ciphertext-size/chain-position/recipient-address still visible).
+**Last Updated:** 2026-09-20
+**Status:** MVD Complete — Preparing for First Release
+**Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
+
+> **▶ 2026-09-20 - #1678 fixed: disclosed data survives instance completion.** Found live in cold-start
+> run #7: `GET /api/workflows/{instanceId}/disclosures` anchored on `instance.CurrentActionIds.FirstOrDefault()
+> ?? 0`. A **completed** instance has an EMPTY `CurrentActionIds`, so the anchor silently became the
+> sentinel `0` — no blueprint action ever has that id, so `ActionDisclosureResolver` took its "action not
+> found" fail-closed branch and answered `200` with zero disclosures for every completed instance,
+> forever, with only a `LogDebug` line nobody would ever see. Second defect on the same line:
+> `FirstOrDefault()` also silently dropped the second entry of a parallel-branch instance's
+> `CurrentActionIds`. ✅ Fixed on `fix/1678-disclosures-after-completion`: the instance-wide route now
+> anchors on every one of `CurrentActionIds` when active (union, not first), and on every action the
+> published blueprint defines when terminal (an action nobody submitted just contributes no data); the
+> "action not found" branch is now `LogWarning` and names the instance. `ActionId` in the instance-wide
+> response is `null` (the model doc already said it should be — never implemented until now),
+> distinguishing "no anchor resolved" from "resolved but nothing disclosed". Two new regression tests
+> (`WorkflowDisclosureEndpointsTests`) proved RED against the old sentinel/`FirstOrDefault` logic and
+> GREEN after; 2/2 targeted mutations killed. Per-action route (`/actions/{actionId}/disclosures`)
+> unchanged.
 
 > **▶ 2026-09-19 - Run #5 BLOCKER SWEEP: six fixes, all merged-ready on `fix/run6-blockers`.**
 > Run #5 reached a sealed, encrypted action 1 across two organisations and then wedged. Fixing what
