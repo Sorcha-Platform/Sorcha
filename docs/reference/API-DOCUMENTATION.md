@@ -2140,11 +2140,16 @@ GET /api/registers/{registerId}/policy
     "governance": { "quorumFormula": "strict-majority", "proposalTtlDays": 7 },
     "validators": { "registrationMode": "public", "minValidators": 1, "maxValidators": 100, "operationalTtlSeconds": 60 },
     "consensus": { "signatureThresholdMin": 2, "signatureThresholdMax": 10, "maxTransactionsPerDocket": 1000 },
-    "leaderElection": { "mechanism": "rotating", "heartbeatIntervalMs": 1000, "leaderTimeoutMs": 5000 }
+    "leaderElection": { "mechanism": "rotating", "heartbeatIntervalMs": 1000, "leaderTimeoutMs": 5000 },
+    "disclosureMetadata": "Public"
   },
   "isDefault": false
 }
 ```
+
+`disclosureMetadata` (issue #1684) governs what disclosure-group metadata a register publishes on
+sealed transactions beyond the ciphertext — `"Public"` (default; every existing register) or
+`"Minimal"` (reserved, **not implemented** — refused by `POST .../policy/update`, see below).
 
 ##### Propose Policy Update
 
@@ -2170,6 +2175,9 @@ POST /api/registers/{registerId}/policy/update
   "status": "submitted"
 }
 ```
+
+`policy.disclosureMetadata: "Minimal"` is refused with `400 Bad Request` — it is a reserved value with
+no implemented behaviour. Omit the field, or set it to `"Public"`, to accept the proposal.
 
 ##### Get Policy History
 

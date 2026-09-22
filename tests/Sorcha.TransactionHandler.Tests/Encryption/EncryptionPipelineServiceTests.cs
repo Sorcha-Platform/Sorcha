@@ -89,7 +89,6 @@ public class EncryptionPipelineServiceTests
 
         var group = result.Groups[0];
         group.GroupId.Should().Be("group1");
-        group.DisclosedFields.Should().BeEquivalentTo(["/name", "/age"]);
         group.Ciphertext.Should().BeEquivalentTo(FakeCiphertext);
         group.Nonce.Should().BeEquivalentTo(FakeNonce);
         group.EncryptionAlgorithm.Should().Be(EncryptionType.XCHACHA20_POLY1305);
@@ -666,13 +665,13 @@ public class EncryptionPipelineServiceTests
             .ToArray();
         wrappedKeyCounts.Should().BeEquivalentTo([4, 3, 3]);
 
-        // Verify each group has the correct disclosed fields (sorted)
-        var fieldSets = result.Groups
-            .Select(g => string.Join(",", g.DisclosedFields.OrderBy(f => f)))
-            .OrderBy(f => f)
-            .ToArray();
-        fieldSets.Should().BeEquivalentTo(
-            new[] { "amount,date", "amount,name", "email,name" });
+        // Verify the sealed groups correspond 1:1 to the pre-encryption disclosure groups (by
+        // GroupId — a deterministic hash of the sorted field set, per DisclosureGroupBuilder). The
+        // sealed EncryptedPayloadGroup no longer carries DisclosedFields itself (#1684 L1), so this
+        // is the correct-grouping check post-removal: same three field-set groups went in as came
+        // out encrypted, just not by inspecting a now-absent field.
+        result.Groups.Select(g => g.GroupId)
+            .Should().BeEquivalentTo(groups.Select(g => g.GroupId));
 
         // Symmetric encryption should happen exactly 3 times (once per group, not per recipient)
         _symmetricCryptoMock.Verify(s =>

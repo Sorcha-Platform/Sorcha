@@ -142,6 +142,11 @@ public static class RegisterPolicyEndpoints
                     return Results.BadRequest("TransitionMode is required when changing from Public to Consent mode");
                 }
 
+                // Issue #1684 — refuse a reserved, not-yet-implemented policy value at set time.
+                var disclosureMetadataError = ValidateDisclosureMetadata(request.Policy.DisclosureMetadata);
+                if (disclosureMetadataError is not null)
+                    return Results.BadRequest(disclosureMetadataError);
+
                 // Stamp update metadata
                 request.Policy.UpdatedAt = DateTimeOffset.UtcNow;
                 request.Policy.UpdatedBy = request.UpdatedBy;
@@ -272,6 +277,22 @@ public static class RegisterPolicyEndpoints
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status503ServiceUnavailable);
     }
+
+    /// <summary>
+    /// Refuses <see cref="DisclosureMetadataPolicy.Minimal"/> at policy-set time. It is a reserved
+    /// value with no implemented behaviour (issue #1684 L2, scoped separately — it would require
+    /// moving recipient notification from server-side resolution to client-side scanning). Accepting
+    /// it here would let a governance change set a policy value that nothing on the platform honours,
+    /// which is strictly worse than not having the field at all: an operator (or an auditor reading
+    /// the policy back) would reasonably believe disclosure shape is hidden when it is not.
+    /// </summary>
+    /// <param name="value">The proposed <see cref="RegisterPolicy.DisclosureMetadata"/> value.</param>
+    /// <returns>A refusal reason, or null when the value is accepted.</returns>
+    internal static string? ValidateDisclosureMetadata(DisclosureMetadataPolicy value) =>
+        value == DisclosureMetadataPolicy.Minimal
+            ? "disclosureMetadata: 'Minimal' is reserved and not yet implemented. Only 'Public' is "
+              + "a supported value today — omit the field or set it explicitly to 'Public'."
+            : null;
 }
 
 /// <summary>

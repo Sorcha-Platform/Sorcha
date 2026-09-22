@@ -45,7 +45,6 @@ public class BuildEncryptedActionTransactionEnvelopeTests
         new EncryptedPayloadGroup
         {
             GroupId = "group-1",
-            DisclosedFields = ["/name", "/amount"],
             Ciphertext = [0xDE, 0xAD, 0xBE, 0xEF],
             Nonce = new byte[24],
             EncryptionAlgorithm = EncryptionType.XCHACHA20_POLY1305,
@@ -73,6 +72,23 @@ public class BuildEncryptedActionTransactionEnvelopeTests
 
         // Assert — #1695: no confirmation-oracle hash on the sealed envelope.
         json.Should().NotContain("plaintextHash");
+    }
+
+    [Fact]
+    public async Task BuildEncryptedActionTransactionAsync_NewEnvelope_DoesNotPublishDisclosedFields()
+    {
+        // Act
+        var built = await Mock.Of<ITransactionBuilderService>().BuildEncryptedActionTransactionAsync(
+            Blueprint, TestInstance, Action, payloadData: [], SingleGroup(), previousTransactionId: null);
+
+        var json = System.Text.Encoding.UTF8.GetString(built.TransactionData);
+
+        // Assert — #1684 L1: the plaintext field-name list is no longer published beside the
+        // ciphertext. The field names are recoverable from the plaintext once a recipient decrypts
+        // their own group; publishing them separately leaked the disclosure shape (which fields were
+        // withheld from whom) to every reader of the transaction, including a replica party to
+        // nothing.
+        json.Should().NotContain("disclosedFields");
     }
 
     [Fact]

@@ -208,6 +208,81 @@ public class RegisterPolicyTests
         policy.UpdatedAt.Should().BeOnOrBefore(after);
     }
 
+    // --- CreateDefault: DisclosureMetadata (issue #1684) ---
+
+    [Fact]
+    public void CreateDefault_DisclosureMetadata_IsPublic()
+    {
+        var policy = RegisterPolicy.CreateDefault();
+
+        policy.DisclosureMetadata.Should().Be(DisclosureMetadataPolicy.Public);
+    }
+
+    [Fact]
+    public void DisclosureMetadata_DefaultValueOnANewInstance_IsPublic()
+    {
+        // Absent/null on a pre-feature control record must default to Public so every existing
+        // register keeps working unchanged — this is the C# property default that makes that true
+        // (Public == 0 == default(DisclosureMetadataPolicy)), pinned directly rather than only via
+        // CreateDefault().
+        var policy = new RegisterPolicy();
+
+        policy.DisclosureMetadata.Should().Be(DisclosureMetadataPolicy.Public);
+    }
+
+    [Fact]
+    public void Deserialization_JsonWithNoDisclosureMetadataField_DefaultsToPublic()
+    {
+        // Every control record sealed before this feature existed has no "disclosureMetadata" key
+        // at all. Deserializing that legacy shape must yield Public, not throw and not leave some
+        // other value.
+        const string legacyPolicyJson = """
+            {"version":1,"governance":{},"validators":{},"consensus":{},"leaderElection":{}}
+            """;
+
+        var deserialized = JsonSerializer.Deserialize<RegisterPolicy>(legacyPolicyJson);
+
+        deserialized.Should().NotBeNull();
+        deserialized!.DisclosureMetadata.Should().Be(DisclosureMetadataPolicy.Public);
+    }
+
+    [Fact]
+    public void EnumSerialization_DisclosureMetadata_SerializesAsString()
+    {
+        var policy = RegisterPolicy.CreateDefault();
+
+        var json = JsonSerializer.Serialize(policy);
+
+        // Pins the wire form: a plain property-level JsonStringEnumConverter (PascalCase), matching
+        // the sibling enums in this file (QuorumFormula, RegistrationMode, ElectionMechanism) — not
+        // SorchaJson's kebab-case global converter, which a property-level attribute always outranks.
+        json.Should().Contain("\"disclosureMetadata\":\"Public\"");
+    }
+
+    [Fact]
+    public void EnumSerialization_DisclosureMetadataMinimal_SerializesAsString()
+    {
+        var policy = RegisterPolicy.CreateDefault();
+        policy.DisclosureMetadata = DisclosureMetadataPolicy.Minimal;
+
+        var json = JsonSerializer.Serialize(policy);
+
+        json.Should().Contain("\"disclosureMetadata\":\"Minimal\"");
+        json.Should().NotContain("\"disclosureMetadata\":1");
+    }
+
+    [Fact]
+    public void EnumSerialization_DisclosureMetadata_DeserializesFromString()
+    {
+        var policy = RegisterPolicy.CreateDefault();
+        policy.DisclosureMetadata = DisclosureMetadataPolicy.Minimal;
+        var json = JsonSerializer.Serialize(policy);
+
+        var deserialized = JsonSerializer.Deserialize<RegisterPolicy>(json);
+
+        deserialized!.DisclosureMetadata.Should().Be(DisclosureMetadataPolicy.Minimal);
+    }
+
     // --- JSON Serialization Round-Trip ---
 
     [Fact]
@@ -240,6 +315,7 @@ public class RegisterPolicyTests
         deserialized.LeaderElection.HeartbeatIntervalMs.Should().Be(policy.LeaderElection.HeartbeatIntervalMs);
         deserialized.LeaderElection.LeaderTimeoutMs.Should().Be(policy.LeaderElection.LeaderTimeoutMs);
         deserialized.LeaderElection.TermDurationSeconds.Should().Be(policy.LeaderElection.TermDurationSeconds);
+        deserialized.DisclosureMetadata.Should().Be(policy.DisclosureMetadata);
         deserialized.UpdatedBy.Should().BeNull();
     }
 

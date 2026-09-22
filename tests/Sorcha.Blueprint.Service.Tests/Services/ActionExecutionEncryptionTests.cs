@@ -709,7 +709,6 @@ public class ActionExecutionEncryptionTests
             new EncryptedPayloadGroup
             {
                 GroupId = "test-group-id",
-                DisclosedFields = ["field1"],
                 Ciphertext = new byte[64],
                 Nonce = new byte[12],
                 EncryptionAlgorithm = EncryptionType.AES_GCM,

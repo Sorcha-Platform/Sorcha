@@ -273,7 +273,6 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
         var encryptedGroup = new EncryptedPayloadGroup
         {
             GroupId = group.GroupId,
-            DisclosedFields = group.DisclosedFields,
             Ciphertext = (byte[])ciphertext.Data.Clone(),
             Nonce = (byte[])ciphertext.IV.Clone(),
             EncryptionAlgorithm = EncryptionType.XCHACHA20_POLY1305,

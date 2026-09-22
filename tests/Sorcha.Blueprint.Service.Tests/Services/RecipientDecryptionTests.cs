@@ -58,7 +58,6 @@ public class RecipientDecryptionTests
             new EncryptedPayloadGroup
             {
                 GroupId = "group-1",
-                DisclosedFields = ["/name", "/amount"],
                 Ciphertext = new byte[64],
                 Nonce = new byte[24],
                 EncryptionAlgorithm = EncryptionType.XCHACHA20_POLY1305,
@@ -109,7 +108,6 @@ public class RecipientDecryptionTests
             new EncryptedPayloadGroup
             {
                 GroupId = "group-1",
-                DisclosedFields = ["/name"],
                 Ciphertext = new byte[64],
                 Nonce = new byte[24],
                 EncryptionAlgorithm = EncryptionType.XCHACHA20_POLY1305,
@@ -156,7 +154,6 @@ public class RecipientDecryptionTests
             new EncryptedPayloadGroup
             {
                 GroupId = "group-1",
-                DisclosedFields = ["/name"],
                 Ciphertext = new byte[64],
                 Nonce = new byte[24],
                 EncryptionAlgorithm = EncryptionType.XCHACHA20_POLY1305,
@@ -210,7 +207,6 @@ public class RecipientDecryptionTests
             new EncryptedPayloadGroup
             {
                 GroupId = "group-1",
-                DisclosedFields = ["/field"],
                 Ciphertext = new byte[16],
                 Nonce = new byte[24],
                 EncryptionAlgorithm = EncryptionType.XCHACHA20_POLY1305,
@@ -238,7 +234,6 @@ public class RecipientDecryptionTests
             new EncryptedPayloadGroup
             {
                 GroupId = "group-1",
-                DisclosedFields = ["/name"],
                 Ciphertext = new byte[64],
                 Nonce = new byte[24],
                 EncryptionAlgorithm = EncryptionType.XCHACHA20_POLY1305,

@@ -56,6 +56,23 @@ public class RegisterPolicy
     public string? UpdatedBy { get; set; }
 
     /// <summary>
+    /// Governed per-register disclosure-metadata policy (issue #1684). Decided per register because
+    /// the trade-off genuinely differs by use case — a regulated supply chain may want publicly
+    /// checkable disclosure shape, a commercial exchange between two firms may not.
+    /// </summary>
+    /// <remarks>
+    /// Absent/null on a pre-feature control record defaults to <see cref="DisclosureMetadataPolicy.Public"/>
+    /// (the enum's zero value) so every existing register keeps working unchanged.
+    /// <see cref="DisclosureMetadataPolicy.Minimal"/> is reserved and refused at set time — see
+    /// <c>RegisterPolicyEndpoints.ValidateDisclosureMetadata</c>. It is not yet implemented: hiding
+    /// recipient wallet addresses would require moving notification from server-side recipient
+    /// resolution to client-side scanning, which is scoped separately.
+    /// </remarks>
+    [JsonPropertyName("disclosureMetadata")]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public DisclosureMetadataPolicy DisclosureMetadata { get; set; } = DisclosureMetadataPolicy.Public;
+
+    /// <summary>
     /// Creates the default register policy for new registers.
     /// Returns a fully populated policy with all default configuration values.
     /// </summary>
@@ -101,6 +118,7 @@ public class RegisterPolicy
                 LeaderTimeoutMs = 5000,
                 TermDurationSeconds = 60
             },
+            DisclosureMetadata = DisclosureMetadataPolicy.Public,
             UpdatedAt = now,
             UpdatedBy = null
         };
@@ -307,4 +325,30 @@ public class PolicyLeaderElectionConfig
     [JsonPropertyName("termDurationSeconds")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? TermDurationSeconds { get; set; } = 60;
+}
+
+/// <summary>
+/// Governed per-register policy (issue #1684) for what disclosure-group metadata a register
+/// publishes on its sealed transactions, beyond the ciphertext itself.
+/// </summary>
+public enum DisclosureMetadataPolicy
+{
+    /// <summary>
+    /// Current behaviour, and the only implemented value: each disclosure group's recipient wallet
+    /// addresses (<c>wrappedKeys[].walletAddress</c>) are published in the clear so a node can
+    /// resolve who to notify. Default for every register, including every register created before
+    /// this policy existed.
+    /// </summary>
+    Public = 0,
+
+    /// <summary>
+    /// Reserved — NOT implemented. Intended to additionally stop publishing recipient wallet
+    /// addresses, so group membership is discoverable only by trial decryption. That would move
+    /// recipient notification from server-side resolution to client-side scanning, which is a
+    /// separate, larger piece of work than the serialization change this enum represents, and is
+    /// scoped independently. Refused at policy-set time — see
+    /// <c>RegisterPolicyEndpoints.ValidateDisclosureMetadata</c> — rather than silently accepted with
+    /// no effect: a governance change nothing honours is worse than no change at all.
+    /// </summary>
+    Minimal = 1
 }

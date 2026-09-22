@@ -1029,8 +1029,15 @@ a fatal `VAL_HASH_001` rejection far from its cause.
 as it writes the sealed docket, not when the call returns — poll `GET /api/registers/{id}`.
 
 Transactions sealed while the register was in DevMode **stay plaintext forever**; promotion changes
-the posture for new payloads only. And on an encrypted register, disclosure-group **field names**
-(`disclosedFields`) remain in the clear by design — only values are ciphertext.
+the posture for new payloads only. On an encrypted register, disclosure-group field names
+(`disclosedFields`) and plaintext hashes (`plaintextHash`) used to remain in the clear beside the
+ciphertext — dropped for newly written envelopes as of 2026-09-22 (issues #1695, #1684 L1; a
+confirmation oracle and a disclosure-shape leak respectively). Transactions sealed before that date
+keep both fields forever — the ledger is immutable — but nothing on the read path ever depended on
+either. What every reader still necessarily sees: sender, timing, disclosure-group count, ciphertext
+size, chain position, and each group's recipient wallet address(es) — the last one governed per
+register by `RegisterPolicy.DisclosureMetadata` (`public`, today's only implemented value; `minimal`
+is reserved and refused at policy-set time — see `docs/security-model.md`).
 
 `PUT /api/registers/{id}/devmode` **has been removed.** It flipped the flag directly, in both
 directions, with no control transaction — so it could revert a Normal register to plaintext, it never
