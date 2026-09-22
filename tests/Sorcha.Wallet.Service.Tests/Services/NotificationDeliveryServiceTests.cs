@@ -133,6 +133,11 @@ public class NotificationDeliveryServiceTests
         _mockInbox
             .Setup(i => i.ResolvePlatformUserIdAsync(TestUserIdentityId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(TestPlatformUserId);
+        // #1703 — the writer now confirms a resolved PlatformUserId actually names a platform user
+        // (the #1682 guard) before writing. Default fixture: any resolved id verifies as existing.
+        _mockInbox
+            .Setup(i => i.PlatformUserExistsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
         _mockInbox
             .Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
@@ -309,6 +314,41 @@ public class NotificationDeliveryServiceTests
         _mockInbox
             .Setup(i => i.ResolvePlatformUserIdAsync(TestUserIdentityId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid?)null);
+
+        var result = await CallDeliverAsync();
+
+        result.Should().Be(NotificationDeliveryResult.NoUserFound);
+        _mockInbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>
+    /// #1703 sweep (#1682-shaped) — <c>ResolvePlatformUserIdAsync</c> only confirms the UserIdentity
+    /// row exists and hands back whatever its <c>PlatformUserId</c> column holds, dangling or not.
+    /// Before this fix that value was trusted straight into the write request, which the endpoint's
+    /// own #1506 guard rejects 400 two hops later — silently swallowed. The service must confirm
+    /// existence itself before writing.
+    /// </summary>
+    [Fact]
+    public async Task DeliverAsync_RealTime_ResolvedPlatformUserIdIsDangling_ReturnsNoUserFound_DoesNotPostMalformedRequest()
+    {
+        SetupWalletFound();
+        SetupPreferences(NotificationPreferences.Default);
+        SetupRateLimiter(allowed: true);
+        var danglingPlatformUserId = Guid.Parse("99999999-9999-9999-9999-999999999999");
+        _mockParticipants
+            .Setup(p => p.GetByWalletAddressAsync(TestAddress, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ParticipantInfo
+            {
+                Id = Guid.NewGuid(), UserId = TestUserIdentityId,
+                OrganizationId = Guid.NewGuid(), DisplayName = "x",
+                Email = "x@example.com", Status = "Active"
+            });
+        _mockInbox
+            .Setup(i => i.ResolvePlatformUserIdAsync(TestUserIdentityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(danglingPlatformUserId);
+        _mockInbox
+            .Setup(i => i.PlatformUserExistsAsync(danglingPlatformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
 
         var result = await CallDeliverAsync();
 

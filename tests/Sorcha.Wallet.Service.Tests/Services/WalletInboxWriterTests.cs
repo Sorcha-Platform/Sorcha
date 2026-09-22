@@ -21,6 +21,12 @@ public class WalletInboxWriterTests
     public WalletInboxWriterTests()
     {
         _sut = new WalletInboxWriter(_participants.Object, _inbox.Object, NullLogger<WalletInboxWriter>.Instance);
+
+        // #1703 — the writer now confirms a resolved PlatformUserId actually names a platform user
+        // (the #1682 guard) before writing. Default fixture: any resolved id verifies as existing;
+        // the dangling-link test below overrides this per-id.
+        _inbox.Setup(i => i.PlatformUserExistsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
     }
 
     [Fact]
@@ -64,6 +70,31 @@ public class WalletInboxWriterTests
         await _sut.WriteCredentialReceivedAsync("recipient-wallet", "cred-abc", "Driving Licence");
 
         captured!.Title.Should().Be("New credential: Driving Licence");
+    }
+
+    /// <summary>
+    /// #1703 sweep (same shape as #1682 in BlueprintInboxWriter) — <c>ResolvePlatformUserIdAsync</c>
+    /// only confirms the UserIdentity row exists and hands back whatever its <c>PlatformUserId</c>
+    /// column holds, dangling or not. Before this fix that value was trusted straight into the write
+    /// request, which the endpoint's own #1506 guard rejects 400 two hops later — swallowed whole by
+    /// the caller's try/catch. The writer must confirm existence itself before writing.
+    /// </summary>
+    [Fact]
+    public async Task WriteCredentialReceivedAsync_ResolvedPlatformUserIdIsDangling_SkipsInbox_DoesNotPostMalformedRequest()
+    {
+        var participant = BuildParticipant();
+        var danglingPlatformUserId = Guid.NewGuid();
+
+        _participants.Setup(p => p.GetByWalletAddressAsync("recipient-wallet", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(participant);
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(participant.UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(danglingPlatformUserId);
+        _inbox.Setup(i => i.PlatformUserExistsAsync(danglingPlatformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        await _sut.WriteCredentialReceivedAsync("recipient-wallet", "cred-abc", "Verified Citizen");
+
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -287,6 +318,24 @@ public class WalletInboxWriterTests
         await act1.Should().NotThrowAsync();
         await act2.Should().NotThrowAsync();
         await act3.Should().NotThrowAsync();
+    }
+
+    /// <summary>#1703 — same dangling-link guard, exercised via the shared credential-event helper.</summary>
+    [Fact]
+    public async Task NewMethods_ResolvedPlatformUserIdIsDangling_SkipsInbox()
+    {
+        var participant = BuildParticipant();
+        var danglingPlatformUserId = Guid.NewGuid();
+        _participants.Setup(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(participant);
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(participant.UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(danglingPlatformUserId);
+        _inbox.Setup(i => i.PlatformUserExistsAsync(danglingPlatformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        await _sut.WriteCredentialDeclinedAsync("wallet", "cred", "Type");
+
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

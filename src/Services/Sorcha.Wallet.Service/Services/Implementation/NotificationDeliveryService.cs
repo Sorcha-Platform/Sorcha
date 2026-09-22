@@ -275,6 +275,20 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
                 return false;
             }
 
+            // #1703 sweep — ResolvePlatformUserIdAsync only confirms the UserIdentity row exists and
+            // hands back whatever its PlatformUserId column holds, dangling or not (#1682's failure
+            // shape). Confirm existence before building the request rather than sending one the
+            // endpoint's own #1506 guard is guaranteed to reject 400 two hops later.
+            if (!await _inbox.PlatformUserExistsAsync(platformUserId.Value, ct).ConfigureAwait(false))
+            {
+                _logger.LogWarning(
+                    "Inbox skip — resolved PlatformUserId {PlatformUserId} for wallet {Wallet} (UserIdentity "
+                    + "{UserIdentityId}) does not name a known platform user. Skipping the write rather than "
+                    + "sending a request the server is guaranteed to reject.",
+                    platformUserId.Value, recipientAddress, participant.UserId);
+                return false;
+            }
+
             var sourceEventId = DeterministicSourceEventId(recipientAddress, actionEvent.TransactionId);
             var detailHref = BuildDetailHref(actionEvent);
             var title = actionEvent.IsRecoveryEvent

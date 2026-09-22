@@ -68,9 +68,11 @@ public sealed record EncryptionWorkItem
     public EncryptedPayloadGroup[]? PreComputedGroups { get; init; }
 
     /// <summary>
-    /// Authenticated user ID (from JWT sub claim). Currently unused on the
-    /// hot path — kept for trace correlation and any future user-scoped
-    /// notification surface.
+    /// The submitting caller's <c>PlatformUser.Id</c> (from the JWT <c>platform_user_id</c> claim —
+    /// NOT the <c>sub</c> claim, which carries the org-scoped <c>UserIdentity.Id</c>, a different id
+    /// in the same Guid value space; see #1703). Used by
+    /// <see cref="Sorcha.Blueprint.Service.Services.Implementation.EncryptionBackgroundService"/> to
+    /// address the encryption-complete/-failed inbox notification.
     /// </summary>
     public string? UserId { get; init; }
 

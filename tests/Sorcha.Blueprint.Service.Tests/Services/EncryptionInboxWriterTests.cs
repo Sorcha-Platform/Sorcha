@@ -20,6 +20,15 @@ public sealed class EncryptionInboxWriterTests
     private EncryptionInboxWriter BuildSut(ILogger<EncryptionInboxWriter>? logger = null) =>
         new(_inbox.Object, logger ?? NullLogger<EncryptionInboxWriter>.Instance);
 
+    public EncryptionInboxWriterTests()
+    {
+        // #1703 — the writer now confirms platformUserId names a real platform user (defence in
+        // depth) before writing. Default fixture: any id verifies as existing; the dangling-id tests
+        // below override this per-id.
+        _inbox.Setup(i => i.PlatformUserExistsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+    }
+
     private void SetupInboxSuccess()
     {
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
@@ -157,6 +166,56 @@ public sealed class EncryptionInboxWriterTests
                 It.IsAny<EventId>(),
                 It.IsAny<It.IsAnyType>(),
                 It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// #1703 — defence in depth. The caller believes <c>platformUserId</c> is already verified (the
+    /// live bug was a caller upstream passing a UserIdentity id here instead), but nothing in the
+    /// writer itself used to confirm that before posting. A non-existent id must be skipped here
+    /// too, not just rejected 400 by Tenant's own #1506 guard two hops away.
+    /// </summary>
+    [Fact]
+    public async Task WriteEncryptionCompleteAsync_PlatformUserIdDoesNotExist_SkipsWriteAndLogs()
+    {
+        _inbox.Setup(i => i.PlatformUserExistsAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        var loggerMock = new Mock<ILogger<EncryptionInboxWriter>>();
+        var sut = BuildSut(loggerMock.Object);
+
+        await sut.Awaiting(s => s.WriteEncryptionCompleteAsync(_userId, OperationId))
+            .Should().NotThrowAsync();
+
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()), Times.Never);
+        loggerMock.Verify(
+            l => l.Log(
+                LogLevel.Warning,
+                It.IsAny<EventId>(),
+                It.IsAny<It.IsAnyType>(),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task WriteEncryptionFailedAsync_PlatformUserIdDoesNotExist_SkipsWriteAndLogs()
+    {
+        _inbox.Setup(i => i.PlatformUserExistsAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        var loggerMock = new Mock<ILogger<EncryptionInboxWriter>>();
+        var sut = BuildSut(loggerMock.Object);
+
+        await sut.Awaiting(s => s.WriteEncryptionFailedAsync(_userId, OperationId))
+            .Should().NotThrowAsync();
+
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()), Times.Never);
+        loggerMock.Verify(
+            l => l.Log(
+                LogLevel.Warning,
+                It.IsAny<EventId>(),
+                It.IsAny<It.IsAnyType>(),
+                It.IsAny<Exception?>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
     }
