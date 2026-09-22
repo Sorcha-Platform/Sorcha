@@ -8,6 +8,64 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
+> **▶ 2026-09-20 - The org issuer cert co-key could never derive, and once it could, it wasn't stable
+> (#1687 + #1679, PR #1677).**
+>
+> **#1687 — `AlgorithmMapper` had no "ES256" alias.** Live on n1 for every organisation:
+> `OrgIssuerCertKeyService`'s HaipCoKey branch (F181 US4/US5) passed the literal `"ES256"` into
+> `KeyManagementService.DeriveKeyAtPathAsync`, but `AlgorithmMapper.TryParseAlgorithm` only accepted
+> `"NISTP256" | "NIST-P256" | "P-256" | "P256" | "ECDSA-P256"` for `WalletNetworks.NISTP256` — no "ES256"
+> (the JOSE/COSE name for the same algorithm). `ParseAlgorithm` threw, `TryResolveAsync` caught and logged
+> it, and the `/issuer-cert-key` endpoint still answered 200 with "not eligible" — a refusal presenting as
+> an absence for essentially every ED25519-primary org. Fix: added `"ES256"` to the `NISTP256` alias arm
+> (`Sorcha.Cryptography.Utilities.AlgorithmMapper`). Same one-line fix also repairs `HaipIssuerCoKeyService`,
+> `HolderBindingKeyService`, `HolderKeyService`, and `CitizenStatusListPublisher` — all four resolve their
+> PQC-primary co-key derivation algorithm via `WalletAlgorithmClassification.DefaultClassicalAlgorithm`,
+> which is the literal `"ES256"`, so they hit the identical mapper gap through the same
+> `DeriveKeyAtPathAsync` seam. It also repairs any call site that forwards `wallet.Algorithm` verbatim
+> (`WalletManager`, `WalletGrpcService`, `TransactionService`) for a wallet whose stored primary algorithm
+> is literally `"ES256"` — a value multiple services already treat as a valid primary spelling.
+>
+> **#1679 — `CryptoModule.GenerateNISTP256KeySetAsync` ignored its `seed` parameter entirely**, always
+> generating a fresh random P-256 keypair — unlike `GenerateED25519KeySetAsync`, which genuinely derives
+> from the seed. Found *while building the seam test for #1687*: the ES256 fix alone let derivation
+> succeed, but two independent derivations of "the same" HaipCoKey (`ResolveAsync` then a later
+> `SignPreHashedAsync`) returned different, unrelated P-256 keypairs — a cert issued against one could
+> never be validated against a signature from the other. Fix: derive the private scalar `d` from the
+> seed (normalized to 32 bytes, validated to actually land in `[1, n-1]` via BouncyCastle's P-256 domain
+> parameters, deterministic re-hash retry if not) and compute `Q = d·G` directly, mirroring
+> `GenerateED25519KeySetAsync`'s contract. A null/empty seed still generates randomly, unchanged.
+>
+> ⚠ **Blast radius, wider than F181/HAIP**: any P-256-PRIMARY wallet (not just PQC-primary ones falling
+> back to the ES256 co-key) was affected everywhere `wallet.Algorithm` drives a seeded derivation —
+> `WalletManager.CreateLocalWalletAsync`/`RecoverWalletAsync` (wallet creation vs. mnemonic recovery would
+> silently derive DIFFERENT addresses) and `WalletManager`'s derivation-path signing branch (docket-signing,
+> blueprint-publish, register-attestation — a fresh random key every signing call, never matching a
+> roster entry keyed to a prior derivation). `HolderKeyService` (citizen holder key) and
+> `CitizenStatusListPublisher` (citizen status-list signing key) were silently non-deterministic for BOTH
+> P-256-primary wallets AND every PQC-primary wallet needing their ES256 fallback — meaning any HAIP `cnf`
+> proof-of-possession or status-list signature for those wallets could never be verified against a
+> previously-published JWK. `RSA4096` generation was already seedless by design (no seed parameter is
+> even passed) — not part of this defect, not touched.
+>
+> Tests: a mapper unit test (`AlgorithmMapperTests`), a determinism test suite
+> (`CryptoModuleNistP256SeedDerivationTests` — same-seed-twice ⇒ identical keys, different seeds ⇒
+> different keys, derived pair is a genuine matched EC keypair, no-seed still random), and a **seam test**
+> (`OrgIssuerCertKeyServiceSeamTests`) that wires a REAL `KeyManagementService` (real `CryptoModule`, real
+> `LocalEncryptionProvider`) rather than mocking `IKeyManagementService.DeriveKeyAtPathAsync` — the
+> existing `OrgIssuerCertKeyServiceTests.Resolve_Ed25519Primary_DerivesHaipCoKey_And_SignVerifies` mocks
+> exactly that method and stayed green throughout both live defects. Its resolve→sign round trip now
+> asserts full determinism (a later independent derivation signs with the SAME key `ResolveAsync`
+> reported). All new tests independently mutation-tested for BOTH fixes (revert one, confirm the other's
+> tests unaffected and its own tests RED for the right reason; restore; confirm the whole branch GREEN
+> together — 395/395 Cryptography, 1055/1055 Wallet.Service, 112/112 Wallet.Core).
+>
+> ⚠ **Deliberate, disclosed behaviour change**: derived P-256 key material changes for any wallet whose
+> primary algorithm is P-256 (or that needs a P-256 co-key). Already-stored keys are unaffected (nothing
+> re-derives an existing stored key), but mnemonic recovery of a P-256-primary wallet now yields
+> DIFFERENT keys than the pre-fix random behaviour would have. Acceptable pre-release under CLAUDE.md
+> §19 (recreate, don't migrate) — flagged explicitly rather than left implicit.
+>
 > **▶ 2026-09-19 - Run #5 BLOCKER SWEEP: six fixes, all merged-ready on `fix/run6-blockers`.**
 > Run #5 reached a sealed, encrypted action 1 across two organisations and then wedged. Fixing what
 > it found, before run #6:
