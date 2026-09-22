@@ -97,6 +97,9 @@ public class ApplyOperationPreservesRegisterConfigurationTests
                 ProposalTtlDays = 14,
                 OwnerCanBypassQuorum = false,
             },
+            // Issue #1684 — non-default (Public == 0 is the default) so a regression that drops
+            // this field back to its default is caught, same reasoning as QuorumFormula above.
+            DisclosureMetadata = DisclosureMetadataPolicy.Minimal,
         },
         RoutingAttestation = AttestationKind.ValidatorReEvaluated,
         Validators = new ValidatorRoster

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.ComponentModel;
 using System.Net;
 using System.Reflection;
 using Microsoft.Extensions.Logging;
@@ -130,7 +131,7 @@ public class AuditQueryToolTests
         refusal.ResourceId.Should().Be("ws11qpws9aaz");
         refusal.Service.Should().Be("wallet-service");
         refusal.Reason.Should().Contain("no active signing delegation");
-        refusal.UserId.Should().Be("00000000-0000-0001-0000-000000000001");
+        refusal.PlatformUserId.Should().Be("00000000-0000-0001-0000-000000000001");
 
         // An entry that names no action falls back to its event type, so Action is never blank.
         result.Entries[1].Action.Should().Be("Login");
@@ -212,4 +213,53 @@ public class AuditQueryToolTests
     private void VerifyNoRead() =>
         _tenant.Verify(t => t.GetOrganizationAuditEventsAsync(
             It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+
+    // ── #1686: this is not a ledger transaction trail, and must say so ──
+
+    /// <summary>
+    /// Cold-start run #7 read the tool's name and description and expected a session that created
+    /// a register, published a blueprint, created an instance and submitted three actions to show
+    /// up here. It does not — this is the Tenant Service's admin/permission log — and the
+    /// description is the one thing an agent reads BEFORE deciding whether calling this tool can
+    /// answer its question at all.
+    /// </summary>
+    [Fact]
+    public void Description_SaysThisIsNotALedgerTransactionTrail_AndNamesTheToolThatIs()
+    {
+        var description = typeof(AuditQueryTool)
+            .GetMethod(nameof(AuditQueryTool.QueryAuditLogsAsync))!
+            .GetCustomAttribute<DescriptionAttribute>()!
+            .Description;
+
+        description.Should().Contain("NOT a ledger transaction trail");
+        description.Should().Contain("sorcha_transaction_history");
+    }
+
+    [Fact]
+    public async Task NoMatchingEntries_MessageSaysThisIsNotEvidenceNothingHappened()
+    {
+        _tenant.Setup(t => t.GetOrganizationAuditEventsAsync(
+                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HttpStatusCode.OK, """{"events":[],"totalCount":0,"page":1,"pageSize":50}"""));
+
+        var result = await CreateTool().QueryAuditLogsAsync();
+
+        result.Status.Should().Be("Success");
+        result.Entries.Should().BeEmpty();
+        result.Message.Should().Contain("sorcha_transaction_history");
+        result.Message.Should().NotBe("No audit entries match this filter for your organisation.");
+    }
+
+    /// <summary>
+    /// #1686: the id this tool reports (<c>PlatformUser</c>, cross-org) is a DIFFERENT id from the
+    /// one <c>sorcha_user_list</c> reports for the same human (<c>UserIdentity</c>, org-scoped).
+    /// Both used to be an unlabelled "UserId".
+    /// </summary>
+    [Fact]
+    public async Task Entry_LabelsItsIdAsThePlatformUserId()
+    {
+        var result = await CreateTool().QueryAuditLogsAsync(eventType: "PermissionDenied");
+
+        result.Entries[0].PlatformUserId.Should().Be("00000000-0000-0001-0000-000000000001");
+    }
 }

@@ -831,25 +831,10 @@ blueprintGroup.MapGet("/", async (
 // <summary>
 // Get blueprint by ID
 // Supports JSON-LD via Accept: application/ld+json header
+// Falls back to the published definition on a register the caller participates in when the
+// caller's own organisation does not own the draft (#1683).
 // </summary>
-blueprintGroup.MapGet("/{id}", async (HttpContext context, string id, IBlueprintService service) =>
-{
-    var orgId = context.IsServiceToken() ? null : context.GetOrganizationId();
-    var blueprint = await service.GetByIdAsync(id, orgId);
-    if (blueprint is null) return Results.NotFound();
-
-    // Add JSON-LD context if requested
-    if (context.AcceptsJsonLd())
-    {
-        blueprint = JsonLdHelper.EnsureJsonLdContext(blueprint);
-    }
-
-    return Results.Ok(blueprint);
-})
-.WithName("GetBlueprintById")
-.WithSummary("Get blueprint by ID")
-.WithDescription("Retrieve a specific blueprint by its unique identifier. Supports JSON-LD via Accept: application/ld+json header.")
-.CacheOutput(policy => policy.Expire(TimeSpan.FromMinutes(5)).Tag("blueprints"));
+blueprintGroup.MapBlueprintGetEndpoint();
 
 // <summary>
 // Create new blueprint
@@ -2099,53 +2084,20 @@ executionGroup.MapPost("/calculate", async (
 // <summary>
 // Determine routing for action (helper endpoint)
 // </summary>
-executionGroup.MapPost("/route", async (
+executionGroup.MapPost("/route", (
     RouteRequest request,
     IBlueprintStore blueprintStore,
-    Sorcha.Blueprint.Engine.Interfaces.IExecutionEngine executionEngine) =>
-{
-    try
-    {
-        // Get blueprint
-        var blueprint = await blueprintStore.GetAsync(request.BlueprintId);
-        if (blueprint == null)
-        {
-            return Results.BadRequest(new { error = "Blueprint not found" });
-        }
-
-        // Get action (parse ActionId string to int)
-        if (!int.TryParse(request.ActionId, out var actionIdInt))
-        {
-            return Results.BadRequest(new { error = "Invalid action ID format" });
-        }
-
-        var action = blueprint.Actions.FirstOrDefault(a => a.Id == actionIdInt);
-        if (action == null)
-        {
-            return Results.BadRequest(new { error = "Action not found in blueprint" });
-        }
-
-        // Determine routing
-        var result = await executionEngine.DetermineRoutingAsync(blueprint, action, request.Data);
-
-        return Results.Ok(new
-        {
-            nextActionId = result.NextActionId,
-            nextParticipantId = result.NextParticipantId,
-            isWorkflowComplete = result.IsWorkflowComplete,
-            rejectedToParticipantId = result.RejectedToParticipantId,
-            matchedCondition = result.MatchedCondition
-        });
-    }
-    catch (Exception ex)
-    {
-        logger.LogWarning(ex, "Request failed");
-        return Results.Problem("An error occurred processing the request.", statusCode: 400);
-    }
-})
+    Sorcha.Blueprint.Engine.Interfaces.IExecutionEngine executionEngine,
+    CancellationToken ct) =>
+        Sorcha.Blueprint.Service.Endpoints.ExecutionRoutingEndpoint.HandleAsync(
+            request, blueprintStore, executionEngine, logger, ct))
 .WithName("DetermineRouting")
 .WithSummary("Determine routing")
-.WithDescription("Determine the next action and participant based on routing conditions");
+.WithDescription(
+    "Determine the next action(s) for a payload against an action's Routes (falling back to the "
+    + "legacy Participants/Condition model when no routes are declared). The response's "
+    + "nextActions list is the authoritative answer; isWorkflowComplete and matchedRouteId "
+    + "distinguish a matched terminal route from an action with no routing configured at all.");
 
 // <summary>
 // Apply disclosure rules (helper endpoint)

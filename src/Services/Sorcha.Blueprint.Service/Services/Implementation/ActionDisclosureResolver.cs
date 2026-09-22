@@ -164,9 +164,14 @@ public sealed class ActionDisclosureResolver : IActionDisclosureResolver
         // from. Absence is treated as "nothing disclosed" (the caller falls back to a hold), not an error.
         if (blueprint.Actions?.Any(a => a.Id == actionId) != true)
         {
-            _logger.LogDebug(
-                "Disclosed-data resolve: action {ActionId} not found in blueprint {BlueprintId}",
-                actionId, instance.BlueprintId);
+            // #1678: this used to be LogDebug, so a genuinely unresolvable anchor (including the old
+            // 0-sentinel every completed instance hit) never surfaced anywhere above Debug — the node
+            // silently answered 200 with zero disclosures. Warn and name the instance so an operator
+            // can actually find this.
+            _logger.LogWarning(
+                "Disclosed-data resolve: action {ActionId} not found in blueprint {BlueprintId} for "
+                + "instance {InstanceId} — returning empty (fail-closed)",
+                actionId, instance.BlueprintId, instanceId);
             return Empty(registerId);
         }
 

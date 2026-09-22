@@ -49,6 +49,8 @@ public class BlueprintInboxWriterTests
             .ReturnsAsync(participant);
         _inbox.Setup(i => i.ResolvePlatformUserIdAsync(participant.UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(platformUserId);
+        _inbox.Setup(i => i.PlatformUserExistsAsync(platformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
@@ -62,6 +64,35 @@ public class BlueprintInboxWriterTests
         captured.CorrelationKey.Should().Be("action:instance-A:action-X");
         captured.DetailHref.Should().Be("/api/instances/instance-A/actions/action-X");
         captured.Title.Should().Be("Sign the form");
+    }
+
+    /// <summary>
+    /// #1682 — the recipient that "cannot be resolved" is not always a missing participant or a
+    /// missed UserIdentity lookup. <c>ResolvePlatformUserIdAsync</c> can successfully return a
+    /// PlatformUserId that is itself dangling (the UserIdentity row's <c>PlatformUserId</c> column
+    /// points nowhere — exactly the shape of a participant modelled without ever being provisioned
+    /// as a real platform user). Before this fix, that id was trusted and posted straight to
+    /// <c>POST /api/internal/inbox</c>, which rejects it 400 (the endpoint's own #1506 existence
+    /// guard) — a malformed request WE generated, thrown as an <c>HttpRequestException</c> and
+    /// silently swallowed. The fix confirms existence BEFORE building the request.
+    /// </summary>
+    [Fact]
+    public async Task WriteActionAvailableAsync_ResolvedPlatformUserIdIsDangling_SkipsInbox_DoesNotPostMalformedRequest()
+    {
+        var participant = BuildParticipant(Guid.NewGuid());
+        var danglingPlatformUserId = Guid.NewGuid();
+
+        _participants.Setup(p => p.GetByWalletAddressAsync("wallet-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(participant);
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(participant.UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(danglingPlatformUserId);
+        _inbox.Setup(i => i.PlatformUserExistsAsync(danglingPlatformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        await _sut.WriteActionAvailableAsync("wallet-1", "instance-A", "action-X");
+
+        // The observable outcome that matters: no request naming this dangling id was ever sent.
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -100,6 +131,8 @@ public class BlueprintInboxWriterTests
             .ReturnsAsync(participant);
         _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(platformUserId);
+        _inbox.Setup(i => i.PlatformUserExistsAsync(platformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .Callback<InboxWritePayload, CancellationToken>((p, _) => sourceIds.Add(p.SourceEventId))
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
@@ -115,10 +148,13 @@ public class BlueprintInboxWriterTests
     public async Task WriteActionAvailableAsync_InboxThrows_DoesNotPropagate()
     {
         var participant = BuildParticipant(Guid.NewGuid());
+        var platformUserId = Guid.NewGuid();
         _participants.Setup(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(participant);
         _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.NewGuid());
+            .ReturnsAsync(platformUserId);
+        _inbox.Setup(i => i.PlatformUserExistsAsync(platformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Tenant unavailable"));
 
@@ -141,6 +177,8 @@ public class BlueprintInboxWriterTests
             .ReturnsAsync(participant);
         _inbox.Setup(i => i.ResolvePlatformUserIdAsync(participant.UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(platformUserId);
+        _inbox.Setup(i => i.PlatformUserExistsAsync(platformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
@@ -159,6 +197,32 @@ public class BlueprintInboxWriterTests
         captured.Summary.Should().Be("AIAS needs a verified email before it can assure you.");
         captured.CorrelationKey.Should().Be("decision:instance-A:2");
         captured.DetailHref.Should().Be("/api/instances/instance-A");
+    }
+
+    /// <summary>
+    /// #1682 — same dangling-link scenario as the action-available path, but via the
+    /// participant-record branch of <c>ResolveRecipientPlatformUserIdAsync</c>. Falls through to
+    /// the wallet-owner path, which here ALSO cannot resolve — so the decision notice is skipped
+    /// deliberately rather than posting a request the server will reject.
+    /// </summary>
+    [Fact]
+    public async Task WriteDecisionAsync_ParticipantLinkPlatformUserIdIsDangling_FallsThroughThenSkips()
+    {
+        var participant = BuildParticipant(Guid.NewGuid());
+        var danglingPlatformUserId = Guid.NewGuid();
+
+        _participants.Setup(p => p.GetByWalletAddressAsync("citizen-wallet", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(participant);
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(participant.UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(danglingPlatformUserId);
+        _inbox.Setup(i => i.PlatformUserExistsAsync(danglingPlatformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _wallets.Setup(w => w.GetWalletAsync("citizen-wallet", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((WalletInfo?)null);
+
+        await _sut.WriteDecisionAsync("citizen-wallet", "instance-A", "2", "Title", "reason", "Warning");
+
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -298,10 +362,13 @@ public class BlueprintInboxWriterTests
         var participant = BuildParticipant(Guid.NewGuid());
         var sourceIds = new List<Guid>();
 
+        var platformUserId = Guid.NewGuid();
         _participants.Setup(p => p.GetByWalletAddressAsync("citizen-wallet", It.IsAny<CancellationToken>()))
             .ReturnsAsync(participant);
         _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.NewGuid());
+            .ReturnsAsync(platformUserId);
+        _inbox.Setup(i => i.PlatformUserExistsAsync(platformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .Callback<InboxWritePayload, CancellationToken>((p, _) => sourceIds.Add(p.SourceEventId))
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
@@ -317,10 +384,13 @@ public class BlueprintInboxWriterTests
     public async Task WriteDecisionAsync_InboxThrows_DoesNotPropagate()
     {
         var participant = BuildParticipant(Guid.NewGuid());
+        var platformUserId = Guid.NewGuid();
         _participants.Setup(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(participant);
         _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.NewGuid());
+            .ReturnsAsync(platformUserId);
+        _inbox.Setup(i => i.PlatformUserExistsAsync(platformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Tenant unavailable"));
 

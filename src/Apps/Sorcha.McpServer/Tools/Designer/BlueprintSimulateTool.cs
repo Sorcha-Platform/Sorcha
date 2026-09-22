@@ -170,9 +170,28 @@ public sealed class BlueprintSimulateTool
             else
             {
                 status = "Success";
-                message = routeResult?.NextActions?.Count > 0
-                    ? $"Simulation complete. Routes to {routeResult.NextActions.Count} next action(s)."
-                    : "Simulation complete. No routing configured for this action.";
+                // #1681: NextActions is the authoritative answer for "does this action have
+                // routing?" — both Route-based and legacy Condition-based routing populate it.
+                // An action can legitimately have ZERO next actions for two different reasons,
+                // and conflating them is exactly the bug being fixed here: a matched TERMINAL
+                // route (isWorkflowComplete + matchedRouteId set) is a designed end-of-workflow
+                // step, not an authoring gap.
+                if (routeResult?.NextActions?.Count > 0)
+                {
+                    message = $"Simulation complete. Routes to {routeResult.NextActions.Count} next action(s).";
+                }
+                else if (routeResult?.MatchedRouteId != null)
+                {
+                    // A matched route with zero next actions is a DESIGNED terminal step, not an
+                    // authoring gap — keying on MatchedRouteId (rather than IsWorkflowComplete,
+                    // which is also true when nothing matched at all) is what keeps those two
+                    // cases apart.
+                    message = $"Simulation complete. This is a terminal step (route '{routeResult.MatchedRouteId}') — the workflow completes here.";
+                }
+                else
+                {
+                    message = "Simulation complete. No routing configured for this action.";
+                }
             }
 
             _logger.LogInformation(
@@ -188,8 +207,9 @@ public sealed class BlueprintSimulateTool
                 Routing = routeResult != null ? new RoutingInfo
                 {
                     NextActions = routeResult.NextActions ?? [],
-                    MatchedRoute = routeResult.MatchedRoute,
-                    RouteDescription = routeResult.RouteDescription
+                    MatchedRoute = routeResult.MatchedRouteId,
+                    RouteDescription = routeResult.MatchedRouteDescription,
+                    IsWorkflowComplete = routeResult.IsWorkflowComplete
                 } : null,
                 Calculations = calculateResult != null ? new CalculationInfo
                 {
@@ -280,12 +300,17 @@ public sealed class BlueprintSimulateTool
             {
                 NextActions = result.NextActions?.Select(a => new NextActionInfo
                 {
-                    ActionId = a.ActionId,
+                    // The wire carries the action id as a string (Sorcha.Blueprint.Engine.Models
+                    // .RoutedAction.ActionId); a value that fails to parse is reported as -1 rather
+                    // than silently dropped, so a caller sees SOMETHING went to review rather than
+                    // a next-action count that mismatches the list.
+                    ActionId = int.TryParse(a.ActionId, out var id) ? id : -1,
                     Title = a.Title,
                     IsTerminal = a.IsTerminal
                 }).ToList() ?? [],
-                MatchedRoute = result.MatchedRoute,
-                RouteDescription = result.RouteDescription
+                MatchedRouteId = result.MatchedRouteId,
+                MatchedRouteDescription = result.MatchedRouteDescription,
+                IsWorkflowComplete = result.IsWorkflowComplete
             };
         }
         catch (Exception ex)
@@ -331,17 +356,20 @@ public sealed class BlueprintSimulateTool
         }
     }
 
-    // Internal response models
+    // Internal response models — field names match what ExecutionRoutingEndpoint actually writes
+    // (POST /api/execution/route), not an assumed convention (#1681 / CLAUDE.md pattern 25).
     private sealed class RouteResponse
     {
         public List<NextActionDto>? NextActions { get; set; }
-        public string? MatchedRoute { get; set; }
-        public string? RouteDescription { get; set; }
+        public bool IsWorkflowComplete { get; set; }
+        public string? MatchedRouteId { get; set; }
+        public string? MatchedRouteDescription { get; set; }
     }
 
     private sealed class NextActionDto
     {
-        public int ActionId { get; set; }
+        // Wire type is string (RoutedAction.ActionId) — NOT int. See the ActionId parse above.
+        public string? ActionId { get; set; }
         public string? Title { get; set; }
         public bool IsTerminal { get; set; }
     }
@@ -356,8 +384,9 @@ public sealed class BlueprintSimulateTool
     private sealed class RouteResultDto
     {
         public List<NextActionInfo>? NextActions { get; set; }
-        public string? MatchedRoute { get; set; }
-        public string? RouteDescription { get; set; }
+        public bool IsWorkflowComplete { get; set; }
+        public string? MatchedRouteId { get; set; }
+        public string? MatchedRouteDescription { get; set; }
         public string? Error { get; set; }
     }
 
@@ -415,7 +444,7 @@ public sealed record RoutingInfo
     public IReadOnlyList<NextActionInfo> NextActions { get; init; } = [];
 
     /// <summary>
-    /// The route rule that matched (if any).
+    /// The id of the route rule that matched (if any).
     /// </summary>
     public string? MatchedRoute { get; init; }
 
@@ -423,6 +452,14 @@ public sealed record RoutingInfo
     /// Description of the routing decision.
     /// </summary>
     public string? RouteDescription { get; init; }
+
+    /// <summary>
+    /// True when the matched route (or the legacy-condition equivalent) is a workflow-terminal
+    /// step — reached this action's last step with no further routing, as opposed to the action
+    /// simply having no routing rules configured at all. Distinguishing the two is the point of
+    /// #1681: a blueprint's designed end-of-workflow step is not an authoring gap.
+    /// </summary>
+    public bool IsWorkflowComplete { get; init; }
 }
 
 /// <summary>

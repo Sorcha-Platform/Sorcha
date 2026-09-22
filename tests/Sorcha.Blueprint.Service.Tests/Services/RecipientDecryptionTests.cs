@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.Blueprint.Service.Models;
@@ -17,14 +16,14 @@ namespace Sorcha.Blueprint.Service.Tests.Services;
 
 /// <summary>
 /// Tests for recipient decryption in TransactionRetrievalService.
-/// Covers T053: authorized decrypt, unauthorized denied, integrity hash verification,
-/// legacy unencrypted backward compatibility, and rotated key error message.
+/// Covers T053: authorized decrypt, unauthorized denied, AEAD-tag tamper rejection (#1695 —
+/// supersedes the removed plaintextHash confirmation-oracle check), legacy unencrypted backward
+/// compatibility, and rotated key error message.
 /// </summary>
 public class RecipientDecryptionTests
 {
     private readonly Mock<IWalletServiceClient> _mockWalletClient;
     private readonly Mock<ISymmetricCrypto> _mockSymmetricCrypto;
-    private readonly Mock<IHashProvider> _mockHashProvider;
     private readonly Mock<ILogger<TransactionRetrievalService>> _mockLogger;
     private readonly TransactionRetrievalService _service;
 
@@ -32,12 +31,10 @@ public class RecipientDecryptionTests
     {
         _mockWalletClient = new Mock<IWalletServiceClient>();
         _mockSymmetricCrypto = new Mock<ISymmetricCrypto>();
-        _mockHashProvider = new Mock<IHashProvider>();
         _mockLogger = new Mock<ILogger<TransactionRetrievalService>>();
         _service = new TransactionRetrievalService(
             _mockWalletClient.Object,
             _mockSymmetricCrypto.Object,
-            _mockHashProvider.Object,
             _mockLogger.Object);
     }
 
@@ -55,18 +52,14 @@ public class RecipientDecryptionTests
             ["amount"] = 42
         };
         var plaintextBytes = JsonSerializer.SerializeToUtf8Bytes(plaintextPayload);
-        var plaintextHash = new byte[32];
-        Array.Fill(plaintextHash, (byte)0xBB);
 
         var encryptedGroups = new[]
         {
             new EncryptedPayloadGroup
             {
                 GroupId = "group-1",
-                DisclosedFields = ["/name", "/amount"],
                 Ciphertext = new byte[64],
                 Nonce = new byte[24],
-                PlaintextHash = plaintextHash,
                 EncryptionAlgorithm = EncryptionType.XCHACHA20_POLY1305,
                 WrappedKeys =
                 [
@@ -89,11 +82,6 @@ public class RecipientDecryptionTests
         _mockSymmetricCrypto
             .Setup(s => s.DecryptAsync(It.IsAny<SymmetricCiphertext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(CryptoResult<byte[]>.Success(plaintextBytes));
-
-        // Mock hash provider returns matching hash
-        _mockHashProvider
-            .Setup(h => h.ComputeHash(plaintextBytes, HashType.SHA256))
-            .Returns(plaintextHash);
 
         // Act
         var result = await _service.DecryptPayloadForRecipientAsync(encryptedGroups, walletAddress);
@@ -120,10 +108,8 @@ public class RecipientDecryptionTests
             new EncryptedPayloadGroup
             {
                 GroupId = "group-1",
-                DisclosedFields = ["/name"],
                 Ciphertext = new byte[64],
                 Nonce = new byte[24],
-                PlaintextHash = new byte[32],
                 EncryptionAlgorithm = EncryptionType.XCHACHA20_POLY1305,
                 WrappedKeys =
                 [
@@ -154,26 +140,22 @@ public class RecipientDecryptionTests
     }
 
     [Fact]
-    public async Task DecryptPayloadForRecipient_IntegrityHashMismatch_ReturnsTamperError()
+    public async Task DecryptPayloadForRecipient_TamperedCiphertext_RejectedByAeadTag()
     {
-        // Arrange
+        // Issue #1695 — the separate plaintextHash confirmation-oracle check is gone. This test is
+        // the assertion that removing it is safe: tampered ciphertext (or a wrong key — the AEAD
+        // tag cannot distinguish the two) is still rejected, because it fails XChaCha20-Poly1305
+        // authentication before this method ever gets a plaintext to inspect.
         var walletAddress = "wallet-recipient-1";
         var symmetricKey = new byte[32];
-        var plaintextBytes = Encoding.UTF8.GetBytes("{\"name\":\"Alice\"}");
-        var storedHash = new byte[32];
-        Array.Fill(storedHash, (byte)0xAA);
-        var computedHash = new byte[32];
-        Array.Fill(computedHash, (byte)0xFF); // Different hash — indicates tampering
 
         var encryptedGroups = new[]
         {
             new EncryptedPayloadGroup
             {
                 GroupId = "group-1",
-                DisclosedFields = ["/name"],
                 Ciphertext = new byte[64],
                 Nonce = new byte[24],
-                PlaintextHash = storedHash,
                 EncryptionAlgorithm = EncryptionType.XCHACHA20_POLY1305,
                 WrappedKeys =
                 [
@@ -191,22 +173,21 @@ public class RecipientDecryptionTests
             .Setup(w => w.DecryptPayloadAsync(walletAddress, It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(symmetricKey);
 
+        // Tampered ciphertext (or a stale/rotated key) fails Poly1305 tag verification —
+        // ISymmetricCrypto surfaces this as a failed CryptoResult, never a "successful" decrypt of
+        // garbage bytes.
         _mockSymmetricCrypto
             .Setup(s => s.DecryptAsync(It.IsAny<SymmetricCiphertext>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CryptoResult<byte[]>.Success(plaintextBytes));
-
-        // Hash does NOT match — tampering detected
-        _mockHashProvider
-            .Setup(h => h.ComputeHash(plaintextBytes, HashType.SHA256))
-            .Returns(computedHash);
+            .ReturnsAsync(CryptoResult<byte[]>.Failure(
+                CryptoStatus.DecryptionFailed, "Authentication tag verification failed"));
 
         // Act
         var result = await _service.DecryptPayloadForRecipientAsync(encryptedGroups, walletAddress);
 
-        // Assert
+        // Assert — rejected via the AEAD failure path, with no plaintext-hash check involved.
         result.Success.Should().BeFalse();
         result.Error.Should().NotBeNull();
-        result.Error.Should().ContainAny("tamper", "integrity", "Integrity");
+        result.Error.Should().Contain("group-1");
     }
 
     [Fact]
@@ -226,10 +207,8 @@ public class RecipientDecryptionTests
             new EncryptedPayloadGroup
             {
                 GroupId = "group-1",
-                DisclosedFields = ["/field"],
                 Ciphertext = new byte[16],
                 Nonce = new byte[24],
-                PlaintextHash = new byte[32],
                 EncryptionAlgorithm = EncryptionType.XCHACHA20_POLY1305,
                 WrappedKeys =
                 [
@@ -255,10 +234,8 @@ public class RecipientDecryptionTests
             new EncryptedPayloadGroup
             {
                 GroupId = "group-1",
-                DisclosedFields = ["/name"],
                 Ciphertext = new byte[64],
                 Nonce = new byte[24],
-                PlaintextHash = new byte[32],
                 EncryptionAlgorithm = EncryptionType.XCHACHA20_POLY1305,
                 WrappedKeys =
                 [

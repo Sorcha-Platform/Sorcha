@@ -233,10 +233,8 @@ public static class TransactionBuilderServiceExtensions
         var serializedGroups = encryptedGroups.Select(g => new
         {
             groupId = g.GroupId,
-            disclosedFields = g.DisclosedFields,
             ciphertext = Convert.ToBase64String(g.Ciphertext),
             nonce = Convert.ToBase64String(g.Nonce),
-            plaintextHash = Convert.ToBase64String(g.PlaintextHash),
             encryptionAlgorithm = g.EncryptionAlgorithm.ToString(),
             wrappedKeys = g.WrappedKeys.Select(wk => new
             {

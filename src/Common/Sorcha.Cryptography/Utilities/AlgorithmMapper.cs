@@ -16,7 +16,8 @@ namespace Sorcha.Cryptography.Utilities;
 /// </para>
 /// <para>
 /// The name matching is case-insensitive and supports common aliases for each algorithm
-/// (e.g., "NIST-P256", "P-256", "P256", and "ECDSA-P256" all map to <see cref="WalletNetworks.NISTP256"/>).
+/// (e.g., "NIST-P256", "P-256", "P256", "ECDSA-P256", and "ES256" (the JOSE/COSE name for
+/// ECDSA-P256-SHA256) all map to <see cref="WalletNetworks.NISTP256"/>).
 /// </para>
 /// </remarks>
 public static class AlgorithmMapper
@@ -28,7 +29,7 @@ public static class AlgorithmMapper
     /// The algorithm name (case-insensitive). Supports canonical names and common aliases:
     /// <list type="bullet">
     ///   <item>"ED25519"</item>
-    ///   <item>"NISTP256", "NIST-P256", "P-256", "P256", "ECDSA-P256"</item>
+    ///   <item>"NISTP256", "NIST-P256", "P-256", "P256", "ECDSA-P256", "ES256"</item>
     ///   <item>"RSA4096", "RSA-4096", "RSA"</item>
     ///   <item>"ML-DSA-65", "MLDSA65"</item>
     ///   <item>"SLH-DSA-128S", "SLHDSA128S"</item>
@@ -48,7 +49,11 @@ public static class AlgorithmMapper
     /// <summary>
     /// Attempts to parse an algorithm name string to its corresponding <see cref="WalletNetworks"/> enum value.
     /// </summary>
-    /// <param name="algorithmName">The algorithm name (case-insensitive).</param>
+    /// <param name="algorithmName">
+    /// The algorithm name (case-insensitive). Supports canonical names and common aliases — see
+    /// <see cref="ParseAlgorithm"/> for the full list, including "ES256" for
+    /// <see cref="WalletNetworks.NISTP256"/>.
+    /// </param>
     /// <param name="network">
     /// When this method returns <c>true</c>, contains the matching <see cref="WalletNetworks"/> value.
     /// When this method returns <c>false</c>, contains <see cref="WalletNetworks.ED25519"/> (default).
@@ -59,7 +64,7 @@ public static class AlgorithmMapper
         var result = algorithmName?.ToUpperInvariant() switch
         {
             "ED25519" => WalletNetworks.ED25519,
-            "NISTP256" or "NIST-P256" or "P-256" or "P256" or "ECDSA-P256" => WalletNetworks.NISTP256,
+            "NISTP256" or "NIST-P256" or "P-256" or "P256" or "ECDSA-P256" or "ES256" => WalletNetworks.NISTP256,
             "RSA" or "RSA4096" or "RSA-4096" => WalletNetworks.RSA4096,
             "ML-DSA-65" or "MLDSA65" => WalletNetworks.ML_DSA_65,
             "SLH-DSA-128S" or "SLHDSA128S" => WalletNetworks.SLH_DSA_128s,

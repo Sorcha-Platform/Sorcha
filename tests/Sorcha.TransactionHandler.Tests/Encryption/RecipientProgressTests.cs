@@ -20,26 +20,19 @@ public class RecipientProgressTests
 {
     private readonly Mock<ISymmetricCrypto> _symmetricCryptoMock;
     private readonly Mock<ICryptoModule> _cryptoModuleMock;
-    private readonly Mock<IHashProvider> _hashProviderMock;
     private readonly Mock<ILogger<EncryptionPipelineService>> _loggerMock;
     private readonly EncryptionPipelineService _sut;
 
     private static readonly byte[] FakeSymmetricKey = new byte[32];
     private static readonly byte[] FakeNonce = new byte[24];
     private static readonly byte[] FakeCiphertext = [0xDE, 0xAD, 0xBE, 0xEF];
-    private static readonly byte[] FakePlaintextHash = new byte[32];
     private static readonly byte[] FakeWrappedKey = [0xCA, 0xFE, 0xBA, 0xBE];
 
     public RecipientProgressTests()
     {
         _symmetricCryptoMock = new Mock<ISymmetricCrypto>();
         _cryptoModuleMock = new Mock<ICryptoModule>();
-        _hashProviderMock = new Mock<IHashProvider>();
         _loggerMock = new Mock<ILogger<EncryptionPipelineService>>();
-
-        _hashProviderMock
-            .Setup(h => h.ComputeHash(It.IsAny<byte[]>(), HashType.SHA256))
-            .Returns(FakePlaintextHash);
 
         _symmetricCryptoMock
             .Setup(s => s.EncryptAsync(
@@ -67,7 +60,6 @@ public class RecipientProgressTests
         _sut = new EncryptionPipelineService(
             _symmetricCryptoMock.Object,
             _cryptoModuleMock.Object,
-            _hashProviderMock.Object,
             _loggerMock.Object);
     }
 

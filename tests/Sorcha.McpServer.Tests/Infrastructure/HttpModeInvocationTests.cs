@@ -149,6 +149,46 @@ public class HttpModeInvocationTests
     }
 
     /// <summary>
+    /// #1685(b). Cold-start run #7 passed <c>orgId</c> to a tool that binds
+    /// <c>organizationId</c>. The SDK reports "missing a value for the required parameter
+    /// 'organizationId'", which is true but does not say a DIFFERENTLY-NAMED argument would work —
+    /// so the agent's first reasonable next guess was another wrong name. The full parameter list
+    /// removes the guesswork on the very first failure instead of the second.
+    /// </summary>
+    [Fact]
+    public async Task CallTool_WrongArgumentName_ListsEveryParameterTheToolActuallyBinds()
+    {
+        var result = await InvokeToolAsync(
+            "sorcha_user_list", new Dictionary<string, object?> { ["orgId"] = "11111111-1111-1111-1111-111111111111" });
+
+        var text = string.Join(" ", result.Content.OfType<TextContentBlock>().Select(c => c.Text));
+
+        // The correct name, AND the tool's other parameters — an agent that guessed "orgId" should
+        // not have to make a second wrong guess at the remaining ones either.
+        text.Should().Contain("organizationId");
+        text.Should().Contain("includeInactive");
+        text.Should().Contain("emailVerified");
+        text.Should().Contain("provisionedVia");
+        text.Should().Contain("includePending");
+    }
+
+    /// <summary>
+    /// Same defect, a different tool: <c>sorcha_wallet_info</c> binds <c>walletAddress</c>, not
+    /// <c>address</c>. Proves the fix is the shared filter (works for a tool other than
+    /// sorcha_user_list), not a one-off patch on a single tool.
+    /// </summary>
+    [Fact]
+    public async Task CallTool_WrongArgumentName_OnADifferentTool_NamesTheRealParameter()
+    {
+        var result = await InvokeToolAsync(
+            "sorcha_wallet_info",
+            new Dictionary<string, object?> { ["address"] = "sorcha1abc" });
+
+        var text = string.Join(" ", result.Content.OfType<TextContentBlock>().Select(c => c.Text));
+        text.Should().Contain("walletAddress");
+    }
+
+    /// <summary>
     /// #1638: the audit outcome must mirror the tool's own <c>Status</c>, through the REAL dispatch
     /// pipeline. No tool emits structured content, so a filter reading only
     /// <c>StructuredContent</c> recorded every normally-returning call as <c>success</c>, whatever the

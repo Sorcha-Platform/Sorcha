@@ -45,9 +45,9 @@ public sealed class TransactionVerificationBundleTool
     /// <param name="registerId">The register containing the transaction.</param>
     /// <param name="transactionId">The transaction to export a bundle for.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The verification bundle, or a NotFound result if missing or not yet sealed.</returns>
+    /// <returns>The verification bundle, or NotFound/Refused carrying the Register Service's own status and reason.</returns>
     [McpServerTool(Name = ToolName)]
-    [Description("Assembles a portable offline verification bundle for a sealed transaction, containing everything a third party needs to verify it without contacting the register: the credential/payload, the signed receipt with its embedded Merkle inclusion proof, a point-in-time revocation-status snapshot, and the validator public-key references. Call this when an operator needs to hand a credential's proof of authenticity, ledger inclusion, and current revocation state to an external verifier or archive it for later audit. This is the all-in-one superset of sorcha_transaction_inclusion_proof (proof only) and sorcha_transaction_status (lifecycle only); returns NotFound when the transaction does not exist or has not yet been sealed (a receipt is required to build the bundle).")]
+    [Description("Assembles a portable offline verification bundle for a sealed transaction, containing everything a third party needs to verify it without contacting the register: the credential/payload, the signed receipt with its embedded Merkle inclusion proof, a point-in-time revocation-status snapshot, and the validator public-key references. Call this when an operator needs to hand a credential's proof of authenticity, ledger inclusion, and current revocation state to an external verifier or archive it for later audit. This is the all-in-one superset of sorcha_transaction_inclusion_proof (proof only) and sorcha_transaction_status (lifecycle only); returns NotFound only when the transaction genuinely does not exist (HTTP 404), and Refused with the register's own explanation for any other refusal (e.g. HTTP 409 when the transaction is not yet sealed) — the two are different situations and are not collapsed together.")]
     public async Task<TransactionVerificationBundleResult> GetBundleAsync(
         [Description("The register ID containing the transaction")] string registerId,
         [Description("The transaction ID to export a bundle for")] string transactionId,
@@ -88,16 +88,38 @@ public sealed class TransactionVerificationBundleTool
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            var bundle = await _registerClient.GetVerificationBundleAsync(registerId, transactionId, cancellationToken);
+            var outcome = await _registerClient.GetVerificationBundleAsync(registerId, transactionId, cancellationToken);
             stopwatch.Stop();
             _availabilityTracker.RecordSuccess(ServiceName);
 
-            if (bundle is null)
+            if (outcome?.Bundle is { } bundle)
             {
                 return new TransactionVerificationBundleResult
                 {
-                    Status = "NotFound",
-                    Message = $"No verification bundle available for transaction '{transactionId}' (not found or not yet sealed).",
+                    Status = "Success",
+                    Message = $"Verification bundle exported for transaction '{transactionId}'.",
+                    CheckedAt = DateTimeOffset.UtcNow,
+                    ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
+                    Bundle = bundle
+                };
+            }
+
+            // #1680: the Register Service refused (e.g. 404 no such transaction, or 409 not sealed
+            // yet) and said why in its body. Surface the real status and reason verbatim rather than
+            // reporting every non-success case as "NotFound … not yet sealed" — a fabricated
+            // explanation that reads as transient and invites blind retries.
+            if (outcome?.Refusal is { } refusal)
+            {
+                var status = refusal.StatusCode == 404 ? "NotFound" : "Refused";
+                var reason = string.IsNullOrWhiteSpace(refusal.Reason)
+                    ? "no reason was given"
+                    : refusal.Reason;
+
+                return new TransactionVerificationBundleResult
+                {
+                    Status = status,
+                    Message = $"No verification bundle for transaction '{transactionId}': the Register "
+                        + $"Service answered HTTP {refusal.StatusCode} — {reason}.",
                     CheckedAt = DateTimeOffset.UtcNow,
                     ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                 };
@@ -105,11 +127,11 @@ public sealed class TransactionVerificationBundleTool
 
             return new TransactionVerificationBundleResult
             {
-                Status = "Success",
-                Message = $"Verification bundle exported for transaction '{transactionId}'.",
+                Status = "Error",
+                Message = $"Failed to export verification bundle for transaction '{transactionId}': "
+                    + "the Register Service's response could not be read.",
                 CheckedAt = DateTimeOffset.UtcNow,
-                ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
-                Bundle = bundle
+                ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
             };
         }
         catch (TaskCanceledException)

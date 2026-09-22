@@ -46,10 +46,16 @@ public interface ITenantServiceClient
     /// Creates an organisation (with admin) via the platform-admin provisioning route.
     /// Calls <c>POST /api/platform/organizations</c>.
     /// </summary>
+    /// <remarks>
+    /// #1685(a). This route is SystemAdmin-only; an org Administrator who is not a platform
+    /// SystemAdmin gets a 403. Reports WHICH failure occurred (via <see cref="ServiceReadResult"/>)
+    /// rather than collapsing every non-success into null, so the caller can say why rather than
+    /// just "creation failed" — the same defect class as #1673 and #1659.
+    /// </remarks>
     /// <param name="requestJson">The provisioning request body as JSON.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The created-organisation JSON body, or null on non-success.</returns>
-    Task<string?> CreateOrganizationAsync(
+    /// <returns>The status and, on success, the created-organisation JSON body.</returns>
+    Task<ServiceReadResult> CreateOrganizationAsync(
         string requestJson,
         CancellationToken cancellationToken = default);
 

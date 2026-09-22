@@ -3,11 +3,164 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.32
-**Last Updated:** 2026-09-15
+**Version:** 7.33
+**Last Updated:** 2026-09-22
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
+> **▶ 2026-09-20 - The org issuer cert co-key could never derive, and once it could, it wasn't stable
+> (#1687 + #1679, PR #1677).**
+>
+> **#1687 — `AlgorithmMapper` had no "ES256" alias.** Live on n1 for every organisation:
+> `OrgIssuerCertKeyService`'s HaipCoKey branch (F181 US4/US5) passed the literal `"ES256"` into
+> `KeyManagementService.DeriveKeyAtPathAsync`, but `AlgorithmMapper.TryParseAlgorithm` only accepted
+> `"NISTP256" | "NIST-P256" | "P-256" | "P256" | "ECDSA-P256"` for `WalletNetworks.NISTP256` — no "ES256"
+> (the JOSE/COSE name for the same algorithm). `ParseAlgorithm` threw, `TryResolveAsync` caught and logged
+> it, and the `/issuer-cert-key` endpoint still answered 200 with "not eligible" — a refusal presenting as
+> an absence for essentially every ED25519-primary org. Fix: added `"ES256"` to the `NISTP256` alias arm
+> (`Sorcha.Cryptography.Utilities.AlgorithmMapper`). Same one-line fix also repairs `HaipIssuerCoKeyService`,
+> `HolderBindingKeyService`, `HolderKeyService`, and `CitizenStatusListPublisher` — all four resolve their
+> PQC-primary co-key derivation algorithm via `WalletAlgorithmClassification.DefaultClassicalAlgorithm`,
+> which is the literal `"ES256"`, so they hit the identical mapper gap through the same
+> `DeriveKeyAtPathAsync` seam. It also repairs any call site that forwards `wallet.Algorithm` verbatim
+> (`WalletManager`, `WalletGrpcService`, `TransactionService`) for a wallet whose stored primary algorithm
+> is literally `"ES256"` — a value multiple services already treat as a valid primary spelling.
+>
+> **#1679 — `CryptoModule.GenerateNISTP256KeySetAsync` ignored its `seed` parameter entirely**, always
+> generating a fresh random P-256 keypair — unlike `GenerateED25519KeySetAsync`, which genuinely derives
+> from the seed. Found *while building the seam test for #1687*: the ES256 fix alone let derivation
+> succeed, but two independent derivations of "the same" HaipCoKey (`ResolveAsync` then a later
+> `SignPreHashedAsync`) returned different, unrelated P-256 keypairs — a cert issued against one could
+> never be validated against a signature from the other. Fix: derive the private scalar `d` from the
+> seed (normalized to 32 bytes, validated to actually land in `[1, n-1]` via BouncyCastle's P-256 domain
+> parameters, deterministic re-hash retry if not) and compute `Q = d·G` directly, mirroring
+> `GenerateED25519KeySetAsync`'s contract. A null/empty seed still generates randomly, unchanged.
+>
+> ⚠ **Blast radius, wider than F181/HAIP**: any P-256-PRIMARY wallet (not just PQC-primary ones falling
+> back to the ES256 co-key) was affected everywhere `wallet.Algorithm` drives a seeded derivation —
+> `WalletManager.CreateLocalWalletAsync`/`RecoverWalletAsync` (wallet creation vs. mnemonic recovery would
+> silently derive DIFFERENT addresses) and `WalletManager`'s derivation-path signing branch (docket-signing,
+> blueprint-publish, register-attestation — a fresh random key every signing call, never matching a
+> roster entry keyed to a prior derivation). `HolderKeyService` (citizen holder key) and
+> `CitizenStatusListPublisher` (citizen status-list signing key) were silently non-deterministic for BOTH
+> P-256-primary wallets AND every PQC-primary wallet needing their ES256 fallback — meaning any HAIP `cnf`
+> proof-of-possession or status-list signature for those wallets could never be verified against a
+> previously-published JWK. `RSA4096` generation was already seedless by design (no seed parameter is
+> even passed) — not part of this defect, not touched.
+>
+> Tests: a mapper unit test (`AlgorithmMapperTests`), a determinism test suite
+> (`CryptoModuleNistP256SeedDerivationTests` — same-seed-twice ⇒ identical keys, different seeds ⇒
+> different keys, derived pair is a genuine matched EC keypair, no-seed still random), and a **seam test**
+> (`OrgIssuerCertKeyServiceSeamTests`) that wires a REAL `KeyManagementService` (real `CryptoModule`, real
+> `LocalEncryptionProvider`) rather than mocking `IKeyManagementService.DeriveKeyAtPathAsync` — the
+> existing `OrgIssuerCertKeyServiceTests.Resolve_Ed25519Primary_DerivesHaipCoKey_And_SignVerifies` mocks
+> exactly that method and stayed green throughout both live defects. Its resolve→sign round trip now
+> asserts full determinism (a later independent derivation signs with the SAME key `ResolveAsync`
+> reported). All new tests independently mutation-tested for BOTH fixes (revert one, confirm the other's
+> tests unaffected and its own tests RED for the right reason; restore; confirm the whole branch GREEN
+> together — 395/395 Cryptography, 1055/1055 Wallet.Service, 112/112 Wallet.Core).
+>
+> ⚠ **Deliberate, disclosed behaviour change**: derived P-256 key material changes for any wallet whose
+> primary algorithm is P-256 (or that needs a P-256 co-key). Already-stored keys are unaffected (nothing
+> re-derives an existing stored key), but mnemonic recovery of a P-256-primary wallet now yields
+> DIFFERENT keys than the pre-fix random behaviour would have. Acceptable pre-release under CLAUDE.md
+> §19 (recreate, don't migrate) — flagged explicitly rather than left implicit.
+>
+> **▶ 2026-09-22 - #1695 + #1684 L1: two sealed-envelope leaks closed, disclosureMetadata policy scaffolded.**
+> Branch `feat/1684-1695-disclosure-metadata-l1`, two commits, not yet deployed.
+>
+> | # | Leak | Fix |
+> |---|---|---|
+> | **#1695** | `EncryptedPayloadGroup.PlaintextHash` — an unsalted SHA-256 over each disclosure group's plaintext, published beside the ciphertext. A confirmation oracle (test a guessed plaintext without a key) and redundant against the XCHACHA20_POLY1305 AEAD tag | Dropped from newly written envelopes; the post-decryption check in `TransactionRetrievalService` removed (tampering still caught by the AEAD tag failing first). Prospective only — the ledger is immutable, and no read path ever deserialized JSON into this field, so legacy envelopes decode unaffected |
+> | **#1684 L1** | `EncryptedPayloadGroup.DisclosedFields` — the plaintext field-name list for a group, published beside the ciphertext, leaking disclosure *shape* to every reader including a SyncOnly replica party to nothing | Same treatment: dropped from newly written envelopes, group selection was already by `wrappedKeys[].walletAddress` alone on every read path |
+>
+> Also added the agreed policy scaffold: `RegisterPolicy.DisclosureMetadata` (`Public` default / `Minimal`
+> reserved). `Minimal` is refused at policy-set time (`RegisterPolicyEndpoints.ValidateDisclosureMetadata`)
+> — deliberately NOT implemented, since it would move recipient notification from server-side resolution to
+> client-side scanning (a separate, larger piece of work, L2, scoped independently). Carried through
+> governance enactment via `RegisterControlRecord.ShallowCopy()` — no new plumbing needed, just a fixture
+> populated with a non-default value to make the existing reflective guard (`ApplyOperationPreservesRegisterConfigurationTests`)
+> actually exercise it.
+>
+> TEST-FIRST throughout; every new/changed test mutation-tested (revert → RED for the right reason →
+> restore → GREEN). One mutation attempt (mutating `RegisterPolicy` in place post-`ShallowCopy()`) silently
+> passed because `ShallowCopy()` is a `MemberwiseClone()` — the nested `RegisterPolicy` is a SHARED
+> reference between before/after, so mutating it in place changes both sides identically. Had to rebuild
+> `RegisterPolicy` via an object initializer (mirroring the actual #1463 bug shape) to get a real RED.
+> `docs/security-model.md` updated with the disclosure-metadata position (values protected, sender/timing/
+> group-count/ciphertext-size/chain-position/recipient-address still visible).
+**Last Updated:** 2026-09-20
+**Status:** MVD Complete — Preparing for First Release
+**Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
+
+> **▶ 2026-09-20 - #1678 fixed: disclosed data survives instance completion.** Found live in cold-start
+> run #7: `GET /api/workflows/{instanceId}/disclosures` anchored on `instance.CurrentActionIds.FirstOrDefault()
+> ?? 0`. A **completed** instance has an EMPTY `CurrentActionIds`, so the anchor silently became the
+> sentinel `0` — no blueprint action ever has that id, so `ActionDisclosureResolver` took its "action not
+> found" fail-closed branch and answered `200` with zero disclosures for every completed instance,
+> forever, with only a `LogDebug` line nobody would ever see. Second defect on the same line:
+> `FirstOrDefault()` also silently dropped the second entry of a parallel-branch instance's
+> `CurrentActionIds`. ✅ Fixed on `fix/1678-disclosures-after-completion`: the instance-wide route now
+> anchors on every one of `CurrentActionIds` when active (union, not first), and on every action the
+> published blueprint defines when terminal (an action nobody submitted just contributes no data); the
+> "action not found" branch is now `LogWarning` and names the instance. `ActionId` in the instance-wide
+> response is `null` (the model doc already said it should be — never implemented until now),
+> distinguishing "no anchor resolved" from "resolved but nothing disclosed". Two new regression tests
+> (`WorkflowDisclosureEndpointsTests`) proved RED against the old sentinel/`FirstOrDefault` logic and
+> GREEN after; 2/2 targeted mutations killed. Per-action route (`/actions/{actionId}/disclosures`)
+> unchanged.
+
+> **▶ 2026-09-20 - #1681: `sorcha_blueprint_simulate` cries "No routing configured" for routed actions — the F142 rehearsal gate was decorative on the MCP-driven publish path.**
+>
+> | # | Defect | Root cause (verified, not assumed) | Fix | Tests |
+> |---|---|---|---|---|
+> | **#1681** | `sorcha_blueprint_simulate` reports "No routing configured for this action" for an action that demonstrably has `Routes` (cold-start runs #4/#5/#7) — every MCP-driven publish therefore hits the rehearsal soft gate and asks a human to waive it | **Not** the reported theory: `RoutingEngine.DetermineNextWithMappingAsync` already prefers `Action.Routes` over the legacy `Condition` model and is independently well-tested (`RoutingEngineTests`). The real defect: `POST /api/execution/route` (the endpoint the tool calls) never grew the `nextActions`/`matchedRouteId`/`isWorkflowComplete` fields `RoutingResult` has carried since Feature 184 — it still answered with the pre-Routes shape (`nextActionId`/`matchedCondition` only). The MCP tool's `RouteResponse` DTO was typed to read `nextActions`/`matchedRoute`/`routeDescription`, none of which the endpoint ever wrote, so every simulation silently deserialized an empty list regardless of what routing the engine determined | Extracted the inline lambda to a named, testable `ExecutionRoutingEndpoint` that serializes the FULL `RoutingResult` (`nextActions`, `matchedRouteId`, `matchedRouteDescription`, `isWorkflowComplete`); retyped the MCP tool's DTOs to the real wire shape (action id is a STRING on the wire, not an int); the tool's message now distinguishes "routes to N next actions", "reached a matched TERMINAL route" (designed end-of-workflow), and "no routing configured at all" (neither `Routes` nor legacy `Participants` declared) — the first two were previously conflated into the third | 9 new/updated in `ExecutionRoutingEndpointTests` + `BlueprintSimulateToolTests` (real `RoutingEngine`+`JsonLogicEvaluator`, fixture routes copied verbatim from `walkthroughs/CyberEssentialsUac/ce-uac-assessment-template.json`); all mutation-tested RED→GREEN |
+>
+> ⚠ Does NOT make `RehearsalPass` itself reachable via MCP: `RehearsalOrchestrationService` (the actual
+> pass-writer, Feature 142 T028) never called this endpoint — it drives real ledger execution and reads
+> the instance projection instead, so it was unaffected by this bug either way. No MCP tool currently
+> wraps the full-rehearsal endpoints (`/api/blueprints/{id}/rehearse/*`) at all, which is the more
+> literal reason a cold-start agent has never recorded a `RehearsalPass` and always ends up at the
+> human-override path. This fix corrects the SIMULATOR's own answer (and therefore the confidence an
+> agent can place in it before asking a human to waive rehearsal); wrapping full rehearsal for MCP is a
+> separate, larger piece of work, not attempted here.
+> **▶ 2026-09-20 - Run #7 refusal-legibility fixes: #1683 + #1682, on `fix/1683-1682-blueprint-read-and-inbox`.**
+>
+> | # | Defect | Fix | Mutations |
+> |---|---|---|---|
+> | **#1683** | `GET /api/blueprints/{id}` served only the org-scoped DRAFT store, so a counterparty bound as a register participant on a PUBLISHED definition got a 404 for a blueprint that plainly exists — the #1673 class (a scoping refusal presented as an absence) | New `Endpoints/BlueprintGetEndpoint.cs`: when the caller's org does not own the draft, falls back to the published definition on a register one of the caller's resolved wallets is an active participant on (`IPublishedBlueprintStore` + `IRegisterServiceClient.GetPublishedParticipantByAddressAsync` — Feature 195's existing plumbing). 403 (not 404) when a publication exists but the caller isn't a participant on any register carrying it; 404 only when nothing resolves at all | 5/5 (BlueprintGetEndpointTests, 7 tests total) |
+> | **#1682** | Every action submission's 3rd `POST /api/internal/inbox` write 400'd, deterministically, silently swallowed by pattern 12. Root cause: `ResolvePlatformUserIdAsync` only confirms a UserIdentity row exists and returns whatever its `PlatformUserId` column holds — dangling or not. A recipient modelled without ever being provisioned as a real platform user (run #7's "filing" regulator) resolves to a non-empty but nonexistent PlatformUserId, which is trusted and posted, then rejected by the endpoint's own #1506 existence guard two hops later | `BlueprintInboxWriter` now calls the already-existing `PlatformUserExistsAsync` to confirm every `ResolvePlatformUserIdAsync` result before building a write request, in both `WriteActionAvailableAsync` and `WriteDecisionAsync`'s participant/owner-identity fallback chain. Unconfirmed ⇒ deliberate skip + a named WARNING, not a swallowed 400 | 2/2 (BlueprintInboxWriterTests, 18 tests total) |
+> | `/api/preferences` 401 | Investigated, NOT fixed here (needs coordinated client+server auth work, filed separately) — `TenantNotificationPreferenceProvider` calls Tenant's `/api/preferences` with a bare, unauthenticated `HttpClient` against an endpoint that `.RequireAuthorization()`s a real user token; the class's own comment already documents the gap ("Until a service-to-service userId override is added... this will fall back to defaults gracefully") | — | — |
+**Last Updated:** 2026-09-20
+**Status:** MVD Complete — Preparing for First Release
+**Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
+
+> **▶ 2026-09-20 - Cold-start run #7 legibility sweep: #1680, #1685, #1686 — MCP refusals say what happened and why.**
+> Same root cause across all three: the MCP surface turned a refusal, a scope limit, or a store
+> boundary into an absence or a bare error, so an agent could not tell what happened or what to do.
+> Branch `fix/1680-1685-1686-mcp-refusal-legibility`.
+>
+> | # | Defect | Fix | Mutation-tested |
+> |---|---|---|---|
+> | **#1680** | `GET .../verification-bundle` answered 409 (not sealed / wrong reason) FOUR TIMES; `sorcha_transaction_verification_bundle` collapsed every non-success into `NotFound … not yet sealed` — a fabricated excuse the server never gave, once on a transaction sealed 5 minutes earlier. Read as transient, so the agent retried | `GetVerificationBundleAsync` now returns a `VerificationBundleOutcome` (`Bundle` or `Refusal{StatusCode, Reason}`, mirroring `PublishBlueprintOutcome` from #1641) carrying the real status + the server's own body text. 404 stays `NotFound`; everything else is `Refused` with the verbatim reason | ✅ 2 mutations (tool-level collapse, client-level collapse), each RED then GREEN |
+> | **#1685(a)** | `sorcha_tenant_create` returned `"Tenant creation failed."` with no detail, 3× — the real cause was a 403 (SystemAdmin-only route, org-Administrator caller). Agent varied inputs instead of learning it needed different authority | `CreateOrganizationAsync` returns `ServiceReadResult` (the #1673 pattern) instead of a bare string; a 403 is reported as `Refused`, naming platform-system-admin authority explicitly | ✅ 1 mutation, RED then GREEN |
+> | **#1685(b)** | Four tools each cost a wasted, sub-ms call on a wrong argument name (`orgId`/`organizationId`, `address`/`walletAddress`, `instanceId`/`workflowInstanceId`, `logic`+`data`/`ruleJson`+`dataJson`) — the SDK's binding error named only the one parameter it happened to check first | Central fix, no per-tool changes and NO parameter renamed (that is a contract change, deliberately out of scope — see rename recommendations below): `WithArgumentBindingErrorFilter` now consults a new `ToolParameterCatalog` (reflects every `[McpServerTool]` method once at first use) and lists every parameter the tool actually binds in the error text, so the first wrong guess is self-correcting instead of the second. Also fixes the same class on `sorcha_blueprint_validate`, `sorcha_disclosed_data`, `sorcha_transaction_status` for free | ✅ 2 mutations (filter guidance text, catalog required-marker), each RED then GREEN |
+> | **#1686** | `sorcha_audit_query` returned 3 unrelated entries for a session that created a register, published a blueprint, created an instance and submitted 3 actions — correct (it's the Tenant ORG log, not a ledger trail) but read as "my actions were not recorded" | Description + empty/non-empty `Message` now say what it covers and point at `sorcha_transaction_history` for ledger activity | ✅ 2 mutations (description text, empty-message text), each RED then GREEN |
+> | **#1686** | `sorcha_blueprint_publish`'s override message claimed the override "has been recorded against the caller's account" — `sorcha_audit_query` shows nothing for it, so the claim looked false. It isn't: blueprint-service writes it to its own `PublishOverride` table (F142), a different store | Message now names that table and says explicitly it will not appear in `sorcha_audit_query` (chose to fix the message, not the store — it was the truthful, cheap fix) | ✅ 1 mutation, RED then GREEN |
+> | **#1686** | `sorcha_user_list` and `sorcha_audit_query` both reported an unlabelled `UserId` for the same human — one is the org-scoped `UserIdentity` id, the other the cross-org `PlatformUser` id | Renamed to `UserIdentityId` / `PlatformUserId` respectively, each documenting the other | ✅ 1 mutation (dropped the mapping), RED then GREEN |
+>
+> **Renames recommended but NOT implemented** (would change the published tool-parameter contract —
+> flagged for a deliberate, separate breaking-change pass): `sorcha_user_list(orgId→organizationId)`,
+> `sorcha_wallet_info(address→walletAddress)`, `sorcha_workflow_status(instanceId→workflowInstanceId)`,
+> `sorcha_jsonlogic_test(logic→ruleJson, data→dataJson)`. Also reported, not fixed:
+> `sorcha_org_status` reads as a getter but requires a `status` argument (it is a setter — suspend/
+> reactivate); it is referenced in `server.json` + the gateway's tool catalogue + tests, so it is
+> NOT "genuinely unused elsewhere" and a rename needs its own pass, not a drive-by in this one.
+>
+> ⚠ `scripts/check-mcp-response-shapes.ps1` and `scripts/check-mcp-routes.ps1` both pass unchanged —
+> no tool name, route, or DTO/server-type pairing moved; only descriptions, messages and two internal
+> result-record property names changed.
+>
 > **▶ 2026-09-19 - Run #5 BLOCKER SWEEP: six fixes, all merged-ready on `fix/run6-blockers`.**
 > Run #5 reached a sealed, encrypted action 1 across two organisations and then wedged. Fixing what
 > it found, before run #6:

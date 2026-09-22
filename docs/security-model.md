@@ -6,7 +6,7 @@ standards:
   - HAIP 1.0
   - W3C Verifiable Credentials Data Model 2.0
   - OAuth 2.0
-last_updated: 2026-08-25
+last_updated: 2026-09-22
 ---
 
 # Sorcha Security Model
@@ -30,6 +30,8 @@ The implementation lives in `src/Common/Sorcha.Cryptography/SdJwt/` and conforms
 **What this means for a regulator or auditor:** disclosures to you are cryptographic proof, not platform-asserted views. If the platform were compromised tomorrow the disclosures you received yesterday remain valid; the platform never had the keys to forge a different disclosure on your behalf.
 
 **What this does not protect against:** the *aggregate inference* threat — see the next section.
+
+**What the sealed envelope still reveals, and what is governed.** A disclosure group's ciphertext is protected by an AEAD cipher (XCHACHA20_POLY1305); before 2026-09-22 each group's transaction also carried, in the clear, an unsalted SHA-256 of the group's plaintext and the plaintext list of disclosed field names (issues #1695 and #1684 L1 — a confirmation oracle and a disclosure-shape leak, respectively; the hash was cryptographically redundant against the AEAD tag, and the field names are recoverable from the plaintext once a recipient decrypts their own group). Both are dropped for every transaction sealed after that date; a transaction sealed before it keeps them forever, because the ledger is immutable. What every reader of a transaction — both counterparties, the register owner, and every replica including a SyncOnly node party to nothing — still necessarily sees: the sender, the timing, the number of disclosure groups, each group's ciphertext size, its position in the chain, and each group's recipient wallet address(es) (`wrappedKeys[].walletAddress`, needed so a node knows whom to notify). That last one is a governed, per-register choice rather than a fixed platform default: `RegisterPolicy.DisclosureMetadata` is `public` (today's behaviour, and the only implemented value) or `minimal` — additionally withholding recipient addresses, so group membership is discoverable only by trial decryption. `minimal` is **reserved and refused at policy-set time**; it is not implemented because it requires moving recipient notification from server-side resolution to client-side scanning, a separate and larger piece of work.
 
 ## The Aggregate Inference Threat
 
@@ -73,6 +75,7 @@ Naming what is *not* implemented, with the same precision as what is:
 - **mdoc / ISO 18013-5** — implemented (`Sorcha.Mdoc`, Features 135 and 185): issuance and online OpenID4VP verification, plus proximity presentation over BLE with `deviceMac`/`COSE_Mac0` verified against the standard's own Annex D vectors. The remaining gap is **interoperability evidence**, not capability: the bar to date is Sorcha's own devices plus those reference vectors, not a certified third-party reader, and `MdocIssuer` still uses a flat namespace equal to the docType where a real mDL separates the two.
 - **Encryption at rest has one fail-open, and promotion is not retrospective.** Both are now verified rather than assumed — see step 2b of the reviewer path below. (a) On a Normal register, if *no* disclosure recipient's public key resolves on that register, `ActionExecutionService` falls through to the plaintext transaction builder and writes field values in the clear, logging only `recipient skipped`. The register still reports `devMode: false`. Tracked as issue #1581; the conformance check's `P3.2` is the assertion that catches it. (b) Promoting a register from DevMode to Normal is one-way and *forward-only*: the ledger is immutable, so every payload sealed while it was in DevMode remains plaintext permanently. Promotion protects what a register stores next, not what it already holds.
 - **DID method registration** — `did:sorcha:org:` and `did:sorcha:holder:` are implemented but not registered with the W3C DID method registry. Cross-platform DID resolution requires bilateral agreement; this is a network-effect gap, not a security one.
+- **Recipient wallet addresses are always visible on the sealed envelope; `disclosureMetadata: minimal` is reserved, not implemented.** Every disclosure group's transaction carries `wrappedKeys[].walletAddress` in the clear, so any reader of the transaction — including a replica party to nothing — learns the full recipient set for an action, even for a group it cannot decrypt. `RegisterPolicy.DisclosureMetadata` names this as a governed per-register policy point (`public`/`minimal`), but only `public` — today's behaviour — is implemented; setting `minimal` is refused at policy-set time (`RegisterPolicyEndpoints.ValidateDisclosureMetadata`) rather than silently accepted with no effect. Implementing it needs recipient notification to move from server-side resolution (the inbox writers resolve a recipient's platform user from the wallet address today) to client-side scanning, tracked separately from issue #1684 L1.
 
 ## Security Audits and Review Cycle
 
