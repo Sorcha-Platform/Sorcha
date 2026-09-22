@@ -110,6 +110,21 @@
 > GREEN after; 2/2 targeted mutations killed. Per-action route (`/actions/{actionId}/disclosures`)
 > unchanged.
 
+> **▶ 2026-09-20 - #1681: `sorcha_blueprint_simulate` cries "No routing configured" for routed actions — the F142 rehearsal gate was decorative on the MCP-driven publish path.**
+>
+> | # | Defect | Root cause (verified, not assumed) | Fix | Tests |
+> |---|---|---|---|---|
+> | **#1681** | `sorcha_blueprint_simulate` reports "No routing configured for this action" for an action that demonstrably has `Routes` (cold-start runs #4/#5/#7) — every MCP-driven publish therefore hits the rehearsal soft gate and asks a human to waive it | **Not** the reported theory: `RoutingEngine.DetermineNextWithMappingAsync` already prefers `Action.Routes` over the legacy `Condition` model and is independently well-tested (`RoutingEngineTests`). The real defect: `POST /api/execution/route` (the endpoint the tool calls) never grew the `nextActions`/`matchedRouteId`/`isWorkflowComplete` fields `RoutingResult` has carried since Feature 184 — it still answered with the pre-Routes shape (`nextActionId`/`matchedCondition` only). The MCP tool's `RouteResponse` DTO was typed to read `nextActions`/`matchedRoute`/`routeDescription`, none of which the endpoint ever wrote, so every simulation silently deserialized an empty list regardless of what routing the engine determined | Extracted the inline lambda to a named, testable `ExecutionRoutingEndpoint` that serializes the FULL `RoutingResult` (`nextActions`, `matchedRouteId`, `matchedRouteDescription`, `isWorkflowComplete`); retyped the MCP tool's DTOs to the real wire shape (action id is a STRING on the wire, not an int); the tool's message now distinguishes "routes to N next actions", "reached a matched TERMINAL route" (designed end-of-workflow), and "no routing configured at all" (neither `Routes` nor legacy `Participants` declared) — the first two were previously conflated into the third | 9 new/updated in `ExecutionRoutingEndpointTests` + `BlueprintSimulateToolTests` (real `RoutingEngine`+`JsonLogicEvaluator`, fixture routes copied verbatim from `walkthroughs/CyberEssentialsUac/ce-uac-assessment-template.json`); all mutation-tested RED→GREEN |
+>
+> ⚠ Does NOT make `RehearsalPass` itself reachable via MCP: `RehearsalOrchestrationService` (the actual
+> pass-writer, Feature 142 T028) never called this endpoint — it drives real ledger execution and reads
+> the instance projection instead, so it was unaffected by this bug either way. No MCP tool currently
+> wraps the full-rehearsal endpoints (`/api/blueprints/{id}/rehearse/*`) at all, which is the more
+> literal reason a cold-start agent has never recorded a `RehearsalPass` and always ends up at the
+> human-override path. This fix corrects the SIMULATOR's own answer (and therefore the confidence an
+> agent can place in it before asking a human to waive rehearsal); wrapping full rehearsal for MCP is a
+> separate, larger piece of work, not attempted here.
+>
 > **▶ 2026-09-19 - Run #5 BLOCKER SWEEP: six fixes, all merged-ready on `fix/run6-blockers`.**
 > Run #5 reached a sealed, encrypted action 1 across two organisations and then wedged. Fixing what
 > it found, before run #6:
