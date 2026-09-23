@@ -244,8 +244,24 @@ public class TotpService : ITotpService
 
         _logger.LogInformation("Backup code consumed for user {UserId} (index {Index})", userId, matchIndex);
 
-        // Feature 118 — backup-code consumption is an account-takeover signal worth surfacing. Fail-safe.
-        await _securityInbox.WriteBackupCodeUsedAsync(userId, cancellationToken);
+        // Feature 118 — backup-code consumption is an account-takeover signal worth surfacing.
+        // Fail-safe. #1703 — `userId` here is the UserIdentity id (TotpConfiguration.UserId is
+        // one-to-one with UserIdentity), NOT the PlatformUser id the inbox is addressed by. Resolve
+        // it the same way VerifyAndEnableAsync/DisableAsync already do a few lines above/below —
+        // using the raw UserIdentity id directly silently lost this security notification on every
+        // backup-code sign-in, with no error anywhere (TenantSecurityInboxWriter writes locally and
+        // has no existence check of its own to catch it).
+        var platformUserId = await ResolvePlatformUserIdAsync(userId, cancellationToken);
+        if (platformUserId == Guid.Empty)
+        {
+            _logger.LogWarning(
+                "Backup-code-used inbox notice skipped — could not resolve PlatformUserId for UserIdentity {UserIdentityId}",
+                userId);
+        }
+        else
+        {
+            await _securityInbox.WriteBackupCodeUsedAsync(platformUserId, cancellationToken);
+        }
 
         return true;
     }

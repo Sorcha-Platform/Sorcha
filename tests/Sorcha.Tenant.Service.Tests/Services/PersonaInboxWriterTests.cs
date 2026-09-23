@@ -17,6 +17,15 @@ public sealed class PersonaInboxWriterTests
     private readonly Guid _userId = Guid.NewGuid();
     private const string PersonaName = "Test Persona";
 
+    public PersonaInboxWriterTests()
+    {
+        // #1703 — the writer now confirms platformUserId names a real platform user before writing
+        // (this writer calls IInboxService directly, bypassing the HTTP endpoint's own #1506 guard).
+        // Default fixture: any id verifies as existing; the dangling-id tests override this per-id.
+        _inbox.Setup(i => i.PlatformUserExistsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+    }
+
     private PersonaInboxWriter BuildSut(ILogger<PersonaInboxWriter>? logger = null) =>
         new(_inbox.Object, logger ?? NullLogger<PersonaInboxWriter>.Instance);
 
@@ -147,5 +156,34 @@ public sealed class PersonaInboxWriterTests
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
+    }
+
+    /// <summary>
+    /// #1703 sweep — this writer calls <c>IInboxService</c> directly, bypassing the HTTP endpoint's
+    /// own #1506 guard, and <c>InboxEntry.PlatformUserId</c> carries no database foreign key. A
+    /// non-existent id must be skipped here, not written verbatim as an unaddressable phantom entry.
+    /// </summary>
+    [Fact]
+    public async Task WritePersonaSavedAsync_PlatformUserIdDoesNotExist_SkipsWrite()
+    {
+        _inbox.Setup(i => i.PlatformUserExistsAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        var sut = BuildSut();
+
+        await sut.WritePersonaSavedAsync(_userId, PersonaName);
+
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task WritePersonaDeletedAsync_PlatformUserIdDoesNotExist_SkipsWrite()
+    {
+        _inbox.Setup(i => i.PlatformUserExistsAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        var sut = BuildSut();
+
+        await sut.WritePersonaDeletedAsync(_userId, PersonaName);
+
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

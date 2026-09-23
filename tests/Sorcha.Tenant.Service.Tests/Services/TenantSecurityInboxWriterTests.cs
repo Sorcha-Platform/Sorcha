@@ -19,6 +19,13 @@ public sealed class TenantSecurityInboxWriterTests
     public TenantSecurityInboxWriterTests()
     {
         _sut = new TenantSecurityInboxWriter(_inbox.Object, NullLogger<TenantSecurityInboxWriter>.Instance);
+
+        // #1703 — the writer now confirms platformUserId names a real platform user before writing
+        // (this writer calls IInboxService directly, bypassing the HTTP endpoint's own #1506 guard
+        // and InboxEntry.PlatformUserId has no database FK, so nothing else would catch a wrong id).
+        // Default fixture: any id verifies as existing; the dangling-id test overrides this per-id.
+        _inbox.Setup(i => i.PlatformUserExistsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
     }
 
     [Fact]
@@ -165,5 +172,26 @@ public sealed class TenantSecurityInboxWriterTests
 
         await act.Should().NotThrowAsync(
             "inbox-write failures must never block sign-in");
+    }
+
+    /// <summary>
+    /// #1703 sweep — this writer calls <c>IInboxService</c> directly (Tenant-internal, no HTTP hop),
+    /// so it bypasses the <c>POST /api/internal/inbox</c> endpoint's own #1506
+    /// <c>PlatformUserExistsAsync</c> guard entirely, and <c>InboxEntry.PlatformUserId</c> carries no
+    /// database foreign key. Before this fix a wrong-kind id (e.g. a UserIdentity id passed where a
+    /// PlatformUser id was expected — the live #1703 defect in
+    /// <c>TotpService.ValidateBackupCodeAsync</c>) would be written verbatim with NO error, NO log,
+    /// and NO signal at all — worse than a swallowed 400, because there is no signal to swallow. The
+    /// writer must confirm existence itself before writing.
+    /// </summary>
+    [Fact]
+    public async Task WriteBackupCodeUsedAsync_PlatformUserIdDoesNotExist_SkipsWrite_NoPhantomEntry()
+    {
+        _inbox.Setup(i => i.PlatformUserExistsAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        await _sut.WriteBackupCodeUsedAsync(_userId);
+
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

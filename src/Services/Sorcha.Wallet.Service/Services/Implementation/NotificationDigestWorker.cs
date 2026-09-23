@@ -264,6 +264,19 @@ public sealed class NotificationDigestWorker : BackgroundService
                 return false;
             }
 
+            // #1703 sweep — same #1682 guard as the real-time path: a resolved PlatformUserId can
+            // still be dangling. Confirm it before writing rather than sending a request the
+            // endpoint's own #1506 guard is guaranteed to reject 400.
+            if (!await inbox.PlatformUserExistsAsync(platformUserId.Value, ct).ConfigureAwait(false))
+            {
+                _logger.LogWarning(
+                    "Digest skip — resolved PlatformUserId {PlatformUserId} for UserIdentity {UserIdentityId} "
+                    + "(user {UserId}) does not name a known platform user. Skipping the write rather than "
+                    + "sending a request the server is guaranteed to reject.",
+                    platformUserId.Value, participant.UserId, userId);
+                return false;
+            }
+
             var sourceEventId = DeterministicSourceEventId(userId, events);
             var latest = events.Max(e => e.Timestamp);
             var title = events.Count == 1
