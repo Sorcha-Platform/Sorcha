@@ -136,6 +136,22 @@ public sealed class TenantSecurityInboxWriter : ITenantSecurityInboxWriter
     {
         try
         {
+            // #1703 sweep — this writer calls IInboxService directly (Tenant-internal, no HTTP hop),
+            // which bypasses the POST /api/internal/inbox endpoint's own #1506 PlatformUserExistsAsync
+            // guard entirely. InboxEntry.PlatformUserId also carries no database foreign key, so a
+            // wrong-kind id (e.g. a UserIdentity id passed where a PlatformUser id was expected — the
+            // #1703 root cause found in TotpService.ValidateBackupCodeAsync) is not merely rejected
+            // here two hops away: it is written verbatim with NO error, NO log, and NO signal at all,
+            // as a phantom entry nobody with that id will ever see. Confirm existence before writing.
+            if (!await _inbox.PlatformUserExistsAsync(platformUserId, ct).ConfigureAwait(false))
+            {
+                _logger.LogWarning(
+                    "Inbox skip — {PlatformUserId} does not name a known platform user for security event "
+                    + "{EventKey}. Skipping the write rather than persisting an unaddressable entry.",
+                    platformUserId, eventKey);
+                return;
+            }
+
             var occurredAt = DateTimeOffset.UtcNow;
             var sourceEventId = DeterministicSourceEventId(platformUserId, eventKey, occurredAt);
 

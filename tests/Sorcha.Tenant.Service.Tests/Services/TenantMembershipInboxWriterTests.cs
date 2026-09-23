@@ -23,6 +23,12 @@ public sealed class TenantMembershipInboxWriterTests : IDisposable
     {
         _db = InMemoryDbContextFactory.Create();
         _sut = new TenantMembershipInboxWriter(_inbox.Object, _db, NullLogger<TenantMembershipInboxWriter>.Instance);
+
+        // #1703 — the writer now confirms platformUserId names a real platform user before writing
+        // (this writer calls IInboxService directly, bypassing the HTTP endpoint's own #1506 guard).
+        // Default fixture: any id verifies as existing; the dangling-id tests override this per-id.
+        _inbox.Setup(i => i.PlatformUserExistsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
     }
 
     public void Dispose() => _db.Dispose();
@@ -140,5 +146,32 @@ public sealed class TenantMembershipInboxWriterTests : IDisposable
 
         await act.Should().NotThrowAsync(
             "inbox-write failures must never block the role-change operation");
+    }
+
+    /// <summary>
+    /// #1703 sweep — this writer calls <c>IInboxService</c> directly, bypassing the HTTP endpoint's
+    /// own #1506 guard, and <c>InboxEntry.PlatformUserId</c> carries no database foreign key. A
+    /// non-existent id must be skipped here, not written verbatim as an unaddressable phantom entry.
+    /// </summary>
+    [Fact]
+    public async Task WriteOrgMembershipAddedAsync_PlatformUserIdDoesNotExist_SkipsWrite()
+    {
+        _inbox.Setup(i => i.PlatformUserExistsAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        await _sut.WriteOrgMembershipAddedAsync(_userId, _orgId, "Member");
+
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task WriteOrgMembershipRoleChangedAsync_PlatformUserIdDoesNotExist_SkipsWrite()
+    {
+        _inbox.Setup(i => i.PlatformUserExistsAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        await _sut.WriteOrgMembershipRoleChangedAsync(_userId, _orgId, "Consumer", "Administrator");
+
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

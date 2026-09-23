@@ -70,6 +70,11 @@ public class NotificationDigestWorkerTests
         _mockInbox
             .Setup(i => i.ResolvePlatformUserIdAsync(TestUserIdentityId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(TestPlatformUserId);
+        // #1703 — the worker now confirms a resolved PlatformUserId actually names a platform user
+        // (the #1682 guard) before writing. Default fixture: any resolved id verifies as existing.
+        _mockInbox
+            .Setup(i => i.PlatformUserExistsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
         _mockInbox
             .Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
@@ -289,6 +294,35 @@ public class NotificationDigestWorkerTests
         _mockInbox.Verify(
             i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()),
             Times.Exactly(2));
+    }
+
+    /// <summary>
+    /// #1703 sweep (#1682-shaped) — <c>ResolvePlatformUserIdAsync</c> only confirms the UserIdentity
+    /// row exists and hands back whatever its <c>PlatformUserId</c> column holds, dangling or not.
+    /// Before this fix that value was trusted straight into the digest write, which the endpoint's
+    /// own #1506 guard rejects 400 two hops later — silently swallowed. The worker must confirm
+    /// existence itself before writing.
+    /// </summary>
+    [Fact]
+    public async Task ProcessPendingDigestsAsync_ResolvedPlatformUserIdIsDangling_SkipsInbox()
+    {
+        var danglingPlatformUserId = Guid.Parse("55555555-5555-5555-5555-555555555555");
+        _mockInbox
+            .Setup(i => i.ResolvePlatformUserIdAsync(TestUserIdentityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(danglingPlatformUserId);
+        _mockInbox
+            .Setup(i => i.PlatformUserExistsAsync(danglingPlatformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        SetupActiveUsers(TestUserId);
+        SetupScriptResult(TestUserId, CreateTestEvent());
+
+        var worker = CreateWorker();
+        await worker.ProcessPendingDigestsAsync();
+
+        _mockInbox.Verify(
+            i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     // ---------------------------------------------------------------------------

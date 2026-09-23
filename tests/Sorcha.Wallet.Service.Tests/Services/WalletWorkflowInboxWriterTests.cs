@@ -27,8 +27,14 @@ public class WalletWorkflowInboxWriterTests
     {
         _sut = new WalletWorkflowInboxWriter(_inbox.Object, NullLogger<WalletWorkflowInboxWriter>.Instance);
 
+        // Default fixture: ownerId resolves cleanly as a UserIdentity → PlatformUserId (the
+        // legacy/org path). #1703 — Owner is not reliably a UserIdentity id (see
+        // WalletWorkflowInboxWriter's dual-path resolution), so tests below also cover the
+        // "Owner is already a PlatformUserId" branch explicitly.
         _inbox.Setup(i => i.ResolvePlatformUserIdAsync(_ownerUserIdentityId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(_platformUserId);
+        _inbox.Setup(i => i.PlatformUserExistsAsync(_platformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
     }
 
     [Fact]
@@ -137,12 +143,70 @@ public class WalletWorkflowInboxWriterTests
         var unknownOwner = Guid.NewGuid();
         _inbox.Setup(i => i.ResolvePlatformUserIdAsync(unknownOwner, It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid?)null);
+        // #1703 dual-path — the UserIdentity resolution missed, so the writer falls through to
+        // treating unknownOwner itself as a candidate PlatformUserId. That must ALSO fail here.
+        _inbox.Setup(i => i.PlatformUserExistsAsync(unknownOwner, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
 
         await _sut.WriteWalletCreatedAsync("WALLET-ADDR", "Test", unknownOwner);
 
         _inbox.Verify(
             i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    /// <summary>
+    /// #1703 — <c>Wallet.Owner</c> for a personal (non-org) wallet is already the caller's
+    /// <c>PlatformUser.Id</c> (see <c>WalletEndpoints.GetCurrentUser</c>, which prefers the
+    /// <c>platform_user_id</c> claim). Before this fix the writer treated <c>ownerId</c>
+    /// unconditionally as a UserIdentity id: the by-identity lookup missed (it is not a
+    /// UserIdentity row), <c>ResolvePlatformUserIdAsync</c> returned null, and the notification
+    /// was silently dropped on every personal wallet create/recover/delete/address-registered
+    /// event. The writer must now fall back to treating <c>ownerId</c> itself as the
+    /// PlatformUserId and confirm it directly.
+    /// </summary>
+    [Fact]
+    public async Task OwnerIdIsAlreadyAPlatformUserId_UserIdentityLookupMisses_FallsBackAndWrites()
+    {
+        var ownerIsPlatformUserId = Guid.NewGuid();
+        InboxWritePayload? captured = null;
+
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(ownerIsPlatformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid?)null);
+        _inbox.Setup(i => i.PlatformUserExistsAsync(ownerIsPlatformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
+            .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
+            .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
+
+        await _sut.WriteWalletCreatedAsync("WALLET-ADDR", "My Wallet", ownerIsPlatformUserId);
+
+        captured.Should().NotBeNull("the owner id IS the PlatformUserId here, so the write must go through");
+        captured!.PlatformUserId.Should().Be(ownerIsPlatformUserId);
+    }
+
+    /// <summary>
+    /// #1682-shaped dangling link, reused here: the UserIdentity resolves to a PlatformUserId that
+    /// itself does not name a real platform user. The writer must confirm existence before trusting
+    /// the resolved value, then fall through to the direct-ownerId check (which also fails here), and
+    /// skip — never posting a request the server is guaranteed to reject.
+    /// </summary>
+    [Fact]
+    public async Task ResolvedPlatformUserIdIsDangling_FallsThroughThenSkips()
+    {
+        var owner = Guid.NewGuid();
+        var danglingPlatformUserId = Guid.NewGuid();
+
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(owner, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(danglingPlatformUserId);
+        _inbox.Setup(i => i.PlatformUserExistsAsync(danglingPlatformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _inbox.Setup(i => i.PlatformUserExistsAsync(owner, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        await _sut.WriteWalletCreatedAsync("WALLET-ADDR", "Test", owner);
+
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

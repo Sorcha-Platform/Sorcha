@@ -3,7 +3,7 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.33
+**Version:** 7.34
 **Last Updated:** 2026-09-22
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
@@ -52,6 +52,63 @@
 > PR: branch `feat/1707-agent-await`, not merged. Follow-up, deliberately out of scope: push-based
 > notification for events an agent did NOT cause (needs the identity-routing problem #1622/MRTR
 > already routes around for elicitation).
+> **▶ 2026-09-22 — Inbox-writer sweep for #1703 (trusting an unverified id / passing the wrong KIND
+> of id), branch `fix/1703-inbox-writer-sweep`, PR pending.**
+>
+> Audited every caller of `IPlatformInboxClient.WriteAsync` / `IInboxService.WriteAsync` for the two
+> defect classes #1506/#1682/#1703 already found once each: **Class A** — trusting a PlatformUserId
+> that `ResolvePlatformUserIdAsync` merely *resolved* (the UserIdentity row exists) without confirming
+> it *exists* (`PlatformUserExistsAsync`); **Class B** — passing a UserIdentity id where a PlatformUser
+> id is expected, both bare `Guid`s in the same value space.
+>
+> **New live defects found and fixed** (beyond the two named in #1703):
+> - `WalletWorkflowInboxWriter` (Wallet Service) — Class A unguarded, **and** Class B: `WalletEndpoints`
+>   passes `Wallet.Owner` (which for a personal wallet already IS the PlatformUserId — see
+>   `GetCurrentUser`'s claim preference) into a parameter documented as a UserIdentity id. Every
+>   wallet-created/-recovered/-deleted/-address-registered notification for a personal wallet was
+>   silently lost. Fixed with dual-path resolution mirroring `BlueprintInboxWriter`.
+> - `TotpService.ValidateBackupCodeAsync` → `TenantSecurityInboxWriter.WriteBackupCodeUsedAsync` — Class
+>   B: passed the raw UserIdentity id (`TotpConfiguration.UserId` is one-to-one with UserIdentity) where
+>   its two sibling methods in the same class (`VerifyAndEnableAsync`, `DisableAsync`) correctly resolve
+>   via `ResolvePlatformUserIdAsync` first. Worse than a swallowed 400: `TenantSecurityInboxWriter`,
+>   `PersonaInboxWriter`, `TenantMembershipInboxWriter` write via `IInboxService` directly (Tenant-
+>   internal, no HTTP hop), bypassing the endpoint's own #1506 guard entirely, and `InboxEntry
+>   .PlatformUserId` carries no database FK — so a wrong id was written verbatim as an unaddressable
+>   phantom entry with **zero** error, log, or signal. The "backup code used" account-takeover
+>   notification was lost on every use.
+> - `WalletInboxWriter`, `NotificationDeliveryService`, `NotificationDigestWorker` (Wallet Service) —
+>   Class A unguarded (same shape as pre-fix `BlueprintInboxWriter`/#1682).
+> - `EncryptionInboxWriter` (#1703 itself) — root cause: `ActionExecutionService` populated
+>   `EncryptionWorkItem.UserId` from the JWT `sub`/`NameIdentifier` claim (UserIdentity id) instead of
+>   `platform_user_id` (PlatformUser id); fixed at the call site + added a defence-in-depth existence
+>   guard in the writer.
+> - `TenantSecurityInboxWriter`, `PersonaInboxWriter`, `TenantMembershipInboxWriter` — added the same
+>   `PlatformUserExistsAsync` defence-in-depth guard even though their current call sites were verified
+>   correct, since nothing else in their local write path would ever catch a future regression.
+>
+> **Confirmed already-safe**: `BlueprintInboxWriter` (Class A fixed in #1693), `CitizenDeviceInboxWriter`
+> (no resolution step; both call sites verified to pass a genuine PlatformUserId; writes over HTTP so
+> already covered by the endpoint's own #1506 guard).
+>
+> 10 source files fixed, ~25 new/updated tests, every new test mutation-tested (revert → RED for the
+> right reason → restore → GREEN). Recommend a follow-up issue for a typed `PlatformUserId` wrapper
+> (readonly record struct) so Class B becomes a compile error — touches roughly a dozen call sites
+> across Wallet/Blueprint/Tenant services; not implemented here (blast radius).
+>
+> **Follow-up (same PR): the `ActionExecutionService.cs:1223` root-cause fix now has its own direct
+> regression test.** `ActionExecutionServiceTests.ExecuteAsync_AsyncEncryptionPath_QueuesWorkItemWithPlatformUserId_NotUserIdentityId`
+> constructs a real `ActionExecutionService` with an injected `Channel<EncryptionWorkItem>` (the
+> constructor's async-encryption params are optional and nothing in the existing suite exercised
+> them), drives a caller principal with two DISTINCT ids under `sub` and `platform_user_id`, and
+> asserts the queued `EncryptionWorkItem.UserId` equals the platform_user_id value — not the sub
+> value. Mutation-tested: reverting line 1223 to the old `sub`/`ClaimTypes.NameIdentifier` read turns
+> the test RED, naming the wrong (UserIdentity) id in the failure message. Also checked whether the
+> sibling call site at line 613 (already correct) has any test pinning it: yes —
+> `ActionExecutionLiveClaimSourceTests.cs` (9 tests, pre-existing, issue #1264) already asserts both
+> directions AND that a missing `platform_user_id` claim fails closed rather than falling back to
+> `sub` (`ExecuteAsync_CallerHasNoPlatformUserId_FailsTheSubmission`) — confirmed by the same
+> mutation technique that reintroducing the `sub` fallback at line 613 turns that test RED too. No
+> new assertion needed there.
 
 > **▶ 2026-09-20 - The org issuer cert co-key could never derive, and once it could, it wasn't stable
 > (#1687 + #1679, PR #1677).**

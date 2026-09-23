@@ -25,6 +25,18 @@ namespace Sorcha.Wallet.Service.Services.Implementation;
 /// wallet operations are never affected by an inbox-write failure. Matches
 /// the established <see cref="WalletInboxWriter"/> contract.
 /// </para>
+/// <para>
+/// #1703 sweep — <c>ownerId</c> is <c>Wallet.Owner</c>, and that field is NOT
+/// consistently a <c>UserIdentity.Id</c>: <c>WalletEndpoints.GetCurrentUser</c>
+/// prefers the caller's <c>platform_user_id</c> claim (a <c>PlatformUser.Id</c>)
+/// and falls back to <c>sub</c>/<c>NameIdentifier</c> (a <c>UserIdentity.Id</c>)
+/// only when that claim is absent — so for the common case (a personal wallet)
+/// <c>Owner</c> already IS the PlatformUserId. Resolving it unconditionally as a
+/// UserIdentity id (the pre-fix behaviour) looked up a row that does not exist
+/// and silently lost every wallet-created/-recovered/-deleted/-address-registered
+/// notification. The writer now tries both interpretations, mirroring
+/// <c>BlueprintInboxWriter.ResolveRecipientPlatformUserIdAsync</c>.
+/// </para>
 /// </remarks>
 public interface IWalletWorkflowInboxWriter
 {
@@ -32,21 +44,21 @@ public interface IWalletWorkflowInboxWriter
     Task WriteWalletCreatedAsync(
         string walletAddress,
         string walletName,
-        Guid ownerUserIdentityId,
+        Guid ownerId,
         CancellationToken ct = default);
 
     /// <summary>Drop a "wallet recovered" entry for the owning user.</summary>
     Task WriteWalletRecoveredAsync(
         string walletAddress,
         string walletName,
-        Guid ownerUserIdentityId,
+        Guid ownerId,
         CancellationToken ct = default);
 
     /// <summary>Drop a "wallet deleted" entry for the owning user. Severity is Warning.</summary>
     Task WriteWalletDeletedAsync(
         string walletAddress,
         string walletName,
-        Guid ownerUserIdentityId,
+        Guid ownerId,
         CancellationToken ct = default);
 
     /// <summary>Drop a "derived address registered" entry for the owning user.</summary>
@@ -54,7 +66,7 @@ public interface IWalletWorkflowInboxWriter
     Task WriteAddressRegisteredAsync(
         string walletAddress,
         string derivedAddress,
-        Guid ownerUserIdentityId,
+        Guid ownerId,
         CancellationToken ct = default);
 }
 
@@ -75,10 +87,10 @@ public sealed class WalletWorkflowInboxWriter : IWalletWorkflowInboxWriter
 
     /// <inheritdoc />
     public Task WriteWalletCreatedAsync(
-        string walletAddress, string walletName, Guid ownerUserIdentityId, CancellationToken ct = default)
+        string walletAddress, string walletName, Guid ownerId, CancellationToken ct = default)
         => WriteAsync(
             walletAddress: walletAddress,
-            ownerUserIdentityId: ownerUserIdentityId,
+            ownerId: ownerId,
             severity: "Info",
             sourceTag: "wallet-created",
             correlationKey: $"wallet:{walletAddress}",
@@ -90,10 +102,10 @@ public sealed class WalletWorkflowInboxWriter : IWalletWorkflowInboxWriter
 
     /// <inheritdoc />
     public Task WriteWalletRecoveredAsync(
-        string walletAddress, string walletName, Guid ownerUserIdentityId, CancellationToken ct = default)
+        string walletAddress, string walletName, Guid ownerId, CancellationToken ct = default)
         => WriteAsync(
             walletAddress: walletAddress,
-            ownerUserIdentityId: ownerUserIdentityId,
+            ownerId: ownerId,
             severity: "Info",
             sourceTag: "wallet-recovered",
             correlationKey: $"wallet:{walletAddress}:recovered",
@@ -105,10 +117,10 @@ public sealed class WalletWorkflowInboxWriter : IWalletWorkflowInboxWriter
 
     /// <inheritdoc />
     public Task WriteWalletDeletedAsync(
-        string walletAddress, string walletName, Guid ownerUserIdentityId, CancellationToken ct = default)
+        string walletAddress, string walletName, Guid ownerId, CancellationToken ct = default)
         => WriteAsync(
             walletAddress: walletAddress,
-            ownerUserIdentityId: ownerUserIdentityId,
+            ownerId: ownerId,
             severity: "Warning",
             sourceTag: "wallet-deleted",
             correlationKey: $"wallet:{walletAddress}:deleted",
@@ -123,10 +135,10 @@ public sealed class WalletWorkflowInboxWriter : IWalletWorkflowInboxWriter
 
     /// <inheritdoc />
     public Task WriteAddressRegisteredAsync(
-        string walletAddress, string derivedAddress, Guid ownerUserIdentityId, CancellationToken ct = default)
+        string walletAddress, string derivedAddress, Guid ownerId, CancellationToken ct = default)
         => WriteAsync(
             walletAddress: walletAddress,
-            ownerUserIdentityId: ownerUserIdentityId,
+            ownerId: ownerId,
             severity: "Info",
             sourceTag: $"address-registered:{derivedAddress}",
             correlationKey: $"wallet:{walletAddress}:address-registered:{derivedAddress}",
@@ -138,7 +150,7 @@ public sealed class WalletWorkflowInboxWriter : IWalletWorkflowInboxWriter
 
     private async Task WriteAsync(
         string walletAddress,
-        Guid ownerUserIdentityId,
+        Guid ownerId,
         string severity,
         string sourceTag,
         string correlationKey,
@@ -152,22 +164,20 @@ public sealed class WalletWorkflowInboxWriter : IWalletWorkflowInboxWriter
         {
             return;
         }
-        if (ownerUserIdentityId == Guid.Empty)
+        if (ownerId == Guid.Empty)
         {
             _logger.LogDebug(
-                "Inbox skip — owner UserIdentity id is empty for {SourceTag} on wallet {Wallet}",
+                "Inbox skip — owner id is empty for {SourceTag} on wallet {Wallet}",
                 sourceTag, walletAddress);
             return;
         }
 
         try
         {
-            var platformUserId = await _inbox.ResolvePlatformUserIdAsync(ownerUserIdentityId, ct).ConfigureAwait(false);
+            var platformUserId = await ResolveVerifiedPlatformUserIdAsync(ownerId, walletAddress, sourceTag, ct)
+                .ConfigureAwait(false);
             if (platformUserId is null)
             {
-                _logger.LogDebug(
-                    "Inbox skip — could not resolve PlatformUserId for UserIdentity {UserIdentityId} on {SourceTag}",
-                    ownerUserIdentityId, sourceTag);
                 return;
             }
 
@@ -197,6 +207,43 @@ public sealed class WalletWorkflowInboxWriter : IWalletWorkflowInboxWriter
                 "Inbox-write failed for {SourceTag} — Wallet={Wallet}",
                 sourceTag, walletAddress);
         }
+    }
+
+    /// <summary>
+    /// #1703 — <paramref name="ownerId"/> (<c>Wallet.Owner</c>) is not reliably one kind of id: it is
+    /// a <c>UserIdentity.Id</c> only when the caller's token carried no <c>platform_user_id</c> claim
+    /// at wallet-creation time (legacy / org path); otherwise it already IS the <c>PlatformUser.Id</c>
+    /// (the common, current path — see <c>WalletEndpoints.GetCurrentUser</c>). Tries the UserIdentity
+    /// interpretation first (resolve + confirm), then falls back to treating <paramref name="ownerId"/>
+    /// itself as a candidate PlatformUserId (confirm directly). Both paths verify existence before the
+    /// id is used — an id that only LOOKS resolved (BlueprintInboxWriter's #1682 dangling-link case)
+    /// must never reach the write.
+    /// </summary>
+    private async Task<Guid?> ResolveVerifiedPlatformUserIdAsync(
+        Guid ownerId, string walletAddress, string sourceTag, CancellationToken ct)
+    {
+        var viaUserIdentity = await _inbox.ResolvePlatformUserIdAsync(ownerId, ct).ConfigureAwait(false);
+        if (viaUserIdentity is not null && await _inbox.PlatformUserExistsAsync(viaUserIdentity.Value, ct).ConfigureAwait(false))
+        {
+            _logger.LogDebug(
+                "Inbox resolve — owner {OwnerId} resolved as UserIdentity → PlatformUserId {PlatformUserId} for {SourceTag}",
+                ownerId, viaUserIdentity.Value, sourceTag);
+            return viaUserIdentity.Value;
+        }
+
+        if (await _inbox.PlatformUserExistsAsync(ownerId, ct).ConfigureAwait(false))
+        {
+            _logger.LogDebug(
+                "Inbox resolve — owner {OwnerId} used directly as PlatformUserId for {SourceTag}",
+                ownerId, sourceTag);
+            return ownerId;
+        }
+
+        _logger.LogWarning(
+            "Inbox skip — owner {OwnerId} for wallet {Wallet} ({SourceTag}) is neither a resolvable "
+            + "UserIdentity nor a known PlatformUser, so there is nobody to notify",
+            ownerId, walletAddress, sourceTag);
+        return null;
     }
 
     private static string BuildTitle(string action, string walletName)

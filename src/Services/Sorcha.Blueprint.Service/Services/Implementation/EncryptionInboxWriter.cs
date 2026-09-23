@@ -47,6 +47,19 @@ public sealed class EncryptionInboxWriter : IEncryptionInboxWriter
 
         try
         {
+            // #1703 — defence in depth. The caller (EncryptionBackgroundService) believes this is
+            // already a verified PlatformUser id, but #1703 itself was exactly a caller passing the
+            // WRONG kind of id (a UserIdentity id) here with nothing to catch it until Tenant's own
+            // #1506 guard rejected it 400, two hops away and silently swallowed. Confirm it here too.
+            if (!await _inboxClient.PlatformUserExistsAsync(platformUserId, ct).ConfigureAwait(false))
+            {
+                _logger.LogWarning(
+                    "EncryptionInboxWriter — skipping encryption-complete write: {PlatformUserId} does not "
+                    + "name a known platform user for operation {OperationId}",
+                    platformUserId, operationId);
+                return;
+            }
+
             var payload = new InboxWritePayload(
                 PlatformUserId: platformUserId,
                 Category: "Workflow",
@@ -81,6 +94,16 @@ public sealed class EncryptionInboxWriter : IEncryptionInboxWriter
 
         try
         {
+            // #1703 — defence in depth; see WriteEncryptionCompleteAsync.
+            if (!await _inboxClient.PlatformUserExistsAsync(platformUserId, ct).ConfigureAwait(false))
+            {
+                _logger.LogWarning(
+                    "EncryptionInboxWriter — skipping encryption-failed write: {PlatformUserId} does not "
+                    + "name a known platform user for operation {OperationId}",
+                    platformUserId, operationId);
+                return;
+            }
+
             var payload = new InboxWritePayload(
                 PlatformUserId: platformUserId,
                 Category: "Workflow",

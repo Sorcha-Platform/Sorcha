@@ -1214,8 +1214,13 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                         PayloadWithCalculations = payloadWithCalculations,
                         DisclosedPayloads = disclosedPayloads,
                         PreviousTransactionId = accumulatedState.PreviousTransactionId,
-                        UserId = caller?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-                            ?? caller?.FindFirst("sub")?.Value,
+                        // #1703 — this addresses the encryption-complete/-failed inbox notification
+                        // (EncryptionBackgroundService), which needs a PlatformUser id. The JWT `sub`
+                        // claim (ClaimTypes.NameIdentifier) carries the org-scoped UserIdentity.Id, a
+                        // DIFFERENT id in the same Guid value space — using it here silently lost the
+                        // notification on every encrypted submission (#1703). Only the dedicated
+                        // platform_user_id claim names the account-wide PlatformUser.
+                        UserId = caller?.FindFirst(TokenClaimConstants.PlatformUserId)?.Value,
                         DelegationToken = delegationToken,
                         RoutingResult = routingResult,
                         MergedData = mergedData,

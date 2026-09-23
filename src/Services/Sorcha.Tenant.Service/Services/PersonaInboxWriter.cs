@@ -41,6 +41,19 @@ public sealed class PersonaInboxWriter : IPersonaInboxWriter
     {
         try
         {
+            // #1703 sweep — this writer calls IInboxService directly, bypassing the HTTP endpoint's
+            // own #1506 PlatformUserExistsAsync guard, and InboxEntry.PlatformUserId carries no
+            // database foreign key: a wrong-kind id here would be written verbatim with no error and
+            // no signal at all. Confirm existence before writing (defence in depth — current callers
+            // are verified correct, but nothing else in this path would catch a future regression).
+            if (!await _inboxService.PlatformUserExistsAsync(platformUserId, ct).ConfigureAwait(false))
+            {
+                _logger.LogWarning(
+                    "Inbox skip — {PlatformUserId} does not name a known platform user for persona-saved",
+                    platformUserId);
+                return;
+            }
+
             var occurredAt = DateTimeOffset.UtcNow;
             var request = new InboxWriteRequest(
                 PlatformUserId: platformUserId,
@@ -69,6 +82,15 @@ public sealed class PersonaInboxWriter : IPersonaInboxWriter
     {
         try
         {
+            // #1703 sweep — see WritePersonaSavedAsync.
+            if (!await _inboxService.PlatformUserExistsAsync(platformUserId, ct).ConfigureAwait(false))
+            {
+                _logger.LogWarning(
+                    "Inbox skip — {PlatformUserId} does not name a known platform user for persona-deleted",
+                    platformUserId);
+                return;
+            }
+
             var occurredAt = DateTimeOffset.UtcNow;
             var request = new InboxWriteRequest(
                 PlatformUserId: platformUserId,

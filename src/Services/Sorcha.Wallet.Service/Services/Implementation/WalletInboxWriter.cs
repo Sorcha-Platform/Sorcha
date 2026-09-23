@@ -118,12 +118,10 @@ public sealed class WalletInboxWriter : IWalletInboxWriter
                 return;
             }
 
-            var platformUserId = await _inbox.ResolvePlatformUserIdAsync(participant.UserId, ct).ConfigureAwait(false);
+            var platformUserId = await ResolveVerifiedPlatformUserIdAsync(
+                participant.UserId, recipientWalletAddress, "credential-received", ct).ConfigureAwait(false);
             if (platformUserId is null)
             {
-                _logger.LogDebug(
-                    "Inbox skip — could not resolve PlatformUserId for UserIdentity {UserIdentityId}",
-                    participant.UserId);
                 return;
             }
 
@@ -260,12 +258,10 @@ public sealed class WalletInboxWriter : IWalletInboxWriter
                 return;
             }
 
-            var platformUserId = await _inbox.ResolvePlatformUserIdAsync(participant.UserId, ct).ConfigureAwait(false);
+            var platformUserId = await ResolveVerifiedPlatformUserIdAsync(
+                participant.UserId, walletAddress, sourceTag, ct).ConfigureAwait(false);
             if (platformUserId is null)
             {
-                _logger.LogDebug(
-                    "Inbox skip — could not resolve PlatformUserId for UserIdentity {UserIdentityId} on {SourceTag}",
-                    participant.UserId, sourceTag);
                 return;
             }
 
@@ -295,6 +291,40 @@ public sealed class WalletInboxWriter : IWalletInboxWriter
                 "Inbox-write failed for {SourceTag} — Wallet={Wallet} CredentialId={CredentialId}",
                 sourceTag, walletAddress, credentialId);
         }
+    }
+
+    /// <summary>
+    /// #1703 sweep — confirms a PlatformUserId returned by
+    /// <see cref="IPlatformInboxClient.ResolvePlatformUserIdAsync"/> actually names a platform user
+    /// before it is used to build a write request. Mirrors
+    /// <c>BlueprintInboxWriter.VerifyPlatformUserExistsAsync</c> (#1682): the by-identity lookup only
+    /// confirms the UserIdentity row exists and hands back whatever its <c>PlatformUserId</c> column
+    /// holds, dangling or not — an unverified value reaches <c>POST /api/internal/inbox</c>, which
+    /// rejects it 400 (the endpoint's own #1506 guard), swallowed whole by the caller's try/catch.
+    /// </summary>
+    private async Task<Guid?> ResolveVerifiedPlatformUserIdAsync(
+        Guid userIdentityId, string walletAddress, string sourceTag, CancellationToken ct)
+    {
+        var platformUserId = await _inbox.ResolvePlatformUserIdAsync(userIdentityId, ct).ConfigureAwait(false);
+        if (platformUserId is null)
+        {
+            _logger.LogDebug(
+                "Inbox skip — could not resolve PlatformUserId for UserIdentity {UserIdentityId} on {SourceTag}",
+                userIdentityId, sourceTag);
+            return null;
+        }
+
+        if (await _inbox.PlatformUserExistsAsync(platformUserId.Value, ct).ConfigureAwait(false))
+        {
+            return platformUserId.Value;
+        }
+
+        _logger.LogWarning(
+            "Inbox skip — resolved PlatformUserId {PlatformUserId} for wallet {Wallet} ({SourceTag}) does "
+            + "not name a known platform user (a stale or dangling UserIdentity→PlatformUser link). "
+            + "Skipping the write rather than sending a request the server is guaranteed to reject.",
+            platformUserId.Value, walletAddress, sourceTag);
+        return null;
     }
 
     private static Guid DeterministicSourceEventId(string recipientWalletAddress, string credentialId)

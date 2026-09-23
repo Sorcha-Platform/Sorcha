@@ -117,6 +117,70 @@ public sealed class TotpServiceTests : IDisposable
         validated.Should().BeFalse();
     }
 
+    /// <summary>
+    /// #1703 — <c>TotpConfiguration.UserId</c> is one-to-one with <c>UserIdentity</c>, not
+    /// <c>PlatformUser</c>. Before this fix, <c>ValidateBackupCodeAsync</c> passed that raw
+    /// UserIdentity id straight to <c>ITenantSecurityInboxWriter.WriteBackupCodeUsedAsync</c> — a
+    /// method whose parameter IS the PlatformUser id the inbox is addressed by — while the two sibling
+    /// methods in this same class (<c>VerifyAndEnableAsync</c>, <c>DisableAsync</c>) both correctly
+    /// resolve through <c>ResolvePlatformUserIdAsync</c> first. Assert on the id VALUE actually sent,
+    /// not just that the writer was called — a call count passes even when every call addresses the
+    /// wrong recipient.
+    /// </summary>
+    [Fact]
+    public async Task ValidateBackupCodeAsync_ValidCode_NotifiesWithPlatformUserId_NotUserIdentityId()
+    {
+        var platformUserId = Guid.NewGuid();
+        _identity
+            .Setup(r => r.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserIdentity { Id = _userId, PlatformUserId = platformUserId, Email = "ada@example.com" });
+
+        var setup = await _sut.SetupAsync(_userId);
+        var config = await _db.TotpConfigurations.SingleAsync(t => t.UserId == _userId);
+        config.IsEnabled = true;
+        await _db.SaveChangesAsync();
+
+        Guid? notifiedPlatformUserId = null;
+        _securityInbox
+            .Setup(s => s.WriteBackupCodeUsedAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, CancellationToken>((id, _) => notifiedPlatformUserId = id)
+            .Returns(Task.CompletedTask);
+
+        var consumed = await _sut.ValidateBackupCodeAsync(_userId, setup.BackupCodes[0]);
+
+        consumed.Should().BeTrue();
+        notifiedPlatformUserId.Should().NotBeNull();
+        notifiedPlatformUserId!.Value.Should().Be(platformUserId,
+            "the inbox is addressed by PlatformUser id, not the UserIdentity id backup codes are keyed by");
+        notifiedPlatformUserId.Value.Should().NotBe(_userId);
+    }
+
+    /// <summary>
+    /// When the UserIdentity cannot be resolved to a PlatformUser at all, the notification must be
+    /// skipped rather than sent under the wrong (UserIdentity) id — a missing bell is strictly better
+    /// than one addressed to nobody.
+    /// </summary>
+    [Fact]
+    public async Task ValidateBackupCodeAsync_IdentityHasNoPlatformUser_SkipsNotification_DoesNotSendWrongId()
+    {
+        _identity
+            .Setup(r => r.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserIdentity { Id = _userId, PlatformUserId = Guid.Empty, Email = "ada@example.com" });
+
+        var setup = await _sut.SetupAsync(_userId);
+        var config = await _db.TotpConfigurations.SingleAsync(t => t.UserId == _userId);
+        config.IsEnabled = true;
+        await _db.SaveChangesAsync();
+
+        var consumed = await _sut.ValidateBackupCodeAsync(_userId, setup.BackupCodes[0]);
+
+        consumed.Should().BeTrue("the code itself is still valid and must still be consumed");
+        _securityInbox.Verify(
+            s => s.WriteBackupCodeUsedAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never,
+            "must never notify under the raw UserIdentity id when no PlatformUser resolves");
+    }
+
     [Fact]
     public async Task LoginToken_GeneratedOnOneInstance_ValidatesOnAnotherWithSameDerivedKey()
     {
