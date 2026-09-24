@@ -31,9 +31,9 @@
 >
 > **Follow-up (not done here):** ~180 bare-`Guid` `platformUserId` / `userIdentityId` parameters
 > outside the boundary; five near-identical `ResolvePlatformUserIdAsync(httpContext, …)` helpers in
-> Tenant endpoints (platform_user_id → `pid` → sub-lookup) that could collapse onto `UserIdClaims`;
-> and the FK from `InboxEntry.PlatformUserId` to `PlatformUsers` (DB recreate, pattern 19 —
-> maintainer's call).
+> Tenant endpoints (platform_user_id → `pid` → sub-lookup) that could collapse onto `UserIdClaims`.
+> (The FK from `InboxEntry.PlatformUserId` to `PlatformUsers`, once listed here, already exists —
+> since Feature 118, live on n1 and tiny. See the correction under #1703 below.)
 
 > **▶ 2026-09-24 - #1712 ✅ (branch `fix/participant-update-chain-fork`): participant update/revoke no
 > **▶ 2026-09-24 - #1701 ✅ (branch `fix/1701-encryption-at-rest-names`): EncryptionAtRest now asserts
@@ -134,10 +134,13 @@
 >   its two sibling methods in the same class (`VerifyAndEnableAsync`, `DisableAsync`) correctly resolve
 >   via `ResolvePlatformUserIdAsync` first. Worse than a swallowed 400: `TenantSecurityInboxWriter`,
 >   `PersonaInboxWriter`, `TenantMembershipInboxWriter` write via `IInboxService` directly (Tenant-
->   internal, no HTTP hop), bypassing the endpoint's own #1506 guard entirely, and `InboxEntry
->   .PlatformUserId` carries no database FK — so a wrong id was written verbatim as an unaddressable
->   phantom entry with **zero** error, log, or signal. The "backup code used" account-takeover
->   notification was lost on every use.
+>   internal, no HTTP hop), bypassing the endpoint's own #1506 guard entirely. The wrong id then
+>   reached the insert, where `FK_InboxEntries_PlatformUsers_PlatformUserId` refused it and the
+>   writer swallowed the failure (pattern 12). The "backup code used" account-takeover
+>   notification was lost on every use. *(Corrected 2026-09-24: this entry originally said the
+>   table had no FK and the row was written as a phantom. The FK has existed since Feature 118
+>   (#519) and is live on n1 and tiny; the sweep read the index declarations and missed the
+>   `HasOne<PlatformUser>()` a few lines below them.)*
 > - `WalletInboxWriter`, `NotificationDeliveryService`, `NotificationDigestWorker` (Wallet Service) —
 >   Class A unguarded (same shape as pre-fix `BlueprintInboxWriter`/#1682).
 > - `EncryptionInboxWriter` (#1703 itself) — root cause: `ActionExecutionService` populated

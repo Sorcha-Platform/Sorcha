@@ -770,8 +770,9 @@ UserId = caller?.FindFirst(ClaimTypes.NameIdentifier)?.Value,
 
 - **Why a convention was not enough**: PR #1708 found **five** live instances in ten writers, and in
   three files the correct and incorrect usage sat side by side. Every one was silent — pattern 12
-  swallows writer failures, and `InboxEntry.PlatformUserId` has no FK, so the worst case was a
-  "backup code used" security notice written as a phantom row against a user that does not exist.
+  swallows writer failures, so a wrong id is not an error anyone sees. `InboxEntry.PlatformUserId`
+  is FK-constrained to `PlatformUsers` (cascade), so the insert is refused and the notice is simply
+  lost: a "backup code used" security notice vanished on every use.
 - **The typed boundary**: `IPlatformInboxClient`, `IInboxService`, every `*InboxWriter`,
   `ISecurityChangeNotifier`, `InboxWritePayload` / `InboxWriteRequest`, `EncryptionWorkItem.UserId`,
   and `TotpService`'s inbox path. EF entities, wire DTOs and everything outside stay `Guid`.
@@ -788,8 +789,7 @@ UserId = caller?.FindFirst(ClaimTypes.NameIdentifier)?.Value,
   the boundary types whose name contains `platformUserId` / `userIdentityId` must not be `Guid`. The
   boundary is discovered by name (`*InboxWriter`) and the discovery is pinned, so it cannot pass
   vacuously. Wire equivalence is pinned by `TypedUserIdTests` (`Sorcha.Tenant.Models.Tests`).
-- **Still open**: ~180 bare-Guid `platformUserId` / `userIdentityId` parameters outside the boundary, and the missing FK on
-  `InboxEntry.PlatformUserId` (a DB recreate — pattern 19 — so a maintainer decision).
+- **Still open**: ~180 bare-Guid `platformUserId` / `userIdentityId` parameters outside the boundary.
 
 ---
 
