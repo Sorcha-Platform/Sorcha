@@ -8,6 +8,7 @@ using Moq;
 using Sorcha.ServiceClients.Inbox;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.Wallet.Service.Services.Implementation;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Wallet.Service.Tests.Services;
 
@@ -25,7 +26,7 @@ public class WalletInboxWriterTests
         // #1703 — the writer now confirms a resolved PlatformUserId actually names a platform user
         // (the #1682 guard) before writing. Default fixture: any resolved id verifies as existing;
         // the dangling-link test below overrides this per-id.
-        _inbox.Setup(i => i.PlatformUserExistsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.PlatformUserExistsAsync(It.IsAny<PlatformUserId>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
     }
 
@@ -38,8 +39,8 @@ public class WalletInboxWriterTests
 
         _participants.Setup(p => p.GetByWalletAddressAsync("recipient-wallet", It.IsAny<CancellationToken>()))
             .ReturnsAsync(participant);
-        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(participant.UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(platformUserId);
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(new UserIdentityId(participant.UserId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(platformUserId));
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
@@ -47,7 +48,7 @@ public class WalletInboxWriterTests
         await _sut.WriteCredentialReceivedAsync("recipient-wallet", "cred-abc", "Verified Citizen", "Acme Inc.");
 
         captured.Should().NotBeNull();
-        captured!.PlatformUserId.Should().Be(platformUserId);
+        captured!.PlatformUserId.Value.Should().Be(platformUserId);
         captured.Category.Should().Be("Credential");
         captured.CorrelationKey.Should().Be("credential:recipient-wallet:cred-abc");
         captured.DetailHref.Should().Be("/api/v1/wallets/recipient-wallet/credentials/cred-abc");
@@ -61,8 +62,8 @@ public class WalletInboxWriterTests
         InboxWritePayload? captured = null;
         _participants.Setup(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(participant);
-        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.NewGuid());
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<UserIdentityId>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(Guid.NewGuid()));
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
@@ -87,9 +88,9 @@ public class WalletInboxWriterTests
 
         _participants.Setup(p => p.GetByWalletAddressAsync("recipient-wallet", It.IsAny<CancellationToken>()))
             .ReturnsAsync(participant);
-        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(participant.UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(danglingPlatformUserId);
-        _inbox.Setup(i => i.PlatformUserExistsAsync(danglingPlatformUserId, It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(new UserIdentityId(participant.UserId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(danglingPlatformUserId));
+        _inbox.Setup(i => i.PlatformUserExistsAsync(new PlatformUserId(danglingPlatformUserId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         await _sut.WriteCredentialReceivedAsync("recipient-wallet", "cred-abc", "Verified Citizen");
@@ -115,8 +116,8 @@ public class WalletInboxWriterTests
         var sourceIds = new List<Guid>();
         _participants.Setup(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(participant);
-        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.NewGuid());
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<UserIdentityId>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(Guid.NewGuid()));
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .Callback<InboxWritePayload, CancellationToken>((p, _) => sourceIds.Add(p.SourceEventId))
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: true));
@@ -134,8 +135,8 @@ public class WalletInboxWriterTests
         var participant = BuildParticipant();
         _participants.Setup(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(participant);
-        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.NewGuid());
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<UserIdentityId>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(Guid.NewGuid()));
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Tenant unavailable"));
 
@@ -157,8 +158,8 @@ public class WalletInboxWriterTests
         InboxWritePayload? captured = null;
         _participants.Setup(p => p.GetByWalletAddressAsync("holder-wallet", It.IsAny<CancellationToken>()))
             .ReturnsAsync(participant);
-        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(participant.UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(platformUserId);
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(new UserIdentityId(participant.UserId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(platformUserId));
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
@@ -166,7 +167,7 @@ public class WalletInboxWriterTests
         await _sut.WriteCredentialDeclinedAsync("holder-wallet", "cred-xyz", "Driving Licence");
 
         captured.Should().NotBeNull();
-        captured!.PlatformUserId.Should().Be(platformUserId);
+        captured!.PlatformUserId.Value.Should().Be(platformUserId);
         captured.Category.Should().Be("Credential");
         captured.Severity.Should().Be("Info");
         captured.Title.Should().Be("Declined credential: Driving Licence");
@@ -182,8 +183,8 @@ public class WalletInboxWriterTests
         InboxWritePayload? captured = null;
         _participants.Setup(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(participant);
-        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.NewGuid());
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<UserIdentityId>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(Guid.NewGuid()));
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
@@ -204,8 +205,8 @@ public class WalletInboxWriterTests
         InboxWritePayload? captured = null;
         _participants.Setup(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(participant);
-        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.NewGuid());
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<UserIdentityId>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(Guid.NewGuid()));
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
@@ -231,8 +232,8 @@ public class WalletInboxWriterTests
         InboxWritePayload? captured = null;
         _participants.Setup(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(participant);
-        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.NewGuid());
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<UserIdentityId>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(Guid.NewGuid()));
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
@@ -265,8 +266,8 @@ public class WalletInboxWriterTests
         var sourceIds = new List<Guid>();
         _participants.Setup(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(participant);
-        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.NewGuid());
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<UserIdentityId>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(Guid.NewGuid()));
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .Callback<InboxWritePayload, CancellationToken>((p, _) => sourceIds.Add(p.SourceEventId))
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: true));
@@ -285,8 +286,8 @@ public class WalletInboxWriterTests
         var sourceIds = new List<Guid>();
         _participants.Setup(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(participant);
-        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.NewGuid());
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<UserIdentityId>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(Guid.NewGuid()));
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .Callback<InboxWritePayload, CancellationToken>((p, _) => sourceIds.Add(p.SourceEventId))
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
@@ -306,8 +307,8 @@ public class WalletInboxWriterTests
         var participant = BuildParticipant();
         _participants.Setup(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(participant);
-        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.NewGuid());
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<UserIdentityId>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(Guid.NewGuid()));
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Tenant unavailable"));
 
@@ -328,9 +329,9 @@ public class WalletInboxWriterTests
         var danglingPlatformUserId = Guid.NewGuid();
         _participants.Setup(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(participant);
-        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(participant.UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(danglingPlatformUserId);
-        _inbox.Setup(i => i.PlatformUserExistsAsync(danglingPlatformUserId, It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(new UserIdentityId(participant.UserId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(danglingPlatformUserId));
+        _inbox.Setup(i => i.PlatformUserExistsAsync(new PlatformUserId(danglingPlatformUserId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         await _sut.WriteCredentialDeclinedAsync("wallet", "cred", "Type");
@@ -358,8 +359,8 @@ public class WalletInboxWriterTests
         var captured = new List<InboxWritePayload>();
         _participants.Setup(p => p.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(participant);
-        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.NewGuid());
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(It.IsAny<UserIdentityId>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(Guid.NewGuid()));
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .Callback<InboxWritePayload, CancellationToken>((p, _) => captured.Add(p))
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));

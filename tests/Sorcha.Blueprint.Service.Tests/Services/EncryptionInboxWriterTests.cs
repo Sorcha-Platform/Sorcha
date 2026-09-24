@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.ServiceClients.Inbox;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Blueprint.Service.Tests.Services;
 
@@ -25,7 +26,7 @@ public sealed class EncryptionInboxWriterTests
         // #1703 — the writer now confirms platformUserId names a real platform user (defence in
         // depth) before writing. Default fixture: any id verifies as existing; the dangling-id tests
         // below override this per-id.
-        _inbox.Setup(i => i.PlatformUserExistsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.PlatformUserExistsAsync(It.IsAny<PlatformUserId>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
     }
 
@@ -44,10 +45,10 @@ public sealed class EncryptionInboxWriterTests
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
 
         var sut = BuildSut();
-        await sut.WriteEncryptionCompleteAsync(_userId, OperationId);
+        await sut.WriteEncryptionCompleteAsync(new PlatformUserId(_userId), OperationId);
 
         captured.Should().NotBeNull();
-        captured!.PlatformUserId.Should().Be(_userId);
+        captured!.PlatformUserId.Value.Should().Be(_userId);
         captured.Category.Should().Be("Workflow");
         captured.Severity.Should().Be("Info");
         captured.CorrelationKey.Should().Be($"sorcha.inbox.encryption.complete:{OperationId}");
@@ -64,10 +65,10 @@ public sealed class EncryptionInboxWriterTests
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
 
         var sut = BuildSut();
-        await sut.WriteEncryptionFailedAsync(_userId, OperationId);
+        await sut.WriteEncryptionFailedAsync(new PlatformUserId(_userId), OperationId);
 
         captured.Should().NotBeNull();
-        captured!.PlatformUserId.Should().Be(_userId);
+        captured!.PlatformUserId.Value.Should().Be(_userId);
         captured.Category.Should().Be("Workflow");
         captured.Severity.Should().Be("ActionRequired");
         captured.CorrelationKey.Should().Be($"sorcha.inbox.encryption.fail:{OperationId}");
@@ -84,8 +85,8 @@ public sealed class EncryptionInboxWriterTests
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
 
         var sut = BuildSut();
-        await sut.WriteEncryptionCompleteAsync(_userId, OperationId);
-        await sut.WriteEncryptionCompleteAsync(_userId, OperationId);
+        await sut.WriteEncryptionCompleteAsync(new PlatformUserId(_userId), OperationId);
+        await sut.WriteEncryptionCompleteAsync(new PlatformUserId(_userId), OperationId);
 
         ids.Should().HaveCount(2);
         ids[0].Should().Be(ids[1], "retried writes with the same operationId must collapse via the unique-index constraint");
@@ -100,8 +101,8 @@ public sealed class EncryptionInboxWriterTests
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
 
         var sut = BuildSut();
-        await sut.WriteEncryptionFailedAsync(_userId, OperationId);
-        await sut.WriteEncryptionFailedAsync(_userId, OperationId);
+        await sut.WriteEncryptionFailedAsync(new PlatformUserId(_userId), OperationId);
+        await sut.WriteEncryptionFailedAsync(new PlatformUserId(_userId), OperationId);
 
         ids.Should().HaveCount(2);
         ids[0].Should().Be(ids[1], "retried writes with the same operationId must collapse via the unique-index constraint");
@@ -119,8 +120,8 @@ public sealed class EncryptionInboxWriterTests
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
 
         var sut = BuildSut();
-        await sut.WriteEncryptionCompleteAsync(_userId, OperationId);
-        await sut.WriteEncryptionFailedAsync(_userId, OperationId);
+        await sut.WriteEncryptionCompleteAsync(new PlatformUserId(_userId), OperationId);
+        await sut.WriteEncryptionFailedAsync(new PlatformUserId(_userId), OperationId);
 
         cap1!.SourceEventId.Should().NotBe(cap2!.SourceEventId,
             "complete and fail events for the same operationId must have distinct SourceEventIds");
@@ -135,7 +136,7 @@ public sealed class EncryptionInboxWriterTests
         var loggerMock = new Mock<ILogger<EncryptionInboxWriter>>();
         var sut = BuildSut(loggerMock.Object);
 
-        await sut.Awaiting(s => s.WriteEncryptionCompleteAsync(_userId, OperationId))
+        await sut.Awaiting(s => s.WriteEncryptionCompleteAsync(new PlatformUserId(_userId), OperationId))
             .Should().NotThrowAsync("inbox-write failures must never block the encryption operation");
 
         loggerMock.Verify(
@@ -157,7 +158,7 @@ public sealed class EncryptionInboxWriterTests
         var loggerMock = new Mock<ILogger<EncryptionInboxWriter>>();
         var sut = BuildSut(loggerMock.Object);
 
-        await sut.Awaiting(s => s.WriteEncryptionFailedAsync(_userId, OperationId))
+        await sut.Awaiting(s => s.WriteEncryptionFailedAsync(new PlatformUserId(_userId), OperationId))
             .Should().NotThrowAsync("inbox-write failures must never block the encryption operation");
 
         loggerMock.Verify(
@@ -179,12 +180,12 @@ public sealed class EncryptionInboxWriterTests
     [Fact]
     public async Task WriteEncryptionCompleteAsync_PlatformUserIdDoesNotExist_SkipsWriteAndLogs()
     {
-        _inbox.Setup(i => i.PlatformUserExistsAsync(_userId, It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.PlatformUserExistsAsync(new PlatformUserId(_userId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
         var loggerMock = new Mock<ILogger<EncryptionInboxWriter>>();
         var sut = BuildSut(loggerMock.Object);
 
-        await sut.Awaiting(s => s.WriteEncryptionCompleteAsync(_userId, OperationId))
+        await sut.Awaiting(s => s.WriteEncryptionCompleteAsync(new PlatformUserId(_userId), OperationId))
             .Should().NotThrowAsync();
 
         _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -201,12 +202,12 @@ public sealed class EncryptionInboxWriterTests
     [Fact]
     public async Task WriteEncryptionFailedAsync_PlatformUserIdDoesNotExist_SkipsWriteAndLogs()
     {
-        _inbox.Setup(i => i.PlatformUserExistsAsync(_userId, It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.PlatformUserExistsAsync(new PlatformUserId(_userId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
         var loggerMock = new Mock<ILogger<EncryptionInboxWriter>>();
         var sut = BuildSut(loggerMock.Object);
 
-        await sut.Awaiting(s => s.WriteEncryptionFailedAsync(_userId, OperationId))
+        await sut.Awaiting(s => s.WriteEncryptionFailedAsync(new PlatformUserId(_userId), OperationId))
             .Should().NotThrowAsync();
 
         _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -226,7 +227,7 @@ public sealed class EncryptionInboxWriterTests
         var loggerMock = new Mock<ILogger<EncryptionInboxWriter>>();
         var sut = BuildSut(loggerMock.Object);
 
-        await sut.Awaiting(s => s.WriteEncryptionCompleteAsync(Guid.Empty, OperationId))
+        await sut.Awaiting(s => s.WriteEncryptionCompleteAsync(new PlatformUserId(Guid.Empty), OperationId))
             .Should().NotThrowAsync("empty userId is a known edge case that must be skipped gracefully");
 
         _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()), Times.Never,
@@ -249,7 +250,7 @@ public sealed class EncryptionInboxWriterTests
         var loggerMock = new Mock<ILogger<EncryptionInboxWriter>>();
         var sut = BuildSut(loggerMock.Object);
 
-        await sut.Awaiting(s => s.WriteEncryptionFailedAsync(Guid.Empty, OperationId))
+        await sut.Awaiting(s => s.WriteEncryptionFailedAsync(new PlatformUserId(Guid.Empty), OperationId))
             .Should().NotThrowAsync("empty userId is a known edge case that must be skipped gracefully");
 
         _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()), Times.Never,

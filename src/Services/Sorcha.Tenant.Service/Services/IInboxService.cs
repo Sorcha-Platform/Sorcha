@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Tenant.Models.Identity;
 using Sorcha.Tenant.Service.Models;
 
 namespace Sorcha.Tenant.Service.Services;
@@ -32,7 +33,7 @@ public interface IInboxService
     /// Callers writing on someone's behalf should check before writing, so an unknown id is a 4xx
     /// rather than a foreign-key 500.
     /// </summary>
-    Task<bool> PlatformUserExistsAsync(Guid platformUserId, CancellationToken ct = default);
+    Task<bool> PlatformUserExistsAsync(PlatformUserId platformUserId, CancellationToken ct = default);
 
     /// <summary>Returns a page of the user's inbox entries, newest first. Excludes dismissed entries unless <paramref name="includeDismissed"/> is true.</summary>
     /// <param name="platformUserId">Owner of the inbox entries.</param>
@@ -44,7 +45,7 @@ public interface IInboxService
     /// <param name="actionableOnly">When true, returns only Actionable entries.</param>
     /// <param name="ct">Cancellation token.</param>
     Task<InboxPage> GetPageAsync(
-        Guid platformUserId,
+        PlatformUserId platformUserId,
         int page = 1,
         int pageSize = 20,
         InboxCategory? category = null,
@@ -54,28 +55,28 @@ public interface IInboxService
         CancellationToken ct = default);
 
     /// <summary>Returns a single entry, scoped to the calling user. <c>null</c> if not found or not owned.</summary>
-    Task<InboxEntry?> GetByIdAsync(Guid platformUserId, Guid entryId, CancellationToken ct = default);
+    Task<InboxEntry?> GetByIdAsync(PlatformUserId platformUserId, Guid entryId, CancellationToken ct = default);
 
     /// <summary>
     /// Returns the user's unread needs-attention count — <c>Category == Action</c> or severity at
     /// <c>Warning</c> or above (issue #1267). Deliberately NOT a plain unread count: <c>Info</c>
     /// entries do not badge, so the bell keeps meaning something.
     /// </summary>
-    Task<int> GetUnreadCountAsync(Guid platformUserId, CancellationToken ct = default);
+    Task<int> GetUnreadCountAsync(PlatformUserId platformUserId, CancellationToken ct = default);
 
     /// <summary>Marks an entry read. Idempotent. Fires <c>InboxUnreadCountUpdated</c> if state changed.</summary>
-    Task<bool> MarkReadAsync(Guid platformUserId, Guid entryId, CancellationToken ct = default);
+    Task<bool> MarkReadAsync(PlatformUserId platformUserId, Guid entryId, CancellationToken ct = default);
 
     /// <summary>Marks an entry dismissed. Idempotent. Fires <c>InboxUnreadCountUpdated</c> if the entry was unread before.</summary>
-    Task<bool> DismissAsync(Guid platformUserId, Guid entryId, CancellationToken ct = default);
+    Task<bool> DismissAsync(PlatformUserId platformUserId, Guid entryId, CancellationToken ct = default);
 
     /// <summary>Marks every unread entry for the user read. Returns the number of entries affected.</summary>
-    Task<int> MarkAllReadAsync(Guid platformUserId, CancellationToken ct = default);
+    Task<int> MarkAllReadAsync(PlatformUserId platformUserId, CancellationToken ct = default);
 }
 
 /// <summary>Write request shape for <see cref="IInboxService.WriteAsync"/>.</summary>
 public sealed record InboxWriteRequest(
-    Guid PlatformUserId,
+    PlatformUserId PlatformUserId,
     InboxCategory Category,
     InboxSeverity Severity,
     string CorrelationKey,

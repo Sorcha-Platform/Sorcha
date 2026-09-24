@@ -3,6 +3,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using Sorcha.Tenant.Service.Data;
+using Sorcha.Tenant.Models.Identity;
 using Sorcha.Tenant.Service.Models;
 
 namespace Sorcha.Tenant.Service.Services;
@@ -18,7 +19,7 @@ public interface ITenantMembershipInboxWriter
 {
     /// <summary>Write a "you joined {org}" inbox entry for the user just added to an organisation.</summary>
     Task WriteOrgMembershipAddedAsync(
-        Guid platformUserId,
+        PlatformUserId platformUserId,
         Guid organizationId,
         string role,
         CancellationToken ct = default);
@@ -29,7 +30,7 @@ public interface ITenantMembershipInboxWriter
     /// SourceEventId so successive promotions / demotions stay visible.
     /// </summary>
     Task WriteOrgMembershipRoleChangedAsync(
-        Guid platformUserId,
+        PlatformUserId platformUserId,
         Guid organizationId,
         string previousRole,
         string newRole,
@@ -56,7 +57,7 @@ public sealed class TenantMembershipInboxWriter : ITenantMembershipInboxWriter
 
     /// <inheritdoc />
     public async Task WriteOrgMembershipAddedAsync(
-        Guid platformUserId,
+        PlatformUserId platformUserId,
         Guid organizationId,
         string role,
         CancellationToken ct = default)
@@ -114,7 +115,7 @@ public sealed class TenantMembershipInboxWriter : ITenantMembershipInboxWriter
 
     /// <inheritdoc />
     public async Task WriteOrgMembershipRoleChangedAsync(
-        Guid platformUserId,
+        PlatformUserId platformUserId,
         Guid organizationId,
         string previousRole,
         string newRole,
@@ -172,7 +173,7 @@ public sealed class TenantMembershipInboxWriter : ITenantMembershipInboxWriter
         }
     }
 
-    private static Guid DeterministicRoleChangeSourceEventId(Guid platformUserId, Guid organizationId, string newRole, DateTimeOffset occurredAt)
+    private static Guid DeterministicRoleChangeSourceEventId(PlatformUserId platformUserId, Guid organizationId, string newRole, DateTimeOffset occurredAt)
     {
         // Fold the timestamp (to the second) so back-to-back role changes don't collapse onto the
         // same SourceEventId — each one should be its own line in the inbox.
@@ -185,7 +186,7 @@ public sealed class TenantMembershipInboxWriter : ITenantMembershipInboxWriter
         return new Guid(guidBytes);
     }
 
-    private static Guid DeterministicSourceEventId(Guid platformUserId, Guid organizationId)
+    private static Guid DeterministicSourceEventId(PlatformUserId platformUserId, Guid organizationId)
     {
         var input = $"sorcha.inbox.org-membership-added:{platformUserId:N}:{organizationId:N}";
         var bytes = System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(input));

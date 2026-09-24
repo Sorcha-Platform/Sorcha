@@ -12,6 +12,7 @@ using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
 using Sorcha.Tenant.Service.Tests.Helpers;
 using Xunit;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Tests.Services;
 
@@ -774,7 +775,7 @@ public class OrganizationServiceTests : IDisposable
         // Assert — inbox writer fired for the linked platform user
         _membershipInboxMock.Verify(
             w => w.WriteOrgMembershipAddedAsync(
-                platformUser.Id,
+                new PlatformUserId(platformUser.Id),
                 _testOrgId,
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()),
@@ -807,7 +808,7 @@ public class OrganizationServiceTests : IDisposable
         // Assert
         _membershipInboxMock.Verify(
             w => w.WriteOrgMembershipAddedAsync(
-                It.IsAny<Guid>(),
+                It.IsAny<PlatformUserId>(),
                 It.IsAny<Guid>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()),

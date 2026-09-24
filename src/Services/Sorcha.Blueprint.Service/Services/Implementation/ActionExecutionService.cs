@@ -1220,7 +1220,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                         // DIFFERENT id in the same Guid value space — using it here silently lost the
                         // notification on every encrypted submission (#1703). Only the dedicated
                         // platform_user_id claim names the account-wide PlatformUser.
-                        UserId = caller?.FindFirst(TokenClaimConstants.PlatformUserId)?.Value,
+                        UserId = caller.GetPlatformUserId(),
                         DelegationToken = delegationToken,
                         RoutingResult = routingResult,
                         MergedData = mergedData,

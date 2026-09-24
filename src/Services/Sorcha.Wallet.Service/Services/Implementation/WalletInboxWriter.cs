@@ -3,6 +3,7 @@
 
 using Sorcha.ServiceClients.Inbox;
 using Sorcha.ServiceClients.Participant;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Wallet.Service.Services.Implementation;
 
@@ -119,7 +120,7 @@ public sealed class WalletInboxWriter : IWalletInboxWriter
             }
 
             var platformUserId = await ResolveVerifiedPlatformUserIdAsync(
-                participant.UserId, recipientWalletAddress, "credential-received", ct).ConfigureAwait(false);
+                new UserIdentityId(participant.UserId), recipientWalletAddress, "credential-received", ct).ConfigureAwait(false);
             if (platformUserId is null)
             {
                 return;
@@ -259,7 +260,7 @@ public sealed class WalletInboxWriter : IWalletInboxWriter
             }
 
             var platformUserId = await ResolveVerifiedPlatformUserIdAsync(
-                participant.UserId, walletAddress, sourceTag, ct).ConfigureAwait(false);
+                new UserIdentityId(participant.UserId), walletAddress, sourceTag, ct).ConfigureAwait(false);
             if (platformUserId is null)
             {
                 return;
@@ -302,8 +303,8 @@ public sealed class WalletInboxWriter : IWalletInboxWriter
     /// holds, dangling or not — an unverified value reaches <c>POST /api/internal/inbox</c>, which
     /// rejects it 400 (the endpoint's own #1506 guard), swallowed whole by the caller's try/catch.
     /// </summary>
-    private async Task<Guid?> ResolveVerifiedPlatformUserIdAsync(
-        Guid userIdentityId, string walletAddress, string sourceTag, CancellationToken ct)
+    private async Task<PlatformUserId?> ResolveVerifiedPlatformUserIdAsync(
+        UserIdentityId userIdentityId, string walletAddress, string sourceTag, CancellationToken ct)
     {
         var platformUserId = await _inbox.ResolvePlatformUserIdAsync(userIdentityId, ct).ConfigureAwait(false);
         if (platformUserId is null)

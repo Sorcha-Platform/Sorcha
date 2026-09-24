@@ -6,6 +6,7 @@ using Sorcha.Tenant.Models.Auth;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Telemetry;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Services;
 
@@ -65,7 +66,7 @@ public sealed class PasswordManagementService : IPasswordManagementService
 
         _metrics.RecordMethodAdded(AuthMethodKindTag.Password);
         _logger.LogInformation("Password set for {PlatformUserId}", platformUserId);
-        await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.PasswordSet, cancellationToken);
+        await _notifier.NotifyAsync(new PlatformUserId(user.Id), SecurityChangeKind.PasswordSet, cancellationToken);
         return PasswordSetOutcome.Set;
     }
 
@@ -90,7 +91,7 @@ public sealed class PasswordManagementService : IPasswordManagementService
         await _db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Password rotated for {PlatformUserId}", platformUserId);
-        await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.PasswordChanged, cancellationToken);
+        await _notifier.NotifyAsync(new PlatformUserId(user.Id), SecurityChangeKind.PasswordChanged, cancellationToken);
         return PasswordChangeOutcome.Changed;
     }
 
@@ -128,7 +129,7 @@ public sealed class PasswordManagementService : IPasswordManagementService
 
         _metrics.RecordMethodRemoved(AuthMethodKindTag.Password);
         _logger.LogInformation("Password removed for {PlatformUserId}", platformUserId);
-        await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.PasswordRemoved, cancellationToken);
+        await _notifier.NotifyAsync(new PlatformUserId(user.Id), SecurityChangeKind.PasswordRemoved, cancellationToken);
         return PasswordRemoveOutcome.Removed;
     }
 

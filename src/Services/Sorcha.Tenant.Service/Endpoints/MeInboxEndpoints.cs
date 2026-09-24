@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Sorcha.ServiceClients.Auth;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
 
@@ -72,8 +73,8 @@ public static class MeInboxEndpoints
         bool actionableOnly = false,
         CancellationToken ct = default)
     {
-        var userId = GetUserId(context);
-        if (userId == Guid.Empty) return Results.Unauthorized();
+        // #1709 — the inbox is keyed on PlatformUser.Id (platform_user_id), never sub.
+        if (context.User.GetPlatformUserId() is not { } userId) return Results.Unauthorized();
 
         var result = await service.GetPageAsync(
             userId, page, pageSize, category, unreadOnly, includeDismissed, actionableOnly, ct);
@@ -85,8 +86,8 @@ public static class MeInboxEndpoints
         IInboxService service,
         CancellationToken ct)
     {
-        var userId = GetUserId(context);
-        if (userId == Guid.Empty) return Results.Unauthorized();
+        // #1709 — the inbox is keyed on PlatformUser.Id (platform_user_id), never sub.
+        if (context.User.GetPlatformUserId() is not { } userId) return Results.Unauthorized();
         var count = await service.GetUnreadCountAsync(userId, ct);
         return Results.Ok(new { unread = count });
     }
@@ -97,8 +98,8 @@ public static class MeInboxEndpoints
         Guid id,
         CancellationToken ct)
     {
-        var userId = GetUserId(context);
-        if (userId == Guid.Empty) return Results.Unauthorized();
+        // #1709 — the inbox is keyed on PlatformUser.Id (platform_user_id), never sub.
+        if (context.User.GetPlatformUserId() is not { } userId) return Results.Unauthorized();
         var entry = await service.GetByIdAsync(userId, id, ct);
         return entry is null ? Results.NotFound() : Results.Ok(entry);
     }
@@ -109,8 +110,8 @@ public static class MeInboxEndpoints
         Guid id,
         CancellationToken ct)
     {
-        var userId = GetUserId(context);
-        if (userId == Guid.Empty) return Results.Unauthorized();
+        // #1709 — the inbox is keyed on PlatformUser.Id (platform_user_id), never sub.
+        if (context.User.GetPlatformUserId() is not { } userId) return Results.Unauthorized();
         var ok = await service.MarkReadAsync(userId, id, ct);
         return ok ? Results.NoContent() : Results.NotFound();
     }
@@ -121,8 +122,8 @@ public static class MeInboxEndpoints
         Guid id,
         CancellationToken ct)
     {
-        var userId = GetUserId(context);
-        if (userId == Guid.Empty) return Results.Unauthorized();
+        // #1709 — the inbox is keyed on PlatformUser.Id (platform_user_id), never sub.
+        if (context.User.GetPlatformUserId() is not { } userId) return Results.Unauthorized();
         var ok = await service.DismissAsync(userId, id, ct);
         return ok ? Results.NoContent() : Results.NotFound();
     }
@@ -132,15 +133,9 @@ public static class MeInboxEndpoints
         IInboxService service,
         CancellationToken ct)
     {
-        var userId = GetUserId(context);
-        if (userId == Guid.Empty) return Results.Unauthorized();
+        // #1709 — the inbox is keyed on PlatformUser.Id (platform_user_id), never sub.
+        if (context.User.GetPlatformUserId() is not { } userId) return Results.Unauthorized();
         var marked = await service.MarkAllReadAsync(userId, ct);
         return Results.Ok(new { marked });
-    }
-
-    private static Guid GetUserId(HttpContext context)
-    {
-        var raw = context.User.FindFirst("platform_user_id")?.Value;
-        return Guid.TryParse(raw, out var id) ? id : Guid.Empty;
     }
 }

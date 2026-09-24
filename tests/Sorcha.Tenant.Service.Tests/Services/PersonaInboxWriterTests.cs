@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Tests.Services;
 
@@ -22,7 +23,7 @@ public sealed class PersonaInboxWriterTests
         // #1703 — the writer now confirms platformUserId names a real platform user before writing
         // (this writer calls IInboxService directly, bypassing the HTTP endpoint's own #1506 guard).
         // Default fixture: any id verifies as existing; the dangling-id tests override this per-id.
-        _inbox.Setup(i => i.PlatformUserExistsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.PlatformUserExistsAsync(It.IsAny<PlatformUserId>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
     }
 
@@ -46,10 +47,10 @@ public sealed class PersonaInboxWriterTests
                 new InboxWriteResult(new InboxEntry { Id = Guid.NewGuid() }, IsIdempotent: false));
 
         var sut = BuildSut();
-        await sut.WritePersonaSavedAsync(_userId, PersonaName);
+        await sut.WritePersonaSavedAsync(new PlatformUserId(_userId), PersonaName);
 
         captured.Should().NotBeNull();
-        captured!.PlatformUserId.Should().Be(_userId);
+        captured!.PlatformUserId.Value.Should().Be(_userId);
         captured.Category.Should().Be(InboxCategory.System);
         captured.Severity.Should().Be(InboxSeverity.Info);
         captured.CorrelationKey.Should().Contain("persona:saved");
@@ -67,10 +68,10 @@ public sealed class PersonaInboxWriterTests
                 new InboxWriteResult(new InboxEntry { Id = Guid.NewGuid() }, IsIdempotent: false));
 
         var sut = BuildSut();
-        await sut.WritePersonaDeletedAsync(_userId, PersonaName);
+        await sut.WritePersonaDeletedAsync(new PlatformUserId(_userId), PersonaName);
 
         captured.Should().NotBeNull();
-        captured!.PlatformUserId.Should().Be(_userId);
+        captured!.PlatformUserId.Value.Should().Be(_userId);
         captured.Category.Should().Be(InboxCategory.System);
         captured.Severity.Should().Be(InboxSeverity.Warning);
         captured.CorrelationKey.Should().Contain("persona:deleted");
@@ -89,8 +90,8 @@ public sealed class PersonaInboxWriterTests
 
         var sut = BuildSut();
         // Two calls within the same wall-clock second produce the same key and collapse via the unique index.
-        await sut.WritePersonaSavedAsync(_userId, PersonaName);
-        await sut.WritePersonaSavedAsync(_userId, PersonaName);
+        await sut.WritePersonaSavedAsync(new PlatformUserId(_userId), PersonaName);
+        await sut.WritePersonaSavedAsync(new PlatformUserId(_userId), PersonaName);
 
         // Both SourceEventIds should be identical (same user, same second).
         ids.Should().HaveCount(2);
@@ -107,8 +108,8 @@ public sealed class PersonaInboxWriterTests
                 new InboxWriteResult(new InboxEntry { Id = Guid.NewGuid() }, IsIdempotent: false));
 
         var sut = BuildSut();
-        await sut.WritePersonaDeletedAsync(_userId, PersonaName);
-        await sut.WritePersonaDeletedAsync(_userId, PersonaName);
+        await sut.WritePersonaDeletedAsync(new PlatformUserId(_userId), PersonaName);
+        await sut.WritePersonaDeletedAsync(new PlatformUserId(_userId), PersonaName);
 
         ids.Should().HaveCount(2);
         ids[0].Should().Be(ids[1], "writes within the same second must be idempotent");
@@ -123,7 +124,7 @@ public sealed class PersonaInboxWriterTests
         var loggerMock = new Mock<ILogger<PersonaInboxWriter>>();
         var sut = BuildSut(loggerMock.Object);
 
-        await sut.Awaiting(s => s.WritePersonaSavedAsync(_userId, PersonaName))
+        await sut.Awaiting(s => s.WritePersonaSavedAsync(new PlatformUserId(_userId), PersonaName))
             .Should().NotThrowAsync("inbox-write failures must never block the persona operation");
 
         loggerMock.Verify(
@@ -145,7 +146,7 @@ public sealed class PersonaInboxWriterTests
         var loggerMock = new Mock<ILogger<PersonaInboxWriter>>();
         var sut = BuildSut(loggerMock.Object);
 
-        await sut.Awaiting(s => s.WritePersonaDeletedAsync(_userId, PersonaName))
+        await sut.Awaiting(s => s.WritePersonaDeletedAsync(new PlatformUserId(_userId), PersonaName))
             .Should().NotThrowAsync("inbox-write failures must never block the persona operation");
 
         loggerMock.Verify(
@@ -166,11 +167,11 @@ public sealed class PersonaInboxWriterTests
     [Fact]
     public async Task WritePersonaSavedAsync_PlatformUserIdDoesNotExist_SkipsWrite()
     {
-        _inbox.Setup(i => i.PlatformUserExistsAsync(_userId, It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.PlatformUserExistsAsync(new PlatformUserId(_userId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
         var sut = BuildSut();
 
-        await sut.WritePersonaSavedAsync(_userId, PersonaName);
+        await sut.WritePersonaSavedAsync(new PlatformUserId(_userId), PersonaName);
 
         _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -178,11 +179,11 @@ public sealed class PersonaInboxWriterTests
     [Fact]
     public async Task WritePersonaDeletedAsync_PlatformUserIdDoesNotExist_SkipsWrite()
     {
-        _inbox.Setup(i => i.PlatformUserExistsAsync(_userId, It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.PlatformUserExistsAsync(new PlatformUserId(_userId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
         var sut = BuildSut();
 
-        await sut.WritePersonaDeletedAsync(_userId, PersonaName);
+        await sut.WritePersonaDeletedAsync(new PlatformUserId(_userId), PersonaName);
 
         _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }

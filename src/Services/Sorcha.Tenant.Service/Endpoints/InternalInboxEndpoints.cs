@@ -4,6 +4,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Sorcha.Tenant.Models.Identity;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
 
@@ -64,7 +65,9 @@ public static class InternalInboxEndpoints
         // on n1 a run of them tripped a circuit breaker that then blocked credential issuance
         // outright: a best-effort notification write took out the operation it was describing.
         // Refusing here keeps a caller's bug looking like a caller's bug.
-        if (!await service.PlatformUserExistsAsync(request.PlatformUserId, ct))
+        // #1709 — the wire body stays a bare Guid; this is where it is asserted to be a PlatformUser id.
+        var platformUserId = new PlatformUserId(request.PlatformUserId);
+        if (!await service.PlatformUserExistsAsync(platformUserId, ct))
         {
             return Results.BadRequest(new
             {
@@ -74,7 +77,7 @@ public static class InternalInboxEndpoints
         }
 
         var write = new InboxWriteRequest(
-            PlatformUserId: request.PlatformUserId,
+            PlatformUserId: platformUserId,
             Category: request.Category,
             Severity: request.Severity,
             CorrelationKey: request.CorrelationKey,

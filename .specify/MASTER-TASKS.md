@@ -8,6 +8,34 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
+> **▶ 2026-09-24 - #1709 ✅ (branch `refactor/1709-typed-user-ids`): PlatformUser vs UserIdentity
+> ids are typed at the inbox boundary — the #1703 defect class is now a compile error.**
+>
+> `PlatformUserId` / `UserIdentityId` (`readonly record struct`, `Sorcha.Tenant.Models.Identity` —
+> the zero-dependency leaf all three writer-owning services and `ServiceClients.Http` already
+> reach). No conversion operators: construct with `new X(guid)`, read back with `.Value`. A
+> `[JsonConverter]` keeps the wire a plain GUID string and `IFormattable` keeps `{id:N}` identical,
+> so no inbox idempotency key moves. One claim-reader home: `UserIdClaims.GetPlatformUserId()` /
+> `GetUserIdentityId()` (`Sorcha.ServiceClients.Auth`). Typed: `IPlatformInboxClient`,
+> `IInboxService`, all 8 inbox writers, `ISecurityChangeNotifier`, `InboxWritePayload` /
+> `InboxWriteRequest`, `EncryptionWorkItem.UserId`, `TotpService`'s resolver; every caller converts
+> explicitly at the entity property or claim it came from. **Upward trace found no new #1708-class
+> defect** — every conversion point was checked and names the right kind. `WalletEndpoints`'
+> `ownerUserIdentityIdForInbox` locals were renamed `walletOwnerForInbox` rather than typed:
+> `Wallet.Owner` is genuinely either kind, so the wallet writers keep testing both interpretations,
+> now with explicit per-branch conversions. Guards: `TypedUserIdBoundaryTests` (Cli.ContractTests —
+> reflection ratchet, discovery pinned; verified RED by reverting one writer signature) and
+> `TypedUserIdTests` (wire/format/null equivalence), `UserIdClaimsTests`. CLAUDE.md pattern 26.
+> Tests: Tenant.Service 1726/1734 (8 skipped), Wallet.Service 1061/1061, Blueprint.Service
+> 1328/1333 (5 skipped), ServiceClients 432/432, Tenant.Models 128/128, Cli.ContractTests 75/75.
+>
+> **Follow-up (not done here):** ~180 bare-`Guid` `platformUserId` / `userIdentityId` parameters
+> outside the boundary; five near-identical `ResolvePlatformUserIdAsync(httpContext, …)` helpers in
+> Tenant endpoints (platform_user_id → `pid` → sub-lookup) that could collapse onto `UserIdClaims`;
+> and the FK from `InboxEntry.PlatformUserId` to `PlatformUsers` (DB recreate, pattern 19 —
+> maintainer's call).
+
+> **▶ 2026-09-24 - #1712 ✅ (branch `fix/participant-update-chain-fork`): participant update/revoke no
 > **▶ 2026-09-24 - #1701 ✅ (branch `fix/1701-encryption-at-rest-names`): EncryptionAtRest now asserts
 > field NAMES are private.** #1684 removed `disclosedFields` from sealed envelopes because it told
 > every ledger reader which fields each recipient was given or denied, but P3.5 still asserted the

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.AspNetCore.SignalR;
+using Sorcha.Tenant.Models.Identity;
 using Sorcha.Tenant.Service.Hubs;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Storage;
@@ -43,10 +44,10 @@ public sealed class InboxService : IInboxService
     }
 
     /// <inheritdoc />
-    /// <inheritdoc />
-    public Task<bool> PlatformUserExistsAsync(Guid platformUserId, CancellationToken ct = default) =>
-        _store.PlatformUserExistsAsync(platformUserId, ct);
+    public Task<bool> PlatformUserExistsAsync(PlatformUserId platformUserId, CancellationToken ct = default) =>
+        _store.PlatformUserExistsAsync(platformUserId.Value, ct);
 
+    /// <inheritdoc />
     public async Task<InboxWriteResult> WriteAsync(InboxWriteRequest request, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -54,7 +55,7 @@ public sealed class InboxService : IInboxService
         var candidate = new InboxEntry
         {
             Id = Guid.NewGuid(),
-            PlatformUserId = request.PlatformUserId,
+            PlatformUserId = request.PlatformUserId.Value,
             Category = request.Category,
             Severity = request.Severity,
             CorrelationKey = request.CorrelationKey,
@@ -90,7 +91,7 @@ public sealed class InboxService : IInboxService
 
     /// <inheritdoc />
     public async Task<InboxPage> GetPageAsync(
-        Guid platformUserId,
+        PlatformUserId platformUserId,
         int page = 1,
         int pageSize = 20,
         InboxCategory? category = null,
@@ -104,24 +105,24 @@ public sealed class InboxService : IInboxService
         if (pageSize > 100) pageSize = 100;
 
         var result = await _store.GetPageAsync(
-            platformUserId, page, pageSize, category, unreadOnly, includeDismissed, actionableOnly, ct)
+            platformUserId.Value, page, pageSize, category, unreadOnly, includeDismissed, actionableOnly, ct)
             .ConfigureAwait(false);
 
         return new InboxPage(result.Entries, page, pageSize, result.TotalCount);
     }
 
     /// <inheritdoc />
-    public Task<InboxEntry?> GetByIdAsync(Guid platformUserId, Guid entryId, CancellationToken ct = default)
-        => _store.GetByIdAsync(platformUserId, entryId, ct);
+    public Task<InboxEntry?> GetByIdAsync(PlatformUserId platformUserId, Guid entryId, CancellationToken ct = default)
+        => _store.GetByIdAsync(platformUserId.Value, entryId, ct);
 
     /// <inheritdoc />
-    public Task<int> GetUnreadCountAsync(Guid platformUserId, CancellationToken ct = default)
-        => _store.GetUnreadCountAsync(platformUserId, actionableOnly: true, ct);
+    public Task<int> GetUnreadCountAsync(PlatformUserId platformUserId, CancellationToken ct = default)
+        => _store.GetUnreadCountAsync(platformUserId.Value, actionableOnly: true, ct);
 
     /// <inheritdoc />
-    public async Task<bool> MarkReadAsync(Guid platformUserId, Guid entryId, CancellationToken ct = default)
+    public async Task<bool> MarkReadAsync(PlatformUserId platformUserId, Guid entryId, CancellationToken ct = default)
     {
-        var result = await _store.MarkReadAsync(platformUserId, entryId, ct).ConfigureAwait(false);
+        var result = await _store.MarkReadAsync(platformUserId.Value, entryId, ct).ConfigureAwait(false);
         if (!result.Found)
         {
             return false;
@@ -129,15 +130,15 @@ public sealed class InboxService : IInboxService
 
         if (result.StateChanged)
         {
-            await EmitUnreadCountAsync(platformUserId, ct).ConfigureAwait(false);
+            await EmitUnreadCountAsync(platformUserId.Value, ct).ConfigureAwait(false);
         }
         return true;
     }
 
     /// <inheritdoc />
-    public async Task<bool> DismissAsync(Guid platformUserId, Guid entryId, CancellationToken ct = default)
+    public async Task<bool> DismissAsync(PlatformUserId platformUserId, Guid entryId, CancellationToken ct = default)
     {
-        var result = await _store.DismissAsync(platformUserId, entryId, ct).ConfigureAwait(false);
+        var result = await _store.DismissAsync(platformUserId.Value, entryId, ct).ConfigureAwait(false);
         if (!result.Found)
         {
             return false;
@@ -145,18 +146,18 @@ public sealed class InboxService : IInboxService
 
         if (result.StateChanged && result.WasUnread)
         {
-            await EmitUnreadCountAsync(platformUserId, ct).ConfigureAwait(false);
+            await EmitUnreadCountAsync(platformUserId.Value, ct).ConfigureAwait(false);
         }
         return true;
     }
 
     /// <inheritdoc />
-    public async Task<int> MarkAllReadAsync(Guid platformUserId, CancellationToken ct = default)
+    public async Task<int> MarkAllReadAsync(PlatformUserId platformUserId, CancellationToken ct = default)
     {
-        var affected = await _store.MarkAllReadAsync(platformUserId, ct).ConfigureAwait(false);
+        var affected = await _store.MarkAllReadAsync(platformUserId.Value, ct).ConfigureAwait(false);
         if (affected > 0)
         {
-            await EmitUnreadCountAsync(platformUserId, ct).ConfigureAwait(false);
+            await EmitUnreadCountAsync(platformUserId.Value, ct).ConfigureAwait(false);
         }
         return affected;
     }

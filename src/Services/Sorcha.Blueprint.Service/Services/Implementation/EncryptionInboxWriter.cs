@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.ServiceClients.Inbox;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Blueprint.Service.Services.Implementation;
 
@@ -15,10 +16,10 @@ namespace Sorcha.Blueprint.Service.Services.Implementation;
 public interface IEncryptionInboxWriter
 {
     /// <summary>Write an "encryption complete" inbox entry for the given platform user.</summary>
-    Task WriteEncryptionCompleteAsync(Guid platformUserId, string operationId, CancellationToken ct = default);
+    Task WriteEncryptionCompleteAsync(PlatformUserId platformUserId, string operationId, CancellationToken ct = default);
 
     /// <summary>Write an "encryption failed" inbox entry for the given platform user.</summary>
-    Task WriteEncryptionFailedAsync(Guid platformUserId, string operationId, CancellationToken ct = default);
+    Task WriteEncryptionFailedAsync(PlatformUserId platformUserId, string operationId, CancellationToken ct = default);
 }
 
 /// <inheritdoc />
@@ -37,9 +38,9 @@ public sealed class EncryptionInboxWriter : IEncryptionInboxWriter
     }
 
     /// <inheritdoc />
-    public async Task WriteEncryptionCompleteAsync(Guid platformUserId, string operationId, CancellationToken ct = default)
+    public async Task WriteEncryptionCompleteAsync(PlatformUserId platformUserId, string operationId, CancellationToken ct = default)
     {
-        if (platformUserId == Guid.Empty)
+        if (platformUserId.Value == Guid.Empty)
         {
             _logger.LogWarning("EncryptionInboxWriter — skipping encryption-complete write: platformUserId is empty for operation {OperationId}", operationId);
             return;
@@ -84,9 +85,9 @@ public sealed class EncryptionInboxWriter : IEncryptionInboxWriter
     }
 
     /// <inheritdoc />
-    public async Task WriteEncryptionFailedAsync(Guid platformUserId, string operationId, CancellationToken ct = default)
+    public async Task WriteEncryptionFailedAsync(PlatformUserId platformUserId, string operationId, CancellationToken ct = default)
     {
-        if (platformUserId == Guid.Empty)
+        if (platformUserId.Value == Guid.Empty)
         {
             _logger.LogWarning("EncryptionInboxWriter — skipping encryption-failed write: platformUserId is empty for operation {OperationId}", operationId);
             return;

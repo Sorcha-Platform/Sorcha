@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.Blueprint.Service.Services.Implementation;
+using Sorcha.Tenant.Models.Identity;
 using Sorcha.TransactionHandler.Encryption.Models;
 
 namespace Sorcha.Blueprint.Service.Models;
@@ -72,9 +73,10 @@ public sealed record EncryptionWorkItem
     /// NOT the <c>sub</c> claim, which carries the org-scoped <c>UserIdentity.Id</c>, a different id
     /// in the same Guid value space; see #1703). Used by
     /// <see cref="Sorcha.Blueprint.Service.Services.Implementation.EncryptionBackgroundService"/> to
-    /// address the encryption-complete/-failed inbox notification.
+    /// address the encryption-complete/-failed inbox notification. Typed (#1709) so a <c>sub</c>
+    /// value can no longer be assigned here — the #1703 defect is now a compile error.
     /// </summary>
-    public string? UserId { get; init; }
+    public PlatformUserId? UserId { get; init; }
 
     /// <summary>
     /// Delegation token for downstream service calls.

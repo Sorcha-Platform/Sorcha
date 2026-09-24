@@ -3,6 +3,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Sorcha.Tenant.Models.Identity;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 
@@ -52,7 +53,7 @@ public enum SecurityChangeKind
 public interface ISecurityChangeNotifier
 {
     /// <summary>Notify the user of a security-state change via the inbox + email. Never throws.</summary>
-    Task NotifyAsync(Guid platformUserId, SecurityChangeKind kind, CancellationToken ct = default);
+    Task NotifyAsync(PlatformUserId platformUserId, SecurityChangeKind kind, CancellationToken ct = default);
 }
 
 /// <inheritdoc />
@@ -80,7 +81,7 @@ public sealed class SecurityChangeNotifier : ISecurityChangeNotifier
     }
 
     /// <inheritdoc />
-    public async Task NotifyAsync(Guid platformUserId, SecurityChangeKind kind, CancellationToken ct = default)
+    public async Task NotifyAsync(PlatformUserId platformUserId, SecurityChangeKind kind, CancellationToken ct = default)
     {
         var (eventKey, title, summary, severity) = Describe(kind);
 
@@ -93,7 +94,7 @@ public sealed class SecurityChangeNotifier : ISecurityChangeNotifier
         {
             var user = await _db.PlatformUsers
                 .AsNoTracking()
-                .Where(u => u.Id == platformUserId)
+                .Where(u => u.Id == platformUserId.Value)
                 .Select(u => new { u.Email, u.DisplayName })
                 .FirstOrDefaultAsync(ct)
                 .ConfigureAwait(false);

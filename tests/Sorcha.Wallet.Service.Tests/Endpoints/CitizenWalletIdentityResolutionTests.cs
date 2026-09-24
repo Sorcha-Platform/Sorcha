@@ -11,6 +11,7 @@ using Sorcha.ServiceClients.Inbox;
 using Sorcha.ServiceClients.PlatformUserDevice;
 using Sorcha.Wallet.Service.Endpoints;
 using Xunit;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Wallet.Service.Tests.Endpoints;
 
@@ -107,8 +108,8 @@ public sealed class CitizenWalletIdentityResolutionTests
         // M-2: token lacks platform_user_id but sub resolves to a known UserIdentity.
         // The handler MUST use the recovered PlatformUserId, never the raw sub.
         var inboxMock = new Mock<IPlatformInboxClient>();
-        inboxMock.Setup(i => i.ResolvePlatformUserIdAsync(UserIdentityId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(PlatformUserId);
+        inboxMock.Setup(i => i.ResolvePlatformUserIdAsync(new UserIdentityId(UserIdentityId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(PlatformUserId));
 
         var ctx = BuildContext(withPlatformUserIdClaim: false, withSubClaim: true, inboxClient: inboxMock);
         var deviceClient = EmptyDeviceClient(PlatformUserId);
@@ -119,7 +120,7 @@ public sealed class CitizenWalletIdentityResolutionTests
         // The device list call must use the RECOVERED platform user id, not the raw sub.
         deviceClient.Verify(c => c.ListAsync(PlatformUserId, It.IsAny<CancellationToken>()), Times.Once,
             "the recovered PlatformUserId must be the lookup key — the raw sub (UserIdentity.Id) is wrong");
-        inboxMock.Verify(i => i.ResolvePlatformUserIdAsync(UserIdentityId, It.IsAny<CancellationToken>()), Times.Once);
+        inboxMock.Verify(i => i.ResolvePlatformUserIdAsync(new UserIdentityId(UserIdentityId), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -128,8 +129,8 @@ public sealed class CitizenWalletIdentityResolutionTests
         // Step 3 (M-3): sub present but not mapped in the identity registry → unresolvable.
         // Must return Unauthorized (not 500).
         var inboxMock = new Mock<IPlatformInboxClient>();
-        inboxMock.Setup(i => i.ResolvePlatformUserIdAsync(UserIdentityId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid?)null);
+        inboxMock.Setup(i => i.ResolvePlatformUserIdAsync(new UserIdentityId(UserIdentityId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PlatformUserId?)null);
 
         var ctx = BuildContext(withPlatformUserIdClaim: false, withSubClaim: true, inboxClient: inboxMock);
         var deviceClient = new Mock<IPlatformUserDeviceClient>();
@@ -167,8 +168,8 @@ public sealed class CitizenWalletIdentityResolutionTests
         // After the fix, the registry lookup must be made (and if it returns a value, it is used;
         // if the sub happens to equal a platform user id, the registry is still the correct gate).
         var inboxMock = new Mock<IPlatformInboxClient>();
-        inboxMock.Setup(i => i.ResolvePlatformUserIdAsync(UserIdentityId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(PlatformUserId);
+        inboxMock.Setup(i => i.ResolvePlatformUserIdAsync(new UserIdentityId(UserIdentityId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(PlatformUserId));
 
         var ctx = BuildContext(withPlatformUserIdClaim: false, withSubClaim: true, inboxClient: inboxMock);
 

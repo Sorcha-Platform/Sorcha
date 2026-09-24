@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Endpoints;
 
@@ -112,7 +113,7 @@ public static class TwoFactorChannelEndpoints
         if (userId == Guid.Empty) return Results.Unauthorized();
 
         var outcome = await svc.CapturePhoneAsync(userId, request?.Phone ?? string.Empty, ct);
-        if (outcome == SmsFlowOutcome.Ok) await notifier.NotifyAsync(userId, SecurityChangeKind.PhoneChanged, ct);
+        if (outcome == SmsFlowOutcome.Ok) await notifier.NotifyAsync(new PlatformUserId(userId), SecurityChangeKind.PhoneChanged, ct);
         return outcome switch
         {
             SmsFlowOutcome.Ok => Results.Accepted(),
@@ -149,7 +150,7 @@ public static class TwoFactorChannelEndpoints
         var outcome = await svc.EnableAsync(userId, ct);
         if (outcome == SmsFlowOutcome.Ok)
         {
-            await notifier.NotifyAsync(userId, SecurityChangeKind.SmsOtpEnabled, ct);
+            await notifier.NotifyAsync(new PlatformUserId(userId), SecurityChangeKind.SmsOtpEnabled, ct);
             return Results.NoContent();
         }
         return Results.Conflict("Verify a mobile number before enabling SMS codes.");
@@ -163,7 +164,7 @@ public static class TwoFactorChannelEndpoints
         if (userId == Guid.Empty) return Results.Unauthorized();
 
         await svc.DisableAsync(userId, ct);
-        await notifier.NotifyAsync(userId, SecurityChangeKind.SmsOtpDisabled, ct);
+        await notifier.NotifyAsync(new PlatformUserId(userId), SecurityChangeKind.SmsOtpDisabled, ct);
         return Results.NoContent();
     }
 
@@ -211,7 +212,7 @@ public static class TwoFactorChannelEndpoints
         {
             case OtpVerifyOutcome.Verified:
                 await SetEmailEnabledAsync(db, userId, true, ct);
-                await notifier.NotifyAsync(userId, SecurityChangeKind.EmailOtpEnabled, ct);
+                await notifier.NotifyAsync(new PlatformUserId(userId), SecurityChangeKind.EmailOtpEnabled, ct);
                 return TypedResults.NoContent();
             case OtpVerifyOutcome.Invalid:
                 return TypedResults.BadRequest("That code didn't match.");
@@ -232,7 +233,7 @@ public static class TwoFactorChannelEndpoints
         if (userId == Guid.Empty) return TypedResults.Unauthorized();
 
         await SetEmailEnabledAsync(db, userId, false, ct);
-        await notifier.NotifyAsync(userId, SecurityChangeKind.EmailOtpDisabled, ct);
+        await notifier.NotifyAsync(new PlatformUserId(userId), SecurityChangeKind.EmailOtpDisabled, ct);
         return TypedResults.NoContent();
     }
 

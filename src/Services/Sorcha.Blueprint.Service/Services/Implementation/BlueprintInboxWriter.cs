@@ -4,6 +4,7 @@
 using Sorcha.ServiceClients.Inbox;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.Wallet;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Blueprint.Service.Services.Implementation;
 
@@ -91,12 +92,12 @@ public sealed class BlueprintInboxWriter : IBlueprintInboxWriter
     /// gracefully here (no misfire) and the citizen's own node is responsible for delivery.
     /// </para>
     /// </summary>
-    private async Task<Guid?> ResolveRecipientPlatformUserIdAsync(string walletAddress, CancellationToken ct)
+    private async Task<PlatformUserId?> ResolveRecipientPlatformUserIdAsync(string walletAddress, CancellationToken ct)
     {
         var participant = await _participants.GetByWalletAddressAsync(walletAddress, ct).ConfigureAwait(false);
         if (participant is not null)
         {
-            var viaParticipant = await _inbox.ResolvePlatformUserIdAsync(participant.UserId, ct).ConfigureAwait(false);
+            var viaParticipant = await _inbox.ResolvePlatformUserIdAsync(new UserIdentityId(participant.UserId), ct).ConfigureAwait(false);
             if (viaParticipant is not null)
             {
                 var verified = await VerifyPlatformUserExistsAsync(
@@ -123,7 +124,7 @@ public sealed class BlueprintInboxWriter : IBlueprintInboxWriter
             return null;
         }
 
-        if (wallet is null || !Guid.TryParse(wallet.Owner, out var ownerId))
+        if (wallet is null || !Guid.TryParse(wallet.Owner, out var ownerGuid))
         {
             return null;
         }
@@ -140,7 +141,10 @@ public sealed class BlueprintInboxWriter : IBlueprintInboxWriter
         // So confirm before asserting it. If we cannot confirm, skip the notice: this whole surface
         // is best-effort by contract, and a missing bell is strictly better than a 500 that takes
         // the underlying operation down with it.
-        var viaOwnerIdentity = await _inbox.ResolvePlatformUserIdAsync(ownerId, ct).ConfigureAwait(false);
+        //
+        // #1709 — `Wallet.Owner` is genuinely EITHER kind, so each branch below states which kind it
+        // is testing the GUID as, explicitly; neither interpretation is assumed.
+        var viaOwnerIdentity = await _inbox.ResolvePlatformUserIdAsync(new UserIdentityId(ownerGuid), ct).ConfigureAwait(false);
         if (viaOwnerIdentity is not null)
         {
             var verified = await VerifyPlatformUserExistsAsync(
@@ -151,15 +155,16 @@ public sealed class BlueprintInboxWriter : IBlueprintInboxWriter
             }
         }
 
-        if (await _inbox.PlatformUserExistsAsync(ownerId, ct).ConfigureAwait(false))
+        var ownerAsPlatformUser = new PlatformUserId(ownerGuid);
+        if (await _inbox.PlatformUserExistsAsync(ownerAsPlatformUser, ct).ConfigureAwait(false))
         {
-            return ownerId;
+            return ownerAsPlatformUser;
         }
 
         _logger.LogDebug(
             "Inbox skip — wallet {Wallet} owner {Owner} is neither a resolvable UserIdentity nor a "
             + "known PlatformUser, so there is nobody to notify",
-            walletAddress, ownerId);
+            walletAddress, ownerGuid);
         return null;
     }
 
@@ -180,8 +185,8 @@ public sealed class BlueprintInboxWriter : IBlueprintInboxWriter
     /// invisible: nothing named which recipient caused it. Checking existence HERE, before the
     /// request is even built, turns a swallowed exception into a deliberate, logged skip.
     /// </remarks>
-    private async Task<Guid?> VerifyPlatformUserExistsAsync(
-        Guid candidate, string walletAddress, string context, CancellationToken ct)
+    private async Task<PlatformUserId?> VerifyPlatformUserExistsAsync(
+        PlatformUserId candidate, string walletAddress, string context, CancellationToken ct)
     {
         if (await _inbox.PlatformUserExistsAsync(candidate, ct).ConfigureAwait(false))
         {
@@ -222,7 +227,7 @@ public sealed class BlueprintInboxWriter : IBlueprintInboxWriter
                 return;
             }
 
-            var platformUserId = await _inbox.ResolvePlatformUserIdAsync(participant.UserId, ct).ConfigureAwait(false);
+            var platformUserId = await _inbox.ResolvePlatformUserIdAsync(new UserIdentityId(participant.UserId), ct).ConfigureAwait(false);
             if (platformUserId is null)
             {
                 _logger.LogDebug(

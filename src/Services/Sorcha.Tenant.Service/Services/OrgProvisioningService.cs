@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Services;
 
@@ -219,7 +220,7 @@ public class OrgProvisioningService : IOrgProvisioningService
             // Writer is fail-safe (try/log/swallow internally) — an inbox failure here
             // must never roll back the just-committed org.
             await _membershipInbox.WriteOrgMembershipAddedAsync(
-                platformUserId, org.Id, UserRole.Administrator.ToString(), ct).ConfigureAwait(false);
+                new PlatformUserId(platformUser.Id), org.Id, UserRole.Administrator.ToString(), ct).ConfigureAwait(false);
 
             return new OrgProvisioningResult
             {
@@ -482,7 +483,7 @@ public class OrgProvisioningService : IOrgProvisioningService
                 if (adminDirectlyAdded && existingUser is not null)
                 {
                     await _membershipInbox.WriteOrgMembershipAddedAsync(
-                        existingUser.Id, org.Id, role.ToString(), ct).ConfigureAwait(false);
+                        new PlatformUserId(existingUser.Id), org.Id, role.ToString(), ct).ConfigureAwait(false);
                 }
 
                 return new AdminProvisionResult

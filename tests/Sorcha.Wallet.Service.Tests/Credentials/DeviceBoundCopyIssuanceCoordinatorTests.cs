@@ -14,6 +14,7 @@ using Sorcha.Wallet.Service.Services.Implementation;
 using Sorcha.Wallet.Service.Services.Interfaces;
 
 using Xunit;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Wallet.Service.Tests.Credentials;
 
@@ -137,7 +138,7 @@ public class DeviceBoundCopyIssuanceCoordinatorTests
         _revoker.Setup(r => r.RevokeAsync(UserId, It.Is<DeviceBoundCredentialCopy>(c => c.CredentialId == "cred-oldest"), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         var inbox = new Mock<ICitizenDeviceInboxWriter>();
-        inbox.Setup(i => i.WriteDeviceRevokedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+        inbox.Setup(i => i.WriteDeviceRevokedAsync(It.IsAny<PlatformUserId>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         var realPolicy = new DeviceBoundCredentialPolicy(

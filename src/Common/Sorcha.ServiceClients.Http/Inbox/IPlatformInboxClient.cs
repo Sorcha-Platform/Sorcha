@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Tenant.Models.Identity;
+
 namespace Sorcha.ServiceClients.Inbox;
 
 /// <summary>
@@ -28,7 +30,7 @@ public interface IPlatformInboxClient
     /// <c>PlatformUser.Id</c> the inbox is addressed by.
     /// </summary>
     /// <returns>The platform user id, or <c>null</c> if no UserIdentity matches.</returns>
-    Task<Guid?> ResolvePlatformUserIdAsync(Guid userIdentityId, CancellationToken ct = default);
+    Task<PlatformUserId?> ResolvePlatformUserIdAsync(UserIdentityId userIdentityId, CancellationToken ct = default);
 
     /// <summary>
     /// Whether <paramref name="platformUserId"/> names a real platform user.
@@ -40,7 +42,7 @@ public interface IPlatformInboxClient
     /// the id is unknown, and false when the check itself cannot be made: an unverified id must
     /// never be written, and skipping a notice is the cheaper failure.
     /// </remarks>
-    Task<bool> PlatformUserExistsAsync(Guid platformUserId, CancellationToken ct = default);
+    Task<bool> PlatformUserExistsAsync(PlatformUserId platformUserId, CancellationToken ct = default);
 }
 
 /// <summary>Wire shape sent to the internal inbox endpoint.</summary>
@@ -51,7 +53,7 @@ public interface IPlatformInboxClient
 /// notifications.
 /// </param>
 public sealed record InboxWritePayload(
-    Guid PlatformUserId,
+    PlatformUserId PlatformUserId,
     string Category,
     string Severity,
     string CorrelationKey,

@@ -748,6 +748,51 @@ public RegisterStatus Status { get; set; } = RegisterStatus.Offline;
 
 ---
 
+### 26. PlatformUser vs UserIdentity ids are typed at the inbox boundary (#1709)
+
+A person has **one** `PlatformUser.Id` (account-wide, JWT `platform_user_id`, what the inbox is
+keyed on) and **one `UserIdentity.Id` per org** (JWT `sub`). Both are GUIDs. At the inbox boundary
+they are typed — `PlatformUserId` / `UserIdentityId` in `Sorcha.Tenant.Models.Identity` — so passing
+one where the other belongs does not compile.
+
+```csharp
+using Sorcha.ServiceClients.Auth;          // UserIdClaims — the one home for reading them
+using Sorcha.Tenant.Models.Identity;
+
+// DO — read the claim as its kind; convert an entity property explicitly, where you know its kind
+if (context.User.GetPlatformUserId() is not { } me) return Results.Unauthorized();
+await _securityInbox.WritePasswordResetAsync(new PlatformUserId(platformUser.Id), ct);
+var pid = await _inbox.ResolvePlatformUserIdAsync(new UserIdentityId(participant.UserId), ct);
+
+// DON'T — #1703: `sub` is a UserIdentity id. As a bare Guid this compiled, ran, and lost the notice.
+UserId = caller?.FindFirst(ClaimTypes.NameIdentifier)?.Value,
+```
+
+- **Why a convention was not enough**: PR #1708 found **five** live instances in ten writers, and in
+  three files the correct and incorrect usage sat side by side. Every one was silent — pattern 12
+  swallows writer failures, and `InboxEntry.PlatformUserId` has no FK, so the worst case was a
+  "backup code used" security notice written as a phantom row against a user that does not exist.
+- **The typed boundary**: `IPlatformInboxClient`, `IInboxService`, every `*InboxWriter`,
+  `ISecurityChangeNotifier`, `InboxWritePayload` / `InboxWriteRequest`, `EncryptionWorkItem.UserId`,
+  and `TotpService`'s inbox path. EF entities, wire DTOs and everything outside stay `Guid`.
+- **No conversion operators, deliberately.** Construct with `new PlatformUserId(guid)` (each one is a
+  visible claim about the value's kind — check it); read back with `.Value`. An implicit `→ Guid`
+  would let a typed id flow silently into a bare `Guid userIdentityId` parameter elsewhere.
+- **Wire, logs and idempotency keys are unchanged**: a `[JsonConverter]` writes the plain GUID
+  string, `ToString()` and `IFormattable` (`{id:N}`) match the GUID — the deterministic inbox
+  `SourceEventId`s interpolate `:N`, so dropping `IFormattable` would silently re-key every entry.
+- **`Wallet.Owner` is genuinely either kind** (PlatformUser on the current path, UserIdentity for
+  legacy/org wallets), so it stays a `Guid` and the wallet writers test each interpretation with an
+  explicit conversion. Never type an ambiguous id as one kind to make it compile.
+- Enforced by `TypedUserIdBoundaryTests` (`tests/Sorcha.Cli.ContractTests`): any public parameter on
+  the boundary types whose name contains `platformUserId` / `userIdentityId` must not be `Guid`. The
+  boundary is discovered by name (`*InboxWriter`) and the discovery is pinned, so it cannot pass
+  vacuously. Wire equivalence is pinned by `TypedUserIdTests` (`Sorcha.Tenant.Models.Tests`).
+- **Still open**: ~180 bare-Guid `platformUserId` / `userIdentityId` parameters outside the boundary, and the missing FK on
+  `InboxEntry.PlatformUserId` (a DB recreate — pattern 19 — so a maintainer decision).
+
+---
+
 ## Key Documentation
 
 | Document | Purpose |

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Sorcha.Wallet.Service.Services.Implementation;
 using Sorcha.Wallet.Service.Services.Interfaces;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Wallet.Service.Tests.Credentials;
 
@@ -55,7 +56,7 @@ public class DeviceBoundCredentialPolicyTests
             r => r.RevokeAsync(It.IsAny<Guid>(), It.IsAny<DeviceBoundCredentialCopy>(), It.IsAny<CancellationToken>()),
             Times.Never);
         _inbox.Verify(
-            i => i.WriteDeviceRevokedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            i => i.WriteDeviceRevokedAsync(It.IsAny<PlatformUserId>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -91,7 +92,7 @@ public class DeviceBoundCredentialPolicyTests
             r => r.RevokeAsync(It.IsAny<Guid>(), It.IsAny<DeviceBoundCredentialCopy>(), It.IsAny<CancellationToken>()),
             Times.Never);
         _inbox.Verify(
-            i => i.WriteDeviceRevokedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            i => i.WriteDeviceRevokedAsync(It.IsAny<PlatformUserId>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -109,7 +110,7 @@ public class DeviceBoundCredentialPolicyTests
             .Setup(r => r.RevokeAsync(UserId, It.Is<DeviceBoundCredentialCopy>(c => c.CredentialId == "cred-oldest"), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         _inbox
-            .Setup(i => i.WriteDeviceRevokedAsync(UserId, oldest.DeviceId, oldest.DeviceLabel, It.IsAny<CancellationToken>()))
+            .Setup(i => i.WriteDeviceRevokedAsync(new PlatformUserId(UserId), oldest.DeviceId, oldest.DeviceLabel, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         var result = await CreatePolicy().ReconcileAsync(UserId, CredentialType, "thumb-NEW", default);
@@ -120,7 +121,7 @@ public class DeviceBoundCredentialPolicyTests
             r => r.RevokeAsync(UserId, It.Is<DeviceBoundCredentialCopy>(c => c.CredentialId == "cred-oldest"), It.IsAny<CancellationToken>()),
             Times.Once);
         _inbox.Verify(
-            i => i.WriteDeviceRevokedAsync(UserId, oldest.DeviceId, oldest.DeviceLabel, It.IsAny<CancellationToken>()),
+            i => i.WriteDeviceRevokedAsync(new PlatformUserId(UserId), oldest.DeviceId, oldest.DeviceLabel, It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -144,7 +145,7 @@ public class DeviceBoundCredentialPolicyTests
 
         // No partial state: the inbox is never written when revoke fails.
         _inbox.Verify(
-            i => i.WriteDeviceRevokedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            i => i.WriteDeviceRevokedAsync(It.IsAny<PlatformUserId>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 }

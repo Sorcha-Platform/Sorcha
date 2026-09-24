@@ -15,6 +15,7 @@ using Sorcha.Wallet.Service.Services.Implementation;
 using Sorcha.Wallet.Service.Tests.Helpers;
 using StackExchange.Redis;
 using Xunit;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Wallet.Service.Tests.Services;
 
@@ -68,12 +69,12 @@ public class NotificationDigestWorkerTests
                 Status = "Active",
             });
         _mockInbox
-            .Setup(i => i.ResolvePlatformUserIdAsync(TestUserIdentityId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(TestPlatformUserId);
+            .Setup(i => i.ResolvePlatformUserIdAsync(new UserIdentityId(TestUserIdentityId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(TestPlatformUserId));
         // #1703 — the worker now confirms a resolved PlatformUserId actually names a platform user
         // (the #1682 guard) before writing. Default fixture: any resolved id verifies as existing.
         _mockInbox
-            .Setup(i => i.PlatformUserExistsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Setup(i => i.PlatformUserExistsAsync(It.IsAny<PlatformUserId>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         _mockInbox
             .Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
@@ -210,7 +211,7 @@ public class NotificationDigestWorkerTests
         await worker.ProcessPendingDigestsAsync();
 
         captured.Should().NotBeNull();
-        captured!.PlatformUserId.Should().Be(TestPlatformUserId);
+        captured!.PlatformUserId.Value.Should().Be(TestPlatformUserId);
         captured.Category.Should().Be("Action");
         captured.Severity.Should().Be("Info");
         captured.Title.Should().Be("2 actions awaiting your attention");
@@ -281,8 +282,8 @@ public class NotificationDigestWorkerTests
                 Email = "y@example.com", Status = "Active"
             });
         _mockInbox
-            .Setup(i => i.ResolvePlatformUserIdAsync(anotherIdentity, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(anotherPlatform);
+            .Setup(i => i.ResolvePlatformUserIdAsync(new UserIdentityId(anotherIdentity), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(anotherPlatform));
 
         SetupActiveUsers(TestUserId, AnotherUserId);
         SetupScriptResult(TestUserId, CreateTestEvent(userId: TestUserId));
@@ -308,10 +309,10 @@ public class NotificationDigestWorkerTests
     {
         var danglingPlatformUserId = Guid.Parse("55555555-5555-5555-5555-555555555555");
         _mockInbox
-            .Setup(i => i.ResolvePlatformUserIdAsync(TestUserIdentityId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(danglingPlatformUserId);
+            .Setup(i => i.ResolvePlatformUserIdAsync(new UserIdentityId(TestUserIdentityId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(danglingPlatformUserId));
         _mockInbox
-            .Setup(i => i.PlatformUserExistsAsync(danglingPlatformUserId, It.IsAny<CancellationToken>()))
+            .Setup(i => i.PlatformUserExistsAsync(new PlatformUserId(danglingPlatformUserId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         SetupActiveUsers(TestUserId);

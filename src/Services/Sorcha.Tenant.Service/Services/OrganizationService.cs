@@ -9,6 +9,7 @@ using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Endpoints;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Services;
 
@@ -373,7 +374,7 @@ public partial class OrganizationService : IOrganizationService
                 // Feature 118 — drop a "welcome to {org}" inbox entry once the membership
                 // is committed. Writer is fail-safe (try/log/swallow internally).
                 await _membershipInbox.WriteOrgMembershipAddedAsync(
-                    platformUser.Id, organizationId, newMembershipRole, cancellationToken).ConfigureAwait(false);
+                    new PlatformUserId(platformUser.Id), organizationId, newMembershipRole, cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -451,7 +452,7 @@ public partial class OrganizationService : IOrganizationService
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         await _membershipInbox.WriteOrgMembershipAddedAsync(
-            platformUser.Id, organizationId, membershipRole, cancellationToken).ConfigureAwait(false);
+            new PlatformUserId(platformUser.Id), organizationId, membershipRole, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(
             "Provisioned org-scoped user {UserId} ({Email}) in organization {OrganizationId} (verified={Verified})",

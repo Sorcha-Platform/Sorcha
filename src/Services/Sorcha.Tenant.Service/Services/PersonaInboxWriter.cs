@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Tenant.Models.Identity;
 using Sorcha.Tenant.Service.Models;
 
 namespace Sorcha.Tenant.Service.Services;
@@ -15,10 +16,10 @@ namespace Sorcha.Tenant.Service.Services;
 public interface IPersonaInboxWriter
 {
     /// <summary>Write a "profile saved" <see cref="InboxCategory.System"/> inbox entry.</summary>
-    Task WritePersonaSavedAsync(Guid platformUserId, string personaName, CancellationToken ct = default);
+    Task WritePersonaSavedAsync(PlatformUserId platformUserId, string personaName, CancellationToken ct = default);
 
     /// <summary>Write a "profile deleted" <see cref="InboxCategory.System"/> inbox entry.</summary>
-    Task WritePersonaDeletedAsync(Guid platformUserId, string personaName, CancellationToken ct = default);
+    Task WritePersonaDeletedAsync(PlatformUserId platformUserId, string personaName, CancellationToken ct = default);
 }
 
 /// <inheritdoc />
@@ -37,7 +38,7 @@ public sealed class PersonaInboxWriter : IPersonaInboxWriter
     }
 
     /// <inheritdoc />
-    public async Task WritePersonaSavedAsync(Guid platformUserId, string personaName, CancellationToken ct = default)
+    public async Task WritePersonaSavedAsync(PlatformUserId platformUserId, string personaName, CancellationToken ct = default)
     {
         try
         {
@@ -78,7 +79,7 @@ public sealed class PersonaInboxWriter : IPersonaInboxWriter
     }
 
     /// <inheritdoc />
-    public async Task WritePersonaDeletedAsync(Guid platformUserId, string personaName, CancellationToken ct = default)
+    public async Task WritePersonaDeletedAsync(PlatformUserId platformUserId, string personaName, CancellationToken ct = default)
     {
         try
         {

@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Services;
 
@@ -183,7 +184,7 @@ public class PlatformUserService : IPlatformUserService
         // Optional + fail-safe: writer null-checks and the writer itself catches.
         if (_inboxWriter is not null)
         {
-            await _inboxWriter.WriteOrgMembershipAddedAsync(platformUserId, organizationId, role, ct).ConfigureAwait(false);
+            await _inboxWriter.WriteOrgMembershipAddedAsync(new PlatformUserId(membership.PlatformUserId), organizationId, role, ct).ConfigureAwait(false);
         }
 
         return membership;

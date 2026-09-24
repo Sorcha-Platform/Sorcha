@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Services;
 
@@ -170,7 +171,7 @@ public class PasswordResetService : IPasswordResetService
             platformUser.Email, platformUser.Id);
 
         // Feature 118 — emit a Category=Security inbox entry. Fail-safe.
-        await _securityInbox.WritePasswordResetAsync(platformUser.Id, ct);
+        await _securityInbox.WritePasswordResetAsync(new PlatformUserId(platformUser.Id), ct);
 
         return new PasswordResetResult(true);
     }

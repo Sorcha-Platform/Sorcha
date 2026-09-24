@@ -11,6 +11,7 @@ using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
 using Sorcha.Tenant.Service.Storage;
 using Sorcha.Tenant.Service.Tests.Helpers;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Tests.Services;
 
@@ -48,7 +49,7 @@ public sealed class InboxServiceTests : IDisposable
         InboxCategory category = InboxCategory.Action,
         string correlationKey = "tx:wallet-1:0")
         => new(
-            PlatformUserId: userId ?? _userA,
+            PlatformUserId: new PlatformUserId(userId ?? _userA),
             Category: category,
             Severity: InboxSeverity.ActionRequired,
             CorrelationKey: correlationKey,
@@ -67,7 +68,7 @@ public sealed class InboxServiceTests : IDisposable
         result.Entry.PlatformUserId.Should().Be(_userA);
         result.Entry.ChannelHints.Should().Be(ChannelHints.Inbox | ChannelHints.Push | ChannelHints.Email);
 
-        (await _sut.GetUnreadCountAsync(_userA)).Should().Be(1);
+        (await _sut.GetUnreadCountAsync(new PlatformUserId(_userA))).Should().Be(1);
     }
 
     [Fact]
@@ -79,7 +80,7 @@ public sealed class InboxServiceTests : IDisposable
 
         second.IsIdempotent.Should().BeTrue();
         second.Entry.Id.Should().Be(first.Entry.Id);
-        (await _sut.GetUnreadCountAsync(_userA)).Should().Be(1);
+        (await _sut.GetUnreadCountAsync(new PlatformUserId(_userA))).Should().Be(1);
     }
 
     [Fact]
@@ -103,9 +104,9 @@ public sealed class InboxServiceTests : IDisposable
         await Task.Delay(5);
         var third = await _sut.WriteAsync(BuildRequest(correlationKey: "tx:3"));
 
-        await _sut.DismissAsync(_userA, first.Entry.Id);
+        await _sut.DismissAsync(new PlatformUserId(_userA), first.Entry.Id);
 
-        var page = await _sut.GetPageAsync(_userA);
+        var page = await _sut.GetPageAsync(new PlatformUserId(_userA));
 
         page.TotalCount.Should().Be(2);
         page.Entries.Should().HaveCount(2);
@@ -118,9 +119,9 @@ public sealed class InboxServiceTests : IDisposable
     {
         var first = await _sut.WriteAsync(BuildRequest(correlationKey: "tx:1"));
         await _sut.WriteAsync(BuildRequest(correlationKey: "tx:2"));
-        await _sut.DismissAsync(_userA, first.Entry.Id);
+        await _sut.DismissAsync(new PlatformUserId(_userA), first.Entry.Id);
 
-        var page = await _sut.GetPageAsync(_userA, includeDismissed: true);
+        var page = await _sut.GetPageAsync(new PlatformUserId(_userA), includeDismissed: true);
 
         page.TotalCount.Should().Be(2);
     }
@@ -131,8 +132,8 @@ public sealed class InboxServiceTests : IDisposable
         await _sut.WriteAsync(BuildRequest(userId: _userA, correlationKey: "tx:a"));
         await _sut.WriteAsync(BuildRequest(userId: _userB, correlationKey: "tx:b"));
 
-        var pageA = await _sut.GetPageAsync(_userA);
-        var pageB = await _sut.GetPageAsync(_userB);
+        var pageA = await _sut.GetPageAsync(new PlatformUserId(_userA));
+        var pageB = await _sut.GetPageAsync(new PlatformUserId(_userB));
 
         pageA.TotalCount.Should().Be(1);
         pageB.TotalCount.Should().Be(1);
@@ -145,7 +146,7 @@ public sealed class InboxServiceTests : IDisposable
     {
         var written = await _sut.WriteAsync(BuildRequest(userId: _userA));
 
-        var bView = await _sut.GetByIdAsync(_userB, written.Entry.Id);
+        var bView = await _sut.GetByIdAsync(new PlatformUserId(_userB), written.Entry.Id);
 
         bView.Should().BeNull();
     }
@@ -154,32 +155,32 @@ public sealed class InboxServiceTests : IDisposable
     public async Task MarkReadAsync_SetsReadAt_AndDecrementsUnread()
     {
         var written = await _sut.WriteAsync(BuildRequest());
-        (await _sut.GetUnreadCountAsync(_userA)).Should().Be(1);
+        (await _sut.GetUnreadCountAsync(new PlatformUserId(_userA))).Should().Be(1);
 
-        var ok = await _sut.MarkReadAsync(_userA, written.Entry.Id);
+        var ok = await _sut.MarkReadAsync(new PlatformUserId(_userA), written.Entry.Id);
 
         ok.Should().BeTrue();
-        var refreshed = await _sut.GetByIdAsync(_userA, written.Entry.Id);
+        var refreshed = await _sut.GetByIdAsync(new PlatformUserId(_userA), written.Entry.Id);
         refreshed!.ReadAt.Should().NotBeNull();
-        (await _sut.GetUnreadCountAsync(_userA)).Should().Be(0);
+        (await _sut.GetUnreadCountAsync(new PlatformUserId(_userA))).Should().Be(0);
     }
 
     [Fact]
     public async Task MarkReadAsync_AlreadyRead_IsIdempotent()
     {
         var written = await _sut.WriteAsync(BuildRequest());
-        await _sut.MarkReadAsync(_userA, written.Entry.Id);
+        await _sut.MarkReadAsync(new PlatformUserId(_userA), written.Entry.Id);
 
-        var second = await _sut.MarkReadAsync(_userA, written.Entry.Id);
+        var second = await _sut.MarkReadAsync(new PlatformUserId(_userA), written.Entry.Id);
 
         second.Should().BeTrue();
-        (await _sut.GetUnreadCountAsync(_userA)).Should().Be(0);
+        (await _sut.GetUnreadCountAsync(new PlatformUserId(_userA))).Should().Be(0);
     }
 
     [Fact]
     public async Task MarkReadAsync_UnknownEntry_ReturnsFalse()
     {
-        var ok = await _sut.MarkReadAsync(_userA, Guid.NewGuid());
+        var ok = await _sut.MarkReadAsync(new PlatformUserId(_userA), Guid.NewGuid());
         ok.Should().BeFalse();
     }
 
@@ -188,14 +189,14 @@ public sealed class InboxServiceTests : IDisposable
     {
         var unread = await _sut.WriteAsync(BuildRequest(correlationKey: "tx:1"));
         var read = await _sut.WriteAsync(BuildRequest(correlationKey: "tx:2"));
-        await _sut.MarkReadAsync(_userA, read.Entry.Id);
-        (await _sut.GetUnreadCountAsync(_userA)).Should().Be(1);
+        await _sut.MarkReadAsync(new PlatformUserId(_userA), read.Entry.Id);
+        (await _sut.GetUnreadCountAsync(new PlatformUserId(_userA))).Should().Be(1);
 
-        await _sut.DismissAsync(_userA, read.Entry.Id);  // already-read entry: count unchanged
-        (await _sut.GetUnreadCountAsync(_userA)).Should().Be(1);
+        await _sut.DismissAsync(new PlatformUserId(_userA), read.Entry.Id);  // already-read entry: count unchanged
+        (await _sut.GetUnreadCountAsync(new PlatformUserId(_userA))).Should().Be(1);
 
-        await _sut.DismissAsync(_userA, unread.Entry.Id);  // unread entry: count goes to 0
-        (await _sut.GetUnreadCountAsync(_userA)).Should().Be(0);
+        await _sut.DismissAsync(new PlatformUserId(_userA), unread.Entry.Id);  // unread entry: count goes to 0
+        (await _sut.GetUnreadCountAsync(new PlatformUserId(_userA))).Should().Be(0);
     }
 
     [Fact]
@@ -204,11 +205,11 @@ public sealed class InboxServiceTests : IDisposable
         var a = await _sut.WriteAsync(BuildRequest(correlationKey: "tx:1"));
         var b = await _sut.WriteAsync(BuildRequest(correlationKey: "tx:2"));
         var c = await _sut.WriteAsync(BuildRequest(correlationKey: "tx:3"));
-        await _sut.MarkReadAsync(_userA, b.Entry.Id);
+        await _sut.MarkReadAsync(new PlatformUserId(_userA), b.Entry.Id);
 
-        var marked = await _sut.MarkAllReadAsync(_userA);
+        var marked = await _sut.MarkAllReadAsync(new PlatformUserId(_userA));
 
         marked.Should().Be(2, "two entries were unread before mark-all-read");
-        (await _sut.GetUnreadCountAsync(_userA)).Should().Be(0);
+        (await _sut.GetUnreadCountAsync(new PlatformUserId(_userA))).Should().Be(0);
     }
 }
