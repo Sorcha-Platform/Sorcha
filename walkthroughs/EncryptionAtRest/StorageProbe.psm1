@@ -236,7 +236,8 @@ function Get-SorchaStoredEnvelopeShape {
         The two shapes are produced by different builders and differ STRUCTURALLY, not just in
         content (TransactionBuilderServiceExtensions):
           encrypted : { type, contentEncoding: "encrypted", ..., encryptedPayloads: [ { groupId,
-                        disclosedFields, ciphertext, nonce, wrappedKeys } ] }
+                        ciphertext, nonce, encryptionAlgorithm, wrappedKeys } ] }
+                      (disclosedFields was removed by #1684; older ledger rows still carry it)
           plaintext : { type, ..., payloads: { "<wallet>": { ...fields in the clear... } } }
         Both are Base64Url on the ledger, so they look equally opaque in mongosh — which is the
         whole reason this classification has to read the decoded bytes rather than eyeball them.
@@ -354,11 +355,13 @@ function Find-SorchaSentinel {
 function Get-SorchaDisclosedFieldNames {
     <#
     .SYNOPSIS
-        The field NAMES an encrypted transaction leaves in the clear.
+        The field NAMES an encrypted transaction leaves in the clear — which should be none.
     .DESCRIPTION
-        A disclosure group publishes which fields it covers (`disclosedFields`) so a node can route
-        without decrypting. Names in the clear is the design; VALUES in the clear is the defect.
-        Returning the names lets a caller assert both halves rather than only the one that is easy.
+        Disclosure groups used to publish the fields they covered (`disclosedFields`). #1684 removed
+        it: the list leaked the disclosure SHAPE (which fields each recipient was given or denied)
+        to every ledger reader, and nothing on the read path used it. This returns whatever names a
+        stored transaction still carries there, so a caller can assert the list is empty. Rows
+        written before #1684 still carry it; the ledger is immutable.
     #>
     param([Parameter(Mandatory)][pscustomobject]$Stored)
 
@@ -386,9 +389,8 @@ function Test-SorchaCiphertextOpacity {
         real AEAD output must both answer no to:
 
           * does it parse as JSON?  A Base64 of the plaintext envelope would.
-          * does it contain any of the FIELD NAMES?  The names are published in the clear in
-            `disclosedFields` by design, so if they also appear inside the ciphertext then the
-            ciphertext contains the structure of the payload and is not opaque.
+          * does it contain any of the FIELD NAMES?  A real AEAD output cannot, so if they appear
+            inside the ciphertext then it contains the structure of the payload and is not opaque.
 
         The second is the sharper test: an encoding preserves field names even when the caller
         never thought to use one of the values as a sentinel.
