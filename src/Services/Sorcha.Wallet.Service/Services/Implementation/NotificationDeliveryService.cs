@@ -11,6 +11,7 @@ using Sorcha.ServiceClients.Participant;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Service.Services.Interfaces;
 using StackExchange.Redis;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Wallet.Service.Services.Implementation;
 
@@ -266,7 +267,7 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
                 return false;
             }
 
-            var platformUserId = await _inbox.ResolvePlatformUserIdAsync(participant.UserId, ct).ConfigureAwait(false);
+            var platformUserId = await _inbox.ResolvePlatformUserIdAsync(new UserIdentityId(participant.UserId), ct).ConfigureAwait(false);
             if (platformUserId is null)
             {
                 _logger.LogDebug(

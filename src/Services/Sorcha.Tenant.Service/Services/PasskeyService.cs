@@ -13,6 +13,7 @@ using Fido2NetLib.Objects;
 
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Services;
 
@@ -180,7 +181,7 @@ public class PasskeyService : IPasskeyService
         {
             _db.PasskeyCredentials.Add(credential);
             await _db.SaveChangesAsync(cancellationToken);
-            await _notifier.NotifyAsync(credential.PlatformUserId, SecurityChangeKind.PasskeyAdded, cancellationToken);
+            await _notifier.NotifyAsync(new PlatformUserId(credential.PlatformUserId), SecurityChangeKind.PasskeyAdded, cancellationToken);
         }
 
         _logger.LogInformation(
@@ -395,7 +396,7 @@ public class PasskeyService : IPasskeyService
             "Passkey credential {CredentialId} revoked for PlatformUser {PlatformUserId} prior={PriorStatus}",
             credentialId, platformUserId, priorStatus);
 
-        await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.PasskeyRemoved, cancellationToken);
+        await _notifier.NotifyAsync(new PlatformUserId(credential.PlatformUserId), SecurityChangeKind.PasskeyRemoved, cancellationToken);
 
         return priorStatus == CredentialStatus.Active
             ? PasskeyRevocationOutcome.RevokedFromActive
@@ -440,7 +441,7 @@ public class PasskeyService : IPasskeyService
             "Passkey credential {CredentialId} renamed for PlatformUser {PlatformUserId}",
             credentialId, platformUserId);
 
-        await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.PasskeyRenamed, cancellationToken);
+        await _notifier.NotifyAsync(new PlatformUserId(credential.PlatformUserId), SecurityChangeKind.PasskeyRenamed, cancellationToken);
 
         return PasskeyRenameOutcome.Renamed;
     }

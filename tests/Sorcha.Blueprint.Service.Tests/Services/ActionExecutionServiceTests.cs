@@ -23,6 +23,7 @@ using ActionModel = Sorcha.Blueprint.Models.Action;
 using ParticipantModel = Sorcha.Blueprint.Models.Participant;
 using RouteModel = Sorcha.Blueprint.Models.Route;
 using RejectionConfigModel = Sorcha.Blueprint.Models.RejectionConfig;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Blueprint.Service.Tests.Services;
 
@@ -1579,10 +1580,10 @@ public class ActionExecutionServiceTests
         channel.Reader.TryRead(out var workItem).Should().BeTrue(
             "the async encryption path must queue exactly one work item");
 
-        workItem!.UserId.Should().Be(platformUserId.ToString(),
+        workItem!.UserId.Should().Be(new PlatformUserId(platformUserId),
             "EncryptionBackgroundService addresses the encryption-complete/-failed inbox notification by " +
             "PlatformUser id, read from the platform_user_id claim");
-        workItem.UserId.Should().NotBe(userIdentityId.ToString(),
+        workItem.UserId!.Value.Value.Should().NotBe(userIdentityId,
             "#1703 — the sub claim (UserIdentity id) must never be used to address the PlatformUser inbox");
     }
 

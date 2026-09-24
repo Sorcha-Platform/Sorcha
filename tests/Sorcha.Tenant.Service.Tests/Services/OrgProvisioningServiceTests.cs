@@ -10,6 +10,7 @@ using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 using Sorcha.Tenant.Service.Tests.Helpers;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Tests.Services;
 
@@ -80,7 +81,7 @@ public sealed class OrgProvisioningServiceTests : IDisposable
         result.Success.Should().BeTrue();
         _membershipInbox.Verify(
             w => w.WriteOrgMembershipAddedAsync(
-                userId,
+                new PlatformUserId(userId),
                 result.OrganizationId!.Value,
                 UserRole.Administrator.ToString(),
                 It.IsAny<CancellationToken>()),

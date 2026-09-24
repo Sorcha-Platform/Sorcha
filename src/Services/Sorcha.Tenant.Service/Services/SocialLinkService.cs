@@ -6,6 +6,7 @@ using Sorcha.Tenant.Models.Auth;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Telemetry;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Services;
 
@@ -131,7 +132,7 @@ public sealed class SocialLinkService : ISocialLinkService
         _logger.LogInformation(
             "Linked social provider {Provider} to {PlatformUserId}",
             provider, platformUserId);
-        await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.SocialLinked, cancellationToken);
+        await _notifier.NotifyAsync(new PlatformUserId(platformUserId), SecurityChangeKind.SocialLinked, cancellationToken);
         return SocialLinkOutcome.Linked;
     }
 
@@ -175,7 +176,7 @@ public sealed class SocialLinkService : ISocialLinkService
         _logger.LogInformation(
             "Unlinked social provider {Provider} {LinkId} from {PlatformUserId}",
             link.Provider, linkId, platformUserId);
-        await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.SocialUnlinked, cancellationToken);
+        await _notifier.NotifyAsync(new PlatformUserId(link.PlatformUserId), SecurityChangeKind.SocialUnlinked, cancellationToken);
         return SocialUnlinkOutcome.Unlinked;
     }
 }

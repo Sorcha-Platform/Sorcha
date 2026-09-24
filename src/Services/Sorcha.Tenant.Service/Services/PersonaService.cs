@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using Sorcha.Tenant.Models.Persona;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Services;
 
@@ -266,7 +267,7 @@ public sealed partial class PersonaService : IPersonaService
 
         try
         {
-            await _personaInboxWriter.WritePersonaSavedAsync(platformUserId, DerivePersonaDisplayName(normalised), ct);
+            await _personaInboxWriter.WritePersonaSavedAsync(new PlatformUserId(row.PlatformUserId), DerivePersonaDisplayName(normalised), ct);
         }
         catch (Exception ex)
         {
@@ -301,7 +302,7 @@ public sealed partial class PersonaService : IPersonaService
 
         try
         {
-            await _personaInboxWriter.WritePersonaDeletedAsync(platformUserId, displayName, ct);
+            await _personaInboxWriter.WritePersonaDeletedAsync(new PlatformUserId(row.PlatformUserId), displayName, ct);
         }
         catch (Exception ex)
         {

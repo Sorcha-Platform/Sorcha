@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.ServiceClients.Inbox;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Wallet.Service.Services.Implementation;
 
@@ -37,7 +38,7 @@ public interface ICitizenDeviceInboxWriter
     /// <param name="deviceId">The revoked device's id.</param>
     /// <param name="deviceLabel">Human-readable device label, or <c>null</c> if unavailable.</param>
     Task WriteDeviceRevokedAsync(
-        Guid platformUserId,
+        PlatformUserId platformUserId,
         Guid deviceId,
         string? deviceLabel,
         CancellationToken ct = default);
@@ -60,12 +61,12 @@ public sealed class CitizenDeviceInboxWriter : ICitizenDeviceInboxWriter
 
     /// <inheritdoc />
     public async Task WriteDeviceRevokedAsync(
-        Guid platformUserId,
+        PlatformUserId platformUserId,
         Guid deviceId,
         string? deviceLabel,
         CancellationToken ct = default)
     {
-        if (platformUserId == Guid.Empty || deviceId == Guid.Empty)
+        if (platformUserId.Value == Guid.Empty || deviceId == Guid.Empty)
         {
             return;
         }
@@ -111,7 +112,7 @@ public sealed class CitizenDeviceInboxWriter : ICitizenDeviceInboxWriter
     /// single inbox entry via the <c>(PlatformUserId, SourceEventId)</c>
     /// idempotency key at Tenant Service.
     /// </summary>
-    private static Guid DeterministicSourceEventId(Guid platformUserId, Guid deviceId)
+    private static Guid DeterministicSourceEventId(PlatformUserId platformUserId, Guid deviceId)
     {
         var input = $"sorcha.inbox.security.device-revoked:{platformUserId:N}:{deviceId:N}";
         var bytes = System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(input));

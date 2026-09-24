@@ -12,6 +12,7 @@ using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Tests.Services;
 
@@ -49,7 +50,7 @@ public sealed class TotpServiceTests : IDisposable
             .Setup(r => r.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new UserIdentity { Id = _userId, Email = "ada@example.com" });
         _securityInbox
-            .Setup(s => s.WriteTwoFactorEnabledAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.WriteTwoFactorEnabledAsync(It.IsAny<PlatformUserId>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         _loginKey = new byte[32];
@@ -142,8 +143,8 @@ public sealed class TotpServiceTests : IDisposable
 
         Guid? notifiedPlatformUserId = null;
         _securityInbox
-            .Setup(s => s.WriteBackupCodeUsedAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .Callback<Guid, CancellationToken>((id, _) => notifiedPlatformUserId = id)
+            .Setup(s => s.WriteBackupCodeUsedAsync(It.IsAny<PlatformUserId>(), It.IsAny<CancellationToken>()))
+            .Callback<PlatformUserId, CancellationToken>((id, _) => notifiedPlatformUserId = id.Value)
             .Returns(Task.CompletedTask);
 
         var consumed = await _sut.ValidateBackupCodeAsync(_userId, setup.BackupCodes[0]);
@@ -176,7 +177,7 @@ public sealed class TotpServiceTests : IDisposable
 
         consumed.Should().BeTrue("the code itself is still valid and must still be consumed");
         _securityInbox.Verify(
-            s => s.WriteBackupCodeUsedAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            s => s.WriteBackupCodeUsedAsync(It.IsAny<PlatformUserId>(), It.IsAny<CancellationToken>()),
             Times.Never,
             "must never notify under the raw UserIdentity id when no PlatformUser resolves");
     }

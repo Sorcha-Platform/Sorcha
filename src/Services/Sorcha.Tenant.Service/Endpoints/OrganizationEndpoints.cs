@@ -16,6 +16,7 @@ using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 
 using Sorcha.Tenant.Service.Authorization;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Endpoints;
 
@@ -601,7 +602,7 @@ public static class OrganizationEndpoints
         if (targetUser.PlatformUserId != Guid.Empty)
         {
             await membershipInbox.WriteOrgMembershipRoleChangedAsync(
-                targetUser.PlatformUserId,
+                new PlatformUserId(targetUser.PlatformUserId),
                 organizationId,
                 previousRole,
                 request.Role.ToString(),

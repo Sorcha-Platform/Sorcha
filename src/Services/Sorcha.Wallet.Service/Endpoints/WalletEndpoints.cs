@@ -601,7 +601,11 @@ public static class WalletEndpoints
             // Phase 2 of the Snackbar retirement — drop a durable "wallet created"
             // inbox entry for the owner. Fire-and-forget; the writer itself
             // catches transport errors so this is a hard no-op on failure.
-            var ownerUserIdentityIdForInbox = Guid.TryParse(owner, out var ownerIdGuid) ? ownerIdGuid : Guid.Empty;
+            // #1709 — `owner` is Wallet.Owner, whose kind is NOT fixed (PlatformUser.Id on the current
+            // path, UserIdentity.Id for legacy/org-path wallets), so it stays an untyped Guid and the
+            // writer tests both interpretations explicitly. It was previously named
+            // `ownerUserIdentityId`, which is exactly the mislabelling #1708 flagged.
+            var walletOwnerForInbox = Guid.TryParse(owner, out var ownerIdGuid) ? ownerIdGuid : Guid.Empty;
             var walletNameForInbox = request.Name ?? string.Empty;
             _ = Task.Run(async () =>
             {
@@ -609,7 +613,7 @@ public static class WalletEndpoints
                 {
                     await using var scope = serviceScopeFactory.CreateAsyncScope();
                     var writer = scope.ServiceProvider.GetRequiredService<Sorcha.Wallet.Service.Services.Implementation.IWalletWorkflowInboxWriter>();
-                    await writer.WriteWalletCreatedAsync(walletAddress, walletNameForInbox, ownerUserIdentityIdForInbox, CancellationToken.None);
+                    await writer.WriteWalletCreatedAsync(walletAddress, walletNameForInbox, walletOwnerForInbox, CancellationToken.None);
                 }
                 catch (Exception inboxEx)
                 {
@@ -673,7 +677,7 @@ public static class WalletEndpoints
             // Phase 2 of the Snackbar retirement — drop a durable "wallet
             // recovered" inbox entry for the owner. Fire-and-forget; the writer
             // catches transport errors so recovery never fails because of inbox.
-            var ownerUserIdentityIdForInbox = Guid.TryParse(owner, out var ownerIdGuid) ? ownerIdGuid : Guid.Empty;
+            var walletOwnerForInbox = Guid.TryParse(owner, out var ownerIdGuid) ? ownerIdGuid : Guid.Empty;
             var walletAddressForInbox = wallet.Address;
             var walletNameForInbox = request.Name ?? string.Empty;
             _ = Task.Run(async () =>
@@ -682,7 +686,7 @@ public static class WalletEndpoints
                 {
                     await using var scope = serviceScopeFactory.CreateAsyncScope();
                     var writer = scope.ServiceProvider.GetRequiredService<Sorcha.Wallet.Service.Services.Implementation.IWalletWorkflowInboxWriter>();
-                    await writer.WriteWalletRecoveredAsync(walletAddressForInbox, walletNameForInbox, ownerUserIdentityIdForInbox, CancellationToken.None);
+                    await writer.WriteWalletRecoveredAsync(walletAddressForInbox, walletNameForInbox, walletOwnerForInbox, CancellationToken.None);
                 }
                 catch (Exception inboxEx)
                 {
@@ -858,7 +862,7 @@ public static class WalletEndpoints
 
             if (snapshotForInbox is not null)
             {
-                var ownerUserIdentityIdForInbox = Guid.TryParse(snapshotForInbox.Owner, out var ownerIdGuid)
+                var walletOwnerForInbox = Guid.TryParse(snapshotForInbox.Owner, out var ownerIdGuid)
                     ? ownerIdGuid : Guid.Empty;
                 var walletNameForInbox = snapshotForInbox.Name ?? string.Empty;
                 _ = Task.Run(async () =>
@@ -867,7 +871,7 @@ public static class WalletEndpoints
                     {
                         await using var scope = serviceScopeFactory.CreateAsyncScope();
                         var writer = scope.ServiceProvider.GetRequiredService<Sorcha.Wallet.Service.Services.Implementation.IWalletWorkflowInboxWriter>();
-                        await writer.WriteWalletDeletedAsync(address, walletNameForInbox, ownerUserIdentityIdForInbox, CancellationToken.None);
+                        await writer.WriteWalletDeletedAsync(address, walletNameForInbox, walletOwnerForInbox, CancellationToken.None);
                     }
                     catch (Exception inboxEx)
                     {
@@ -1351,12 +1355,12 @@ public static class WalletEndpoints
                     var parent = await manager.GetWalletAsync(address, CancellationToken.None);
                     if (parent is null) return;
 
-                    var ownerUserIdentityId = Guid.TryParse(parent.Owner, out var ownerIdGuid)
+                    var walletOwner = Guid.TryParse(parent.Owner, out var ownerIdGuid)
                         ? ownerIdGuid : Guid.Empty;
-                    if (ownerUserIdentityId == Guid.Empty) return;
+                    if (walletOwner == Guid.Empty) return;
 
                     var writer = scope.ServiceProvider.GetRequiredService<Sorcha.Wallet.Service.Services.Implementation.IWalletWorkflowInboxWriter>();
-                    await writer.WriteAddressRegisteredAsync(address, derivedAddr, ownerUserIdentityId, CancellationToken.None);
+                    await writer.WriteAddressRegisteredAsync(address, derivedAddr, walletOwner, CancellationToken.None);
                 }
                 catch (Exception inboxEx)
                 {

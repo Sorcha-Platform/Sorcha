@@ -17,6 +17,7 @@ using StackExchange.Redis;
 using Xunit;
 
 using WalletEntity = Sorcha.Wallet.Core.Domain.Entities.Wallet;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Wallet.Service.Tests.Services;
 
@@ -131,12 +132,12 @@ public class NotificationDeliveryServiceTests
                 Status = "Active",
             });
         _mockInbox
-            .Setup(i => i.ResolvePlatformUserIdAsync(TestUserIdentityId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(TestPlatformUserId);
+            .Setup(i => i.ResolvePlatformUserIdAsync(new UserIdentityId(TestUserIdentityId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(TestPlatformUserId));
         // #1703 — the writer now confirms a resolved PlatformUserId actually names a platform user
         // (the #1682 guard) before writing. Default fixture: any resolved id verifies as existing.
         _mockInbox
-            .Setup(i => i.PlatformUserExistsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Setup(i => i.PlatformUserExistsAsync(It.IsAny<PlatformUserId>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         _mockInbox
             .Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
@@ -186,7 +187,7 @@ public class NotificationDeliveryServiceTests
         await CallDeliverAsync();
 
         captured.Should().NotBeNull();
-        captured!.PlatformUserId.Should().Be(TestPlatformUserId);
+        captured!.PlatformUserId.Value.Should().Be(TestPlatformUserId);
         captured.Category.Should().Be("Action");
         captured.Severity.Should().Be("ActionRequired");
         captured.CorrelationKey.Should().Be($"tx:{TestAddress}:{TestTxId}");
@@ -312,8 +313,8 @@ public class NotificationDeliveryServiceTests
                 Email = "x@example.com", Status = "Active"
             });
         _mockInbox
-            .Setup(i => i.ResolvePlatformUserIdAsync(TestUserIdentityId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid?)null);
+            .Setup(i => i.ResolvePlatformUserIdAsync(new UserIdentityId(TestUserIdentityId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PlatformUserId?)null);
 
         var result = await CallDeliverAsync();
 
@@ -344,10 +345,10 @@ public class NotificationDeliveryServiceTests
                 Email = "x@example.com", Status = "Active"
             });
         _mockInbox
-            .Setup(i => i.ResolvePlatformUserIdAsync(TestUserIdentityId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(danglingPlatformUserId);
+            .Setup(i => i.ResolvePlatformUserIdAsync(new UserIdentityId(TestUserIdentityId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(danglingPlatformUserId));
         _mockInbox
-            .Setup(i => i.PlatformUserExistsAsync(danglingPlatformUserId, It.IsAny<CancellationToken>()))
+            .Setup(i => i.PlatformUserExistsAsync(new PlatformUserId(danglingPlatformUserId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         var result = await CallDeliverAsync();

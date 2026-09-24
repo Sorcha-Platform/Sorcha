@@ -10,6 +10,7 @@ using Moq;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Tests.Services;
 
@@ -62,10 +63,10 @@ public sealed class SecurityChangeNotifierTests : IDisposable
         var userId = await SeedUserAsync();
         var sut = CreateSut();
 
-        await sut.NotifyAsync(userId, SecurityChangeKind.PasskeyRemoved);
+        await sut.NotifyAsync(new PlatformUserId(userId), SecurityChangeKind.PasskeyRemoved);
 
         _inbox.Verify(i => i.WriteSecurityChangeAsync(
-            userId, "passkey-removed", It.IsAny<string>(), It.IsAny<string>(),
+            new PlatformUserId(userId), "passkey-removed", It.IsAny<string>(), It.IsAny<string>(),
             It.IsAny<InboxSeverity>(), It.IsAny<CancellationToken>()), Times.Once);
         _email.Verify(e => e.SendSecurityChangeAsync(
             It.Is<SecurityChangeDispatch>(d => d.ToEmail == "ada@test.com"),
@@ -81,7 +82,7 @@ public sealed class SecurityChangeNotifierTests : IDisposable
             .ThrowsAsync(new InvalidOperationException("smtp down"));
         var sut = CreateSut();
 
-        var act = () => sut.NotifyAsync(userId, SecurityChangeKind.PasswordChanged);
+        var act = () => sut.NotifyAsync(new PlatformUserId(userId), SecurityChangeKind.PasswordChanged);
 
         await act.Should().NotThrowAsync();
     }
@@ -91,12 +92,12 @@ public sealed class SecurityChangeNotifierTests : IDisposable
     {
         var sut = CreateSut();
 
-        await sut.NotifyAsync(Guid.NewGuid(), SecurityChangeKind.TwoFactorDisabled);
+        await sut.NotifyAsync(new PlatformUserId(Guid.NewGuid()), SecurityChangeKind.TwoFactorDisabled);
 
         // The inbox writer is invoked regardless (it is itself fail-safe); the email leg
         // short-circuits when the user/email cannot be resolved.
         _inbox.Verify(i => i.WriteSecurityChangeAsync(
-            It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<PlatformUserId>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
             It.IsAny<InboxSeverity>(), It.IsAny<CancellationToken>()), Times.Once);
         _email.Verify(e => e.SendSecurityChangeAsync(
             It.IsAny<SecurityChangeDispatch>(), It.IsAny<CancellationToken>()), Times.Never);

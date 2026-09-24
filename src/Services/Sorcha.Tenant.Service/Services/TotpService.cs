@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using OtpNet;
+using Sorcha.Tenant.Models.Identity;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
@@ -60,14 +61,15 @@ public class TotpService : ITotpService
 
     /// <summary>
     /// Maps the org-scoped <c>UserIdentity</c> id that TOTP is keyed by to the account-wide
-    /// PlatformUser id the always-notify sink (Feature 150) requires. Returns
-    /// <see cref="Guid.Empty"/> when the identity cannot be resolved — the notifier treats that
-    /// as a no-op email and the call never throws.
+    /// PlatformUser id the always-notify sink (Feature 150) requires. Returns <c>null</c> when the
+    /// identity cannot be resolved (or carries no platform user) — callers then skip the notice.
+    /// Issue #1709: typed, so the raw UserIdentity id can no longer be handed to the inbox — the
+    /// #1703 backup-code defect in this file is now a compile error.
     /// </summary>
-    private async Task<Guid> ResolvePlatformUserIdAsync(Guid userIdentityId, CancellationToken ct)
+    private async Task<PlatformUserId?> ResolvePlatformUserIdAsync(UserIdentityId userIdentityId, CancellationToken ct)
     {
-        var user = await _identityRepository.GetUserByIdAsync(userIdentityId, ct);
-        return user?.PlatformUserId ?? Guid.Empty;
+        var user = await _identityRepository.GetUserByIdAsync(userIdentityId.Value, ct);
+        return user is { PlatformUserId: var pid } && pid != Guid.Empty ? new PlatformUserId(pid) : null;
     }
 
     /// <inheritdoc />
@@ -178,8 +180,10 @@ public class TotpService : ITotpService
 
         // Feature 150 always-notify — inbox entry + email, keyed by the account-wide
         // PlatformUser id. Best-effort; the notifier never throws.
-        var platformUserId = await ResolvePlatformUserIdAsync(userId, cancellationToken);
-        await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.TwoFactorEnabled, cancellationToken);
+        if (await ResolvePlatformUserIdAsync(new UserIdentityId(userId), cancellationToken) is { } platformUserId)
+        {
+            await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.TwoFactorEnabled, cancellationToken);
+        }
 
         return true;
     }
@@ -251,8 +255,8 @@ public class TotpService : ITotpService
         // using the raw UserIdentity id directly silently lost this security notification on every
         // backup-code sign-in, with no error anywhere (TenantSecurityInboxWriter writes locally and
         // has no existence check of its own to catch it).
-        var platformUserId = await ResolvePlatformUserIdAsync(userId, cancellationToken);
-        if (platformUserId == Guid.Empty)
+        var platformUserId = await ResolvePlatformUserIdAsync(new UserIdentityId(userId), cancellationToken);
+        if (platformUserId is null)
         {
             _logger.LogWarning(
                 "Backup-code-used inbox notice skipped — could not resolve PlatformUserId for UserIdentity {UserIdentityId}",
@@ -260,7 +264,7 @@ public class TotpService : ITotpService
         }
         else
         {
-            await _securityInbox.WriteBackupCodeUsedAsync(platformUserId, cancellationToken);
+            await _securityInbox.WriteBackupCodeUsedAsync(platformUserId.Value, cancellationToken);
         }
 
         return true;
@@ -284,8 +288,10 @@ public class TotpService : ITotpService
 
             // Feature 150 always-notify — inbox entry + email, keyed by the account-wide
             // PlatformUser id. Best-effort; the notifier never throws.
-            var platformUserId = await ResolvePlatformUserIdAsync(userId, cancellationToken);
-            await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.TwoFactorDisabled, cancellationToken);
+            if (await ResolvePlatformUserIdAsync(new UserIdentityId(userId), cancellationToken) is { } platformUserId)
+            {
+                await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.TwoFactorDisabled, cancellationToken);
+            }
         }
     }
 

@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Sorcha.ServiceClients.Inbox;
 using Sorcha.Wallet.Service.Services.Implementation;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Wallet.Service.Tests.Services;
 
@@ -31,9 +32,9 @@ public class WalletWorkflowInboxWriterTests
         // legacy/org path). #1703 — Owner is not reliably a UserIdentity id (see
         // WalletWorkflowInboxWriter's dual-path resolution), so tests below also cover the
         // "Owner is already a PlatformUserId" branch explicitly.
-        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(_ownerUserIdentityId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(_platformUserId);
-        _inbox.Setup(i => i.PlatformUserExistsAsync(_platformUserId, It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(new UserIdentityId(_ownerUserIdentityId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(_platformUserId));
+        _inbox.Setup(i => i.PlatformUserExistsAsync(new PlatformUserId(_platformUserId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
     }
 
@@ -48,7 +49,7 @@ public class WalletWorkflowInboxWriterTests
         await _sut.WriteWalletCreatedAsync("WALLET-ADDR", "My Wallet", _ownerUserIdentityId);
 
         captured.Should().NotBeNull();
-        captured!.PlatformUserId.Should().Be(_platformUserId);
+        captured!.PlatformUserId.Value.Should().Be(_platformUserId);
         captured.Category.Should().Be("Workflow");
         captured.Severity.Should().Be("Info");
         captured.CorrelationKey.Should().Be("wallet:WALLET-ADDR");
@@ -117,7 +118,7 @@ public class WalletWorkflowInboxWriterTests
         await _sut.WriteAddressRegisteredAsync("", "DERIVED", _ownerUserIdentityId);
 
         _inbox.Verify(
-            i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            i => i.ResolvePlatformUserIdAsync(It.IsAny<UserIdentityId>(), It.IsAny<CancellationToken>()),
             Times.Never);
         _inbox.Verify(
             i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()),
@@ -130,7 +131,7 @@ public class WalletWorkflowInboxWriterTests
         await _sut.WriteWalletCreatedAsync("WALLET-ADDR", "Test", Guid.Empty);
 
         _inbox.Verify(
-            i => i.ResolvePlatformUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            i => i.ResolvePlatformUserIdAsync(It.IsAny<UserIdentityId>(), It.IsAny<CancellationToken>()),
             Times.Never);
         _inbox.Verify(
             i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()),
@@ -141,11 +142,11 @@ public class WalletWorkflowInboxWriterTests
     public async Task UnresolvedPlatformUserId_SkipsWrite()
     {
         var unknownOwner = Guid.NewGuid();
-        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(unknownOwner, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid?)null);
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(new UserIdentityId(unknownOwner), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PlatformUserId?)null);
         // #1703 dual-path — the UserIdentity resolution missed, so the writer falls through to
         // treating unknownOwner itself as a candidate PlatformUserId. That must ALSO fail here.
-        _inbox.Setup(i => i.PlatformUserExistsAsync(unknownOwner, It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.PlatformUserExistsAsync(new PlatformUserId(unknownOwner), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         await _sut.WriteWalletCreatedAsync("WALLET-ADDR", "Test", unknownOwner);
@@ -171,9 +172,9 @@ public class WalletWorkflowInboxWriterTests
         var ownerIsPlatformUserId = Guid.NewGuid();
         InboxWritePayload? captured = null;
 
-        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(ownerIsPlatformUserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid?)null);
-        _inbox.Setup(i => i.PlatformUserExistsAsync(ownerIsPlatformUserId, It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(new UserIdentityId(ownerIsPlatformUserId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PlatformUserId?)null);
+        _inbox.Setup(i => i.PlatformUserExistsAsync(new PlatformUserId(ownerIsPlatformUserId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
@@ -182,7 +183,7 @@ public class WalletWorkflowInboxWriterTests
         await _sut.WriteWalletCreatedAsync("WALLET-ADDR", "My Wallet", ownerIsPlatformUserId);
 
         captured.Should().NotBeNull("the owner id IS the PlatformUserId here, so the write must go through");
-        captured!.PlatformUserId.Should().Be(ownerIsPlatformUserId);
+        captured!.PlatformUserId.Value.Should().Be(ownerIsPlatformUserId);
     }
 
     /// <summary>
@@ -197,11 +198,11 @@ public class WalletWorkflowInboxWriterTests
         var owner = Guid.NewGuid();
         var danglingPlatformUserId = Guid.NewGuid();
 
-        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(owner, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(danglingPlatformUserId);
-        _inbox.Setup(i => i.PlatformUserExistsAsync(danglingPlatformUserId, It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.ResolvePlatformUserIdAsync(new UserIdentityId(owner), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserId(danglingPlatformUserId));
+        _inbox.Setup(i => i.PlatformUserExistsAsync(new PlatformUserId(danglingPlatformUserId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
-        _inbox.Setup(i => i.PlatformUserExistsAsync(owner, It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.PlatformUserExistsAsync(new PlatformUserId(owner), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         await _sut.WriteWalletCreatedAsync("WALLET-ADDR", "Test", owner);

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.ServiceClients.Inbox;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Wallet.Service.Services.Implementation;
 
@@ -218,11 +219,17 @@ public sealed class WalletWorkflowInboxWriter : IWalletWorkflowInboxWriter
     /// itself as a candidate PlatformUserId (confirm directly). Both paths verify existence before the
     /// id is used — an id that only LOOKS resolved (BlueprintInboxWriter's #1682 dangling-link case)
     /// must never reach the write.
+    /// <para>
+    /// #1709 — this is why <paramref name="ownerId"/> stays a bare <see cref="Guid"/>: its kind is not
+    /// known at compile time, so typing it as either <see cref="PlatformUserId"/> or
+    /// <see cref="UserIdentityId"/> would be a lie. Instead each interpretation below is an explicit,
+    /// visible conversion, and only a verified <see cref="PlatformUserId"/> leaves this method.
+    /// </para>
     /// </summary>
-    private async Task<Guid?> ResolveVerifiedPlatformUserIdAsync(
+    private async Task<PlatformUserId?> ResolveVerifiedPlatformUserIdAsync(
         Guid ownerId, string walletAddress, string sourceTag, CancellationToken ct)
     {
-        var viaUserIdentity = await _inbox.ResolvePlatformUserIdAsync(ownerId, ct).ConfigureAwait(false);
+        var viaUserIdentity = await _inbox.ResolvePlatformUserIdAsync(new UserIdentityId(ownerId), ct).ConfigureAwait(false);
         if (viaUserIdentity is not null && await _inbox.PlatformUserExistsAsync(viaUserIdentity.Value, ct).ConfigureAwait(false))
         {
             _logger.LogDebug(
@@ -231,12 +238,13 @@ public sealed class WalletWorkflowInboxWriter : IWalletWorkflowInboxWriter
             return viaUserIdentity.Value;
         }
 
-        if (await _inbox.PlatformUserExistsAsync(ownerId, ct).ConfigureAwait(false))
+        var ownerAsPlatformUser = new PlatformUserId(ownerId);
+        if (await _inbox.PlatformUserExistsAsync(ownerAsPlatformUser, ct).ConfigureAwait(false))
         {
             _logger.LogDebug(
                 "Inbox resolve — owner {OwnerId} used directly as PlatformUserId for {SourceTag}",
                 ownerId, sourceTag);
-            return ownerId;
+            return ownerAsPlatformUser;
         }
 
         _logger.LogWarning(

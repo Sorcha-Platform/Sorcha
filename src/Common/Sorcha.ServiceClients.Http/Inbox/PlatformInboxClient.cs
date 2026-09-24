@@ -11,6 +11,8 @@ using Sorcha.ServiceClients.Helpers;
 using Sorcha.Serialization;
 using Sorcha.ServiceClients.Configuration;
 
+using Sorcha.Tenant.Models.Identity;
+
 namespace Sorcha.ServiceClients.Inbox;
 
 /// <summary>
@@ -59,7 +61,7 @@ public sealed class PlatformInboxClient : IPlatformInboxClient
 
         var body = new
         {
-            platformUserId = payload.PlatformUserId,
+            platformUserId = payload.PlatformUserId.Value,
             category = payload.Category,
             severity = payload.Severity,
             correlationKey = payload.CorrelationKey,
@@ -82,12 +84,12 @@ public sealed class PlatformInboxClient : IPlatformInboxClient
     }
 
     /// <inheritdoc />
-    public async Task<Guid?> ResolvePlatformUserIdAsync(Guid userIdentityId, CancellationToken ct = default)
+    public async Task<PlatformUserId?> ResolvePlatformUserIdAsync(UserIdentityId userIdentityId, CancellationToken ct = default)
     {
         await ServiceClientAuthHelper.SetAuthHeaderAsync(
             _httpClient, _serviceAuth, _logger, "Tenant Service (Inbox identity resolution)", ct);
 
-        using var resp = await _httpClient.GetAsync($"api/internal/users/by-identity/{userIdentityId:D}", ct).ConfigureAwait(false);
+        using var resp = await _httpClient.GetAsync($"api/internal/users/by-identity/{userIdentityId.Value:D}", ct).ConfigureAwait(false);
         if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             return null;
@@ -95,11 +97,11 @@ public sealed class PlatformInboxClient : IPlatformInboxClient
         resp.EnsureSuccessStatusCode();
 
         var body = await resp.Content.ReadFromJsonAsync<PlatformUserResolutionShape>(SorchaJson.Options, ct).ConfigureAwait(false);
-        return body?.PlatformUserId;
+        return PlatformUserId.FromNullable(body?.PlatformUserId);
     }
 
     /// <inheritdoc />
-    public async Task<bool> PlatformUserExistsAsync(Guid platformUserId, CancellationToken ct = default)
+    public async Task<bool> PlatformUserExistsAsync(PlatformUserId platformUserId, CancellationToken ct = default)
     {
         try
         {
@@ -107,7 +109,7 @@ public sealed class PlatformInboxClient : IPlatformInboxClient
                 _httpClient, _serviceAuth, _logger, "Tenant Service (platform-user existence)", ct);
 
             using var resp = await _httpClient
-                .GetAsync($"api/internal/platform-users/{platformUserId:D}/exists", ct)
+                .GetAsync($"api/internal/platform-users/{platformUserId.Value:D}/exists", ct)
                 .ConfigureAwait(false);
 
             if (!resp.IsSuccessStatusCode)

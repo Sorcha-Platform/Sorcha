@@ -22,6 +22,7 @@ using Sorcha.Wallet.Service.Services.Interfaces;
 using Sorcha.Wallet.Service.Tests.Services;
 
 using Xunit;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Wallet.Service.Tests.Credentials;
 
@@ -244,7 +245,7 @@ public sealed class DeviceBoundCredentialSeamTests : IDisposable
         revoker.Setup(r => r.RevokeAsync(UserId, It.IsAny<DeviceBoundCredentialCopy>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         var inbox = new Mock<ICitizenDeviceInboxWriter>();
-        inbox.Setup(i => i.WriteDeviceRevokedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+        inbox.Setup(i => i.WriteDeviceRevokedAsync(It.IsAny<PlatformUserId>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         var policy = new DeviceBoundCredentialPolicy(
@@ -255,7 +256,7 @@ public sealed class DeviceBoundCredentialSeamTests : IDisposable
         result.Kind.Should().Be(DeviceBindKind.NewWithEviction);
         result.EvictedCredentialId.Should().Be("cred-oldest");
         inbox.Verify(
-            i => i.WriteDeviceRevokedAsync(UserId, oldestDeviceId, "Old iPad", It.IsAny<CancellationToken>()),
+            i => i.WriteDeviceRevokedAsync(new PlatformUserId(UserId), oldestDeviceId, "Old iPad", It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -298,7 +299,7 @@ public sealed class DeviceBoundCredentialSeamTests : IDisposable
         revoker.Setup(r => r.RevokeAsync(UserId, It.IsAny<DeviceBoundCredentialCopy>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         var inbox = new Mock<ICitizenDeviceInboxWriter>();
-        inbox.Setup(i => i.WriteDeviceRevokedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+        inbox.Setup(i => i.WriteDeviceRevokedAsync(It.IsAny<PlatformUserId>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         var policy = new DeviceBoundCredentialPolicy(
@@ -311,7 +312,7 @@ public sealed class DeviceBoundCredentialSeamTests : IDisposable
             r => r.RevokeAsync(UserId, It.Is<DeviceBoundCredentialCopy>(c => c.CredentialId == "cred-oldest"), It.IsAny<CancellationToken>()),
             Times.Once);
         inbox.Verify(
-            i => i.WriteDeviceRevokedAsync(UserId, It.Is<Guid>(g => g != Guid.Empty), null, It.IsAny<CancellationToken>()),
+            i => i.WriteDeviceRevokedAsync(new PlatformUserId(UserId), It.Is<Guid>(g => g != Guid.Empty), null, It.IsAny<CancellationToken>()),
             Times.Once);
     }
 

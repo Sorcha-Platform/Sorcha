@@ -12,6 +12,7 @@ using Sorcha.Tenant.Service.Services;
 using Sorcha.Tenant.Service.Storage;
 using Sorcha.Tenant.Service.Tests.Helpers;
 using Xunit;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Tests.Hubs;
 
@@ -88,7 +89,7 @@ public class TenantHubInboxEventsTests
         var write = await service.WriteAsync(NewRequest(platformUserId));
         _emits.Clear();
 
-        var ok = await service.MarkReadAsync(platformUserId, write.Entry.Id);
+        var ok = await service.MarkReadAsync(new PlatformUserId(platformUserId), write.Entry.Id);
 
         ok.Should().BeTrue();
         _emits.Should().ContainSingle(e => e.Method == "InboxUnreadCountUpdated");
@@ -102,10 +103,10 @@ public class TenantHubInboxEventsTests
         var platformUserId = Guid.Parse("44444444-4444-4444-4444-444444444444");
         var (service, _) = CreateService();
         var write = await service.WriteAsync(NewRequest(platformUserId));
-        await service.MarkReadAsync(platformUserId, write.Entry.Id);
+        await service.MarkReadAsync(new PlatformUserId(platformUserId), write.Entry.Id);
         _emits.Clear();
 
-        await service.MarkReadAsync(platformUserId, write.Entry.Id);
+        await service.MarkReadAsync(new PlatformUserId(platformUserId), write.Entry.Id);
 
         _emits.Should().BeEmpty("idempotent re-read must NOT re-emit");
     }
@@ -118,7 +119,7 @@ public class TenantHubInboxEventsTests
         var write = await service.WriteAsync(NewRequest(platformUserId));
         _emits.Clear();
 
-        await service.DismissAsync(platformUserId, write.Entry.Id);
+        await service.DismissAsync(new PlatformUserId(platformUserId), write.Entry.Id);
 
         _emits.Should().ContainSingle(e => e.Method == "InboxUnreadCountUpdated");
     }
@@ -129,10 +130,10 @@ public class TenantHubInboxEventsTests
         var platformUserId = Guid.Parse("66666666-6666-6666-6666-666666666666");
         var (service, _) = CreateService();
         var write = await service.WriteAsync(NewRequest(platformUserId));
-        await service.MarkReadAsync(platformUserId, write.Entry.Id);
+        await service.MarkReadAsync(new PlatformUserId(platformUserId), write.Entry.Id);
         _emits.Clear();
 
-        await service.DismissAsync(platformUserId, write.Entry.Id);
+        await service.DismissAsync(new PlatformUserId(platformUserId), write.Entry.Id);
 
         _emits.Should().BeEmpty("dismissing an already-read entry doesn't change unread count");
     }
@@ -146,7 +147,7 @@ public class TenantHubInboxEventsTests
         await service.WriteAsync(NewRequest(platformUserId));
         _emits.Clear();
 
-        var marked = await service.MarkAllReadAsync(platformUserId);
+        var marked = await service.MarkAllReadAsync(new PlatformUserId(platformUserId));
 
         marked.Should().Be(2);
         _clients.Verify(c => c.Group(TenantHubGroups.User(platformUserId)), Times.AtLeastOnce);
@@ -160,7 +161,7 @@ public class TenantHubInboxEventsTests
         var platformUserId = Guid.Parse("88888888-8888-8888-8888-888888888888");
         var (service, _) = CreateService();
 
-        var marked = await service.MarkAllReadAsync(platformUserId);
+        var marked = await service.MarkAllReadAsync(new PlatformUserId(platformUserId));
 
         marked.Should().Be(0);
         _emits.Should().BeEmpty();
@@ -175,7 +176,7 @@ public class TenantHubInboxEventsTests
     }
 
     private static InboxWriteRequest NewRequest(Guid platformUserId) => new(
-        PlatformUserId: platformUserId,
+        PlatformUserId: new PlatformUserId(platformUserId),
         Category: InboxCategory.Action,
         Severity: InboxSeverity.Info,
         CorrelationKey: $"test:{Guid.NewGuid():N}",

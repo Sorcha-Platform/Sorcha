@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Tests.Services;
 
@@ -24,7 +25,7 @@ public sealed class TenantSecurityInboxWriterTests
         // (this writer calls IInboxService directly, bypassing the HTTP endpoint's own #1506 guard
         // and InboxEntry.PlatformUserId has no database FK, so nothing else would catch a wrong id).
         // Default fixture: any id verifies as existing; the dangling-id test overrides this per-id.
-        _inbox.Setup(i => i.PlatformUserExistsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.PlatformUserExistsAsync(It.IsAny<PlatformUserId>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
     }
 
@@ -37,10 +38,10 @@ public sealed class TenantSecurityInboxWriterTests
             .ReturnsAsync((InboxWriteRequest r, CancellationToken _) =>
                 new InboxWriteResult(new InboxEntry { Id = Guid.NewGuid() }, IsIdempotent: false));
 
-        await _sut.WriteTwoFactorEnabledAsync(_userId);
+        await _sut.WriteTwoFactorEnabledAsync(new PlatformUserId(_userId));
 
         captured.Should().NotBeNull();
-        captured!.PlatformUserId.Should().Be(_userId);
+        captured!.PlatformUserId.Value.Should().Be(_userId);
         captured.Category.Should().Be(InboxCategory.Security);
         captured.Severity.Should().Be(InboxSeverity.Info);
         captured.CorrelationKey.Should().Be($"security:two-factor-enabled:{_userId:N}");
@@ -58,7 +59,7 @@ public sealed class TenantSecurityInboxWriterTests
             .ReturnsAsync((InboxWriteRequest r, CancellationToken _) =>
                 new InboxWriteResult(new InboxEntry { Id = Guid.NewGuid() }, IsIdempotent: false));
 
-        await _sut.WriteTwoFactorDisabledAsync(_userId);
+        await _sut.WriteTwoFactorDisabledAsync(new PlatformUserId(_userId));
 
         captured.Should().NotBeNull();
         captured!.Category.Should().Be(InboxCategory.Security);
@@ -79,9 +80,9 @@ public sealed class TenantSecurityInboxWriterTests
             .ReturnsAsync((InboxWriteRequest r, CancellationToken _) =>
                 new InboxWriteResult(new InboxEntry { Id = Guid.NewGuid() }, IsIdempotent: false));
 
-        await _sut.WriteTwoFactorEnabledAsync(_userId);
+        await _sut.WriteTwoFactorEnabledAsync(new PlatformUserId(_userId));
         await Task.Delay(1100);
-        await _sut.WriteTwoFactorEnabledAsync(_userId);
+        await _sut.WriteTwoFactorEnabledAsync(new PlatformUserId(_userId));
 
         sourceIds.Should().HaveCount(2);
         sourceIds[0].Should().NotBe(sourceIds[1]);
@@ -93,7 +94,7 @@ public sealed class TenantSecurityInboxWriterTests
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("inbox down"));
 
-        var act = () => _sut.WriteTwoFactorEnabledAsync(_userId);
+        var act = () => _sut.WriteTwoFactorEnabledAsync(new PlatformUserId(_userId));
 
         await act.Should().NotThrowAsync(
             "inbox-write failures must never block the security operation");
@@ -105,7 +106,7 @@ public sealed class TenantSecurityInboxWriterTests
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("inbox down"));
 
-        var act = () => _sut.WriteTwoFactorDisabledAsync(_userId);
+        var act = () => _sut.WriteTwoFactorDisabledAsync(new PlatformUserId(_userId));
 
         await act.Should().NotThrowAsync();
     }
@@ -119,7 +120,7 @@ public sealed class TenantSecurityInboxWriterTests
             .ReturnsAsync((InboxWriteRequest r, CancellationToken _) =>
                 new InboxWriteResult(new InboxEntry { Id = Guid.NewGuid() }, IsIdempotent: false));
 
-        await _sut.WritePasswordResetAsync(_userId);
+        await _sut.WritePasswordResetAsync(new PlatformUserId(_userId));
 
         captured.Should().NotBeNull();
         captured!.Category.Should().Be(InboxCategory.Security);
@@ -136,7 +137,7 @@ public sealed class TenantSecurityInboxWriterTests
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("inbox down"));
 
-        var act = () => _sut.WritePasswordResetAsync(_userId);
+        var act = () => _sut.WritePasswordResetAsync(new PlatformUserId(_userId));
 
         await act.Should().NotThrowAsync(
             "inbox-write failures must never block a password reset");
@@ -151,7 +152,7 @@ public sealed class TenantSecurityInboxWriterTests
             .ReturnsAsync((InboxWriteRequest r, CancellationToken _) =>
                 new InboxWriteResult(new InboxEntry { Id = Guid.NewGuid() }, IsIdempotent: false));
 
-        await _sut.WriteBackupCodeUsedAsync(_userId);
+        await _sut.WriteBackupCodeUsedAsync(new PlatformUserId(_userId));
 
         captured.Should().NotBeNull();
         captured!.Category.Should().Be(InboxCategory.Security);
@@ -168,7 +169,7 @@ public sealed class TenantSecurityInboxWriterTests
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("inbox down"));
 
-        var act = () => _sut.WriteBackupCodeUsedAsync(_userId);
+        var act = () => _sut.WriteBackupCodeUsedAsync(new PlatformUserId(_userId));
 
         await act.Should().NotThrowAsync(
             "inbox-write failures must never block sign-in");
@@ -187,10 +188,10 @@ public sealed class TenantSecurityInboxWriterTests
     [Fact]
     public async Task WriteBackupCodeUsedAsync_PlatformUserIdDoesNotExist_SkipsWrite_NoPhantomEntry()
     {
-        _inbox.Setup(i => i.PlatformUserExistsAsync(_userId, It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.PlatformUserExistsAsync(new PlatformUserId(_userId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
-        await _sut.WriteBackupCodeUsedAsync(_userId);
+        await _sut.WriteBackupCodeUsedAsync(new PlatformUserId(_userId));
 
         _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }

@@ -15,6 +15,7 @@ using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Inbox;
 using Sorcha.ServiceClients.PlatformUserDevice;
 using Sorcha.ServiceDefaults;
+using Sorcha.Tenant.Models.Identity;
 using Sorcha.Wallet.Core.Domain;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Service.Services.Interfaces;
@@ -211,7 +212,7 @@ public static class CitizenWalletEndpoints
         ICitizenPresentationStore store,
         CancellationToken ct)
     {
-        var platformUserId = await ResolvePlatformUserIdAsync(context, ct);
+        var platformUserId = (await ResolvePlatformUserIdAsync(context, ct))?.Value;
         if (platformUserId is null) return Results.Unauthorized();
 
         var entries = await store.ListAsync(platformUserId.Value, ct);
@@ -224,7 +225,7 @@ public static class CitizenWalletEndpoints
         ICitizenPresentationStore store,
         CancellationToken ct)
     {
-        var platformUserId = await ResolvePlatformUserIdAsync(context, ct);
+        var platformUserId = (await ResolvePlatformUserIdAsync(context, ct))?.Value;
         if (platformUserId is null) return Results.Unauthorized();
 
         // Idempotent + cross-user-indistinguishable: always 204 regardless of whether
@@ -384,7 +385,7 @@ public static class CitizenWalletEndpoints
             return Results.ValidationProblem(validation.ToDictionary());
         }
 
-        var platformUserId = await ResolvePlatformUserIdAsync(context, ct);
+        var platformUserId = (await ResolvePlatformUserIdAsync(context, ct))?.Value;
         if (platformUserId is null) return Results.Unauthorized();
 
         var uid = platformUserId.Value;
@@ -421,7 +422,7 @@ public static class CitizenWalletEndpoints
         IPlatformUserDeviceClient deviceClient,
         CancellationToken ct)
     {
-        var platformUserId = await ResolvePlatformUserIdAsync(context, ct);
+        var platformUserId = (await ResolvePlatformUserIdAsync(context, ct))?.Value;
         if (platformUserId is null) return Results.Unauthorized();
 
         var devices = await deviceClient.ListAsync(platformUserId.Value, ct);
@@ -447,7 +448,7 @@ public static class CitizenWalletEndpoints
         IPlatformUserDeviceClient deviceClient,
         CancellationToken ct)
     {
-        var platformUserId = await ResolvePlatformUserIdAsync(context, ct);
+        var platformUserId = (await ResolvePlatformUserIdAsync(context, ct))?.Value;
         if (platformUserId is null) return Results.Unauthorized();
 
         if (string.IsNullOrWhiteSpace(request.Label) || request.Label.Length > 120)
@@ -471,13 +472,16 @@ public static class CitizenWalletEndpoints
         ILogger<Program> logger,
         CancellationToken ct)
     {
-        var platformUserId = await ResolvePlatformUserIdAsync(context, ct);
+        var callerPlatformUserId = await ResolvePlatformUserIdAsync(context, ct);
         Guid? organizationId = Guid.TryParse(context.User.FindFirstValue(TokenClaimConstants.OrgId), out var oid) ? oid : null;
-        if (platformUserId is null || organizationId is null)
+        if (callerPlatformUserId is null || organizationId is null)
         {
             return Results.Unauthorized();
         }
 
+        // Device registry + revocation are keyed on the bare Guid (outside the #1709 typed boundary);
+        // the typed value is kept for the inbox write below.
+        Guid? platformUserId = callerPlatformUserId.Value.Value;
         var device = await deviceClient.GetByIdAsync(deviceId, platformUserId.Value, ct);
         if (device is null)
         {
@@ -510,7 +514,7 @@ public static class CitizenWalletEndpoints
         // Idempotent on (platformUserId, deviceId) so concurrent revokes from
         // web + PWA produce a single inbox entry.
         await inboxWriter.WriteDeviceRevokedAsync(
-            platformUserId: platformUserId.Value,
+            platformUserId: callerPlatformUserId.Value,
             deviceId: deviceId,
             deviceLabel: device.Label,
             ct: ct).ConfigureAwait(false);
@@ -768,15 +772,15 @@ public static class CitizenWalletEndpoints
     /// (legacy/degraded-token recovery); (3) <c>null</c> — unidentifiable principal.
     /// Emits a structured-log breadcrumb on step 2 so degraded traffic is observable.
     /// </summary>
-    private static async Task<Guid?> ResolvePlatformUserIdAsync(HttpContext context, CancellationToken ct)
+    private static async Task<PlatformUserId?> ResolvePlatformUserIdAsync(HttpContext context, CancellationToken ct)
     {
         // Step 1: platform_user_id claim (common path — no I/O)
-        if (Guid.TryParse(context.User.FindFirstValue(TokenClaimConstants.PlatformUserId), out var pid) && pid != Guid.Empty)
+        if (context.User.GetPlatformUserId() is { } pid)
             return pid;
 
-        // Step 2: sub → identity registry (legacy/degraded-token recovery)
-        var sub = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? context.User.FindFirstValue("sub");
-        if (!Guid.TryParse(sub, out var userIdentityId)) return null;
+        // Step 2: sub → identity registry (legacy/degraded-token recovery). #1709 — typed, so the
+        // `sub` value can only be RESOLVED to a PlatformUserId, never used as one.
+        if (context.User.GetUserIdentityId() is not { } userIdentityId) return null;
 
         var inboxClient = context.RequestServices.GetRequiredService<IPlatformInboxClient>();
         var recovered = await inboxClient.ResolvePlatformUserIdAsync(userIdentityId, ct);
@@ -805,7 +809,7 @@ public static class CitizenWalletEndpoints
     private static async Task<(Guid? platformUserId, string? walletAddress, Guid? organizationId)> ResolveCitizenContextAsync(
         HttpContext context, IWalletRepository walletRepository, CancellationToken ct)
     {
-        var platformUserId = await ResolvePlatformUserIdAsync(context, ct);
+        var platformUserId = (await ResolvePlatformUserIdAsync(context, ct))?.Value;
 
         var walletAddress = context.User.FindFirstValue("wallet_address");
         if (string.IsNullOrWhiteSpace(walletAddress)) walletAddress = null;

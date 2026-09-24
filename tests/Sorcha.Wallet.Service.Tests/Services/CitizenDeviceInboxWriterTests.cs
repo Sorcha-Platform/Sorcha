@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Sorcha.ServiceClients.Inbox;
 using Sorcha.Wallet.Service.Services.Implementation;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Wallet.Service.Tests.Services;
 
@@ -37,10 +38,10 @@ public class CitizenDeviceInboxWriterTests
             .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
 
-        await _sut.WriteDeviceRevokedAsync(_platformUserId, _deviceId, "Alice's iPhone");
+        await _sut.WriteDeviceRevokedAsync(new PlatformUserId(_platformUserId), _deviceId, "Alice's iPhone");
 
         captured.Should().NotBeNull();
-        captured!.PlatformUserId.Should().Be(_platformUserId);
+        captured!.PlatformUserId.Value.Should().Be(_platformUserId);
         captured.Category.Should().Be("Security");
         captured.Severity.Should().Be("Warning");
         captured.Title.Should().Be("Device revoked: Alice's iPhone");
@@ -57,7 +58,7 @@ public class CitizenDeviceInboxWriterTests
             .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
 
-        await _sut.WriteDeviceRevokedAsync(_platformUserId, _deviceId, deviceLabel: null);
+        await _sut.WriteDeviceRevokedAsync(new PlatformUserId(_platformUserId), _deviceId, deviceLabel: null);
 
         captured!.Title.Should().Be("Device revoked: your device");
     }
@@ -73,7 +74,7 @@ public class CitizenDeviceInboxWriterTests
             .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
 
-        await _sut.WriteDeviceRevokedAsync(_platformUserId, _deviceId, label);
+        await _sut.WriteDeviceRevokedAsync(new PlatformUserId(_platformUserId), _deviceId, label);
 
         captured!.Title.Should().Be("Device revoked: your device");
     }
@@ -81,7 +82,7 @@ public class CitizenDeviceInboxWriterTests
     [Fact]
     public async Task WriteDeviceRevokedAsync_EmptyPlatformUserId_ShortCircuits()
     {
-        await _sut.WriteDeviceRevokedAsync(Guid.Empty, _deviceId, "Phone");
+        await _sut.WriteDeviceRevokedAsync(new PlatformUserId(Guid.Empty), _deviceId, "Phone");
 
         _inbox.Verify(
             i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()),
@@ -91,7 +92,7 @@ public class CitizenDeviceInboxWriterTests
     [Fact]
     public async Task WriteDeviceRevokedAsync_EmptyDeviceId_ShortCircuits()
     {
-        await _sut.WriteDeviceRevokedAsync(_platformUserId, Guid.Empty, "Phone");
+        await _sut.WriteDeviceRevokedAsync(new PlatformUserId(_platformUserId), Guid.Empty, "Phone");
 
         _inbox.Verify(
             i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()),
@@ -108,8 +109,8 @@ public class CitizenDeviceInboxWriterTests
 
         // Simulate the documented concurrent web + PWA race — same (user, device)
         // pair, two writes. They MUST collapse to the same SourceEventId.
-        await _sut.WriteDeviceRevokedAsync(_platformUserId, _deviceId, "Phone");
-        await _sut.WriteDeviceRevokedAsync(_platformUserId, _deviceId, "Phone");
+        await _sut.WriteDeviceRevokedAsync(new PlatformUserId(_platformUserId), _deviceId, "Phone");
+        await _sut.WriteDeviceRevokedAsync(new PlatformUserId(_platformUserId), _deviceId, "Phone");
 
         sourceIds.Should().HaveCount(2);
         sourceIds[0].Should().Be(sourceIds[1]);
@@ -123,8 +124,8 @@ public class CitizenDeviceInboxWriterTests
             .Callback<InboxWritePayload, CancellationToken>((p, _) => sourceIds.Add(p.SourceEventId))
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
 
-        await _sut.WriteDeviceRevokedAsync(_platformUserId, Guid.NewGuid(), "Phone A");
-        await _sut.WriteDeviceRevokedAsync(_platformUserId, Guid.NewGuid(), "Phone B");
+        await _sut.WriteDeviceRevokedAsync(new PlatformUserId(_platformUserId), Guid.NewGuid(), "Phone A");
+        await _sut.WriteDeviceRevokedAsync(new PlatformUserId(_platformUserId), Guid.NewGuid(), "Phone B");
 
         sourceIds.Distinct().Should().HaveCount(2);
     }
@@ -135,7 +136,7 @@ public class CitizenDeviceInboxWriterTests
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Tenant unavailable"));
 
-        var act = () => _sut.WriteDeviceRevokedAsync(_platformUserId, _deviceId, "Phone");
+        var act = () => _sut.WriteDeviceRevokedAsync(new PlatformUserId(_platformUserId), _deviceId, "Phone");
 
         await act.Should().NotThrowAsync(
             "device revocation must never fail because of an inbox-write outage");
@@ -149,7 +150,7 @@ public class CitizenDeviceInboxWriterTests
             .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
 
-        await _sut.WriteDeviceRevokedAsync(_platformUserId, _deviceId, "Phone");
+        await _sut.WriteDeviceRevokedAsync(new PlatformUserId(_platformUserId), _deviceId, "Phone");
 
         captured!.DetailHref.Should().StartWith("/api/");
     }

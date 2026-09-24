@@ -7,6 +7,7 @@ using Moq;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
 using Sorcha.Tenant.Service.Tests.Helpers;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Tenant.Service.Tests.Services;
 
@@ -27,7 +28,7 @@ public sealed class TenantMembershipInboxWriterTests : IDisposable
         // #1703 — the writer now confirms platformUserId names a real platform user before writing
         // (this writer calls IInboxService directly, bypassing the HTTP endpoint's own #1506 guard).
         // Default fixture: any id verifies as existing; the dangling-id tests override this per-id.
-        _inbox.Setup(i => i.PlatformUserExistsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.PlatformUserExistsAsync(It.IsAny<PlatformUserId>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
     }
 
@@ -51,10 +52,10 @@ public sealed class TenantMembershipInboxWriterTests : IDisposable
             .ReturnsAsync((InboxWriteRequest r, CancellationToken _) =>
                 new InboxWriteResult(new InboxEntry { Id = Guid.NewGuid() }, IsIdempotent: false));
 
-        await _sut.WriteOrgMembershipAddedAsync(_userId, _orgId, "Member");
+        await _sut.WriteOrgMembershipAddedAsync(new PlatformUserId(_userId), _orgId, "Member");
 
         captured.Should().NotBeNull();
-        captured!.PlatformUserId.Should().Be(_userId);
+        captured!.PlatformUserId.Value.Should().Be(_userId);
         captured.Category.Should().Be(InboxCategory.Membership);
         captured.Severity.Should().Be(InboxSeverity.Info);
         captured.CorrelationKey.Should().Be($"membership:{_orgId:N}");
@@ -71,7 +72,7 @@ public sealed class TenantMembershipInboxWriterTests : IDisposable
             .ReturnsAsync((InboxWriteRequest r, CancellationToken _) =>
                 new InboxWriteResult(new InboxEntry { Id = Guid.NewGuid() }, IsIdempotent: false));
 
-        await _sut.WriteOrgMembershipAddedAsync(_userId, _orgId, "Admin");
+        await _sut.WriteOrgMembershipAddedAsync(new PlatformUserId(_userId), _orgId, "Admin");
 
         captured!.Title.Should().Be("Welcome to your new organisation");
         captured.Summary.Should().Be("Role: Admin");
@@ -86,8 +87,8 @@ public sealed class TenantMembershipInboxWriterTests : IDisposable
             .ReturnsAsync((InboxWriteRequest r, CancellationToken _) =>
                 new InboxWriteResult(new InboxEntry { Id = Guid.NewGuid() }, IsIdempotent: true));
 
-        await _sut.WriteOrgMembershipAddedAsync(_userId, _orgId, "Member");
-        await _sut.WriteOrgMembershipAddedAsync(_userId, _orgId, "Member");
+        await _sut.WriteOrgMembershipAddedAsync(new PlatformUserId(_userId), _orgId, "Member");
+        await _sut.WriteOrgMembershipAddedAsync(new PlatformUserId(_userId), _orgId, "Member");
 
         sourceIds.Should().HaveCount(2);
         sourceIds[0].Should().Be(sourceIds[1]);
@@ -99,7 +100,7 @@ public sealed class TenantMembershipInboxWriterTests : IDisposable
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("inbox down"));
 
-        var act = () => _sut.WriteOrgMembershipAddedAsync(_userId, _orgId, "Member");
+        var act = () => _sut.WriteOrgMembershipAddedAsync(new PlatformUserId(_userId), _orgId, "Member");
 
         await act.Should().NotThrowAsync(
             "inbox-write failures must never block the org membership operation");
@@ -125,10 +126,10 @@ public sealed class TenantMembershipInboxWriterTests : IDisposable
             .ReturnsAsync((InboxWriteRequest r, CancellationToken _) =>
                 new InboxWriteResult(new InboxEntry { Id = Guid.NewGuid() }, IsIdempotent: false));
 
-        await _sut.WriteOrgMembershipRoleChangedAsync(_userId, _orgId, "Consumer", "Administrator");
+        await _sut.WriteOrgMembershipRoleChangedAsync(new PlatformUserId(_userId), _orgId, "Consumer", "Administrator");
 
         captured.Should().NotBeNull();
-        captured!.PlatformUserId.Should().Be(_userId);
+        captured!.PlatformUserId.Value.Should().Be(_userId);
         captured.Category.Should().Be(InboxCategory.Membership);
         captured.Severity.Should().Be(InboxSeverity.Info);
         captured.Title.Should().Be("Your role in Acme Inc. changed");
@@ -142,7 +143,7 @@ public sealed class TenantMembershipInboxWriterTests : IDisposable
         _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("inbox down"));
 
-        var act = () => _sut.WriteOrgMembershipRoleChangedAsync(_userId, _orgId, "Consumer", "Administrator");
+        var act = () => _sut.WriteOrgMembershipRoleChangedAsync(new PlatformUserId(_userId), _orgId, "Consumer", "Administrator");
 
         await act.Should().NotThrowAsync(
             "inbox-write failures must never block the role-change operation");
@@ -156,10 +157,10 @@ public sealed class TenantMembershipInboxWriterTests : IDisposable
     [Fact]
     public async Task WriteOrgMembershipAddedAsync_PlatformUserIdDoesNotExist_SkipsWrite()
     {
-        _inbox.Setup(i => i.PlatformUserExistsAsync(_userId, It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.PlatformUserExistsAsync(new PlatformUserId(_userId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
-        await _sut.WriteOrgMembershipAddedAsync(_userId, _orgId, "Member");
+        await _sut.WriteOrgMembershipAddedAsync(new PlatformUserId(_userId), _orgId, "Member");
 
         _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -167,10 +168,10 @@ public sealed class TenantMembershipInboxWriterTests : IDisposable
     [Fact]
     public async Task WriteOrgMembershipRoleChangedAsync_PlatformUserIdDoesNotExist_SkipsWrite()
     {
-        _inbox.Setup(i => i.PlatformUserExistsAsync(_userId, It.IsAny<CancellationToken>()))
+        _inbox.Setup(i => i.PlatformUserExistsAsync(new PlatformUserId(_userId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
-        await _sut.WriteOrgMembershipRoleChangedAsync(_userId, _orgId, "Consumer", "Administrator");
+        await _sut.WriteOrgMembershipRoleChangedAsync(new PlatformUserId(_userId), _orgId, "Consumer", "Administrator");
 
         _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }

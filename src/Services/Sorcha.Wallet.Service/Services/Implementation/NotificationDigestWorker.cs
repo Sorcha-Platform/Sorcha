@@ -12,6 +12,7 @@ using Sorcha.ServiceClients.Inbox;
 using Sorcha.ServiceClients.Models;
 using Sorcha.ServiceClients.Participant;
 using StackExchange.Redis;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Wallet.Service.Services.Implementation;
 
@@ -255,7 +256,7 @@ public sealed class NotificationDigestWorker : BackgroundService
                 return false;
             }
 
-            var platformUserId = await inbox.ResolvePlatformUserIdAsync(participant.UserId, ct).ConfigureAwait(false);
+            var platformUserId = await inbox.ResolvePlatformUserIdAsync(new UserIdentityId(participant.UserId), ct).ConfigureAwait(false);
             if (platformUserId is null)
             {
                 _logger.LogWarning(

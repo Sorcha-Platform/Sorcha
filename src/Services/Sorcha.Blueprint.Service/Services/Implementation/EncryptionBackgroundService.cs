@@ -287,9 +287,9 @@ public sealed class EncryptionBackgroundService : BackgroundService
 
             await notificationService.NotifyEncryptionCompleteAsync(workItem.SenderWallet,
                 new EncryptionSignal { OperationId = operationId, PercentComplete = 100, Status = EncryptionStatuses.Complete },
-                userId: workItem.UserId, ct: ct);
+                userId: workItem.UserId?.ToString(), ct: ct);
 
-            if (Guid.TryParse(workItem.UserId, out var successUserId))
+            if (workItem.UserId is { } successUserId)
             {
                 try
                 {
@@ -397,9 +397,9 @@ public sealed class EncryptionBackgroundService : BackgroundService
 
         await notificationService.NotifyEncryptionFailedAsync(senderWallet,
             new EncryptionSignal { OperationId = operationId, PercentComplete = op?.PercentComplete ?? 0, Status = EncryptionStatuses.Failed },
-            userId: workItem.UserId, ct: ct);
+            userId: workItem.UserId?.ToString(), ct: ct);
 
-        if (Guid.TryParse(workItem.UserId, out var failUserId))
+        if (workItem.UserId is { } failUserId)
         {
             var inboxWriter = serviceProvider.GetRequiredService<IEncryptionInboxWriter>();
             try

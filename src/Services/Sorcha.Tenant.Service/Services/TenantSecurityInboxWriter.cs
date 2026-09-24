@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Tenant.Models.Identity;
 using Sorcha.Tenant.Service.Models;
 
 namespace Sorcha.Tenant.Service.Services;
@@ -15,17 +16,17 @@ namespace Sorcha.Tenant.Service.Services;
 public interface ITenantSecurityInboxWriter
 {
     /// <summary>Write a "2FA enabled" Category=Security inbox entry.</summary>
-    Task WriteTwoFactorEnabledAsync(Guid platformUserId, CancellationToken ct = default);
+    Task WriteTwoFactorEnabledAsync(PlatformUserId platformUserId, CancellationToken ct = default);
 
     /// <summary>Write a "2FA disabled" Category=Security inbox entry.</summary>
-    Task WriteTwoFactorDisabledAsync(Guid platformUserId, CancellationToken ct = default);
+    Task WriteTwoFactorDisabledAsync(PlatformUserId platformUserId, CancellationToken ct = default);
 
     /// <summary>
     /// Write a "password reset" Category=Security inbox entry. The fold-by-second
     /// SourceEventId means a successful reset always produces a fresh entry — the
     /// "if this wasn't you" copy is the whole point of the surface.
     /// </summary>
-    Task WritePasswordResetAsync(Guid platformUserId, CancellationToken ct = default);
+    Task WritePasswordResetAsync(PlatformUserId platformUserId, CancellationToken ct = default);
 
     /// <summary>
     /// Write a "backup code used" Category=Security entry. Severity is bumped to
@@ -33,7 +34,7 @@ public interface ITenantSecurityInboxWriter
     /// account-takeover signal worth flagging. Each consumption produces a fresh
     /// entry (timestamp folded into the SourceEventId).
     /// </summary>
-    Task WriteBackupCodeUsedAsync(Guid platformUserId, CancellationToken ct = default);
+    Task WriteBackupCodeUsedAsync(PlatformUserId platformUserId, CancellationToken ct = default);
 
     /// <summary>
     /// Write a Feature-150 security-change entry with caller-supplied copy. The single
@@ -41,7 +42,7 @@ public interface ITenantSecurityInboxWriter
     /// mutation (password / social / passkey / 2FA channel) lands in the bell drawer.
     /// </summary>
     Task WriteSecurityChangeAsync(
-        Guid platformUserId,
+        PlatformUserId platformUserId,
         string eventKey,
         string title,
         string summary,
@@ -65,7 +66,7 @@ public sealed class TenantSecurityInboxWriter : ITenantSecurityInboxWriter
     }
 
     /// <inheritdoc />
-    public Task WriteTwoFactorEnabledAsync(Guid platformUserId, CancellationToken ct = default) =>
+    public Task WriteTwoFactorEnabledAsync(PlatformUserId platformUserId, CancellationToken ct = default) =>
         WriteAsync(
             platformUserId,
             "two-factor-enabled",
@@ -76,7 +77,7 @@ public sealed class TenantSecurityInboxWriter : ITenantSecurityInboxWriter
             ct);
 
     /// <inheritdoc />
-    public Task WriteTwoFactorDisabledAsync(Guid platformUserId, CancellationToken ct = default) =>
+    public Task WriteTwoFactorDisabledAsync(PlatformUserId platformUserId, CancellationToken ct = default) =>
         WriteAsync(
             platformUserId,
             "two-factor-disabled",
@@ -87,7 +88,7 @@ public sealed class TenantSecurityInboxWriter : ITenantSecurityInboxWriter
             ct);
 
     /// <inheritdoc />
-    public Task WritePasswordResetAsync(Guid platformUserId, CancellationToken ct = default) =>
+    public Task WritePasswordResetAsync(PlatformUserId platformUserId, CancellationToken ct = default) =>
         WriteAsync(
             platformUserId,
             "password-reset",
@@ -98,7 +99,7 @@ public sealed class TenantSecurityInboxWriter : ITenantSecurityInboxWriter
             ct);
 
     /// <inheritdoc />
-    public Task WriteBackupCodeUsedAsync(Guid platformUserId, CancellationToken ct = default) =>
+    public Task WriteBackupCodeUsedAsync(PlatformUserId platformUserId, CancellationToken ct = default) =>
         WriteAsync(
             platformUserId,
             "backup-code-used",
@@ -110,7 +111,7 @@ public sealed class TenantSecurityInboxWriter : ITenantSecurityInboxWriter
 
     /// <inheritdoc />
     public Task WriteSecurityChangeAsync(
-        Guid platformUserId,
+        PlatformUserId platformUserId,
         string eventKey,
         string title,
         string summary,
@@ -126,7 +127,7 @@ public sealed class TenantSecurityInboxWriter : ITenantSecurityInboxWriter
             ct);
 
     private async Task WriteAsync(
-        Guid platformUserId,
+        PlatformUserId platformUserId,
         string eventKey,
         string title,
         string summary,
@@ -182,7 +183,7 @@ public sealed class TenantSecurityInboxWriter : ITenantSecurityInboxWriter
         }
     }
 
-    private static Guid DeterministicSourceEventId(Guid platformUserId, string eventKey, DateTimeOffset occurredAt)
+    private static Guid DeterministicSourceEventId(PlatformUserId platformUserId, string eventKey, DateTimeOffset occurredAt)
     {
         // Each enable/disable event is a fresh occurrence — fold the timestamp
         // (to the second) into the deterministic id so a user can re-enable

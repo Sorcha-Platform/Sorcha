@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.Wallet.Service.Services.Interfaces;
+using Sorcha.Tenant.Models.Identity;
 
 namespace Sorcha.Wallet.Service.Services.Implementation;
 
@@ -85,7 +86,9 @@ public sealed class DeviceBoundCredentialPolicy : IDeviceBoundCredentialPolicy
         // has already been revoked. Mirrors the try/log/swallow pattern of the inbox writers.
         try
         {
-            await _inbox.WriteDeviceRevokedAsync(userId, oldest.DeviceId, oldest.DeviceLabel, ct).ConfigureAwait(false);
+            // `userId` is the citizen's PlatformUser.Id (CitizenHolderIndex.PlatformUserId, resolved by
+            // DeviceBoundCopyIssuanceCoordinator) — asserted explicitly here for the typed inbox (#1709).
+            await _inbox.WriteDeviceRevokedAsync(new PlatformUserId(userId), oldest.DeviceId, oldest.DeviceLabel, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
