@@ -354,30 +354,55 @@ if ($normStored.Exists) {
     $opacityDetail = (@($opacity.Findings | ForEach-Object { "group $($_.Group): $($_.Problem)" })) -join ' | '
     Check 'P3.4' 'the ciphertext is opaque — it is not an encoding of the payload' $opacity.Opaque $opacityDetail
 
-    $disclosed = Get-SorchaDisclosedFieldNames -Stored $normStored
-    $expectedNames = @($normSentinels.Keys)
-    $missingNames = @($expectedNames | Where-Object { $disclosed -notcontains $_ })
-    Check 'P3.5' 'the field NAMES are in the clear, as the disclosure model intends' ($missingNames.Count -eq 0) `
-        ("disclosedFields did not carry: $($missingNames -join ', '). Present: $($disclosed -join ', '). " +
-         "If the names are absent too, this probe may simply be reading the wrong group — which " +
-         "would make P3.3's absence result meaningless.")
+    # The field NAMES are private too (#1684). A plaintext `disclosedFields` list beside each group
+    # told every reader of the ledger — a SyncOnly replica party to nothing included — which fields
+    # were withheld from whom: the disclosure SHAPE, even with every value encrypted. Nothing on the
+    # read path ever used it (groups are located by wrappedKeys[].walletAddress), so it is gone,
+    # and a name surviving anywhere in the stored bytes is a leak, not the design.
+    #
+    # Searched with the same function as P3.3, over every encoding, so a name that reappeared in a
+    # new envelope property — not just in `disclosedFields` — is caught as well.
+    $disclosed = @(Get-SorchaDisclosedFieldNames -Stored $normStored)
+    $nameHits = @()
+    foreach ($name in @($normSentinels.Keys)) {
+        $hit = Find-SorchaSentinel -Stored $normStored -Sentinel $name
+        if ($hit.Found) {
+            $nameHits += ("{0} [{1}]" -f $name, (($hit.Hits | ForEach-Object { "$($_.Where):$($_.Encoding)" }) -join '; '))
+        }
+    }
+    # Discrimination, as P3.0 does for the shape predicate: the same name search, over the DevMode
+    # transaction of the same action, must FIND the names — they are in its plaintext payload.
+    $devNameMisses = @(@($normSentinels.Keys) | Where-Object {
+        -not (Find-SorchaSentinel -Stored $devStored -Sentinel $_).Found })
+    Check 'P3.5a' 'the name search DISCRIMINATES (it finds the names in the DevMode tx)' `
+        ($devNameMisses.Count -eq 0) `
+        "not found in the known-plaintext DevMode tx: $($devNameMisses -join ', ') — so P3.5's absence result carries no information"
+
+    Check 'P3.5' 'the field NAMES are NOT in the clear either — the disclosure shape is private' `
+        (($disclosed.Count -eq 0) -and ($nameHits.Count -eq 0)) `
+        ("disclosedFields: [$($disclosed -join ', ')]; names found in stored bytes: $($nameHits -join ' | '). " +
+         "A published name tells every ledger reader which fields a recipient was given or denied.")
 
     Check 'P3.6' 'the transaction still names its recipients, so it can be routed without decrypting' `
         ($normStored.Recipients.Count -gt 0) `
         "no RecipientsWallets — with no recipient the payload is not addressed to anyone and the fail-open above is likely"
 
-    # P3.3 asserts an ABSENCE, using Find-SorchaSentinel over THIS transaction's bytes. That is
-    # worthless unless the same function, over the same bytes, can find something that IS there.
+    # P3.3 and P3.5 assert ABSENCES, using Find-SorchaSentinel over THIS transaction's bytes. That
+    # is worthless unless the same function, over the same bytes, can find something that IS there.
     # P1.5 showed it is not a yes-machine; this shows it is not a no-machine either — and it does so
     # on the encrypted envelope specifically, whose structure differs from the plaintext one that
-    # Phase 1 exercised. A field name is the right needle: public by design, and present in the
-    # very payload whose values must be absent.
-    $needle = @($normSentinels.Keys)[0]
-    $selfTest = Find-SorchaSentinel -Stored $normStored -Sentinel $needle
-    Check 'P3.7' "the sentinel search still finds what IS present in these bytes (field name '$needle')" `
+    # Phase 1 exercised.
+    #
+    # The needle is the instance id (#1701). It is routing metadata the envelope carries in the
+    # clear by design, and — unlike a value read back out of these same bytes — this script knows it
+    # independently, because it created the instance. It used to be a field name, which #1684 made
+    # private; P3.5 now asserts the names are absent, so they cannot also be the control.
+    $selfTest = Find-SorchaSentinel -Stored $normStored -Sentinel $normInstance
+    Check 'P3.7' "the sentinel search still finds what IS present in these bytes (instance id '$normInstance')" `
         $selfTest.Found `
-        ("the search found neither the values (P3.3) nor a field name known to be in the clear here. " +
-         "It is failing to read this envelope at all, so P3.3's absence result proves nothing.")
+        ("the search found neither the values (P3.3), the names (P3.5), nor the instance id this " +
+         "script created and the envelope carries in the clear. It is failing to read this envelope " +
+         "at all, so P3.3's and P3.5's absence results prove nothing.")
 }
 
 # =============================================================================================

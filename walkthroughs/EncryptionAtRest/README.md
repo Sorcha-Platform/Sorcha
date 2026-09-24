@@ -62,16 +62,25 @@ A payload that was merely **encoded** would pass any check that only looks for t
   as JSON, and it must not contain the payload's **field names**, which an encoding would preserve
   even for a field whose value nobody thought to use as a sentinel (`P3.4`).
 
+### The field names are private too
+
+A disclosure group used to publish the fields it covered in a plaintext `disclosedFields` list. That
+told every reader of the ledger, including a SyncOnly replica that is party to nothing, **which
+fields each recipient was given or denied**: the disclosure shape, even with every value encrypted.
+Nothing on the read path used the list, so #1684 removed it. `P3.5` asserts that no field name
+survives anywhere in the stored bytes, searched in every encoding with the same function as `P3.3`.
+Transactions written before #1684 still carry the list; the ledger is immutable.
+
 ### Three guards against the harness lying to itself
 
 | Check | Guards against |
 |---|---|
 | `P1.5` | the probe being a **yes-machine** — a sentinel that was never submitted must be absent from the very bytes where the real ones were found |
 | `P3.0` | a shape predicate hard-wired to `encrypted` — the same predicate must return `plaintext` for the DevMode transaction |
-| `P3.7` | the search being a **no-machine** on the encrypted envelope — the same `Find-SorchaSentinel` call, over the same bytes, must still find a field name that is in the clear there |
+| `P3.7` | the search being a **no-machine** on the encrypted envelope — the same `Find-SorchaSentinel` call, over the same bytes, must still find the **instance id**, which the envelope carries in the clear and this script knows independently because it created the instance. (It used to be a field name; #1684 made those private.) |
 
 Without `P3.7` in particular, a search that simply failed to read the encrypted envelope would
-report every value absent and look like a perfect pass.
+report every value **and every name** absent (`P3.3`, `P3.5`) and look like a perfect pass.
 
 ### The replica half is gated on the transaction being there
 

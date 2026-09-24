@@ -8,7 +8,17 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
-> **▶ 2026-09-24 - #1712 ✅ (branch `fix/participant-update-chain-fork`): participant update/revoke no
+> **▶ 2026-09-24 - #1701 ✅ (branch `fix/1701-encryption-at-rest-names`): EncryptionAtRest now asserts
+> field NAMES are private.** #1684 removed `disclosedFields` from sealed envelopes because it told
+> every ledger reader which fields each recipient was given or denied, but P3.5 still asserted the
+> names were in the clear and P3.7 used a name as its "known present" control. P3.5 is inverted: no
+> name may appear anywhere in the stored Normal bytes, searched in every encoding. New P3.5a proves
+> that search finds the names in the DevMode tx. P3.7's control is now the instance id, which is in
+> the clear by design and known to the script independently. Live on n1: 23 passed, 0 failed. With
+> P3.5 fed the DevMode (leaking) tx it FAILS while P3.5a/P3.7 still pass, so the guard is real.
+>
+> **▶ 2026-09-24 - #1712 ✅ (deployed to n1+tiny, verified: all 8 walkthrough setups pass, the
+> formerly-forking Site Manager v2 sealed in docket 48 chained from genesis, 0 `VAL_CHAIN_FORK`) (branch `fix/participant-update-chain-fork`): participant update/revoke no
 > longer forks behind a success response.**
 >
 > Found by the core suite on n1 right after deploying `a08efe972`: ConstructionPermit and
