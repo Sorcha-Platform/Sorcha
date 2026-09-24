@@ -689,8 +689,13 @@ public class RegisterServiceClient : IRegisterServiceClient
 
             await SetAuthHeaderAsync(cancellationToken);
 
+            // The governance history endpoint is the one that actually filters to Control and
+            // honours page/pageSize (newest docket first). This used to call
+            // /transactions?type=Control&page=&pageSize= — a list endpoint that binds none of
+            // those parameters, so "the latest Control transaction" was really the newest
+            // transaction of ANY type, and participant publishes chained off each other.
             var response = await _httpClient.GetAsync(
-                $"api/registers/{Uri.EscapeDataString(registerId)}/transactions?type=Control&page={page}&pageSize={pageSize}",
+                $"api/registers/{Uri.EscapeDataString(registerId)}/governance/history?page={page}&pageSize={pageSize}",
                 cancellationToken);
 
             if (!response.IsSuccessStatusCode)
