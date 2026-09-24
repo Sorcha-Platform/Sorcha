@@ -137,6 +137,10 @@ public static class ToolEntitlements
         new("sorcha_participant_publish", PlatformOnly, AdminRole),
         // Reading who is bound is ordinary participant context: any authenticated caller.
         new("sorcha_participant_list", ConsumerAndPlatform, null),
+        // #1707 — a bounded wait over participant-active / instance-reaches-action / transaction-seal.
+        // Same tier as the reads it wraps (sorcha_participant_list, sorcha_workflow_status,
+        // sorcha_transaction_history): it exposes no more than those already do, just waits for it.
+        new("sorcha_await_condition", ConsumerAndPlatform, null),
         // sorcha_wallet_sign — REMOVED from the surface (deferred to a dedicated security-reviewed wave)
 
         // Citizen self-service (Feature 140 Wave 3) — consumer tier ONLY, no role.
