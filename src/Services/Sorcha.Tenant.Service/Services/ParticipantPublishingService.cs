@@ -178,10 +178,12 @@ public class ParticipantPublishingService : IParticipantPublishingService
             Metadata = request.Metadata
         };
 
-        // 4. Submit the updated record (PrevTxId chains from current version, not Control TX)
+        // 4. Submit the updated record. It chains from the latest Control TX, exactly like a first
+        //    publish — NOT from this participant's previous version. See GetLatestControlTxIdAsync.
         return await SubmitParticipantRecord(
             record, request.RegisterId, request.SignerWalletAddress,
-            prevTxId: current.LatestTxId, cancellationToken);
+            prevTxId: await GetLatestControlTxIdAsync(request.RegisterId, cancellationToken),
+            cancellationToken);
     }
 
     /// <inheritdoc/>
@@ -224,10 +226,11 @@ public class ParticipantPublishingService : IParticipantPublishingService
             }).ToList()
         };
 
-        // 3. Submit (PrevTxId chains from current version)
+        // 3. Submit, chaining from the latest Control TX (see GetLatestControlTxIdAsync)
         return await SubmitParticipantRecord(
             record, request.RegisterId, request.SignerWalletAddress,
-            prevTxId: current.LatestTxId, cancellationToken);
+            prevTxId: await GetLatestControlTxIdAsync(request.RegisterId, cancellationToken),
+            cancellationToken);
     }
 
     /// <summary>
@@ -397,6 +400,25 @@ public class ParticipantPublishingService : IParticipantPublishingService
         return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
 
+    /// <summary>
+    /// The predecessor for EVERY participant transaction — publish, update and revoke alike.
+    /// </summary>
+    /// <remarks>
+    /// The validator's fork check allows one successor per predecessor, EXCEPT for a Control (or
+    /// BlueprintPublish) predecessor, which may have many. Chaining every participant record from
+    /// the latest Control TX is therefore always valid, however many participants are published.
+    ///
+    /// Anything else forks. Updates used to chain from the participant's own previous version, and
+    /// first publishes used to chain from whatever transaction was newest on the register (the
+    /// Control filter was never applied — see <c>GetControlTransactionsAsync</c>). Together they
+    /// built a single linear chain through unrelated participants, so updating or revoking any
+    /// participant but the last one picked a predecessor that already had a successor: the
+    /// validator refused it with VAL_CHAIN_FORK after the API had already reported success.
+    ///
+    /// Version order does not need the chain — the register's participant index orders records
+    /// by the payload's <c>Version</c>. Returning a non-Control transaction here is refused rather
+    /// than trusted, because the wrong answer does not fail until a later write collides with it.
+    /// </remarks>
     private async Task<string?> GetLatestControlTxIdAsync(
         string registerId,
         CancellationToken cancellationToken)
@@ -406,9 +428,21 @@ public class ParticipantPublishingService : IParticipantPublishingService
             var controlTxs = await _registerClient.GetControlTransactionsAsync(
                 registerId, page: 1, pageSize: 1, cancellationToken);
 
-            if (controlTxs.Transactions.Count > 0)
+            var latest = controlTxs.Transactions.FirstOrDefault();
+            if (latest is not null && latest.MetaData?.TransactionType != TransactionType.Control)
             {
-                var latestTxId = controlTxs.Transactions[0].TxId;
+                // Chaining from null is fork-safe (the validator's chain checks only run when a
+                // predecessor is named); chaining from this transaction is not.
+                _logger.LogWarning(
+                    "Register {RegisterId} returned {TxId} (type {Type}) as its latest Control TX; "
+                    + "refusing to chain a participant record from it, chaining from null instead",
+                    registerId, latest.TxId, latest.MetaData?.TransactionType);
+                return null;
+            }
+
+            if (latest is not null)
+            {
+                var latestTxId = latest.TxId;
                 _logger.LogDebug("Chaining from latest Control TX {TxId} on register {RegisterId}",
                     latestTxId, registerId);
                 return latestTxId;

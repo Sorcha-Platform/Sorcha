@@ -333,4 +333,37 @@ public class RegisterServiceClientGovernanceTests
     }
 
     #endregion
+
+    #region GetControlTransactionsAsync Tests
+
+    /// <summary>
+    /// The query must go to an endpoint that actually filters to Control.
+    /// </summary>
+    /// <remarks>
+    /// It used to call <c>/transactions?type=Control&amp;page=&amp;pageSize=</c>. That list endpoint
+    /// binds <c>$skip</c>/<c>$top</c> and nothing else, so it answered with the newest transactions
+    /// of ANY type — and the Tenant Service chained participant records off whatever that was. A
+    /// participant update then forked (VAL_CHAIN_FORK) behind a success response. Governance
+    /// history is the endpoint that filters to Control and honours the paging.
+    /// </remarks>
+    [Fact]
+    public async Task GetControlTransactionsAsync_QueriesGovernanceHistory_NotTheUnfilteredTransactionList()
+    {
+        var handler = CreateMockHandler(HttpStatusCode.OK, new TransactionPage());
+        var client = CreateClient(handler);
+
+        await client.GetControlTransactionsAsync("reg-1", page: 1, pageSize: 1);
+
+        handler.Protected().Verify(
+            "SendAsync",
+            Times.Once(),
+            ItExpr.Is<HttpRequestMessage>(r =>
+                r.Method == HttpMethod.Get &&
+                r.RequestUri!.AbsolutePath == "/api/registers/reg-1/governance/history" &&
+                r.RequestUri.Query.Contains("page=1") &&
+                r.RequestUri.Query.Contains("pageSize=1")),
+            ItExpr.IsAny<CancellationToken>());
+    }
+
+    #endregion
 }

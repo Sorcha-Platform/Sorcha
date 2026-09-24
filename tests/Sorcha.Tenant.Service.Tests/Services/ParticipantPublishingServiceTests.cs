@@ -263,7 +263,7 @@ public class ParticipantPublishingServiceTests
                 Page = 1,
                 PageSize = 1,
                 Total = 1,
-                Transactions = [new Sorcha.Register.Models.TransactionModel { TxId = controlTxId }]
+                Transactions = [ControlTx(controlTxId)]
             });
 
         TransactionSubmission? captured = null;
@@ -293,6 +293,27 @@ public class ParticipantPublishingServiceTests
         await _service.PublishParticipantAsync(CreateValidRequest());
 
         // Assert
+        captured!.PreviousTransactionId.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(Sorcha.Register.Models.Enums.TransactionType.Participant)]
+    [InlineData(Sorcha.Register.Models.Enums.TransactionType.Action)]
+    public async Task PublishParticipantAsync_WhenTheLatestIsNotAControlTx_ChainsFromNullRatherThanFromIt(
+        Sorcha.Register.Models.Enums.TransactionType returnedType)
+    {
+        // The seam this fixes: a query named "control transactions" that returned the newest
+        // transaction of ANY type. Chaining from such a transaction does not fail — it forks the
+        // next write that also chains from it. Null is fork-safe; a non-Control parent is not.
+        LatestControlTxIs("not-actually-control", returnedType);
+        TransactionSubmission? captured = null;
+        _validatorClientMock.Setup(v => v.SubmitTransactionAsync(
+                It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()))
+            .Callback<TransactionSubmission, CancellationToken>((sub, _) => captured = sub)
+            .ReturnsAsync(new TransactionSubmissionResult { Success = true, TransactionId = "tx" });
+
+        await _service.PublishParticipantAsync(CreateValidRequest());
+
         captured!.PreviousTransactionId.Should().BeNull();
     }
 
@@ -397,10 +418,15 @@ public class ParticipantPublishingServiceTests
     }
 
     [Fact]
-    public async Task UpdateParticipantAsync_ChainsFromPreviousVersion()
+    public async Task UpdateParticipantAsync_ChainsFromLatestControlTxNotItsPreviousVersion()
     {
-        // Arrange
+        // The previous version is usually NOT a free parent: every participant published after it
+        // chained off it, and the validator allows one successor per non-Control predecessor. So an
+        // update chained from its previous version forked with VAL_CHAIN_FORK after the API had
+        // already reported success (ConstructionPermit setup, n1, 2026-09-24). A Control
+        // predecessor is exempt from the fork check, so it is always a valid parent.
         SetupExistingParticipant("part-1", version: 1, latestTxId: "existing-tx-id");
+        LatestControlTxIs("control-tx-abc123");
         TransactionSubmission? captured = null;
 
         _validatorClientMock.Setup(v => v.SubmitTransactionAsync(
@@ -408,11 +434,9 @@ public class ParticipantPublishingServiceTests
             .Callback<TransactionSubmission, CancellationToken>((sub, _) => captured = sub)
             .ReturnsAsync(new TransactionSubmissionResult { Success = true, TransactionId = "tx" });
 
-        // Act
         await _service.UpdateParticipantAsync(CreateValidUpdateRequest(participantId: "part-1"));
 
-        // Assert — PrevTxId should be the previous version's TxId, NOT a Control TX
-        captured!.PreviousTransactionId.Should().Be("existing-tx-id");
+        captured!.PreviousTransactionId.Should().Be("control-tx-abc123");
     }
 
     [Fact]
@@ -532,10 +556,12 @@ public class ParticipantPublishingServiceTests
     }
 
     [Fact]
-    public async Task RevokeParticipantAsync_ChainsFromCurrentVersion()
+    public async Task RevokeParticipantAsync_ChainsFromLatestControlTxNotItsCurrentVersion()
     {
-        // Arrange
+        // Same fork as an update: revoking any participant but the last one published would
+        // otherwise be refused, leaving a role that can never be retired.
         SetupExistingParticipant("part-1", version: 2, latestTxId: "v2-tx");
+        LatestControlTxIs("control-tx-abc123");
         TransactionSubmission? captured = null;
 
         _validatorClientMock.Setup(v => v.SubmitTransactionAsync(
@@ -543,7 +569,6 @@ public class ParticipantPublishingServiceTests
             .Callback<TransactionSubmission, CancellationToken>((sub, _) => captured = sub)
             .ReturnsAsync(new TransactionSubmissionResult { Success = true, TransactionId = "tx" });
 
-        // Act
         await _service.RevokeParticipantAsync(new RevokeParticipantRequest
         {
             RegisterId = "test-register",
@@ -551,8 +576,7 @@ public class ParticipantPublishingServiceTests
             SignerWalletAddress = "signer-wallet"
         });
 
-        // Assert
-        captured!.PreviousTransactionId.Should().Be("v2-tx");
+        captured!.PreviousTransactionId.Should().Be("control-tx-abc123");
     }
 
     [Fact]
@@ -639,11 +663,15 @@ public class ParticipantPublishingServiceTests
     }
 
     [Fact]
-    public async Task PublishParticipantAsync_WhenSuperseding_ChainsFromTheExistingRecordNotTheControlTx()
+    public async Task PublishParticipantAsync_WhenSuperseding_ChainsFromTheLatestControlTx()
     {
-        // This is what stops the fork. Chaining a correction from the Control TX puts two
-        // transactions on one parent, and the ledger refuses the second of them forever.
+        // #1670 chained the correction from the existing record, reasoning that a Control parent
+        // would fork. It does not: the validator exempts Control predecessors from the fork check.
+        // What forked in run #5 was a "Control TX" that was really the newest transaction of any
+        // type, because the query's type filter was never applied. The existing record is the
+        // parent that forks, as soon as anything else has chained from it.
         ExistingRole("participant-1", version: 1, latestTxId: "tx-v1");
+        LatestControlTxIs("control-tx-abc123");
         TransactionSubmission? submitted = null;
         _validatorClientMock.Setup(v => v.SubmitTransactionAsync(
                 It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()))
@@ -656,9 +684,7 @@ public class ParticipantPublishingServiceTests
 
         await _service.PublishParticipantAsync(CreateValidRequest());
 
-        submitted!.PreviousTransactionId.Should().Be("tx-v1");
-        _registerClientMock.Verify(r => r.GetControlTransactionsAsync(
-            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        submitted!.PreviousTransactionId.Should().Be("control-tx-abc123");
     }
 
     [Fact]
@@ -729,6 +755,25 @@ public class ParticipantPublishingServiceTests
                 Addresses = [],
             });
     }
+
+    private static Sorcha.Register.Models.TransactionModel ControlTx(
+        string txId,
+        Sorcha.Register.Models.Enums.TransactionType type = Sorcha.Register.Models.Enums.TransactionType.Control) =>
+        new()
+        {
+            TxId = txId,
+            MetaData = new Sorcha.Register.Models.TransactionMetaData { TransactionType = type },
+        };
+
+    private void LatestControlTxIs(
+        string txId,
+        Sorcha.Register.Models.Enums.TransactionType type = Sorcha.Register.Models.Enums.TransactionType.Control) =>
+        _registerClientMock.Setup(r => r.GetControlTransactionsAsync(
+                "test-register", 1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionPage
+            {
+                Page = 1, PageSize = 1, Total = 1, Transactions = [ControlTx(txId, type)],
+            });
 
     private void NoExistingRole() =>
         _registerClientMock.Setup(r => r.ResolveParticipantAsync(

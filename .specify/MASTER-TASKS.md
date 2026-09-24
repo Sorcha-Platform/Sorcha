@@ -3,10 +3,34 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.34
-**Last Updated:** 2026-09-22
+**Version:** 7.35
+**Last Updated:** 2026-09-24
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
+
+> **▶ 2026-09-24 - #1712 ✅ (branch `fix/participant-update-chain-fork`): participant update/revoke no
+> longer forks behind a success response.**
+>
+> Found by the core suite on n1 right after deploying `a08efe972`: ConstructionPermit and
+> CredentialLifecycle setup timed out at `ParticipantSealed`. The update had been accepted into the
+> mempool, reported "v2 published", then refused with `VAL_CHAIN_FORK`. Two defects at one seam:
+> `RegisterServiceClient.GetControlTransactionsAsync` called `/transactions?type=Control`, an endpoint
+> that binds none of `type`/`page`/`pageSize`, so "the latest Control TX" was the newest transaction
+> of any type. First publishes therefore chained off each other into one linear chain, and updates
+> chained from the participant's own previous version, which by then already had a successor. The
+> #1668 correction path (#1670) routes every re-publish through that update, and its "a Control
+> parent would fork" reasoning was the same seam: Control predecessors are fork-exempt.
+>
+> Fix: the client queries `/governance/history` (Control only, newest docket first). Publish, update
+> and revoke all chain from the latest Control TX, which also repairs registers that already carry
+> the bad chain (version order comes from the payload `Version`, not the chain). A non-Control answer
+> is logged and chained from null (fork-safe), not trusted. 3 rewritten + 3 new tests, each
+> mutation-tested RED; Tenant 1734/1734, ServiceClients 425/425. **Live check after deploy:** re-run
+> `ConstructionPermit setup` and `CredentialLifecycle setup` on n1.
+>
+> Same suite run, not this fix: EncryptionAtRest P3.5/P3.7 still expect field NAMES in the clear,
+> which #1684/#1695 deliberately removed from the envelope, so the walkthrough expectation is out of date.
+> CyberEssentialsUac scenarios/suspension fail with 400s on presentation, consistent with #1699.
 
 > **▶ 2026-09-23 - #1707: an agent can now WAIT for a ledger event instead of a human relaying it.**
 >
