@@ -3,10 +3,34 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.35
-**Last Updated:** 2026-09-24
+**Version:** 7.36
+**Last Updated:** 2026-09-25
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
+
+> **▶ 2026-09-25 - #1699 🚧 (branch `fix/1699-credential-refusal-legibility`): a refused credential
+> now says WHY. The root cause is still open, and #1699's own diagnosis is disproved.**
+>
+> #1699 says the CE credential "is signed under one wallet and verified against a different
+> wallet's DID document". **Tested on n1 and false.** The CE credential's EdDSA signature
+> **verifies** against the key its own DID document publishes under the exact header `kid`
+> (independent check with Python `cryptography`, and again with the platform's own `SdJwtService`
+> over the real token + key). The CredentialLifecycle credential has the identical shape
+> (`IssuerDid` column ≠ `iss`) and passes. So the credential is fine; Blueprint's verification path
+> rejects a valid signature, and nothing said why: `SdJwtVcFormatHandler` put the SD-JWT errors in
+> `Errors`, `CredentialVerifier.FailureMessage` kept only the trust verdict (`??`), and the execute
+> endpoint turned the resulting `ValidationException` into "An error occurred processing the
+> request.".
+>
+> This change: (1) every signature-step failure names `iss`, the credential's `kid`, the resolved
+> key id and alg, and the SD-JWT errors; (2) the refusal message carries the verdict AND those
+> causes; (3) execute + reject return `ValidationException` as problem+json (`title: Action
+> refused`, `detail`, `errors[]`) instead of the generic 400. 4 tests, 2 mutation-tested RED.
+> **Next:** deploy blueprint-service, re-run CyberEssentialsUac scenarios, read the named cause.
+> Ruled out on the way: alsoKnownAs intersection (no `did:web` resolution ever logged), holder
+> binding (no `cnf`, no audience), stale DID cache (process restarted after the key existed).
+> Latent, separate: `did:sorcha` DID documents are cached forever and only invalidated by register
+> transactions, but publishing an org issuance key is not one.
 
 > **▶ 2026-09-24 - #1709 ✅ (branch `refactor/1709-typed-user-ids`): PlatformUser vs UserIdentity
 > ids are typed at the inbox boundary — the #1703 defect class is now a compile error.**

@@ -96,6 +96,35 @@ public class SdJwtVcFormatHandlerTests
         result.IsValid.Should().BeFalse();
         result.Trust!.SignatureValid.Should().BeFalse();
         result.Trust.FailureReason.Should().Be(TrustFailureReason.SignatureInvalid);
+        result.Errors.Should().Contain(e =>
+            e.Contains("Issuer key could not be resolved for iss 'did:sorcha:org:gov'")
+            && e.Contains($"credential kid '{minted.Kid ?? "(none)"}'"));
+    }
+
+    /// <summary>
+    /// A key that resolves but does not match is the case that needs both key ids: the one the
+    /// credential claims and the one resolution returned. Their difference is the diagnosis.
+    /// </summary>
+    [Fact]
+    public async Task VerifyAsync_ResolvedKeyDoesNotMatch_ErrorNamesIssuerBothKeyIdsAndCause()
+    {
+        var minted = EngineSdJwtTestFactory.MintEs256("LicenseCredential", "did:sorcha:org:gov");
+        var other = EngineSdJwtTestFactory.MintEs256("LicenseCredential", "did:sorcha:org:other");
+        var handler = BuildHandler(minted,
+            keyResolver: new EngineSdJwtTestFactory.FakeIssuerKeyResolver(
+                other.IssuerPublicKey, other.Algorithm, "did:sorcha:org:gov#some-other-key"));
+
+        var result = await handler.VerifyAsync(
+            Presented(minted.Raw),
+            new CredentialRequirement { Type = "LicenseCredential" });
+
+        result.IsValid.Should().BeFalse();
+        result.Trust!.FailureReason.Should().Be(TrustFailureReason.SignatureInvalid);
+        var error = result.Errors.Should().ContainSingle(e => e.StartsWith("Issuer signature check failed")).Subject;
+        error.Should().Contain("iss 'did:sorcha:org:gov'");
+        error.Should().Contain($"credential kid '{minted.Kid ?? "(none)"}'");
+        error.Should().Contain("resolved key 'did:sorcha:org:gov#some-other-key'");
+        error.Should().Contain("Invalid signature");
     }
 
     [Fact]

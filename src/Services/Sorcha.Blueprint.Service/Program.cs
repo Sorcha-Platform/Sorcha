@@ -2521,6 +2521,18 @@ instancesGroup.MapPost("/{instanceId}/actions/{actionId}/execute", async (
         // Feature 111 US3 — retry gate: action already has a successful outcome.
         return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict);
     }
+    catch (Sorcha.Blueprint.Service.Services.Implementation.ValidationException ex)
+    {
+        // Caller-facing by construction (credential verification, schema errors about the
+        // caller's own payload, a missing rejection reason). The generic catch below turned
+        // every one of these into "An error occurred processing the request." (#1699).
+        logger.LogInformation("Action refused: {Reason}", ex.Message);
+        return Results.Problem(
+            title: "Action refused",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status400BadRequest,
+            extensions: new Dictionary<string, object?> { ["errors"] = ex.Errors });
+    }
     catch (UnauthorizedAccessException ex)
     {
         return Results.Problem(ex.Message, statusCode: 403);
@@ -2571,6 +2583,18 @@ instancesGroup.MapPost("/{instanceId}/actions/{actionId}/reject", async (
             context.User);
 
         return Results.Ok(response);
+    }
+    catch (Sorcha.Blueprint.Service.Services.Implementation.ValidationException ex)
+    {
+        // Caller-facing by construction (credential verification, schema errors about the
+        // caller's own payload, a missing rejection reason). The generic catch below turned
+        // every one of these into "An error occurred processing the request." (#1699).
+        logger.LogInformation("Action refused: {Reason}", ex.Message);
+        return Results.Problem(
+            title: "Action refused",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status400BadRequest,
+            extensions: new Dictionary<string, object?> { ["errors"] = ex.Errors });
     }
     catch (UnauthorizedAccessException ex)
     {

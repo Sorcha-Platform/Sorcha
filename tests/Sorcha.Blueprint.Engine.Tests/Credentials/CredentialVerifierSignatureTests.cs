@@ -55,6 +55,29 @@ public class CredentialVerifierSignatureTests
         result.Errors.Should().ContainSingle(e => e.FailureReason == CredentialFailureReason.InvalidSignature);
     }
 
+    /// <summary>
+    /// The refusal a caller receives must say WHY the signature step failed, not only that it did.
+    /// It used to carry the trust verdict alone ("Issuer signature was not verified"), which is how
+    /// #1699 was diagnosed as a signer/verifier split-brain for a credential whose signature
+    /// verified fine against its own DID document.
+    /// </summary>
+    [Fact]
+    public async Task VerifyAsync_TamperedSignature_MessageCarriesTheVerdictAndTheCause()
+    {
+        var minted = Factory.MintEs256("LicenseCredential", "did:sorcha:issuer:gov",
+            new Dictionary<string, object> { ["license_type"] = "ClassA" });
+        var verifier = Factory.BuildVerifier(minted);
+
+        var result = await verifier.VerifyAsync(
+            [new CredentialRequirement { Type = "LicenseCredential" }],
+            [Present("cred-1", Factory.TamperSignature(minted.Raw))]);
+
+        var message = result.Errors.Should().ContainSingle().Subject.Message;
+        message.Should().Contain("was not trusted");
+        message.Should().Contain("Issuer signature check failed for iss 'did:sorcha:issuer:gov'");
+        message.Should().Contain("Invalid signature");
+    }
+
     [Fact]
     public async Task VerifyAsync_TamperedSignature_NotAcceptedEvenUnderPermissivePolicy()
     {
