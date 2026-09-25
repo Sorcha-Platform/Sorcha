@@ -8,7 +8,12 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
-> **▶ 2026-09-25 - #1720 ✅ (branch `fix/1720-did-cache-staleness`): a revoked issuance key no
+> **▶ 2026-09-25 - STATE: n1 + tiny run master `4f56cf82a`; core suite 18/18 on n1** (13/18 on
+> 2026-09-24 morning). #1712, #1701, #1709, #1699 (#1718 + #1719) and #1720 are all merged, deployed
+> and verified live. The only CyberEssentials refusals left are the intended suspended/revoked
+> cases.
+>
+> **▶ 2026-09-25 - #1720 ✅ (PR #1721, deployed): a revoked issuance key no
 > longer stays trusted until restart.** `did:sorcha` DID documents were cached forever
 > (`DateTimeOffset.MaxValue`), relying on `DidSorchaCacheInvalidationService`, which had **zero
 > callers** and listened to register events, while an org document changes off-ledger when its
@@ -20,7 +25,7 @@
 > mutation-tested RED. Blueprint and other processes are bounded by the TTL, not exact: exact
 > cross-process invalidation would need a key-change event, deliberately out of scope.
 >
-> **▶ 2026-09-25 - #1699 ✅ ROOT CAUSE (branch `fix/1699-x5c-must-match-signing-key`): issuance
+> **▶ 2026-09-25 - #1699 ✅ ROOT CAUSE (PR #1719, deployed; CE scenarios + suspension now pass): issuance
 > attached an x5c chain for a key that did not sign the credential.** With #1718 deployed, the
 > refusal named it: `resolved key …#vc-issuance-1, alg 'EdDSA': key must be 32 bytes`. The CE
 > credential's JWS header carries `x5c` (the org's **P-256** certificate), while it is signed
