@@ -897,8 +897,8 @@ public static class CredentialEndpoints
         // Feature 137 — when the caller supplies the recipient's holder JWK, bind the
         // credential to it via the SD-JWT cnf claim (key confirmation). Absent → unbound
         // credential (pre-137 behaviour). cnf is always non-disclosable.
-        var token = request.HolderJwk.HasValue
-            ? await sdJwtService.CreateTokenAsync(
+        Task<SdJwtToken> MintAsync(IReadOnlyList<byte[]>? chain) => request.HolderJwk.HasValue
+            ? sdJwtService.CreateTokenAsync(
                 claims,
                 request.DisclosableClaims,
                 issuer: signingIssuer,
@@ -908,9 +908,9 @@ public static class CredentialEndpoints
                 holderJwk: request.HolderJwk.Value,
                 expiresAt: expiresAt,
                 cancellationToken: cancellationToken,
-                x5cChain: x5cChain,
+                x5cChain: chain,
                 kid: signingKid)
-            : await sdJwtService.CreateTokenAsync(
+            : sdJwtService.CreateTokenAsync(
                 claims,
                 request.DisclosableClaims,
                 issuer: signingIssuer,
@@ -919,8 +919,52 @@ public static class CredentialEndpoints
                 algorithm: signingAlgorithm,
                 expiresAt: expiresAt,
                 cancellationToken: cancellationToken,
-                x5cChain: x5cChain,
+                x5cChain: chain,
                 kid: signingKid);
+
+        var token = await MintAsync(x5cChain);
+
+        // #1699 — an x5c chain is only attached if the credential actually verifies under it. The
+        // org certificate is P-256 while the Feature 120 issuance key is typically Ed25519, and a
+        // chain whose leaf is not the signing key sends every x5c-honouring verifier to the wrong
+        // key: a valid credential, refused everywhere.
+        if (x5cChain is { Count: > 0 }
+            && !await X5cSigningKeyMatch.TokenVerifiesUnderLeafAsync(
+                sdJwtService, token.RawToken, x5cChain, cancellationToken))
+        {
+            var anchorRequiresChain =
+                string.Equals(request.TrustAnchor, "x509-tenant", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(request.TrustAnchor, "x509-lotl", StringComparison.OrdinalIgnoreCase);
+
+            if (anchorRequiresChain)
+            {
+                // Explicit X.509 anchor: a credential that cannot verify under its chain is worthless
+                // to the relying party that asked for it. Refuse rather than mint it.
+                logger.LogWarning(
+                    "Refusing to issue '{CredentialType}' for org {TenantId}: trust anchor {Anchor} requires "
+                    + "an x5c chain whose leaf is the signing key, but the org certificate does not match "
+                    + "issuance key {Kid} ({Algorithm})",
+                    request.CredentialType, request.TenantId, request.TrustAnchor, signingKid, signingAlgorithm);
+                return Results.Json(
+                    new
+                    {
+                        error = "CERT_KEY_MISMATCH",
+                        detail = $"The organisation's certificate does not certify its VC-issuance key "
+                            + $"({signingKid}, {signingAlgorithm}), so a credential under trust anchor "
+                            + $"'{request.TrustAnchor}' could not be verified."
+                    },
+                    statusCode: StatusCodes.Status422UnprocessableEntity);
+            }
+
+            // Default anchor: the DID path already makes the credential verifiable, so issue it
+            // without the misleading chain — the same degradation used when a chain cannot be fetched.
+            logger.LogWarning(
+                "Org certificate does not certify issuance key {Kid} ({Algorithm}) for org {TenantId}; "
+                + "issuing '{CredentialType}' without x5c so verifiers resolve the key from the DID document",
+                signingKid, signingAlgorithm, request.TenantId, request.CredentialType);
+            x5cChain = null;
+            token = await MintAsync(null);
+        }
 
         // 5. Generate credential ID
         var credentialId = $"urn:uuid:{Guid.NewGuid()}";
