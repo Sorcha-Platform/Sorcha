@@ -217,16 +217,4 @@ public static class HttpServiceCollectionExtensions
 
         return services;
     }
-
-    /// <summary>
-    /// Wires the <see cref="DidSorchaCacheInvalidationService"/> hosted service that drains
-    /// confirmed-transaction events into <see cref="DidResolverCache"/> invalidations.
-    /// Callers MUST register an <see cref="IDidCacheTransactionEventSource"/> implementation
-    /// (typically a thin adapter over the service-level <c>IEventSubscriber</c>).
-    /// </summary>
-    public static IServiceCollection AddDidSorchaCacheInvalidation(this IServiceCollection services)
-    {
-        services.AddHostedService<DidSorchaCacheInvalidationService>();
-        return services;
-    }
 }

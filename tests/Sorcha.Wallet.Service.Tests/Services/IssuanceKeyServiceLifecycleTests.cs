@@ -131,6 +131,43 @@ public sealed class IssuanceKeyServiceLifecycleTests : IDisposable
         rows[1].Status.Should().Be(IssuanceKeyStatus.Active);
     }
 
+    /// <summary>
+    /// #1720 — a key change must not leave this process resolving the document it had before.
+    /// The cache used to hold did:sorcha documents forever, so a revoked key stayed trusted.
+    /// </summary>
+    [Theory]
+    [InlineData("rotate")]
+    [InlineData("revoke")]
+    public async Task KeyChange_InvalidatesThisProcesssCachedDidDocument(string change)
+    {
+        SeedActiveKey();
+        var cache = new Sorcha.ServiceClients.Did.DidResolverCache(
+            Microsoft.Extensions.Options.Options.Create(new Sorcha.ServiceClients.Did.DidResolverCacheOptions()));
+        var sut = new IssuanceKeyService(
+            _db, _orgKey.Object, _didClient.Object, _orgInfo.Object, _protection.Object,
+            NullLogger<IssuanceKeyService>.Instance, cache);
+
+        var did = $"did:sorcha:org:{_canonicalAddress}";
+        var resolutions = 0;
+        Task<Sorcha.ServiceClients.Did.DidDocument?> Resolve()
+        {
+            resolutions++;
+            return Task.FromResult<Sorcha.ServiceClients.Did.DidDocument?>(new() { Id = did });
+        }
+
+        await cache.GetOrAddAsync(did, Resolve);
+        await cache.GetOrAddAsync(did, Resolve);
+        resolutions.Should().Be(1, "the document is cached before the key changes");
+
+        if (change == "rotate")
+            await sut.RotateAsync(_orgId, Guid.NewGuid());
+        else
+            await sut.RevokeAsync(_orgId, rotationIndex: 1, reason: "compromised", governanceOpId: Guid.NewGuid());
+
+        await cache.GetOrAddAsync(did, Resolve);
+        resolutions.Should().Be(2, $"after a {change} the old document must not be served from cache");
+    }
+
     [Fact]
     public async Task RotateAsync_TriggersDidDocumentRegeneration()
     {

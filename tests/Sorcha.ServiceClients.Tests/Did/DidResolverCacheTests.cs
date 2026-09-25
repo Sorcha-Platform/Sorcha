@@ -12,12 +12,14 @@ public class DidResolverCacheTests
     private static DidResolverCache CreateCache(
         FakeTimeProvider clock,
         int webTtlMinutes = 60,
-        int negativeTtlSeconds = 60)
+        int negativeTtlSeconds = 60,
+        int sorchaTtlSeconds = 60)
     {
         var options = Options.Create(new DidResolverCacheOptions
         {
             WebTtlMinutes = webTtlMinutes,
-            NegativeTtlSeconds = negativeTtlSeconds
+            NegativeTtlSeconds = negativeTtlSeconds,
+            SorchaTtlSeconds = sorchaTtlSeconds
         });
         return new DidResolverCache(options, clock);
     }
@@ -71,19 +73,34 @@ public class DidResolverCacheTests
         calls.Should().Be(2);
     }
 
+    /// <summary>
+    /// #1720 — a did:sorcha document must go stale within a bounded time. It used to be cached
+    /// forever (this test asserted exactly that), relying on an invalidation service that was never
+    /// registered — so a revoked VC-issuance key stayed trusted until the process restarted.
+    /// </summary>
     [Fact]
-    public async Task GetOrAddAsync_DidSorcha_PositiveTtlInfinite()
+    public async Task GetOrAddAsync_DidSorcha_ServedWithinTtl_ReResolvedAfterIt()
     {
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        var cache = CreateCache(clock);
+        var cache = CreateCache(clock, sorchaTtlSeconds: 60);
         var calls = 0;
         Task<DidDocument?> Factory() { calls++; return Task.FromResult<DidDocument?>(Doc("did:sorcha:org:abc")); }
 
         await cache.GetOrAddAsync("did:sorcha:org:abc", Factory);
-        clock.Advance(TimeSpan.FromDays(7));
+        clock.Advance(TimeSpan.FromSeconds(59));
         await cache.GetOrAddAsync("did:sorcha:org:abc", Factory);
+        calls.Should().Be(1, "within the TTL the cached document is served");
 
-        calls.Should().Be(1);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        await cache.GetOrAddAsync("did:sorcha:org:abc", Factory);
+        calls.Should().Be(2, "past the TTL the document is re-resolved, so a key change becomes visible");
+    }
+
+    [Fact]
+    public void Options_DefaultSorchaTtl_IsBounded()
+    {
+        // The default is the operator-facing guarantee: how long a revoked key can stay trusted.
+        new DidResolverCacheOptions().SorchaTtlSeconds.Should().BeInRange(1, 300);
     }
 
     [Fact]

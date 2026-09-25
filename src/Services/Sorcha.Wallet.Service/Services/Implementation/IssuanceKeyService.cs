@@ -35,6 +35,7 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
     private readonly IOrgInfoClient _orgInfo;
     private readonly Sorcha.Wallet.Core.Services.Interfaces.IOrgKeyProtectionProvider _orgKeyProtection;
     private readonly ILogger<IssuanceKeyService> _logger;
+    private readonly Sorcha.ServiceClients.Did.DidResolverCache? _didCache;
 
     /// <summary>DI-friendly constructor.</summary>
     public IssuanceKeyService(
@@ -43,7 +44,8 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
         IOrgDidDocumentClient didDocClient,
         IOrgInfoClient orgInfo,
         Sorcha.Wallet.Core.Services.Interfaces.IOrgKeyProtectionProvider orgKeyProtection,
-        ILogger<IssuanceKeyService> logger)
+        ILogger<IssuanceKeyService> logger,
+        Sorcha.ServiceClients.Did.DidResolverCache? didCache = null)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _orgKey = orgKey ?? throw new ArgumentNullException(nameof(orgKey));
@@ -51,6 +53,7 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
         _orgInfo = orgInfo ?? throw new ArgumentNullException(nameof(orgInfo));
         _orgKeyProtection = orgKeyProtection ?? throw new ArgumentNullException(nameof(orgKeyProtection));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _didCache = didCache;
     }
 
     /// <inheritdoc />
@@ -487,7 +490,13 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
             ActiveKeys: snapshotKeys);
 
         if (await _didDocClient.RegenerateAsync(snapshot, ct).ConfigureAwait(false))
+        {
+            // #1720 — this process's resolver must not keep serving the document it had before the
+            // key set changed (a revoked key would stay trusted). Other processes are bounded by
+            // DidResolverCacheOptions.SorchaTtlSeconds; this one can be exact.
+            _didCache?.Invalidate($"did:sorcha:org:{canonicalAddress}");
             return true;
+        }
 
         // The publish failed. Before failing closed, check whether a correctly-anchored
         // document is ALREADY published — a transient Tenant write failure must not block
