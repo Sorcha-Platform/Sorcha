@@ -186,7 +186,14 @@ public class CredentialVerifier : ICredentialVerifier
 
     private static string FailureMessage(CredentialRequirement requirement, FormatVerifyResult verify)
     {
-        var detail = verify.Trust?.Message ?? (verify.Errors.Count > 0 ? string.Join("; ", verify.Errors) : null);
+        // The trust verdict says WHAT was refused; the format handler's errors say WHY (signature
+        // invalid, key unresolved, which kid). Taking only the verdict — the old `??` — threw the
+        // why away, so "Issuer signature was not verified" was all anyone ever saw (#1699).
+        var parts = new List<string>();
+        if (verify.Trust?.Message is { Length: > 0 } verdict)
+            parts.Add(verdict);
+        parts.AddRange(verify.Errors.Where(e => !string.IsNullOrWhiteSpace(e) && !parts.Contains(e)));
+        var detail = parts.Count > 0 ? string.Join("; ", parts) : null;
         return detail is { Length: > 0 }
             ? $"Credential for requirement '{requirement.Type}' was not trusted: {detail}"
             : $"Credential for requirement '{requirement.Type}' was not trusted.";

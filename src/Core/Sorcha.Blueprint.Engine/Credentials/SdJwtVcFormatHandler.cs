@@ -66,6 +66,11 @@ public class SdJwtVcFormatHandler : ICredentialFormatHandler
         // Resolve the issuer key (x5c → DID → embedded jwk, service-layer; pinned in-memory, engine).
         var keyResolution = await _keyResolver.ResolveAsync(presentation.Raw, cancellationToken).ConfigureAwait(false);
 
+        // Every signature-step failure names the issuer and BOTH key ids — the one the credential
+        // claims (header kid) and the one resolution actually returned. When those differ, that
+        // difference IS the diagnosis; printing neither is how #1699 was misdiagnosed as a
+        // split-brain for a credential whose signature verifies against its own DID document.
+        var headerKid = ParseHeaderKid(presentation.Raw) ?? "(none)";
         bool signatureVerified = false;
         if (keyResolution is { PublicKey.Length: > 0 })
         {
@@ -79,12 +84,16 @@ public class SdJwtVcFormatHandler : ICredentialFormatHandler
             }
             else
             {
-                result.Errors.AddRange(verifyResult.Errors);
+                var causes = verifyResult.Errors.Count > 0 ? string.Join("; ", verifyResult.Errors) : "no reason given";
+                result.Errors.Add(
+                    $"Issuer signature check failed for iss '{issuerId}' (credential kid '{headerKid}', " +
+                    $"resolved key '{keyResolution.SigningKeyId ?? "(unnamed)"}', alg '{keyResolution.Algorithm}'): {causes}");
             }
         }
         else
         {
-            result.Errors.Add("Issuer key could not be resolved for the presented SD-JWT VC.");
+            result.Errors.Add(
+                $"Issuer key could not be resolved for iss '{issuerId}' (credential kid '{headerKid}').");
         }
 
         var issuer = new IssuerContext
@@ -128,6 +137,26 @@ public class SdJwtVcFormatHandler : ICredentialFormatHandler
         return _sdJwtService.VerifyPresentationAsync(
             presentation.Raw, key.PublicKey, key.Algorithm, ct,
             issuerRecoveryAddress: key.BlockchainAccountId);
+    }
+
+    /// <summary>
+    /// Reads the <c>kid</c> from the issuer JWT header, or null when absent or unparseable. Used only
+    /// to describe a failure — never to select a key.
+    /// </summary>
+    private static string? ParseHeaderKid(string rawSdJwt)
+    {
+        try
+        {
+            var headerSegment = rawSdJwt.Split('~')[0].Split('.')[0];
+            var header = JsonSerializer.Deserialize<JsonElement>(Base64Url.DecodeFromChars(headerSegment));
+            return header.TryGetProperty("kid", out var kid) && kid.ValueKind == JsonValueKind.String
+                ? kid.GetString()
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>

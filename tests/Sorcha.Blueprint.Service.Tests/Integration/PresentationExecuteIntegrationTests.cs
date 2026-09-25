@@ -128,6 +128,68 @@ public class PresentationExecuteIntegrationTests
         return doc.RootElement.GetProperty("blueprintId").GetString()!;
     }
 
+    /// <summary>
+    /// #1699: a refused action must tell the caller WHY. Every ValidationException — credential
+    /// verification, schema errors about the caller's own payload — used to fall through to the
+    /// endpoint's catch-all and reach the caller as "An error occurred processing the request.",
+    /// which left an API or MCP caller nothing to act on.
+    /// </summary>
+    [Fact]
+    public async Task Execute_PayloadViolatesSchema_Returns400WithTheReason_NotAGenericError()
+    {
+        var blueprint = new BlueprintModel
+        {
+            Id = $"bp-refusal-{Guid.NewGuid():N}",
+            Title = "Schema-gated blueprint",
+            Description = "Action 1 requires a field the submission omits",
+            Version = 1,
+            Participants = new List<ParticipantModel>
+            {
+                new() { Id = "citizen", Name = "Citizen" },
+                new() { Id = "verifier", Name = "Verifier" }
+            },
+            Actions = new List<ActionModel>
+            {
+                new()
+                {
+                    Id = 1,
+                    Title = "Submit",
+                    Sender = "citizen",
+                    IsStartingAction = true,
+                    DataSchemas =
+                    [
+                        JsonDocument.Parse("""
+                            {"type":"object","required":["caseReference"],
+                             "properties":{"caseReference":{"type":"string"}}}
+                            """)
+                    ]
+                }
+            }
+        };
+        var create = await _client.PostAsJsonAsync("/api/blueprints", blueprint);
+        create.EnsureSuccessStatusCode();
+        var created = await create.Content.ReadFromJsonAsync<BlueprintModel>();
+        var publish = await _client.PostAsync($"/api/blueprints/{created!.Id}/publish",
+            JsonContent.Create(new { registerId = TestRegister }));
+        publish.IsSuccessStatusCode.Should().BeTrue(await publish.Content.ReadAsStringAsync());
+        var instanceResp = await _client.PostAsJsonAsync("/api/instances",
+            new { blueprintId = created.Id, registerId = TestRegister, tenantId = "test-tenant-789" });
+        using var instanceDoc = JsonDocument.Parse(await instanceResp.Content.ReadAsStringAsync());
+        var instanceId = instanceDoc.RootElement.GetProperty("id").GetString()!;
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/instances/{instanceId}/actions/1/execute",
+            MakeExecuteRequest(created.Id));   // carries applicantNote, not caseReference
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var detail = problem.RootElement.GetProperty("detail").GetString();
+        detail.Should().NotBe("An error occurred processing the request.");
+        detail.Should().Contain("caseReference");
+        problem.RootElement.GetProperty("title").GetString().Should().Be("Action refused");
+        problem.RootElement.GetProperty("errors").GetArrayLength().Should().BeGreaterThan(0);
+    }
+
     [Fact]
     public async Task Execute_HaipRequired_Returns202_WithAwaitingPresentation_T025()
     {
