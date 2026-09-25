@@ -8,6 +8,18 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
+> **▶ 2026-09-25 - #1720 ✅ (branch `fix/1720-did-cache-staleness`): a revoked issuance key no
+> longer stays trusted until restart.** `did:sorcha` DID documents were cached forever
+> (`DateTimeOffset.MaxValue`), relying on `DidSorchaCacheInvalidationService`, which had **zero
+> callers** and listened to register events, while an org document changes off-ledger when its
+> VC-issuance key is derived, rotated or revoked. Fix: `DidResolverCacheOptions.SorchaTtlSeconds`
+> (default 60) bounds staleness in every process; `IssuanceKeyService` invalidates its own process's
+> entry right after each successful document publish, so the Wallet is exact; the dead service and
+> `AddDidSorchaCacheInvalidation` are deleted. The test that asserted "infinite" is replaced.
+> Tests: bounded-TTL cache test + default-is-bounded + rotate/revoke invalidation (real cache), each
+> mutation-tested RED. Blueprint and other processes are bounded by the TTL, not exact: exact
+> cross-process invalidation would need a key-change event, deliberately out of scope.
+>
 > **▶ 2026-09-25 - #1699 ✅ ROOT CAUSE (branch `fix/1699-x5c-must-match-signing-key`): issuance
 > attached an x5c chain for a key that did not sign the credential.** With #1718 deployed, the
 > refusal named it: `resolved key …#vc-issuance-1, alg 'EdDSA': key must be 32 bytes`. The CE

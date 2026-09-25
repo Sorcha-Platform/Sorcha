@@ -14,9 +14,11 @@ namespace Sorcha.ServiceClients.Did;
 /// <para>Per-method positive TTLs:
 /// <list type="bullet">
 ///   <item><c>did:web</c> — <see cref="DidResolverCacheOptions.WebTtlMinutes"/> (default 60min).</item>
-///   <item><c>did:sorcha:*</c> — infinite within process; invalidated explicitly via
-///   <see cref="Invalidate"/> when a <c>transaction:confirmed</c> Redis-stream event fires
-///   (Feature 120 T014).</item>
+///   <item><c>did:sorcha:*</c> — <see cref="DidResolverCacheOptions.SorchaTtlSeconds"/> (default
+///   60s). Bounded on purpose (#1720): an org document changes when its VC-issuance key is
+///   derived, rotated or revoked, which is off-ledger, so no register event can signal it. The
+///   Wallet Service calls <see cref="Invalidate"/> on its own key changes; every other process
+///   is bounded by the TTL.</item>
 ///   <item><c>did:key</c> — infinite (deterministic, never goes stale).</item>
 /// </list>
 /// </para>
@@ -138,7 +140,7 @@ public sealed class DidResolverCache
         return ParseMethod(did) switch
         {
             "web" => now.AddMinutes(Math.Max(1, options.WebTtlMinutes)),
-            "sorcha" => DateTimeOffset.MaxValue,    // invalidated on Redis stream events
+            "sorcha" => now.AddSeconds(Math.Max(1, options.SorchaTtlSeconds)),  // bounded: #1720
             "key" => DateTimeOffset.MaxValue,       // deterministic
             _ => now.AddMinutes(Math.Max(1, options.WebTtlMinutes)) // unknown methods: be conservative
         };
