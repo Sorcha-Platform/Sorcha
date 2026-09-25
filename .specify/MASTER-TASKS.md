@@ -8,8 +8,25 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
-> **▶ 2026-09-25 - #1699 🚧 (branch `fix/1699-credential-refusal-legibility`): a refused credential
-> now says WHY. The root cause is still open, and #1699's own diagnosis is disproved.**
+> **▶ 2026-09-25 - #1699 ✅ ROOT CAUSE (branch `fix/1699-x5c-must-match-signing-key`): issuance
+> attached an x5c chain for a key that did not sign the credential.** With #1718 deployed, the
+> refusal named it: `resolved key …#vc-issuance-1, alg 'EdDSA': key must be 32 bytes`. The CE
+> credential's JWS header carries `x5c` (the org's **P-256** certificate), while it is signed
+> **EdDSA** with the org's Ed25519 VC-issuance key (the F120 kid-swap changed the signing key and
+> left the chain alone). RFC 7515 §4.1.6 requires the first x5c cert to hold the signing key, and
+> Blueprint's resolver prefers x5c over DID, so it verified a valid signature against the wrong
+> key. CredentialLifecycle passes only because its token carries no x5c.
+> **Fix:** `X5cSigningKeyMatch` (Sorcha.Cryptography) verifies the minted token under the leaf,
+> exactly as a verifier would. Wallet issuance: default anchor drops the chain (the DID path already
+> makes it verifiable); explicit `x509-tenant`/`x509-lotl` refuses with 422 `CERT_KEY_MISMATCH`.
+> HAIP (x5c only under explicit X.509 anchors, same kid-swap and local-key mismatch): refuses with
+> 422. Tests: 4 helper + 3 real-crypto endpoint + 1 HAIP minter; helper and endpoint mutation-tested
+> RED. HAIP's endpoint branch has no endpoint-level test (no SD-JWT X.509 issuance harness exists).
+> Open, separate: Blueprint's resolver trusts x5c without checking it matches `alg`, and the
+> `did:sorcha` DID cache is only invalidated by register transactions.
+>
+> **▶ 2026-09-25 - #1699 (#1718, merged + deployed): a refused credential now says WHY. #1699's own
+> split-brain diagnosis is disproved.**
 >
 > #1699 says the CE credential "is signed under one wallet and verified against a different
 > wallet's DID document". **Tested on n1 and false.** The CE credential's EdDSA signature

@@ -465,6 +465,25 @@ public static class CredentialEndpoints
                 credential = InjectIssuerJwkInHeader(credential, signingKey, signingAlgorithm);
             }
 
+            // #1699 — x5c is only attached under an explicit X.509 anchor, and it is the org's
+            // certificate, while the signing key is the org's issuance key (kid-swap) or HAIP's own.
+            // A credential whose signature does not verify under its own chain fails at every
+            // verifier that walks x5c, so the anchor cannot be honoured: refuse rather than mint it.
+            if (x5cChain is { Count: > 0 }
+                && !await minter.VerifiesUnderChainAsync(credential, x5cChain, ct))
+            {
+                logger.LogWarning(
+                    "X.509-anchored issuance for {Type}: the org certificate does not certify the signing key "
+                    + "({Algorithm}) — failing closed",
+                    credentialType, signResultProbe?.Algorithm ?? signingAlgorithm);
+                return Results.Json(new
+                {
+                    error = "issuance_failed",
+                    error_description = "CERT_KEY_MISMATCH: the organisation's certificate does not certify the "
+                        + "key that signs its credentials, so an X.509-anchored credential could not be verified."
+                }, statusCode: StatusCodes.Status422UnprocessableEntity);
+            }
+
             // Generate a fresh c_nonce for the next request
             var (newNonce, nonceExpiresIn) = await nonceStore.CreateAsync(ct);
 

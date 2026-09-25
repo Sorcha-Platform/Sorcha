@@ -19,6 +19,14 @@ namespace Sorcha.Haip.Service.Services;
 /// </summary>
 public class HaipCredentialMinter
 {
+    /// <summary>
+    /// True when <paramref name="credential"/>'s issuer signature verifies under the first
+    /// certificate of <paramref name="x5cChain"/> — the RFC 7515 x5c contract (#1699).
+    /// </summary>
+    public Task<bool> VerifiesUnderChainAsync(
+        string credential, IReadOnlyList<byte[]> x5cChain, CancellationToken ct = default) =>
+        X5cSigningKeyMatch.TokenVerifiesUnderLeafAsync(_sdJwtService, credential, x5cChain, ct);
+
     /// <summary>The SD-JWT VC type claim — the credential's sole type identifier (§3.2.2.1).</summary>
     private const string VctClaim = "vct";
 

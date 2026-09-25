@@ -67,6 +67,26 @@ public class HaipCredentialMinterChainTests
         x5c.EnumerateArray().First().GetString().Should().Be(Convert.ToBase64String(certDer));
     }
 
+    /// <summary>
+    /// #1699 — the endpoint refuses X.509-anchored issuance unless the credential verifies under its
+    /// own chain. This pins that the minter's check answers from the real signature.
+    /// </summary>
+    [Fact]
+    public async Task VerifiesUnderChain_OwnCert_True_AnotherIssuersCert_False()
+    {
+        var (signingKey, certDer) = NewIssuer();
+        var (_, otherCertDer) = NewIssuer();
+
+        var token = await _minter.MintCredentialAsync(
+            "did:sorcha:org:gov", HolderJwk(), "AssuredIdentity",
+            new Dictionary<string, object> { ["name"] = "Alice" },
+            disclosablePaths: ["name"],
+            signingKey, "ES256", expiresAt: null, ct: default, kid: null, x5cChain: [certDer]);
+
+        (await _minter.VerifiesUnderChainAsync(token, [certDer])).Should().BeTrue();
+        (await _minter.VerifiesUnderChainAsync(token, [otherCertDer])).Should().BeFalse();
+    }
+
     [Fact]
     public async Task Mint_WithoutX5cChain_OmitsX5cHeader()
     {
