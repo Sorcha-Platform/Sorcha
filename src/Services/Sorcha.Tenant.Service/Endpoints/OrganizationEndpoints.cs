@@ -669,6 +669,7 @@ public static class OrganizationEndpoints
     private static async Task<Results<Created<OrganizationResponse>, Conflict<ProblemDetails>, ValidationProblem>> CreateOrganization(
         CreateOrganizationRequest request,
         IOrganizationService organizationService,
+        TenantDbContext dbContext,
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
@@ -684,6 +685,20 @@ public static class OrganizationEndpoints
         try
         {
             var response = await organizationService.CreateOrganizationAsync(request, userId, cancellationToken);
+
+            await WriteOrganizationAuditAsync(
+                dbContext,
+                user,
+                response.Id,
+                AuditEventType.OrganizationCreated,
+                new Dictionary<string, object>
+                {
+                    ["organizationId"] = response.Id.ToString(),
+                    ["name"] = response.Name,
+                    ["subdomain"] = response.Subdomain
+                },
+                cancellationToken);
+
             return TypedResults.Created($"/api/organizations/{response.Id}", response);
         }
         catch (ArgumentException ex) when (ex.Message.Contains("already taken"))
@@ -755,14 +770,27 @@ public static class OrganizationEndpoints
         Guid id,
         UpdateOrganizationRequest request,
         IOrganizationService organizationService,
+        TenantDbContext dbContext,
+        ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
         try
         {
             var response = await organizationService.UpdateOrganizationAsync(id, request, cancellationToken);
-            return response != null
-                ? TypedResults.Ok(response)
-                : TypedResults.NotFound();
+            if (response == null)
+            {
+                return TypedResults.NotFound();
+            }
+
+            await WriteOrganizationAuditAsync(
+                dbContext,
+                user,
+                id,
+                AuditEventType.OrganizationUpdated,
+                new Dictionary<string, object> { ["organizationId"] = id.ToString() },
+                cancellationToken);
+
+            return TypedResults.Ok(response);
         }
         catch (ArgumentException ex)
         {
@@ -776,12 +804,20 @@ public static class OrganizationEndpoints
     private static async Task<Results<NoContent, NotFound>> DeactivateOrganization(
         Guid id,
         IOrganizationService organizationService,
+        TenantDbContext dbContext,
+        ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
         var success = await organizationService.DeactivateOrganizationAsync(id, cancellationToken);
-        return success
-            ? TypedResults.NoContent()
-            : TypedResults.NotFound();
+        if (!success)
+        {
+            return TypedResults.NotFound();
+        }
+
+        await WriteOrganizationAuditAsync(
+            dbContext, user, id, AuditEventType.OrganizationDeactivated, details: null, cancellationToken);
+
+        return TypedResults.NoContent();
     }
 
     private static async Task<Results<Ok<SubdomainValidationResponse>, BadRequest<SubdomainValidationResponse>>> ValidateSubdomain(
@@ -807,12 +843,23 @@ public static class OrganizationEndpoints
         Guid organizationId,
         AddUserToOrganizationRequest request,
         IOrganizationService organizationService,
+        TenantDbContext dbContext,
+        ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
         try
         {
             var response = await organizationService.AddUserToOrganizationAsync(
                 organizationId, request, cancellationToken);
+
+            await WriteOrganizationAuditAsync(
+                dbContext,
+                user,
+                organizationId,
+                AuditEventType.UserAddedToOrganization,
+                new Dictionary<string, object> { ["targetUserId"] = response.Id.ToString() },
+                cancellationToken);
+
             return TypedResults.Created(
                 $"/api/organizations/{organizationId}/users/{response.Id}", response);
         }
@@ -902,15 +949,32 @@ public static class OrganizationEndpoints
         Guid userId,
         UpdateUserRequest request,
         IOrganizationService organizationService,
+        TenantDbContext dbContext,
+        ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
         try
         {
             var response = await organizationService.UpdateOrganizationUserAsync(
                 organizationId, userId, request, cancellationToken);
-            return response != null
-                ? TypedResults.Ok(response)
-                : TypedResults.NotFound();
+            if (response == null)
+            {
+                return TypedResults.NotFound();
+            }
+
+            await WriteOrganizationAuditAsync(
+                dbContext,
+                user,
+                organizationId,
+                AuditEventType.UserUpdatedInOrganization,
+                new Dictionary<string, object>
+                {
+                    ["targetUserId"] = userId.ToString(),
+                    ["action"] = "Updated"
+                },
+                cancellationToken);
+
+            return TypedResults.Ok(response);
         }
         catch (ArgumentException ex)
         {
@@ -925,13 +989,26 @@ public static class OrganizationEndpoints
         Guid organizationId,
         Guid userId,
         IOrganizationService organizationService,
+        TenantDbContext dbContext,
+        ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
         var success = await organizationService.RemoveUserFromOrganizationAsync(
             organizationId, userId, cancellationToken);
-        return success
-            ? TypedResults.NoContent()
-            : TypedResults.NotFound();
+        if (!success)
+        {
+            return TypedResults.NotFound();
+        }
+
+        await WriteOrganizationAuditAsync(
+            dbContext,
+            user,
+            organizationId,
+            AuditEventType.UserRemovedFromOrganization,
+            new Dictionary<string, object> { ["targetUserId"] = userId.ToString() },
+            cancellationToken);
+
+        return TypedResults.NoContent();
     }
 
     private static Guid GetUserId(ClaimsPrincipal user)
@@ -940,6 +1017,31 @@ public static class OrganizationEndpoints
             ?? user.FindFirst("sub")?.Value;
 
         return Guid.TryParse(userIdClaim, out var userId) ? userId : Guid.Empty;
+    }
+
+    /// <summary>
+    /// Writes a single audit entry for an org/user mutation. Called ONLY on the success path of
+    /// the caller — the audit trail is server-authored here (#1655), so there is exactly one write
+    /// per handler and it happens after the mutation is known to have succeeded.
+    /// </summary>
+    private static async Task WriteOrganizationAuditAsync(
+        TenantDbContext dbContext,
+        ClaimsPrincipal user,
+        Guid organizationId,
+        AuditEventType eventType,
+        Dictionary<string, object>? details,
+        CancellationToken cancellationToken)
+    {
+        dbContext.AuditLogEntries.Add(new AuditLogEntry
+        {
+            OrganizationId = organizationId,
+            IdentityId = GetUserId(user),
+            EventType = eventType,
+            Timestamp = DateTimeOffset.UtcNow,
+            Success = true,
+            Details = details
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     private static async Task<Ok<OrganizationStatsResponse>> GetOrganizationStats(
