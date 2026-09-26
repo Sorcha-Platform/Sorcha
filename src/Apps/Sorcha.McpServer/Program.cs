@@ -260,6 +260,11 @@ static void ConfigureServerOptions(McpServerOptions options)
         publishes without asking anyone. sorcha_blueprint_simulate and sorcha_disclosure_analysis
         are dry runs and never count as a rehearsal.
 
+        REFUSED BY A GOVERNANCE OR PUBLISH ACTION (403)? Call sorcha_register_governors to see
+        who can approve it — every Owner/Admin/Designer/Auditor on that register's governance
+        roster, not just your own standing. sorcha_register_relationship reports only what YOU (or
+        this node) can do; sorcha_register_governors reports who else can.
+
         WHO YOU ARE: call sorcha_whoami first. It reports the organisation your token acts for,
         your roles and tier, and the tools you may call. Every organisation-scoped action acts for
         THAT organisation, never one you name, so do not infer it from other tools.

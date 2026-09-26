@@ -501,7 +501,7 @@
 > | **#1644** | Disclosure preview skips calculations (real execution computes first) | Fix (#1605 class) |
 > | **#1645** | `sorcha_org_user_audit` roles disagree with `sorcha_user_list` and the token | Fix |
 > | **#1646** | `sorcha://instances` reports a healthy Blueprint service as unavailable (400 collapsed to null) | Fix |
-> | **#1647** | No MCP tool for "who governs this register" | Small feature (endpoint exists) |
+> | **#1647** | No MCP tool for "who governs this register" | ✅ **FIXED** (PR TBD) — `sorcha_register_governors` (admin role, same entitlement as `sorcha_register_relationship`) reads `GET /api/registers/{id}/governance/roster` via `IRegisterServiceClient.GetGovernanceRosterAsync` (already built for #1659) and reports every named Owner/Admin/Designer/Auditor, Owner first. NotFound is reported as "no sealed roster yet", never "does not exist"; a 4xx (403/401) is a refusal and does not trip the availability tracker — only 5xx/transport failures do (#1673 pattern) |
 >
 > **Run #3 harness:** state MCP-only up front; no global Sorcha skills or SSH; dedicated org-admin identity;
 > clear the 09-08 draft and register. Only comparable to 3/10 once #1643 lands.
