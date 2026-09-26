@@ -255,7 +255,7 @@ The former per-service `docs/reference/status/*` snapshots have been removed —
   - **Operations polling**: GET /api/operations/{operationId} fallback for clients without SignalR
   - **Public key resolution**: Batch register lookup with external key override, revoked → hard fail, not-found → skip with warning
   - **Pre-flight size estimation**: CheckSizeLimit with 4MB default, hot-reloadable via IOptionsMonitor
-  - **Recipient decryption**: TransactionRetrievalService unwraps key → decrypts → verifies SHA-256 integrity hash
+  - **Recipient decryption**: ~~TransactionRetrievalService~~ — never wired to any caller; removed as dead code in #1697
   - **Backward compatibility**: Legacy unencrypted transactions detected and returned as-is
   - **OpenTelemetry**: ActivitySource traces on EncryptionPipelineService and EncryptionBackgroundService
   - Test results: 44+ new tests across Blueprint Service and TransactionHandler

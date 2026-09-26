@@ -152,19 +152,19 @@ To use the MCP server with Claude Desktop:
 
 ## Available Tools
 
-**71 registered tools**, auto-discovered from `[McpServerToolType]` classes. Do not hand-count from
+**76 registered tools**, auto-discovered from `[McpServerToolType]` classes. Do not hand-count from
 this README — the authoritative catalogue is `GET /api/mcp/tools` (or a live `tools/list`), and
 `ManifestIntegrityTests` fails the build if the gateway catalogue or `server.json` drifts from the
 served set.
 
 | Slice | Tools | Surface |
 |---|---|---|
-| Admin | 35 | health, logs, metrics, org/user admin + audit, platform settings, register stats/subscribe/sync/federation, validator control, credential lifecycle (offer/suspend/reinstate/revoke/refresh), presentations |
+| Admin | 36 | health, logs, metrics, org/user admin + audit, platform settings, register stats/subscribe/sync/federation/governance-roster (#1647), validator control, credential lifecycle (offer/suspend/reinstate/revoke/refresh), presentations |
 | Designer | 18 | blueprint create/validate/simulate/publish/export, rehearsal start/step/get (#1691), schema + template management, instance + register creation. `sorcha_register_create` and `sorcha_blueprint_publish` sit in this slice but carry the ADMIN role — the category is the workflow slice, not the entitlement |
-| Participant | 13 | inbox, pending actions, action submission, transactions, wallet ops, bounded event wait (`sorcha_await_condition`, #1707) |
+| Participant | 14 | inbox, pending actions, action submission, transactions, wallet ops, bounded event wait (`sorcha_await_condition`, #1707) |
 | Citizen | 8 | self-service wallet, devices (list/rename/revoke), credentials, persona |
 
-`tools/list` on a live session is **tier-filtered** (F136): a platform-tier token sees ~63 of 71;
+`tools/list` on a live session is **tier-filtered** (F136): a platform-tier token sees ~68 of 76;
 consumer-only tools require a consumer-tier token. Two further tools exist in source but are
 deliberately unregistered — no `[McpServerToolType]` on the class, so the assembly scan never
 discovers them: `sorcha_wallet_sign` (T029 — signing stays in the Wallet Service) and
@@ -189,6 +189,7 @@ complete a workflow end to end.
 | `sorcha_await_condition` | Participant | reuses `sorcha_participant_list` / `sorcha_workflow_status` / `sorcha_transaction_history`'s own reads (`GetRegisterAsync`, `GetPublishedParticipantsAsync`, `GetWorkflowStatusAsync`, `GetTransactionsByInstanceIdAsync`, `GetTransactionAsync`) | #1707 — a bounded, server-side wait so an agent no longer needs a human to relay a ledger event. Blocks the calling MCP request up to `timeoutSeconds` (default 25, hard max 55 — margin under the ~60s call timeout most MCP clients apply) while polling roughly once a second for one `condition`: `ParticipantActive` (a role becomes Active on a register), `InstanceReachesAction` (an instance reaches a given `actionId` as current, or completes when `actionId` is omitted), or `TransactionSeals` (a transaction acquires a docket number). Returns a tri-state `Outcome` — `Met`, `NotYet` (call again — not a failure), or `Unreachable` (the instance already advanced past the awaited action, was rejected/timed-out/cancelled, or completed without reaching it — waiting further is futile) — rather than a boolean, so a caller can tell "not yet" from "never". One tool with a `condition` discriminator rather than three, since the three conditions share one shape and #1685's discoverability risk is inconsistent parameter NAMES, not parameter count; parameter names (`workflowInstanceId`, `registerId`, `transactionId`) match the tools above exactly. Stateless-safe — the whole wait lives inside one request/one poll loop, compatible with `WithHttpTransport(o => o.Stateless = true)`. |
 | `sorcha_whoami` | Participant (any tier) | none — reads the caller's own token, plus `GET /api/organizations/{id}` best-effort for the name | #1705 — the organisation the session acts for (id + name), its roles in platform and `sorcha:*` form, tier, token expiry, and the tools it may call. The two user ids are reported separately and never merged: `platformUserId` (account-wide) is null when the token omits it, not filled in from `sub` (the per-org `UserIdentity` id). Run #8's agent spent four calls inferring its organisation from an audit entry. |
 | `sorcha_instance_create` | Designer | `POST /api/instances/` | Starts a running instance from a blueprint already published to a register, returning the `instanceId` that `sorcha_action_submit` has always required but nothing on the surface produced until now. No human gate — starting an instance is not irreversible the way creating a register or an unrehearsed publish is. |
+| `sorcha_register_governors` | Admin | `GET /api/registers/{id}/governance/roster` | #1647 — answers "who governs this register?": every named role holder (Owner/Admin/Designer/Auditor) on the register's governance roster, not just the caller's own derived standing (that's `sorcha_register_relationship`). Built for the moment a governance action or `sorcha_blueprint_publish` is refused with a 403 — call this to find who can approve instead of decoding a genesis transaction over SSH (the cold-start run that motivated this issue). `NotFound` means no *sealed* roster (unknown id, or genesis still sealing), never "does not exist"; a 4xx from the Register Service is reported as a refusal and does not trip the availability tracker — only a 5xx or transport failure does (#1673). Same entitlement as `sorcha_register_relationship` (ADMIN role): both sit behind the Register Service's `CanReadTransactions` policy. |
 
 `sorcha_register_create` and `sorcha_blueprint_publish` need organisation-administrator authority —
 not the designer role — even though both sit in the Designer workflow slice: their backing

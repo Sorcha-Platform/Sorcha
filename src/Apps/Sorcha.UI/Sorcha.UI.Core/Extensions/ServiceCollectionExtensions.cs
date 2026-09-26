@@ -661,7 +661,8 @@ public static class ServiceCollectionExtensions
             ];
         });
 
-        // Audit Service (used by organization admin service, so register first)
+        // Audit Service (read-only — org/user mutation audit entries are written server-side, at
+        // the Tenant Service endpoint that performs the mutation, see IAuditService for #1655)
         services.AddScoped<IAuditService>(sp =>
         {
             var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
@@ -703,9 +704,8 @@ public static class ServiceCollectionExtensions
                 BaseAddress = new Uri(baseAddress)
             };
 
-            var auditService = sp.GetRequiredService<IAuditService>();
             var logger = sp.GetRequiredService<ILogger<OrganizationAdminService>>();
-            return new OrganizationAdminService(httpClient, auditService, logger);
+            return new OrganizationAdminService(httpClient, logger);
         });
 
         // Org Provisioning Service (self-service org creation)

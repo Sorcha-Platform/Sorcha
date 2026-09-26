@@ -59,6 +59,10 @@ public static class ToolEntitlements
         new("sorcha_register_unsubscribe", PlatformOnly, AdminRole),
         new("sorcha_register_sync_state", PlatformOnly, AdminRole),
         new("sorcha_register_relationship", PlatformOnly, AdminRole),
+        // #1647 — matches sorcha_register_relationship exactly: both sit behind the Register
+        // Service's CanReadTransactions policy, and ToolEntitlement models one required role per
+        // tool, not a set, so there is no combined admin-or-designer entitlement to reach for.
+        new("sorcha_register_governors", PlatformOnly, AdminRole),
         new("sorcha_transaction_status", PlatformOnly, AdminRole),
         new("sorcha_transaction_inclusion_proof", PlatformOnly, AdminRole),
         new("sorcha_transaction_verification_bundle", PlatformOnly, AdminRole),
