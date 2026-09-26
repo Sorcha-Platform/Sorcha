@@ -19,8 +19,8 @@
 > (9 s) → step 1 (5 s) → `Passed`; publish → `Success` v1, `publishedWithoutRehearsal: False`, hash
 > equal. Tests: 20 client + 21 tool cases; 7 mutations KILLED.
 >
-> **▶ 2026-09-26 - Sandbox genesis race (branch `fix/sandbox-genesis-seal-race`): the FIRST rehearsal in
-> every organisation always failed.** Found by #1691's first live run. `SandboxRegisterProvider`
+> **▶ 2026-09-26 - Sandbox genesis race ✅ (PR #1725, deployed n1 + tiny; a NEW sandbox now passes first
+> time, core suite 18/18): the FIRST rehearsal in every organisation always failed.** Found by #1691's first live run. `SandboxRegisterProvider`
 > returned as soon as finalize was accepted, but finalize only SUBMITS the genesis; the rehearsal
 > published into the register at once, the validator found no sealed roster and refused the
 > publication (`ExemptionAuthorityResolver`: "the register has no roster"), and step 1 timed out after
