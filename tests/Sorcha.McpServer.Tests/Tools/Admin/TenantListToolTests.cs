@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ServiceClients.Shared;
+using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.McpServer.Infrastructure;
@@ -94,7 +96,7 @@ public class TenantListToolTests
         });
         _tenantClientMock
             .Setup(c => c.ListOrganizationsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(response);
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, response));
 
         var result = await CreateTool().ListTenantsAsync();
 
@@ -124,7 +126,7 @@ public class TenantListToolTests
         });
         _tenantClientMock
             .Setup(c => c.ListOrganizationsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(response);
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, response));
 
         var result = await CreateTool().ListTenantsAsync(status: "Active", search: "acme");
 
@@ -144,7 +146,7 @@ public class TenantListToolTests
         Allow();
         _tenantClientMock
             .Setup(c => c.ListOrganizationsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(JsonSerializer.Serialize(new { Organizations = Array.Empty<object>(), TotalCount = 0 }));
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, JsonSerializer.Serialize(new { Organizations = Array.Empty<object>(), TotalCount = 0 })));
 
         await CreateTool().ListTenantsAsync(pageSize: 500);
 
@@ -159,11 +161,29 @@ public class TenantListToolTests
         Allow();
         _tenantClientMock
             .Setup(c => c.ListOrganizationsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string?)null);
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.InternalServerError, null));
 
         var result = await CreateTool().ListTenantsAsync();
 
         result.Status.Should().Be("Error");
+    }
+
+    [Fact]
+    public async Task ListTenantsAsync_Forbidden_IsARefusalWithTheServersReason_AndNotAnOutage()
+    {
+        // #1673 — a 403 used to read "Failed to retrieve tenants." and the sibling tools recorded it
+        // as a FAILURE, so three refusals marked every Tenant tool unavailable on a healthy service.
+        Allow();
+        _tenantClientMock
+            .Setup(c => c.ListOrganizationsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.Forbidden, null, "Listing all organisations requires SystemAdmin"));
+
+        var result = await CreateTool().ListTenantsAsync();
+
+        result.Status.Should().Be("Refused");
+        result.Message.Should().Contain("not permitted").And.Contain("Listing all organisations requires SystemAdmin");
+        _availabilityTrackerMock.Verify(a => a.RecordFailure(It.IsAny<string>(), It.IsAny<Exception?>()), Times.Never);
+        _availabilityTrackerMock.Verify(a => a.RecordSuccess("Tenant"), Times.Once);
     }
 
     [Fact]

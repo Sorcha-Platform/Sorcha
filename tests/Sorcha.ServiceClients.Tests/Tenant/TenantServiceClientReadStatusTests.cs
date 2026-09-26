@@ -80,6 +80,35 @@ public class TenantServiceClientReadStatusTests
         read.Body.Should().Contain("items");
     }
 
+    [Theory]
+    [InlineData("""{"error":"Listing all organisations requires SystemAdmin"}""", "Listing all organisations requires SystemAdmin")]
+    [InlineData("""{"title":"Forbidden","detail":"Not a member"}""", "Not a member")]
+    [InlineData("", null)]
+    public async Task ARefusal_CarriesTheServicesOwnReason(string body, string? expected)
+    {
+        // #1673 — the status-carrying reads used to drop the body on failure, so even a caller that
+        // could tell a 403 from a 404 could not say WHY.
+        var read = await CreateClient(new StubHandler(HttpStatusCode.Forbidden, body)).ListOrganizationsAsync();
+
+        read.IsForbidden.Should().BeTrue();
+        read.Body.Should().BeNull();
+        read.Reason.Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task EveryReadTheMcpToolsUse_ReportsItsStatus()
+    {
+        // The four reads behind sorcha_tenant_list, sorcha_org_wallet_status, sorcha_platform_settings
+        // and sorcha_my_persona all used to collapse a 403 to null (#1673).
+        var client = CreateClient(new StubHandler(HttpStatusCode.Forbidden, ""));
+
+        (await client.ListOrganizationsAsync()).IsForbidden.Should().BeTrue();
+        (await client.GetPlatformSettingsAsync()).IsForbidden.Should().BeTrue();
+        (await client.GetMyPersonaAsync()).IsForbidden.Should().BeTrue();
+        (await client.UpdatePublicOrgAsync("{}")).IsForbidden.Should().BeTrue();
+        (await client.ReplaceMyPersonaAsync("{}")).IsForbidden.Should().BeTrue();
+    }
+
     private static TenantServiceClient CreateClient(HttpMessageHandler handler)
     {
         var auth = new Mock<IServiceAuthClient>();

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ServiceClients.Shared;
+using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.McpServer.Infrastructure;
@@ -89,7 +91,7 @@ public class WorkflowInstancesToolTests
 
         _blueprintClientMock
             .Setup(c => c.GetWorkflowInstancesAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(listResponse);
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, listResponse));
 
         var result = await CreateTool().ListWorkflowInstancesAsync();
 
@@ -111,7 +113,7 @@ public class WorkflowInstancesToolTests
         Allow();
         _blueprintClientMock
             .Setup(c => c.GetWorkflowInstancesAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(JsonSerializer.Serialize(new { items = Array.Empty<object>(), totalCount = 0, pageNumber = 1, pageSize = 20 }));
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, JsonSerializer.Serialize(new { items = Array.Empty<object>(), totalCount = 0, pageNumber = 1, pageSize = 20 })));
 
         var result = await CreateTool().ListWorkflowInstancesAsync();
 
@@ -126,7 +128,7 @@ public class WorkflowInstancesToolTests
         Allow();
         _blueprintClientMock
             .Setup(c => c.GetWorkflowInstancesAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(JsonSerializer.Serialize(new { items = Array.Empty<object>(), totalCount = 0, pageNumber = 1, pageSize = 20 }));
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, JsonSerializer.Serialize(new { items = Array.Empty<object>(), totalCount = 0, pageNumber = 1, pageSize = 20 })));
 
         await CreateTool().ListWorkflowInstancesAsync(status: "Active");
 
@@ -143,7 +145,7 @@ public class WorkflowInstancesToolTests
         Allow();
         _blueprintClientMock
             .Setup(c => c.GetWorkflowInstancesAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(JsonSerializer.Serialize(new { items = Array.Empty<object>(), totalCount = 0, pageNumber = 1, pageSize = 100 }));
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, JsonSerializer.Serialize(new { items = Array.Empty<object>(), totalCount = 0, pageNumber = 1, pageSize = 100 })));
 
         await CreateTool().ListWorkflowInstancesAsync(pageSize: 500);
 
@@ -158,7 +160,7 @@ public class WorkflowInstancesToolTests
         Allow();
         _blueprintClientMock
             .Setup(c => c.GetWorkflowInstancesAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(JsonSerializer.Serialize(new { items = Array.Empty<object>(), totalCount = 0, pageNumber = 1, pageSize = 20 }));
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, JsonSerializer.Serialize(new { items = Array.Empty<object>(), totalCount = 0, pageNumber = 1, pageSize = 20 })));
 
         var result = await CreateTool().ListWorkflowInstancesAsync();
 

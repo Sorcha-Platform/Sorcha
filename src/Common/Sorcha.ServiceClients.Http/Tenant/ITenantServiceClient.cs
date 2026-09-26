@@ -21,8 +21,8 @@ public interface ITenantServiceClient
     /// </summary>
     /// <param name="queryString">Already-built query string (without leading '?'), or null.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The organisation-list JSON body, or null on non-success.</returns>
-    Task<string?> ListOrganizationsAsync(
+    /// <returns>The read outcome: the organisation-list body on success, else the status and the service's reason.</returns>
+    Task<ServiceReadResult> ListOrganizationsAsync(
         string? queryString = null,
         CancellationToken cancellationToken = default);
 
@@ -138,8 +138,8 @@ public interface ITenantServiceClient
     /// </summary>
     /// <param name="queryString">Already-built query string (without leading '?'), or null for the Personal context.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The persona read-model JSON body, or null on non-success.</returns>
-    Task<string?> GetMyPersonaAsync(
+    /// <returns>The read outcome: the persona read-model body on success, else the status and the service's reason.</returns>
+    Task<ServiceReadResult> GetMyPersonaAsync(
         string? queryString = null,
         CancellationToken cancellationToken = default);
 
@@ -150,8 +150,8 @@ public interface ITenantServiceClient
     /// <param name="requestJson">The PersonaAttributesV1 body as JSON.</param>
     /// <param name="queryString">Already-built query string (without leading '?'), or null for the Personal context.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The canonical persona read-model JSON body, or null on non-success.</returns>
-    Task<string?> ReplaceMyPersonaAsync(
+    /// <returns>The write outcome: the canonical persona body on success, else the status and the service's reason.</returns>
+    Task<ServiceReadResult> ReplaceMyPersonaAsync(
         string requestJson,
         string? queryString = null,
         CancellationToken cancellationToken = default);
@@ -174,8 +174,8 @@ public interface ITenantServiceClient
     /// (Feature 140 Wave 4). Calls <c>GET /api/platform/settings</c>.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The platform-settings JSON body, or null on non-success.</returns>
-    Task<string?> GetPlatformSettingsAsync(
+    /// <returns>The read outcome: the platform-settings body on success, else the status and the service's reason.</returns>
+    Task<ServiceReadResult> GetPlatformSettingsAsync(
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -184,8 +184,8 @@ public interface ITenantServiceClient
     /// </summary>
     /// <param name="requestJson">The <c>{ "enabled": true|false }</c> body as JSON.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The updated platform-settings JSON body, or null on non-success.</returns>
-    Task<string?> UpdatePublicOrgAsync(
+    /// <returns>The write outcome: the updated settings body on success, else the status and the service's reason.</returns>
+    Task<ServiceReadResult> UpdatePublicOrgAsync(
         string requestJson,
         CancellationToken cancellationToken = default);
 

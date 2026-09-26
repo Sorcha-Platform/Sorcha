@@ -391,10 +391,10 @@ public class BlueprintServiceClient : IBlueprintServiceClient
         SendRawAsync(HttpMethod.Post, "api/execution/calculate", requestJson, "simulate calculate", cancellationToken);
 
     /// <inheritdoc />
-    public Task<string?> GetWorkflowInstancesAsync(string? queryString = null, CancellationToken cancellationToken = default)
+    public Task<ServiceReadResult> GetWorkflowInstancesAsync(string? queryString = null, CancellationToken cancellationToken = default)
     {
         var url = string.IsNullOrWhiteSpace(queryString) ? "api/instances/" : $"api/instances/?{queryString}";
-        return GetRawAsync(url, "workflow instances", cancellationToken);
+        return GetRawWithStatusAsync(url, "workflow instances", cancellationToken);
     }
 
     /// <inheritdoc />
@@ -789,41 +789,7 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     /// undigested JSON looks like an explanation without being one, and a caller pasting it into a
     /// message makes an assertion about the text pass for the wrong reason.
     /// </remarks>
-    internal static (string? Code, string? Reason) ReadRefusal(string? body)
-    {
-        if (string.IsNullOrWhiteSpace(body))
-        {
-            return (null, null);
-        }
-
-        var trimmed = body.Trim();
-        if (trimmed[0] is not ('{' or '['))
-        {
-            return (null, trimmed);
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(trimmed);
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                return (null, null);
-            }
-
-            string? Read(string name) =>
-                document.RootElement.TryGetProperty(name, out var value)
-                && value.ValueKind == JsonValueKind.String
-                && !string.IsNullOrWhiteSpace(value.GetString())
-                    ? value.GetString()
-                    : null;
-
-            return (Read("code"), Read("message") ?? Read("detail") ?? Read("title") ?? Read("error"));
-        }
-        catch (JsonException)
-        {
-            return (null, null);
-        }
-    }
+    internal static (string? Code, string? Reason) ReadRefusal(string? body) => RefusalBody.Read(body);
 
     /// <inheritdoc />
     public async Task<CloneFromPublishedResult?> CloneFromPublishedAsync(CloneFromPublishedRequest request, CancellationToken cancellationToken = default)
@@ -879,8 +845,10 @@ public class BlueprintServiceClient : IBlueprintServiceClient
 
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogWarning("Blueprint {Operation} failed: {StatusCode}", operation, response.StatusCode);
-            return new ServiceReadResult(response.StatusCode, null);
+            // Keep the service's own explanation; a bare status leaves the caller guessing.
+            var (_, reason) = RefusalBody.Read(await response.Content.ReadAsStringAsync(cancellationToken));
+            _logger.LogWarning("Blueprint {Operation} failed: {StatusCode}: {Reason}", operation, response.StatusCode, reason ?? "no reason given");
+            return new ServiceReadResult(response.StatusCode, null, reason);
         }
 
         return new ServiceReadResult(
