@@ -28,13 +28,19 @@ public sealed class McpMetricsTests : IDisposable
     public McpMetricsTests()
     {
         _provider = new ServiceCollection().AddMetrics().BuildServiceProvider();
-        _metrics = new McpMetrics(_provider.GetRequiredService<IMeterFactory>());
+        var meterFactory = _provider.GetRequiredService<IMeterFactory>();
+        _metrics = new McpMetrics(meterFactory);
 
         _listener = new MeterListener
         {
             InstrumentPublished = (instrument, listener) =>
             {
-                if (instrument.Meter.Name == McpMetrics.MeterName)
+                // Match THIS test's meter, not just the meter NAME. A MeterListener sees every meter
+                // in the process, and other tests running in parallel create McpMetrics with the same
+                // name, so a name-only filter counted their measurements too (CI: "2 such items were
+                // found" for one ToolInvoked call). A meter created by an IMeterFactory carries that
+                // factory as its Scope.
+                if (instrument.Meter.Name == McpMetrics.MeterName && ReferenceEquals(instrument.Meter.Scope, meterFactory))
                 {
                     listener.EnableMeasurementEvents(instrument);
                 }
