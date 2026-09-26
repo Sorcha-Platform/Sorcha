@@ -193,6 +193,7 @@ public sealed class RegisterRecoveryService : BackgroundService, IRegisterRecove
 
         var currentDocket = localLatestDocket;
         var retryCount = 0;
+        var unreadableDockets = 0;
         string? previousDocketHash = null;
 
         // If we have local dockets, get the hash of the latest one for chain verification
@@ -230,8 +231,10 @@ public sealed class RegisterRecoveryService : BackgroundService, IRegisterRecove
                     }
 
                     // Deserialize docket data and route action transactions via bloom filter
-                    await ProcessRecoveredDocketAsync(
-                        registerId, entry, cancellationToken);
+                    if (!await ProcessRecoveredDocketAsync(registerId, entry, cancellationToken))
+                    {
+                        unreadableDockets++;
+                    }
 
                     previousDocketHash = entry.DocketHash;
                     currentDocket = entry.DocketNumber;
@@ -286,12 +289,29 @@ public sealed class RegisterRecoveryService : BackgroundService, IRegisterRecove
         };
         await UpdateRecoveryStateAsync(registerId, state);
 
-        _logger.LogInformation(
-            "Recovery complete for register {RegisterId}: processed {Count} dockets",
-            registerId, state.DocketsProcessed);
+        // #1653 — a docket whose data could not be read is not "processed": say how many, loudly.
+        if (unreadableDockets > 0)
+        {
+            state = state with
+            {
+                LastError = $"{unreadableDockets} recovered docket(s) had unreadable data; their Action transactions were not routed",
+                ErrorCount = state.ErrorCount + unreadableDockets
+            };
+            await UpdateRecoveryStateAsync(registerId, state);
+            _logger.LogWarning(
+                "Recovery complete for register {RegisterId}: walked {Count} dockets, {Unreadable} of them unreadable",
+                registerId, state.DocketsProcessed, unreadableDockets);
+        }
+        else
+        {
+            _logger.LogInformation(
+                "Recovery complete for register {RegisterId}: processed {Count} dockets",
+                registerId, state.DocketsProcessed);
+        }
     }
 
-    private async Task ProcessRecoveredDocketAsync(
+    /// <returns>False when the docket's data could not be read, so it must not count as processed.</returns>
+    private async Task<bool> ProcessRecoveredDocketAsync(
         string registerId,
         Sorcha.Peer.Service.Protos.SyncDocketEntry entry,
         CancellationToken cancellationToken)
@@ -299,27 +319,21 @@ public sealed class RegisterRecoveryService : BackgroundService, IRegisterRecove
         if (entry.DocketData == null || entry.DocketData.IsEmpty)
         {
             _logger.LogDebug("Docket {DocketNumber} has no data, skipping", entry.DocketNumber);
-            return;
+            return true;
         }
 
-        // Deserialize the docket data to extract transactions
-        List<TransactionModel>? transactions = null;
-        try
+        // #1653 — the docket OBJECT is the wire contract (DocketModel, as every producer writes it).
+        if (!RecoveredDocketData.TryReadTransactions(entry.DocketData.Span, out var transactions))
         {
-            transactions = JsonSerializer.Deserialize<List<TransactionModel>>(
-                entry.DocketData.Span,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        }
-        catch (JsonException ex)
-        {
-            _logger.LogWarning(ex,
-                "Failed to deserialize docket {DocketNumber} data for register {RegisterId}",
+            _logger.LogWarning(
+                "Docket {DocketNumber} data for register {RegisterId} is not a readable docket; its Action "
+                + "transactions cannot be routed from recovery",
                 entry.DocketNumber, registerId);
-            return;
+            return false;
         }
 
-        if (transactions == null || transactions.Count == 0)
-            return;
+        if (transactions.Count == 0)
+            return true;
 
         foreach (var tx in transactions)
         {
@@ -347,6 +361,8 @@ public sealed class RegisterRecoveryService : BackgroundService, IRegisterRecove
                 "Recovery docket {DocketNumber} tx {TxId}: {MatchCount} bloom filter matches",
                 entry.DocketNumber, tx.TxId, matchCount);
         }
+
+        return true;
     }
 
     /// <inheritdoc />
