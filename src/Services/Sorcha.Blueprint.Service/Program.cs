@@ -527,10 +527,6 @@ builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.CoreSchemaSe
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.ISchemaRefResolver,
     Sorcha.Blueprint.Service.Services.SchemaRefResolver>();
 
-// Add Transaction Retrieval service (045 - Phase 9: Recipient Decryption)
-builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.ITransactionRetrievalService,
-    Sorcha.Blueprint.Service.Services.Implementation.TransactionRetrievalService>();
-
 // Feature 145 — InstanceProjector: the single deterministic instance projector. Subscribes to
 // docket:confirmed on EVERY node holding the register and folds each sealed action transaction
 // into the instance materialized view (pure InstanceProjection fold, idempotent on the

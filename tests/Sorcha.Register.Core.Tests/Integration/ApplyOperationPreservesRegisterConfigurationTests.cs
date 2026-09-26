@@ -151,6 +151,12 @@ public class ApplyOperationPreservesRegisterConfigurationTests
 
         var after = Service().ApplyOperation(before, operation, newAttestation);
 
+        // #1697 — compare against an INDEPENDENT instance, never against `before`. ShallowCopy shares
+        // nested objects by reference, so a change made by mutating the shared RegisterPolicy in
+        // place moves `before` and `after` identically and a before/after comparison cannot see it.
+        // FullyConfiguredRoster() is deterministic, so a fresh call is the value `before` started as.
+        var expected = FullyConfiguredRoster();
+
         // Reflection, not a field list: the next property added to RegisterControlRecord is caught
         // by this test on the day it is added, not on the day it silently goes missing in production.
         var carried = typeof(RegisterControlRecord)
@@ -164,8 +170,14 @@ public class ApplyOperationPreservesRegisterConfigurationTests
         foreach (var property in carried)
         {
             property.GetValue(after).Should().BeEquivalentTo(
-                property.GetValue(before),
+                property.GetValue(expected),
                 $"a {operationType} changes roster membership and must leave {property.Name} untouched");
+
+            // The aliasing hazard itself: the PRIOR control record must not be altered retroactively
+            // by an operation that was only supposed to produce a new one.
+            property.GetValue(before).Should().BeEquivalentTo(
+                property.GetValue(expected),
+                $"a {operationType} must not rewrite {property.Name} on the record it was applied to");
         }
     }
 

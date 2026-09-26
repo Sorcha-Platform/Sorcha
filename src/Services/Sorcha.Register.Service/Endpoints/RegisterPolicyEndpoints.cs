@@ -3,6 +3,7 @@
 
 using System.ComponentModel.DataAnnotations;
 using Sorcha.Register.Core.Services;
+using Sorcha.Register.Core.Validation;
 using Sorcha.Register.Models;
 using Sorcha.ServiceClients.Validator;
 
@@ -120,6 +121,12 @@ public static class RegisterPolicyEndpoints
 
                 if (request.Policy.Version <= currentPolicy.Version)
                     return Results.Conflict(new { message = $"Policy version must be > {currentPolicy.Version}, got {request.Policy.Version}" });
+
+                // #1697 — the full rule set. RegisterPolicyValidator existed and was never invoked,
+                // and WithRequestValidation runs DataAnnotations, which RegisterPolicy carries none of.
+                var policyErrors = ValidateProposedPolicy(request.Policy);
+                if (policyErrors.Count > 0)
+                    return Results.ValidationProblem(policyErrors);
 
                 // Validate min/max constraints
                 if (request.Policy.Validators.MinValidators < 1)
@@ -293,6 +300,20 @@ public static class RegisterPolicyEndpoints
             ? "disclosureMetadata: 'Minimal' is reserved and not yet implemented. Only 'Public' is "
               + "a supported value today — omit the field or set it explicitly to 'Public'."
             : null;
+
+    private static readonly RegisterPolicyValidator PolicyValidator = new();
+
+    /// <summary>
+    /// Runs <see cref="RegisterPolicyValidator"/> over a proposed policy (#1697). The validator
+    /// carries the policy's range and consistency rules; until this was wired, nothing ran it and
+    /// every field was accepted unchecked.
+    /// </summary>
+    /// <param name="policy">The proposed policy.</param>
+    /// <returns>Errors keyed by property path; empty when the policy is valid.</returns>
+    internal static Dictionary<string, string[]> ValidateProposedPolicy(RegisterPolicy policy) =>
+        PolicyValidator.Validate(policy).Errors
+            .GroupBy(e => e.PropertyName)
+            .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray());
 }
 
 /// <summary>
