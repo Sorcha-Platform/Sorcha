@@ -39,6 +39,15 @@
     Nothing aborts the run. A suite that stops at the first red tells you about one walkthrough when
     it was about to tell you seven.
 
+    Exit codes: 0 = at least one step passed and none failed; 1 = a step failed, or a step's script
+    was not found; 2 = nothing passed (zero steps selected, or all skipped). A run that executed
+    nothing is never a success (#1702).
+
+    ⚠ A PARAMETER-BINDING ERROR NEVER REACHES THIS SCRIPT, so it cannot be caught here. Invoked
+    directly (`pwsh -File run-all.ps1 -Bogus`) it exits 1. But a wrapper doing
+    `run-all.ps1 -Bogus; exit $LASTEXITCODE` exits 0, because the script never ran and so never set
+    $LASTEXITCODE. In a wrapper, check `$?` as well, or read summary.json's step count.
+
 .PARAMETER Profile
     Target node. 'n1' targets https://n1.sorcha.dev. Use -GatewayUrl for any other node.
 
@@ -297,4 +306,16 @@ if ($Suite -ne 'legacy') {
     Write-Host ""
 }
 
+# #1702 — a run that PASSED NOTHING is not a clean run, however it got there: -StartAt past the end,
+# -OnlySetup against a filter that matched nothing, or every step skipped. So is a core step whose
+# script is missing: that is a renamed or deleted walkthrough, not a node that lacks it.
+$missing = @($results | Where-Object { $_.Status -eq 'SKIP' -and $_.Note -eq 'script not found' }).Count
+if ($pass -eq 0) {
+    Write-Host "  NO STEP PASSED — $($results.Count) selected, $skip skipped. This is not a success." -ForegroundColor Red
+    exit 2
+}
+if ($missing -gt 0) {
+    Write-Host "  $missing step(s) skipped because the script was not found — a renamed or deleted walkthrough." -ForegroundColor Red
+    exit 1
+}
 exit $(if ($fail -eq 0) { 0 } else { 1 })
