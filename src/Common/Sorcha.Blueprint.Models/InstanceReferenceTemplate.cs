@@ -66,9 +66,18 @@ public class ReferenceComponent
 
 /// <summary>
 /// Available transforms for instance reference components.
-/// JSON values: "first-word", "truncate" (kebab-case).
 /// All output is uppercased regardless of transform.
 /// </summary>
+/// <remarks>
+/// <b>The wire form depends on the serializer's options, not only on this attribute</b> (#1700).
+/// A converter in <c>JsonSerializerOptions.Converters</c> outranks a type-level
+/// <c>[JsonConverter]</c>, so a service that calls <c>SorchaJson.Configure</c> (the Blueprint
+/// Service's HTTP API) writes <c>"first-word"</c> / <c>"truncate"</c>, while options without that
+/// converter write <c>"FirstWord"</c> / <c>"Truncate"</c>. Readers must accept both — the validator
+/// reads through <c>BlueprintWireJson</c> for exactly this reason. Do NOT change this attribute to
+/// settle it: the enum is part of the blueprint graph, so its serialized form is canonical ledger
+/// contract (CLAUDE.md §22) and a change would move every publication id.
+/// </remarks>
 [JsonConverter(typeof(JsonStringEnumConverter<ReferenceTransform>))]
 public enum ReferenceTransform
 {

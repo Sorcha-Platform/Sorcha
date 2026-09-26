@@ -21,11 +21,9 @@ public class BlueprintFetcher : IBlueprintFetcher
     private readonly BlueprintFetcherConfiguration _config;
     private readonly ILogger<BlueprintFetcher> _logger;
 
-    private readonly JsonSerializerOptions _jsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true
-    };
+    // #1700 — the Blueprint Service serves kebab-case enums (SorchaJson); plain options could not
+    // read them, so every cold-cache fetch of a definition with an instanceReference transform threw.
+    private readonly JsonSerializerOptions _jsonOptions = BlueprintWireJson.Options;
 
     // Statistics
     private long _totalFetched;
