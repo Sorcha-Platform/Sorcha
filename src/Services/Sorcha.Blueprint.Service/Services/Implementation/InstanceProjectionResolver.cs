@@ -68,8 +68,11 @@ public static class InstanceProjectionResolver
         // Feature 195 — resolve the bindings against the definition THIS transaction was executed
         // against, carried on its own signed routing decision. A transaction that carries no pin is
         // pre-feature: bindings are then best-effort and simply do not resolve from the blueprint.
+        var isRejection = IsRejectionTransaction(tx);
+        var pin = decision?.BlueprintDefinitionTxId ?? (isRejection ? ReadRejectionPin(tx) : null);
+
         var bindings = await ResolveParticipantBindingsAsync(
-            blueprintId, decision?.BlueprintDefinitionTxId, completedActionId, nextActionIds,
+            blueprintId, pin, completedActionId, nextActionIds,
             tx, actionResolver, logger, ct);
 
         var projected = new ProjectedTransaction(
@@ -83,7 +86,7 @@ public static class InstanceProjectionResolver
             // Completed, which for a refused application is the wrong outcome, not a wrong label.
             // The discriminator rides TrackingData["type"], copied there by
             // ToTransactionSubmission's whitelist (the Feature 155 channel).
-            IsRejection: IsRejectionTransaction(tx),
+            IsRejection: isRejection,
             // Feature 186: carry the decision's route and reason code through to the fold. Both ride
             // the transaction in the clear and are inside RoutingDecision.ComputeSignableBytes, so
             // they are signed and every node folding this transaction records the same pair.
@@ -93,7 +96,11 @@ public static class InstanceProjectionResolver
             // every node folding this transaction agrees on which definition the instance runs —
             // which is the whole reason the pin had to become a sealed fact rather than a per-node
             // lookup. Null on a transaction sealed before Feature 194.
-            BlueprintDefinitionTxId: decision?.BlueprintDefinitionTxId);
+            //
+            // #1576 — a rejection has no decision, so its pin rides TrackingData instead. That copy
+            // is UNSIGNED, which is why the fold uses a rejection's pin only to confirm the
+            // instance's existing pin and never to establish one (InstanceProjection.ApplyInPlace).
+            BlueprintDefinitionTxId: pin);
 
         return new ResolvedProjection(blueprintId, instanceId, ResolveTenantId(tx), projected);
     }
@@ -106,6 +113,13 @@ public static class InstanceProjectionResolver
     /// from its payload copy, which never reaches here — that split is exactly how a rejection
     /// could be correct on the ledger and wrong in the projection (#1672).
     /// </remarks>
+    private static string? ReadRejectionPin(Sorcha.Register.Models.TransactionModel tx) =>
+        tx.MetaData?.TrackingData is { } tracking
+        && tracking.TryGetValue(TransactionBuilderServiceExtensions.RejectionDefinitionPinKey, out var pin)
+        && !string.IsNullOrWhiteSpace(pin)
+            ? pin
+            : null;
+
     private static bool IsRejectionTransaction(Sorcha.Register.Models.TransactionModel tx) =>
         tx.MetaData?.TrackingData is { } tracking
         && tracking.TryGetValue("type", out var domainType)

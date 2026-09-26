@@ -196,8 +196,12 @@ public static class InstanceProjection
         // Assigned only when currently empty — the OPPOSITE of the Feature 186 decision fields
         // below, which are assigned unconditionally so a later transaction clears a stale reason.
         // A pin is not a per-transaction fact; it is the instance's identity for its whole life.
+        //
+        // #1576 — never from a rejection: its pin rides unsigned TrackingData (a rejection has no
+        // RoutingDecision), so it may confirm the instance's pin but must not create one.
         if (string.IsNullOrWhiteSpace(instance.BlueprintDefinitionTxId)
-            && !string.IsNullOrWhiteSpace(tx.BlueprintDefinitionTxId))
+            && !string.IsNullOrWhiteSpace(tx.BlueprintDefinitionTxId)
+            && !tx.IsRejection)
         {
             instance.BlueprintDefinitionTxId = tx.BlueprintDefinitionTxId;
         }

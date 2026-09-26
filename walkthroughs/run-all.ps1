@@ -302,7 +302,7 @@ Write-Host ""
 if ($Suite -ne 'legacy') {
     Write-Host "  Still to check by hand — the suite cannot see it:" -ForegroundColor Yellow
     Write-Host "    docker logs sorcha-blueprint-service 2>&1 | grep -c 'pre-Feature-194 fallback'" -ForegroundColor DarkGray
-    Write-Host "    Expect 0. A rejection scenario currently makes it non-zero — that is #1576." -ForegroundColor DarkGray
+    Write-Host "    Expect 0 on instances started after the deploy. Rejections carry the pin since #1576." -ForegroundColor DarkGray
     Write-Host ""
 }
 
