@@ -9,6 +9,15 @@
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
 > **▶ 2026-09-26 - Issue loop: 22 issues closed (13 were stale-open, verified against source, and 9 fixed).**
+> **Second pass (same day):** #1576 (a rejection carries its instance's definition pin, so it is not a
+> `pin_fallback`; the pin is unsigned, so it confirms and never establishes), #1733 (bundle verify checks the
+> receipt signature), #1697 (RegisterPolicyValidator now runs on `/policy/update`, the dead
+> TransactionRetrievalService is deleted, and the #1463 guard sees in-place nested mutation), #1655 (org and user
+> mutations are audited server-side; the UI POST to a non-existent `/api/audit` is deleted), #1647
+> (`sorcha_register_governors`), plus **#1747, a live regression from #1732**: `IReceiptPublisher` was never
+> registered (`AddServiceIntegration` has no caller), so every docket write threw after it had succeeded; that is
+> now fixed with a real-host DI test. ⚠ **Needs a decision:** #1558 (unreachable action is a warning, not an
+> error), #1674 (a proof that verifies on its own is a feature).
 > Merged: #1702 (run-all exits non-zero when nothing passed), #1706/#1645 (org_user_audit states the
 > real authority and reports UserIdentity roles), #1705 (`sorcha_whoami`), #1711 (await
 > TransactionSeals: a rejection ends the wait, and a pending tx is no longer called a bad id —
