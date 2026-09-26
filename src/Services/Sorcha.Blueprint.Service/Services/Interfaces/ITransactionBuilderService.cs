@@ -307,6 +307,12 @@ public static class TransactionBuilderServiceExtensions
     /// </remarks>
     internal const string RejectionDiscriminator = "rejection";
 
+    /// <summary>
+    /// #1576 — the metadata key carrying a rejection's definition pin onto the sealed
+    /// <c>TrackingData</c>. Read by <c>InstanceProjectionResolver</c> for rejections only.
+    /// </summary>
+    internal const string RejectionDefinitionPinKey = "blueprintDefinitionTxId";
+
     public static Task<BuiltTransaction> BuildRejectionTransactionAsync(
         this ITransactionBuilderService service,
         BlueprintModel blueprint,
@@ -331,6 +337,13 @@ public static class TransactionBuilderServiceExtensions
             // action" branch, and records a REJECTED instance as Completed.
             ["type"] = RejectionDiscriminator
         };
+
+        // #1576 — a rejection carries no RoutingDecision, which is where every other action's
+        // definition pin rides. Without this the projector folds it via the pre-Feature-194
+        // fallback (latest definition) and counts a pin_fallback for an ordinary refusal. The key
+        // is omitted, not emptied, for an instance that predates pinning.
+        if (!string.IsNullOrWhiteSpace(instance.BlueprintDefinitionTxId))
+            metadata[RejectionDefinitionPinKey] = instance.BlueprintDefinitionTxId;
 
         // Serialize the rejection data into transaction data bytes
         var transactionPayload = new
@@ -696,6 +709,11 @@ public class BuiltTransaction
             submissionMetadata["type"] = domainType.ToString()!;
         if (Metadata.TryGetValue("credentialId", out var credentialId) && credentialId is not null)
             submissionMetadata["credentialId"] = credentialId.ToString()!;
+
+        // #1576 — a rejection's definition pin (it has no RoutingDecision to carry one).
+        if (Metadata.TryGetValue(TransactionBuilderServiceExtensions.RejectionDefinitionPinKey, out var rejectionPin)
+            && rejectionPin is not null)
+            submissionMetadata[TransactionBuilderServiceExtensions.RejectionDefinitionPinKey] = rejectionPin.ToString()!;
 
         return new TransactionSubmission
         {
