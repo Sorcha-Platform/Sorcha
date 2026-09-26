@@ -97,6 +97,34 @@ public class BlueprintFetcherTests
     }
 
     [Fact]
+    public async Task FetchBlueprintByPublicationAsync_ReadsTheKebabCaseEnumsTheBlueprintServiceServes()
+    {
+        // #1700 — measured on n1: GET /api/blueprints/{id}/definitions/{hash} serves
+        // "transform":"first-word" (SorchaJson), and the fetcher's plain options threw
+        // "could not be converted to ReferenceTransform" on every cold-cache pinned fetch.
+        const string servedJson = """
+            {
+                "id": "construction-permit",
+                "title": "Construction permit",
+                "participants": [],
+                "actions": [],
+                "instanceReference": {
+                    "prefix": "CP",
+                    "components": [ { "field": "/projectName", "transform": "first-word", "chars": 3 } ]
+                }
+            }
+            """;
+        _blueprintClientMock
+            .Setup(x => x.GetBlueprintDefinitionAsync("construction-permit", "pin-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(servedJson);
+
+        var result = await _fetcher.FetchBlueprintByPublicationAsync("construction-permit", "pin-1");
+
+        result.Should().NotBeNull("the pinned definition must be readable on a cold cache");
+        result!.InstanceReference!.Components[0].Transform.Should().Be(Sorcha.Blueprint.Models.ReferenceTransform.FirstWord);
+    }
+
+    [Fact]
     public async Task FetchBlueprintAsync_BlueprintNotFound_ReturnsNull()
     {
         // Arrange

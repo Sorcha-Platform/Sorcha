@@ -50,11 +50,9 @@ public class BlueprintCache : IBlueprintCache
 
         _database = _redis.GetDatabase();
 
-        _jsonOptions = new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-        };
+        // #1700 — one reader for both sources; entries may be PascalCase (written here or by the
+        // Blueprint Service's publish path) or kebab-case, and BlueprintWireJson reads either.
+        _jsonOptions = BlueprintWireJson.Options;
 
         _pipeline = BuildResiliencePipeline();
 

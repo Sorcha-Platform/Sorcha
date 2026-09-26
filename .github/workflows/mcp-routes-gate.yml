@@ -37,6 +37,9 @@ on:
       # gate's trigger too; both jobs take ~30s, which is the cheaper side of the trade.
       - "src/Common/**/*.cs"
       - "src/Services/**/*.cs"
+      # #1675 — the route gate also checks every tool path against the gateway's YARP routes, so
+      # removing or narrowing a gateway route must re-run it (a .cs-only filter would not).
+      - "src/Services/Sorcha.ApiGateway/appsettings.json"
       - "scripts/check-mcp-routes.ps1"
       - ".mcp-routes-allowlist"
       - "scripts/check-mcp-response-shapes.ps1"

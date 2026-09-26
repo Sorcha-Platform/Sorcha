@@ -3,11 +3,25 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.37
+**Version:** 7.38
 **Last Updated:** 2026-09-26
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
+> **▶ 2026-09-26 - Issue loop: 22 issues closed (13 were stale-open, verified against source, and 9 fixed).**
+> Merged: #1702 (run-all exits non-zero when nothing passed), #1706/#1645 (org_user_audit states the
+> real authority and reports UserIdentity roles), #1705 (`sorcha_whoami`), #1711 (await
+> TransactionSeals: a rejection ends the wait, and a pending tx is no longer called a bad id —
+> measured live), #1704 (receipts on the LIVE seal path, signed with the roster key, NO_RECEIPT vs
+> NOT_SEALED). Integration PR: #1673/#1646 (refusals, never outages; `/api/instances/` required
+> paging params; the same trap on the Validator audit trail), #1700 (validator reads kebab and Pascal
+> enums), #1652 (mongo:8.3 pin, and setup refuses kernels 6.19–7.0.13), #1653 (recovery reads the
+> docket object), #1569 (published definitions need service or org admin), plus a metric-listener
+> flake fix. Closed stale: #1707 #1703 #1695 #1680 #1685 #1686 #1679 #1687 #1672 #1669 #1668 #1667
+> #1533 #1641. ⚠ **Needs a decision:** #1724 (Designer rehearsal submits empty payloads), #1694
+> (preferences keyed by UserIdentity, notifications target a PlatformUser), #1733 (bundle verify
+> skips the signature check). ⚠ **tiny's kernel 7.0.0-28 crashes MongoDB 8** (SERVER-121912): upgrade to 7.0.14+.
+>
 > **▶ 2026-09-26 - #1691 ✅ LIVE-ACCEPTED ON n1 (PR #1723, deployed mcp-server-http + api-gateway +
 > blueprint-service): an MCP agent can REHEARSE, so the F142 publish gate is a gate and not a toll.**
 > Before this, nothing on the MCP surface could record a `RehearsalPass`, so every MCP publish needed

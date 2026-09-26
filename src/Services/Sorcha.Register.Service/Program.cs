@@ -2301,10 +2301,17 @@ app.MapGet("/api/registers/{registerId}/blueprints/published", async (
 })
 .WithName("GetPublishedBlueprints")
 .WithSummary("Get published blueprints for a register")
-.WithDescription("Returns all blueprint-publish control transactions for a register. Used by Blueprint Service during startup recovery to rebuild the published blueprint index.")
+.WithDescription("Returns every blueprint-publish transaction on a register, INCLUDING each full blueprint definition (schemas, routing, participants, credential issuance and disclosure rules). Used by the Blueprint Service's startup recovery (service token) and the admin UI. Requires a service token, or an organisation Administrator/SystemAdmin.")
 .Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status401Unauthorized)
+.Produces(StatusCodes.Status403Forbidden)
 .Produces(StatusCodes.Status404NotFound)
-.AllowAnonymous(); // Internal recovery endpoint — no auth required (returns only metadata)
+// #1569 — this was .AllowAnonymous() under a comment claiming it "returns only metadata". It returns
+// full definitions, so any authenticated user (and, on any direct service exposure, anyone) could
+// dump every blueprint on every register. CanManageRegisters = a service token, or org_id plus the
+// Administrator/SystemAdmin role — exactly its callers: BlueprintRecoveryService, the admin UI's
+// published-blueprint count, and the F195 acceptance walkthrough (run as the org admin).
+.RequireAuthorization("CanManageRegisters");
 
 // ===========================
 // Governance API

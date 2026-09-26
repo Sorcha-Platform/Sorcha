@@ -228,6 +228,31 @@ check_docker_compose_v2() {
     return 1
 }
 
+check_mongo_kernel_compatible() {
+    # #1652 / SERVER-121912 — MongoDB 8.x's bundled TCMalloc violates the kernel rseq ABI from
+    # Linux 6.19, and crashes. The fix (MongoDB 8.3.9+ / 8.0.30+) supports kernels 7.0.14 and later
+    # only, so a kernel in [6.19, 7.0.14) has NO safe MongoDB 8: newer builds refuse to start, and
+    # older ones start without the guard and crash. Read the kernel Docker actually runs on — under
+    # Docker Desktop that is the VM's kernel, not the host's.
+    local kernel
+    kernel=$(docker info --format '{{.KernelVersion}}' 2>/dev/null | grep -oP '^\d+\.\d+(\.\d+)?' | head -1)
+    if [ -z "$kernel" ]; then
+        warn "Could not read the Docker kernel version; skipping the MongoDB kernel check"
+        return 0
+    fi
+    [[ "$kernel" =~ ^[0-9]+\.[0-9]+$ ]] && kernel="${kernel}.0"
+    local lowest_bad="6.19.0" first_good="7.0.14"
+    if [ "$(printf '%s\n%s\n' "$lowest_bad" "$kernel" | sort -V | head -1)" = "$lowest_bad" ] \
+        && [ "$(printf '%s\n%s\n' "$kernel" "$first_good" | sort -V | head -1)" = "$kernel" ] \
+        && [ "$kernel" != "$first_good" ]; then
+        echo "[sorcha-setup] kernel ${kernel} cannot run MongoDB 8 safely (SERVER-121912): kernels 6.19 to 7.0.13 crash it." >&2
+        echo "[sorcha-setup] Upgrade the kernel to 7.0.14 or later (or run on a kernel below 6.19), then re-run." >&2
+        return 1
+    fi
+    success "Kernel ${kernel} is compatible with MongoDB 8"
+    return 0
+}
+
 check_port_available() {
     # Args: <port>
     local port="$1"
@@ -307,6 +332,7 @@ check_prerequisites() {
     check_docker_installed       || missing=$((missing + 1))
     check_docker_daemon_running  || missing=$((missing + 1))
     check_docker_compose_v2      || missing=$((missing + 1))
+    check_mongo_kernel_compatible || missing=$((missing + 1))
     # --config-only generates .env + certificates and starts nothing, so the ports it would
     # eventually bind are irrelevant. Checking them anyway makes the script unusable on exactly
     # the nodes that most need it: a real deployment has a reverse proxy (n1 runs Caddy) holding
