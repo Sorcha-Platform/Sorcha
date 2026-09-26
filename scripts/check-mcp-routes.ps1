@@ -733,6 +733,70 @@ function Test-RouteMapped {
 }
 
 # ---------------------------------------------------------------------------
+# GATEWAY SIDE (#1675)
+# ---------------------------------------------------------------------------
+#
+# The MCP server talks to the API GATEWAY and nothing else: compose points every one of its service
+# clients at http://api-gateway:8080, so the forwarded caller token is authorised by the platform.
+# A path can be mapped by its service, pass the check above, and still 404 at the gateway because
+# no YARP route proxies it (cold-start run #6: /api/query/stats — mapped by Register, unrouted).
+# So each tool path must ALSO match a gateway route that goes to ITS OWNING SERVICE's cluster.
+#
+# The gateway's final '/{**catch-all}' goes to the UI and matches everything — which is exactly how
+# an unproxied /api path hides (it falls through to the UI and 404s bodiless). Only routes to a
+# backend service cluster count; an unattributed call may match any backend cluster.
+
+$gatewaySettingsPath = Join-Path $repo 'src/Services/Sorcha.ApiGateway/appsettings.json'
+$gatewayRoutes = @()   # objects: Cluster, Segments
+if (Test-Path -LiteralPath $gatewaySettingsPath) {
+    $gw = Get-Content -LiteralPath $gatewaySettingsPath -Raw | ConvertFrom-Json
+    foreach ($prop in $gw.ReverseProxy.Routes.PSObject.Properties) {
+        $route = $prop.Value
+        $path = [string]$route.Match.Path
+        if ([string]::IsNullOrWhiteSpace($path)) { continue }
+        $segs = @()
+        foreach ($seg in ($path -split '/')) {
+            if ([string]::IsNullOrWhiteSpace($seg)) { continue }
+            if ($seg -like '{`*`**}') { $segs += '**'; continue }
+            if ($seg.StartsWith('{') -and $seg.EndsWith('}')) { $segs += '*'; continue }
+            $segs += $seg.ToLowerInvariant()
+        }
+        $gatewayRoutes += [pscustomobject]@{ Cluster = [string]$route.ClusterId; Segments = $segs }
+    }
+}
+else {
+    Write-Host "WARN: gateway settings not found at $gatewaySettingsPath — gateway check skipped." -ForegroundColor Yellow
+}
+
+$backendClusters = @('tenant-cluster', 'blueprint-cluster', 'register-cluster', 'wallet-cluster',
+    'peer-cluster', 'validator-cluster', 'haip-cluster')
+
+function Test-SegmentsMatch {
+    param([string[]]$Pattern, [string[]]$Path)
+    $i = 0
+    for (; $i -lt $Pattern.Count; $i++) {
+        if ($Pattern[$i] -eq '**') { return $true }
+        if ($i -ge $Path.Count) { return $false }
+        if ($Pattern[$i] -eq '*' -or $Path[$i] -eq '*') { continue }
+        if ($Pattern[$i] -ne $Path[$i]) { return $false }
+    }
+    return $i -eq $Path.Count
+}
+
+function Test-GatewayRouted {
+    param([string]$Family, [string]$Owner)
+    # Served by the gateway itself (e.g. the aggregated /api/health), not proxied.
+    if (Test-RouteMapped -Family $Family -Owner 'ApiGateway') { return $true }
+    $clusters = if ($Owner) { @("$($Owner.ToLowerInvariant())-cluster") } else { $backendClusters }
+    $tool = $Family -split '/'
+    foreach ($r in $gatewayRoutes) {
+        if ($clusters -notcontains $r.Cluster) { continue }
+        if (Test-SegmentsMatch -Pattern $r.Segments -Path $tool) { return $true }
+    }
+    return $false
+}
+
+# ---------------------------------------------------------------------------
 # ALLOWLIST + REPORT
 # ---------------------------------------------------------------------------
 
@@ -767,6 +831,13 @@ if ($ShowRoutes) {
 
 $violations = @()
 $hitAllowed = @{}
+
+$unproxied = @()
+if ($gatewayRoutes.Count -gt 0) {
+    foreach ($t in $toolRoutes) {
+        if (-not (Test-GatewayRouted -Family $t.Family -Owner $t.Owner)) { $unproxied += $t }
+    }
+}
 
 foreach ($t in $toolRoutes) {
     if (Test-RouteMapped -Family $t.Family -Owner $t.Owner) { continue }
@@ -806,6 +877,24 @@ if ($violations.Count -gt 0) {
     Write-Host "Re-run with -ShowRoutes to dump both extracted sides."
 }
 
+if ($unproxied.Count -gt 0) {
+    $failed = $true
+    Write-Host ""
+    Write-Host "FAIL: MCP tool calls a route family the API GATEWAY does not proxy to its service (#1675)." -ForegroundColor Red
+    Write-Host ""
+    foreach ($group in ($unproxied | Group-Object Family | Sort-Object Name)) {
+        Write-Host ("  {0}" -f $group.Name) -ForegroundColor Yellow
+        foreach ($v in ($group.Group | Sort-Object File, Line)) {
+            $svc = if ($v.Owner) { "$($v.Owner.ToLowerInvariant())-cluster" } else { 'any backend cluster' }
+            Write-Host ("      {0}:{1}  {2}  [{3}] -> needs a gateway route to {4}" -f $v.File, $v.Line, $v.Tool, $v.Via, $svc)
+        }
+    }
+    Write-Host ""
+    Write-Host "The MCP server reaches every service THROUGH the gateway. A path the service maps but the"
+    Write-Host "gateway does not route falls through to the UI catch-all and 404s — the agent is told the"
+    Write-Host "platform failed. Add a route to src/Services/Sorcha.ApiGateway/appsettings.json."
+}
+
 if ($stale.Count -gt 0) {
     $failed = $true
     Write-Host ""
@@ -827,14 +916,15 @@ if ($unattributed.Count -gt 0) {
 
 if ($failed) { exit 1 }
 
-Write-Host ("OK: mcp-routes gate passed. {0} registered tool class(es), {1} tool call site(s) across {2} route famil(ies), checked per owning service against {3} mapped service route famil(ies) in {4} service(s). {5} allowlisted, {6} unattributed." -f `
+Write-Host ("OK: mcp-routes gate passed. {0} registered tool class(es), {1} tool call site(s) across {2} route famil(ies), checked per owning service against {3} mapped service route famil(ies) in {4} service(s), and against {7} gateway route(s). {5} allowlisted, {6} unattributed." -f `
         $toolFiles.Count,
         $toolRoutes.Count,
     ($toolRoutes | Select-Object -ExpandProperty Family -Unique).Count,
         $serviceRoutes.Count,
         $serviceRoutesByOwner.Count,
         $allowed.Count,
-        $unattributed.Count) -ForegroundColor Green
+        $unattributed.Count,
+        $gatewayRoutes.Count) -ForegroundColor Green
 
 if ($allowed.Count -eq 0) {
     Write-Host "  Allowlist is empty — every MCP tool route family is mapped by a service." -ForegroundColor Green
