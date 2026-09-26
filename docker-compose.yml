@@ -144,7 +144,10 @@ services:
       start_period: 30s
 
   mongodb:
-    image: mongo:8
+    # Pinned to the 8.3 minor, not the floating major (#1652). MongoDB 8.x crashes on Linux
+    # kernels 6.19-7.0.13 (SERVER-121912, TCMalloc vs the rseq ABI); 8.3.9+ carries the fix and
+    # supports kernel >= 7.0.14. scripts/sorcha-setup.sh refuses an incompatible kernel up front.
+    image: mongo:8.3
     container_name: sorcha-mongodb
     restart: unless-stopped
     <<: *infra-hardening
