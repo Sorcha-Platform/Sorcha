@@ -9,6 +9,7 @@ using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 using Sorcha.ServiceClients.Blueprint;
+using Sorcha.Register.Models;
 using Sorcha.ServiceClients.Register;
 
 namespace Sorcha.McpServer.Tools.Participant;
@@ -102,7 +103,7 @@ public sealed class AwaitConditionTool
     /// condition is met, is found to be permanently unreachable, or the timeout elapses.
     /// </summary>
     [McpServerTool(Name = ToolName)]
-    [Description("Blocks the calling MCP request for up to the given timeout — 25 seconds by default, 55 seconds maximum — while polling the ledger about once a second for one of three conditions selected by 'condition': a blueprint participant role becoming Active on a register (ParticipantActive), a workflow instance reaching a given action id as its current action or completing when no actionId is given (InstanceReachesAction), or a submitted transaction acquiring a docket number (TransactionSeals). It returns a three-way outcome rather than a boolean: Met when the condition has happened, NotYet when the timeout elapsed without it happening yet (call this tool again to keep waiting — this is not a failure), or Unreachable when the condition can now never be met, for example the instance was rejected, already completed without reaching the target action, or has already advanced past it. Call this when you already know what you are waiting for and would otherwise write your own poll loop over sorcha_participant_list, sorcha_workflow_status, or sorcha_transaction_status; use those tools instead when you want to inspect current state once without waiting, or once this tool reports Unreachable and you need to read the final state it settled into.")]
+    [Description("Blocks the calling MCP request for up to the given timeout — 25 seconds by default, 55 seconds maximum — while polling the ledger about once a second for one of three conditions selected by 'condition': a blueprint participant role becoming Active on a register (ParticipantActive), a workflow instance reaching a given action id as its current action or completing when no actionId is given (InstanceReachesAction), or a submitted transaction acquiring a docket number (TransactionSeals). It returns a three-way outcome rather than a boolean: Met when the condition has happened, NotYet when the timeout elapsed without it happening yet (call this tool again to keep waiting — this is not a failure), or Unreachable when the condition can now never be met, for example the instance was rejected, already completed without reaching the target action, or has already advanced past it, or the validator rejected the transaction (the message then carries the validator's code and reason). A transaction joins the register only when it seals, so one that is merely still being validated reads NotYet, not Unreachable. Call this when you already know what you are waiting for and would otherwise write your own poll loop over sorcha_participant_list, sorcha_workflow_status, or sorcha_transaction_status; use those tools instead when you want to inspect current state once without waiting, or once this tool reports Unreachable and you need to read the final state it settled into.")]
     public async Task<AwaitConditionResult> AwaitAsync(
         [Description("Which condition to wait for. One of 'ParticipantActive', 'InstanceReachesAction', or 'TransactionSeals' (case-insensitive).")]
         string condition,
@@ -419,33 +420,64 @@ public sealed class AwaitConditionTool
     }
 
     /// <summary>
-    /// TransactionSeals: met when the transaction carries a non-null DocketNumber. Unreachable only
-    /// when the transaction does not exist on the FIRST poll — by the time a caller has a
-    /// transactionId to wait on, a prior submission already put it in the register's mempool, so an
-    /// immediate not-found is treated as a bad id rather than eventual-consistency lag. A schema
-    /// violation is silently refused by the validator and never seals (CLAUDE.md pattern —
-    /// "What the validator actually enforces"), so there is deliberately NO other unreachable
-    /// signal here: this platform has no positive "will never seal" event to observe, and a caller
-    /// whose transaction is stuck this way sees NotYet at every poll, including after timeout.
+    /// TransactionSeals: Met when the transaction is on the chain with a docket number; Unreachable
+    /// when the validator REJECTED it (#1711); NotYet otherwise.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A pending transaction is not on the register.</b> The register receives a transaction only
+    /// when its docket is written, already carrying its docket number, so "not found" is the ordinary
+    /// state of every transaction between its 202 and its seal. This used to answer Unreachable on a
+    /// first-poll 404 ("check the id") — which, measured live on n1 (2026-09-26), told an agent its
+    /// perfectly valid participant record was a bad id, fifteen seconds before it sealed into docket 9.
+    /// </para>
+    /// <para>
+    /// <b>A rejection is now observable.</b> The validator records every refusal against its
+    /// transaction id (#1669), and the status endpoint reports it as Rejected with the validator's
+    /// code and reason. That is the positive "will never seal" signal this tool previously had no
+    /// way to see, so a refused transaction ends the wait instead of reading NotYet forever.
+    /// </para>
+    /// <para>
+    /// A transaction absent from both is still NotYet, never Unreachable: no rejection record may
+    /// mean it is still being validated, or that the id is wrong, and the platform cannot tell those
+    /// apart. The message says so rather than guessing.
+    /// </para>
+    /// </remarks>
     private async Task<(AwaitOutcome Outcome, string Message)> EvaluateTransactionSealsAsync(
         string registerId, string transactionId, CancellationToken cancellationToken)
     {
         var transaction = await _registerClient.GetTransactionAsync(registerId, transactionId, cancellationToken);
 
-        if (transaction is null)
-        {
-            return (AwaitOutcome.Unreachable,
-                $"Transaction '{transactionId}' was not found in register '{registerId}' — check the id; "
-                + "it cannot seal if it was never submitted there.");
-        }
-
-        if (transaction.DocketNumber is { } docketNumber)
+        if (transaction?.DocketNumber is { } docketNumber)
         {
             return (AwaitOutcome.Met,
                 $"Transaction '{transactionId}' sealed into docket {docketNumber} on register '{registerId}'.");
         }
 
+        if (transaction is null)
+        {
+            var status = await _registerClient.GetTransactionStatusAsync(registerId, transactionId, cancellationToken);
+            if (status?.Status == TransactionLifecycleStatus.Rejected)
+            {
+                var code = string.IsNullOrWhiteSpace(status.RejectionCode) ? string.Empty : $" ({status.RejectionCode})";
+                var reason = string.IsNullOrWhiteSpace(status.RejectionReason)
+                    ? "The validator recorded no reason."
+                    : status.RejectionReason.TrimEnd('.') + ".";
+                return (AwaitOutcome.Unreachable,
+                    $"Transaction '{transactionId}' was REJECTED by the validator{code} and will never seal on "
+                    + $"register '{registerId}'. {reason} Nothing it would have changed has happened; correct "
+                    + "the cause and submit again.");
+            }
+
+            return (AwaitOutcome.NotYet,
+                $"Transaction '{transactionId}' is not on register '{registerId}' yet, and no rejection is "
+                + "recorded for it — it is still being validated or sealed. A transaction joins the register "
+                + "only when it seals, so this is the normal state for a few seconds after submission. If it "
+                + "stays this way, check the transaction id and register id.");
+        }
+
+        // On the register without a docket number: only reachable through the legacy direct-store
+        // path, which writes before sealing. Still not sealed.
         return (AwaitOutcome.NotYet,
             $"Transaction '{transactionId}' has not sealed yet — it is still awaiting a docket on register "
             + $"'{registerId}'.");
