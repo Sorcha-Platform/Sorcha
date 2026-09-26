@@ -162,14 +162,24 @@ internal class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptio
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        // Opt-in overrides so a test can present a USER token (default: a service token). Absent
+        // headers leave the principal exactly as every existing test expects it.
+        var tokenType = Request.Headers.TryGetValue("X-Test-Token-Type", out var tt) ? tt.ToString() : "service";
         var claims = new List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, "test-user"),
             new Claim(ClaimTypes.Name, "Test User"),
             new Claim("sub", "test-user"),
             new Claim("org_id", "test-org-001"),
-            new Claim("token_type", "service")
+            new Claim("token_type", tokenType)
         };
+        if (Request.Headers.TryGetValue("X-Test-Roles", out var roles))
+        {
+            foreach (var role in roles.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                claims.Add(new Claim(ClaimTypes.Role, role));
+            }
+        }
 
         // Spec 136: inject the installation tier audiences so the extended RequireService (and any
         // tier-gated endpoint) accepts this test principal. Resolved from the host's SorchaAudiences.
