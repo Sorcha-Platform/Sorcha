@@ -125,6 +125,36 @@ public class PublishedBlueprintsEndpointTests : IClassFixture<RegisterServiceWeb
     }
 
     // ------------------------------------------------------------------ //
+    // Authorisation (#1569)                                               //
+    // ------------------------------------------------------------------ //
+
+    private async Task<HttpStatusCode> GetAsAsync(string? tokenType, string? roles)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/registers/{_registerId}/blueprints/published");
+        if (tokenType is not null) request.Headers.Add("X-Test-Token-Type", tokenType);
+        if (roles is not null) request.Headers.Add("X-Test-Roles", roles);
+        return (await _client.SendAsync(request)).StatusCode;
+    }
+
+    [Fact]
+    public async Task GetPublishedBlueprints_AnOrdinaryUser_IsRefused()
+    {
+        // #1569 — it returns FULL definitions, and was .AllowAnonymous() under a comment claiming
+        // "returns only metadata", so any authenticated user could dump every register's blueprints.
+        (await GetAsAsync("user", "Designer")).Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Theory]
+    [InlineData("user", "Administrator")]
+    [InlineData("user", "SystemAdmin")]
+    [InlineData("service", null)]
+    public async Task GetPublishedBlueprints_ItsRealCallers_AreServed(string tokenType, string? roles)
+    {
+        // The recovery service (service token), the admin UI and the F195 walkthrough (org admin).
+        (await GetAsAsync(tokenType, roles)).Should().Be(HttpStatusCode.OK);
+    }
+
+    // ------------------------------------------------------------------ //
     // Fixtures                                                            //
     // ------------------------------------------------------------------ //
 

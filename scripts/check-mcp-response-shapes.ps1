@@ -117,6 +117,12 @@ $repo = $RepoRoot.TrimEnd([IO.Path]::DirectorySeparatorChar)
 $allowlistPath = Join-Path $repo '.mcp-response-shapes-allowlist'
 
 $toolsRoot = Join-Path $repo 'src/Apps/Sorcha.McpServer/Tools'
+# #1610 — resources and prompts are agent-facing surface too; scan them with the tools.
+$surfaceRoots = @(
+    $toolsRoot,
+    (Join-Path $repo 'src/Apps/Sorcha.McpServer/Resources'),
+    (Join-Path $repo 'src/Apps/Sorcha.McpServer/Prompts')
+) | Where-Object { Test-Path -LiteralPath $_ }
 $servicesRoot = Join-Path $repo 'src/Services'
 $commonRoot = Join-Path $repo 'src/Common'
 $clientRoots = @(
@@ -1089,12 +1095,12 @@ foreach ($file in $serviceFiles) {
 # TOOL SIDE
 # ---------------------------------------------------------------------------
 
-$toolFiles = Get-SourceFiles -Roots @($toolsRoot) | Where-Object {
+$toolFiles = Get-SourceFiles -Roots $surfaceRoots | Where-Object {
     $registered = $false
     foreach ($l in (Get-Content -LiteralPath $_.FullName)) {
         $t = $l.TrimStart()
         if ($t.StartsWith('//') -or $t.StartsWith('*') -or $t.StartsWith('/*')) { continue }
-        if ($t -match '^\[McpServerToolType(\(|\])') { $registered = $true; break }
+        if ($t -match '^\[McpServer(Tool|Resource|Prompt)Type(\(|\])') { $registered = $true; break }
     }
     $registered
 }
