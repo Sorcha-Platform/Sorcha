@@ -259,6 +259,23 @@ public static class PlatformOrgEndpoints
             .Take(pageSize)
             .ToListAsync(ct);
 
+        // #1645 — the membership row's Role is ONE string; the user's authority in this org is
+        // their UserIdentity's Roles, which is what the token and the org-scoped user list report.
+        // Reading only the former audited a five-role administrator as "SystemAdmin".
+        var pageUserIds = items.Select(u => u.Id).ToList();
+        var identityRoles = (await db.UserIdentities
+                .Where(i => i.OrganizationId == orgId && pageUserIds.Contains(i.PlatformUserId))
+                .Select(i => new { i.PlatformUserId, i.Roles })
+                .ToListAsync(ct))
+            .GroupBy(i => i.PlatformUserId)
+            .ToDictionary(g => g.Key, g => g.SelectMany(i => i.Roles).Distinct().Select(r => r.ToString()).ToArray());
+
+        items = items
+            .Select(u => identityRoles.TryGetValue(u.Id, out var roles) && roles.Length > 0
+                ? u with { Roles = roles }
+                : u)
+            .ToList();
+
         return TypedResults.Ok(new OrgUserListResponse
         {
             Items = items,

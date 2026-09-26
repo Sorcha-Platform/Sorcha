@@ -78,9 +78,45 @@ public class OrgUserAuditToolTests
 
         result.Status.Should().Be("Success");
         result.OrganizationId.Should().Be("org-1");
-        result.Users.Should().Contain("items");
+        // #1645 — structured, not a JSON document embedded in a string.
+        result.Users!.Value.ValueKind.Should().Be(System.Text.Json.JsonValueKind.Object);
+        result.Users.Value.GetProperty("items").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Array);
         _tenantClientMock.Verify(c => c.GetOrganizationUsersAsync(
             "org-1", "page=2&pageSize=10", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_OrganizationIdAlias_IsAccepted()
+    {
+        // #1645 — every sibling tool names this argument organizationId.
+        Allow();
+        _tenantClientMock.Setup(c => c.GetOrganizationUsersAsync(
+                "org-9", It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, "{\"items\":[]}"));
+
+        var result = await CreateTool().InvokeAsync(organizationId: "org-9");
+
+        result.Status.Should().Be("Success");
+        result.OrganizationId.Should().Be("org-9");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_Forbidden_StatesThePlatformRequirementAndTheToolToUseInstead()
+    {
+        // #1706 — an org Administrator auditing their OWN org was told "only an administrator of
+        // that organisation can audit its users". The endpoint needs PLATFORM audit authority.
+        Allow();
+        _tenantClientMock.Setup(c => c.GetOrganizationUsersAsync(
+                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.Forbidden, null));
+
+        var result = await CreateTool().InvokeAsync("org-1");
+
+        result.Status.Should().Be("Refused");
+        result.Message.Should().Contain("system-admin organisation")
+            .And.Contain("not enough")
+            .And.Contain("sorcha_user_list");
+        result.Message.Should().NotContain("Only an administrator of that organisation");
     }
 
     [Fact]
