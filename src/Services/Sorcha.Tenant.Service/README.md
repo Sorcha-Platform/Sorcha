@@ -609,6 +609,15 @@ Seed-time only — admin UI/API toggles win on subsequent boots.
 
 **Max page size:** 200 events. Audit events older than the retention period are automatically purged daily.
 
+**Org/user mutations are audited server-side, not by the UI (#1655).** `OrganizationCreated`,
+`OrganizationUpdated`, `OrganizationDeactivated`, `UserAddedToOrganization`,
+`UserUpdatedInOrganization` and `UserRemovedFromOrganization` are written inside
+`OrganizationEndpoints` (`CreateOrganization`, `UpdateOrganization`, `DeactivateOrganization`,
+`AddUserToOrganization`, `UpdateOrganizationUser`, `RemoveUserFromOrganization`) on the success path
+only — never by a client-side POST. The Sorcha UI used to post these to `/api/audit`, a route no
+service ever mapped, so every one of these six events was silently lost; a client-authored trail is
+also the wrong design, since a client can skip or forge it.
+
 **Refusals from other services (#1648).** A refusal a person needs to act on happens in the service that
 refuses it: the Wallet Service refusing a signature, the Blueprint Service refusing a publish. Those services
 report it through `IRefusalAuditClient` (`Sorcha.ServiceClients.Audit`) to `POST /api/internal/audit/refusals`.

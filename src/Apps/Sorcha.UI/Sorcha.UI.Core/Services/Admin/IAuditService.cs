@@ -4,49 +4,19 @@
 namespace Sorcha.UI.Core.Services;
 
 /// <summary>
-/// Client-side audit service for logging administrative actions.
+/// Client-side audit service that READS the organisation's audit log from the Tenant Service.
 /// </summary>
+/// <remarks>
+/// This service has no write path. Org/user mutation audit entries (organization create/update/
+/// deactivate, user add/update/remove) are written server-side, inside the Tenant Service endpoint
+/// that performs the mutation (<c>OrganizationEndpoints</c>), on the success path only — never by
+/// a client-side POST. That used to go through <c>LogAsync</c> / <c>LogOrganizationEventAsync</c> /
+/// <c>LogUserEventAsync</c> here, posting to <c>/api/audit</c> — a route no service ever mapped, so
+/// every one of those six events was silently lost, and a client-authored trail can be skipped or
+/// forged regardless (#1655). Those methods are deleted; do not reintroduce a client-side write path.
+/// </remarks>
 public interface IAuditService
 {
-    /// <summary>
-    /// Logs an audit event.
-    /// </summary>
-    /// <param name="eventType">Type of audit event.</param>
-    /// <param name="details">Event-specific details.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    Task LogAsync(
-        AuditEventType eventType,
-        Dictionary<string, object>? details = null,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Logs an organization-related audit event.
-    /// </summary>
-    /// <param name="eventType">Type of audit event.</param>
-    /// <param name="organizationId">Organization ID.</param>
-    /// <param name="details">Event-specific details.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    Task LogOrganizationEventAsync(
-        AuditEventType eventType,
-        Guid organizationId,
-        Dictionary<string, object>? details = null,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Logs a user-related audit event.
-    /// </summary>
-    /// <param name="eventType">Type of audit event.</param>
-    /// <param name="organizationId">Organization ID.</param>
-    /// <param name="userId">User ID.</param>
-    /// <param name="details">Event-specific details.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    Task LogUserEventAsync(
-        AuditEventType eventType,
-        Guid organizationId,
-        Guid userId,
-        Dictionary<string, object>? details = null,
-        CancellationToken cancellationToken = default);
-
     /// <summary>
     /// Queries audit events for an organization with filtering and pagination.
     /// </summary>
@@ -74,53 +44,6 @@ public interface IAuditService
         Guid organizationId,
         int retentionMonths,
         CancellationToken cancellationToken = default);
-}
-
-/// <summary>
-/// Types of audit events for admin operations.
-/// Mirrors the backend AuditEventType enum with admin-specific additions.
-/// </summary>
-public enum AuditEventType
-{
-    /// <summary>
-    /// Organization was created.
-    /// </summary>
-    OrganizationCreated,
-
-    /// <summary>
-    /// Organization details were updated.
-    /// </summary>
-    OrganizationUpdated,
-
-    /// <summary>
-    /// Organization was deactivated.
-    /// </summary>
-    OrganizationDeactivated,
-
-    /// <summary>
-    /// User was added to an organization.
-    /// </summary>
-    UserAddedToOrganization,
-
-    /// <summary>
-    /// User details or roles were updated.
-    /// </summary>
-    UserUpdatedInOrganization,
-
-    /// <summary>
-    /// User was removed from an organization.
-    /// </summary>
-    UserRemovedFromOrganization,
-
-    /// <summary>
-    /// Admin dashboard was accessed.
-    /// </summary>
-    AdminDashboardAccessed,
-
-    /// <summary>
-    /// Health dashboard was refreshed.
-    /// </summary>
-    HealthCheckRefreshed
 }
 
 /// <summary>
