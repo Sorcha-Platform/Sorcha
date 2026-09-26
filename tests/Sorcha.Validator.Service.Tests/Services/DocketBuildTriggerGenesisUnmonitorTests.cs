@@ -42,7 +42,10 @@ public sealed class DocketBuildTriggerGenesisUnmonitorTests : IDisposable
         {
             InstrumentPublished = (instrument, listener) =>
             {
-                if (instrument.Meter.Name == ValidatorMempoolMetrics.MeterName)
+                // Scope to THIS test's meter: a name-only filter also counts measurements from other tests
+                // running in parallel on a same-named meter (the McpMetricsTests CI flake).
+                if (instrument.Meter.Name == ValidatorMempoolMetrics.MeterName
+                    && ReferenceEquals(instrument.Meter.Scope, _meterProvider.GetRequiredService<IMeterFactory>()))
                 {
                     listener.EnableMeasurementEvents(instrument);
                 }
