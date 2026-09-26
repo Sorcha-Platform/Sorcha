@@ -18,7 +18,7 @@ public class DocketDistributor : IDocketDistributor
 {
     private readonly IPeerServiceClient _peerClient;
     private readonly IRegisterServiceClient _registerClient;
-    private readonly IReceiptGenerator _receiptGenerator;
+    private readonly IReceiptPublisher _receiptPublisher;
     private readonly DocketDistributorConfiguration _config;
     private readonly ILogger<DocketDistributor> _logger;
 
@@ -34,13 +34,13 @@ public class DocketDistributor : IDocketDistributor
     public DocketDistributor(
         IPeerServiceClient peerClient,
         IRegisterServiceClient registerClient,
-        IReceiptGenerator receiptGenerator,
+        IReceiptPublisher receiptPublisher,
         IOptions<DocketDistributorConfiguration> config,
         ILogger<DocketDistributor> logger)
     {
         _peerClient = peerClient ?? throw new ArgumentNullException(nameof(peerClient));
         _registerClient = registerClient ?? throw new ArgumentNullException(nameof(registerClient));
-        _receiptGenerator = receiptGenerator ?? throw new ArgumentNullException(nameof(receiptGenerator));
+        _receiptPublisher = receiptPublisher ?? throw new ArgumentNullException(nameof(receiptPublisher));
         _config = config?.Value ?? new DocketDistributorConfiguration();
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -192,30 +192,9 @@ public class DocketDistributor : IDocketDistributor
                     "Successfully submitted docket {DocketNumber} to Register Service",
                     docket.DocketNumber);
 
-                // Generate and submit receipts for all transactions in the docket
-                try
-                {
-                    var receipts = await _receiptGenerator.GenerateReceiptsForDocketAsync(docket, ct);
-                    if (receipts.Length > 0)
-                    {
-                        await _registerClient.WriteReceiptBatchAsync(
-                            docket.RegisterId, docket.DocketNumber, receipts, ct);
-                    }
-                }
-                catch (HttpRequestException ex)
-                {
-                    // Receipt submission failure should not fail the docket submission
-                    _logger.LogWarning(ex,
-                        "Failed to submit receipts for docket {DocketNumber}",
-                        docket.DocketNumber);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    // Intentional: top-level error boundary for receipt generation
-                    _logger.LogWarning(ex,
-                        "Failed to generate receipts for docket {DocketNumber}",
-                        docket.DocketNumber);
-                }
+                // Receipts for every transaction in the docket — the same one step every docket-write
+                // path calls (#1704). Best-effort; never fails the docket submission.
+                await _receiptPublisher.PublishForDocketAsync(docket, ct);
             }
             else
             {

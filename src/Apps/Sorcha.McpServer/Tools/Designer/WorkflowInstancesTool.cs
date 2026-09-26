@@ -118,19 +118,24 @@ public sealed class WorkflowInstancesTool
             }
 
             // Typed client forwards the caller's bearer and pins the route (GET api/instances/).
-            var responseContent = await _blueprintClient.GetWorkflowInstancesAsync(
+            var read = await _blueprintClient.GetWorkflowInstancesAsync(
                 string.Join("&", queryParams), cancellationToken);
 
             stopwatch.Stop();
+            var responseContent = read.Body;
 
-            if (string.IsNullOrWhiteSpace(responseContent))
+            if (!read.IsSuccess || string.IsNullOrWhiteSpace(responseContent))
             {
-                _availabilityTracker.RecordSuccess("Blueprint");
+                // #1646 — say which failure it was; only a 5xx counts as an outage.
+                if (!read.IsSuccess && ServiceReadExplanation.IsOutage(read)) _availabilityTracker.RecordFailure("Blueprint");
+                else _availabilityTracker.RecordSuccess("Blueprint");
 
                 return new WorkflowInstancesResult
                 {
-                    Status = "Error",
-                    Message = "Failed to list workflow instances.",
+                    Status = read.IsSuccess ? "Error" : ServiceReadExplanation.StatusFor(read),
+                    Message = read.IsSuccess
+                        ? "The Blueprint service returned an empty instance list body."
+                        : ServiceReadExplanation.Explain(read, "list workflow instances"),
                     CheckedAt = DateTimeOffset.UtcNow,
                     ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                 };

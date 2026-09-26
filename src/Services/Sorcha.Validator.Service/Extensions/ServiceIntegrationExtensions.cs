@@ -32,8 +32,10 @@ public static class ServiceIntegrationExtensions
         // Register as scoped (matches service client lifetimes)
         services.AddScoped<IDocketDistributor, DocketDistributor>();
 
-        // Receipt generation (called by DocketDistributor after docket persistence)
+        // Receipt generation + publication — called after EVERY docket write (#1704), not only the
+        // DocketDistributor's gRPC path.
         services.AddScoped<IReceiptGenerator, ReceiptGenerator>();
+        services.AddScoped<IReceiptPublisher, ReceiptPublisher>();
 
         return services;
     }
