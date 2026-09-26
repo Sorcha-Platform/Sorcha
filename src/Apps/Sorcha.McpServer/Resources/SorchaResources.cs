@@ -27,27 +27,27 @@ public static class SorchaResources
             ["ping-pong"] = "Sorcha.McpServer.Resources.examples.ping-pong.json",
         };
 
-    // Ruling 3, corrected (2026-09-07): the embedded schema (src/Common/blueprint.schema.json,
-    // last touched by 5acb82db5 / F111 / PR #382) is NOT wrong or legacy — every property it
-    // documents (action-level `participants`, `condition`, etc.) is a live, current-model property;
-    // `register-governance-v1` routes on `condition` today, and F195 deliberately added action-level
-    // `Participants` routing to the executable-definition hash precisely because it is still
-    // executed. The defect is pure OMISSION, not error: it simply does not yet describe several
-    // constructs an agent needs to author a current blueprint — `routes` has no definition at all,
-    // nor do `isStartingAction`, `credentialRequirements`, `credentialIssuanceConfig`,
-    // `rejectionConfig`, `requiredPriorActions`, or `instanceReference`. The three worked examples
-    // below use `routes` + `isStartingAction` (assured-identity also `credentialIssuanceConfig`)
-    // and are what the walkthrough suite actually executes, so they are the reference for those
-    // constructs — complementary to the schema, not a correction of it. Regenerating the platform's
-    // published schema to cover the omitted constructs is separate work and out of scope here.
+    // Issue #1609 (fixed): the embedded schema (src/Common/blueprint.schema.json) previously
+    // omitted `routes`, `isStartingAction`, `credentialRequirements`, `credentialIssuanceConfig`,
+    // `rejectionConfig`, `requiredPriorActions`, and `instanceReference` — four months of drift that
+    // nothing detected (last touched by 5acb82db5 / F111 / PR #382 before this fix). It now
+    // describes all of those, plus the full credential surface (trustPolicy, claimMappings,
+    // displayConfig, etc.), BOTH routing mechanisms (route-level and action-level
+    // `participants`/`condition` — neither is legacy), and is kept current by
+    // BlueprintSchemaCurrencyTests (Sorcha.Blueprint.Models.Tests), a reflection gate that fails the
+    // build on a new serialized model property with no matching schema entry. The three worked
+    // examples below remain the best complement for seeing these constructs used together in a
+    // complete, executed blueprint.
     /// <summary>
-    /// Returns the embedded blueprint JSON Schema. Accurate for what it covers, but does not yet
-    /// define <c>routes</c>, <c>isStartingAction</c>, <c>credentialRequirements</c>,
-    /// <c>credentialIssuanceConfig</c>, <c>rejectionConfig</c>, <c>requiredPriorActions</c>, or
-    /// <c>instanceReference</c> — see <see cref="Example"/> for those.
+    /// Returns the embedded blueprint JSON Schema. Describes both routing mechanisms
+    /// (<c>routes</c> and action-level <c>participants</c>/<c>condition</c>), <c>isStartingAction</c>,
+    /// the full credential surface (<c>credentialRequirements</c>/<c>credentialIssuanceConfig</c> and
+    /// their nested types), <c>rejectionConfig</c>, <c>requiredPriorActions</c>, and
+    /// <c>instanceReference</c> — see <see cref="Example"/> for these constructs used together in a
+    /// complete, executed blueprint.
     /// </summary>
     [McpServerResource(UriTemplate = "sorcha://schema/blueprint", Name = "Blueprint JSON Schema", MimeType = "application/schema+json")]
-    [Description("A JSON Schema for a Sorcha blueprint: everything it documents (participants, actions, data schemas, disclosure groups, action-level condition routing) is accurate and current. IMPORTANT: it is INCOMPLETE, not wrong — it does not yet define `routes`, `isStartingAction`, `credentialRequirements`, `credentialIssuanceConfig`, `rejectionConfig`, `requiredPriorActions`, or `instanceReference`. For those constructs, read sorcha://examples/{name} instead, which the walkthrough suite actually executes. Read this before writing any blueprint JSON — for the parts it covers, it is the difference between real JSON and a plausible-looking guess.")]
+    [Description("A JSON Schema for a Sorcha blueprint, kept current against the models by a reflection-based CI gate (BlueprintSchemaCurrencyTests). Describes both routing mechanisms — the `routes` array and action-level `participants`/`condition` (neither is legacy) — plus `isStartingAction`, the full credential surface (`credentialRequirements`, `credentialIssuanceConfig`, `trustPolicy`, `claimMappings`, `issuanceCondition`, `disclosable`, `holderKeySourceField`, etc.), `rejectionConfig`, `requiredPriorActions`, and `instanceReference`. Read this before writing any blueprint JSON. For a complete, working example that uses these constructs together, also read sorcha://examples/{name} — the walkthrough suite actually executes those.")]
     public static string BlueprintSchema() => GetBlueprintSchema();
 
     /// <summary>
@@ -58,7 +58,7 @@ public static class SorchaResources
     /// </summary>
     /// <param name="name">The example name.</param>
     [McpServerResource(UriTemplate = "sorcha://examples/{name}", Name = "Example blueprint", MimeType = "application/json")]
-    [Description("A complete, working blueprint that the Sorcha walkthrough suite actually executes, using `routes` + `isStartingAction` to connect actions — constructs the embedded blueprint schema does not yet define, so read this alongside sorcha://schema/blueprint rather than in place of it. Available names: assured-identity (credential issuance with selective disclosure and credentialIssuanceConfig), encryption-at-rest (encrypted payloads and disclosure groups), ping-pong (the minimal two-party exchange).")]
+    [Description("A complete, working blueprint that the Sorcha walkthrough suite actually executes, using `routes` + `isStartingAction` to connect actions — read this alongside sorcha://schema/blueprint (which now describes those constructs too) to see them used together in a real, publishable definition. Available names: assured-identity (credential issuance with selective disclosure and credentialIssuanceConfig), encryption-at-rest (encrypted payloads and disclosure groups), ping-pong (the minimal two-party exchange).")]
     public static string? Example(string name) => GetExample(name);
 
     /// <summary>
