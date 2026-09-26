@@ -425,17 +425,66 @@ public sealed class AwaitConditionToolTests
     }
 
     [Fact]
-    public async Task TransactionSeals_TransactionNotFound_ReturnsUnreachable()
+    public async Task TransactionSeals_NotOnTheRegisterAndNotRejected_IsNotYet_NotABadId()
     {
+        // #1711 — a pending transaction is NOT on the register (it joins only when it seals). This
+        // used to answer Unreachable "check the id", which live on n1 told an agent its valid
+        // participant record was bogus fifteen seconds before it sealed. Replaces the test that
+        // pinned that behaviour.
         Allow();
-        _register.Setup(r => r.GetTransactionAsync("reg-1", "ghost-tx", It.IsAny<CancellationToken>()))
+        _register.Setup(r => r.GetTransactionAsync("reg-1", "tx-pending", It.IsAny<CancellationToken>()))
             .ReturnsAsync((TransactionModel?)null);
+        _register.Setup(r => r.GetTransactionStatusAsync("reg-1", "tx-pending", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TransactionStatusResponse?)null);
 
         var result = await _tool.AwaitAsync(
-            "TransactionSeals", registerId: "reg-1", transactionId: "ghost-tx", timeoutSeconds: 5);
+            "TransactionSeals", registerId: "reg-1", transactionId: "tx-pending", timeoutSeconds: 1);
 
         result.Status.Should().Be("Success");
+        result.Outcome.Should().Be("NotYet");
+        result.Message.Should().Contain("no rejection is recorded").And.Contain("only when it seals");
+    }
+
+    [Fact]
+    public async Task TransactionSeals_PendingThenSealed_IsMet()
+    {
+        // The real lifecycle: absent while validating, then present WITH a docket number.
+        Allow();
+        _register.SetupSequence(r => r.GetTransactionAsync("reg-1", "tx-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TransactionModel?)null)
+            .ReturnsAsync(Transaction(9));
+        _register.Setup(r => r.GetTransactionStatusAsync("reg-1", "tx-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TransactionStatusResponse?)null);
+
+        var result = await _tool.AwaitAsync(
+            "TransactionSeals", registerId: "reg-1", transactionId: "tx-1", timeoutSeconds: 5);
+
+        result.Outcome.Should().Be("Met");
+        result.Message.Should().Contain("docket 9");
+    }
+
+    [Fact]
+    public async Task TransactionSeals_RejectedByTheValidator_IsUnreachable_WithTheValidatorsReason()
+    {
+        // #1711 — the positive "will never seal" signal (#1669's rejection log), so a refused
+        // transaction ends the wait instead of reading NotYet forever.
+        Allow();
+        _register.Setup(r => r.GetTransactionAsync("reg-1", "tx-bad", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TransactionModel?)null);
+        _register.Setup(r => r.GetTransactionStatusAsync("reg-1", "tx-bad", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionStatusResponse
+            {
+                TransactionId = "tx-bad",
+                Status = TransactionLifecycleStatus.Rejected,
+                RejectionCode = "VAL_BP_002",
+                RejectionReason = "Sender is not authorised for action 2",
+            });
+
+        var result = await _tool.AwaitAsync(
+            "TransactionSeals", registerId: "reg-1", transactionId: "tx-bad", timeoutSeconds: 5);
+
         result.Outcome.Should().Be("Unreachable");
-        result.Message.Should().Contain("was not found");
+        result.Message.Should().Contain("REJECTED").And.Contain("VAL_BP_002")
+            .And.Contain("Sender is not authorised for action 2").And.Contain("never seal");
     }
 }
