@@ -602,12 +602,15 @@ public static class VerificationEndpoints
         // T042: POST /api/registers/{registerId}/verification-bundles/verify
         app.MapPost("/api/registers/{registerId}/verification-bundles/verify", (
             IHashProvider hashProvider,
+            Sorcha.Cryptography.Interfaces.ICryptoModule crypto,
             string registerId,
             VerificationBundle bundle) =>
         {
-            // Create validators
+            // Create validators. #1733 — WITH a signature check: without one, ReceiptValidator runs
+            // proof-only and the validator's signature on the receipt was never verified.
             var proofValidator = new InclusionProofValidator(hashProvider);
-            var receiptValidator = new ReceiptValidator(proofValidator);
+            var receiptValidator = new ReceiptValidator(
+                proofValidator, Sorcha.Register.Service.Services.Implementation.ReceiptSignatureVerification.Create(crypto));
             var bundleVerifier = new BundleVerifier(receiptValidator, proofValidator);
 
             var result = bundleVerifier.VerifyBundle(bundle, bundle.ValidatorPublicKeys);
