@@ -697,16 +697,19 @@ public static class ValidatorRegistrationEndpoints
     private static async Task<IResult> GetAuditTrail(
         string registerId,
         [FromQuery] string? validatorId,
-        [FromQuery] int limit,
-        [FromQuery] int offset,
+        // Nullable, so optional: a non-nullable int is a REQUIRED query parameter and a bare request
+        // 400s in binding before this handler runs — the #1646 / #1433 trap. The body below always
+        // meant them to be optional.
+        [FromQuery] int? limit,
+        [FromQuery] int? offset,
         [FromServices] IValidatorRegistry registry,
         [FromServices] ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
         try
         {
-            var effectiveLimit = limit > 0 ? Math.Min(limit, 100) : 50;
-            var effectiveOffset = Math.Max(offset, 0);
+            var effectiveLimit = limit is > 0 ? Math.Min(limit.Value, 100) : 50;
+            var effectiveOffset = Math.Max(offset ?? 0, 0);
 
             var (entries, total) = await registry.GetAuditTrailAsync(
                 registerId, validatorId, effectiveLimit, effectiveOffset, cancellationToken);

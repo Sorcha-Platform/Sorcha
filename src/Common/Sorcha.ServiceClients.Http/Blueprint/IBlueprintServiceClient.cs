@@ -142,7 +142,7 @@ public interface IBlueprintServiceClient
     /// </summary>
     /// <param name="queryString">Already-built query string (without leading '?'), or null.</param>
     /// <returns>The workflow-list JSON body, or null on non-success.</returns>
-    Task<string?> GetWorkflowInstancesAsync(
+    Task<ServiceReadResult> GetWorkflowInstancesAsync(
         string? queryString = null,
         CancellationToken cancellationToken = default);
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ServiceClients.Shared;
+using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.McpServer.Infrastructure;
@@ -60,11 +62,28 @@ public class LiveStateResourcesTests
         const string rawBody = """{"items":[{"id":"wf-1"}],"totalCount":1,"pageNumber":1,"pageSize":20}""";
         _blueprintClientMock
             .Setup(c => c.GetWorkflowInstancesAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(rawBody);
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, rawBody));
 
         var body = await CreateSut().InstancesAsync(CancellationToken.None);
 
         body.Should().Be(rawBody);
+    }
+
+    [Fact]
+    public async Task InstancesAsync_ARefusalFromAHealthyService_IsNeverReportedAsAnOutage()
+    {
+        // #1646 — a 400 from a healthy Blueprint Service came back as "The Blueprint service is
+        // currently unavailable", and a cold-start agent recorded a platform fault that did not exist.
+        Authenticate();
+        _blueprintClientMock
+            .Setup(c => c.GetWorkflowInstancesAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.BadRequest, null, "Required parameter 'int page' was not provided"));
+
+        var body = await CreateSut().InstancesAsync(CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(body);
+        var note = doc.RootElement.GetProperty("note").GetString();
+        note.Should().NotContain("unavailable").And.Contain("400").And.Contain("Required parameter");
     }
 
     [Fact]
@@ -73,7 +92,7 @@ public class LiveStateResourcesTests
         Authenticate();
         _blueprintClientMock
             .Setup(c => c.GetWorkflowInstancesAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string?)null);
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.InternalServerError, null));
 
         var body = await CreateSut().InstancesAsync(CancellationToken.None);
 

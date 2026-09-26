@@ -118,19 +118,24 @@ public sealed class TenantListTool
         {
             // Typed client forwards the caller's bearer and pins the route (GET api/organizations).
             // status/search are NOT sent — the endpoint has no server-side filter for either.
-            var responseContent = await _tenantClient.ListOrganizationsAsync(
+            var read = await _tenantClient.ListOrganizationsAsync(
                 BuildQueryString(page, pageSize), cancellationToken);
 
             stopwatch.Stop();
+            var responseContent = read.Body;
 
-            if (string.IsNullOrWhiteSpace(responseContent))
+            if (!read.IsSuccess || string.IsNullOrWhiteSpace(responseContent))
             {
-                _availabilityTracker.RecordSuccess("Tenant");
+                // #1673 — a refusal is the service answering; only a 5xx counts as an outage.
+                if (!read.IsSuccess && ServiceReadExplanation.IsOutage(read)) _availabilityTracker.RecordFailure("Tenant");
+                else _availabilityTracker.RecordSuccess("Tenant");
 
                 return new TenantListResult
                 {
-                    Status = "Error",
-                    Message = "Failed to retrieve tenants.",
+                    Status = read.IsSuccess ? "Error" : ServiceReadExplanation.StatusFor(read),
+                    Message = read.IsSuccess
+                        ? "The Tenant service returned an empty organisation list body."
+                        : ServiceReadExplanation.Explain(read, "list organisations"),
                     CheckedAt = DateTimeOffset.UtcNow,
                     ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                 };

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ServiceClients.Shared;
+using System.Net;
 using Microsoft.Extensions.Logging;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
@@ -47,7 +49,7 @@ public class MyPersonaToolTests
     {
         Allow();
         _tenantClientMock.Setup(c => c.GetMyPersonaAsync(null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"givenName\":null}");
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, "{\"givenName\":null}"));
 
         var result = await CreateTool().InvokeAsync();
 
@@ -64,7 +66,7 @@ public class MyPersonaToolTests
         Allow();
         const string body = "{\"givenName\":\"Ada\"}";
         _tenantClientMock.Setup(c => c.ReplaceMyPersonaAsync(body, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"givenName\":{\"value\":\"Ada\"}}");
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, "{\"givenName\":{\"value\":\"Ada\"}}"));
 
         var result = await CreateTool().InvokeAsync(body);
 
@@ -78,7 +80,7 @@ public class MyPersonaToolTests
     {
         Allow();
         _tenantClientMock.Setup(c => c.GetMyPersonaAsync("context=org-1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{}");
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, "{}"));
 
         var result = await CreateTool().InvokeAsync(context: "org-1");
 
@@ -91,7 +93,7 @@ public class MyPersonaToolTests
     {
         Allow();
         _tenantClientMock.Setup(c => c.GetMyPersonaAsync(null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string?)null);
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.InternalServerError, null));
 
         var result = await CreateTool().InvokeAsync();
 

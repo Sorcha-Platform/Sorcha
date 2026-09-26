@@ -84,20 +84,21 @@ public sealed class MyPersonaTool
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            var body = isUpdate
+            var read = isUpdate
                 ? await _tenantClient.ReplaceMyPersonaAsync(personaJson!, queryString, cancellationToken)
                 : await _tenantClient.GetMyPersonaAsync(queryString, cancellationToken);
             stopwatch.Stop();
+            var body = read.Body;
 
-            if (body is null)
+            if (!read.IsSuccess || body is null)
             {
-                _availabilityTracker.RecordFailure(ServiceName);
+                if (ServiceReadExplanation.IsOutage(read)) _availabilityTracker.RecordFailure(ServiceName);
+                else _availabilityTracker.RecordSuccess(ServiceName);
                 return new MyPersonaResult
                 {
-                    Status = "Error",
-                    Message = isUpdate
-                        ? "Tenant service rejected the persona replacement (validation or context error)."
-                        : "Tenant service returned no persona.",
+                    Status = ServiceReadExplanation.StatusFor(read),
+                    // A 400 on replace is a validation refusal; the service's reason says which field.
+                    Message = ServiceReadExplanation.Explain(read, isUpdate ? "replace your persona" : "read your persona"),
                     CheckedAt = DateTimeOffset.UtcNow,
                     ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                 };

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ServiceClients.Shared;
+using System.Net;
 using Microsoft.Extensions.Logging;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
@@ -40,7 +42,7 @@ public class OrgWalletStatusToolTests
     private void Returns(string body) =>
         _tenantClientMock
             .Setup(c => c.ListOrganizationsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(body);
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, body));
 
     private const string TwoOrgsOneWithout = """
         {

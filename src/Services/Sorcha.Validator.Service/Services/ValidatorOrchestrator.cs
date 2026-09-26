@@ -22,6 +22,7 @@ public class ValidatorOrchestrator : IValidatorOrchestrator
     private readonly IRegisterServiceClient _registerClient;
     private readonly IPeerServiceClient _peerClient;
     private readonly ILogger<ValidatorOrchestrator> _logger;
+    private readonly IReceiptPublisher? _receiptPublisher;
 
     // Track active validators per register
     private readonly ConcurrentDictionary<string, ValidatorState> _activeValidators = new();
@@ -32,8 +33,10 @@ public class ValidatorOrchestrator : IValidatorOrchestrator
         IConsensusEngine consensusEngine,
         IRegisterServiceClient registerClient,
         IPeerServiceClient peerClient,
-        ILogger<ValidatorOrchestrator> logger)
+        ILogger<ValidatorOrchestrator> logger,
+        IReceiptPublisher? receiptPublisher = null)
     {
+        _receiptPublisher = receiptPublisher;
         _verifiedQueue = verifiedQueue ?? throw new ArgumentNullException(nameof(verifiedQueue));
         _docketBuilder = docketBuilder ?? throw new ArgumentNullException(nameof(docketBuilder));
         _consensusEngine = consensusEngine ?? throw new ArgumentNullException(nameof(consensusEngine));
@@ -254,6 +257,13 @@ public class ValidatorOrchestrator : IValidatorOrchestrator
                     Duration = stopwatch.Elapsed,
                     ErrorMessage = "Failed to write to Register Service"
                 };
+            }
+
+            // Stage 4b: receipts for every sealed transaction (#1704) — the same step every
+            // docket-write path calls. Best-effort; never fails the pipeline.
+            if (_receiptPublisher is not null)
+            {
+                await _receiptPublisher.PublishForDocketAsync(docket, cancellationToken);
             }
 
             // Stage 5: Remove processed transactions from memory pool
