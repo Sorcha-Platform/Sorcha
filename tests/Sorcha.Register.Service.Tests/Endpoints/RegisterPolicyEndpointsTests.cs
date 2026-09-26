@@ -48,4 +48,37 @@ public class RegisterPolicyEndpointsTests
 
         error.Should().BeNull();
     }
+
+    // ── #1697 — RegisterPolicyValidator existed with a full rule set and was never invoked, so every
+    // field on a proposed policy was accepted unchecked. These pin that the endpoint's gate runs it.
+
+    [Fact]
+    public void ValidateProposedPolicy_TheDefaultPolicy_IsAccepted()
+    {
+        // The rules must not refuse the policy every register is created with.
+        RegisterPolicyEndpoints.ValidateProposedPolicy(RegisterPolicy.CreateDefault())
+            .Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ValidateProposedPolicy_AnOutOfRangeField_IsRefusedAndNamed()
+    {
+        var policy = RegisterPolicy.CreateDefault();
+        policy.Governance.ProposalTtlDays = 365;
+
+        var errors = RegisterPolicyEndpoints.ValidateProposedPolicy(policy);
+
+        errors.Should().ContainKey("Governance.ProposalTtlDays");
+    }
+
+    [Fact]
+    public void ValidateProposedPolicy_ANestedCollectionEntry_IsChecked()
+    {
+        var policy = RegisterPolicy.CreateDefault();
+        policy.Validators.ApprovedValidators = [new ApprovedValidator { Did = "", PublicKey = "" }];
+
+        var errors = RegisterPolicyEndpoints.ValidateProposedPolicy(policy);
+
+        errors.Keys.Should().Contain(k => k.StartsWith("Validators.ApprovedValidators[0]"));
+    }
 }
