@@ -40,9 +40,9 @@ public sealed class BlueprintSchemaAcceptanceTests
 
     public static IEnumerable<object[]> WalkthroughExamples()
     {
-        yield return ["assured-identity", @"walkthroughs\AssuredIdentity\blueprints\assured-identity.json"];
-        yield return ["encryption-at-rest", @"walkthroughs\EncryptionAtRest\blueprints\encryption-at-rest.json"];
-        yield return ["ping-pong", @"walkthroughs\PingPongN1\blueprints\ping-pong.json"];
+        yield return ["assured-identity", "walkthroughs/AssuredIdentity/blueprints/assured-identity.json"];
+        yield return ["encryption-at-rest", "walkthroughs/EncryptionAtRest/blueprints/encryption-at-rest.json"];
+        yield return ["ping-pong", "walkthroughs/PingPongN1/blueprints/ping-pong.json"];
     }
 
     [Theory]
