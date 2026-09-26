@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ServiceClients.Shared;
+using System.Net;
 using Microsoft.Extensions.Logging;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
@@ -58,7 +60,7 @@ public class PlatformSettingsToolTests
     {
         Allow();
         _tenantClientMock.Setup(c => c.GetPlatformSettingsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"publicOrgEnabled\":true}");
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, "{\"publicOrgEnabled\":true}"));
 
         var result = await CreateTool().InvokeAsync();
 
@@ -75,7 +77,7 @@ public class PlatformSettingsToolTests
         Allow();
         _tenantClientMock.Setup(c => c.UpdatePublicOrgAsync(
                 It.Is<string>(b => b.Contains("true")), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"publicOrgEnabled\":true}");
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.OK, "{\"publicOrgEnabled\":true}"));
 
         var result = await CreateTool().InvokeAsync(publicOrgEnabled: true);
 
@@ -90,7 +92,7 @@ public class PlatformSettingsToolTests
     {
         Allow();
         _tenantClientMock.Setup(c => c.GetPlatformSettingsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string?)null);
+            .ReturnsAsync(new ServiceReadResult(HttpStatusCode.InternalServerError, null));
 
         var result = await CreateTool().InvokeAsync();
 

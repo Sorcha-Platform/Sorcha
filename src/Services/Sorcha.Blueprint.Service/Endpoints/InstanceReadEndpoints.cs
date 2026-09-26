@@ -112,10 +112,16 @@ public static class InstanceReadEndpoints
         IWalletServiceClient walletClient,
         ILogger<InstanceReadEndpointsLogCategory> logger,
         Sorcha.Blueprint.Service.Models.InstanceState? status,
-        int page,
-        int pageSize,
-        CancellationToken cancellationToken)
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken cancellationToken = default)
     {
+        // #1646 — these were REQUIRED query parameters, so a bare GET /api/instances/ 400'd in model
+        // binding with no detail, and sorcha://instances reported that as an outage. Default and
+        // clamp instead, matching the MCP tool's own defaults.
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
         // Issue #1182 (adjacent) — this previously read the wallet_address claim directly and
         // returned an empty page when it was absent. A consumer-tier token never carries that claim
         // (Feature 136), so EVERY citizen saw "no applications" while the server held their data.

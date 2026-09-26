@@ -79,21 +79,24 @@ public sealed class PlatformSettingsTool
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            var body = isUpdate
+            var read = isUpdate
                 ? await _tenantClient.UpdatePublicOrgAsync(
                     JsonSerializer.Serialize(new { enabled = publicOrgEnabled!.Value }), cancellationToken)
                 : await _tenantClient.GetPlatformSettingsAsync(cancellationToken);
             stopwatch.Stop();
+            var body = read.Body;
 
-            if (body is null)
+            if (!read.IsSuccess || body is null)
             {
-                _availabilityTracker.RecordFailure(ServiceName);
+                if (ServiceReadExplanation.IsOutage(read)) _availabilityTracker.RecordFailure(ServiceName);
+                else _availabilityTracker.RecordSuccess(ServiceName);
                 return new PlatformSettingsResult
                 {
-                    Status = "Error",
-                    Message = isUpdate
-                        ? "Tenant service rejected the public-org toggle."
-                        : "Tenant service returned no platform settings.",
+                    Status = ServiceReadExplanation.StatusFor(read),
+                    Message = ServiceReadExplanation.Explain(
+                        read,
+                        isUpdate ? "change the public-organisation setting" : "read the platform settings",
+                        "Platform settings belong to the platform's system administrators (the SystemAdmin role), not to an organisation's administrators."),
                     CheckedAt = DateTimeOffset.UtcNow,
                     ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                 };

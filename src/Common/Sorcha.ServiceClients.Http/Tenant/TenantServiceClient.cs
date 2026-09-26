@@ -49,10 +49,10 @@ public class TenantServiceClient : ITenantServiceClient
             _httpClient, _serviceAuth, _logger, "TenantService", cancellationToken);
 
     /// <inheritdoc />
-    public Task<string?> ListOrganizationsAsync(string? queryString = null, CancellationToken cancellationToken = default)
+    public Task<ServiceReadResult> ListOrganizationsAsync(string? queryString = null, CancellationToken cancellationToken = default)
     {
         var url = string.IsNullOrWhiteSpace(queryString) ? "api/organizations" : $"api/organizations?{queryString}";
-        return GetRawAsync(url, "list organizations", cancellationToken);
+        return GetRawWithStatusAsync(url, "list organizations", cancellationToken);
     }
 
     /// <inheritdoc />
@@ -119,17 +119,17 @@ public class TenantServiceClient : ITenantServiceClient
     }
 
     /// <inheritdoc />
-    public Task<string?> GetMyPersonaAsync(string? queryString = null, CancellationToken cancellationToken = default)
+    public Task<ServiceReadResult> GetMyPersonaAsync(string? queryString = null, CancellationToken cancellationToken = default)
     {
         var url = string.IsNullOrWhiteSpace(queryString) ? "api/me/persona" : $"api/me/persona?{queryString}";
-        return GetRawAsync(url, "get my persona", cancellationToken);
+        return GetRawWithStatusAsync(url, "get my persona", cancellationToken);
     }
 
     /// <inheritdoc />
-    public Task<string?> ReplaceMyPersonaAsync(string requestJson, string? queryString = null, CancellationToken cancellationToken = default)
+    public Task<ServiceReadResult> ReplaceMyPersonaAsync(string requestJson, string? queryString = null, CancellationToken cancellationToken = default)
     {
         var url = string.IsNullOrWhiteSpace(queryString) ? "api/me/persona" : $"api/me/persona?{queryString}";
-        return SendRawAsync(HttpMethod.Put, url, requestJson, "replace my persona", cancellationToken);
+        return SendRawWithStatusAsync(HttpMethod.Put, url, requestJson, "replace my persona", cancellationToken);
     }
 
     /// <inheritdoc />
@@ -137,12 +137,12 @@ public class TenantServiceClient : ITenantServiceClient
         SendRawAsync(HttpMethod.Put, $"api/platform/organizations/{Uri.EscapeDataString(organizationId)}/status", requestJson, "set organization status", cancellationToken);
 
     /// <inheritdoc />
-    public Task<string?> GetPlatformSettingsAsync(CancellationToken cancellationToken = default) =>
-        GetRawAsync("api/platform/settings", "get platform settings", cancellationToken);
+    public Task<ServiceReadResult> GetPlatformSettingsAsync(CancellationToken cancellationToken = default) =>
+        GetRawWithStatusAsync("api/platform/settings", "get platform settings", cancellationToken);
 
     /// <inheritdoc />
-    public Task<string?> UpdatePublicOrgAsync(string requestJson, CancellationToken cancellationToken = default) =>
-        SendRawAsync(HttpMethod.Put, "api/platform/settings/public-org", requestJson, "update public org settings", cancellationToken);
+    public Task<ServiceReadResult> UpdatePublicOrgAsync(string requestJson, CancellationToken cancellationToken = default) =>
+        SendRawWithStatusAsync(HttpMethod.Put, "api/platform/settings/public-org", requestJson, "update public org settings", cancellationToken);
 
     /// <inheritdoc />
     public Task<ServiceReadResult> GetOrganizationUsersAsync(string organizationId, string? queryString = null, CancellationToken cancellationToken = default)
@@ -229,8 +229,10 @@ public class TenantServiceClient : ITenantServiceClient
 
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogWarning("Tenant {Operation} failed: {StatusCode}", operation, response.StatusCode);
-            return new ServiceReadResult(response.StatusCode, null);
+            // #1673 — keep the service's own explanation; a bare status leaves the caller guessing.
+            var (_, reason) = RefusalBody.Read(await response.Content.ReadAsStringAsync(cancellationToken));
+            _logger.LogWarning("Tenant {Operation} failed: {StatusCode}: {Reason}", operation, response.StatusCode, reason ?? "no reason given");
+            return new ServiceReadResult(response.StatusCode, null, reason);
         }
 
         return new ServiceReadResult(
@@ -254,8 +256,10 @@ public class TenantServiceClient : ITenantServiceClient
 
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogWarning("Tenant {Operation} failed: {StatusCode}", operation, response.StatusCode);
-            return new ServiceReadResult(response.StatusCode, null);
+            // #1673 — keep the service's own explanation; a bare status leaves the caller guessing.
+            var (_, reason) = RefusalBody.Read(await response.Content.ReadAsStringAsync(cancellationToken));
+            _logger.LogWarning("Tenant {Operation} failed: {StatusCode}: {Reason}", operation, response.StatusCode, reason ?? "no reason given");
+            return new ServiceReadResult(response.StatusCode, null, reason);
         }
 
         return new ServiceReadResult(

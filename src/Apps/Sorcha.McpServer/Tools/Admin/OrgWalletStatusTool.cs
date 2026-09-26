@@ -79,13 +79,18 @@ public sealed class OrgWalletStatusTool
         {
             // pageNumber, NOT page — OrganizationEndpoints.ListOrganizations binds pageNumber, so
             // "page=1" bound nothing and silently took the server default (#1617).
-            var body = await _tenantClient.ListOrganizationsAsync("pageNumber=1&pageSize=200", cancellationToken);
+            var read = await _tenantClient.ListOrganizationsAsync("pageNumber=1&pageSize=200", cancellationToken);
             stopwatch.Stop();
+            var body = read.Body;
 
-            if (string.IsNullOrWhiteSpace(body))
+            if (!read.IsSuccess || string.IsNullOrWhiteSpace(body))
             {
-                _availabilityTracker.RecordFailure(ServiceName);
-                return Error("Error", "Could not list organisations.");
+                // #1673 — a refusal is the service answering; only a 5xx counts as an outage.
+                if (!read.IsSuccess && !ServiceReadExplanation.IsOutage(read)) _availabilityTracker.RecordSuccess(ServiceName);
+                else _availabilityTracker.RecordFailure(ServiceName);
+                return read.IsSuccess
+                    ? Error("Error", "The organisation list came back empty.")
+                    : Error(ServiceReadExplanation.StatusFor(read), ServiceReadExplanation.Explain(read, "list organisations"));
             }
 
             _availabilityTracker.RecordSuccess(ServiceName);

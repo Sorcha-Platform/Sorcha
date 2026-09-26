@@ -71,11 +71,19 @@ public sealed class LiveStateResources
             // Raw pass-through body — this is already the shape sorcha://instances needs
             // (GET /api/instances/), so there is no separately-declared response DTO to drift
             // from the server's actual shape.
-            var body = await _blueprintClient.GetWorkflowInstancesAsync(cancellationToken: cancellationToken);
+            var read = await _blueprintClient.GetWorkflowInstancesAsync(cancellationToken: cancellationToken);
 
-            return string.IsNullOrWhiteSpace(body)
-                ? NoteJson("instances", "The Blueprint service is currently unavailable.")
-                : body;
+            // #1646 — a refusal is not an outage. This used to say "currently unavailable" for EVERY
+            // non-success, including a 400 from a healthy service, so an agent recorded a platform
+            // fault that did not exist.
+            if (read.IsSuccess && !string.IsNullOrWhiteSpace(read.Body))
+            {
+                return read.Body;
+            }
+
+            return NoteJson("instances", read.IsSuccess
+                ? "The Blueprint service answered with an empty body."
+                : ServiceReadExplanation.Explain(read, "list your workflow instances"));
         }
         catch (HttpRequestException ex)
         {
