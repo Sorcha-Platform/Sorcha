@@ -3783,6 +3783,7 @@ receiptsGroup.MapGet("/dockets/{docketNumber:long}/receipts", async (
 receiptsGroup.MapPost("/receipts/verify", async (
     IRegisterRepository repository,
     IHashProvider hashProvider,
+    Sorcha.Cryptography.Interfaces.ICryptoModule crypto,
     string registerId,
     VerifyReceiptRequest request,
     CancellationToken cancellationToken) =>
@@ -3796,7 +3797,9 @@ receiptsGroup.MapPost("/receipts/verify", async (
     try
     {
         var proofValidator = new InclusionProofValidator(hashProvider);
-        var receiptValidator = new ReceiptValidator(proofValidator);
+        // #1733 — verify the validator's signature too; proof-only mode never checked it.
+        var receiptValidator = new ReceiptValidator(
+            proofValidator, Sorcha.Register.Service.Services.Implementation.ReceiptSignatureVerification.Create(crypto));
         var result = receiptValidator.Verify(request.Receipt, request.ValidatorPublicKey);
 
         // #1372 — `merkleRootConsistent` reads like a ledger check and is not one: it compares
