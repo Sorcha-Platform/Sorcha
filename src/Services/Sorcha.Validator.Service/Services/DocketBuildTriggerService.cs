@@ -629,7 +629,7 @@ public class DocketBuildTriggerService : BackgroundService
     /// <summary>
     /// Writes docket and transactions to Register Service after successful build
     /// </summary>
-    private async Task WriteDocketAndTransactionsAsync(
+    internal async Task WriteDocketAndTransactionsAsync(
         IServiceScope scope,
         Sorcha.Validator.Service.Models.Docket docket,
         CancellationToken cancellationToken)
@@ -656,6 +656,12 @@ public class DocketBuildTriggerService : BackgroundService
 
             _logger.LogInformation("Wrote docket {DocketNumber} to Register Service for register {RegisterId}",
                 docket.DocketNumber, docket.RegisterId);
+
+            // #1704 — this is the LIVE seal path, and it never produced receipts: only the gRPC
+            // DocketDistributor path did, so every ordinary register had none and no verification
+            // bundle could ever be exported. Best-effort; never fails the docket write.
+            await scope.ServiceProvider.GetRequiredService<IReceiptPublisher>()
+                .PublishForDocketAsync(docket, cancellationToken);
 
             // Clean up from unverified pool (in case ValidationEngineService hasn't consumed them yet)
             foreach (var tx in docket.Transactions)

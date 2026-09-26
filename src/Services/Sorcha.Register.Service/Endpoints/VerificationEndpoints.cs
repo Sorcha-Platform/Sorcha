@@ -443,6 +443,7 @@ public static class VerificationEndpoints
         app.MapGet("/api/registers/{registerId}/transactions/{txId}/verification-bundle", async (
             IRegisterRepository repository,
             IHashProvider hashProvider,
+            Sorcha.Register.Service.Provenance.IRosterAsOfResolver rosterAsOf,
             string registerId,
             string txId,
             CancellationToken cancellationToken) =>
@@ -458,11 +459,30 @@ public static class VerificationEndpoints
             var receipt = await repository.GetReceiptByTxIdAsync(registerId, txId, cancellationToken);
             if (receipt is null)
             {
-                return Results.Conflict(new
-                {
-                    error = "Transaction has not been sealed yet. A verification bundle requires a sealed receipt.",
-                    txId
-                });
+                // #1704 — this said "has not been sealed yet" for EVERY transaction, including ones
+                // sealed in a docket with a working inclusion proof, because no receipts were ever
+                // written. A transaction the register holds WITH a docket number is sealed; its
+                // missing receipt is permanent and retrying will not produce one. Say which it is.
+                return transaction.DocketNumber is { } sealedIn
+                    ? Results.Conflict(new
+                    {
+                        code = "NO_RECEIPT",
+                        error = $"Transaction '{txId}' is sealed in docket {sealedIn}, but no receipt was "
+                            + "recorded for it, so a verification bundle cannot be assembled. This is "
+                            + "permanent: retrying will not produce one. Receipts are written by the "
+                            + "validator as a docket seals, and transactions sealed before that was in "
+                            + "place have none. An inclusion proof is still available from "
+                            + "GET …/transactions/{txId}/inclusion-proof.",
+                        txId,
+                        docketNumber = sealedIn
+                    })
+                    : Results.Conflict(new
+                    {
+                        code = "NOT_SEALED",
+                        error = "Transaction has not been sealed yet. A verification bundle requires a sealed receipt; "
+                            + "retry once it seals.",
+                        txId
+                    });
             }
 
             // Build credential from transaction payload
@@ -536,11 +556,18 @@ public static class VerificationEndpoints
                 };
             }
 
-            // Extract validator public keys from receipt signatures
+            // #1704 — each signer's public key, from the validator roster AS OF the docket the
+            // receipt attests to (a signature valid when made must stay valid after a rotation).
+            // This used to ship an empty key, so no verifier could check a receipt signature against
+            // anything the register states. A signer absent from that roster keeps an empty key,
+            // which a verifier reports as unmatched rather than as verified.
+            var roster = await rosterAsOf.ResolveAsync(registerId, (ulong)receipt.DocketNumber, cancellationToken);
             var validatorKeys = receipt.Signatures.Select(sig => new ValidatorKeyInfo
             {
                 Address = sig.ValidatorAddress,
-                PublicKey = string.Empty, // Public keys must be resolved by the verifier
+                PublicKey = roster?.Entries
+                    .FirstOrDefault(e => string.Equals(e.ValidatorId, sig.ValidatorAddress, StringComparison.Ordinal))
+                    ?.PublicKey ?? string.Empty,
                 Algorithm = sig.Algorithm
             }).ToList().AsReadOnly();
 
@@ -562,7 +589,9 @@ public static class VerificationEndpoints
         .WithSummary("Export an offline verification bundle for a transaction")
         .WithDescription("Assembles a portable verification bundle containing the transaction payload, " +
             "sealed receipt with inclusion proof, and point-in-time revocation status. " +
-            "Returns 404 if the transaction does not exist, or 409 if not yet sealed (no receipt).")
+            "Each signer's public key is taken from the validator roster as of the receipt's docket. " +
+            "Returns 404 if the transaction does not exist, or 409 with code NOT_SEALED (transient) or " +
+            "NO_RECEIPT (sealed but no receipt was recorded — permanent).")
         .WithTags("Verification")
         .RequireAuthorization("CanReadTransactions")
         .Produces<VerificationBundle>(StatusCodes.Status200OK)

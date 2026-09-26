@@ -55,7 +55,7 @@ public class ReceiptGeneratorTests
 
         // Default: signing succeeds with predictable results
         _mockWalletClient
-            .Setup(w => w.SignDataAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(w => w.SignTransactionAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new WalletSignResult
             {
                 Signature = new byte[] { 0xAA, 0xBB, 0xCC },
@@ -307,21 +307,46 @@ public class ReceiptGeneratorTests
     #region GenerateReceiptsForDocketAsync - Signing Behavior
 
     [Fact]
-    public async Task GenerateReceiptsForDocketAsync_CallsSignDataForEachTransaction()
+    public async Task GenerateReceiptsForDocketAsync_SignsEachReceiptWithTheRostersDocketSigningKey()
     {
-        // Arrange
+        // #1704 — receipts were signed with the wallet's DEFAULT key, which is on no roster, so no
+        // verifier could ever check one. They are now signed with the sorcha:docket-signing key the
+        // register's validator roster publishes, over the raw canonical signing data (as given —
+        // ReceiptValidator verifies over those exact bytes).
         var docket = CreateDocket(transactionCount: 3);
 
-        // Act
-        await _receiptGenerator.GenerateReceiptsForDocketAsync(docket);
+        var receipts = await _receiptGenerator.GenerateReceiptsForDocketAsync(docket);
 
-        // Assert: SignDataAsync should be called once per transaction
         _mockWalletClient.Verify(
-            w => w.SignDataAsync(
+            w => w.SignTransactionAsync(
                 _validatorConfig.SystemWalletAddress,
-                It.IsAny<string>(),
+                It.IsAny<byte[]>(),
+                Sorcha.Wallet.Contracts.Constants.SorchaDerivationPaths.DocketSigning,
+                true,
                 It.IsAny<CancellationToken>()),
             Times.Exactly(3));
+
+        var expected = Sorcha.Validator.Core.ReceiptValidator.BuildReceiptSigningData(receipts[0] with { ReceiptId = string.Empty, Signatures = [] });
+        _mockWalletClient.Verify(
+            w => w.SignTransactionAsync(
+                It.IsAny<string>(),
+                It.Is<byte[]>(bytes => bytes.SequenceEqual(expected)),
+                It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GenerateReceiptsForDocketAsync_NoConfiguredSystemWallet_ResolvesItLikeTheDocketBuilder()
+    {
+        // The genesis path can generate receipts before any docket build populated the address.
+        _validatorConfig.SystemWalletAddress = string.Empty;
+        _mockWalletClient
+            .Setup(w => w.CreateOrRetrieveSystemWalletAsync(_validatorConfig.ValidatorId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("resolved-system-wallet");
+
+        var receipts = await _receiptGenerator.GenerateReceiptsForDocketAsync(CreateDocket(transactionCount: 1));
+
+        receipts[0].Signatures.Should().ContainSingle().Which.ValidatorAddress.Should().Be("resolved-system-wallet");
     }
 
     [Fact]
@@ -329,7 +354,7 @@ public class ReceiptGeneratorTests
     {
         // Arrange
         _mockWalletClient
-            .Setup(w => w.SignDataAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(w => w.SignTransactionAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Wallet service unavailable"));
 
         var docket = CreateDocket(transactionCount: 1);
