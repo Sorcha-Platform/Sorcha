@@ -373,7 +373,11 @@ public sealed class ExemptionAuthorityResolver : IExemptionAuthorityResolver
         if (roster is null)
         {
             return ExemptionDecision.NotEntitled(claim,
-                "the register has no roster, so there is no publishing authority to check against");
+                // Null means no SEALED control record, which on a live register is almost always a
+                // genesis that has been submitted but not sealed yet — say so, or the refusal reads
+                // as a misconfigured register (the sandbox race found live on n1, 2026-09-26).
+                "the register has no sealed roster yet — its genesis is missing or has not sealed — "
+                + "so there is no publishing authority to check against");
         }
 
         var validators = roster.ControlRecord?.Validators?.Validators;

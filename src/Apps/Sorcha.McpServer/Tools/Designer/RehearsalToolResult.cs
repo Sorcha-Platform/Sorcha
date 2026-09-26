@@ -149,12 +149,19 @@ internal static class RehearsalResultMapper
                    + "that service — start a new rehearsal if it has gone.",
             409 => " The draft has blocking validation errors, listed in validationErrors. Fix them with "
                    + "sorcha_blueprint_update, then start the rehearsal again.",
+            503 => " This is temporary rather than a decision about the blueprint — try the same call "
+                   + "again in a few seconds.",
             _ => string.Empty,
         };
 
         return new RehearsalToolResult
         {
-            Status = refusal.StatusCode == 409 ? "ValidationError" : "Refused",
+            Status = refusal.StatusCode switch
+            {
+                409 => "ValidationError",
+                503 => "Unavailable",
+                _ => "Refused",
+            },
             Message = $"Could not {attempted}. {reason}{hint}",
             CheckedAt = DateTimeOffset.UtcNow,
             ResponseTimeMs = elapsedMs,

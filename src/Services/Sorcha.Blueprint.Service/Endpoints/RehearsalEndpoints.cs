@@ -46,11 +46,13 @@ public static class RehearsalEndpoints
                 "Lazily provisions (or reuses) the org's devMode sandbox register, mints ephemeral " +
                 "per-role sandbox wallets, publishes the current draft to the sandbox, creates a fresh " +
                 "instance, and returns the initial walk-through. Returns 409 when the blueprint has " +
-                "blocking validation errors. Dry-run mode is handled client-side and does NOT call this.")
+                "blocking validation errors, and 503 when a newly created sandbox register's genesis has " +
+                "not sealed yet (transient — retry shortly). Dry-run mode is handled client-side and does NOT call this.")
             .Produces<Rehearsal>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound)
-            .Produces(StatusCodes.Status409Conflict);
+            .Produces(StatusCodes.Status409Conflict)
+            .Produces(StatusCodes.Status503ServiceUnavailable);
 
         group.MapGet("/{id}/rehearsals/{rehearsalId:guid}", GetRehearsal)
             .WithName("GetRehearsal")
@@ -118,6 +120,12 @@ public static class RehearsalEndpoints
             var rehearsal = await orchestration.StartFullAsync(
                 id, organizationId, platformUserId, cancellationToken);
             return TypedResults.Created($"/api/blueprints/{id}/rehearsals/{rehearsal.RehearsalId}", rehearsal);
+        }
+        catch (SandboxNotReadyException ex)
+        {
+            // Transient: the sandbox register's genesis has not sealed yet. Say so, rather than let
+            // it surface as a sanitized 500 the caller cannot act on.
+            return TypedResults.Json(new { error = ex.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
         }
         catch (RehearsalValidationException ex)
         {
