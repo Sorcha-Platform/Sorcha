@@ -629,6 +629,32 @@ public class DocketBuildTriggerService : BackgroundService
     /// <summary>
     /// Writes docket and transactions to Register Service after successful build
     /// </summary>
+    private async Task PublishReceiptsBestEffortAsync(
+        IServiceScope scope,
+        Sorcha.Validator.Service.Models.Docket docket,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var publisher = scope.ServiceProvider.GetService<IReceiptPublisher>();
+            if (publisher is null)
+            {
+                _logger.LogError(
+                    "No IReceiptPublisher is registered; docket {DocketNumber} on register {RegisterId} sealed without receipts",
+                    docket.DocketNumber, docket.RegisterId);
+                return;
+            }
+
+            await publisher.PublishForDocketAsync(docket, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex,
+                "Receipt publication failed for docket {DocketNumber} on register {RegisterId}; the docket itself is sealed",
+                docket.DocketNumber, docket.RegisterId);
+        }
+    }
+
     internal async Task WriteDocketAndTransactionsAsync(
         IServiceScope scope,
         Sorcha.Validator.Service.Models.Docket docket,
@@ -659,9 +685,11 @@ public class DocketBuildTriggerService : BackgroundService
 
             // #1704 — this is the LIVE seal path, and it never produced receipts: only the gRPC
             // DocketDistributor path did, so every ordinary register had none and no verification
-            // bundle could ever be exported. Best-effort; never fails the docket write.
-            await scope.ServiceProvider.GetRequiredService<IReceiptPublisher>()
-                .PublishForDocketAsync(docket, cancellationToken);
+            // bundle could ever be exported. Best-effort; never fails the docket write — the docket
+            // is already on the register, so throwing here only skips the pool cleanup below and
+            // turns a sealed docket into a reported failure (which is what an unregistered
+            // publisher did on n1).
+            await PublishReceiptsBestEffortAsync(scope, docket, cancellationToken);
 
             // Clean up from unverified pool (in case ValidationEngineService hasn't consumed them yet)
             foreach (var tx in docket.Transactions)

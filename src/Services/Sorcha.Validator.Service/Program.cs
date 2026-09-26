@@ -173,6 +173,11 @@ builder.Services.AddServiceClients(builder.Configuration);
 // Add blueprint cache, fetcher, and transaction pool poller (required by validation engine)
 builder.Services.AddBlueprintCache(builder.Configuration);
 builder.Services.AddBlueprintFetcher(builder.Configuration);
+
+// Receipt generation + publication (#1704), plus the DocketDistributor. Called directly because
+// AddServiceIntegration, the aggregate that used to be the only caller, is itself called by nothing
+// — so none of these were ever registered, and every docket write threw after it had succeeded.
+builder.Services.AddDocketDistributor(builder.Configuration);
 builder.Services.AddTransactionPoolPoller(builder.Configuration);
 
 // Add verified transaction queue (required by validation engine)

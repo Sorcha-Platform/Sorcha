@@ -48,7 +48,7 @@ public class ReceiptPublicationTests
     };
 
     private static (DocketBuildTriggerService Sut, IServiceScope Scope, Mock<IReceiptPublisher> Publisher, Mock<IRegisterServiceClient> Register)
-        LivePath(bool writeSucceeds)
+        LivePath(bool writeSucceeds, bool registerPublisher = true)
     {
         var register = new Mock<IRegisterServiceClient>();
         register.Setup(r => r.WriteDocketAsync(It.IsAny<DocketModel>(), It.IsAny<CancellationToken>()))
@@ -58,7 +58,8 @@ public class ReceiptPublicationTests
         var services = new ServiceCollection();
         services.AddSingleton(register.Object);
         services.AddSingleton(Mock.Of<ITransactionPoolPoller>());
-        services.AddSingleton(publisher.Object);
+        if (registerPublisher)
+            services.AddSingleton(publisher.Object);
         var scope = services.BuildServiceProvider().CreateScope();
 
         var metrics = new ValidatorMempoolMetrics(
@@ -84,6 +85,31 @@ public class ReceiptPublicationTests
         await sut.WriteDocketAndTransactionsAsync(scope, docket, CancellationToken.None);
 
         publisher.Verify(p => p.PublishForDocketAsync(docket, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task LiveSealPath_NoPublisherRegistered_StillCompletesTheWrite()
+    {
+        // n1, 2026-09-26: the publisher was never registered, and GetRequiredService threw AFTER the
+        // docket was written — so every seal was reported as a failure and retried. A missing
+        // attestation must not turn a sealed docket into an error.
+        var (sut, scope, _, _) = LivePath(writeSucceeds: true, registerPublisher: false);
+
+        var act = () => sut.WriteDocketAndTransactionsAsync(scope, SealedDocket(), CancellationToken.None);
+
+        await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public async Task LiveSealPath_PublisherThrows_StillCompletesTheWrite()
+    {
+        var (sut, scope, publisher, _) = LivePath(writeSucceeds: true);
+        publisher.Setup(p => p.PublishForDocketAsync(It.IsAny<Docket>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("boom"));
+
+        var act = () => sut.WriteDocketAndTransactionsAsync(scope, SealedDocket(), CancellationToken.None);
+
+        await act.Should().NotThrowAsync();
     }
 
     [Fact]
