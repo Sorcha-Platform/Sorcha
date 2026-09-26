@@ -90,6 +90,45 @@ public class VerificationBundleTests : IClassFixture<RegisterServiceWebApplicati
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var result = await response.Content.ReadSorchaAsync<JsonElement>();
         result.GetProperty("error").GetString().Should().Contain("not been sealed");
+        result.GetProperty("code").GetString().Should().Be("NOT_SEALED");
+    }
+
+    [Fact]
+    public async Task GetVerificationBundle_SealedButNoReceipt_Says_NO_RECEIPT_AndThatItIsPermanent()
+    {
+        // #1704 — every transaction on n1 was sealed with a working inclusion proof and still got
+        // "has not been sealed yet", so a cold-start agent retried five times. A transaction the
+        // register holds WITH a docket number is sealed; its missing receipt is permanent.
+        // Stored the way the live docket write stores it: already carrying its docket number.
+        var txId = (Guid.NewGuid().ToString("N") + new string('0', 64))[..64];
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var repository = scope.ServiceProvider.GetRequiredService<IRegisterRepository>();
+            await repository.InsertTransactionAsync(new TransactionModel
+            {
+                RegisterId = _testRegisterId,
+                TxId = txId,
+                PrevTxId = string.Empty,
+                Version = 1,
+                SenderWallet = "sender_wallet_address",
+                RecipientsWallets = ["recipient_wallet_address"],
+                TimeStamp = DateTime.UtcNow,
+                PayloadCount = 0,
+                Payloads = [],
+                Signature = "transaction_signature",
+                DocketNumber = 6,
+            });
+        }
+
+        var response = await _client.GetAsync(
+            $"/api/registers/{_testRegisterId}/transactions/{txId}/verification-bundle");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var result = await response.Content.ReadSorchaAsync<JsonElement>();
+        result.GetProperty("code").GetString().Should().Be("NO_RECEIPT");
+        result.GetProperty("docketNumber").GetInt64().Should().Be(6);
+        result.GetProperty("error").GetString().Should().Contain("sealed in docket 6")
+            .And.Contain("permanent").And.NotContain("not been sealed");
     }
 
     [Fact]
