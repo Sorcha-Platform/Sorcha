@@ -2128,8 +2128,13 @@ executionGroup.MapPost("/disclose", async (
             return Results.BadRequest(new { error = "Action not found in blueprint" });
         }
 
-        // Apply disclosures
-        var result = executionEngine.ApplyDisclosures(request.Data, action);
+        // #1644 — calculations FIRST, then disclosure, in the same order real execution uses
+        // (ActionExecutionService applies disclosure to payloadWithCalculations). Disclosing the raw
+        // input dropped every calculated field, so this preview — what sorcha_disclosure_analysis
+        // shows a designer checking their privacy boundaries — disagreed with what a participant
+        // actually receives.
+        var withCalculations = await executionEngine.ApplyCalculationsAsync(request.Data, action);
+        var result = executionEngine.ApplyDisclosures(withCalculations, action);
 
         return Results.Ok(new
         {
