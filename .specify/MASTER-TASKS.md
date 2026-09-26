@@ -3,11 +3,26 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.36
-**Last Updated:** 2026-09-25
+**Version:** 7.37
+**Last Updated:** 2026-09-26
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
+> **▶ 2026-09-26 - #1691 🚧 (branch `feature/1691-mcp-rehearsal-tools`): an MCP agent can now
+> REHEARSE, so the F142 publish gate is a gate and not a toll.** Before this, nothing on the MCP
+> surface could record a `RehearsalPass`, so every MCP publish needed the human override (runs #4,
+> #5, #7); run #8's agent even believed `simulate` + `disclosure_analysis` were the rehearsal. New
+> tools `sorcha_rehearsal_start` / `_step` / `_get` wrap the existing F142 endpoints (designer
+> role, same `CanManageBlueprints` authority as authoring). The rehearsal client methods returned
+> null for every non-success; they now return `RehearsalCallResult` carrying the server's reason
+> and a 409's validation-error list. Simulate, disclosure-analysis and publish descriptions,
+> ServerInstructions and two prompt recipes now say that only a passed rehearsal clears the gate.
+> Tests: 20 client + 20 tool test cases; 7 mutations all KILLED. ⚠ **Found, not fixed here:** the
+> Designer UI's `RehearsalApiService.SubmitStepAsync` posts the DTO directly, so `payload` goes
+> on the wire as a JSON **string**, and `RehearsalOrchestrationService.ParsePayload` turns a
+> non-object root into an EMPTY payload silently. Separate issue + PR. Remaining: live acceptance
+> on n1 (rehearse → pass → publish with NO override).
+>
 > **▶ 2026-09-25 - STATE: n1 + tiny run master `4f56cf82a`; core suite 18/18 on n1** (13/18 on
 > 2026-09-24 morning). #1712, #1701, #1709, #1699 (#1718 + #1719) and #1720 are all merged, deployed
 > and verified live. The only CyberEssentials refusals left are the intended suspended/revoked

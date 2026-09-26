@@ -138,6 +138,9 @@ public sealed class ServiceAvailabilityTracker : IServiceAvailabilityTracker
         ["sorcha_blueprint_update"] = ["Blueprint"],
         ["sorcha_blueprint_validate"] = ["Blueprint"],
         ["sorcha_blueprint_simulate"] = ["Blueprint"],
+        ["sorcha_rehearsal_start"] = ["Blueprint"],
+        ["sorcha_rehearsal_step"] = ["Blueprint"],
+        ["sorcha_rehearsal_get"] = ["Blueprint"],
         ["sorcha_disclosure_analysis"] = ["Blueprint"],
         ["sorcha_blueprint_export"] = ["Blueprint"],
         ["sorcha_schema_validate"] = [],       // Local operation, no service dependency

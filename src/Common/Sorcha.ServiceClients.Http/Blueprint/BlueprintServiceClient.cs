@@ -538,11 +538,12 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     // =========================================================================
 
     /// <inheritdoc />
-    public async Task<Rehearsal?> StartRehearsalAsync(string blueprintId, StartRehearsalRequest request, CancellationToken cancellationToken = default)
+    public async Task<RehearsalCallResult> StartRehearsalAsync(string blueprintId, StartRehearsalRequest request, CancellationToken cancellationToken = default)
     {
         // The endpoint accepts { mode: "full" }; the wire contract expects the lowercase enum value.
         var body = new { mode = "full" };
-        return await PostRehearsalAsync(
+        return await SendRehearsalAsync(
+            HttpMethod.Post,
             $"api/blueprints/{Uri.EscapeDataString(blueprintId)}/rehearsals",
             body,
             "start rehearsal",
@@ -550,38 +551,13 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     }
 
     /// <inheritdoc />
-    public async Task<Rehearsal?> GetRehearsalAsync(string blueprintId, Guid rehearsalId, CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            await SetAuthHeaderAsync(cancellationToken);
-            var response = await _httpClient.GetAsync(
-                $"api/blueprints/{Uri.EscapeDataString(blueprintId)}/rehearsals/{rehearsalId}",
-                cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                // 404 (unknown rehearsal) and any other non-success surface as null.
-                _logger.LogDebug("Get rehearsal {RehearsalId} returned {StatusCode}", rehearsalId, response.StatusCode);
-                return null;
-            }
-
-            return await response.Content.ReadFromJsonAsync<Rehearsal>(SorchaJson.Options, cancellationToken);
-        }
-        catch (HttpRequestException)
-        {
-            throw;
-        }
-        catch (TaskCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to get rehearsal {RehearsalId}", rehearsalId);
-            return null;
-        }
-    }
+    public async Task<RehearsalCallResult> GetRehearsalAsync(string blueprintId, Guid rehearsalId, CancellationToken cancellationToken = default) =>
+        await SendRehearsalAsync(
+            HttpMethod.Get,
+            $"api/blueprints/{Uri.EscapeDataString(blueprintId)}/rehearsals/{rehearsalId}",
+            body: null,
+            "get rehearsal",
+            cancellationToken);
 
     /// <inheritdoc />
     public async Task<bool> ResetRehearsalAsync(string blueprintId, Guid rehearsalId, CancellationToken cancellationToken = default)
@@ -618,17 +594,21 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     }
 
     /// <inheritdoc />
-    public async Task<Rehearsal?> SwitchRehearsalRoleAsync(string blueprintId, Guid rehearsalId, SwitchRehearsalRoleRequest request, CancellationToken cancellationToken = default) =>
-        await PostRehearsalAsync(
+    public async Task<RehearsalCallResult> SwitchRehearsalRoleAsync(string blueprintId, Guid rehearsalId, SwitchRehearsalRoleRequest request, CancellationToken cancellationToken = default) =>
+        await SendRehearsalAsync(
+            HttpMethod.Post,
             $"api/blueprints/{Uri.EscapeDataString(blueprintId)}/rehearsals/{rehearsalId}/role",
             new { role = request.Role },
             "switch rehearsal role",
             cancellationToken);
 
     /// <inheritdoc />
-    public async Task<Rehearsal?> SubmitRehearsalStepAsync(string blueprintId, Guid rehearsalId, SubmitRehearsalStepRequest request, CancellationToken cancellationToken = default)
+    public async Task<RehearsalCallResult> SubmitRehearsalStepAsync(string blueprintId, Guid rehearsalId, SubmitRehearsalStepRequest request, CancellationToken cancellationToken = default)
     {
-        // The wire contract carries payload as a JSON object; the DTO holds it as a raw JSON string.
+        // The wire contract carries payload as a JSON OBJECT; the DTO holds it as a raw JSON string.
+        // Posting the DTO as-is would put a JSON *string* on the wire, which the server reads as a
+        // non-object and turns into an empty payload — so it is parsed here, and a payload that is
+        // not an object is refused before anything is sent.
         JsonElement payload;
         try
         {
@@ -638,11 +618,27 @@ public class BlueprintServiceClient : IBlueprintServiceClient
         }
         catch (JsonException ex)
         {
-            _logger.LogError(ex, "Submit rehearsal step {RehearsalId}: payload is not valid JSON", rehearsalId);
-            return null;
+            _logger.LogWarning(ex, "Submit rehearsal step {RehearsalId}: payload is not valid JSON", rehearsalId);
+            return new RehearsalCallResult
+            {
+                Refusal = new RehearsalRefusal(400, $"The step payload is not valid JSON: {ex.Message}", [])
+            };
         }
 
-        return await PostRehearsalAsync(
+        if (payload.ValueKind != JsonValueKind.Object)
+        {
+            return new RehearsalCallResult
+            {
+                Refusal = new RehearsalRefusal(
+                    400,
+                    "The step payload must be a JSON object of the action's fields, not a JSON "
+                    + $"{payload.ValueKind.ToString().ToLowerInvariant()}.",
+                    [])
+            };
+        }
+
+        return await SendRehearsalAsync(
+            HttpMethod.Post,
             $"api/blueprints/{Uri.EscapeDataString(blueprintId)}/rehearsals/{rehearsalId}/steps",
             new { actionId = request.ActionId, payload },
             "submit rehearsal step",
@@ -650,24 +646,42 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     }
 
     /// <summary>
-    /// Shared helper: POSTs a JSON body to a rehearsal endpoint and deserializes the <see cref="Rehearsal"/>
-    /// response. Returns null on any non-success status (e.g. 409 blocking validation, 403 unauthorised,
-    /// 404 unknown, 422 payload/step error) — matching the documented method contracts.
+    /// Shared helper: sends a request to a rehearsal endpoint and returns either the
+    /// <see cref="Rehearsal"/> it answered with or the refusal it gave, carrying the server's own
+    /// reason (#1691). Transport faults propagate, so a caller can tell an outage from a refusal.
     /// </summary>
-    private async Task<Rehearsal?> PostRehearsalAsync(string url, object body, string operation, CancellationToken cancellationToken)
+    private async Task<RehearsalCallResult> SendRehearsalAsync(
+        HttpMethod method, string url, object? body, string operation, CancellationToken cancellationToken)
     {
         try
         {
             await SetAuthHeaderAsync(cancellationToken);
-            var response = await _httpClient.PostAsJsonAsync(url, body, JsonOptions, cancellationToken);
+            using var message = new HttpRequestMessage(method, url);
+            if (body is not null)
+            {
+                message.Content = JsonContent.Create(body, options: JsonOptions);
+            }
+
+            var response = await _httpClient.SendAsync(message, cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("Blueprint {Operation} failed: {StatusCode}", operation, response.StatusCode);
-                return null;
+                var text = await response.Content.ReadAsStringAsync(cancellationToken);
+                var refusal = ReadRehearsalRefusal((int)response.StatusCode, text);
+                _logger.LogWarning(
+                    "Blueprint {Operation} failed: {StatusCode}: {Reason}",
+                    operation, response.StatusCode, refusal.Reason ?? "no reason given");
+                return new RehearsalCallResult { Refusal = refusal };
             }
 
-            return await response.Content.ReadFromJsonAsync<Rehearsal>(SorchaJson.Options, cancellationToken);
+            var rehearsal = await response.Content.ReadFromJsonAsync<Rehearsal>(SorchaJson.Options, cancellationToken);
+            return rehearsal is null
+                ? new RehearsalCallResult
+                {
+                    Refusal = new RehearsalRefusal(
+                        (int)response.StatusCode, "The Blueprint Service answered with an empty body.", [])
+                }
+                : new RehearsalCallResult { Rehearsal = rehearsal };
         }
         catch (HttpRequestException)
         {
@@ -677,11 +691,46 @@ public class BlueprintServiceClient : IBlueprintServiceClient
         {
             throw;
         }
-        catch (Exception ex)
+        catch (JsonException ex)
         {
-            _logger.LogError(ex, "Failed Blueprint {Operation}", operation);
-            return null;
+            _logger.LogError(ex, "Blueprint {Operation} returned a body that is not a rehearsal", operation);
+            return new RehearsalCallResult
+            {
+                Refusal = new RehearsalRefusal(
+                    0, "The Blueprint Service answered with a body that is not a rehearsal.", [])
+            };
         }
+    }
+
+    /// <summary>
+    /// Reads a rehearsal refusal body: the reason via <see cref="ReadRefusal"/>, plus the
+    /// <c>errors</c> array in which a <c>409</c> on start lists the blocking validation errors.
+    /// </summary>
+    internal static RehearsalRefusal ReadRehearsalRefusal(int statusCode, string? body)
+    {
+        var (_, reason) = ReadRefusal(body);
+        var errors = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(body) && body.TrimStart().StartsWith('{'))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(body);
+                if (document.RootElement.TryGetProperty("errors", out var list)
+                    && list.ValueKind == JsonValueKind.Array)
+                {
+                    errors.AddRange(list.EnumerateArray()
+                        .Where(e => e.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(e.GetString()))
+                        .Select(e => e.GetString()!));
+                }
+            }
+            catch (JsonException)
+            {
+                // ReadRefusal has already degraded to "no reason"; there is nothing more to recover.
+            }
+        }
+
+        return new RehearsalRefusal(statusCode, reason, errors);
     }
 
     /// <inheritdoc />

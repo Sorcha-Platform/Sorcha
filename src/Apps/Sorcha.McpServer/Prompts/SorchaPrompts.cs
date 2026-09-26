@@ -31,7 +31,9 @@ public static class SorchaPrompts
         "refuse in the same way. A client can support elicitation and still auto-cancel every " +
         "request when running headlessly (Claude Code in `-p` mode does exactly this), so do not " +
         "assume elicitation support means a person will actually be asked; expect the tool to " +
-        "refuse cleanly rather than proceed unsupervised. Register creation also signs with your " +
+        "refuse cleanly rather than proceed unsupervised. An unrehearsed publish is avoidable: " +
+        "rehearse the draft with sorcha_rehearsal_start and sorcha_rehearsal_step first, and once " +
+        "that rehearsal passes the publish needs no person. Register creation also signs with your " +
         "organisation's wallet, which the organisation (not you) owns: that needs a delegation scoped " +
         "to sorcha:register-attestation while you are an Administrator of the organisation. The " +
         "administrator who created the wallet holds it automatically; anyone else needs one granted " +
@@ -64,9 +66,12 @@ public static class SorchaPrompts
                to {subject}. Connect the actions with `routes` and mark exactly one action
                `isStartingAction`.
             3. sorcha_register_create — create the ledger this exchange runs on.
-            4. sorcha_blueprint_publish — publish the definition to that register.
-            5. sorcha_instance_create — start a running instance from the published definition.
-            6. sorcha_action_submit — {firstParty} submits the first action's data, then
+            4. sorcha_rehearsal_start, then sorcha_rehearsal_step once per action — walk the
+               draft through the exchange on a sandbox register until the rehearsal passes.
+            5. sorcha_blueprint_publish — publish the definition to that register. A passed
+               rehearsal clears its safety gate, so no person has to waive it.
+            6. sorcha_instance_create — start a running instance from the published definition.
+            7. sorcha_action_submit — {firstParty} submits the first action's data, then
                {secondParty} submits theirs in turn.
 
             {HumanGateReminder}
@@ -97,9 +102,15 @@ public static class SorchaPrompts
                {issuer}'s side carrying `credentialIssuanceConfig`. Set an `issuanceCondition`
                so a declined applicant is never issued a credential.
             3. sorcha_register_create — create the ledger this issuance workflow runs on.
-            4. sorcha_blueprint_publish — publish the definition to that register.
-            5. sorcha_instance_create — start a running instance.
-            6. sorcha_action_submit — {subject} submits their claims, then {issuer} submits the
+            4. sorcha_rehearsal_start, then sorcha_rehearsal_step once per action — rehearse the
+               approval path on a sandbox register until it passes. A rehearsal really executes
+               the issuance, so it is where a credential issued to the wrong applicant shows up;
+               rehearse the decline path too, as a second rehearsal, and check that its log
+               has no Delivered entry.
+            5. sorcha_blueprint_publish — publish the definition to that register. A passed
+               rehearsal clears its safety gate, so no person has to waive it.
+            6. sorcha_instance_create — start a running instance.
+            7. sorcha_action_submit — {subject} submits their claims, then {issuer} submits the
                approval action, which mints the credential per `credentialIssuanceConfig`.
 
             If {subject} holds a standards-compliant external wallet rather than a Sorcha

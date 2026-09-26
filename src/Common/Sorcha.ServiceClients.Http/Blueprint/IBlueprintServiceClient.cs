@@ -323,8 +323,11 @@ public interface IBlueprintServiceClient
     /// <param name="blueprintId">The draft blueprint to rehearse.</param>
     /// <param name="request">The start request (mode = full).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The started rehearsal, or null on non-success (e.g. 409 blocking validation, 403 unauthorised).</returns>
-    Task<Rehearsal?> StartRehearsalAsync(
+    /// <returns>
+    /// The started rehearsal, or the server's refusal (e.g. 409 with the blocking validation errors,
+    /// 403 when the caller has no platform-tier organisation context).
+    /// </returns>
+    Task<RehearsalCallResult> StartRehearsalAsync(
         string blueprintId,
         StartRehearsalRequest request,
         CancellationToken cancellationToken = default);
@@ -336,8 +339,8 @@ public interface IBlueprintServiceClient
     /// <param name="blueprintId">The blueprint that owns the rehearsal.</param>
     /// <param name="rehearsalId">The rehearsal id.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The rehearsal, or null if unknown (404).</returns>
-    Task<Rehearsal?> GetRehearsalAsync(
+    /// <returns>The rehearsal, or the server's refusal (404 when the rehearsal is unknown).</returns>
+    Task<RehearsalCallResult> GetRehearsalAsync(
         string blueprintId,
         Guid rehearsalId,
         CancellationToken cancellationToken = default);
@@ -364,8 +367,8 @@ public interface IBlueprintServiceClient
     /// <param name="rehearsalId">The rehearsal id.</param>
     /// <param name="request">The role to act as.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The updated rehearsal, or null on non-success.</returns>
-    Task<Rehearsal?> SwitchRehearsalRoleAsync(
+    /// <returns>The updated rehearsal, or the server's refusal (422 when the role is not a participant).</returns>
+    Task<RehearsalCallResult> SwitchRehearsalRoleAsync(
         string blueprintId,
         Guid rehearsalId,
         SwitchRehearsalRoleRequest request,
@@ -381,8 +384,11 @@ public interface IBlueprintServiceClient
     /// <param name="rehearsalId">The rehearsal id.</param>
     /// <param name="request">The action id + payload to submit.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The advanced rehearsal, or null on non-success (e.g. 422 payload/step error).</returns>
-    Task<Rehearsal?> SubmitRehearsalStepAsync(
+    /// <returns>
+    /// The advanced rehearsal, or the server's refusal (e.g. 422 when the action is not the current
+    /// step). A step that ran and FAILED is a rehearsal with outcome Failed, not a refusal.
+    /// </returns>
+    Task<RehearsalCallResult> SubmitRehearsalStepAsync(
         string blueprintId,
         Guid rehearsalId,
         SubmitRehearsalStepRequest request,

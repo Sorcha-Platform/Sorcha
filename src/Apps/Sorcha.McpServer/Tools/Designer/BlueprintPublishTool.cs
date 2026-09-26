@@ -21,7 +21,8 @@ namespace Sorcha.McpServer.Tools.Designer;
 /// <para>
 /// <b>The agent never waives the gate.</b> <c>PublishGate</c> blocks every publish whose
 /// executable-definition hash has no matching <c>RehearsalPass</c>, so an agent's freshly
-/// authored blueprint always hits <c>409 REHEARSAL_REQUIRED</c>. The rehearsal is the only
+/// authored blueprint hits <c>409 REHEARSAL_REQUIRED</c> unless it was rehearsed first with
+/// <c>sorcha_rehearsal_start</c> / <c>sorcha_rehearsal_step</c> (#1691). The rehearsal is the only
 /// <em>behavioural</em> check a definition gets before it goes live — it is what would catch, for
 /// example, a blueprint that issues a credential to a declined applicant (#1551). This tool
 /// therefore attempts the publish with <b>no</b> override, and sends
@@ -112,7 +113,7 @@ public sealed class BlueprintPublishTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The published version, or the rehearsal block if a person declined to waive it.</returns>
     [McpServerTool(Name = ToolName, Destructive = true, ReadOnly = false, Idempotent = false)]
-    [Description("Publishes a draft blueprint to a register so workflow instances can be started from it, returning the immutable published version number. Call this when a draft blueprint is finished and ready to go live: it belongs after sorcha_blueprint_create and sorcha_register_create, and before sorcha_instance_create, which can only instantiate a blueprint that is already published. A blueprint that has not been rehearsed is blocked by a safety gate; when that happens this tool asks a person to confirm via MCP elicitation, carried as a multi round-trip request (protocol revision 2026-07-28) — only an explicit accept with the confirm box set proceeds. A decline, a silent cancel, and a client that cannot carry the request all refuse the same way, because a client can support elicitation and still auto-cancel every request when running headlessly. Publishing is recorded permanently on the register's ledger. Publishing needs organisation-administrator authority plus an Owner, Admin or Designer role on the target register's governance roster — a plain designer role is not enough, and the tool is not offered to one.")]
+    [Description("Publishes a draft blueprint to a register so workflow instances can be started from it, returning the immutable published version number. Call this when a draft blueprint is finished and ready to go live: it belongs after sorcha_blueprint_create and sorcha_register_create, and before sorcha_instance_create, which can only instantiate a blueprint that is already published. A blueprint that has not been rehearsed is blocked by a safety gate. Clear it properly by rehearsing first with sorcha_rehearsal_start and sorcha_rehearsal_step: once that rehearsal passes, this tool publishes without asking anyone (dry runs such as sorcha_blueprint_simulate do not count). Otherwise this tool asks a person to waive the gate via MCP elicitation, carried as a multi round-trip request (protocol revision 2026-07-28) — only an explicit accept with the confirm box set proceeds. A decline, a silent cancel, and a client that cannot carry the request all refuse the same way, because a client can support elicitation and still auto-cancel every request when running headlessly. Publishing is recorded permanently on the register's ledger. Publishing needs organisation-administrator authority plus an Owner, Admin or Designer role on the target register's governance roster — a plain designer role is not enough, and the tool is not offered to one.")]
     public async Task<BlueprintPublishResult> PublishBlueprintAsync(
         RequestContext<CallToolRequestParams> context,
         [Description("The draft blueprint's ID")] string blueprintId,
@@ -203,7 +204,8 @@ public sealed class BlueprintPublishTool
                 + "applicant who was declined.\n\n"
                 + "Publishing is recorded permanently on the register's ledger, and this waiver is "
                 + "audited against your account.\n\n"
-                + "The safer option is to cancel and rehearse it first in the Sorcha designer.",
+                + "The safer option is to cancel and have it rehearsed first — the agent can do that "
+                + "itself with sorcha_rehearsal_start, or it can be rehearsed in the Sorcha designer.",
                 "Publish without rehearsing"));
 
             if (approval.Outcome != ApprovalOutcome.Approved)
@@ -222,9 +224,12 @@ public sealed class BlueprintPublishTool
                     Message = approval.Outcome == ApprovalOutcome.NotSupported
                         ? approval.Detail
                           + " This blueprint has not been rehearsed, and only a person may waive that "
-                          + "check, so nothing was published."
+                          + "check, so nothing was published. Rehearse it instead with "
+                          + "sorcha_rehearsal_start and sorcha_rehearsal_step: once the rehearsal "
+                          + "passes, publishing needs no person at all."
                         : "This blueprint has not been rehearsed and publishing anyway was not approved. "
-                          + "Nothing was published. Rehearse it in the Sorcha designer, then publish again. "
+                          + "Nothing was published. Rehearse it with sorcha_rehearsal_start and "
+                          + "sorcha_rehearsal_step (or in the Sorcha designer), then publish again. "
                           + $"({approval.Detail})",
                     CheckedAt = DateTimeOffset.UtcNow,
                     ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
