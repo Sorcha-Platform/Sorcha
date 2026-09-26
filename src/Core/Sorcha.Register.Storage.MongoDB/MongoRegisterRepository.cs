@@ -180,6 +180,19 @@ public class MongoRegisterRepository : IRegisterRepository
                 });
             }
 
+            // Receipts are inserted as plain documents, so MongoDB adds an ObjectId `_id` that
+            // TransactionReceipt has no member for. Without this every read of a stored receipt
+            // throws "Element '_id' does not match any field" — invisible until #1704 made the live
+            // seal path actually write receipts, at which point every bundle export returned 500.
+            if (!BsonClassMap.IsClassMapRegistered(typeof(TransactionReceipt)))
+            {
+                BsonClassMap.RegisterClassMap<TransactionReceipt>(cm =>
+                {
+                    cm.AutoMap();
+                    cm.SetIgnoreExtraElements(true);
+                });
+            }
+
             _classMapRegistered = true;
         }
     }
