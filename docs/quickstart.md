@@ -2,7 +2,7 @@
 title: Sorcha Quickstart
 description: Run a Sorcha instance locally, verify the install, and call the credential-issuance endpoint. Agent-runnable end to end.
 standards: [OAuth 2.0]
-last_updated: 2026-09-07
+last_updated: 2026-09-26
 ---
 
 # Sorcha Quickstart
@@ -18,6 +18,7 @@ This is the agent-runnable setup path. A fresh Linux VM with Docker Engine ≥ 2
 | OpenSSL **or** Python 3 | any | <https://www.openssl.org/source/> · <https://www.python.org/downloads/>. Used to generate the JWT signing key. |
 | Git (optional) | 2.30 | <https://git-scm.com/downloads>. Required only to clone this repo. |
 | PowerShell (optional) | 7.5 | <https://learn.microsoft.com/powershell/scripting/install/installing-powershell>. Required only to run `walkthroughs/`. |
+| Linux kernel (Docker's) | below 6.19, **or** 7.0.14+ | MongoDB 8 crashes on kernels 6.19–7.0.13 ([SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912)); the setup script reads `docker info`'s kernel and refuses one in that range. Under Docker Desktop this is the VM's kernel, not the host's. |
 
 Three TCP ports must be free on the host: **80**, **443**, **8080**. The setup script probes them and exits non-zero with a remediation hint if any are bound.
 
@@ -84,6 +85,7 @@ curl -s http://localhost/llms.txt
 |---|---|---|
 | `[sorcha-setup] missing prerequisite: docker` | Docker not on `PATH` | Install per the table above and re-source your shell so `docker` is found. |
 | `[sorcha-setup] missing prerequisite: docker-daemon` | Docker is installed but the daemon isn't running | Start Docker Desktop (Win/macOS) or `sudo systemctl start docker` (Linux). |
+| `[sorcha-setup] kernel X cannot run MongoDB 8 safely` | Docker's kernel is 6.19–7.0.13, which crashes MongoDB 8 (SERVER-121912) | Upgrade the kernel to 7.0.14+ (e.g. the distro's latest HWE kernel) and reboot. Pinning an older MongoDB only disables the guard; it does not fix the crash. |
 | `[sorcha-setup] missing prerequisite: docker-compose-v2` | Only the v1 standalone `docker-compose` is on `PATH` | Install Compose v2 (the `docker compose` plugin). v1 is past EOL. |
 | `[sorcha-setup] missing prerequisite: port-80-free` | Another process is bound to port 80 | `sudo ss -tlnp \| grep :80` to identify, then stop that process. Common culprits: Apache, nginx, IIS. |
 | `Gateway did not become healthy in the allotted window` | One service is stuck or its dependencies aren't ready | `docker compose logs -f` to see which service is failing. Database container often needs more time on slow disks; re-run the script after a minute. |
