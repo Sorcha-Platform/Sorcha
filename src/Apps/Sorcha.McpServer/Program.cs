@@ -218,9 +218,12 @@ static void ConfigureServerOptions(McpServerOptions options)
         THE LIFECYCLE, IN ORDER. Most tasks follow it end to end:
           1. sorcha_blueprint_create   — define the workflow (participants, actions, disclosure)
           2. sorcha_register_create    — create the ledger it runs on          [needs a human]
-          3. sorcha_blueprint_publish  — publish the definition to that register [may need a human]
-          4. sorcha_instance_create    — start a running instance
-          5. sorcha_action_submit      — perform an action on that instance
+          3. sorcha_rehearsal_start, then sorcha_rehearsal_step per action until Passed
+                                       — rehearse the draft on a sandbox register
+          4. sorcha_blueprint_publish  — publish the definition to that register
+                                         [needs a human only if step 3 was skipped]
+          5. sorcha_instance_create    — start a running instance
+          6. sorcha_action_submit      — perform an action on that instance
 
         READ THESE FIRST — they are resources, not tool calls, so they cost you nothing:
           sorcha://schema/blueprint   a JSON Schema for a blueprint. Everything it documents
@@ -252,7 +255,10 @@ static void ConfigureServerOptions(McpServerOptions options)
         be asked, because a client can auto-cancel every request when running headlessly
         (Claude Code in `-p` mode does exactly this). Expect these tools to refuse cleanly
         rather than proceed unsupervised — this is deliberate, since register creation and an
-        unrehearsed publish are both irreversible and establish governance.
+        unrehearsed publish are both irreversible and establish governance. The publish gate is
+        cleared properly by a rehearsal (step 3), not by a person: a draft whose rehearsal passed
+        publishes without asking anyone. sorcha_blueprint_simulate and sorcha_disclosure_analysis
+        are dry runs and never count as a rehearsal.
 
         WHAT YOU CAN SEE depends on your token's trust tier and roles; tools you are not entitled
         to use are not listed. If a tool reports an error, read the message — a missing required

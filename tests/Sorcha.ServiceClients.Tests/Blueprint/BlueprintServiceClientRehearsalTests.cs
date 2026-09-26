@@ -19,7 +19,7 @@ namespace Sorcha.ServiceClients.Tests.Blueprint;
 /// <summary>
 /// Feature 142 (T030) — coverage for the rehearsal service-client method implementations on
 /// <see cref="BlueprintServiceClient"/>: success deserialization and the documented status-code
-/// mappings (409/403/422 → null, 404 → null on get, 204/404 → true on reset).
+/// mappings (409/403/422/404 → a refusal carrying the server's reason, #1691; 204/404 → true on reset).
 /// </summary>
 public class BlueprintServiceClientRehearsalTests
 {
@@ -101,32 +101,42 @@ public class BlueprintServiceClientRehearsalTests
 
         var result = await client.StartRehearsalAsync("bp-1", new StartRehearsalRequest { Mode = RehearsalMode.Full });
 
-        Assert.NotNull(result);
-        Assert.Equal(id, result.RehearsalId);
-        Assert.Equal(RehearsalMode.Full, result.Mode);
+        Assert.Null(result.Refusal);
+        Assert.NotNull(result.Rehearsal);
+        Assert.Equal(id, result.Rehearsal.RehearsalId);
+        Assert.Equal(RehearsalMode.Full, result.Rehearsal.Mode);
     }
 
     [Fact]
-    public async Task StartRehearsalAsync_Conflict_ReturnsNull()
+    public async Task StartRehearsalAsync_Conflict_CarriesTheBlockingValidationErrors()
     {
-        // 409 blocking validation — surfaces as null per the documented contract.
-        var handler = CreateMockHandler(HttpStatusCode.Conflict, new { error = "blocking" });
+        // #1691. Was StartRehearsalAsync_Conflict_ReturnsNull: the 409 names exactly which
+        // validation errors block the rehearsal, and a bare null threw that away.
+        var handler = CreateMockHandler(
+            HttpStatusCode.Conflict,
+            new { error = "Blueprint has blocking validation errors.", errors = new[] { "Action 2 has no sender", "No starting action" } });
         var client = CreateClient(handler);
 
         var result = await client.StartRehearsalAsync("bp-1", new StartRehearsalRequest());
 
-        Assert.Null(result);
+        Assert.Null(result.Rehearsal);
+        Assert.Equal(409, result.Refusal!.StatusCode);
+        Assert.Equal("Blueprint has blocking validation errors.", result.Refusal.Reason);
+        Assert.Equal(["Action 2 has no sender", "No starting action"], result.Refusal.Errors);
     }
 
     [Fact]
-    public async Task StartRehearsalAsync_Forbidden_ReturnsNull()
+    public async Task StartRehearsalAsync_Forbidden_ReportsTheStatus()
     {
         var handler = CreateMockHandler(HttpStatusCode.Forbidden);
         var client = CreateClient(handler);
 
         var result = await client.StartRehearsalAsync("bp-1", new StartRehearsalRequest());
 
-        Assert.Null(result);
+        Assert.Null(result.Rehearsal);
+        Assert.Equal(403, result.Refusal!.StatusCode);
+        Assert.Null(result.Refusal.Reason);
+        Assert.Empty(result.Refusal.Errors);
     }
 
     [Fact]
@@ -138,19 +148,20 @@ public class BlueprintServiceClientRehearsalTests
 
         var result = await client.GetRehearsalAsync("bp-1", id);
 
-        Assert.NotNull(result);
-        Assert.Equal(id, result.RehearsalId);
+        Assert.NotNull(result.Rehearsal);
+        Assert.Equal(id, result.Rehearsal.RehearsalId);
     }
 
     [Fact]
-    public async Task GetRehearsalAsync_NotFound_ReturnsNull()
+    public async Task GetRehearsalAsync_NotFound_ReportsTheStatus()
     {
         var handler = CreateMockHandler(HttpStatusCode.NotFound);
         var client = CreateClient(handler);
 
         var result = await client.GetRehearsalAsync("bp-1", Guid.NewGuid());
 
-        Assert.Null(result);
+        Assert.Null(result.Rehearsal);
+        Assert.Equal(404, result.Refusal!.StatusCode);
     }
 
     [Fact]
@@ -196,19 +207,21 @@ public class BlueprintServiceClientRehearsalTests
 
         var result = await client.SwitchRehearsalRoleAsync("bp-1", id, new SwitchRehearsalRoleRequest { Role = "approver" });
 
-        Assert.NotNull(result);
-        Assert.Equal(id, result.RehearsalId);
+        Assert.NotNull(result.Rehearsal);
+        Assert.Equal(id, result.Rehearsal.RehearsalId);
     }
 
     [Fact]
-    public async Task SwitchRehearsalRoleAsync_UnprocessableEntity_ReturnsNull()
+    public async Task SwitchRehearsalRoleAsync_UnprocessableEntity_CarriesTheReason()
     {
-        var handler = CreateMockHandler(HttpStatusCode.UnprocessableEntity, new { error = "bad role" });
+        var handler = CreateMockHandler(HttpStatusCode.UnprocessableEntity, new { error = "Role 'ghost' is not a participant in this rehearsal." });
         var client = CreateClient(handler);
 
         var result = await client.SwitchRehearsalRoleAsync("bp-1", Guid.NewGuid(), new SwitchRehearsalRoleRequest { Role = "ghost" });
 
-        Assert.Null(result);
+        Assert.Null(result.Rehearsal);
+        Assert.Equal(422, result.Refusal!.StatusCode);
+        Assert.Equal("Role 'ghost' is not a participant in this rehearsal.", result.Refusal.Reason);
     }
 
     [Fact]
@@ -221,25 +234,62 @@ public class BlueprintServiceClientRehearsalTests
         var result = await client.SubmitRehearsalStepAsync(
             "bp-1", id, new SubmitRehearsalStepRequest { ActionId = 1, PayloadJson = """{"field":"value"}""" });
 
-        Assert.NotNull(result);
-        Assert.Equal(id, result.RehearsalId);
+        Assert.NotNull(result.Rehearsal);
+        Assert.Equal(id, result.Rehearsal.RehearsalId);
     }
 
     [Fact]
-    public async Task SubmitRehearsalStepAsync_UnprocessableEntity_ReturnsNull()
+    public async Task SubmitRehearsalStepAsync_SendsThePayloadAsAJsonObject_NotAString()
     {
-        // 422 payload/step error — surfaces as null per the documented contract.
-        var handler = CreateMockHandler(HttpStatusCode.UnprocessableEntity, new { error = "not current step" });
+        // The server binds `payload` as a JsonElement and keeps only an OBJECT's properties — a JSON
+        // string root silently becomes an empty payload. The DTO holds the payload as a raw string
+        // under the same wire name, so posting the DTO directly would send exactly that string.
+        // Pin the bytes that actually leave the client.
+        string? sentBody = null;
+        var handler = new Mock<HttpMessageHandler>();
+        handler.Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .Returns<HttpRequestMessage, CancellationToken>(async (request, ct) =>
+            {
+                sentBody = await request.Content!.ReadAsStringAsync(ct);
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        JsonSerializer.Serialize(SampleRehearsal(Guid.NewGuid()), JsonOptions),
+                        System.Text.Encoding.UTF8,
+                        "application/json")
+                };
+            });
+        var client = CreateClient(handler);
+
+        await client.SubmitRehearsalStepAsync(
+            "bp-1", Guid.NewGuid(), new SubmitRehearsalStepRequest { ActionId = 2, PayloadJson = """{"decision":"approved"}""" });
+
+        Assert.NotNull(sentBody);
+        using var document = JsonDocument.Parse(sentBody!);
+        Assert.Equal(2, document.RootElement.GetProperty("actionId").GetInt32());
+        var payload = document.RootElement.GetProperty("payload");
+        Assert.Equal(JsonValueKind.Object, payload.ValueKind);
+        Assert.Equal("approved", payload.GetProperty("decision").GetString());
+    }
+
+    [Fact]
+    public async Task SubmitRehearsalStepAsync_UnprocessableEntity_CarriesTheReason()
+    {
+        // Was SubmitRehearsalStepAsync_UnprocessableEntity_ReturnsNull (#1691).
+        var handler = CreateMockHandler(HttpStatusCode.UnprocessableEntity, new { error = "Action 9 is not the current rehearsal step." });
         var client = CreateClient(handler);
 
         var result = await client.SubmitRehearsalStepAsync(
             "bp-1", Guid.NewGuid(), new SubmitRehearsalStepRequest { ActionId = 9, PayloadJson = "{}" });
 
-        Assert.Null(result);
+        Assert.Null(result.Rehearsal);
+        Assert.Equal(422, result.Refusal!.StatusCode);
+        Assert.Equal("Action 9 is not the current rehearsal step.", result.Refusal.Reason);
     }
 
     [Fact]
-    public async Task SubmitRehearsalStepAsync_InvalidPayloadJson_ReturnsNull()
+    public async Task SubmitRehearsalStepAsync_InvalidPayloadJson_IsRefusedWithoutACall()
     {
         // The DTO carries payload as a raw JSON string; malformed JSON fails locally without a call.
         var handler = CreateMockHandler(HttpStatusCode.OK, SampleRehearsal(Guid.NewGuid()));
@@ -248,7 +298,30 @@ public class BlueprintServiceClientRehearsalTests
         var result = await client.SubmitRehearsalStepAsync(
             "bp-1", Guid.NewGuid(), new SubmitRehearsalStepRequest { ActionId = 1, PayloadJson = "{not-json" });
 
-        Assert.Null(result);
+        Assert.Null(result.Rehearsal);
+        Assert.Equal(400, result.Refusal!.StatusCode);
+        Assert.Contains("not valid JSON", result.Refusal.Reason);
+        handler.Protected().Verify("SendAsync", Times.Never(), ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("[1,2]", "array")]
+    [InlineData("\"{}\"", "string")]
+    [InlineData("42", "number")]
+    public async Task SubmitRehearsalStepAsync_NonObjectPayload_IsRefusedWithoutACall(string payloadJson, string kind)
+    {
+        // A non-object would reach the server as a payload it silently empties — refuse it here,
+        // where the reason can still be said.
+        var handler = CreateMockHandler(HttpStatusCode.OK, SampleRehearsal(Guid.NewGuid()));
+        var client = CreateClient(handler);
+
+        var result = await client.SubmitRehearsalStepAsync(
+            "bp-1", Guid.NewGuid(), new SubmitRehearsalStepRequest { ActionId = 1, PayloadJson = payloadJson });
+
+        Assert.Null(result.Rehearsal);
+        Assert.Equal(400, result.Refusal!.StatusCode);
+        Assert.Contains($"not a JSON {kind}", result.Refusal.Reason);
+        handler.Protected().Verify("SendAsync", Times.Never(), ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>());
     }
 
     // Bucket B: PublishBlueprintAsync was a NotImplementedException stub; now it calls the endpoint.

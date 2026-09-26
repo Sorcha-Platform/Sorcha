@@ -204,6 +204,42 @@ public sealed record SubmitRehearsalStepRequest
 }
 
 /// <summary>
+/// Why a rehearsal call was refused, as the server said it (#1691).
+/// </summary>
+/// <param name="StatusCode">The HTTP status the Blueprint Service returned.</param>
+/// <param name="Reason">The server's own explanation, or null when it gave none.</param>
+/// <param name="Errors">
+/// The individual blocking errors, when the server listed them — a <c>409</c> on start carries the
+/// blueprint's validation errors here. Empty otherwise.
+/// </param>
+/// <remarks>
+/// The rehearsal methods used to return null for every non-success, so a 409 that listed exactly
+/// which validation errors blocked the rehearsal, a 422 naming the step that was not current, a 403
+/// and a 404 all looked the same to the caller. The same shape as <see cref="PublishRefusal"/>
+/// (#1641), and for the same reason: an agent told only that something failed spends its next
+/// calls rediscovering a reason it had already been given.
+/// </remarks>
+public sealed record RehearsalRefusal(int StatusCode, string? Reason, IReadOnlyList<string> Errors);
+
+/// <summary>
+/// Outcome of a rehearsal call (#1691): either the rehearsal state the server returned, or why
+/// the server refused. Exactly one of the two is set.
+/// </summary>
+/// <remarks>
+/// A rehearsal whose <see cref="Rehearsal.Outcome"/> is <see cref="RehearsalOutcome.Failed"/> is
+/// NOT a refusal: the server accepted the call, ran the step, and recorded the failure in the
+/// rehearsal's own log. Read that log for the reason.
+/// </remarks>
+public sealed record RehearsalCallResult
+{
+    /// <summary>The rehearsal state, or null when the call was refused.</summary>
+    public Rehearsal? Rehearsal { get; init; }
+
+    /// <summary>The server's refusal, or null when it returned a rehearsal.</summary>
+    public RehearsalRefusal? Refusal { get; init; }
+}
+
+/// <summary>
 /// Optional override for the rehearsal soft gate when publishing (Feature 142). Present only
 /// to bypass the "version not rehearsed" 409; requires register publish-governance authority
 /// and records a PublishOverride audit row.

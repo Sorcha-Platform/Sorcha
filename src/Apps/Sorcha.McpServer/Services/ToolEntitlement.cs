@@ -89,6 +89,12 @@ public static class ToolEntitlements
         new("sorcha_blueprint_update", PlatformOnly, DesignerRole),
         new("sorcha_blueprint_validate", PlatformOnly, DesignerRole),
         new("sorcha_blueprint_simulate", PlatformOnly, DesignerRole),
+        // Rehearsal (#1691) — the designer role, because the endpoints sit behind the Blueprint
+        // Service's CanManageBlueprints policy (any platform-tier organisation member), the same
+        // authority that authors a draft. Publishing still needs the admin role; rehearsing does not.
+        new("sorcha_rehearsal_start", PlatformOnly, DesignerRole),
+        new("sorcha_rehearsal_step", PlatformOnly, DesignerRole),
+        new("sorcha_rehearsal_get", PlatformOnly, DesignerRole),
         new("sorcha_disclosure_analysis", PlatformOnly, DesignerRole),
         // sorcha_blueprint_diff — DELETED (#1607). No /diff endpoint ever existed anywhere, so
         // the tool, IBlueprintServiceClient.GetBlueprintDiffAsync and the mock-only tests are gone.
