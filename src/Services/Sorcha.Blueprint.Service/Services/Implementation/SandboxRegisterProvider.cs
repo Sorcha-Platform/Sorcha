@@ -61,6 +61,19 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
     private readonly ConcurrentDictionary<string, string> _ownerWalletByOrg =
         new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// org id → sandbox register created but not yet SEEN sealed. A retry waits on this register
+    /// instead of creating another.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, string> _unsealedByOrg =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>How long to wait for a new sandbox register's genesis to seal.</summary>
+    private readonly TimeSpan _genesisSealTimeout;
+
+    /// <summary>How often to poll the register height while waiting.</summary>
+    private readonly TimeSpan _genesisSealPollInterval;
+
     /// <summary>org id → per-org creation gate, so concurrent starts share one register.</summary>
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _orgLocks =
         new(StringComparer.OrdinalIgnoreCase);
@@ -75,14 +88,23 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
     private const string OwnerWalletAlgorithm = "ED25519";
 
     /// <summary>Initialises a new instance of the <see cref="SandboxRegisterProvider"/> class.</summary>
+    /// <param name="scopeFactory">Scope factory for the per-operation scoped clients.</param>
+    /// <param name="metrics">Designer metrics.</param>
+    /// <param name="logger">Logger.</param>
+    /// <param name="genesisSealTimeout">Test seam: how long to wait for a new register's genesis to seal (default 60s).</param>
+    /// <param name="genesisSealPollInterval">Test seam: poll interval while waiting (default 1s).</param>
     public SandboxRegisterProvider(
         IServiceScopeFactory scopeFactory,
         BlueprintDesignerMetrics metrics,
-        ILogger<SandboxRegisterProvider> logger)
+        ILogger<SandboxRegisterProvider> logger,
+        TimeSpan? genesisSealTimeout = null,
+        TimeSpan? genesisSealPollInterval = null)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _genesisSealTimeout = genesisSealTimeout ?? TimeSpan.FromSeconds(60);
+        _genesisSealPollInterval = genesisSealPollInterval ?? TimeSpan.FromSeconds(1);
     }
 
     /// <inheritdoc/>
@@ -125,11 +147,30 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
             string resolvedId;
             try
             {
-                // Mint (or reuse) the org's stable sandbox-owner wallet — the attestation signer.
-                var ownerWalletAddress = await GetOrCreateOwnerWalletAsync(organizationId, walletClient, cancellationToken);
+                // A previous attempt created the register but gave up waiting for its genesis —
+                // wait on THAT one rather than minting another orphan.
+                if (!_unsealedByOrg.TryGetValue(organizationId, out resolvedId!))
+                {
+                    // Mint (or reuse) the org's stable sandbox-owner wallet — the attestation signer.
+                    var ownerWalletAddress = await GetOrCreateOwnerWalletAsync(organizationId, walletClient, cancellationToken);
 
-                resolvedId = await RunCreationCeremonyAsync(
-                    organizationId, ownerWalletAddress, registerClient, walletClient, cancellationToken);
+                    resolvedId = await RunCreationCeremonyAsync(
+                        organizationId, ownerWalletAddress, registerClient, walletClient, cancellationToken);
+                    _unsealedByOrg[organizationId] = resolvedId;
+                }
+
+                // Finalize only SUBMITS the genesis; sealing it takes a docket cycle. Until it seals
+                // the register has no roster, and the validator refuses the rehearsal's blueprint
+                // publication ("the register has no roster") — so the first rehearsal in every
+                // organisation, and the first after every restart (this cache is in-memory), failed
+                // step 1 with a 60s "not confirmed" timeout.
+                await WaitForGenesisSealAsync(resolvedId, registerClient, cancellationToken);
+                _unsealedByOrg.TryRemove(organizationId, out _);
+            }
+            catch (SandboxNotReadyException)
+            {
+                _metrics.RecordSandboxProvision("Failed", organizationId);
+                throw;
             }
             catch (Exception)
             {
@@ -153,6 +194,34 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
         finally
         {
             gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Waits until the register's genesis docket has sealed — height ≥ 1, where height is the
+    /// docket count — or throws <see cref="SandboxNotReadyException"/>.
+    /// </summary>
+    private async Task WaitForGenesisSealAsync(
+        string registerId, IRegisterServiceClient registerClient, CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + _genesisSealTimeout;
+        while (true)
+        {
+            // -1 means "not found" and "transient failure" alike; both mean not sealed yet here.
+            if (await registerClient.GetRegisterHeightAsync(registerId, cancellationToken) >= 1)
+            {
+                return;
+            }
+
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                _logger.LogWarning(
+                    "Sandbox register {RegisterId} genesis did not seal within {Timeout}s",
+                    registerId, _genesisSealTimeout.TotalSeconds);
+                throw new SandboxNotReadyException(registerId, _genesisSealTimeout);
+            }
+
+            await Task.Delay(_genesisSealPollInterval, cancellationToken);
         }
     }
 

@@ -1481,7 +1481,7 @@ The staged designer workspace (Describe → Understand → Rehearse → Go live)
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/api/blueprints/{id}/rehearsals` | Start a full rehearsal — provisions/reuses the per-org devMode sandbox register and mints ephemeral per-role wallets. |
+| POST | `/api/blueprints/{id}/rehearsals` | Start a full rehearsal — provisions/reuses the per-org devMode sandbox register and mints ephemeral per-role wallets. A newly created sandbox is used only once its genesis has sealed; if it has not sealed within 60 s the call answers `503` with the reason (transient — retrying reuses the same register). |
 | GET | `/api/blueprints/{id}/rehearsals/{rehearsalId}` | Read rehearsal status + walk-through log. |
 | DELETE | `/api/blueprints/{id}/rehearsals/{rehearsalId}` | Reset / discard a rehearsal (sandbox register persists; ephemeral wallets are abandoned). |
 | POST | `/api/blueprints/{id}/rehearsals/{rehearsalId}/role` | Switch the currently acting participant role. |

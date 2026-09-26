@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Sorcha.Blueprint.Service.Services.Implementation;
+using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
 using Sorcha.ServiceClients.Register;
@@ -27,7 +28,7 @@ public class SandboxRegisterProviderTests
     private int _registerCounter;
     private int _walletCounter;
 
-    private SandboxRegisterProvider CreateProvider()
+    private SandboxRegisterProvider CreateProvider(TimeSpan? genesisSealTimeout = null)
     {
         // The provider is a singleton that resolves its scoped clients per-operation via
         // IServiceScopeFactory; back that factory with the mocks (registered singleton so they
@@ -41,7 +42,9 @@ public class SandboxRegisterProviderTests
         return new SandboxRegisterProvider(
             provider.GetRequiredService<IServiceScopeFactory>(),
             metrics,
-            NullLogger<SandboxRegisterProvider>.Instance);
+            NullLogger<SandboxRegisterProvider>.Instance,
+            genesisSealTimeout ?? TimeSpan.FromSeconds(5),
+            genesisSealPollInterval: TimeSpan.FromMilliseconds(10));
     }
 
     public SandboxRegisterProviderTests()
@@ -107,6 +110,11 @@ public class SandboxRegisterProviderTests
                     }).ToList(),
                 };
             });
+
+        // Genesis sealed by default (height = docket count); the seal-wait tests override this.
+        _registerClient
+            .Setup(c => c.GetRegisterHeightAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1L);
 
         // Phase 3 — finalize: echo the register id back.
         _registerClient
@@ -211,5 +219,62 @@ public class SandboxRegisterProviderTests
         var act = () => provider.GetOrCreateSandboxRegisterAsync("  ");
 
         await act.Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task GetOrCreate_NewRegister_IsNotReturnedUntilItsGenesisHasSealed()
+    {
+        // Live on n1 (2026-09-26): finalize only SUBMITS the genesis. The rehearsal published into
+        // the register at once, the validator found no roster yet and refused the publication, and
+        // the first rehearsal in the organisation failed step 1 with a 60s "not confirmed" timeout.
+        var heights = new Queue<long>([-1L, 0L, 0L, 1L]);
+        _registerClient
+            .Setup(c => c.GetRegisterHeightAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => heights.Count > 0 ? heights.Dequeue() : 1L);
+        var provider = CreateProvider();
+
+        var registerId = await provider.GetOrCreateSandboxRegisterAsync("org-1");
+
+        registerId.Should().NotBeNullOrWhiteSpace();
+        heights.Should().BeEmpty("the provider must keep polling until the genesis docket exists");
+        _registerClient.Verify(c => c.GetRegisterHeightAsync(registerId, It.IsAny<CancellationToken>()), Times.Exactly(4));
+    }
+
+    [Fact]
+    public async Task GetOrCreate_GenesisNeverSeals_ThrowsANamedTransientError_AndARetryReusesTheSameRegister()
+    {
+        _registerClient
+            .Setup(c => c.GetRegisterHeightAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0L);
+        var provider = CreateProvider(genesisSealTimeout: TimeSpan.FromMilliseconds(50));
+
+        var first = () => provider.GetOrCreateSandboxRegisterAsync("org-slow");
+        var thrown = await first.Should().ThrowAsync<SandboxNotReadyException>();
+        thrown.Which.Message.Should().Contain("not a problem with the blueprint");
+        var pendingRegister = thrown.Which.RegisterId;
+
+        // The genesis seals; the retry must wait on THAT register, not mint another orphan.
+        _registerClient
+            .Setup(c => c.GetRegisterHeightAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1L);
+
+        var retried = await provider.GetOrCreateSandboxRegisterAsync("org-slow");
+
+        retried.Should().Be(pendingRegister);
+        _registerClient.Verify(c => c.InitiateRegisterCreationAsync(
+            It.IsAny<InitiateRegisterCreationRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+        _registerClient.Verify(c => c.FinalizeRegisterCreationAsync(
+            It.IsAny<FinalizeRegisterCreationRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetOrCreate_CachedRegister_DoesNotPollAgain()
+    {
+        var provider = CreateProvider();
+
+        var first = await provider.GetOrCreateSandboxRegisterAsync("org-1");
+        await provider.GetOrCreateSandboxRegisterAsync("org-1");
+
+        _registerClient.Verify(c => c.GetRegisterHeightAsync(first, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

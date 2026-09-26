@@ -8,20 +8,34 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
-> **▶ 2026-09-26 - #1691 🚧 (branch `feature/1691-mcp-rehearsal-tools`): an MCP agent can now
-> REHEARSE, so the F142 publish gate is a gate and not a toll.** Before this, nothing on the MCP
-> surface could record a `RehearsalPass`, so every MCP publish needed the human override (runs #4,
-> #5, #7); run #8's agent even believed `simulate` + `disclosure_analysis` were the rehearsal. New
-> tools `sorcha_rehearsal_start` / `_step` / `_get` wrap the existing F142 endpoints (designer
-> role, same `CanManageBlueprints` authority as authoring). The rehearsal client methods returned
-> null for every non-success; they now return `RehearsalCallResult` carrying the server's reason
-> and a 409's validation-error list. Simulate, disclosure-analysis and publish descriptions,
-> ServerInstructions and two prompt recipes now say that only a passed rehearsal clears the gate.
-> Tests: 20 client + 20 tool test cases; 7 mutations all KILLED. ⚠ **Found, not fixed here:** the
-> Designer UI's `RehearsalApiService.SubmitStepAsync` posts the DTO directly, so `payload` goes
-> on the wire as a JSON **string**, and `RehearsalOrchestrationService.ParsePayload` turns a
-> non-object root into an EMPTY payload silently. Separate issue + PR. Remaining: live acceptance
-> on n1 (rehearse → pass → publish with NO override).
+> **▶ 2026-09-26 - #1691 ✅ LIVE-ACCEPTED ON n1 (PR #1723, deployed mcp-server-http + api-gateway +
+> blueprint-service): an MCP agent can REHEARSE, so the F142 publish gate is a gate and not a toll.**
+> Before this, nothing on the MCP surface could record a `RehearsalPass`, so every MCP publish needed
+> the human override (runs #4, #5, #7); run #8's agent believed `simulate` + `disclosure_analysis` were
+> the rehearsal. New tools `sorcha_rehearsal_start` / `_step` / `_get` (designer role, same
+> `CanManageBlueprints` authority as authoring). The rehearsal client methods returned null for every
+> non-success; they now return `RehearsalCallResult` with the server's reason. **Acceptance, MCP only,
+> as the run-8 org A admin:** publish-before-rehearsal → `ApprovalRequired` (control); start → step 0
+> (9 s) → step 1 (5 s) → `Passed`; publish → `Success` v1, `publishedWithoutRehearsal: False`, hash
+> equal. Tests: 20 client + 21 tool cases; 7 mutations KILLED.
+>
+> **▶ 2026-09-26 - Sandbox genesis race (branch `fix/sandbox-genesis-seal-race`): the FIRST rehearsal in
+> every organisation always failed.** Found by #1691's first live run. `SandboxRegisterProvider`
+> returned as soon as finalize was accepted, but finalize only SUBMITS the genesis; the rehearsal
+> published into the register at once, the validator found no sealed roster and refused the
+> publication (`ExemptionAuthorityResolver`: "the register has no roster"), and step 1 timed out after
+> 60 s. The cache is in-memory, so it recurred after every Blueprint restart too. Diagnosis:
+> the sandbox genesis DID carry a `sorcha:blueprint-publish` entry, and a rerun on the reused, sealed
+> sandbox passed. Fix: a new sandbox is returned only once height ≥ 1 (height is the docket count),
+> with a named `SandboxNotReadyException` → 503 on timeout, and a retry waits on the same register.
+> The validator's refusal now says "no sealed roster yet — its genesis is missing or has not sealed".
+> Tests: 3 new provider tests + MCP 503 case; 3 mutations KILLED.
+>
+> **▶ 2026-09-26 - #1724 (open, needs a decision): the Designer's Rehearse stage never supplies step
+> data.** `RehearseStage.razor` submits `"{}"` (full) and an empty dictionary (dry-run) for EVERY step,
+> since F142. With #1573's schema enforcement, a person cannot pass a rehearsal for any blueprint with
+> `required` fields, so the UI publish path still needs the override. Needs step forms in the Rehearse
+> stage (UI feature). The DTO-as-string seam is real but moot until then.
 >
 > **▶ 2026-09-25 - STATE: n1 + tiny run master `4f56cf82a`; core suite 18/18 on n1** (13/18 on
 > 2026-09-24 morning). #1712, #1701, #1709, #1699 (#1718 + #1719) and #1720 are all merged, deployed

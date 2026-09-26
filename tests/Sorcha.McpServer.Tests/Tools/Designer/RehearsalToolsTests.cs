@@ -143,6 +143,21 @@ public class RehearsalToolsTests
     }
 
     [Fact]
+    public async Task Start_SandboxNotReady_IsReportedAsTransientAndNotAnOutage()
+    {
+        // 503 from the start endpoint = the sandbox register's genesis has not sealed yet.
+        Allow("sorcha_rehearsal_start");
+        _client.Setup(c => c.StartRehearsalAsync(BlueprintId, It.IsAny<StartRehearsalRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Refused(503, "The rehearsal sandbox register r1 was created, but its genesis did not seal within 60s."));
+
+        var result = await Start().StartRehearsalAsync(BlueprintId);
+
+        result.Status.Should().Be("Unavailable");
+        result.Message.Should().Contain("genesis did not seal").And.Contain("try the same call again");
+        _availability.Verify(a => a.RecordFailure(It.IsAny<string>(), It.IsAny<Exception?>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Start_TransportFault_IsRecordedAsAnOutage()
     {
         Allow("sorcha_rehearsal_start");
