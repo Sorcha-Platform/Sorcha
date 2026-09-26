@@ -226,16 +226,17 @@ static void ConfigureServerOptions(McpServerOptions options)
           6. sorcha_action_submit      — perform an action on that instance
 
         READ THESE FIRST — they are resources, not tool calls, so they cost you nothing:
-          sorcha://schema/blueprint   a JSON Schema for a blueprint. Everything it documents
-                                      (participants, actions, data schemas, disclosure groups,
-                                      action-level condition routing) is accurate and current —
-                                      but it is INCOMPLETE, not wrong: it does not yet define
-                                      `routes`, `isStartingAction`, `credentialRequirements`,
-                                      `credentialIssuanceConfig`, `rejectionConfig`,
-                                      `requiredPriorActions`, or `instanceReference`. Read the
-                                      examples below for those constructs; do not treat the
-                                      schema's silence on them as meaning they don't exist.
-          sorcha://examples/{name}    working blueprints that use the constructs above:
+          sorcha://schema/blueprint   a JSON Schema for a blueprint, kept current against the
+                                      models by a CI gate. Describes both routing mechanisms —
+                                      the `routes` array and action-level `participants`/
+                                      `condition` (neither is legacy) — plus `isStartingAction`,
+                                      the full credential surface (`credentialRequirements`,
+                                      `credentialIssuanceConfig`, `trustPolicy`, `claimMappings`,
+                                      etc.), `rejectionConfig`, `requiredPriorActions`, and
+                                      `instanceReference`. Read this before writing any
+                                      blueprint JSON.
+          sorcha://examples/{name}    working blueprints that use the constructs above together
+                                      in a complete, executed definition:
                                       assured-identity, encryption-at-rest, ping-pong.
           sorcha://glossary           what register, docket, disclosure group and the rest mean.
           sorcha://registers          the registers you can see right now — capped at 50, with

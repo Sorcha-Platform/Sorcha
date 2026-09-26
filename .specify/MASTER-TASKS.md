@@ -728,9 +728,12 @@
 > `sorcha://examples/{name}` (assured-identity, encryption-at-rest, ping-pong), `sorcha://glossary`,
 > `sorcha://registers` (capped 50, `count`/`truncated` so absence is not evidence of non-existence),
 > `sorcha://instances`. A cold-start authoring A/B measured the blueprint schema resource as the
-> single intervention that closed the authoring gap. The schema is accurate but incomplete — it does
-> not yet define `routes`, `isStartingAction`, `credentialRequirements`, `credentialIssuanceConfig`,
-> `rejectionConfig`, `requiredPriorActions`, `instanceReference` (tracked as **#1609**).
+> single intervention that closed the authoring gap. **#1609 fixed**: the schema now also defines
+> `routes`, `isStartingAction`, the full credential surface (`credentialRequirements`,
+> `credentialIssuanceConfig`, `trustPolicy`, etc.), `rejectionConfig`, `requiredPriorActions`, and
+> `instanceReference`, and both routing mechanisms (route-level and action-level
+> `participants`/`condition`) are documented as equally live. A reflection-based CI gate
+> (`BlueprintSchemaCurrencyTests`, `Sorcha.Blueprint.Models.Tests`) keeps it current.
 >
 > **Prompts** (3): `sorcha_two_party_exchange`, `sorcha_issue_credential`,
 > `sorcha_prove_to_regulator` — guided recipes naming the resources to read and the lifecycle tools

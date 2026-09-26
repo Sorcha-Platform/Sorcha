@@ -2,10 +2,18 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sorcha.dev/schemas/blueprint.json",
   "title": "Sorcha Blueprint Schema",
-  "description": "JSON Schema for Sorcha Blueprint workflow definitions",
+  "description": "JSON Schema for Sorcha Blueprint workflow definitions. Describes BOTH routing mechanisms an action may use to reach the next step — the modern `routes` array (route-level `condition` + `outputMapping`) and the action-level `participants`/`condition` pair. Neither is legacy: `register-governance-v1` advances by action-level `participants`/`condition` alone (no `routes`), and F195 deliberately included action-level `participants` in the executable-definition hash because it is still executed. Kept current against src/Common/Sorcha.Blueprint.Models by BlueprintSchemaCurrencyTests (Sorcha.Blueprint.Models.Tests) — a reflection gate that fails when a new serialized model property has no matching schema entry.",
   "type": "object",
   "required": ["id", "title", "description", "participants", "actions"],
   "properties": {
+    "@context": {
+      "description": "JSON-LD context for semantic web integration (schema.org / W3C DID / ActivityStreams vocabulary). Populated by Sorcha.Blueprint.Models.JsonLd.JsonLdContext; absent unless a blueprint opts into JSON-LD interop. May be an object or an array of contexts.",
+      "anyOf": [{ "type": "object" }, { "type": "array" }, { "type": "string" }]
+    },
+    "@type": {
+      "type": "string",
+      "description": "JSON-LD type for semantic classification (e.g. 'Blueprint', 'schema:WebApplication'). See Sorcha.Blueprint.Models.JsonLd.JsonLdTypes."
+    },
     "id": {
       "type": "string",
       "maxLength": 64,
@@ -28,6 +36,26 @@
       "minimum": 1,
       "default": 1,
       "description": "Version number of the blueprint"
+    },
+    "dataSchemas": {
+      "type": "array",
+      "description": "Blueprint-level embedded reference data schema documents (distinct from each action's own `dataSchemas`).",
+      "items": {
+        "type": "object",
+        "description": "A JSON Schema object"
+      }
+    },
+    "organizationId": {
+      "type": "string",
+      "description": "The organization that owns this blueprint. Used for org-scoped access control."
+    },
+    "instructions": {
+      "anyOf": [{ "$ref": "#/$defs/blueprintInstructions" }, { "type": "null" }],
+      "description": "Instructions container with overview, per-action/per-participant guidance, linked translations, and governance roles."
+    },
+    "instanceReference": {
+      "anyOf": [{ "$ref": "#/$defs/instanceReferenceTemplate" }, { "type": "null" }],
+      "description": "Template for generating human-readable instance references (e.g., 'CP-RIV-14-A7K3'). When defined, the system auto-generates a reference from first-action payload fields and stores it as public metadata on the instance. See CLAUDE.md pattern 6 — the reference is PUBLIC metadata; referenced field values are visible in plaintext."
     },
     "createdAt": {
       "type": "string",
@@ -92,10 +120,508 @@
         }
       }
     },
+    "blueprintInstructions": {
+      "type": "object",
+      "description": "Top-level instructions container for a Blueprint (Sorcha.Blueprint.Models.BlueprintInstructions).",
+      "properties": {
+        "overview": {
+          "type": "string",
+          "maxLength": 5000,
+          "description": "Markdown overview of the workflow purpose and usage"
+        },
+        "locale": {
+          "type": "string",
+          "maxLength": 10,
+          "description": "Primary language code (BCP 47, e.g., 'en-GB')"
+        },
+        "actionInstructions": {
+          "type": "object",
+          "description": "Per-action guidance keyed by action ID (stringified integer key on the wire)",
+          "additionalProperties": { "type": "string" }
+        },
+        "participantInstructions": {
+          "type": "object",
+          "description": "Per-participant role guidance keyed by participant name",
+          "additionalProperties": { "type": "string" }
+        },
+        "instructionSets": {
+          "type": "array",
+          "description": "Linked external instruction documents for translations",
+          "items": { "$ref": "#/$defs/instructionSet" }
+        },
+        "governanceRoles": {
+          "type": "object",
+          "description": "Blueprint-defined governance participants keyed by role name. Values are DID URIs or participant IDs. Blueprint-defined roles take precedence over org-admin role assignments.",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "instructionSet": {
+      "type": "object",
+      "description": "Linked external instruction document for translations (Sorcha.Blueprint.Models.InstructionSet).",
+      "required": ["locale", "source"],
+      "properties": {
+        "locale": {
+          "type": "string",
+          "maxLength": 10,
+          "description": "Language code (BCP 47, e.g., 'fr-FR')"
+        },
+        "source": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "DID URI or URL to the instruction document"
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 20,
+          "description": "Version of the translation document"
+        }
+      }
+    },
+    "instanceReferenceTemplate": {
+      "type": "object",
+      "description": "Defines how to generate a human-readable compound reference for workflow instances (Sorcha.Blueprint.Models.InstanceReferenceTemplate).",
+      "required": ["prefix", "components"],
+      "properties": {
+        "prefix": {
+          "type": "string",
+          "pattern": "^[A-Z]{1,5}$",
+          "description": "Short prefix identifying the workflow type (1-5 uppercase alpha characters), e.g. 'CP' for Construction Permit."
+        },
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "description": "Ordered list of field components that form the reference body.",
+          "items": { "$ref": "#/$defs/referenceComponent" }
+        }
+      }
+    },
+    "referenceComponent": {
+      "type": "object",
+      "description": "A single component of an instance reference, extracting a display segment from a payload field using a configurable transform (Sorcha.Blueprint.Models.ReferenceComponent).",
+      "required": ["field", "transform"],
+      "properties": {
+        "field": {
+          "type": "string",
+          "pattern": "^/[^/]+$",
+          "description": "JSON Pointer to the payload field (e.g., '/projectName'). Single-level only; must reference a field from the starting action's schema."
+        },
+        "transform": {
+          "type": "string",
+          "enum": ["FirstWord", "Truncate", "first-word", "truncate"],
+          "default": "FirstWord",
+          "description": "Transform to apply when extracting the display segment. All output is uppercased. Hand-authored blueprint JSON uses the PascalCase enum member name ('FirstWord'/'Truncate'); a response from a service that calls SorchaJson.Configure (kebab-case string enums) instead sends 'first-word'/'truncate'. Both forms are accepted here — readers must accept both (#1700)."
+        },
+        "chars": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 10,
+          "default": 3,
+          "description": "Maximum characters for this component segment."
+        }
+      }
+    },
+    "notificationConfig": {
+      "type": "object",
+      "description": "Optional per-action notification configuration (Sorcha.Blueprint.Models.NotificationConfig). Controls how notifications appear when the action becomes pending for a participant.",
+      "properties": {
+        "summaryTemplate": {
+          "type": "string",
+          "description": "Template string with {{payload.field}} references for extracting business context. When null, defaults to '{BlueprintTitle} — {ActionTitle}'."
+        },
+        "urgencyRule": {
+          "type": "string",
+          "description": "Urgency rule: 'none' (default), 'deadline' (calculate from deadlineField), or 'always-urgent'."
+        },
+        "deadlineField": {
+          "type": "string",
+          "description": "Payload field path for deadline extraction (e.g., 'payload.inspectionDeadline'). Used when urgencyRule is 'deadline'."
+        },
+        "groupBy": {
+          "type": "string",
+          "description": "Payload field path for grouping related notifications (e.g., 'payload.orderRef')."
+        }
+      }
+    },
+    "rejectionConfig": {
+      "type": "object",
+      "description": "Configures rejection routing for an action — where the workflow routes when a participant rejects inbound data (Sorcha.Blueprint.Models.RejectionConfig).",
+      "required": ["targetActionId"],
+      "properties": {
+        "targetActionId": {
+          "type": "integer",
+          "description": "Target action ID for rejection routing. The workflow routes to this action when the current action is rejected."
+        },
+        "targetParticipantId": {
+          "type": "string",
+          "description": "Override participant ID for rejection target. If not specified, uses the target action's default sender."
+        },
+        "requireReason": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether a rejection reason is required."
+        },
+        "rejectionSchema": {
+          "type": "object",
+          "description": "Optional JSON Schema for rejection data. Allows structured rejection feedback beyond simple reason text."
+        },
+        "isTerminal": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether rejection terminates the entire workflow. If true, the workflow moves to Rejected state instead of routing."
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "description": "Defines conditional routing to the next action(s) in a workflow (Sorcha.Blueprint.Models.Route). Routes are evaluated in order — first matching condition wins. This is the modern routing mechanism; action-level `participants`/`condition` is the other, equally-live mechanism (see `#/$defs/action`).",
+      "required": ["id", "nextActionIds"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Unique identifier for this route within the action"
+        },
+        "nextActionIds": {
+          "type": "array",
+          "description": "Next action ID(s) to route to. Multiple IDs create parallel branches. Empty list indicates workflow completion.",
+          "items": { "type": "integer" }
+        },
+        "condition": {
+          "type": "object",
+          "description": "JSON Logic condition to evaluate against the accumulated state from prior actions. If absent, this is treated as a default route."
+        },
+        "isDefault": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this is the default route when no conditions match. Only one route per action should be marked as default."
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Optional description of when this route is taken"
+        },
+        "branchDeadline": {
+          "type": "string",
+          "description": "Optional ISO 8601 duration deadline for parallel branch completion (e.g., 'P7D'). Only applicable when nextActionIds contains multiple IDs."
+        },
+        "outputMapping": {
+          "type": "object",
+          "description": "Optional map from source JSON Pointer (in the current action's execution result document: payload / calculations / haip) to target JSON Pointer (in the next action's starting payload). Both keys and values MUST be valid JSON Pointer strings (RFC 6901), leading slash required.",
+          "additionalProperties": { "type": "string" }
+        },
+        "x-decision-notice": {
+          "anyOf": [{ "$ref": "#/$defs/decisionNotice" }, { "type": "null" }],
+          "description": "Optional decision-notice declaration (Feature 183). When this route is taken, a durable inbox entry carrying an on-brand reason is written to the named recipient participant."
+        }
+      }
+    },
+    "decisionNotice": {
+      "type": "object",
+      "description": "Declares that taking a route notifies a participant with a durable, reasoned notice (Sorcha.Blueprint.Models.Route+DecisionNotice, carried on a route as `x-decision-notice`).",
+      "properties": {
+        "recipientParticipantId": {
+          "type": "string",
+          "description": "Participant id to notify (resolved to a wallet via the instance's participant bindings)."
+        },
+        "reasonCodeField": {
+          "type": "string",
+          "description": "JSON Pointer into the submitted action payload for the non-sensitive reason code (e.g. '/reasonCode'). Omit for a notice that needs no per-reason variation."
+        },
+        "reasons": {
+          "type": "object",
+          "description": "Catalogue mapping each reason code to the citizen-facing message.",
+          "additionalProperties": { "type": "string" }
+        },
+        "fallbackMessage": {
+          "type": "string",
+          "description": "Message used when the decision carries no reason code, or a code absent from `reasons`."
+        },
+        "title": {
+          "type": "string",
+          "description": "Notification title (e.g. 'AIAS could not assure your identity')."
+        },
+        "severity": {
+          "type": "string",
+          "description": "Inbox severity. Defaults to 'Warning' when unspecified."
+        }
+      }
+    },
+    "credentialRequirement": {
+      "type": "object",
+      "description": "Specifies what credential(s) a participant must present to execute a blueprint action (Sorcha.Blueprint.Models.Credentials.CredentialRequirement).",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Credential type identifier (e.g., 'LicenseCredential', 'IdentityAttestation')."
+        },
+        "format": {
+          "type": "string",
+          "enum": ["sd-jwt-vc", "mso_mdoc"],
+          "default": "sd-jwt-vc",
+          "description": "Credential format this requirement accepts (Feature 135). A presentation of any other format is rejected."
+        },
+        "trustPolicy": {
+          "anyOf": [{ "$ref": "#/$defs/trustPolicy" }, { "type": "null" }],
+          "description": "Trust expectation for the credential's issuer (Feature 135). When absent, the verifier applies the default policy (a single register/DID source at low assurance)."
+        },
+        "requiredClaims": {
+          "type": "array",
+          "description": "Claims that must be disclosed and their value constraints.",
+          "items": { "$ref": "#/$defs/claimConstraint" }
+        },
+        "optionalClaims": {
+          "type": "array",
+          "description": "Claims the verifier asks for but the holder may withhold. A credential that omits every optional claim still satisfies the requirement.",
+          "items": { "$ref": "#/$defs/claimConstraint" }
+        },
+        "revocationCheckPolicy": {
+          "type": "string",
+          "enum": ["FailClosed", "FailOpen"],
+          "default": "FailClosed",
+          "description": "Policy for handling revocation check failures."
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Human-readable description of what credential is needed (displayed in UI)."
+        },
+        "anyOfGroup": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Optional alternative-group tag (Feature 181 US2). Requirements on the same action that share a non-null anyOfGroup value are alternatives — presenting a credential for ANY ONE of them satisfies the group."
+        },
+        "presentationSource": {
+          "type": "string",
+          "enum": ["SorchaInternal", "HaipExternalWallet", "SorchaWallet"],
+          "default": "SorchaInternal",
+          "description": "Where the presentation should come from: an internal Sorcha participant, an external HAIP OpenID4VP wallet, or the Sorcha Wallet PWA."
+        }
+      }
+    },
+    "claimConstraint": {
+      "type": "object",
+      "description": "Defines a required claim and optional value constraint within a credential requirement (Sorcha.Blueprint.Models.Credentials.ClaimConstraint).",
+      "required": ["claimName"],
+      "properties": {
+        "claimName": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "The claim key that must be present in the credential (e.g., 'licenseType', 'skillLevel')."
+        },
+        "expectedValue": {
+          "description": "Expected value for the claim. Absent means any value is accepted (claim just must be present). May be any JSON value."
+        }
+      }
+    },
+    "trustPolicy": {
+      "type": "object",
+      "description": "The trust expectation attached to a credential requirement (Sorcha.Blueprint.Models.Credentials.TrustPolicy, Feature 135). A credential is trusted when its issuer is vouched for by `sources` per `combinator`, at or above `minAssuranceLevel`.",
+      "properties": {
+        "sources": {
+          "type": "array",
+          "description": "The trust sources consulted to vouch for an issuer (at least one when set).",
+          "items": { "$ref": "#/$defs/trustSourceRef" }
+        },
+        "combinator": {
+          "type": "string",
+          "enum": ["anyOf", "allOf"],
+          "default": "anyOf",
+          "description": "How the sources are combined. 'anyOf' accepts if any source vouches; 'allOf' requires every source to vouch, failing closed on an unreachable required source."
+        },
+        "minAssuranceLevel": {
+          "type": "string",
+          "enum": ["none", "low", "substantial", "high"],
+          "default": "low",
+          "description": "Minimum assurance level a credential must establish."
+        },
+        "warnOnUnlistedVerifiedIssuer": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, a signature-valid issuer that no source vouches for is accepted at reduced assurance ('none') instead of being rejected (Feature 177). An explicit, per-requirement opt-in."
+        }
+      }
+    },
+    "trustSourceRef": {
+      "type": "object",
+      "description": "One trust source within a trust policy (Sorcha.Blueprint.Models.Credentials.TrustSourceRef, Feature 135).",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["register", "x509-tenant", "trustlist", "did-allowlist"],
+          "default": "register",
+          "description": "Which kind of trust source to consult: Sorcha register/DID resolution, the tenant's X.509 CA, an external trust list, or an explicit issuer allowlist."
+        },
+        "confersAssurance": {
+          "type": "string",
+          "enum": ["none", "low", "substantial", "high"],
+          "description": "Assurance level this source confers when it vouches. Absent is treated as 'low'."
+        },
+        "allowedIssuers": {
+          "type": "array",
+          "description": "For kind 'did-allowlist' — the explicit issuer DID URIs accepted (alsoKnownAs-equivalent issuers are also accepted).",
+          "items": { "type": "string" }
+        },
+        "trustListId": {
+          "type": "string",
+          "description": "For kind 'trustlist' — the snapshot identifier of the external trust list to consult."
+        },
+        "options": {
+          "type": "object",
+          "description": "Source-specific tuning options (e.g. CRL mode).",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "credentialIssuanceConfig": {
+      "type": "object",
+      "description": "Defines how a blueprint action mints a verifiable credential upon execution (Sorcha.Blueprint.Models.Credentials.CredentialIssuanceConfig).",
+      "required": ["credentialType", "claimMappings", "recipientParticipantId"],
+      "properties": {
+        "credentialType": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Type of credential to issue (e.g., 'LicenseCredential')."
+        },
+        "vct": {
+          "type": "string",
+          "description": "Canonical SD-JWT VC type identifier (the `vct` claim). MUST be an absolute URI, lowercase kebab-case: https://sorcha.dev/vc/{type}/v1. When absent, credentialType is used as the vct."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Human-readable label shown on the credential card (e.g. 'Assured Identity'). When absent, the wallet falls back to humanising the vct."
+        },
+        "claimMappings": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Maps action data fields to credential claims.",
+          "items": { "$ref": "#/$defs/claimMapping" }
+        },
+        "recipientParticipantId": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Participant ID who receives the credential."
+        },
+        "expiryDuration": {
+          "type": "string",
+          "description": "How long the credential is valid (ISO 8601 duration, e.g., 'P365D' = 1 year). Absent means no expiry."
+        },
+        "registerId": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "If set, records the credential on this register for public queryability (e.g., a 'Register of Licenses')."
+        },
+        "disclosable": {
+          "type": "array",
+          "description": "Claim names that support selective disclosure. Absent means all claims are disclosable.",
+          "items": { "type": "string" }
+        },
+        "usagePolicy": {
+          "type": "string",
+          "enum": ["Reusable", "SingleUse", "LimitedUse"],
+          "default": "Reusable",
+          "description": "Defines how many times the credential may be presented."
+        },
+        "maxPresentations": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum number of presentations for LimitedUse credentials. Must be > 0 when usagePolicy is LimitedUse; absent otherwise."
+        },
+        "displayConfig": {
+          "anyOf": [{ "$ref": "#/$defs/credentialDisplayConfig" }, { "type": "null" }],
+          "description": "Issuer-defined visual template for how the credential appears in wallets."
+        },
+        "targetAudience": {
+          "type": "string",
+          "enum": ["SorchaInternal", "HaipExternalWallet", "SorchaLocalWallet"],
+          "default": "SorchaLocalWallet",
+          "description": "Where the issued credential is delivered. 'SorchaInternal' is deprecated (maps to SorchaLocalWallet at runtime; bypasses the register and breaks on multi-node — do not author new blueprints with it). 'HaipExternalWallet' issues via OpenID4VCI. 'SorchaLocalWallet' is register-native delivery to an on-platform Sorcha wallet (Feature 106)."
+        },
+        "format": {
+          "type": "string",
+          "enum": ["sd-jwt-vc", "mso_mdoc"],
+          "default": "sd-jwt-vc",
+          "description": "Credential format to mint (Feature 135)."
+        },
+        "trustAnchor": {
+          "type": "string",
+          "enum": ["register", "x509-tenant", "x509-lotl"],
+          "default": "register",
+          "description": "Trust anchor the issued credential is trusted under (Feature 135). X.509 anchors attach the org certificate chain; the register anchor relies on decentralised-identifier resolution."
+        },
+        "holderKeySourceField": {
+          "type": "string",
+          "description": "Feature 137 (cross-node submission). JSON Pointer into the reconstructed instance state where the recipient's carried delivery keys live — written by a `sorcha-holder-key` form field on a starting action (default '/holderKeys/holderJwk'). Absent (the default) means no cnf binding and no carried-key fallback."
+        },
+        "issuanceCondition": {
+          "type": "object",
+          "description": "Optional JSON Logic condition, evaluated over the submitted action data, that gates whether the credential is actually minted. Absent (the default) means the credential is always issued on execution. Fails closed: a configured condition that cannot be evaluated skips issuance."
+        }
+      }
+    },
+    "claimMapping": {
+      "type": "object",
+      "description": "Maps an action data field to a credential claim during credential issuance (Sorcha.Blueprint.Models.Credentials.ClaimMapping).",
+      "required": ["claimName", "sourceField"],
+      "properties": {
+        "claimName": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "The claim key in the issued credential (e.g., 'licenseType')."
+        },
+        "sourceField": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "JSON Pointer to the action data field (e.g., '/licenseType', '/applicant/name')."
+        }
+      }
+    },
+    "credentialDisplayConfig": {
+      "type": "object",
+      "description": "Issuer-defined visual template for how a credential appears in wallets (Sorcha.Blueprint.Models.Credentials.CredentialDisplayConfig).",
+      "properties": {
+        "backgroundColor": {
+          "type": "string",
+          "default": "#1976D2",
+          "description": "Card background color as hex (e.g., '#1976D2')."
+        },
+        "textColor": {
+          "type": "string",
+          "default": "#FFFFFF",
+          "description": "Card text color as hex (e.g., '#FFFFFF')."
+        },
+        "icon": {
+          "type": "string",
+          "default": "Certificate",
+          "description": "MudBlazor icon name for the credential type (e.g., 'Certificate')."
+        },
+        "cardLayout": {
+          "type": "string",
+          "default": "Standard",
+          "description": "Card layout template: Standard, Compact, or Ticket."
+        },
+        "highlightClaims": {
+          "type": "object",
+          "description": "Claims to highlight on the card face. Key = claim JSON path, value = display label.",
+          "additionalProperties": { "type": "string" }
+        },
+        "credentialName": {
+          "type": "string",
+          "description": "Authored human-readable credential name shown on the card (e.g. 'Assured Identity'), decoupled from the vct URI."
+        }
+      }
+    },
     "participant": {
       "type": "object",
       "required": ["id", "name"],
       "properties": {
+        "@type": {
+          "type": "string",
+          "description": "JSON-LD type (Person or Organization)."
+        },
         "id": {
           "type": "string",
           "maxLength": 64,
@@ -114,12 +640,25 @@
         "walletAddress": {
           "type": "string",
           "maxLength": 100,
-          "description": "Blockchain wallet address for the participant"
+          "description": "Wallet address of the participant. MUST be absent/null for an open participant — a participant referenced as an action's `sender` on any action with `isStartingAction: true` must leave this out in the published blueprint (VAL_BP_010); the runtime late-binds the first sender instead. Set it for a closed/pre-registered participant (e.g. a council officer) to enforce that only that wallet may submit the action."
         },
         "didUri": {
           "type": "string",
           "maxLength": 200,
           "description": "Decentralized Identifier (DID) URI"
+        },
+        "verifiableCredential": {
+          "type": "object",
+          "description": "Verifiable Credential (JSON-LD format) for the participant. Supports the W3C Verifiable Credentials standard."
+        },
+        "instructions": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "Role-specific guidance text for this participant (Markdown). Explains what this participant is expected to do in the workflow."
+        },
+        "additionalProperties": {
+          "type": "object",
+          "description": "Additional JSON-LD properties for extended participant information. NOTE: this is a real Participant property named literally 'additionalProperties' — distinct from this JSON Schema's own additionalProperties keyword."
         },
         "useStealthAddress": {
           "type": "boolean",
@@ -132,14 +671,18 @@
       "type": "object",
       "required": ["id", "title"],
       "properties": {
+        "@type": {
+          "type": "string",
+          "description": "JSON-LD type (ActivityStreams Activity type)."
+        },
         "id": {
           "type": "integer",
           "description": "Sequential action identifier (0-based)"
         },
         "previousTxId": {
           "type": "string",
-          "maxLength": 64,
-          "description": "Reference to previous transaction ID"
+          "maxLength": 256,
+          "description": "Reference to previous transaction ID. Supports both legacy format (transaction hash) and DID URI format (preferred: did:sorcha:register:{registerId}/tx/{txId})."
         },
         "blueprint": {
           "type": "string",
@@ -160,11 +703,15 @@
         "sender": {
           "type": "string",
           "maxLength": 100,
-          "description": "Participant ID of the sender"
+          "description": "Participant ID of the sender (ActivityStreams 'actor')"
+        },
+        "target": {
+          "type": "string",
+          "description": "Target participant(s) for this action (ActivityStreams 'target')."
         },
         "participants": {
           "type": "array",
-          "description": "Conditional routing rules for determining next participants",
+          "description": "Potential participants to enact this step, supporting branching/routing (action-level routing mechanism — equally live alongside `routes`; see e.g. register-governance-v1, which routes exclusively this way).",
           "items": {
             "$ref": "#/$defs/condition"
           }
@@ -197,7 +744,7 @@
         },
         "dataSchemas": {
           "type": "array",
-          "description": "JSON Schemas defining required data for this action",
+          "description": "JSON Schema documents defining the required data for this action. Each item is a full JSON Schema (draft 2020-12 style: type/properties/required plus Sorcha's `x-*` extension vocabulary). Recognised `x-*` keywords something in src/ actually reads: `x-pages`/`x-sections` (multi-step wizard paging — SchemaLayoutParser, FormKeywordClassifier), `x-introduction` (page intro text), `x-width` (field width hint), `x-persona` (profile-autofill binding), `x-review` (read-only id-card summary page — XReviewExtension; the page MUST NOT declare `properties`), `x-file` on a string field with `format: file-reference` (chunked upload constraints, optional portrait `framing` block — FileSchemaExtension, PortraitFramingRules), `x-slider` on a numeric field with `minimum`/`maximum` (bounded slider), `x-address-lookup` (postcode lookup autofill), `x-rule` (conditional show/hide, distinct from a control's own `rule` keyword — behavioural, not presentational, because it can hide a `required` field), `x-claim-source` (server-stamped platform-vouched JWT claim binding — ClaimSourceBindings), `x-credential-offer` on an object field (OpenID4VCI claim-card action), `x-holder-key` / `x-device-key` on an object field with `format: sorcha-holder-key`/`sorcha-device-key` (require the citizen's carried delivery/device key before submission — HolderKeySchemaExtension; actively enforced, not merely declarative). See Sorcha.Blueprint.Models.Forms.FormKeywordClassifier for the presentational/behavioural split each keyword falls into (governs the F142 rehearsal-pass hash).",
           "items": {
             "type": "object",
             "description": "A JSON Schema object"
@@ -205,7 +752,7 @@
         },
         "condition": {
           "type": "object",
-          "description": "JSON Logic expression for routing logic"
+          "description": "Routing condition (JSON Logic) that resolves to the next action number — part of the action-level routing mechanism (paired with `participants`), equally live alongside `routes`."
         },
         "calculations": {
           "type": "object",
@@ -215,9 +762,56 @@
             "description": "JSON Logic expression"
           }
         },
+        "published": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the action was published (ISO 8601)."
+        },
+        "additionalProperties": {
+          "type": "object",
+          "description": "Additional JSON-LD properties for extended action information. NOTE: this is a real Action property named literally 'additionalProperties' — distinct from this JSON Schema's own additionalProperties keyword.",
+          "additionalProperties": true
+        },
         "form": {
           "$ref": "#/$defs/control",
           "description": "UI form definition for data entry"
+        },
+        "instructions": {
+          "type": "string",
+          "maxLength": 5000,
+          "description": "Guidance text for participants executing this action (Markdown). Provides step-by-step instructions, compliance notes, or contextual help."
+        },
+        "rejectionConfig": {
+          "anyOf": [{ "$ref": "#/$defs/rejectionConfig" }, { "type": "null" }],
+          "description": "Rejection routing configuration. Defines where the workflow routes when a participant rejects this action. If absent (or explicit null — seen in authored templates), rejection is not allowed for this action."
+        },
+        "requiredPriorActions": {
+          "type": "array",
+          "description": "Required prior action IDs for state reconstruction. When executing this action, data from these prior actions is fetched and decrypted to build the accumulated state for routing evaluation. If absent, only the immediately preceding action is used.",
+          "items": { "type": "integer" }
+        },
+        "isStartingAction": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this is a starting action that can initiate a workflow instance. At least one action in a blueprint must be a starting action. When true, the action is OPEN: any authenticated wallet may submit it, and the first qualifying submitter is late-bound to the `sender` participant for the life of the instance. That participant's `walletAddress` MUST be absent/null in the published blueprint (VAL_BP_010)."
+        },
+        "routes": {
+          "type": "array",
+          "description": "Routing rules to determine the next action(s). Evaluated in order — first matching condition wins. Supports parallel branches via multiple nextActionIds. This is the modern routing mechanism; action-level `participants`/`condition` is the other, equally-live mechanism.",
+          "items": { "$ref": "#/$defs/route" }
+        },
+        "credentialRequirements": {
+          "type": "array",
+          "description": "Credential requirements that must be satisfied before this action can be executed. All requirements are combined with AND logic — all must be satisfied (except requirements sharing an `anyOfGroup`, which are alternatives within that group).",
+          "items": { "$ref": "#/$defs/credentialRequirement" }
+        },
+        "credentialIssuanceConfig": {
+          "anyOf": [{ "$ref": "#/$defs/credentialIssuanceConfig" }, { "type": "null" }],
+          "description": "Configuration for minting a verifiable credential when this action is executed. The credential is signed by the executing participant's wallet key."
+        },
+        "notification": {
+          "anyOf": [{ "$ref": "#/$defs/notificationConfig" }, { "type": "null" }],
+          "description": "Optional per-action notification configuration. Controls how notifications appear when this action becomes pending for a participant."
         }
       }
     },
@@ -277,9 +871,13 @@
             "File",
             "Choice",
             "Checkbox",
-            "Selection"
+            "Selection",
+            "PostcodeLookup",
+            "HolderKey",
+            "DeviceKey",
+            "Slider"
           ],
-          "description": "Type of UI control"
+          "description": "Type of UI control. PostcodeLookup/HolderKey/DeviceKey/Slider (Sorcha.Blueprint.Models.ControlTypes) were missing from earlier versions of this schema — they are live, current-model values, not additions."
         },
         "title": {
           "type": "string",
@@ -297,12 +895,67 @@
           "default": "VerticalLayout",
           "description": "Layout type for container controls"
         },
+        "properties": {
+          "type": "object",
+          "description": "Additional properties for the control."
+        },
+        "schema": {
+          "type": "object",
+          "description": "JSON Schema for validating data in this control/form."
+        },
+        "instructions": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Per-field help text override (Markdown). Takes priority over the schema property description for this control."
+        },
         "elements": {
           "type": "array",
           "description": "Child controls (for container types)",
           "items": {
             "$ref": "#/$defs/control"
           }
+        },
+        "conditions": {
+          "type": "array",
+          "description": "Deprecated: conditional display rules based on JSON Logic. Superseded by `rule`; still a live serialized property (no [JsonIgnore]), so still emitted where set.",
+          "items": { "type": "object" }
+        },
+        "rule": {
+          "$ref": "#/$defs/formRule",
+          "description": "JSON Forms rule for conditional display (SHOW/HIDE/ENABLE/DISABLE)."
+        },
+        "options": {
+          "type": "object",
+          "description": "Extensible options bag for renderer hints (JSON Forms convention)."
+        }
+      }
+    },
+    "formRule": {
+      "type": "object",
+      "description": "A JSON Forms rule that controls visibility/interactivity of a control based on a schema-based condition (Sorcha.Blueprint.Models.FormRule).",
+      "properties": {
+        "effect": {
+          "type": "string",
+          "enum": ["SHOW", "HIDE", "ENABLE", "DISABLE"],
+          "description": "The effect to apply when the condition is true."
+        },
+        "condition": {
+          "$ref": "#/$defs/schemaBasedCondition",
+          "description": "The condition that determines when the effect is applied."
+        }
+      }
+    },
+    "schemaBasedCondition": {
+      "type": "object",
+      "description": "A schema-based condition that evaluates form data against a JSON Schema fragment, following the JSON Forms condition specification (Sorcha.Blueprint.Models.SchemaBasedCondition).",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "description": "JSON Pointer to the data field being evaluated."
+        },
+        "schema": {
+          "type": "object",
+          "description": "JSON Schema that the scoped data must match for the condition to be true."
         }
       }
     }
