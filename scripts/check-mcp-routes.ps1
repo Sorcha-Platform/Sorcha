@@ -84,6 +84,13 @@ $repo = $RepoRoot.TrimEnd([IO.Path]::DirectorySeparatorChar)
 $allowlistPath = Join-Path $repo '.mcp-routes-allowlist'
 
 $toolsRoot = Join-Path $repo 'src/Apps/Sorcha.McpServer/Tools'
+# #1610 — the agent-facing surface is not only Tools/: resources (sorcha://instances, sorcha://registers)
+# issue api/ requests too, and a resource calling a typed-client method no tool uses was unguarded.
+$surfaceRoots = @(
+    $toolsRoot,
+    (Join-Path $repo 'src/Apps/Sorcha.McpServer/Resources'),
+    (Join-Path $repo 'src/Apps/Sorcha.McpServer/Prompts')
+) | Where-Object { Test-Path -LiteralPath $_ }
 $servicesRoot = Join-Path $repo 'src/Services'
 $clientRoots = @(
     (Join-Path $repo 'src/Common/Sorcha.ServiceClients.Http'),
@@ -414,12 +421,12 @@ foreach ($file in $serviceFiles) {
 # deliberately-unregistered WalletSignTool documents `<c>[McpServerToolType]</c>` in its XML doc
 # to explain its own absence, so comment lines must be excluded or the gate would fail on a route
 # nobody can call.
-$toolFiles = Get-SourceFiles -Roots @($toolsRoot) | Where-Object {
+$toolFiles = Get-SourceFiles -Roots $surfaceRoots | Where-Object {
     $registered = $false
     foreach ($l in (Get-Content -LiteralPath $_.FullName)) {
         $t = $l.TrimStart()
         if ($t.StartsWith('//') -or $t.StartsWith('*') -or $t.StartsWith('/*')) { continue }
-        if ($t -match '^\[McpServerToolType(\(|\])') { $registered = $true; break }
+        if ($t -match '^\[McpServer(Tool|Resource|Prompt)Type(\(|\])') { $registered = $true; break }
     }
     $registered
 }
