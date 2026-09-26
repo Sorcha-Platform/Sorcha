@@ -62,13 +62,12 @@ namespace Sorcha.McpServer.Tools.Designer;
 /// the very first (override-free) attempt, long before the elicit.
 /// </para>
 /// <para>
-/// <b>The typed client collapses every failure into one null</b> — 403 (JWT policy or governance
-/// roster), 404, the 400 a publish-validation failure produces, 5xx, and a transport fault all
-/// return <c>null</c> from <see cref="IBlueprintServiceClient.PublishBlueprintAsync"/>. Asserting
-/// any single cause would be a confident wrong answer, so this tool says plainly which
-/// possibilities remain. It CAN narrow them in one place: a 409 on the first attempt proves
-/// governance already passed, so a null on the override retry is provably not an authorisation
-/// failure.
+/// <b>A refusal carries the server's own reason</b> (#1641): a non-409 failure comes back as
+/// <see cref="PublishBlueprintOutcome.Refusal"/> with its status, code and explanation, and the tool
+/// passes that through verbatim. A null outcome now means only that the body could not be read at
+/// all, so the old four-way guess survives solely on that path. The 409 still narrows the retry: it
+/// proves governance already passed, so a failure on the override retry is provably not an
+/// authorisation failure.
 /// </para>
 /// </remarks>
 [McpServerToolType]

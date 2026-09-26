@@ -105,6 +105,8 @@ Private register invitation system using cryptographic envelopes (ED25519 sign +
 
 Transaction receipts, Merkle inclusion proofs, revocation transactions, and offline verification bundles. All operate on transaction envelopes (FLE-compatible).
 
+⚠ **Receipts are written by `IReceiptPublisher` after EVERY docket write** (#1704). The validator has three write paths (`DocketBuildTriggerService` — the live one — `ValidatorOrchestrator`, `DocketDistributor`); only the gRPC one used to produce receipts, so no ordinary register had any and no bundle could ever be exported. A new write path must call the publisher. Receipts are signed with the `sorcha:docket-signing` key (the roster key), over the raw canonical signing data.
+
 ### Transaction Receipts & Proofs (Register Service)
 
 | Method | Path | Purpose |
@@ -150,7 +152,7 @@ contents against it via the one rule in `Sorcha.Register.Service.Verification.Do
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/registers/{registerId}/transactions/{txId}/verification-bundle` | Export portable bundle |
+| GET | `/registers/{registerId}/transactions/{txId}/verification-bundle` | Export portable bundle (signer keys from the roster as of the receipt's docket; `409 NOT_SEALED` transient vs `409 NO_RECEIPT` permanent) |
 | POST | `/registers/{registerId}/verification-bundles/verify` | Verify bundle (public) |
 
 ### Key Models

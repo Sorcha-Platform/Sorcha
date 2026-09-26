@@ -260,6 +260,10 @@ static void ConfigureServerOptions(McpServerOptions options)
         publishes without asking anyone. sorcha_blueprint_simulate and sorcha_disclosure_analysis
         are dry runs and never count as a rehearsal.
 
+        WHO YOU ARE: call sorcha_whoami first. It reports the organisation your token acts for,
+        your roles and tier, and the tools you may call. Every organisation-scoped action acts for
+        THAT organisation, never one you name, so do not infer it from other tools.
+
         WHAT YOU CAN SEE depends on your token's trust tier and roles; tools you are not entitled
         to use are not listed. If a tool reports an error, read the message — a missing required
         argument is reported as such and names the argument.

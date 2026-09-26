@@ -3,6 +3,7 @@
 
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
@@ -17,7 +18,7 @@ namespace Sorcha.McpServer.Tools.Admin;
 /// so the caller's bearer is forwarded and the route is contract-pinned.
 /// </summary>
 [McpServerToolType]
-public sealed class OrgUserAuditTool
+public sealed partial class OrgUserAuditTool
 {
     private const string ToolName = "sorcha_org_user_audit";
     private const string ServiceName = "Tenant";
@@ -45,16 +46,20 @@ public sealed class OrgUserAuditTool
     /// <param name="orgId">The organisation ID to audit.</param>
     /// <param name="page">1-based page number (default 1).</param>
     /// <param name="pageSize">Page size, 1-100 (default 50).</param>
+    /// <param name="organizationId">Alias for <paramref name="orgId"/> — the name every sibling tool uses (#1645).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The org-user list, or an error result.</returns>
     [McpServerTool(Name = ToolName)]
-    [Description("Returns a read-only, paginated list of the users in one organisation — each user's email, display name, role, status, join date and last login — for audit and review. Call this to see who has access to an organisation before changing its status or before provisioning/removing users; prefer this over sorcha_user_list, which spans all users platform-wide, when the question is scoped to a single organisation. This is strictly read-only: it never changes membership, so use sorcha_user_provision or sorcha_org_status when an actual change is intended.")]
+    [Description("Returns a read-only, paginated list of the users in one organisation — each user's email, display name, role, status, join date and last login — for audit and review. Call this, as a PLATFORM operator, to see who has access to any organisation before changing its status or provisioning/removing users. It needs platform audit authority — membership of the platform's system-admin organisation with the Auditor role or higher — so an administrator of an ordinary organisation is refused even for their own organisation; use sorcha_user_list with that organisation's id instead of this in that case. This is strictly read-only: it never changes membership, so use sorcha_user_provision or sorcha_org_status when an actual change is intended.")]
     public async Task<OrgUserAuditResult> InvokeAsync(
-        [Description("The organisation ID to audit")] string orgId,
+        [Description("The organisation ID to audit")] string? orgId = null,
         [Description("1-based page number (default 1)")] int page = 1,
         [Description("Page size, 1-100 (default 50)")] int pageSize = 50,
+        [Description("Alias for orgId — the argument name the sibling tools use")] string? organizationId = null,
         CancellationToken cancellationToken = default)
     {
+        orgId = string.IsNullOrWhiteSpace(orgId) ? organizationId : orgId;
+
         if (!_authService.CanInvokeTool(ToolName))
         {
             return new OrgUserAuditResult
@@ -70,7 +75,7 @@ public sealed class OrgUserAuditTool
             return new OrgUserAuditResult
             {
                 Status = "Error",
-                Message = "Organisation ID is required.",
+                Message = "Organisation ID is required (orgId, or its alias organizationId).",
                 CheckedAt = DateTimeOffset.UtcNow
             };
         }
@@ -112,8 +117,10 @@ public sealed class OrgUserAuditTool
                     Message = read.IsForbidden
                         ? $"You are not permitted to read the user list for organisation '{orgId}'. "
                           + "It exists — this is an authorisation refusal, not a missing "
-                          + "organisation. Only an administrator of that organisation can audit its "
-                          + "users."
+                          + "organisation. This tool needs PLATFORM audit authority: membership of the "
+                          + "platform's system-admin organisation with the Auditor role or higher. Being "
+                          + "an administrator of the organisation itself is not enough. To list the users "
+                          + "of your own organisation, use sorcha_user_list with its id."
                         : $"Organisation '{orgId}' was not found or has no accessible user list.",
                     CheckedAt = DateTimeOffset.UtcNow,
                     ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
@@ -128,7 +135,8 @@ public sealed class OrgUserAuditTool
                 CheckedAt = DateTimeOffset.UtcNow,
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
                 OrganizationId = orgId,
-                Users = body
+                // #1645 — structured, not a JSON document embedded in a string.
+                Users = ParseUsers(body)
             };
         }
         catch (TaskCanceledException)
@@ -159,6 +167,27 @@ public sealed class OrgUserAuditTool
     }
 }
 
+/// <summary>Helpers for <see cref="OrgUserAuditTool"/>.</summary>
+public sealed partial class OrgUserAuditTool
+{
+    /// <summary>
+    /// Parses the Tenant Service's user-list body into structured JSON. A body that is not JSON is
+    /// returned as a JSON string rather than dropped, so nothing the service said is lost.
+    /// </summary>
+    internal static JsonElement ParseUsers(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            return document.RootElement.Clone();
+        }
+        catch (JsonException)
+        {
+            return JsonSerializer.SerializeToElement(body);
+        }
+    }
+}
+
 /// <summary>Result of an organisation user-audit query.</summary>
 public sealed record OrgUserAuditResult
 {
@@ -177,6 +206,9 @@ public sealed record OrgUserAuditResult
     /// <summary>The organisation that was audited (on success).</summary>
     public string? OrganizationId { get; init; }
 
-    /// <summary>The paginated org-user-list JSON body (on success).</summary>
-    public string? Users { get; init; }
+    /// <summary>
+    /// The paginated org-user list (on success) — <c>items</c> (each with the user's full
+    /// <c>roles</c> in this organisation), <c>totalCount</c>, <c>page</c>, <c>pageSize</c>.
+    /// </summary>
+    public JsonElement? Users { get; init; }
 }

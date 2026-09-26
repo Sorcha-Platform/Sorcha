@@ -445,7 +445,7 @@ ledger. Every check passed; none of them consulted the commitment.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/registers/{registerId}/transactions/{txId}/verification-bundle` | Export portable verification bundle |
+| GET | `/api/registers/{registerId}/transactions/{txId}/verification-bundle` | Export portable verification bundle. Each signer's public key comes from the validator roster as of the receipt's docket. `409 NOT_SEALED` is transient; `409 NO_RECEIPT` (sealed, but no receipt was recorded) is permanent (#1704) |
 | POST | `/api/registers/{registerId}/verification-bundles/verify` | Verify bundle (public, stateless) |
 
 ### SignalR Hub

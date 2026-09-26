@@ -10,12 +10,13 @@ using Sorcha.ServiceClients.Wallet;
 using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Core;
+using Sorcha.Wallet.Contracts.Constants;
 
 namespace Sorcha.Validator.Service.Services;
 
 /// <summary>
 /// Generates signed transaction receipts with Merkle inclusion proofs.
-/// Called by DocketDistributor after successful docket persistence.
+/// Called by <see cref="ReceiptPublisher"/> after every docket write (#1704).
 /// </summary>
 public class ReceiptGenerator : IReceiptGenerator
 {
@@ -99,18 +100,25 @@ public class ReceiptGenerator : IReceiptGenerator
                 SealedAt = sealedAt
             };
 
-            // Sign the canonical receipt data
+            // Sign the canonical receipt data with the DOCKET-SIGNING key (#1704) — the key the
+            // register's validator roster publishes, so a verifier can resolve it from the roster.
+            // This used to sign with the wallet's default key, which is on no roster, so a receipt
+            // could never be verified against anything the register states. The bytes are signed as
+            // given (isPreHashed), matching ReceiptValidator, which verifies over the raw signing data.
             var signingData = ReceiptValidator.BuildReceiptSigningData(receipt);
-            var signingDataHex = Convert.ToHexString(signingData).ToLowerInvariant();
 
             try
             {
-                var signResult = await _walletClient.SignDataAsync(
-                    _config.SystemWalletAddress, signingDataHex, ct);
+                var signingWallet = await ResolveSigningWalletAsync(ct);
+                var signResult = await _walletClient.SignTransactionAsync(
+                    signingWallet, signingData,
+                    derivationPath: SorchaDerivationPaths.DocketSigning,
+                    isPreHashed: true,
+                    ct);
 
                 var validatorSig = new ReceiptSignature
                 {
-                    ValidatorAddress = _config.SystemWalletAddress,
+                    ValidatorAddress = signingWallet,
                     SignatureValue = signResult.Signature,
                     Algorithm = signResult.Algorithm,
                     SignedAt = DateTimeOffset.UtcNow
@@ -142,6 +150,21 @@ public class ReceiptGenerator : IReceiptGenerator
             receipts.Length, docket.DocketNumber);
 
         return receipts;
+    }
+
+    /// <summary>
+    /// The validator's system wallet — the one whose <c>sorcha:docket-signing</c> key is on the
+    /// roster. Resolved the same way <c>DocketBuilder</c> resolves it, because the genesis path
+    /// may generate receipts before any docket build has populated the configured address.
+    /// </summary>
+    private async Task<string> ResolveSigningWalletAsync(CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(_config.SystemWalletAddress))
+        {
+            _config.SystemWalletAddress = await _walletClient.CreateOrRetrieveSystemWalletAsync(_config.ValidatorId, ct);
+        }
+
+        return _config.SystemWalletAddress;
     }
 
     /// <summary>
