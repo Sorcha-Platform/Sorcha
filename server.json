@@ -57,6 +57,7 @@
     "sorcha_presentation_request",
     "sorcha_presentation_status",
     "sorcha_register_create",
+    "sorcha_register_governors",
     "sorcha_register_query",
     "sorcha_register_relationship",
     "sorcha_register_stats",

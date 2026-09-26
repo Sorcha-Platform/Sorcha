@@ -14,17 +14,14 @@ namespace Sorcha.UI.Core.Services;
 public class OrganizationAdminService : IOrganizationAdminService
 {
     private readonly HttpClient _httpClient;
-    private readonly IAuditService _auditService;
     private readonly ILogger<OrganizationAdminService> _logger;
     private const string BaseUrl = "/api/organizations";
 
     public OrganizationAdminService(
         HttpClient httpClient,
-        IAuditService auditService,
         ILogger<OrganizationAdminService> logger)
     {
         _httpClient = httpClient;
-        _auditService = auditService;
         _logger = logger;
     }
 
@@ -80,19 +77,6 @@ public class OrganizationAdminService : IOrganizationAdminService
 
             var result = await response.Content.ReadFromJsonAsync<OrganizationDto>(JsonDefaults.Api, cancellationToken);
 
-            if (result != null)
-            {
-                await _auditService.LogOrganizationEventAsync(
-                    AuditEventType.OrganizationCreated,
-                    result.Id,
-                    new Dictionary<string, object>
-                    {
-                        ["name"] = result.Name,
-                        ["subdomain"] = result.Subdomain
-                    },
-                    cancellationToken);
-            }
-
             return result ?? throw new InvalidOperationException("Failed to parse response");
         }
         catch (HttpRequestException ex)
@@ -118,18 +102,6 @@ public class OrganizationAdminService : IOrganizationAdminService
 
             var result = await response.Content.ReadFromJsonAsync<OrganizationDto>(JsonDefaults.Api, cancellationToken);
 
-            if (result != null)
-            {
-                await _auditService.LogOrganizationEventAsync(
-                    AuditEventType.OrganizationUpdated,
-                    id,
-                    new Dictionary<string, object>
-                    {
-                        ["updatedFields"] = GetUpdatedFields(request)
-                    },
-                    cancellationToken);
-            }
-
             return result;
         }
         catch (HttpRequestException ex)
@@ -151,12 +123,6 @@ public class OrganizationAdminService : IOrganizationAdminService
                 return false;
 
             response.EnsureSuccessStatusCode();
-
-            await _auditService.LogOrganizationEventAsync(
-                AuditEventType.OrganizationDeactivated,
-                id,
-                null,
-                cancellationToken);
 
             return true;
         }
@@ -319,21 +285,6 @@ public class OrganizationAdminService : IOrganizationAdminService
 
             var result = await response.Content.ReadFromJsonAsync<UserDto>(JsonDefaults.Api, cancellationToken);
 
-            if (result != null)
-            {
-                await _auditService.LogUserEventAsync(
-                    AuditEventType.UserAddedToOrganization,
-                    organizationId,
-                    result.Id,
-                    new Dictionary<string, object>
-                    {
-                        ["email"] = result.Email,
-                        ["displayName"] = result.DisplayName,
-                        ["roles"] = result.Roles
-                    },
-                    cancellationToken);
-            }
-
             return result ?? throw new InvalidOperationException("Failed to parse response");
         }
         catch (HttpRequestException ex)
@@ -362,19 +313,6 @@ public class OrganizationAdminService : IOrganizationAdminService
 
             var result = await response.Content.ReadFromJsonAsync<UserDto>(JsonDefaults.Api, cancellationToken);
 
-            if (result != null)
-            {
-                await _auditService.LogUserEventAsync(
-                    AuditEventType.UserUpdatedInOrganization,
-                    organizationId,
-                    userId,
-                    new Dictionary<string, object>
-                    {
-                        ["updatedFields"] = GetUpdatedFields(request)
-                    },
-                    cancellationToken);
-            }
-
             return result;
         }
         catch (HttpRequestException ex)
@@ -400,13 +338,6 @@ public class OrganizationAdminService : IOrganizationAdminService
 
             response.EnsureSuccessStatusCode();
 
-            await _auditService.LogUserEventAsync(
-                AuditEventType.UserRemovedFromOrganization,
-                organizationId,
-                userId,
-                null,
-                cancellationToken);
-
             return true;
         }
         catch (HttpRequestException ex)
@@ -415,25 +346,6 @@ public class OrganizationAdminService : IOrganizationAdminService
                 userId, organizationId);
             throw;
         }
-    }
-
-
-    private static string[] GetUpdatedFields(UpdateOrganizationDto request)
-    {
-        var fields = new List<string>();
-        if (request.Name != null) fields.Add("name");
-        if (request.Status != null) fields.Add("status");
-        if (request.Branding != null) fields.Add("branding");
-        return [.. fields];
-    }
-
-    private static string[] GetUpdatedFields(UpdateUserDto request)
-    {
-        var fields = new List<string>();
-        if (request.DisplayName != null) fields.Add("displayName");
-        if (request.Roles != null) fields.Add("roles");
-        if (request.Status != null) fields.Add("status");
-        return [.. fields];
     }
 
     /// <summary>
