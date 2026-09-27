@@ -380,6 +380,59 @@ public class RehearsalOrchestrationServiceTests
         await act.Should().ThrowAsync<InvalidOperationException>();
     }
 
+    // #1724 follow-up — a step payload that is not a JSON object is REFUSED with a reason. It used to
+    // be silently emptied, which is how a string-encoded payload from the Designer became "no data"
+    // on every step with nothing reporting it. Both clients now send objects, so a non-object root
+    // can only be a caller bug, and it must say so rather than rehearse nothing.
+    [Theory]
+    [InlineData("\"{\\\"x\\\":1}\"")]   // the old Designer shape: the object double-encoded as a string
+    [InlineData("[1,2,3]")]
+    [InlineData("42")]
+    [InlineData("null")]
+    public async Task SubmitStep_NonObjectPayload_IsRefusedWithAReason_AndNothingExecutes(string payloadJson)
+    {
+        var service = CreateService();
+        var started = await service.StartFullAsync(BlueprintId, OrgId, Guid.NewGuid());
+        await service.SwitchRoleAsync(started.RehearsalId, "applicant");
+
+        var act = () => service.SubmitStepAsync(started.RehearsalId, 1, payloadJson);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*must be a JSON object*");
+        _execution.Verify(e => e.ExecuteAsync(
+            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<ActionSubmissionRequest>(),
+            It.IsAny<string>(), It.IsAny<System.Security.Claims.ClaimsPrincipal?>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("{}")]
+    public async Task SubmitStep_AnAbsentOrEmptyObjectPayload_IsStillAccepted(string payloadJson)
+    {
+        // An omitted payload (the endpoint maps it to "{}") and an explicit empty object are both a
+        // legitimate "this step has no fields" — only a non-object root is a caller bug.
+        _execution
+            .Setup(e => e.ExecuteAsync(
+                It.IsAny<string>(), It.IsAny<int>(), It.IsAny<ActionSubmissionRequest>(),
+                It.IsAny<string>(), It.IsAny<System.Security.Claims.ClaimsPrincipal?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NextActionResponseFor(nextActionId: 2));
+        _instanceStore
+            .Setup(st => st.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Projected("tx-step1", 2));
+        var service = CreateService();
+        var started = await service.StartFullAsync(BlueprintId, OrgId, Guid.NewGuid());
+        await service.SwitchRoleAsync(started.RehearsalId, "applicant");
+
+        await service.SubmitStepAsync(started.RehearsalId, 1, payloadJson);
+
+        _execution.Verify(e => e.ExecuteAsync(
+            It.IsAny<string>(), It.IsAny<int>(), It.Is<ActionSubmissionRequest>(r => r.PayloadData.Count == 0),
+            It.IsAny<string>(), It.IsAny<System.Security.Claims.ClaimsPrincipal?>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     // -------------------------------------------------------------------------
     // Get / SwitchRole
     // -------------------------------------------------------------------------
