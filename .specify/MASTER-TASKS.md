@@ -9,6 +9,11 @@
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
 > **▶ 2026-09-26 - Issue loop: 22 issues closed (13 were stale-open, verified against source, and 9 fixed).**
+> **2026-09-27:** #1694 (preferences follow the PERSON: keyed by `platform_user_id`, not the per-org `sub`; the
+> Wallet reads them via service-only `/api/internal/users/{id}/notification-preferences`, which accepts either id
+> kind; the default is now ON; live on n1, where preference-lookup failures went from 259/day to 0), #1724 (the
+> Designer rehearsal submits schema-valid GENERATED data, 134 of 140 shipped actions; the rest need a real file or
+> key and are flagged), #1558 closed (stays a warning, by decision).
 > **Second pass (same day):** #1576 (a rejection carries its instance's definition pin, so it is not a
 > `pin_fallback`; the pin is unsigned, so it confirms and never establishes), #1733 (bundle verify checks the
 > receipt signature), #1697 (RegisterPolicyValidator now runs on `/policy/update`, the dead
