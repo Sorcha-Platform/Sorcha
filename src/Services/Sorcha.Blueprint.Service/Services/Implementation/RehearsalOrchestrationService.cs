@@ -779,6 +779,18 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
         return await instanceStore.CreateAsync(instance, cancellationToken);
     }
 
+    /// <summary>
+    /// Parses a step payload. An absent payload is an empty object; any other root that is not a
+    /// JSON object is REFUSED.
+    /// </summary>
+    /// <remarks>
+    /// #1724 follow-up. This used to keep an object root's properties and silently return an empty
+    /// dictionary for anything else — which is how the Designer, posting its payload as a JSON
+    /// <i>string</i>, rehearsed every step with no data and nothing reported it. Both clients now
+    /// send an object (the Designer since #1753, MCP since #1723), so a non-object root can only be a
+    /// caller bug. The endpoint maps the <see cref="InvalidOperationException"/> to 422 with this
+    /// message.
+    /// </remarks>
     private static Dictionary<string, object> ParsePayload(string payloadJson)
     {
         if (string.IsNullOrWhiteSpace(payloadJson))
@@ -789,13 +801,18 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
         try
         {
             using var doc = JsonDocument.Parse(payloadJson);
-            var result = new Dictionary<string, object>();
-            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
             {
-                foreach (var prop in doc.RootElement.EnumerateObject())
-                {
-                    result[prop.Name] = prop.Value.Clone();
-                }
+                throw new InvalidOperationException(
+                    $"The step payload must be a JSON object of field values; got a JSON "
+                    + $"{doc.RootElement.ValueKind.ToString().ToLowerInvariant()}. If you are sending an "
+                    + "object serialised as a string, send the object itself.");
+            }
+
+            var result = new Dictionary<string, object>();
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                result[prop.Name] = prop.Value.Clone();
             }
             return result;
         }
