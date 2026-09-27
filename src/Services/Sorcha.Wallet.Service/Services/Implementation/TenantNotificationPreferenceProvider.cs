@@ -8,18 +8,29 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.Wallet.Service.Services.Interfaces;
+using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Configuration;
+using Sorcha.ServiceClients.Helpers;
 
 namespace Sorcha.Wallet.Service.Services.Implementation;
 
 /// <summary>
-/// Notification preference provider that calls Tenant Service GET /api/preferences
-/// to resolve the user's actual notification preferences.
+/// Notification preference provider that resolves a person's notification preferences from the
+/// Tenant Service's internal, service-authenticated route
+/// <c>GET api/internal/users/{userId}/notification-preferences</c>.
 /// Caches per-user results for 5 minutes to avoid per-notification API calls.
 /// </summary>
+/// <remarks>
+/// #1694 — this used to call the USER endpoint <c>GET api/preferences?userId=</c> on an
+/// unauthenticated client. That endpoint reads the caller's own JWT and has no override, so it
+/// answered 401 on every call, and even an authenticated call would have missed: preferences were
+/// keyed by the per-org <c>UserIdentity</c> id while the Wallet passes a wallet's <c>Owner</c>
+/// (normally a <c>PlatformUser</c> id). No user's notification preferences had ever been honoured.
+/// </remarks>
 public sealed class TenantNotificationPreferenceProvider : INotificationPreferenceProvider
 {
     private readonly HttpClient _httpClient;
+    private readonly IServiceAuthClient _serviceAuth;
     private readonly IMemoryCache _cache;
     private readonly ILogger<TenantNotificationPreferenceProvider> _logger;
 
@@ -32,11 +43,13 @@ public sealed class TenantNotificationPreferenceProvider : INotificationPreferen
 
     public TenantNotificationPreferenceProvider(
         HttpClient httpClient,
+        IServiceAuthClient serviceAuth,
         IConfiguration configuration,
         IMemoryCache cache,
         ILogger<TenantNotificationPreferenceProvider> logger)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _serviceAuth = serviceAuth ?? throw new ArgumentNullException(nameof(serviceAuth));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
@@ -60,14 +73,27 @@ public sealed class TenantNotificationPreferenceProvider : INotificationPreferen
             return cached;
         }
 
+        // A wallet Owner that is not a person id (e.g. "validator:{id}" system wallets) has no
+        // preferences to read; don't make a call that can only 404.
+        if (!Guid.TryParse(userId, out var ownerId))
+            return NotificationPreferences.Default;
+
         try
         {
-            // Pass userId as query parameter for service-to-service context where
-            // no user JWT is available (Wallet Service resolves preferences on behalf of users).
-            // NOTE: The Tenant Service /api/preferences endpoint currently reads from the JWT.
-            // Until a service-to-service userId override is added to the Tenant Service,
-            // this will fall back to defaults gracefully (safe default: RealTime + InApp).
-            var response = await _httpClient.GetAsync($"api/preferences?userId={Uri.EscapeDataString(userId)}", cancellationToken);
+            await ServiceClientAuthHelper.SetAuthHeaderAsync(
+                _httpClient, _serviceAuth, _logger, "Tenant Service (notification preferences)", cancellationToken);
+
+            // Accepts a PlatformUser id OR a UserIdentity id — Wallet.Owner is genuinely either kind.
+            var response = await _httpClient.GetAsync(
+                $"api/internal/users/{ownerId}/notification-preferences", cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                // The person never saved preferences (or the id is unknown): the documented
+                // default applies. Routine, so cached and not warned about.
+                _cache.Set(cacheKey, NotificationPreferences.Default, CacheDuration);
+                return NotificationPreferences.Default;
+            }
 
             if (!response.IsSuccessStatusCode)
             {

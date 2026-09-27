@@ -48,7 +48,7 @@ public sealed class PersonaServiceTests : IDisposable
         });
         _db.UserPreferences.Add(new UserPreferences
         {
-            UserId = _userId,
+            PlatformUserId = _userId,
             DefaultWalletAddress = WalletAddress,
         });
         _db.SaveChanges();

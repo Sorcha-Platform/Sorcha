@@ -1024,8 +1024,13 @@ public class TenantDbContext : DbContext
                 .HasMaxLength(20)
                 .HasDefaultValue(NotificationFrequency.RealTime);
 
-            // Unique index: one preferences record per user
-            entity.HasIndex(e => e.UserId)
+            // #1694 — keyed by the person. The column keeps its original name so no schema change
+            // (and, pre-release, no database recreate) was needed; only what it holds changed.
+            entity.Property(e => e.PlatformUserId)
+                .HasColumnName("UserId");
+
+            // Unique index: one preferences record per person
+            entity.HasIndex(e => e.PlatformUserId)
                 .IsUnique()
                 .HasDatabaseName("UQ_UserPreferences_UserId");
         });

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
+using Sorcha.ServiceClients.Auth;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 
@@ -71,11 +71,11 @@ public static class UserPreferenceEndpoints
         if (userId == Guid.Empty) return TypedResults.Unauthorized();
 
         var prefs = await db.UserPreferences
-            .FirstOrDefaultAsync(p => p.UserId == userId, ct);
+            .FirstOrDefaultAsync(p => p.PlatformUserId == userId, ct);
 
         if (prefs is null)
         {
-            prefs = new UserPreferences { UserId = userId };
+            prefs = new UserPreferences { PlatformUserId = userId };
             db.UserPreferences.Add(prefs);
             await db.SaveChangesAsync(ct);
         }
@@ -111,11 +111,11 @@ public static class UserPreferenceEndpoints
             return TypedResults.ValidationProblem(errors);
 
         var prefs = await db.UserPreferences
-            .FirstOrDefaultAsync(p => p.UserId == userId, ct);
+            .FirstOrDefaultAsync(p => p.PlatformUserId == userId, ct);
 
         if (prefs is null)
         {
-            prefs = new UserPreferences { UserId = userId };
+            prefs = new UserPreferences { PlatformUserId = userId };
             db.UserPreferences.Add(prefs);
         }
 
@@ -151,7 +151,7 @@ public static class UserPreferenceEndpoints
         if (userId == Guid.Empty) return TypedResults.Unauthorized();
 
         var address = await db.UserPreferences
-            .Where(p => p.UserId == userId)
+            .Where(p => p.PlatformUserId == userId)
             .Select(p => p.DefaultWalletAddress)
             .FirstOrDefaultAsync(ct);
 
@@ -180,11 +180,11 @@ public static class UserPreferenceEndpoints
             });
 
         var prefs = await db.UserPreferences
-            .FirstOrDefaultAsync(p => p.UserId == userId, ct);
+            .FirstOrDefaultAsync(p => p.PlatformUserId == userId, ct);
 
         if (prefs is null)
         {
-            prefs = new UserPreferences { UserId = userId };
+            prefs = new UserPreferences { PlatformUserId = userId };
             db.UserPreferences.Add(prefs);
         }
 
@@ -204,7 +204,7 @@ public static class UserPreferenceEndpoints
         if (userId == Guid.Empty) return TypedResults.Unauthorized();
 
         var prefs = await db.UserPreferences
-            .FirstOrDefaultAsync(p => p.UserId == userId, ct);
+            .FirstOrDefaultAsync(p => p.PlatformUserId == userId, ct);
 
         if (prefs is not null)
         {
@@ -216,12 +216,13 @@ public static class UserPreferenceEndpoints
         return TypedResults.NoContent();
     }
 
-    private static Guid GetUserId(HttpContext context)
-    {
-        var sub = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? context.User.FindFirst("sub")?.Value;
-        return Guid.TryParse(sub, out var id) ? id : Guid.Empty;
-    }
+    /// <summary>
+    /// #1694 — the PERSON the preferences belong to: <c>platform_user_id</c>, carried on every human
+    /// token. Deliberately NOT <c>sub</c>, which is the per-organisation <c>UserIdentity</c> id, so
+    /// keying on it gave one person a different set of preferences in every org.
+    /// </summary>
+    private static Guid GetUserId(HttpContext context) =>
+        context.User.GetPlatformUserId()?.Value ?? Guid.Empty;
 
     private static object MapToDto(UserPreferences p) => new
     {

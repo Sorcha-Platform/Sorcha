@@ -1876,12 +1876,13 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
+                    b.Property<Guid>("PlatformUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("UserId");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId")
+                    b.HasIndex("PlatformUserId")
                         .IsUnique()
                         .HasDatabaseName("UQ_UserPreferences_UserId");
 
