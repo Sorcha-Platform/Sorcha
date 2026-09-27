@@ -12,6 +12,7 @@
 @using Sorcha.UI.Core.Services.Designer
 @using Sorcha.UI.Core.Services.Feedback
 @using Sorcha.ServiceClients.Blueprint.Models
+@using Sorcha.Blueprint.Engine.Testing
 @using BlueprintModel = Sorcha.Blueprint.Models.Blueprint
 @inject DesignerContext Context
 @inject IDryRunHarness DryRun
@@ -55,6 +56,38 @@
             disclosure. No register, nothing saved. Credential steps are checked in the full rehearsal.
         </MudText>
 
+        EnsureGeneratedForCurrentStep();
+        @if (_generated is { } dryRunGenerated)
+        {
+            <MudExpansionPanels Class="mb-3" Elevation="0">
+                <MudExpansionPanel Text="Test data (generated from the schema)" Expanded="false"
+                                   data-testid="rehearse-test-data-panel">
+                    <div class="d-flex justify-end mb-2">
+                        <MudButton Variant="Variant.Text" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Refresh"
+                                   OnClick="@OnRegenerateTestData"
+                                   data-testid="rehearse-test-data-regenerate">
+                            Regenerate
+                        </MudButton>
+                    </div>
+                    <pre class="rehearse-stage__test-data" data-testid="rehearse-test-data-json">@TestDataJson(dryRunGenerated)</pre>
+                    @if (dryRunGenerated.Unsatisfied.Count > 0)
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2"
+                                  data-testid="rehearse-test-data-warning">
+                            Some fields could not be generated from the schema:
+                            <ul class="mb-0">
+                                @foreach (var field in dryRunGenerated.Unsatisfied)
+                                {
+                                    <li>@field.Path — @field.Reason</li>
+                                }
+                            </ul>
+                        </MudAlert>
+                    }
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
+
         <RehearsalStepper Steps="@DryRunStepViews()"
                           CurrentActingRole="@DryRun.CurrentActingRole"
                           Roles="@_roles"
@@ -92,6 +125,38 @@
         }
         else
         {
+            EnsureGeneratedForCurrentStep();
+            @if (_generated is { } fullGenerated)
+            {
+                <MudExpansionPanels Class="mb-3" Elevation="0">
+                    <MudExpansionPanel Text="Test data (generated from the schema)" Expanded="false"
+                                       data-testid="rehearse-test-data-panel">
+                        <div class="d-flex justify-end mb-2">
+                            <MudButton Variant="Variant.Text" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.Refresh"
+                                       OnClick="@OnRegenerateTestData"
+                                       data-testid="rehearse-test-data-regenerate">
+                                Regenerate
+                            </MudButton>
+                        </div>
+                        <pre class="rehearse-stage__test-data" data-testid="rehearse-test-data-json">@TestDataJson(fullGenerated)</pre>
+                        @if (fullGenerated.Unsatisfied.Count > 0)
+                        {
+                            <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2"
+                                      data-testid="rehearse-test-data-warning">
+                                Some fields could not be generated from the schema:
+                                <ul class="mb-0">
+                                    @foreach (var field in fullGenerated.Unsatisfied)
+                                    {
+                                        <li>@field.Path — @field.Reason</li>
+                                    }
+                                </ul>
+                            </MudAlert>
+                        }
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            }
+
             <RehearsalStepper Steps="@FullStepViews()"
                               CurrentActingRole="@_rehearsal.CurrentActingRole"
                               Roles="@_roles"
@@ -113,6 +178,16 @@
     private bool _busy;
     private Rehearsal? _rehearsal;
     private IReadOnlyList<string> _roles = [];
+
+    // ---- Generated test data (#1724) ----------------------------------------------------------
+    // The Designer decision on #1724 is to generate schema-valid sample data rather than build
+    // step forms — this exercises schema validation and payload-reading routing conditions during
+    // rehearsal without step-by-step form UI. One generator instance is reused across "Regenerate"
+    // clicks so its cached parsed schemas are not rebuilt on every seed.
+    private readonly SchemaSamplePayloadGenerator _payloadGenerator = new();
+    private int? _generatedForActionId;
+    private int _seed = 1;
+    private SamplePayloadResult? _generated;
 
     /// <inheritdoc />
     protected override void OnInitialized()
@@ -174,7 +249,8 @@
         _busy = true;
         try
         {
-            var step = await DryRun.SubmitCurrentStepAsync(new Dictionary<string, object>());
+            var payload = _generated?.Payload ?? new Dictionary<string, object>();
+            var step = await DryRun.SubmitCurrentStepAsync(payload);
             if (step.Status == Sorcha.Blueprint.Engine.Models.DryRunStepStatus.Failed)
             {
                 Feedback.ShowWarning("This step's payload failed validation in the dry-run.");
@@ -189,6 +265,7 @@
     private void OnDryRunReset()
     {
         DryRun.Reset();
+        ResetGeneratedTestData();
         StateHasChanged();
     }
 
@@ -319,6 +396,7 @@
             }
 
             _rehearsal = outcome.Rehearsal;
+            ResetGeneratedTestData();
             AfterRehearsalRefresh();
         }
         finally
@@ -366,12 +444,24 @@
         _busy = true;
         try
         {
-            var updated = await RehearsalApi.SubmitStepAsync(
-                Context.Blueprint!.Id, _rehearsal.RehearsalId, currentStep.ActionId, "{}");
-            if (updated is not null)
+            var payload = _generated?.Payload ?? new Dictionary<string, object>();
+            var payloadJson = System.Text.Json.JsonSerializer.Serialize(payload);
+            var outcome = await RehearsalApi.SubmitStepAsync(
+                Context.Blueprint!.Id, _rehearsal.RehearsalId, currentStep.ActionId, payloadJson);
+
+            if (outcome.Rehearsal is not null)
             {
-                _rehearsal = updated;
+                _rehearsal = outcome.Rehearsal;
+                ResetGeneratedTestData();
                 AfterRehearsalRefresh();
+            }
+            else
+            {
+                // #1724: the server's refusal (e.g. the generated payload failed schema
+                // validation, or this step is no longer current) — never silently discarded, and
+                // never mistaken for a blank Rehearsal that would wipe the walk-through state.
+                Feedback.ShowError(
+                    outcome.RefusalReason ?? "The step could not be submitted.", autoDismissMs: 0);
             }
         }
         finally
@@ -392,6 +482,7 @@
         {
             await RehearsalApi.DeleteRehearsalAsync(Context.Blueprint!.Id, _rehearsal.RehearsalId);
             _rehearsal = null;
+            ResetGeneratedTestData();
         }
         finally
         {
@@ -463,6 +554,71 @@
         RehearsalEventKind.Error => RehearsalLogKind.Error,
         _ => RehearsalLogKind.Info,
     };
+
+    // ---- Generated test data (#1724) ----------------------------------------------------------
+
+    /// <summary>The action id awaiting submission right now, in whichever mode is active — null when there is none.</summary>
+    private int? CurrentSubmittableActionId =>
+        _mode == RehearseMode.DryRun
+            ? (!DryRun.IsComplete ? DryRun.CurrentActionId : null)
+            : _rehearsal?.Steps.FirstOrDefault(s => s.Status == RehearsalStepStatus.Current)?.ActionId;
+
+    /// <summary>
+    /// Generates sample data for the current step the first time it is rendered (or after the
+    /// walk-through advances to a different action), so a fresh "Regenerate" seed is not silently
+    /// re-triggered on every render.
+    /// </summary>
+    private void EnsureGeneratedForCurrentStep()
+    {
+        var actionId = CurrentSubmittableActionId;
+        if (actionId is null)
+        {
+            _generated = null;
+            _generatedForActionId = null;
+            return;
+        }
+
+        if (_generated is not null && _generatedForActionId == actionId)
+        {
+            return;
+        }
+
+        _generatedForActionId = actionId;
+        _seed = 1;
+        RegenerateTestDataCore(actionId.Value);
+    }
+
+    private void RegenerateTestDataCore(int actionId)
+    {
+        var action = Context.Blueprint?.Actions.FirstOrDefault(a => a.Id == actionId);
+        _generated = action is null
+            ? new SamplePayloadResult(new Dictionary<string, object>(), true, [])
+            : _payloadGenerator.Generate(action, _seed);
+    }
+
+    private void OnRegenerateTestData()
+    {
+        if (_generatedForActionId is not { } actionId)
+        {
+            return;
+        }
+
+        _seed++;
+        RegenerateTestDataCore(actionId);
+    }
+
+    /// <summary>Forces the next render to generate fresh data for whatever step is then current.</summary>
+    private void ResetGeneratedTestData()
+    {
+        _generated = null;
+        _generatedForActionId = null;
+        _seed = 1;
+    }
+
+    private static string TestDataJson(SamplePayloadResult result) =>
+        System.Text.Json.JsonSerializer.Serialize(
+            result.Payload,
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
 
     /// <inheritdoc />
     public void Dispose() => Context.Changed -= OnContextChanged;

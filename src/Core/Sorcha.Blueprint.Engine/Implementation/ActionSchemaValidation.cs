@@ -72,7 +72,13 @@ internal static class ActionSchemaValidation
     /// <summary>
     /// The schemas an action's submitted data must satisfy, in declaration order.
     /// </summary>
-    private static IReadOnlyList<JsonNode> ResolveSchemas(ActionModel action)
+    /// <remarks>
+    /// Internal rather than private so <c>Testing.SchemaSamplePayloadGenerator</c> (#1724) can
+    /// reuse the exact same resolution instead of re-declaring the <c>dataSchemas</c> /
+    /// <c>Form.Schema</c> fallback a second time — the whole point of this class existing is that
+    /// there is exactly one place that decides which schemas apply.
+    /// </remarks>
+    internal static IReadOnlyList<JsonNode> ResolveSchemas(ActionModel action)
     {
         // DataSchemas are JsonDocument; ISchemaValidator takes JsonNode. Round-tripping the raw
         // text is the only conversion between them, and it also detaches the node from the
