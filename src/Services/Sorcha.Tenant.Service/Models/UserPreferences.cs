@@ -7,9 +7,14 @@ namespace Sorcha.Tenant.Service.Models;
 
 /// <summary>
 /// User preferences for UI customization and application behavior.
-/// Stored in per-organization schema (org_{organization_id}).
-/// One-to-one relationship with UserIdentity — lazily created on first access.
+/// Lazily created on first access.
 /// </summary>
+/// <remarks>
+/// #1694 — preferences belong to the PERSON, not to one of their organisation identities. They were
+/// keyed by <c>UserIdentity.Id</c> (the per-org JWT <c>sub</c>), so someone in two orgs had two
+/// unrelated sets, and the Wallet — which resolves a notification's recipient to a
+/// <c>PlatformUser</c> — could never find either. Keyed by <see cref="PlatformUserId"/> now.
+/// </remarks>
 public class UserPreferences
 {
     /// <summary>
@@ -18,9 +23,11 @@ public class UserPreferences
     public Guid Id { get; set; } = Guid.NewGuid();
 
     /// <summary>
-    /// User who owns these preferences. One-to-one with UserIdentity.
+    /// The person (<c>PlatformUser.Id</c>) who owns these preferences — one set per person,
+    /// shared across every organisation they belong to. Stored in the pre-existing <c>UserId</c>
+    /// column (see <c>TenantDbContext.ConfigureUserPreferences</c>) so no schema change was needed.
     /// </summary>
-    public Guid UserId { get; set; }
+    public Guid PlatformUserId { get; set; }
 
     /// <summary>
     /// UI theme preference (Light, Dark, or System).
@@ -44,9 +51,12 @@ public class UserPreferences
     public string? DefaultWalletAddress { get; set; }
 
     /// <summary>
-    /// Whether push notifications are enabled.
+    /// Whether notifications are enabled. Defaults to ON — the documented default, and the Wallet's
+    /// own default. It was <c>false</c>, and <c>GET /api/preferences</c> creates a row on first read,
+    /// so merely opening the settings page would have switched notifications off once preferences
+    /// were actually honoured (#1694).
     /// </summary>
-    public bool NotificationsEnabled { get; set; }
+    public bool NotificationsEnabled { get; set; } = true;
 
     /// <summary>
     /// Delivery channel for inbound action notifications.

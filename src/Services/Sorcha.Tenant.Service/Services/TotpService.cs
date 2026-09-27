@@ -448,10 +448,18 @@ public class TotpService : ITotpService
     /// <summary>
     /// Syncs the UserPreferences.TwoFactorEnabled flag.
     /// </summary>
+    /// <remarks>
+    /// TOTP is configured per organisation identity (<paramref name="userId"/> is a
+    /// <c>UserIdentity</c> id), but preferences belong to the person (#1694), so this resolves to
+    /// the <c>PlatformUser</c> first. The flag is display-only — it is not read to enforce 2FA.
+    /// </remarks>
     private async Task UpdateUserPreferencesTwoFactor(Guid userId, bool enabled, CancellationToken cancellationToken)
     {
+        if (await ResolvePlatformUserIdAsync(new UserIdentityId(userId), cancellationToken) is not { } platformUserId)
+            return;
+
         var prefs = await _db.UserPreferences
-            .FirstOrDefaultAsync(p => p.UserId == userId, cancellationToken);
+            .FirstOrDefaultAsync(p => p.PlatformUserId == platformUserId.Value, cancellationToken);
 
         if (prefs is not null)
         {

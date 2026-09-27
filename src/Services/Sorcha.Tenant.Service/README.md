@@ -659,6 +659,14 @@ The Tenant Service also exposes passkey public key data used by the Wallet Servi
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/internal/resolve-domain/{domain}` | GET | Resolve custom domain to organization subdomain (API Gateway use only) |
+| `/api/internal/users/{userId}/notification-preferences` | GET | **Service token only.** A person's notification preferences for delivery (Wallet). `userId` may be a PlatformUser id or a UserIdentity id; 404 = never saved, caller applies its default (#1694) |
+
+**User preferences belong to the person (#1694).** `/api/preferences` is keyed by the token's
+`platform_user_id`, not `sub`, so one person has one set of preferences across every organisation
+they belong to. (They were keyed by the per-org `UserIdentity` id, which gave a person a different
+set in each org and meant the Wallet's delivery path could never find them.) The column keeps its
+original name `UserId`; only what it holds changed, so no schema change was needed. New rows default
+to notifications **on**.
 
 **Note:** Internal endpoints are excluded from public API documentation.
 

@@ -22,6 +22,8 @@ public class UserPreferenceEndpointsTests : IClassFixture<TenantServiceWebApplic
     public async ValueTask InitializeAsync()
     {
         _client = _factory.CreateAdminClient();
+        // Real human tokens always carry platform_user_id; preferences are keyed by it (#1694).
+        _client.DefaultRequestHeaders.Add("X-Test-Platform-User-Id", TestDataSeeder.AdminPlatformUserId.ToString());
         await _factory.SeedTestDataAsync();
     }
 
@@ -53,7 +55,7 @@ public class UserPreferenceEndpointsTests : IClassFixture<TenantServiceWebApplic
         prefs.Language.Should().Be("en");
         prefs.TimeFormat.Should().Be("Local");
         prefs.DefaultWalletAddress.Should().BeNull();
-        prefs.NotificationsEnabled.Should().BeFalse();
+        prefs.NotificationsEnabled.Should().BeTrue("the documented default is ON, and a row is created on first read (#1694)");
         prefs.TwoFactorEnabled.Should().BeFalse();
     }
 

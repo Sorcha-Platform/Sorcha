@@ -102,6 +102,19 @@ public static class InternalEndpoints
                 + "see the org-scoped identity id in ParticipantInfo. 404 if the UserIdentity does not exist.")
             .RequireAuthorization("RequireService");
 
+        // #1694: notification preferences for the Wallet's delivery path. The Wallet only knows a
+        // wallet's Owner, which is a PlatformUser id on the current path and a UserIdentity id on
+        // legacy/org wallets (CLAUDE.md §26), so this accepts either and resolves it to the person.
+        group.MapGet("/users/{userId:guid}/notification-preferences", GetNotificationPreferences)
+            .WithName("GetInternalNotificationPreferences")
+            .WithSummary("Resolve a person's notification preferences for service-side delivery")
+            .WithDescription("Called by Wallet Service before delivering a notification. userId may be a "
+                + "PlatformUser id or a UserIdentity id; either resolves to the person, whose preferences "
+                + "are shared across every organisation they belong to. Returns only the notification "
+                + "fields. 404 when the id is unknown or the person has never saved preferences — the "
+                + "caller then applies its own defaults.")
+            .RequireAuthorization("RequireService");
+
         // Issue #1264: the live-claims read. A JWT claim is a snapshot from mint time, so any
         // decision that must reflect reality at the moment it is made has to read server state
         // instead. Deliberately ONE batch route keyed by claim name — not an endpoint per checkable
@@ -366,6 +379,46 @@ public static class InternalEndpoints
 
     /// <summary>Wire shape for <see cref="ResolvePlatformUserByIdentity"/>.</summary>
     public sealed record PlatformUserResolution(Guid UserIdentityId, Guid PlatformUserId);
+
+    /// <summary>The notification subset of a person's preferences (#1694).</summary>
+    /// <param name="PlatformUserId">The person the preferences belong to.</param>
+    /// <param name="NotificationsEnabled">Whether notifications are enabled.</param>
+    /// <param name="NotificationMethod">InApp, InAppPlusEmail or InAppPlusPush.</param>
+    /// <param name="NotificationFrequency">RealTime, HourlyDigest or DailyDigest.</param>
+    public sealed record NotificationPreferencesResolution(
+        Guid PlatformUserId, bool NotificationsEnabled, string NotificationMethod, string NotificationFrequency);
+
+    internal static async Task<Results<Ok<NotificationPreferencesResolution>, NotFound>> GetNotificationPreferences(
+        Guid userId,
+        Sorcha.Tenant.Service.Data.TenantDbContext db,
+        CancellationToken ct)
+    {
+        // A PlatformUser id first (the current wallet-owner kind); otherwise treat it as a
+        // UserIdentity id and follow it to its owner.
+        var platformUserId = await db.PlatformUsers.AnyAsync(u => u.Id == userId, ct)
+            ? userId
+            : await db.UserIdentities
+                .Where(u => u.Id == userId)
+                .Select(u => u.PlatformUserId)
+                .FirstOrDefaultAsync(ct);
+
+        if (platformUserId == Guid.Empty)
+            return TypedResults.NotFound();
+
+        var prefs = await db.UserPreferences
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.PlatformUserId == platformUserId, ct);
+
+        // No row means "never chose" — deliberately a 404 rather than an invented default, so the
+        // caller's own documented default applies and nothing here can switch notifications off.
+        return prefs is null
+            ? TypedResults.NotFound()
+            : TypedResults.Ok(new NotificationPreferencesResolution(
+                platformUserId,
+                prefs.NotificationsEnabled,
+                prefs.NotificationMethod.ToString(),
+                prefs.NotificationFrequency.ToString()));
+    }
 
     /// <summary>Whether an id names a real platform user (issue #1506).</summary>
     public sealed record PlatformUserExistsResponse(Guid PlatformUserId, bool Exists);
