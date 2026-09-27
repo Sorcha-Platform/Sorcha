@@ -27,7 +27,7 @@
 > enums), #1652 (mongo:8.3 pin, and setup refuses kernels 6.19–7.0.13), #1653 (recovery reads the
 > docket object), #1569 (published definitions need service or org admin), plus a metric-listener
 > flake fix. Closed stale: #1707 #1703 #1695 #1680 #1685 #1686 #1679 #1687 #1672 #1669 #1668 #1667
-> #1533 #1641. ⚠ **Needs a decision:** #1724 (Designer rehearsal submits empty payloads), #1694
+> #1533 #1641. #1724 fixed 2026-09-27 (see below). ⚠ **Needs a decision:** #1694
 > (preferences keyed by UserIdentity, notifications target a PlatformUser), #1733 (bundle verify
 > skips the signature check). ⚠ **tiny's kernel 7.0.0-28 crashes MongoDB 8** (SERVER-121912): upgrade to 7.0.14+.
 >
@@ -54,11 +54,23 @@
 > The validator's refusal now says "no sealed roster yet — its genesis is missing or has not sealed".
 > Tests: 3 new provider tests + MCP 503 case; 3 mutations KILLED.
 >
-> **▶ 2026-09-26 - #1724 (open, needs a decision): the Designer's Rehearse stage never supplies step
-> data.** `RehearseStage.razor` submits `"{}"` (full) and an empty dictionary (dry-run) for EVERY step,
-> since F142. With #1573's schema enforcement, a person cannot pass a rehearsal for any blueprint with
-> `required` fields, so the UI publish path still needs the override. Needs step forms in the Rehearse
-> stage (UI feature). The DTO-as-string seam is real but moot until then.
+> **▶ 2026-09-27 - #1724 ✅ FIXED: the Designer's Rehearse stage now submits schema-valid GENERATED
+> data for every step, not step forms.** Product decision: generate random-but-appropriate data from
+> each action's `dataSchemas` rather than build step-by-step form UI — a new public
+> `SchemaSamplePayloadGenerator` (`Sorcha.Blueprint.Engine.Testing`) covers object/array/string/number/
+> boolean, enum/const, oneOf/anyOf/allOf, pattern (small regex sampler), format (date/date-time/email/
+> uri/uuid/time) incl. `formatMinimum`/`formatMaximum` tokens, and name-heuristic strings; it
+> self-checks with the real `SchemaValidator` and bounded-repairs, reporting anything truly
+> unsatisfiable (unsupported regex, unresolved `$ref`, `file-reference`/`x-holder-key`/`x-file`) rather
+> than failing silently. Deterministic per seed — "Regenerate" moves to the next seed. Both
+> `RehearseStage.razor` modes now submit the generated payload and show it in a collapsible "Test
+> data" panel. Also fixed the DTO-as-string wire seam this issue named: `RehearsalApiService.
+> SubmitStepAsync` now posts `payload` as a JSON object (mirroring #1723's fix for the MCP path) and
+> returns a `SubmitStepOutcome` carrying the server's refusal reason instead of misreading a 422
+> `{ "error": ... }` body as a blank `Rehearsal`. Sweep test over the walkthrough + shipped blueprint
+> corpus: 134/140 real actions with declared schemas generate a valid payload outright (6 excluded —
+> file/holder-key/`$ref` constructs, by design). `ParsePayload`'s non-object-root refusal is left for a
+> follow-up PR per the issue (would break any client still sending a string).
 >
 > **▶ 2026-09-25 - STATE: n1 + tiny run master `4f56cf82a`; core suite 18/18 on n1** (13/18 on
 > 2026-09-24 morning). #1712, #1701, #1709, #1699 (#1718 + #1719) and #1720 are all merged, deployed

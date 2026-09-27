@@ -44,10 +44,15 @@ public interface IRehearsalApiService
 
     /// <summary>
     /// Submits the current action as the acting role with <paramref name="payloadJson"/> (a raw
-    /// JSON object string) and returns the refreshed rehearsal state. On a <c>422</c> validation
-    /// failure the returned rehearsal reflects the unchanged walk-through (step stays current).
+    /// JSON object string).
     /// </summary>
-    Task<Rehearsal?> SubmitStepAsync(string blueprintId, Guid rehearsalId, int actionId, string payloadJson, CancellationToken cancellationToken = default);
+    /// <remarks>
+    /// #1724: the server's <c>422</c> validation-failure body is a plain <c>{ "error": "..." }</c>,
+    /// never a <see cref="Rehearsal"/> — deserialising it as one used to silently produce a BLANK
+    /// rehearsal and wipe the walk-through state. <see cref="SubmitStepOutcome"/> carries the
+    /// server's own refusal reason instead, for every non-success response (422, 404, 403, ...).
+    /// </remarks>
+    Task<SubmitStepOutcome> SubmitStepAsync(string blueprintId, Guid rehearsalId, int actionId, string payloadJson, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Discards a rehearsal server-side (releases the sandbox instance + ephemeral wallets) so
@@ -72,4 +77,21 @@ public sealed record StartRehearsalOutcome(Rehearsal? Rehearsal, bool Blocked)
 
     /// <summary>The start failed for some other reason (network/server error).</summary>
     public static StartRehearsalOutcome Errored() => new(null, false);
+}
+
+/// <summary>
+/// Outcome of <see cref="IRehearsalApiService.SubmitStepAsync"/> (#1724): either the refreshed
+/// <see cref="Rehearsal"/> the server applied the step against, or the reason it refused — e.g.
+/// the generated payload failed schema validation, the step was not the current one, or a
+/// transport/server error. Exactly one of the two is set.
+/// </summary>
+/// <param name="Rehearsal">The refreshed rehearsal state, or <c>null</c> when the call was refused.</param>
+/// <param name="RefusalReason">The server's own explanation, or a generic message on transport failure — null when <see cref="Rehearsal"/> is set.</param>
+public sealed record SubmitStepOutcome(Rehearsal? Rehearsal, string? RefusalReason)
+{
+    /// <summary>The step was applied; the rehearsal has moved on.</summary>
+    public static SubmitStepOutcome Applied(Rehearsal rehearsal) => new(rehearsal, null);
+
+    /// <summary>The server (or the client itself, for a malformed payload) refused the step.</summary>
+    public static SubmitStepOutcome Refused(string reason) => new(null, reason);
 }
