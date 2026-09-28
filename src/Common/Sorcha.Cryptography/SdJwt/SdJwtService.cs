@@ -319,12 +319,40 @@ public class SdJwtService : ISdJwtService
                     result.Claims[key] = ConvertJsonElement(value);
             }
 
-            // Process disclosures
-            foreach (var disclosure in disclosures)
+            // #1199 — RFC 9901 anchoring BEFORE any disclosure is trusted. A disclosure is an
+            // issuer's claim only if its digest is committed by the issuer-signed payload; without
+            // this a presenter could append a forged disclosure (a claim never issued) or one that
+            // overwrites a signed claim, and it was merged into the verified claims unchecked. The
+            // rule is shared with the Verifier engine so the two cannot disagree.
+            var presented = disclosures.Where(d => !string.IsNullOrWhiteSpace(d)).ToList();
+            using (var payloadDocument = JsonDocument.Parse(payloadJson))
             {
-                if (string.IsNullOrWhiteSpace(disclosure))
-                    continue;
+                var payloadElement = payloadDocument.RootElement;
+                if (!Sorcha.Verification.Abstractions.SdJwtDisclosureAnchoring.IsSupportedSdAlg(payloadElement, out var sdAlg))
+                {
+                    AddError(result, SdJwtErrorKind.DisclosureIntegrityFailure,
+                        $"Unsupported _sd_alg '{sdAlg}' — only sha-256 is supported, so disclosure anchoring cannot be evaluated.");
+                    result.IsValid = false;
+                    return Task.FromResult(result);
+                }
 
+                var unanchored = Sorcha.Verification.Abstractions.SdJwtDisclosureAnchoring
+                    .FindUnanchoredDisclosures(payloadElement, presented);
+                if (unanchored.Count > 0)
+                {
+                    foreach (var name in unanchored)
+                    {
+                        AddError(result, SdJwtErrorKind.DisclosureIntegrityFailure,
+                            $"Disclosure '{name}' is not committed by the issuer (no matching _sd digest) — the token is tampered or malformed.");
+                    }
+                    result.IsValid = false;
+                    return Task.FromResult(result);
+                }
+            }
+
+            // Process disclosures (every one is now issuer-committed)
+            foreach (var disclosure in presented)
+            {
                 try
                 {
                     var disclosureJson = Base64UrlDecode(disclosure);
@@ -332,6 +360,16 @@ public class SdJwtService : ISdJwtService
                     if (disclosureArray is { Length: 3 })
                     {
                         var claimName = disclosureArray[1].GetString() ?? string.Empty;
+
+                        // RFC 9901: a disclosed claim name must not already exist at that level. A
+                        // collision would let a disclosure silently replace a signed plain claim.
+                        if (result.Claims.ContainsKey(claimName) || reservedClaims.Contains(claimName))
+                        {
+                            AddError(result, SdJwtErrorKind.DisclosureIntegrityFailure,
+                                $"Disclosure '{claimName}' collides with a claim already present in the token.");
+                            continue;
+                        }
+
                         var claimValue = ConvertJsonElement(disclosureArray[2]);
                         result.Claims[claimName] = claimValue;
                     }
