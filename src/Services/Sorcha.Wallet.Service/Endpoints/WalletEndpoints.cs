@@ -438,6 +438,18 @@ public static class WalletEndpoints
             logger.LogInformation("Creating wallet for user {Owner} in tenant {Tenant}, Hybrid={Hybrid}, SigningMode={SigningMode}",
                 owner, tenant, request.EnableHybrid, signingModeOverride?.ToString() ?? "policy-default");
 
+            // #1756 — validate the hybrid PQC half BEFORE creating anything, so a bad request can
+            // never leave a classical wallet behind that the caller did not get to keep.
+            if (request.EnableHybrid && !WalletManager.IsHybridCompanionAlgorithm(request.PqcAlgorithm))
+            {
+                return Results.BadRequest(new ProblemDetails
+                {
+                    Title = "Invalid Hybrid Algorithm",
+                    Detail = "A hybrid wallet's PQC half must be a signature algorithm: ML-DSA-65, SLH-DSA-128s or SLH-DSA-192s.",
+                    Status = StatusCodes.Status400BadRequest
+                });
+            }
+
             var (wallet, mnemonic) = await walletManager.CreateWalletAsync(
                 request.Name,
                 request.Algorithm,
@@ -506,24 +518,27 @@ public static class WalletEndpoints
                 }
             }
 
-            // Generate PQC key pair and ws2 address for hybrid wallets (computed before building the
-            // immutable response so the fields can be set via the object initializer).
+            // #1756 — the hybrid PQC half is DERIVED from the same recovery phrase and persisted as a
+            // linked wallet. It used to be a random key whose address was returned and whose private
+            // key was discarded: backed by nothing, unable to sign, absent from the phrase.
             string? pqcWalletAddress = null;
             string? pqcAlgorithm = null;
-            if (request.EnableHybrid && !string.IsNullOrEmpty(request.PqcAlgorithm))
+            if (request.EnableHybrid)
             {
-                var pqcNetwork = AlgorithmMapper.ParseAlgorithm(request.PqcAlgorithm);
-                var pqcKeyResult = await cryptoModule.GenerateKeySetAsync(pqcNetwork, cancellationToken: cancellationToken);
-                if (pqcKeyResult.IsSuccess)
+                try
                 {
-                    pqcWalletAddress = walletUtilities.PublicKeyToWallet(pqcKeyResult.Value.PublicKey.Key!, (byte)pqcNetwork);
-                    pqcAlgorithm = request.PqcAlgorithm;
-                    logger.LogInformation("Hybrid wallet created with PQC address {PqcAddress}", pqcWalletAddress);
+                    var companion = await walletManager.CreateHybridCompanionAsync(
+                        wallet, mnemonic, request.PqcAlgorithm!, request.Passphrase, cancellationToken);
+                    pqcWalletAddress = companion.Address;
+                    pqcAlgorithm = companion.Algorithm;
                 }
-                else
+                catch (Exception ex)
                 {
-                    logger.LogWarning("PQC key generation failed: {Error}, proceeding with classical-only wallet",
-                        pqcKeyResult.ErrorMessage);
+                    // The classical wallet stands on its own; a null PqcWalletAddress tells the caller
+                    // the hybrid half was not created, rather than handing it an address nothing backs.
+                    logger.LogError(ex,
+                        "Hybrid PQC half could not be created for wallet {Address}; returning a classical-only wallet",
+                        wallet.Address);
                 }
             }
 
@@ -1090,6 +1105,26 @@ public static class WalletEndpoints
 
                 // Look up actual wallet algorithms
                 var classicalWallet = await walletManager.GetWalletAsync(address, cancellationToken);
+
+                // #1756 — the PQC address must be THIS wallet's own linked companion. The ownership
+                // check above covers only the classical address, so without this a caller could pair
+                // their own wallet with anyone else's PQC wallet and obtain a signature from it. The
+                // link is written only by CreateHybridCompanionAsync, from the same recovery phrase.
+                if (classicalWallet is not null
+                    && !(classicalWallet.Metadata.TryGetValue(WalletManager.HybridPqcAddressKey, out var linkedPqc)
+                         && string.Equals(linkedPqc, request.PqcWalletAddress, StringComparison.Ordinal)))
+                {
+                    logger.LogWarning(
+                        "SEC-AUDIT: hybrid signing with {Wallet} refused — {PqcWallet} is not its linked PQC half",
+                        address, request.PqcWalletAddress);
+                    return Results.Json(new ProblemDetails
+                    {
+                        Title = "Not This Wallet's PQC Half",
+                        Detail = "Hybrid signing pairs a wallet only with the PQC wallet created alongside it.",
+                        Status = StatusCodes.Status403Forbidden
+                    }, statusCode: StatusCodes.Status403Forbidden);
+                }
+
                 var pqcWallet = await walletManager.GetWalletAsync(request.PqcWalletAddress, cancellationToken);
                 if (classicalWallet == null || pqcWallet == null)
                 {

@@ -385,49 +385,15 @@ public class WalletManager : IWalletService
                 return existing;
             }
 
-            // Encrypt private key
-            var (encryptedKey, keyId) = await _keyManagement.EncryptPrivateKeyAsync(
-                primaryPrivateKey, string.Empty);
-
-            // Encrypt the BIP39 PBKDF2 seed so sign-with-derivationPath can
-            // derive purpose keys (e.g. sorcha:docket-signing →
-            // m/44'/0'/0'/0/102) directly off the master ExtKey, without
-            // the double-HMAC chain that wraps the BIP44 0/0/0/0 leaf as a
-            // fresh seed. See issue #471.
-            //
-            // Re-uses the same encryption key as EncryptedPrivateKey above
-            // so a single rotation covers both fields.
-            var bip39Seed = mnemonic.DeriveBip39Seed(passphrase);
-            var (encryptedMasterSeed, _) = await _keyManagement.EncryptPrivateKeyAsync(
-                bip39Seed, keyId);
-
-            // Create wallet entity
-            var wallet = new WalletEntity
-            {
-                Address = address,
-                PublicKey = Convert.ToBase64String(primaryPublicKey),
-                EncryptedPrivateKey = encryptedKey,
-                EncryptionKeyId = keyId,
-                EncryptedMasterKeyBlob = encryptedMasterSeed,
-                // RecoveryEnabled stays false — this blob is the wallet-service-
-                // managed master seed for direct derivation, NOT the
-                // Feature 060 recovery-key-encrypted blob.
-                Algorithm = algorithm,
-                Owner = owner,
-                Tenant = tenant,
-                Name = name,
-                Status = WalletStatus.Active,
-                CreatedAt = DateTime.UtcNow,
-                LastAccessedAt = DateTime.UtcNow,
-                Metadata = new Dictionary<string, string>
+            var wallet = await PersistMnemonicWalletAsync(
+                address, primaryPrivateKey, primaryPublicKey, mnemonic, passphrase,
+                algorithm, owner, tenant, name,
+                new Dictionary<string, string>
                 {
                     ["WordCount"] = mnemonic.WordCount.ToString(),
                     ["Recovered"] = "true"
-                }
-            };
-
-            // Save to repository
-            await _repository.AddAsync(wallet, cancellationToken);
+                },
+                cancellationToken);
 
             // Publish event
             await _eventPublisher.PublishAsync(new WalletRecoveredEvent
@@ -447,6 +413,133 @@ public class WalletManager : IWalletService
             _logger.LogError(ex, "Failed to recover wallet for owner {Owner}", owner);
             throw;
         }
+    }
+
+    /// <summary>Metadata key on a hybrid wallet's CLASSICAL half naming its PQC half (#1756).</summary>
+    public const string HybridPqcAddressKey = "HybridPqcAddress";
+
+    /// <summary>Metadata key on a hybrid wallet's PQC half naming its classical half (#1756).</summary>
+    public const string HybridClassicalAddressKey = "HybridClassicalAddress";
+
+    /// <summary>
+    /// The PQC algorithms a hybrid wallet may pair with its classical key: signature algorithms
+    /// only. ML-KEM is an encapsulation algorithm — a companion that cannot sign would make every
+    /// hybrid signature fail.
+    /// </summary>
+    public static bool IsHybridCompanionAlgorithm(string? algorithm) =>
+        Sorcha.Cryptography.Utilities.AlgorithmMapper.TryParseAlgorithm(algorithm, out var network)
+        && network is Sorcha.Cryptography.Enums.WalletNetworks.ML_DSA_65
+            or Sorcha.Cryptography.Enums.WalletNetworks.SLH_DSA_128s
+            or Sorcha.Cryptography.Enums.WalletNetworks.SLH_DSA_192s;
+
+    /// <summary>
+    /// Creates the post-quantum half of a hybrid wallet from the SAME recovery phrase as its
+    /// classical half, persists it, and links the two (#1756).
+    /// </summary>
+    /// <remarks>
+    /// Hybrid creation used to generate a random PQC key, return its address, and discard the
+    /// private key — so the PQC half was backed by nothing, could never sign, and was not in the
+    /// phrase. Since #1689 every PQC algorithm derives deterministically, so the companion is
+    /// derived from the phrase (its per-algorithm HKDF domain separation keeps it distinct from the
+    /// classical key at the same path) and is recoverable exactly like any other wallet: recover
+    /// the phrase with the PQC algorithm. The two-way link is what the hybrid sign path checks, so
+    /// a caller can only ever pair a wallet with ITS OWN companion.
+    /// </remarks>
+    public async Task<WalletEntity> CreateHybridCompanionAsync(
+        WalletEntity classical,
+        Mnemonic mnemonic,
+        string pqcAlgorithm,
+        string? passphrase = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(classical);
+        ArgumentNullException.ThrowIfNull(mnemonic);
+        if (!IsHybridCompanionAlgorithm(pqcAlgorithm))
+        {
+            throw new ArgumentException(
+                $"'{pqcAlgorithm}' cannot be a hybrid wallet's PQC half; use ML-DSA-65, SLH-DSA-128s or SLH-DSA-192s.",
+                nameof(pqcAlgorithm));
+        }
+
+        var masterKey = await _keyManagement.DeriveMasterKeyAsync(mnemonic, passphrase);
+        var (privateKey, publicKey) = await _keyManagement.DeriveKeyAtPathAsync(
+            masterKey, DerivationPath.CreateBip44(0, 0, 0, 0), pqcAlgorithm);
+        var address = await _keyManagement.GenerateAddressAsync(publicKey, pqcAlgorithm);
+
+        var companion = await PersistMnemonicWalletAsync(
+            address, privateKey, publicKey, mnemonic, passphrase,
+            pqcAlgorithm, classical.Owner, classical.Tenant, $"{classical.Name} (PQC)",
+            new Dictionary<string, string>
+            {
+                ["WordCount"] = mnemonic.WordCount.ToString(),
+                [HybridClassicalAddressKey] = classical.Address
+            },
+            cancellationToken);
+
+        classical.Metadata[HybridPqcAddressKey] = companion.Address;
+        classical.UpdatedAt = DateTime.UtcNow;
+        await _repository.UpdateAsync(classical, cancellationToken);
+
+        _logger.LogInformation("Created hybrid PQC companion {PqcAddress} ({Algorithm}) for wallet {Address}",
+            companion.Address, pqcAlgorithm, classical.Address);
+        return companion;
+    }
+
+    /// <summary>
+    /// Encrypts a mnemonic-derived primary key and the BIP39 seed, and persists the wallet. The one
+    /// place a mnemonic-backed wallet entity is assembled, shared by recovery and hybrid companions.
+    /// </summary>
+    private async Task<WalletEntity> PersistMnemonicWalletAsync(
+        string address,
+        byte[] primaryPrivateKey,
+        byte[] primaryPublicKey,
+        Mnemonic mnemonic,
+        string? passphrase,
+        string algorithm,
+        string owner,
+        string tenant,
+        string name,
+        Dictionary<string, string> metadata,
+        CancellationToken cancellationToken)
+    {
+        // Encrypt private key
+        var (encryptedKey, keyId) = await _keyManagement.EncryptPrivateKeyAsync(
+            primaryPrivateKey, string.Empty);
+
+        // Encrypt the BIP39 PBKDF2 seed so sign-with-derivationPath can
+        // derive purpose keys (e.g. sorcha:docket-signing →
+        // m/44'/0'/0'/0/102) directly off the master ExtKey, without
+        // the double-HMAC chain that wraps the BIP44 0/0/0/0 leaf as a
+        // fresh seed. See issue #471.
+        //
+        // Re-uses the same encryption key as EncryptedPrivateKey above
+        // so a single rotation covers both fields.
+        var bip39Seed = mnemonic.DeriveBip39Seed(passphrase);
+        var (encryptedMasterSeed, _) = await _keyManagement.EncryptPrivateKeyAsync(
+            bip39Seed, keyId);
+
+        var wallet = new WalletEntity
+        {
+            Address = address,
+            PublicKey = Convert.ToBase64String(primaryPublicKey),
+            EncryptedPrivateKey = encryptedKey,
+            EncryptionKeyId = keyId,
+            EncryptedMasterKeyBlob = encryptedMasterSeed,
+            // RecoveryEnabled stays false — this blob is the wallet-service-
+            // managed master seed for direct derivation, NOT the
+            // Feature 060 recovery-key-encrypted blob.
+            Algorithm = algorithm,
+            Owner = owner,
+            Tenant = tenant,
+            Name = name,
+            Status = WalletStatus.Active,
+            CreatedAt = DateTime.UtcNow,
+            LastAccessedAt = DateTime.UtcNow,
+            Metadata = metadata
+        };
+
+        await _repository.AddAsync(wallet, cancellationToken);
+        return wallet;
     }
 
     /// <inheritdoc/>
