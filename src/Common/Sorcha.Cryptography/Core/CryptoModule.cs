@@ -47,11 +47,27 @@ public class CryptoModule : ICryptoModule
             {
                 WalletNetworks.ED25519 => await GenerateED25519KeySetAsync(seed, cancellationToken),
                 WalletNetworks.NISTP256 => await GenerateNISTP256KeySetAsync(seed, cancellationToken),
-                WalletNetworks.RSA4096 => await GenerateRSA4096KeySetAsync(cancellationToken),
-                WalletNetworks.ML_DSA_65 => await Task.Run(() => _pqcSignatureProvider.GenerateMlDsa65KeyPair(), cancellationToken),
-                WalletNetworks.SLH_DSA_128s => await Task.Run(() => _pqcSignatureProvider.GenerateSlhDsa128sKeyPair(), cancellationToken),
-                WalletNetworks.SLH_DSA_192s => await Task.Run(() => _pqcSignatureProvider.GenerateSlhDsa192sKeyPair(), cancellationToken),
-                WalletNetworks.ML_KEM_768 => await Task.Run(() => _pqcEncapsulationProvider.GenerateMlKem768KeyPair(), cancellationToken),
+                // #1689 — a SEEDED request is a derivation and must be a function of the seed; the
+                // PQC generators used to ignore it and return a fresh random key, so PQC wallets
+                // could never be recovered. Unseeded requests still generate a random key.
+                // RSA has no standard deterministic key generation, so a seeded RSA request is
+                // refused rather than silently answered with a key nothing can re-derive.
+                WalletNetworks.RSA4096 => seed is null
+                    ? await GenerateRSA4096KeySetAsync(cancellationToken)
+                    : CryptoResult<KeySet>.Failure(CryptoStatus.InvalidParameter,
+                        "RSA-4096 keys cannot be derived from a seed, so an RSA-4096 key could never be recovered or re-derived. Use ED25519, NIST P-256 or a post-quantum algorithm for derived keys."),
+                WalletNetworks.ML_DSA_65 => await Task.Run(() => seed is null
+                    ? _pqcSignatureProvider.GenerateMlDsa65KeyPair()
+                    : _pqcSignatureProvider.GenerateMlDsa65KeyPair(seed), cancellationToken),
+                WalletNetworks.SLH_DSA_128s => await Task.Run(() => seed is null
+                    ? _pqcSignatureProvider.GenerateSlhDsa128sKeyPair()
+                    : _pqcSignatureProvider.GenerateSlhDsa128sKeyPair(seed), cancellationToken),
+                WalletNetworks.SLH_DSA_192s => await Task.Run(() => seed is null
+                    ? _pqcSignatureProvider.GenerateSlhDsa192sKeyPair()
+                    : _pqcSignatureProvider.GenerateSlhDsa192sKeyPair(seed), cancellationToken),
+                WalletNetworks.ML_KEM_768 => await Task.Run(() => seed is null
+                    ? _pqcEncapsulationProvider.GenerateMlKem768KeyPair()
+                    : _pqcEncapsulationProvider.GenerateMlKem768KeyPair(seed), cancellationToken),
                 _ => CryptoResult<KeySet>.Failure(CryptoStatus.InvalidParameter, $"Unsupported network type: {network}")
             };
         }

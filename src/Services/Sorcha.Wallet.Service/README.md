@@ -9,7 +9,7 @@
 
 ## Overview
 
-The **Wallet Service** provides enterprise-grade cryptographic wallet management with Hierarchical Deterministic (HD) wallet support, enabling secure key generation, transaction signing, and payload encryption/decryption. It implements **BIP32/BIP39/BIP44 standards** for deterministic key derivation and supports multiple cryptographic algorithms (ED25519, NISTP256, RSA-4096).
+The **Wallet Service** provides enterprise-grade cryptographic wallet management with Hierarchical Deterministic (HD) wallet support, enabling secure key generation, transaction signing, and payload encryption/decryption. It implements **BIP32/BIP39/BIP44 standards** for deterministic key derivation and supports multiple cryptographic algorithms (ED25519, NISTP256, and the post-quantum ML-DSA-65 / SLH-DSA-128s / SLH-DSA-192s / ML-KEM-768).
 
 This service acts as the cryptographic foundation for:
 - **Secure key management** with encrypted private keys
@@ -23,7 +23,8 @@ This service acts as the cryptographic foundation for:
 - **HD Wallet Creation**: BIP39 mnemonic generation (12/15/18/21/24 words) with optional passphrase
 - **Wallet Recovery**: Restore wallets from mnemonic phrase (disaster recovery)
 - **Client-Side BIP44 Address Derivation**: Privacy-preserving address generation without server communication
-- **Multi-Algorithm Support**: ED25519 (fast signatures), NISTP256 (secp256r1), RSA-4096 (legacy compatibility)
+- **Multi-Algorithm Support**: ED25519 (fast signatures), NISTP256 (secp256r1), and post-quantum ML-DSA-65 / SLH-DSA (signatures) and ML-KEM-768 (encapsulation only — a wallet of that type cannot sign)
+- **Every wallet algorithm is recoverable from its phrase (#1689)**: key generation for a derived key is a function of the BIP32-derived seed for every algorithm. ML-DSA and ML-KEM use their standard FIPS 204 / FIPS 203 seed-based key generation; SLH-DSA drives FIPS 205 key generation from exactly its three seeds; each PQC seed is HKDF-expanded per algorithm so no two algorithms share key material. **RSA-4096 is refused for wallets** (400) — it has no standard deterministic key generation, so an RSA wallet could never be recovered. RSA remains available for signature *verification*. Guarded by `DerivationDeterminismTests`, which uses the real crypto module across every algorithm.
 - **Transaction Signing**: Cryptographically sign transactions for blockchain submission
 - **Payload Encryption/Decryption**: Selective data disclosure with asymmetric encryption
 - **Access Delegation**: Grant read/write access to other identities (Owner, ReadWrite, ReadOnly roles)

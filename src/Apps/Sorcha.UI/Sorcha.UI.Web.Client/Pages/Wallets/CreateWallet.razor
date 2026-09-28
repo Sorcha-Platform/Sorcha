@@ -53,7 +53,6 @@
                             <MudSelect T="string" Label="Algorithm" @bind-Value="request.Algorithm" Required="true" RequiredError="Algorithm is required" Variant="Variant.Outlined" HelperText="Cryptographic algorithm">
                                 <MudSelectItem Value="@("ED25519")">ED25519 (Recommended)</MudSelectItem>
                                 <MudSelectItem Value="@("NISTP256")">NIST P-256</MudSelectItem>
-                                <MudSelectItem Value="@("RSA4096")">RSA 4096</MudSelectItem>
                                 <MudSelectItem Value="@("ML-DSA-65")">ML-DSA-65</MudSelectItem>
                                 <MudSelectItem Value="@("ML-KEM-768")">ML-KEM-768</MudSelectItem>
                             </MudSelect>

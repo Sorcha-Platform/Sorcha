@@ -290,16 +290,21 @@ public class EndToEndTests : IDisposable
         var (nistp256Wallet, _) = await _walletManager.CreateWalletAsync(
             "NISTP256 Wallet", "NISTP256", "alice@example.com", "tenant1");
 
-        var (rsa4096Wallet, _) = await _walletManager.CreateWalletAsync(
-            "RSA4096 Wallet", "RSA4096", "alice@example.com", "tenant1");
+        var (mlDsaWallet, _) = await _walletManager.CreateWalletAsync(
+            "ML-DSA-65 Wallet", "ML-DSA-65", "alice@example.com", "tenant1");
+
+        // #1689 — RSA-4096 cannot be derived from a recovery phrase, so it is refused rather than
+        // creating a wallet that could never be recovered.
+        var rsa = () => _walletManager.CreateWalletAsync("RSA4096 Wallet", "RSA4096", "alice@example.com", "tenant1");
+        await rsa.Should().ThrowAsync<NotSupportedException>();
 
         // Verify all wallets created successfully
         ed25519Wallet.Algorithm.Should().Be("ED25519");
         nistp256Wallet.Algorithm.Should().Be("NISTP256");
-        rsa4096Wallet.Algorithm.Should().Be("RSA4096");
+        mlDsaWallet.Algorithm.Should().Be("ML-DSA-65");
 
         // All should have unique addresses
-        var addresses = new[] { ed25519Wallet.Address, nistp256Wallet.Address, rsa4096Wallet.Address };
+        var addresses = new[] { ed25519Wallet.Address, nistp256Wallet.Address, mlDsaWallet.Address };
         addresses.Should().OnlyHaveUniqueItems();
     }
 

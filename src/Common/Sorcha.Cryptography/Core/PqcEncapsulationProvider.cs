@@ -59,6 +59,31 @@ public sealed class PqcEncapsulationProvider : IDisposable
     }
 
     /// <summary>
+    /// Deterministically generates an ML-KEM-768 key pair from derived key material (#1689), using
+    /// the FIPS 203 seed-based key generation (d ‖ z).
+    /// </summary>
+    /// <param name="derivedKey">The BIP32-derived key for the path; expanded per algorithm.</param>
+    public CryptoResult<KeySet> GenerateMlKem768KeyPair(byte[] derivedKey)
+    {
+        try
+        {
+            var seed = PqcSeedDerivation.Expand(derivedKey, "ML-KEM-768", PqcSeedDerivation.MlKemSeedLength);
+            var privateParams = MLKemPrivateKeyParameters.FromSeed(MLKemParameters.ml_kem_768, seed);
+
+            return CryptoResult<KeySet>.Success(new KeySet
+            {
+                PublicKey = new CryptoKey(WalletNetworks.ML_KEM_768, privateParams.GetPublicKeyEncoded()),
+                PrivateKey = new CryptoKey(WalletNetworks.ML_KEM_768, privateParams.GetEncoded())
+            });
+        }
+        catch (Exception ex)
+        {
+            return CryptoResult<KeySet>.Failure(CryptoStatus.KeyGenerationFailed,
+                $"ML-KEM-768 key derivation failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Encapsulates a shared secret using the recipient's ML-KEM-768 public key.
     /// Returns the ciphertext and the shared secret.
     /// </summary>
