@@ -230,6 +230,33 @@ public sealed class CitizenStatusListPublisherTests : IDisposable
     }
 
     [Fact]
+    public async Task FlipAsync_IetfSpecGoldenVector_ProducesTheExactBytesTheSpecStates()
+    {
+        // Issue #1499. draft-ietf-oauth-status-list-09 §4.1's worked example: 16 entries with status
+        // values 1,0,0,1,1,1,0,1,1,1,0,0,0,1,0,1 (index 0..15) pack — per the spec's own text,
+        // "least significant bit (0) to the most significant bit (7)" — to bytes 0xb9, 0xa3. This
+        // pins the WRITE side against the literal spec bytes, not just against this rail's own
+        // reader (which would pass even if both sides agreed on the wrong convention).
+        var orgId = Guid.NewGuid();
+        int[] setIndices = [0, 3, 4, 5, 7, 8, 9, 13, 15];
+
+        (int ListId, int Index) alloc = default;
+        for (var i = 0; i <= 15; i++)
+        {
+            alloc = await _publisher.AllocateIndexAsync(orgId, SigningWalletAddress);
+        }
+
+        foreach (var idx in setIndices)
+        {
+            await _publisher.FlipAsync(orgId, alloc.ListId, idx, SigningWalletAddress);
+        }
+
+        var list = await _db.CitizenDeviceStatusLists.FirstAsync(l => l.OrganizationId == orgId);
+        list.Bitstring[0].Should().Be(0xb9);
+        list.Bitstring[1].Should().Be(0xa3);
+    }
+
+    [Fact]
     public async Task FlipAsync_OutOfRangeIndex_ThrowsArgumentOutOfRange()
     {
         var orgId = Guid.NewGuid();
