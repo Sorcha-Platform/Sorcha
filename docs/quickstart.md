@@ -18,7 +18,7 @@ This is the agent-runnable setup path. A fresh Linux VM with Docker Engine ≥ 2
 | OpenSSL **or** Python 3 | any | <https://www.openssl.org/source/> · <https://www.python.org/downloads/>. Used to generate the JWT signing key. |
 | Git (optional) | 2.30 | <https://git-scm.com/downloads>. Required only to clone this repo. |
 | PowerShell (optional) | 7.5 | <https://learn.microsoft.com/powershell/scripting/install/installing-powershell>. Required only to run `walkthroughs/`. |
-| Linux kernel (Docker's) | below 6.19, **or** 7.0.14+ | MongoDB 8 crashes on kernels 6.19–7.0.13 ([SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912)); the setup script reads `docker info`'s kernel and refuses one in that range. Under Docker Desktop this is the VM's kernel, not the host's. |
+| Linux kernel (Docker's) | below 6.19, **or** 7.0.14+ | MongoDB 8 crashes on kernels 6.19–7.0.13 ([SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912)); the setup script reads `docker info`'s kernel and refuses one whose **upstream** version is in that range. Distro kernels hide the upstream level (Ubuntu's `7.0.0-34-generic` is upstream 7.0.14), so on Ubuntu it reads `/proc/version_signature`; check yours with `cat /proc/version_signature`. Under Docker Desktop this is the VM's kernel, not the host's. |
 
 Three TCP ports must be free on the host: **80**, **443**, **8080**. The setup script probes them and exits non-zero with a remediation hint if any are bound.
 

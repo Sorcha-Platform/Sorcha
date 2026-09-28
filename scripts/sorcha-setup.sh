@@ -228,14 +228,47 @@ check_docker_compose_v2() {
     return 1
 }
 
+resolve_upstream_kernel_version() {
+    # Args: <kernel-release-as-docker-reports-it> [signature-file]
+    # Prints the UPSTREAM kernel version (e.g. 7.0.14), or nothing if it cannot be read.
+    #
+    # Distro kernels do not carry the upstream stable level in their release string: Ubuntu's
+    # "7.0.0-34-generic" is upstream 7.0.14, with the fixes backported. Ubuntu records the real
+    # upstream version as the last field of /proc/version_signature
+    # ("Ubuntu 7.0.0-34.34~24.04.1-generic 7.0.14"). It is trusted ONLY when it describes the same
+    # kernel Docker runs on, so a Docker Desktop VM is never judged by its host's signature.
+    local release="$1" signature_file="${2:-/proc/version_signature}"
+    local base
+    base=$(printf '%s' "$release" | grep -oP '^\d+\.\d+(\.\d+)?' | head -1)
+    [ -z "$base" ] && return 0
+
+    if [ -r "$signature_file" ]; then
+        local signature sig_release sig_upstream abi
+        signature=$(head -1 "$signature_file")
+        sig_release=$(printf '%s' "$signature" | awk '{print $2}')
+        sig_upstream=$(printf '%s' "$signature" | awk '{print $NF}')
+        abi="${release%-*}"          # "7.0.0-34-generic" -> "7.0.0-34"
+        if [ -n "$sig_release" ] && [[ "$sig_release" == "${abi}."* || "$sig_release" == "$release" ]] \
+            && [[ "$sig_upstream" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            printf '%s' "$sig_upstream"
+            return 0
+        fi
+    fi
+    printf '%s' "$base"
+}
+
 check_mongo_kernel_compatible() {
-    # #1652 / SERVER-121912 — MongoDB 8.x's bundled TCMalloc violates the kernel rseq ABI from
-    # Linux 6.19, and crashes. The fix (MongoDB 8.3.9+ / 8.0.30+) supports kernels 7.0.14 and later
-    # only, so a kernel in [6.19, 7.0.14) has NO safe MongoDB 8: newer builds refuse to start, and
-    # older ones start without the guard and crash. Read the kernel Docker actually runs on — under
-    # Docker Desktop that is the VM's kernel, not the host's.
-    local kernel
-    kernel=$(docker info --format '{{.KernelVersion}}' 2>/dev/null | grep -oP '^\d+\.\d+(\.\d+)?' | head -1)
+    # #1652 / SERVER-121912 — MongoDB 8.x's bundled TCMalloc violates the rseq ABI as changed in
+    # Linux 6.19, and crashes. The KERNEL fixed it: upstream 7.0.14 restored the old behaviour
+    # (MongoDB SERVER-125742 then removed its refuse-to-start guard for 7.0.14+). So an upstream
+    # kernel in [6.19, 7.0.14) has no safe MongoDB 8: guarded builds (8.0.21-8.0.29, 8.3.0-8.3.8)
+    # refuse to start and unguarded ones crash within about a minute. Judge the UPSTREAM version —
+    # a distro kernel's release string hides it (see resolve_upstream_kernel_version), which made
+    # this check refuse tiny's Ubuntu "7.0.0-34" although it is upstream 7.0.14 and MongoDB 8 runs
+    # on it. Read the kernel Docker actually runs on: under Docker Desktop, the VM's.
+    local release kernel
+    release=$(docker info --format '{{.KernelVersion}}' 2>/dev/null | head -1)
+    kernel=$(resolve_upstream_kernel_version "$release")
     if [ -z "$kernel" ]; then
         warn "Could not read the Docker kernel version; skipping the MongoDB kernel check"
         return 0

@@ -188,3 +188,28 @@ EOF
     [ "$status" -eq 0 ]
     [[ "$output" == *"PowerShell"* ]]
 }
+
+# ---- resolve_upstream_kernel_version (#1652 follow-up) ----
+
+@test "resolve_upstream_kernel_version: Ubuntu kernel resolves to its upstream version from version_signature" {
+    sig="$(mktemp)"; echo "Ubuntu 7.0.0-34.34~24.04.1-generic 7.0.14" > "$sig"
+    run resolve_upstream_kernel_version "7.0.0-34-generic" "$sig"
+    [ "$output" = "7.0.14" ]
+}
+
+@test "resolve_upstream_kernel_version: a signature for a DIFFERENT kernel is ignored (Docker Desktop VM)" {
+    sig="$(mktemp)"; echo "Ubuntu 7.0.0-34.34~24.04.1-generic 7.0.14" > "$sig"
+    run resolve_upstream_kernel_version "6.19.2-linuxkit" "$sig"
+    [ "$output" = "6.19.2" ]
+}
+
+@test "resolve_upstream_kernel_version: no signature file falls back to the release string" {
+    run resolve_upstream_kernel_version "7.0.16-arch1-1" "/nonexistent/version_signature"
+    [ "$output" = "7.0.16" ]
+}
+
+@test "check_mongo_kernel_compatible: refuses an unfixed upstream kernel" {
+    shadow_command docker 0 "7.0.3-custom"
+    run check_mongo_kernel_compatible
+    [ "$status" -eq 1 ]
+}
