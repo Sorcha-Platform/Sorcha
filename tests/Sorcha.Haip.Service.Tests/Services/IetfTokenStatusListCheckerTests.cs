@@ -40,7 +40,7 @@ public class IetfTokenStatusListCheckerTests
     [Fact]
     public void ParseAndReadBit_Set_WhenBitAtIdxIsOne()
     {
-        // Set the bit at index 42 to 1. MSB-first within a byte: bit 42 → byte 5, bit 2.
+        // Set the bit at index 42 to 1. LSB-first within a byte (RFC 9972): bit 42 → byte 5, bit 2.
         var raw = new byte[16];
         SetBit(raw, 42);
         var jwt = BuildSignedEnvelope(raw, bitsPerEntry: 1);
@@ -93,9 +93,9 @@ public class IetfTokenStatusListCheckerTests
     public void ReadBit_TwoBitList_ReadsAcrossBoundary()
     {
         // 2-bit list: entry 0 occupies bits 0-1, entry 1 occupies 2-3, etc.
-        // Entry 3 (bits 6-7) = 0b01 — IETF 0x01 INVALID, i.e. revoked.
+        // Entry 3 (bits 6-7, counted from the least significant bit) = 0b01 — IETF 0x01 INVALID.
         var raw = new byte[2];
-        raw[0] = 0b0000_0001;
+        raw[0] = 0b0100_0000;
 
         IetfTokenStatusListChecker.ReadBit(raw, idx: 3, bitsPerEntry: 2)
             .Should().Be(CredentialStatusValue.Invalid);
@@ -109,7 +109,7 @@ public class IetfTokenStatusListCheckerTests
     {
         var byteIdx = idx / 8;
         var bitIdx = idx % 8;
-        raw[byteIdx] |= (byte)(1 << (7 - bitIdx));
+        raw[byteIdx] |= (byte)(1 << bitIdx);   // IETF: least significant bit first (#1761)
     }
 
     private static string BuildSignedEnvelope(byte[] rawBitstring, int bitsPerEntry, string typ = "statuslist+jwt")

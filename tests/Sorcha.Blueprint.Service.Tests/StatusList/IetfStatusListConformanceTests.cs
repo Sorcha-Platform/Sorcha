@@ -44,7 +44,7 @@ public class IetfStatusListConformanceTests
     {
         // Pins the defect itself, so the fix cannot be undone quietly. Entry 1 is revoked and
         // nothing else is; read back as a 2-bit list, entry 0 comes out as not-valid.
-        var oneBitPerEntry = new byte[] { 0b0100_0000 };   // only our entry 1 is set
+        var oneBitPerEntry = new byte[] { 0b0000_0010 };   // only our entry 1 is set (IETF: LSB-first, #1761)
 
         var entry0AsTwoBit = ReadEntry(oneBitPerEntry, index: 0, bitsPerEntry: 2);
 
@@ -86,22 +86,50 @@ public class IetfStatusListConformanceTests
     }
 
     [Fact]
-    public void APurelyRevocationListStaysOneBitAndIsUnchanged()
+    public void AOneBitList_IsProjectedIntoTheIetfLayout_NotPassedThrough()
     {
-        // bits=1 expresses VALID/INVALID only, which is conformant and needs no re-encoding — so the
-        // common case keeps its cheap pass-through.
+        // #1761 — this used to assert the W3C bytes WERE the IETF list. They are not: W3C packs
+        // most-significant-bit first and IETF least-significant-bit first, so a pass-through put
+        // every entry at its mirror position. A W3C bit set at index 3 must land at IETF bit 3.
         var revocation = BitstringStatusList.Create(Issuer, Register, "revocation");
         revocation.SetBit(3, true);
 
-        var raw = BitstringStatusList.DecompressBitstring(revocation.EncodedList);
+        var packed = IetfStatusListPacker.PackOneBit(revocation, entryCount: 16);
 
-        ReadEntry(raw, 3, 1).Should().Be(1, "entry 3 is revoked");
-        ReadEntry(raw, 2, 1).Should().Be(0, "entry 2 is not");
+        ReadEntry(packed, 3, 1).Should().Be(1, "entry 3 is revoked");
+        ReadEntry(packed, 2, 1).Should().Be(0, "entry 2 is not");
+        packed[0].Should().Be(0b0000_1000);
+    }
+
+    [Fact]
+    public void ThePackerReproducesTheSpecsOwnOneBitExample()
+    {
+        // RFC 9972 §4.1 worked example: statuses 1,0,0,1,1,1,0,1, 1,1,0,0,0,1,0,1 pack to 0xB9 0xA3.
+        // Hand-written expected bytes can only pin the author's assumption; the spec's cannot.
+        var revocation = BitstringStatusList.Create(Issuer, Register, "revocation");
+        int[] statuses = [1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 0, 1];
+        for (var i = 0; i < statuses.Length; i++)
+            revocation.SetBit(i, statuses[i] == 1);
+
+        IetfStatusListPacker.PackOneBit(revocation, statuses.Length).Should().Equal(0xB9, 0xA3);
+    }
+
+    [Fact]
+    public void TwoBitEntriesFillEachByteFromTheLeastSignificantBit()
+    {
+        // entry0 VALID, entry1 INVALID (0x01), entry2 SUSPENDED (0x02), entry3 VALID
+        //   → bits 0-1 = 00, 2-3 = 01, 4-5 = 10, 6-7 = 00 → 0b00_10_01_00
+        var revocation = BitstringStatusList.Create(Issuer, Register, "revocation");
+        var suspension = BitstringStatusList.Create(Issuer, Register, "suspension");
+        revocation.SetBit(1, true);
+        suspension.SetBit(2, true);
+
+        IetfStatusListPacker.PackTwoBit(revocation, suspension, entryCount: 4).Should().Equal(0b00_10_01_00);
     }
 
     /// <summary>
-    /// Reads the unsigned value of entry <paramref name="index"/>, MSB-first within each byte —
-    /// the layout both IETF and W3C use.
+    /// Reads the unsigned value of entry <paramref name="index"/> in the IETF Token Status List
+    /// layout: entries fill each byte from the least significant bit (RFC 9972 §4.1, #1761).
     /// </summary>
     private static int ReadEntry(byte[] raw, int index, int bitsPerEntry)
     {
@@ -111,8 +139,8 @@ public class IetfStatusListConformanceTests
         for (var i = 0; i < bitsPerEntry; i++)
         {
             var bit = start + i;
-            var set = (raw[bit / 8] & (1 << (7 - (bit % 8)))) != 0;
-            value = (value << 1) | (set ? 1 : 0);
+            var set = (raw[bit / 8] & (1 << (bit % 8))) != 0;
+            value |= (set ? 1 : 0) << i;   // the entry's low bit sits at the lower position
         }
 
         return value;

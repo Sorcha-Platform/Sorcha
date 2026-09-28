@@ -104,7 +104,8 @@ function Expand-Zlib([byte[]]$bytes) {
     return $out.ToArray()
 }
 
-# MSB-first within each byte — the ordering BOTH specifications require.
+# MSB-first within each byte — the W3C Bitstring Status List ordering (encodedList).
+# NOT the IETF Token Status List ordering; see Get-EntryValue (#1761).
 function Get-BitMsbFirst([byte[]]$raw, [int]$index) {
     $byteIndex = [math]::Floor($index / 8)
     if ($byteIndex -ge $raw.Length) { return $null }
@@ -112,17 +113,15 @@ function Get-BitMsbFirst([byte[]]$raw, [int]$index) {
     return (($raw[$byteIndex] -band (1 -shl $bitIndex)) -ne 0)
 }
 
-# Reads a `bits`-wide entry value, MSB-first across and within bytes.
+# Reads a `bits`-wide IETF Token Status List entry (status_list.lst). IETF packs from each
+# byte's LEAST significant bit (RFC 9972 §4.1) — the opposite of W3C — and the spec's own
+# examples only decode that way (#1761). Permitted widths divide 8, so no entry straddles a byte.
 function Get-EntryValue([byte[]]$raw, [int]$index, [int]$bits) {
     $start = $index * $bits
-    if ((($start + $bits) / 8) -gt $raw.Length) { return $null }
-    $value = 0
-    for ($b = $start; $b -lt ($start + $bits); $b++) {
-        $set = Get-BitMsbFirst -raw $raw -index $b
-        if ($null -eq $set) { return $null }
-        $value = ($value -shl 1) -bor $(if ($set) { 1 } else { 0 })
-    }
-    return $value
+    $byteIndex = [math]::Floor($start / 8)
+    if ($byteIndex -ge $raw.Length) { return $null }
+    $offset = $start % 8
+    return (($raw[$byteIndex] -shr $offset) -band ((1 -shl $bits) - 1))
 }
 
 # The credential's OWN status references, decoded from its SD-JWT payload.

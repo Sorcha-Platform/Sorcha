@@ -40,9 +40,42 @@ public static class IetfStatusListPacker
     public const byte Suspended = 0x02;
 
     /// <summary>
-    /// Packs <paramref name="entryCount"/> entries into a 2-bit-per-entry array, MSB-first within
-    /// each byte.
+    /// Packs a 1-bit (VALID/INVALID) IETF Token Status List from the revocation list, least
+    /// significant bit first (RFC 9972 §4.1).
     /// </summary>
+    /// <param name="revocation">The revocation list — a set bit means INVALID.</param>
+    /// <param name="entryCount">How many entries to emit.</param>
+    public static byte[] PackOneBit(BitstringStatusList revocation, int entryCount)
+    {
+        ArgumentNullException.ThrowIfNull(revocation);
+        ArgumentOutOfRangeException.ThrowIfNegative(entryCount);
+
+        // #1761 — a 1-bit IETF list is NOT the W3C bitstring's bytes relabelled: W3C packs entries
+        // most-significant-bit first, IETF least-significant-bit first, so a pass-through put every
+        // entry at the mirror position within its byte. Projected entry by entry instead.
+        var packed = new byte[(entryCount + 7) / 8];
+        for (var i = 0; i < entryCount; i++)
+        {
+            if (revocation.GetBit(i))
+                packed[i / 8] |= (byte)(1 << (i % 8));
+        }
+        return packed;
+    }
+
+    /// <summary>
+    /// Packs <paramref name="entryCount"/> entries into a 2-bit-per-entry array, in the IETF Token
+    /// Status List byte layout: entries fill each byte from the LEAST significant bit (#1761).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// RFC 9972 (draft-ietf-oauth-status-list) §4.1: "packed into bytes from the least significant
+    /// bit ('0') to the most significant bit ('7')". The spec's own worked examples only decode
+    /// under that order. This was MSB-first — the W3C Bitstring Status List convention, which is a
+    /// different specification — so Sorcha's own reader agreed with it and every external IETF
+    /// verifier read the wrong entry. Do not "harmonise" this with <c>BitstringStatusList</c>: the
+    /// two specs genuinely differ.
+    /// </para>
+    /// </remarks>
     /// <param name="revocation">The revocation list — a set bit means INVALID.</param>
     /// <param name="suspension">The suspension list — a set bit means SUSPENDED.</param>
     /// <param name="entryCount">How many entries to emit.</param>
@@ -70,20 +103,13 @@ public static class IetfStatusListPacker
 
             if (value == Valid) continue;
 
-            // Entry i occupies bits [2i, 2i+1]; write the 2-bit value MSB-first.
-            WriteBit(packed, 2 * i, (value & 0b10) != 0);
-            WriteBit(packed, 2 * i + 1, (value & 0b01) != 0);
+            // Entry i occupies bits [2i, 2i+1] counted from each byte's least significant bit, and
+            // its value is read with its own low bit at the lower position. Four entries per byte,
+            // never straddling one.
+            var bitOffset = (2 * i) % 8;
+            packed[(2 * i) / 8] |= (byte)(value << bitOffset);
         }
 
         return packed;
-    }
-
-    private static void WriteBit(byte[] buffer, int bitPosition, bool value)
-    {
-        if (!value) return;
-
-        var byteIndex = bitPosition / 8;
-        var bitIndex = bitPosition % 8;
-        buffer[byteIndex] |= (byte)(1 << (7 - bitIndex));
     }
 }
