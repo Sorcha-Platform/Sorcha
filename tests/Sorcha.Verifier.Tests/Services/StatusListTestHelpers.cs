@@ -62,7 +62,9 @@ internal static class StatusListTestHelpers
         string? kid = "did:sorcha:org:abc#citizen-status-signing",
         bool corruptSignature = false,
         bool omitExp = false,
-        string alg = "ES256")
+        string alg = "ES256",
+        int statusListBits = 1,
+        bool omitBits = false)
     {
         using var ms = new MemoryStream();
         using (var compressor = new ZLibStream(ms, CompressionLevel.Optimal, leaveOpen: true))
@@ -75,13 +77,19 @@ internal static class StatusListTestHelpers
             ? new { alg, typ = "statuslist+jwt" }
             : new { alg, kid, typ = "statuslist+jwt" };
 
+        // #1499: `omitBits` builds a payload with no status_list.bits claim at all, exercising the
+        // back-compat default (1) every list published before this fix relied on implicitly.
+        object statusList = omitBits
+            ? new { lst = Base64Url.EncodeToString(compressed) }
+            : new { bits = statusListBits, lst = Base64Url.EncodeToString(compressed) };
+
         var payload = omitExp
             ? (object)new
             {
                 iss = issuer,
                 iat = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 sub = ListUri,
-                status_list = new { bits = 1, lst = Base64Url.EncodeToString(compressed) },
+                status_list = statusList,
             }
             : new
             {
@@ -89,7 +97,7 @@ internal static class StatusListTestHelpers
                 iat = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 exp = exp.ToUnixTimeSeconds(),
                 sub = ListUri,
-                status_list = new { bits = 1, lst = Base64Url.EncodeToString(compressed) },
+                status_list = statusList,
             };
 
         var headerB64 = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(header));
@@ -105,6 +113,20 @@ internal static class StatusListTestHelpers
         }
 
         return $"{headerB64}.{payloadB64}.{Base64Url.EncodeToString(signature)}";
+    }
+
+    /// <summary>
+    /// Decompresses a zlib-wrapped, base64url-encoded <c>status_list.lst</c> value — used to sanity
+    /// check a spec-literal golden vector independently of <see cref="StatusListCache"/> itself.
+    /// </summary>
+    public static byte[] ZlibDecompressBase64Url(string base64UrlLst)
+    {
+        var compressed = Base64Url.DecodeFromChars(base64UrlLst);
+        using var input = new MemoryStream(compressed);
+        using var inflater = new ZLibStream(input, CompressionMode.Decompress);
+        using var output = new MemoryStream();
+        inflater.CopyTo(output);
+        return output.ToArray();
     }
 
     /// <summary>A stub resolver that returns <paramref name="jwk"/> for <paramref name="issuer"/>, else null.</summary>

@@ -122,6 +122,14 @@ public sealed class CitizenStatusListPublisher : ICitizenStatusListPublisher
                 $"Index {indexInList} outside list capacity {list.Capacity}");
         }
 
+        // #1499: LSB-first per draft-ietf-oauth-status-list §4.1 ("packed into bytes from the least
+        // significant bit (0) to the most significant bit (7)") — entry N's bit is byte N/8, bit N%8,
+        // counting from bit 0 (least significant). Verified against the spec's own worked example,
+        // which zlib-decompresses to the raw bytes 0xb9 0xa3 for its 16-entry bits=1 vector; that only
+        // reconstructs under LSB-first, not MSB-first. This is the OPPOSITE convention to W3C
+        // Bitstring Status List (MSB-first — see BitstringStatusList.GetBit/SetBit) — do not "fix"
+        // this to match that spec, they genuinely disagree. See StatusListCache's remarks for the
+        // read-side mirror of this note, and StatusListCacheIetfConformanceTests for the pinned vector.
         var byteIndex = indexInList / 8;
         var bitOffset = indexInList % 8;
         var mask = (byte)(1 << bitOffset);
@@ -201,6 +209,9 @@ public sealed class CitizenStatusListPublisher : ICitizenStatusListPublisher
             sub = BuildStatusListUri(list.OrganizationId, list.ListId),
             status_list = new
             {
+                // Accurately 1: this rail only ever models a single revoked-or-not bit per device
+                // (no suspension state — see #1498). A future width MUST be written using the same
+                // LSB-first, bits-wide packing FlipAsync documents above, and MUST be reflected here.
                 bits = 1,
                 lst = Base64Url.EncodeToString(compressed)
             }
