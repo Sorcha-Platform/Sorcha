@@ -99,8 +99,27 @@ public sealed class RegisterSubscribeTool
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            await _peerClient.SubscribeToRegisterAsync(registerId, normalisedMode, cancellationToken);
+            var subscribed = await _peerClient.SubscribeToRegisterAsync(registerId, normalisedMode, cancellationToken);
             stopwatch.Stop();
+
+            if (!subscribed)
+            {
+                // #1474: a false return means the Peer Service refused (or could not create) the
+                // subscription — report that honestly instead of a blanket "Success" regardless of
+                // outcome.
+                _availabilityTracker.RecordFailure(ServiceName);
+                _logger.LogWarning("Peer Service refused the subscription for register {RegisterId}", registerId);
+                return new RegisterSubscribeResult
+                {
+                    Status = "Error",
+                    Message = $"Peer Service refused the subscription request for register '{registerId}' (mode {normalisedMode}).",
+                    CheckedAt = DateTimeOffset.UtcNow,
+                    ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
+                    RegisterId = registerId,
+                    Mode = normalisedMode
+                };
+            }
+
             _availabilityTracker.RecordSuccess(ServiceName);
 
             return new RegisterSubscribeResult

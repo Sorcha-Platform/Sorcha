@@ -28,6 +28,9 @@ public class RegisterSubscribeToolTests
     {
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_register_subscribe")).Returns(true);
         _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Peer")).Returns(true);
+        _peerClientMock
+            .Setup(c => c.SubscribeToRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
     }
 
     [Fact]
@@ -98,5 +101,26 @@ public class RegisterSubscribeToolTests
         result.Status.Should().Be("Success");
         result.Mode.Should().Be("full-replica");
         _peerClientMock.Verify(c => c.SubscribeToRegisterAsync("reg-1", "full-replica", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// #1474: the client returning <c>false</c> (Peer Service refused the subscription) must not
+    /// be reported as "Success" — the historical bug reported success regardless of outcome.
+    /// </summary>
+    [Fact]
+    public async Task SubscribeAsync_ClientReturnsFalse_ReturnsError()
+    {
+        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_register_subscribe")).Returns(true);
+        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Peer")).Returns(true);
+        _peerClientMock
+            .Setup(c => c.SubscribeToRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var result = await CreateTool().SubscribeAsync("reg-1");
+
+        result.Status.Should().Be("Error");
+        result.Message.Should().Contain("refused");
+        _availabilityTrackerMock.Verify(a => a.RecordFailure("Peer"), Times.Once);
+        _availabilityTrackerMock.Verify(a => a.RecordSuccess("Peer"), Times.Never);
     }
 }
