@@ -182,7 +182,7 @@ public class KeyManagementServiceTests : IDisposable
     [Theory]
     [InlineData("ED25519")]
     [InlineData("NISTP256")]
-    [InlineData("RSA4096")]
+    [InlineData("ML-DSA-65")]   // #1689: RSA4096 is refused for derivation — see DerivationDeterminismTests
     public async Task DeriveKeyAtPathAsync_ShouldSupportDifferentAlgorithms(string algorithm)
     {
         // Arrange

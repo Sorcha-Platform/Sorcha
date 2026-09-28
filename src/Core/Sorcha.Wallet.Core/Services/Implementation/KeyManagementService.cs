@@ -111,6 +111,17 @@ public class KeyManagementService : IKeyManagementService
         if (string.IsNullOrWhiteSpace(algorithm))
             throw new ArgumentException("Algorithm cannot be empty", nameof(algorithm));
 
+        // #1689 — RSA has no standard deterministic key generation, so an RSA key "derived" here
+        // could never be derived again: a wallet created with it could not be recovered from its
+        // mnemonic, and a purpose key re-derived per signature would differ every call. Refused
+        // outright rather than answered with a key nothing can reproduce.
+        if (AlgorithmMapper.TryParseAlgorithm(algorithm, out var requested) && requested == WalletNetworks.RSA4096)
+        {
+            throw new NotSupportedException(
+                "RSA-4096 keys cannot be derived from a recovery phrase, so an RSA-4096 wallet could never be recovered. "
+                + "Use ED25519, NIST P-256, ML-DSA-65 or SLH-DSA.");
+        }
+
         try
         {
             // Use NBitcoin for HD key derivation - master key is the seed

@@ -51,6 +51,32 @@ public sealed class PqcSignatureProvider : IDisposable
     }
 
     /// <summary>
+    /// Deterministically generates an ML-DSA-65 key pair from derived key material (#1689), using the
+    /// FIPS 204 seed-based key generation. Same input, same key — which is what lets a wallet be
+    /// recovered and its purpose keys re-derived.
+    /// </summary>
+    /// <param name="derivedKey">The BIP32-derived key for the path; expanded per algorithm.</param>
+    public CryptoResult<KeySet> GenerateMlDsa65KeyPair(byte[] derivedKey)
+    {
+        try
+        {
+            var seed = PqcSeedDerivation.Expand(derivedKey, "ML-DSA-65", PqcSeedDerivation.MlDsaSeedLength);
+            var privateParams = MLDsaPrivateKeyParameters.FromSeed(MLDsaParameters.ml_dsa_65, seed);
+
+            return CryptoResult<KeySet>.Success(new KeySet
+            {
+                PublicKey = new CryptoKey(WalletNetworks.ML_DSA_65, privateParams.GetPublicKeyEncoded()),
+                PrivateKey = new CryptoKey(WalletNetworks.ML_DSA_65, privateParams.GetEncoded())
+            });
+        }
+        catch (Exception ex)
+        {
+            return CryptoResult<KeySet>.Failure(CryptoStatus.KeyGenerationFailed,
+                $"ML-DSA-65 key derivation failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Signs data using ML-DSA-65 (deterministic mode).
     /// </summary>
     public CryptoResult<byte[]> SignMlDsa65(byte[] data, byte[] privateKey)
@@ -129,6 +155,54 @@ public sealed class PqcSignatureProvider : IDisposable
                 $"SLH-DSA-128s key generation failed: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Deterministically generates an SLH-DSA key pair from derived key material (#1689).
+    /// </summary>
+    /// <remarks>
+    /// FIPS 205 key generation draws SK.seed, SK.prf and PK.seed (n bytes each) and computes PK.root
+    /// from them. The library exposes no from-seed constructor, so the generator is driven by a
+    /// source that yields exactly those 3n bytes — and the result is checked to encode them, so a
+    /// library change in draw order fails loudly instead of producing an unrelated key.
+    /// </remarks>
+    private static CryptoResult<KeySet> GenerateSlhDsaKeyPair(
+        byte[] derivedKey, SlhDsaParameters parameters, int n, WalletNetworks network, string name)
+    {
+        try
+        {
+            var seeds = PqcSeedDerivation.Expand(derivedKey, name, 3 * n);
+            var generator = new SlhDsaKeyPairGenerator();
+            generator.Init(new SlhDsaKeyGenerationParameters(
+                new SecureRandom(new PqcSeedDerivation.ExactBytesRandomGenerator(seeds)), parameters));
+            var keyPair = generator.GenerateKeyPair();
+
+            var privateKey = ((SlhDsaPrivateKeyParameters)keyPair.Private).GetEncoded();
+            if (privateKey.Length < seeds.Length || !privateKey.AsSpan(0, seeds.Length).SequenceEqual(seeds))
+            {
+                return CryptoResult<KeySet>.Failure(CryptoStatus.KeyGenerationFailed,
+                    $"{name} key derivation did not consume the supplied seeds as FIPS 205 specifies; refusing to return a key that could not be re-derived.");
+            }
+
+            return CryptoResult<KeySet>.Success(new KeySet
+            {
+                PublicKey = new CryptoKey(network, ((SlhDsaPublicKeyParameters)keyPair.Public).GetEncoded()),
+                PrivateKey = new CryptoKey(network, privateKey)
+            });
+        }
+        catch (Exception ex)
+        {
+            return CryptoResult<KeySet>.Failure(CryptoStatus.KeyGenerationFailed,
+                $"{name} key derivation failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Deterministically generates an SLH-DSA-SHA2-128s key pair from derived key material (#1689).</summary>
+    public CryptoResult<KeySet> GenerateSlhDsa128sKeyPair(byte[] derivedKey) =>
+        GenerateSlhDsaKeyPair(derivedKey, SlhDsaParameters.slh_dsa_sha2_128s, 16, WalletNetworks.SLH_DSA_128s, "SLH-DSA-128s");
+
+    /// <summary>Deterministically generates an SLH-DSA-SHA2-192s key pair from derived key material (#1689).</summary>
+    public CryptoResult<KeySet> GenerateSlhDsa192sKeyPair(byte[] derivedKey) =>
+        GenerateSlhDsaKeyPair(derivedKey, SlhDsaParameters.slh_dsa_sha2_192s, 24, WalletNetworks.SLH_DSA_192s, "SLH-DSA-192s");
 
     /// <summary>
     /// Signs data using SLH-DSA-SHA2-128s (deterministic mode).

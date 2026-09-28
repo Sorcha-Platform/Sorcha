@@ -452,7 +452,8 @@ public class WalletManagerTests : IDisposable
     public async Task CreateWalletAsync_ShouldSupportDifferentAlgorithms()
     {
         // Arrange
-        var algorithms = new[] { "ED25519", "NISTP256", "RSA4096" };
+        // #1689: RSA4096 is refused (not derivable from a recovery phrase) — see DerivationDeterminismTests.
+        var algorithms = new[] { "ED25519", "NISTP256", "ML-DSA-65" };
 
         // Act & Assert
         foreach (var algorithm in algorithms)

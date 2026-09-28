@@ -633,6 +633,18 @@ public static class WalletEndpoints
                 Status = StatusCodes.Status400BadRequest
             });
         }
+        catch (NotSupportedException ex)
+        {
+            // #1689 — an algorithm whose keys cannot be derived from a recovery phrase (RSA-4096).
+            // Refused up front: a wallet created with it could never be recovered.
+            logger.LogWarning(ex, "Unsupported algorithm for wallet creation");
+            return Results.BadRequest(new ProblemDetails
+            {
+                Title = "Algorithm Not Supported For Recoverable Wallets",
+                Detail = ex.Message,
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to create wallet");
@@ -702,6 +714,18 @@ public static class WalletEndpoints
             return Results.BadRequest(new ProblemDetails
             {
                 Title = "Invalid Request",
+                Detail = ex.Message,
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+        catch (NotSupportedException ex)
+        {
+            // #1689 — an algorithm whose keys cannot be derived from a recovery phrase (RSA-4096).
+            // Refused up front: a wallet created with it could never be recovered.
+            logger.LogWarning(ex, "Unsupported algorithm for wallet recovery");
+            return Results.BadRequest(new ProblemDetails
+            {
+                Title = "Algorithm Not Supported For Recoverable Wallets",
                 Detail = ex.Message,
                 Status = StatusCodes.Status400BadRequest
             });

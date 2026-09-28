@@ -25,7 +25,11 @@ public sealed record CreateWalletRequest
     [StringLength(100, MinimumLength = 1)]
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>Cryptographic algorithm (ED25519, NISTP256, RSA4096).</summary>
+    /// <summary>
+    /// Cryptographic algorithm: ED25519, NISTP256, ML-DSA-65, SLH-DSA-128s, SLH-DSA-192s or ML-KEM-768.
+    /// RSA4096 is refused (400) — it cannot be derived from a recovery phrase, so the wallet could
+    /// never be recovered (#1689).
+    /// </summary>
     [Required]
     public string Algorithm { get; set; } = string.Empty;
 
