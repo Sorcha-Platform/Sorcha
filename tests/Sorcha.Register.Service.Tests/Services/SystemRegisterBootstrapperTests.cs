@@ -14,6 +14,7 @@ using Sorcha.Register.Core.Storage;
 using Sorcha.Register.Models.Constants;
 using Sorcha.Register.Models.Genesis;
 using Sorcha.Register.Service.Services;
+using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.SystemWallet;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceDefaults;
@@ -71,7 +72,8 @@ public class SystemRegisterBootstrapperTests
         SystemRegisterOptions options,
         ILogger<SystemRegisterBootstrapper>? logger = null,
         ISystemWalletSigningService? signingService = null,
-        IHashProvider? hashProvider = null)
+        IHashProvider? hashProvider = null,
+        IPeerServiceClient? peerServiceClient = null)
     {
         var registerManager = new RegisterManager(_mockRepository.Object, _mockEventPublisher.Object);
         var transactionManager = new TransactionManager(_mockRepository.Object, _mockEventPublisher.Object);
@@ -92,6 +94,13 @@ public class SystemRegisterBootstrapperTests
         services.AddSingleton(registerManager);
         services.AddSingleton(systemRegisterService);
         services.AddSingleton(genesisIngestion);
+        // Optional — when omitted, EnsureSystemRegisterPeerSubscriptionAsync's
+        // GetService<IPeerServiceClient>() resolves null and the subscription step is skipped
+        // (existing behaviour for the tests that don't care about it).
+        if (peerServiceClient != null)
+        {
+            services.AddSingleton(peerServiceClient);
+        }
         var sp = services.BuildServiceProvider();
 
         return new SystemRegisterBootstrapper(
@@ -403,6 +412,117 @@ public class SystemRegisterBootstrapperTests
         Func<Task> act = () => RunBootstrapperAsync(bootstrapper, cts.Token);
 
         await act.Should().NotThrowAsync();
+    }
+
+    // ========================================================================
+    // #1474: peer-service subscription outcome must be logged honestly
+    // ========================================================================
+
+    [Fact]
+    public async Task SyncOnly_PeerSubscriptionSucceeds_LogsSubscribedInformation()
+    {
+        _mockRepository
+            .Setup(r => r.GetRegisterAsync(SystemRegisterConstants.SystemRegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.Register
+            {
+                Id = SystemRegisterConstants.SystemRegisterId,
+                Height = 1
+            });
+
+        var peerClient = new Mock<IPeerServiceClient>();
+        peerClient
+            .Setup(p => p.SubscribeToRegisterAsync(
+                SystemRegisterConstants.SystemRegisterId, "full-replica", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var logger = new Mock<ILogger<SystemRegisterBootstrapper>>();
+        var bootstrapper = CreateBootstrapper(
+            new SystemRegisterOptions
+            {
+                BootstrapMode = BootstrapMode.SyncOnly,
+                FastRetryIntervalSeconds = 1,
+                FastRetryDurationSeconds = 10
+            },
+            logger.Object,
+            peerServiceClient: peerClient.Object);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        // Act
+        await RunBootstrapperAsync(bootstrapper, cts.Token);
+
+        // Assert: the honest success line was logged. EnsureSystemRegisterPeerSubscriptionAsync
+        // runs both up front (BootstrapSyncOnlyAsync) and again from PostBootstrapAsync once the
+        // register is found, so this fires (at least) twice — the count itself is not the point.
+        logger.Verify(
+            l => l.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Subscribed peer-service to system register")),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.AtLeastOnce);
+    }
+
+    /// <summary>
+    /// #1474: the bootstrapper used to log "Subscribed peer-service to system register ... for
+    /// replication" UNCONDITIONALLY, regardless of what the Peer Service actually returned — an
+    /// affirmative log line for a subscription that was never created. A false return must produce
+    /// a loud warning instead, and the success line must never appear.
+    /// </summary>
+    [Fact]
+    public async Task SyncOnly_PeerSubscriptionFails_DoesNotLogSuccess_LogsWarningInstead()
+    {
+        _mockRepository
+            .Setup(r => r.GetRegisterAsync(SystemRegisterConstants.SystemRegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.Register
+            {
+                Id = SystemRegisterConstants.SystemRegisterId,
+                Height = 1
+            });
+
+        var peerClient = new Mock<IPeerServiceClient>();
+        peerClient
+            .Setup(p => p.SubscribeToRegisterAsync(
+                SystemRegisterConstants.SystemRegisterId, "full-replica", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var logger = new Mock<ILogger<SystemRegisterBootstrapper>>();
+        var bootstrapper = CreateBootstrapper(
+            new SystemRegisterOptions
+            {
+                BootstrapMode = BootstrapMode.SyncOnly,
+                FastRetryIntervalSeconds = 1,
+                FastRetryDurationSeconds = 10
+            },
+            logger.Object,
+            peerServiceClient: peerClient.Object);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        // Act
+        await RunBootstrapperAsync(bootstrapper, cts.Token);
+
+        // Assert: the success line must NEVER appear for a refused subscription.
+        logger.Verify(
+            l => l.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Subscribed peer-service to system register")),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Never,
+            "a refused subscription must never be logged as if it succeeded");
+
+        // Assert: a loud warning was logged instead (same "runs twice" note as the success test).
+        logger.Verify(
+            l => l.Log(
+                LogLevel.Warning,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("REFUSED")),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.AtLeastOnce);
     }
 
     // ========================================================================

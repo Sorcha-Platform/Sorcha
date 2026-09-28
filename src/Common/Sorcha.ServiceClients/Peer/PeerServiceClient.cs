@@ -395,7 +395,7 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
         }
     }
 
-    public async Task SubscribeToRegisterAsync(
+    public async Task<bool> SubscribeToRegisterAsync(
         string registerId,
         string mode,
         CancellationToken cancellationToken = default)
@@ -409,7 +409,7 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
             if (_httpClient is null)
             {
                 _logger.LogDebug("Peer Service HTTP not configured — skipping register subscription");
-                return;
+                return false;
             }
 
             await SetAuthHeaderAsync(cancellationToken);
@@ -418,19 +418,30 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
                 new { mode },
                 cancellationToken);
 
+            // 409 Conflict — Peer Service already holds a subscription for this register (its own
+            // idempotent-check response). That IS the desired end state, not a failure: a caller
+            // re-subscribing after a restart must not be told the subscription is broken.
+            if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                _logger.LogInformation(
+                    "Register {RegisterId} was already subscribed with mode {Mode}",
+                    registerId, mode);
+                return true;
+            }
+
             if (response.IsSuccessStatusCode)
             {
                 _logger.LogInformation(
                     "Successfully subscribed to register {RegisterId} with mode {Mode}",
                     registerId, mode);
+                return true;
             }
-            else
-            {
-                var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning(
-                    "Failed to subscribe to register {RegisterId}: {StatusCode} - {Body}",
-                    registerId, response.StatusCode, body);
-            }
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Failed to subscribe to register {RegisterId}: {StatusCode} - {Body}",
+                registerId, response.StatusCode, body);
+            return false;
         }
         catch (HttpRequestException ex)
         {
@@ -438,6 +449,7 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
                 ex,
                 "Peer Service unavailable — cannot subscribe to register {RegisterId}",
                 registerId);
+            return false;
         }
         catch (Exception ex)
         {
@@ -445,6 +457,7 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
                 ex,
                 "Failed to subscribe to register {RegisterId} via Peer Service",
                 registerId);
+            return false;
         }
     }
 

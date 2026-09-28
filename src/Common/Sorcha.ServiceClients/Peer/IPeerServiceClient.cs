@@ -76,7 +76,15 @@ public interface IPeerServiceClient
     /// <param name="registerId">Register ID to subscribe to</param>
     /// <param name="mode">Replication mode: "forward-only" or "full-replica"</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    Task SubscribeToRegisterAsync(
+    /// <returns>
+    /// <c>true</c> when the Peer Service accepted the subscription (HTTP 2xx), or already held one
+    /// for this register (HTTP 409 — idempotent, not a failure); <c>false</c> on any other outcome
+    /// (non-success status, unavailable Peer Service, or a transport exception). #1474: callers must
+    /// not assume a subscription exists just because this call returned without throwing — check the
+    /// result and surface a failure loudly, since a node with no real subscription can never
+    /// replicate anything.
+    /// </returns>
+    Task<bool> SubscribeToRegisterAsync(
         string registerId,
         string mode,
         CancellationToken cancellationToken = default);
