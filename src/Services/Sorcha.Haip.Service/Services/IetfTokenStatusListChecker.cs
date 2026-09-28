@@ -221,7 +221,8 @@ public sealed class IetfTokenStatusListChecker : EngineCredentials.IStatusListCh
 
     /// <summary>
     /// Reads the STATUS VALUE of entry <paramref name="idx"/> from a bitstring where each entry
-    /// takes <paramref name="bitsPerEntry"/> bits, MSB-first both across and within bytes.
+    /// takes <paramref name="bitsPerEntry"/> bits, in the IETF Token Status List layout: entries fill
+    /// each byte from its least significant bit (RFC 9972 §4.1; #1761).
     /// </summary>
     /// <remarks>
     /// <para>
@@ -253,15 +254,13 @@ public sealed class IetfTokenStatusListChecker : EngineCredentials.IStatusListCh
         if (idx < 0 || endBit > (long)raw.Length * 8)
             return CredentialStatusValue.Unresolved;
 
-        var value = 0;
-        for (var bit = startBit; bit < endBit; bit++)
-        {
-            var byteIdx = (int)(bit / 8);
-            var bitIdx = (int)(bit % 8);
-            // IETF & W3C use MSB-first bit ordering within a byte.
-            var isSet = (raw[byteIdx] & (1 << (7 - bitIdx))) != 0;
-            value = (value << 1) | (isSet ? 1 : 0);
-        }
+        // #1761 — IETF packs LEAST significant bit first (RFC 9972 §4.1). This read MSB-first, the
+        // W3C Bitstring convention, which is a different spec: it agreed with Sorcha's own writer
+        // and disagreed with every other IETF issuer. Permitted widths divide 8, so an entry never
+        // straddles a byte.
+        var byteIdx = (int)(startBit / 8);
+        var bitOffset = (int)(startBit % 8);
+        var value = (raw[byteIdx] >> bitOffset) & ((1 << bitsPerEntry) - 1);
 
         return value switch
         {
