@@ -29,9 +29,52 @@ namespace Sorcha.Haip.Service.Tests.Services;
 /// </remarks>
 public class IetfStatusValueReadTests
 {
-    // One byte holds four 2-bit entries, MSB-first: [e0 e0][e1 e1][e2 e2][e3 e3].
-    // 0b00_01_10_11 → entry0 VALID, entry1 INVALID, entry2 SUSPENDED, entry3 reserved.
-    private static readonly byte[] AllFourValues = [0b00_01_10_11];
+    // One byte holds four 2-bit entries filled from the LEAST significant bit (RFC 9972 §4.1,
+    // #1761): bits 0-1 = entry0, 2-3 = entry1, 4-5 = entry2, 6-7 = entry3.
+    // 0b11_10_01_00 → entry0 VALID, entry1 INVALID, entry2 SUSPENDED, entry3 reserved.
+    private static readonly byte[] AllFourValues = [0b11_10_01_00];
+
+    private static byte[] SpecLst(string lst)
+    {
+        var compressed = System.Buffers.Text.Base64Url.DecodeFromChars(lst);
+        using var input = new System.IO.MemoryStream(compressed);
+        using var z = new System.IO.Compression.ZLibStream(input, System.IO.Compression.CompressionMode.Decompress);
+        using var output = new System.IO.MemoryStream();
+        z.CopyTo(output);
+        return output.ToArray();
+    }
+
+    // #1761 — the spec's OWN worked examples (draft-ietf-oauth-status-list / RFC 9972 §4.1). A test
+    // built from hand-written bytes can only pin whatever convention its author assumed — which is
+    // how this rail shipped MSB-first with a green suite. These can only pass on the spec's layout.
+    [Theory]
+    [InlineData(0, CredentialStatusValue.Invalid)]
+    [InlineData(1, CredentialStatusValue.Valid)]
+    [InlineData(2, CredentialStatusValue.Valid)]
+    [InlineData(3, CredentialStatusValue.Invalid)]
+    [InlineData(7, CredentialStatusValue.Invalid)]
+    [InlineData(10, CredentialStatusValue.Valid)]
+    [InlineData(13, CredentialStatusValue.Invalid)]
+    [InlineData(15, CredentialStatusValue.Invalid)]
+    public void TheSpecsOneBitExample_ReadsAsTheSpecSays(int index, CredentialStatusValue expected)
+    {
+        // "lst":"eNrbuRgAAhcBXQ" — statuses 1,0,0,1,1,1,0,1, 1,1,0,0,0,1,0,1
+        IetfTokenStatusListChecker.ReadBit(SpecLst("eNrbuRgAAhcBXQ"), index, bitsPerEntry: 1)
+            .Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData(0, CredentialStatusValue.Invalid)]    // 1
+    [InlineData(1, CredentialStatusValue.Suspended)]  // 2
+    [InlineData(2, CredentialStatusValue.Valid)]      // 0
+    [InlineData(3, CredentialStatusValue.Unresolved)] // 3 — application-specific
+    [InlineData(9, CredentialStatusValue.Suspended)]  // 2
+    public void TheSpecsTwoBitExample_ReadsAsTheSpecSays(int index, CredentialStatusValue expected)
+    {
+        // "lst":"eNo76fITAAPfAgc" — statuses 1,2,0,3, 0,1,0,1, 1,2,3,3
+        IetfTokenStatusListChecker.ReadBit(SpecLst("eNo76fITAAPfAgc"), index, bitsPerEntry: 2)
+            .Should().Be(expected);
+    }
 
     [Theory]
     [InlineData(0, CredentialStatusValue.Valid)]      // 0x00 — in good standing
@@ -69,7 +112,7 @@ public class IetfStatusValueReadTests
     {
         // A 1-bit list has no room for SUSPENDED — which is exactly why #1492 had to re-encode
         // rather than relabel when a suspension list appeared.
-        byte[] raw = [0b1000_0000];
+        byte[] raw = [0b0000_0001];   // entry 0 is the LEAST significant bit
 
         IetfTokenStatusListChecker.ReadBit(raw, idx: 0, bitsPerEntry: 1)
             .Should().Be(CredentialStatusValue.Invalid);

@@ -546,7 +546,21 @@ app.MapPost("/api/internal/register-subscriptions", async (
         {
             try
             {
-                await peerClient.SubscribeToRegisterAsync(registerId, "full-replica");
+                var subscribed = await peerClient.SubscribeToRegisterAsync(registerId, "full-replica");
+                if (!subscribed)
+                {
+                    // #1474: a false return means the Peer Service refused (or could not create)
+                    // the subscription — treat it the same as the exception path below, not as a
+                    // silent no-op that leaves the stub register stuck reporting "Syncing" forever.
+                    logger.LogWarning(
+                        "Peer Service refused the subscription for register {RegisterId} — setting Error state",
+                        registerId);
+                    await using var errorScope = scopeFactory.CreateAsyncScope();
+                    var errorManager = errorScope.ServiceProvider.GetRequiredService<RegisterManager>();
+                    await errorManager.UpdateSyncStateAsync(registerId, Sorcha.Register.Models.Enums.RegisterSyncState.Error);
+                    return;
+                }
+
                 await using var scope = scopeFactory.CreateAsyncScope();
                 var scopedManager = scope.ServiceProvider.GetRequiredService<RegisterManager>();
                 await scopedManager.UpdateSyncStateAsync(registerId, Sorcha.Register.Models.Enums.RegisterSyncState.Syncing);

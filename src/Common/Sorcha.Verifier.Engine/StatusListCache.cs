@@ -39,6 +39,22 @@ namespace Sorcha.Verifier.Engine;
 /// ES256-only JWS posture (the citizen wallet's default classical algorithm). A list signed with any
 /// other algorithm is treated as <see cref="StatusListVerdict.Unverifiable"/> — fail closed, never open.
 /// </para>
+/// <para>
+/// Issue #1499. The bit read honours the envelope's declared <c>status_list.bits</c> width instead of
+/// assuming 1-bit entries — a hardcoded 1-bit stride against a <c>bits=2</c> (or wider) list reads
+/// entry <c>N/2</c> for a request at index <c>N</c>, fabricating a status for a credential nobody
+/// touched (the same failure mode #1492 fixed on the sibling IETF rail's write side). The bit order
+/// itself is <b>LSB-first</b> — entry <c>index</c>'s value occupies bits
+/// <c>[index*bits, index*bits+bits)</c> counting from bit 0 (least significant) of byte 0 upward, per
+/// draft-ietf-oauth-status-list §4.1 ("packed into bytes from the least significant bit (0) to the
+/// most significant bit (7)"). That is the OPPOSITE convention to W3C Bitstring Status List (MSB-first,
+/// <c>BitstringStatusList.GetBit/SetBit</c>) — the two specs disagree on this, deliberately, and
+/// conflating them is the mistake to guard against here. Verified directly
+/// against the IETF draft's own worked examples, which zlib-decompress to the raw bytes
+/// <c>0xb9 0xa3</c> (bits=1, 16 entries) and <c>0xc9 0x44 0xf9</c> (bits=2, 12 entries) — both of
+/// which only reconstruct the spec's stated per-index status values under LSB-first packing, not
+/// MSB-first. <c>StatusListCacheIetfConformanceTests</c> pins both vectors verbatim.
+/// </para>
 /// </remarks>
 public sealed class StatusListCache : IStatusListCache
 {
@@ -86,20 +102,50 @@ public sealed class StatusListCache : IStatusListCache
             return StatusListVerdict.Unverifiable;
         }
 
-        var byteIndex = index / 8;
-        var bitOffset = index % 8;
-        if (byteIndex >= entry.Bitstring.Length)
+        // #1499: honour the envelope's declared entry width instead of assuming 1-bit entries. The
+        // spec permits exactly these widths (draft-ietf-oauth-status-list §4.1); anything else means
+        // we have misread the envelope, and guessing a layout would invent a status for whichever
+        // entry we happened to land on — the same reasoning IetfTokenStatusListChecker.ReadBit uses
+        // on the sibling IETF rail.
+        var bits = entry.Bits;
+        if (bits is not (1 or 2 or 4 or 8))
+        {
+            _logger.LogWarning(
+                "StatusListCache: unsupported status_list.bits {Bits} for {Uri} — failing closed",
+                bits, statusListUri);
+            return StatusListVerdict.Unverifiable;
+        }
+
+        var startBit = (long)index * bits;
+        var endBit = startBit + bits;
+        if (endBit > (long)entry.Bitstring.Length * 8)
         {
             // Index outside the list. The list is authentic but says nothing about this credential —
             // an out-of-range index is itself suspicious. Fail closed.
             _logger.LogWarning(
                 "StatusListCache: index {Index} outside list length {Length} for {Uri} — failing closed",
-                index, entry.Bitstring.Length * 8, statusListUri);
+                index, entry.Bitstring.Length * 8 / bits, statusListUri);
             return StatusListVerdict.Unverifiable;
         }
 
-        var revoked = (entry.Bitstring[byteIndex] & (1 << bitOffset)) != 0;
-        return revoked ? StatusListVerdict.Revoked : StatusListVerdict.Active;
+        // LSB-first per draft-ietf-oauth-status-list §4.1: entry `index`'s value occupies bits
+        // [index*bits, index*bits+bits) counting from bit 0 (least significant) of byte 0 upward, and
+        // within that range bit `index*bits + b` carries value-bit `b` (weight 2^b). This is the
+        // OPPOSITE convention to W3C Bitstring Status List's MSB-first packing — see the class remarks.
+        var value = 0;
+        for (var b = 0; b < bits; b++)
+        {
+            var globalBit = startBit + b;
+            var byteIndex = (int)(globalBit / 8);
+            var bitOffset = (int)(globalBit % 8);
+            var isSet = (entry.Bitstring[byteIndex] & (1 << bitOffset)) != 0;
+            if (isSet) value |= 1 << b;
+        }
+
+        // StatusListVerdict has no SUSPENDED state (that is #1498's open follow-up, deliberately out
+        // of scope here) — any non-zero entry value is reported as Revoked, matching the pre-#1499
+        // binary semantics this rail has only ever actually published (1-bit, revoked-or-not).
+        return value == 0 ? StatusListVerdict.Active : StatusListVerdict.Revoked;
     }
 
     /// <inheritdoc />
@@ -212,7 +258,7 @@ public sealed class StatusListCache : IStatusListCache
             return null;
         }
 
-        return new CachedList(parsed.Bitstring, parsed.ExpiresAt.Value, expectedIssuer);
+        return new CachedList(parsed.Bitstring, parsed.ExpiresAt.Value, expectedIssuer, parsed.Bits);
     }
 
     private bool ClockSkewExpired(DateTimeOffset expiresAt, DateTimeOffset now) => now > expiresAt + _clockSkew;
@@ -285,6 +331,12 @@ public sealed class StatusListCache : IStatusListCache
         using var output = new MemoryStream();
         inflater.CopyTo(output);
 
+        // #1499: honour the declared entry width instead of assuming 1-bit entries. Every list this
+        // rail has published so far omits `bits` (implicitly 1) or sets it to 1 explicitly, so the
+        // default preserves every already-published list's meaning exactly.
+        var bits = statusList.TryGetProperty("bits", out var bitsEl) && bitsEl.TryGetInt32(out var b)
+            ? b : 1;
+
         // No +24h default — a list with no exp is rejected by the freshness gate (FR-004).
         DateTimeOffset? exp = payloadJson.TryGetProperty("exp", out var expEl) && expEl.ValueKind == JsonValueKind.Number
             ? DateTimeOffset.FromUnixTimeSeconds(expEl.GetInt64())
@@ -297,7 +349,7 @@ public sealed class StatusListCache : IStatusListCache
         var signingInput = Encoding.ASCII.GetBytes($"{parts[0]}.{parts[1]}");
         var signature = Base64Url.DecodeFromChars(parts[2]);
 
-        return new ParsedList(output.ToArray(), exp, issuer, alg, kid, signingInput, signature);
+        return new ParsedList(output.ToArray(), exp, issuer, alg, kid, signingInput, signature, bits);
     }
 
     /// <summary>Parsed-but-unverified status list: bitstring, claims, and the material to authenticate it.</summary>
@@ -308,8 +360,9 @@ public sealed class StatusListCache : IStatusListCache
         string Alg,
         string? Kid,
         byte[] SigningInput,
-        byte[] Signature);
+        byte[] Signature,
+        int Bits);
 
     /// <summary>Internal cache entry — only ever holds a verified list. Issuer recorded for pinning re-check.</summary>
-    internal sealed record CachedList(byte[] Bitstring, DateTimeOffset ExpiresAt, string Issuer);
+    internal sealed record CachedList(byte[] Bitstring, DateTimeOffset ExpiresAt, string Issuer, int Bits);
 }

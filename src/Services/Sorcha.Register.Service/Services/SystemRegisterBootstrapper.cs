@@ -407,14 +407,30 @@ public class SystemRegisterBootstrapper : BackgroundService
                 return;
             }
 
-            await peerClient.SubscribeToRegisterAsync(
+            var subscribed = await peerClient.SubscribeToRegisterAsync(
                 SystemRegisterConstants.SystemRegisterId,
                 "full-replica",
                 cancellationToken);
 
-            _logger.LogInformation(
-                "Subscribed peer-service to system register {RegisterId} for replication",
-                SystemRegisterConstants.SystemRegisterId);
+            if (subscribed)
+            {
+                _logger.LogInformation(
+                    "Subscribed peer-service to system register {RegisterId} for replication",
+                    SystemRegisterConstants.SystemRegisterId);
+            }
+            else
+            {
+                // #1474: this used to be logged unconditionally regardless of the call's outcome —
+                // affirmative evidence of a subscription that was never created. A SyncOnly node
+                // with no real subscription can never replicate anything, so this must be loud.
+                _logger.LogWarning(
+                    "Peer-service REFUSED (or could not create) the system register subscription for " +
+                    "{RegisterId}. This node will NOT replicate the system register until the " +
+                    "subscription is created (restart this service or call POST " +
+                    "/api/registers/{RegisterId2}/subscribe on peer-service).",
+                    SystemRegisterConstants.SystemRegisterId,
+                    SystemRegisterConstants.SystemRegisterId);
+            }
         }
         catch (Exception ex)
         {

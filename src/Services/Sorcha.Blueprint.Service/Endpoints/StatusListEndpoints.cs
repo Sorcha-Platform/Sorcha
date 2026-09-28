@@ -130,6 +130,9 @@ public static class StatusListEndpoints
         // array — never the 1-bit array relabelled, which would make a reader take entry N from
         // bits 2N..2N+1 and report a status for a credential nobody touched.
         var bitsPerEntry = 1;
+        // #1761 — the IETF view is always a PROJECTION in the IETF byte layout, even at 1 bit: the
+        // W3C bytes above are MSB-first and IETF is LSB-first, so they cannot be passed through.
+        rawBytes = IetfStatusListPacker.PackOneBit(list, list.Size);
         var suspensionListId = CredentialEndpoints.RetargetListIdToPurpose(listId, "suspension");
         var suspensionList = await statusListManager.GetListAsync(suspensionListId, cancellationToken);
 

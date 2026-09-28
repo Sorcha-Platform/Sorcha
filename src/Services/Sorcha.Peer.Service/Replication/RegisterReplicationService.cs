@@ -9,6 +9,7 @@ using Sorcha.Peer.Service.Communication;
 using Sorcha.Peer.Service.Connection;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Discovery;
+using Sorcha.Peer.Service.Models;
 using Sorcha.Peer.Service.Protos;
 using Sorcha.ServiceClients.Register;
 using RelayModels = Sorcha.Peer.Service.Communication.Models;
@@ -316,36 +317,24 @@ public class RegisterReplicationService
                     }
                 } while (batchDocketCount >= batchSize); // More batches if we got a full batch
 
-                // Update subscription state
-                subscription.TotalDocketsInChain = totalDockets;
-                subscription.RecordSyncSuccess(
-                    cacheEntry.GetLatestDocketVersion(),
-                    cacheEntry.GetLatestTransactionVersion());
-
-                _logger.LogInformation(
-                    "Full replica sync completed for register {RegisterId}: {Dockets} dockets, {Txs} transactions from peer {PeerId}",
-                    registerId, totalDockets, totalTransactions, sourcePeer.PeerId);
-
+                // The peer responded and served the chain we asked for — connectivity is healthy
+                // regardless of whether the local write below succeeds.
                 _connectionPool.RecordSuccess(sourcePeer.PeerId);
 
-                // Finalize all cached dockets in order
-                if (_docketFinalizationService != null)
+                // Finalize (persist) every pulled docket and record the HONEST outcome on the
+                // subscription. #1474: sync success means PERSISTED, not merely pulled.
+                var finalizeResult = await FinalizeAndRecordAsync(
+                    registerId, subscription, cacheEntry, totalDockets, totalTransactions,
+                    sourcePeer.PeerId, replicationToken);
+
+                if (finalizeResult.Success)
                 {
-                    var allDockets = cacheEntry.GetDocketsFromVersion(AllDocketVersions);
-                    foreach (var cachedDocket in allDockets)
-                    {
-                        await _docketFinalizationService.FinalizeAsync(
-                            registerId, cachedDocket, replicationToken);
-                    }
+                    _logger.LogInformation(
+                        "Full replica sync completed for register {RegisterId}: {Dockets} dockets, {Txs} transactions from peer {PeerId}",
+                        registerId, totalDockets, totalTransactions, sourcePeer.PeerId);
                 }
 
-                return new FullReplicaSyncResult
-                {
-                    Success = true,
-                    DocketsSynced = totalDockets,
-                    TransactionsSynced = totalTransactions,
-                    SourcePeerId = sourcePeer.PeerId
-                };
+                return finalizeResult;
             }
             catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {
@@ -377,6 +366,100 @@ public class RegisterReplicationService
             ErrorMessage = "All source peers failed",
             DocketsSynced = totalDockets,
             TransactionsSynced = totalTransactions
+        };
+    }
+
+    /// <summary>
+    /// Finalizes (persists) every docket pulled into <paramref name="cacheEntry"/> for this
+    /// replication pass, in chain order, and records the honest outcome on
+    /// <paramref name="subscription"/>. Shared by both pull paths (direct gRPC and relay) so
+    /// "sync success" has exactly one meaning.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// #1474: a replica could report <see cref="RegisterSyncState.FullyReplicated"/> (surfaced to
+    /// operators as "Synced") with <c>ConsecutiveFailures == 0</c> while every docket write to the
+    /// Register Service failed underneath it — <see cref="RegisterSubscription.RecordSyncSuccess"/>
+    /// used to run before the docket was ever handed to <see cref="DocketFinalizationService"/>, so
+    /// the watermark advanced on bytes pulled off the wire, not on bytes actually stored. Sync
+    /// success now means PERSISTED: the watermark and failure counters only move after
+    /// <see cref="DocketFinalizationService.FinalizeAsync"/> reports
+    /// <see cref="FinalizationStatus.Finalized"/> for every docket in this pass.
+    /// </para>
+    /// <para>
+    /// Stops at the first finalization failure — later dockets in the same pass are deliberately
+    /// NOT attempted. Chain order matters: a later docket's <c>PreviousHash</c> is checked against
+    /// the docket before it, so writing past a gap would either be silently accepted against a
+    /// docket this node never actually stored, or rejected for a reason that has nothing to do with
+    /// its own content. The failed docket (and everything after it) is retried on the next sync
+    /// pass, once the underlying cause (e.g. an expired service-to-service token) is resolved.
+    /// </para>
+    /// <para>
+    /// The "already applied" idempotent case counts as success:
+    /// <see cref="DocketFinalizationService.FinalizeAsync"/> already folds a 409 Conflict from the
+    /// Register Service (and an already-finalized in-memory record) into
+    /// <see cref="FinalizationStatus.Finalized"/>, so a docket the register already holds does not
+    /// stop the pass or count as a failure.
+    /// </para>
+    /// <para>
+    /// When no <see cref="DocketFinalizationService"/> is configured (test doubles that omit the
+    /// optional dependency), there is nothing to persist through this path — the pull itself is
+    /// reported as success, matching the pre-#1474 behaviour for that configuration.
+    /// </para>
+    /// </remarks>
+    internal async Task<FullReplicaSyncResult> FinalizeAndRecordAsync(
+        string registerId,
+        RegisterSubscription subscription,
+        RegisterCacheEntry cacheEntry,
+        long totalDockets,
+        long totalTransactions,
+        string? sourcePeerId,
+        CancellationToken cancellationToken)
+    {
+        subscription.TotalDocketsInChain = totalDockets;
+
+        if (_docketFinalizationService != null)
+        {
+            var allDockets = cacheEntry.GetDocketsFromVersion(AllDocketVersions);
+            foreach (var cachedDocket in allDockets)
+            {
+                var finalization = await _docketFinalizationService.FinalizeAsync(
+                    registerId, cachedDocket, cancellationToken);
+
+                if (finalization.Status != FinalizationStatus.Finalized)
+                {
+                    var failureMessage =
+                        $"Docket {cachedDocket.Version} finalization failed: {finalization.ErrorMessage ?? "unknown error"}";
+                    subscription.RecordSyncFailure(failureMessage);
+
+                    _logger.LogWarning(
+                        "Sync for register {RegisterId} pulled {Dockets} docket(s) from peer {PeerId} but failed " +
+                        "to persist docket {DocketNumber}: {Reason}. Stopping this pass — later dockets in the " +
+                        "chain are not finalized until the failure is resolved and the next pass retries.",
+                        registerId, totalDockets, sourcePeerId, cachedDocket.Version, finalization.ErrorMessage);
+
+                    return new FullReplicaSyncResult
+                    {
+                        Success = false,
+                        ErrorMessage = failureMessage,
+                        DocketsSynced = totalDockets,
+                        TransactionsSynced = totalTransactions,
+                        SourcePeerId = sourcePeerId
+                    };
+                }
+            }
+        }
+
+        subscription.RecordSyncSuccess(
+            cacheEntry.GetLatestDocketVersion(),
+            cacheEntry.GetLatestTransactionVersion());
+
+        return new FullReplicaSyncResult
+        {
+            Success = true,
+            DocketsSynced = totalDockets,
+            TransactionsSynced = totalTransactions,
+            SourcePeerId = sourcePeerId
         };
     }
 
@@ -512,35 +595,21 @@ public class RegisterReplicationService
                 hasMore = syncResponse.HasMore;
             }
 
-            // Update subscription state
-            subscription.TotalDocketsInChain = docketsSynced;
-            subscription.RecordSyncSuccess(
-                cacheEntry.GetLatestDocketVersion(),
-                cacheEntry.GetLatestTransactionVersion());
+            // Finalize (persist) every pulled docket and record the HONEST outcome on the
+            // subscription. #1474: sync success means PERSISTED, not merely pulled.
+            var finalizeResult = await FinalizeAndRecordAsync(
+                registerId, subscription, cacheEntry, docketsSynced, transactionsSynced,
+                sourcePeer.PeerId, cancellationToken);
 
-            _logger.LogInformation(
-                "Relay batch sync completed for register {RegisterId}: {Dockets} dockets, {Txs} transactions from peer {PeerId} (relay path: {RelayPath})",
-                registerId, docketsSynced, transactionsSynced, sourcePeer.PeerId,
-                _relayCommunication!.IsReverseStreamActive ? "reverse-stream" : "unary-relay");
-
-            // Finalize all cached dockets in order
-            if (_docketFinalizationService != null)
+            if (finalizeResult.Success)
             {
-                var allDockets = cacheEntry.GetDocketsFromVersion(AllDocketVersions);
-                foreach (var cachedDocket in allDockets)
-                {
-                    await _docketFinalizationService.FinalizeAsync(
-                        registerId, cachedDocket, cancellationToken);
-                }
+                _logger.LogInformation(
+                    "Relay batch sync completed for register {RegisterId}: {Dockets} dockets, {Txs} transactions from peer {PeerId} (relay path: {RelayPath})",
+                    registerId, docketsSynced, transactionsSynced, sourcePeer.PeerId,
+                    _relayCommunication!.IsReverseStreamActive ? "reverse-stream" : "unary-relay");
             }
 
-            return (new FullReplicaSyncResult
-            {
-                Success = true,
-                DocketsSynced = docketsSynced,
-                TransactionsSynced = transactionsSynced,
-                SourcePeerId = sourcePeer.PeerId
-            }, docketsSynced, transactionsSynced);
+            return (finalizeResult, docketsSynced, transactionsSynced);
         }
         catch (OperationCanceledException)
         {
