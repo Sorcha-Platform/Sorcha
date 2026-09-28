@@ -9,6 +9,17 @@
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
 > **▶ 2026-09-26 - Issue loop: 22 issues closed (13 were stale-open, verified against source, and 9 fixed).**
+> **2026-09-28 — critical-issue loop (all live on n1+tiny, core suite 18/18):** #1689 (every wallet algorithm
+> derives from its recovery phrase; five of seven used to return a random key per derivation; RSA wallets refused),
+> #1756 (hybrid PQC half derived, stored and recoverable; closed a hole where hybrid signing could use someone
+> else's PQC wallet), #1199 (SECURITY: SD-JWT verify accepted presenter-appended disclosures, which added or
+> overwrote claims; anchoring now shared by both verifiers), #1474 (a replica reported Synced while no docket
+> persisted), #1761 (IETF status lists are LSB-first per RFC 9972; #1492 had made them MSB-first), #1499 (reader
+> honours `bits`; its requested bit-order flip was proven wrong against the spec). Closed as already fixed: #1502,
+> #1465. ⚠ **Blocked/decisions:** #1759 (primary credential status unchecked) is blocked on TODO(095), because IETF
+> status lists are signed with an EPHEMERAL key and nobody can verify them; #1466 (system blueprint updates need
+> a monotonic-version rule plus an authority decision); #1380 (service principal signs as any org); #1393 (the scope
+> model is mostly unenforced; design task).
 > **2026-09-27:** #1694 (preferences follow the PERSON: keyed by `platform_user_id`, not the per-org `sub`; the
 > Wallet reads them via service-only `/api/internal/users/{id}/notification-preferences`, which accepts either id
 > kind; the default is now ON; live on n1, where preference-lookup failures went from 259/day to 0), #1724 (the
