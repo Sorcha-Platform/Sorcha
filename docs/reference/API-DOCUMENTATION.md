@@ -785,6 +785,8 @@ Rate-limited under `RateLimitPolicies.Strict`.
 | POST | `/api/v1/wallets/{address}/persona/encrypt` | Derive the persona content key, encrypt the plaintext with XChaCha20-Poly1305, return the ciphertext, nonce, and opaque `wrappedKeyRef`. |
 | POST | `/api/v1/wallets/{address}/persona/decrypt` | Derive the persona content key and decrypt the supplied ciphertext. Returns 400 on `wrappedKeyRef ≠ walletAddress` (v1 invariant) via a typed `PersonaKeyRefMismatchException`. |
 
+**IETF status-list signing (#1759)** — `POST /api/internal/status-lists/ietf/sign`, `RequireService` and `client_id == service-blueprint` (any other principal: `403` + `SEC-AUDIT`). Body `SignStatusListTokenRequest { organizationId, subject, bits (1|2|4|8), entriesBase64, ttlSeconds (60–86400) }`; response `SignStatusListTokenResponse { jwt, issuerDid, kid }`. The Wallet builds the whole `statuslist+jwt` and signs it with the organisation's VC-issuance key (same `iss`/`kid` as its credentials). `400` on invalid input, `409` when the organisation has no active VC-issuance key.
+
 ### Key Models
 
 - **PersonaAttributesV1** — Plaintext write-side shape: `GivenName`, `FamilyName`, `FullName`, `DateOfBirth`, `Emails[]`, `Phones[]`, `Addresses[]`, `Nationalities[]`. Each multi-value list capped at 5 with exactly one default.

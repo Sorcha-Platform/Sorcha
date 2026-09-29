@@ -597,6 +597,15 @@ The `CredentialStatus:EnableEmbedding` flag lives in the **Blueprint Service**'s
 
 The direct HTTP issuance path (`POST /api/v1/wallets/{address}/credentials/issue` called outside a Blueprint action) does not embed the claim unless the caller explicitly supplies `statusListUrl` and `statusListIndex` on the request. Callers that want a HAIP-compliant credential through this path must supply the allocation themselves.
 
+### IETF status lists, signed by the issuing organisation (#1759)
+
+An SD-JWT VC's native status mechanism is the IETF Token Status List (`status.status_list`). Every status list Sorcha serves is signed under a DID a verifier can resolve to the key that signed it — there is no configured or ephemeral fallback key.
+
+- **Issuance carries both shapes.** When the request supplies `ietfStatusListUrl` (the Blueprint Service always does), the credential also carries `status.status_list { uri, idx }` at the same index as its W3C `credentialStatus`. The URL gets the same guards as `statusListUrl` (absolute HTTPS, never `sorcha.example`). W3C `credentialStatus` stays until the internal verifier moves to IETF (#1769). A device-bound copy keeps its single citizen-device-list reference.
+- **Blueprint lists are signed here.** `POST /api/internal/status-lists/ietf/sign` (internal; `RequireService` **and** `client_id == service-blueprint`, refused with a `SEC-AUDIT` line otherwise) builds and signs the whole `statuslist+jwt` from typed inputs — `organizationId`, `subject`, `bits`, `entriesBase64`, `ttlSeconds` — with the organisation's VC-issuance key: the same key, `kid` (`did:sorcha:org:{wallet}#vc-issuance-{n}`) and `iss` its credentials carry. It never signs caller-supplied bytes, which would turn the credential key into a forgery oracle. `409` when the organisation has no active VC-issuance key. Contract types: `SignStatusListTokenRequest` / `SignStatusListTokenResponse` in `Sorcha.Wallet.Contracts`. Implementation: `IStatusListTokenSigner` / `StatusListTokenSigner` (EdDSA or ES256; P-256 keys are the raw scalar wallets store).
+- **Citizen-device lists record their signer** (`CitizenDeviceStatusList.SignerDid`), fixed when the list is created: the organisation's issuer DID when it has a VC-issuance key, otherwise a `did:key` of its `sorcha:citizen-status-signing` (slot 109) key — which is what makes a list verifiable for an organisation with no wallet of its own, such as the public org (#1525). A changed signer opens a new list; an existing list is never re-signed under a different key (it fails closed instead).
+- **Device delegations name their list's signer** in the holder-signed `status_issuer` claim. The delegation's `iss` is the holder, which no list can carry, so verifiers pin the delegation's list to `status_issuer`. Issuance refuses a delegation whose list has no recorded signer.
+
 Pre-Feature-093 credentials (no embedded `credentialStatus` claim) remain valid indefinitely and continue to verify via the server-side `CredentialEntity.StatusListUrl` / `StatusListIndex` fallback.
 
 ### Holder Binding Key (Feature 094)
