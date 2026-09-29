@@ -77,7 +77,7 @@ public class StatusListEndpointTests
             .Setup(m => m.GetListAsync(list.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(list);
         _statusListManagerMock
-            .Setup(m => m.AllocateIndexAsync("issuer-1", "register-1", "cred-1", It.IsAny<CancellationToken>()))
+            .Setup(m => m.AllocateIndexAsync("issuer-1", "register-1", "cred-1", It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new StatusListAllocation(
             list.Id,
             42,
@@ -123,7 +123,7 @@ public class StatusListEndpointTests
             .Setup(m => m.GetListAsync(list.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(list);
         _statusListManagerMock
-            .Setup(m => m.AllocateIndexAsync("issuer-1", "register-1", "cred-overflow", It.IsAny<CancellationToken>()))
+            .Setup(m => m.AllocateIndexAsync("issuer-1", "register-1", "cred-overflow", It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Status list issuer-1-register-1-revocation-1 is full"));
 
         var result = await InvokeAllocateIndex(list.Id, new AllocateIndexRequest { CredentialId = "cred-overflow" });

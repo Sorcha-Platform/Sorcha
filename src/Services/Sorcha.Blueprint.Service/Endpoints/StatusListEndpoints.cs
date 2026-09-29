@@ -202,7 +202,7 @@ public static class StatusListEndpoints
         try
         {
             var allocation = await statusListManager.AllocateIndexAsync(
-                list.IssuerWallet, list.RegisterId, request.CredentialId, cancellationToken);
+                list.IssuerWallet, list.RegisterId, request.CredentialId, ct: cancellationToken);
 
             logger.LogInformation(
                 "Allocated index {Index} in list {ListId} for credential {CredentialId}",

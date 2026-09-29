@@ -251,6 +251,30 @@ public class WalletServiceClient : IWalletServiceClient
         return Convert.FromBase64String(body.SignatureBase64);
     }
 
+    /// <inheritdoc />
+    public async Task<Sorcha.Wallet.Contracts.Models.SignStatusListTokenResponse?> SignStatusListTokenAsync(
+        Sorcha.Wallet.Contracts.Models.SignStatusListTokenRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        await SetAuthHeaderAsync(cancellationToken);
+
+        var response = await _httpClient.PostAsJsonAsync(
+            "/api/internal/status-lists/ietf/sign", request, SorchaJson.Options, cancellationToken);
+
+        // 409 alone means "this organisation cannot sign a list". Anything else is a failure of the
+        // call and must not be mistaken for it.
+        if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+        {
+            return null;
+        }
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<Sorcha.Wallet.Contracts.Models.SignStatusListTokenResponse>(
+                   SorchaJson.Options, cancellationToken)
+               ?? throw new InvalidOperationException("Status list signing response was empty.");
+    }
+
     private sealed record IssuerCertKeyResolutionResponse(
         bool Eligible, string? Reason, string? BoundKeySource, string? PublicKeySpkiBase64);
 

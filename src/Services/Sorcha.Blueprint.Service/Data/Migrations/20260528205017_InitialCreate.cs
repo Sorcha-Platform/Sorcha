@@ -150,6 +150,7 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                 {
                     Id = table.Column<string>(type: "text", nullable: false),
                     IssuerWallet = table.Column<string>(type: "text", nullable: false),
+                    IssuerOrganizationId = table.Column<Guid>(type: "uuid", nullable: true),
                     RegisterId = table.Column<string>(type: "text", nullable: false),
                     Purpose = table.Column<string>(type: "text", nullable: false),
                     EncodedList = table.Column<string>(type: "text", nullable: false),

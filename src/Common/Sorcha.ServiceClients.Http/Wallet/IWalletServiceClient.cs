@@ -100,6 +100,18 @@ public interface IWalletServiceClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// TODO(095) / #1759 — has the Wallet Service build and sign an IETF Token Status List with the
+    /// issuing organisation's VC-issuance key, so its <c>iss</c>/<c>kid</c> match the org's credentials.
+    /// </summary>
+    /// <param name="request">What the list says; the Wallet Service decides everything else.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The signed token, or null when the organisation has no active VC-issuance key (409).</returns>
+    /// <exception cref="HttpRequestException">Any other failure — never reported as "no key".</exception>
+    Task<Sorcha.Wallet.Contracts.Models.SignStatusListTokenResponse?> SignStatusListTokenAsync(
+        Sorcha.Wallet.Contracts.Models.SignStatusListTokenRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Feature 181 US4 — sign a pre-computed digest with the org's P-256 certificate-issuing key.
     /// Returns the raw IEEE P1363 <c>r‖s</c> signature; the caller DER-encodes it for a CSR/certificate.
     /// </summary>

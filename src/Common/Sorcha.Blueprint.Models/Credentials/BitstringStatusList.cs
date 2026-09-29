@@ -30,6 +30,18 @@ public class BitstringStatusList
     public required string IssuerWallet { get; set; }
 
     /// <summary>
+    /// The organisation whose credentials this list reports on. Its VC-issuance key signs the IETF
+    /// view of the list (TODO(095) / #1759), so the list's <c>iss</c>/<c>kid</c> match the credentials'.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="IssuerWallet"/> is the wallet that SUBMITTED the issuing action, which is often a
+    /// person or an agent rather than the organisation, so it cannot identify the signing key. Null on
+    /// a list created before #1759; set by the first allocation that names an organisation.
+    /// </remarks>
+    [JsonPropertyName("issuerOrganizationId")]
+    public Guid? IssuerOrganizationId { get; set; }
+
+    /// <summary>
     /// Register where the canonical list is stored as a Control TX.
     /// </summary>
     [JsonPropertyName("registerId")]
