@@ -61,6 +61,14 @@ public sealed class DeviceDelegationIssuer : IDeviceDelegationIssuer
 
         var statusListUri = _statusList.BuildStatusListUri(organizationId, listId);
 
+        // #1759 — the delegation's iss is the HOLDER, but its status list is signed by the org's status
+        // signer. Naming that signer in this holder-signed payload is what lets a verifier pin the list
+        // to it. Without one the status could never be authenticated, so refuse rather than issue a
+        // delegation every verifier would reject.
+        var statusIssuer = await _statusList.GetSignerDidAsync(organizationId, listId, ct)
+            ?? throw new InvalidOperationException(
+                $"Citizen status list org={organizationId} listId={listId} has no recorded signer.");
+
         var holderJwk = await _holderKeys.GetHolderPublicJwkAsync(citizenWalletAddress, ct);
         var holderThumbprint = await _holderKeys.GetHolderJwkThumbprintAsync(citizenWalletAddress, ct);
         var deviceThumbprint = ComputeEcThumbprint(devicePublicJwk);
@@ -85,6 +93,7 @@ public sealed class DeviceDelegationIssuer : IDeviceDelegationIssuer
                 enrolled_at = now.ToUnixTimeSeconds()
             },
             ["cnf"] = new { jwk = devicePublicJwk },
+            ["status_issuer"] = statusIssuer,
             ["status"] = new
             {
                 status_list = new

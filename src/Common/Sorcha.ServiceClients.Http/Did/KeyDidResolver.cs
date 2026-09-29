@@ -11,7 +11,7 @@ namespace Sorcha.ServiceClients.Did;
 /// <summary>
 /// Resolves did:key DIDs by decoding the multibase/multicodec public key.
 ///   - did:key:z6Mk...  (z = base58btc, 0xed01 = ED25519)
-///   - did:key:zDn...   (z = base58btc, 0x1200 = P-256)
+///   - did:key:zDn...   (z = base58btc, 0x1200 = P-256, varint 0x80 0x24)
 ///   - did:key:zQ3s...  (z = base58btc, 0xe701 = secp256k1)
 /// No network calls are required -- the public key is embedded in the DID itself.
 /// </summary>
@@ -23,8 +23,11 @@ public class KeyDidResolver : IDidResolver
     // Multicodec prefixes (varint-encoded)
     private const byte Ed25519Byte0 = 0xed;
     private const byte Ed25519Byte1 = 0x01;
-    private const byte P256Byte0 = 0x12;
-    private const byte P256Byte1 = 0x00;
+    // Multicodec 0x1200 as an UNSIGNED VARINT is 0x80 0x24 — not the raw bytes 0x12 0x00, which is
+    // what this used to match, so no real-world zDn... did:key ever resolved (#1759). The spec's own
+    // P-256 example decodes to 80 24 03….
+    private const byte P256Byte0 = 0x80;
+    private const byte P256Byte1 = 0x24;
     private const byte Secp256k1Byte0 = 0xe7;
     private const byte Secp256k1Byte1 = 0x01;
 
@@ -127,7 +130,15 @@ public class KeyDidResolver : IDidResolver
                     Id = keyId,
                     Type = "Ed25519VerificationKey2020",
                     Controller = did,
-                    PublicKeyMultibase = multibaseValue
+                    PublicKeyMultibase = multibaseValue,
+                    // The issuer-key resolvers consume publicKeyJwk, not multibase (#1759): without it
+                    // an Ed25519 did:key issuer resolves to a key no verifier can use.
+                    PublicKeyJwk = JsonSerializer.SerializeToElement(new
+                    {
+                        kty = "OKP",
+                        crv = "Ed25519",
+                        x = System.Buffers.Text.Base64Url.EncodeToString(keyBytes)
+                    })
                 }
             ],
             Authentication = [keyId],
@@ -145,6 +156,23 @@ public class KeyDidResolver : IDidResolver
             return null;
         }
 
+        // Decompress to x/y — the issuer-key resolvers consume publicKeyJwk (#1759). BouncyCastle is
+        // pure-managed, so this stays loadable in the browser-wasm verifier. A value that is not a
+        // point on the curve is refused rather than published as a key nobody can hold.
+        byte[] x, y;
+        try
+        {
+            var point = Org.BouncyCastle.Asn1.Nist.NistNamedCurves.GetByName("P-256").Curve
+                .DecodePoint(keyBytes).Normalize();
+            x = point.AffineXCoord.GetEncoded();
+            y = point.AffineYCoord.GetEncoded();
+        }
+        catch (Exception ex) when (ex is ArgumentException or FormatException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "P-256 did:key is not a point on the curve: {Did}", did);
+            return null;
+        }
+
         var keyId = $"{did}#{did[DidKeyPrefix.Length..]}";
 
         return new DidDocument
@@ -157,7 +185,14 @@ public class KeyDidResolver : IDidResolver
                     Id = keyId,
                     Type = "JsonWebKey2020",
                     Controller = did,
-                    PublicKeyMultibase = multibaseValue
+                    PublicKeyMultibase = multibaseValue,
+                    PublicKeyJwk = JsonSerializer.SerializeToElement(new
+                    {
+                        kty = "EC",
+                        crv = "P-256",
+                        x = System.Buffers.Text.Base64Url.EncodeToString(x),
+                        y = System.Buffers.Text.Base64Url.EncodeToString(y)
+                    })
                 }
             ],
             Authentication = [keyId],

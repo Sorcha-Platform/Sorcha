@@ -712,8 +712,10 @@ builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.StatusListLedger
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.IStatusListManager,
     Sorcha.Blueprint.Service.Services.StatusListManager>();
 
-// Feature 095: IETF Token Status List serializer (parallel to W3C)
-builder.Services.AddSingleton<IIetfTokenStatusListSerializer, IetfTokenStatusListSerializer>();
+// Feature 095: IETF Token Status List (parallel to W3C)
+// TODO(095) / #1759 — IETF lists are signed by the issuing org's key in the Wallet Service; this
+// per-node cache reuses a signature only while the list's content is unchanged.
+builder.Services.AddSingleton<IetfStatusListTokenCache>();
 
 // Add JWT authentication and authorization (AUTH-002)
 // JWT authentication is now configured via shared ServiceDefaults with auto-key generation

@@ -54,6 +54,17 @@ public sealed record DeviceDelegationCredential
     /// <summary>Status list pointer for revocation lookup.</summary>
     [JsonPropertyName("status")]
     public StatusBlock Status { get; init; } = new();
+
+    /// <summary>Unique credential id.</summary>
+    [JsonPropertyName("jti")]
+    public string? Jti { get; init; }
+
+    /// <summary>
+    /// The DID that signs this delegation's status list (#1759). A verifier requires the list's
+    /// <c>iss</c> to equal it, and resolves the list's key through it.
+    /// </summary>
+    [JsonPropertyName("status_issuer")]
+    public string StatusIssuer { get; init; } = string.Empty;
 }
 
 /// <summary>Device metadata embedded in the delegation credential.</summary>

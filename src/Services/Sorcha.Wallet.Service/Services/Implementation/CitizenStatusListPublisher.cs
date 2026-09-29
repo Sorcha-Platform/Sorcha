@@ -27,12 +27,13 @@ namespace Sorcha.Wallet.Service.Services.Implementation;
 public sealed class CitizenStatusListPublisher : ICitizenStatusListPublisher
 {
     private const int DefaultCapacity = 32_768;
-    private const string StatusListMediaType = "statuslist+jwt";
     private static readonly TimeSpan ListLifetime = TimeSpan.FromHours(24);
 
     private readonly WalletDbContext _db;
     private readonly IWalletRepository _walletRepository;
     private readonly IKeyManagementService _keyManagement;
+    private readonly IIssuanceKeyService _issuanceKeys;
+    private readonly TimeProvider _clock;
     private readonly IConfiguration _configuration;
     private readonly ILogger<CitizenStatusListPublisher> _logger;
 
@@ -41,12 +42,16 @@ public sealed class CitizenStatusListPublisher : ICitizenStatusListPublisher
         WalletDbContext db,
         IWalletRepository walletRepository,
         IKeyManagementService keyManagement,
+        IIssuanceKeyService issuanceKeys,
+        TimeProvider clock,
         IConfiguration configuration,
         ILogger<CitizenStatusListPublisher> logger)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _walletRepository = walletRepository ?? throw new ArgumentNullException(nameof(walletRepository));
         _keyManagement = keyManagement ?? throw new ArgumentNullException(nameof(keyManagement));
+        _issuanceKeys = issuanceKeys ?? throw new ArgumentNullException(nameof(issuanceKeys));
+        _clock = clock ?? throw new ArgumentNullException(nameof(clock));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -57,7 +62,13 @@ public sealed class CitizenStatusListPublisher : ICitizenStatusListPublisher
         string signingWalletAddress,
         CancellationToken ct = default)
     {
-        // Find the org's open (non-full) list with the highest ListId.
+        // #1759 — a list is signed under ONE DID for its whole life, because every credential pointing
+        // at it pins its status to that signer. So the list an index comes from must be signed by the
+        // signer this org would use today: the org's issuer DID when it has a VC-issuance key, else a
+        // did:key of its status key. When that has changed (the org gained a key), a new list is opened
+        // and the old one keeps its signer.
+        var signerDid = await ResolveCurrentSignerDidAsync(organizationId, signingWalletAddress, ct);
+
         var openList = await _db.CitizenDeviceStatusLists
             .Where(l => l.OrganizationId == organizationId)
             .OrderByDescending(l => l.ListId)
@@ -65,7 +76,15 @@ public sealed class CitizenStatusListPublisher : ICitizenStatusListPublisher
 
         var allocated = false;
 
-        if (openList is null || openList.LastAllocatedIndex + 1 >= openList.Capacity)
+        // A list from before #1759 has no recorded signer; it adopts the current one.
+        if (openList is not null && openList.SignerDid is null)
+        {
+            openList.SignerDid = signerDid;
+        }
+
+        if (openList is null
+            || openList.LastAllocatedIndex + 1 >= openList.Capacity
+            || !string.Equals(openList.SignerDid, signerDid, StringComparison.Ordinal))
         {
             var nextListId = openList is null ? 0 : openList.ListId + 1;
             openList = new CitizenDeviceStatusList
@@ -76,15 +95,16 @@ public sealed class CitizenStatusListPublisher : ICitizenStatusListPublisher
                 Bitstring = new byte[DefaultCapacity / 8],
                 RevokedCount = 0,
                 LastAllocatedIndex = -1,
-                GeneratedAt = DateTimeOffset.UtcNow,
-                ExpiresAt = DateTimeOffset.UtcNow.Add(ListLifetime)
+                GeneratedAt = _clock.GetUtcNow(),
+                ExpiresAt = _clock.GetUtcNow().Add(ListLifetime),
+                SignerDid = signerDid
             };
             _db.CitizenDeviceStatusLists.Add(openList);
             allocated = true;
 
             _logger.LogInformation(
-                "Created CitizenDeviceStatusList org={OrgId} listId={ListId} capacity={Capacity}",
-                organizationId, nextListId, DefaultCapacity);
+                "Created CitizenDeviceStatusList org={OrgId} listId={ListId} capacity={Capacity} signer={Signer}",
+                organizationId, nextListId, DefaultCapacity, signerDid);
         }
 
         openList.LastAllocatedIndex += 1;
@@ -168,6 +188,16 @@ public sealed class CitizenStatusListPublisher : ICitizenStatusListPublisher
     }
 
     /// <inheritdoc />
+    public async Task<string?> GetSignerDidAsync(Guid organizationId, int listId, CancellationToken ct = default)
+    {
+        var list = await _db.CitizenDeviceStatusLists
+            .AsNoTracking()
+            .FirstOrDefaultAsync(l => l.OrganizationId == organizationId && l.ListId == listId, ct);
+
+        return list?.SignerDid;
+    }
+
+    /// <inheritdoc />
     public async Task RegenerateAsync(
         Guid organizationId,
         int listId,
@@ -195,42 +225,97 @@ public sealed class CitizenStatusListPublisher : ICitizenStatusListPublisher
         string signingWalletAddress,
         CancellationToken ct)
     {
-        var now = DateTimeOffset.UtcNow;
-        list.GeneratedAt = now;
-        list.ExpiresAt = now.Add(ListLifetime);
+        list.SignerDid ??= await ResolveCurrentSignerDidAsync(list.OrganizationId, signingWalletAddress, ct);
 
-        var compressed = ZlibDeflate(list.Bitstring);
-        var issuer = $"did:sorcha:org:{list.OrganizationId:N}";
-        var payload = new
+        var key = await ResolveSigningKeyAsync(list, signingWalletAddress, ct);
+        try
         {
-            iss = issuer,
-            iat = now.ToUnixTimeSeconds(),
-            exp = list.ExpiresAt.ToUnixTimeSeconds(),
-            sub = BuildStatusListUri(list.OrganizationId, list.ListId),
-            status_list = new
-            {
-                // Accurately 1: this rail only ever models a single revoked-or-not bit per device
-                // (no suspension state — see #1498). A future width MUST be written using the same
-                // LSB-first, bits-wide packing FlipAsync documents above, and MUST be reflected here.
-                bits = 1,
-                lst = Base64Url.EncodeToString(compressed)
-            }
-        };
+            var now = _clock.GetUtcNow();
+            // Accurately 1: this rail only ever models a single revoked-or-not bit per device (no
+            // suspension state — see #1498). A future width MUST be written using the same LSB-first,
+            // bits-wide packing FlipAsync documents above.
+            var jwt = StatusListTokenSigner.BuildAndSign(
+                key,
+                new StatusListTokenSignRequest(
+                    list.OrganizationId,
+                    BuildStatusListUri(list.OrganizationId, list.ListId),
+                    Bits: 1,
+                    list.Bitstring,
+                    (int)ListLifetime.TotalSeconds),
+                now);
 
-        // Feature 138 US1 — identify the signing verification method so the verifier's
-        // IIssuerKeyResolver can match the correct key (it falls back to the first VM matching
-        // the alg when the kid does not resolve, preserving back-compat with already-issued lists).
-        var kid = $"{issuer}#citizen-status-signing";
-        list.SignedJwt = await SignJwtAsync(payload, signingWalletAddress, kid, ct);
+            list.GeneratedAt = now;
+            list.ExpiresAt = now.Add(ListLifetime);
+            list.SignedJwt = jwt;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(key.PrivateKey);
+        }
 
         await _db.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "Regenerated signed status list: org={OrgId} listId={ListId} revoked={Revoked}/{Capacity} bytes={JwtBytes}",
-            list.OrganizationId, list.ListId, list.RevokedCount, list.Capacity, list.SignedJwt.Length);
+            "Regenerated signed status list: org={OrgId} listId={ListId} signer={Signer} revoked={Revoked}/{Capacity} bytes={JwtBytes}",
+            list.OrganizationId, list.ListId, list.SignerDid, list.RevokedCount, list.Capacity, list.SignedJwt.Length);
     }
 
-    private async Task<string> SignJwtAsync(object payload, string signingWalletAddress, string kid, CancellationToken ct)
+    /// <summary>
+    /// The signer this org would use for a NEW list today: its issuer DID when it has an active
+    /// VC-issuance key, otherwise a did:key of its <c>sorcha:citizen-status-signing</c> key.
+    /// </summary>
+    private async Task<string> ResolveCurrentSignerDidAsync(
+        Guid organizationId, string signingWalletAddress, CancellationToken ct)
+    {
+        var material = await _issuanceKeys.GetActiveSigningMaterialAsync(organizationId, ct);
+        if (material is not null)
+        {
+            CryptographicOperations.ZeroMemory(material.PrivateKey);
+            return material.IssuerDid;
+        }
+
+        var (privateKey, publicKey, algorithm) = await DeriveStatusKeyAsync(signingWalletAddress, ct);
+        CryptographicOperations.ZeroMemory(privateKey);
+        return StatusSignerDidKey.FromPublicKey(algorithm, publicKey).Did;
+    }
+
+    /// <summary>
+    /// The key for the signer RECORDED on the list. Refuses rather than sign under anything else: every
+    /// credential pointing at this list pins its status to that signer, so a list signed by a different
+    /// key would be rejected by every verifier — or, worse, trusted by a careless one.
+    /// </summary>
+    private async Task<StatusListSigningKey> ResolveSigningKeyAsync(
+        CitizenDeviceStatusList list, string signingWalletAddress, CancellationToken ct)
+    {
+        var signerDid = list.SignerDid!;
+
+        if (signerDid.StartsWith("did:key:", StringComparison.Ordinal))
+        {
+            var (privateKey, publicKey, algorithm) = await DeriveStatusKeyAsync(signingWalletAddress, ct);
+            var (did, kid) = StatusSignerDidKey.FromPublicKey(algorithm, publicKey);
+            if (!string.Equals(did, signerDid, StringComparison.Ordinal))
+            {
+                CryptographicOperations.ZeroMemory(privateKey);
+                throw new InvalidOperationException(
+                    $"Citizen status list org={list.OrganizationId} listId={list.ListId} is signed by {signerDid}, "
+                    + $"but the status key now derives {did}; refusing to re-sign it under a different key.");
+            }
+            return new StatusListSigningKey(did, kid, privateKey, algorithm);
+        }
+
+        var material = await _issuanceKeys.GetActiveSigningMaterialAsync(list.OrganizationId, ct);
+        if (material is null || !string.Equals(material.IssuerDid, signerDid, StringComparison.Ordinal))
+        {
+            if (material is not null) CryptographicOperations.ZeroMemory(material.PrivateKey);
+            throw new InvalidOperationException(
+                $"Citizen status list org={list.OrganizationId} listId={list.ListId} is signed by {signerDid}, "
+                + "and that organisation has no active VC-issuance key under it; refusing to re-sign.");
+        }
+        return new StatusListSigningKey(material.IssuerDid, material.Kid, material.PrivateKey, material.Algorithm);
+    }
+
+    private async Task<(byte[] PrivateKey, byte[] PublicKey, string Algorithm)> DeriveStatusKeyAsync(
+        string signingWalletAddress, CancellationToken ct)
     {
         var wallet = await _walletRepository.GetByAddressAsync(signingWalletAddress, false, false, false, ct)
             ?? throw new KeyNotFoundException($"Signing wallet {signingWalletAddress} not found");
@@ -238,52 +323,14 @@ public sealed class CitizenStatusListPublisher : ICitizenStatusListPublisher
         var masterKey = await _keyManagement.DecryptPrivateKeyAsync(
             wallet.EncryptedPrivateKey, wallet.EncryptionKeyId);
 
-        var resolvedPath = SorchaDerivationPaths.ResolvePath(SorchaDerivationPaths.CitizenStatusSigning);
-        var parsedPath = new DerivationPath(resolvedPath);
-
+        var parsedPath = new DerivationPath(
+            SorchaDerivationPaths.ResolvePath(SorchaDerivationPaths.CitizenStatusSigning));
         var derivationAlg = WalletAlgorithmClassification.ClassicalAlgorithms.Contains(wallet.Algorithm)
             ? wallet.Algorithm
             : WalletAlgorithmClassification.DefaultClassicalAlgorithm;
 
-        var (privateKey, _) = await _keyManagement.DeriveKeyAtPathAsync(masterKey, parsedPath, derivationAlg);
-
-        try
-        {
-            var alg = derivationAlg.ToUpperInvariant();
-            var joseAlg = alg switch
-            {
-                "ED25519" or "EDDSA" => "EdDSA",
-                "ES256" or "P-256" or "P256" or "NIST-P256" or "NISTP256" or "ECDSA-P256" => "ES256",
-                _ => throw new NotSupportedException($"Unsupported status-list signing algorithm: {derivationAlg}")
-            };
-
-            var header = new { alg = joseAlg, kid, typ = StatusListMediaType };
-            var headerJson = JsonSerializer.SerializeToUtf8Bytes(header);
-            var payloadJson = JsonSerializer.SerializeToUtf8Bytes(payload);
-
-            var headerB64 = Base64Url.EncodeToString(headerJson);
-            var payloadB64 = Base64Url.EncodeToString(payloadJson);
-            var signingInput = Encoding.ASCII.GetBytes($"{headerB64}.{payloadB64}");
-
-            byte[] signature;
-            if (joseAlg == "EdDSA")
-            {
-                signature = Sodium.PublicKeyAuth.SignDetached(signingInput, privateKey);
-            }
-            else
-            {
-                using var ecdsa = ECDsa.Create();
-                ecdsa.ImportECPrivateKey(privateKey, out _);
-                signature = ecdsa.SignData(signingInput, HashAlgorithmName.SHA256);
-            }
-
-            var signatureB64 = Base64Url.EncodeToString(signature);
-            return $"{headerB64}.{payloadB64}.{signatureB64}";
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(privateKey);
-        }
+        var (privateKey, publicKey) = await _keyManagement.DeriveKeyAtPathAsync(masterKey, parsedPath, derivationAlg);
+        return (privateKey, publicKey, derivationAlg);
     }
 
     private static byte[] ZlibDeflate(byte[] input)

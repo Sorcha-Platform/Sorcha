@@ -46,7 +46,8 @@ namespace Sorcha.Wallet.Core.Migrations
                     LastAllocatedIndex = table.Column<int>(type: "integer", nullable: false),
                     GeneratedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     ExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    SignedJwt = table.Column<string>(type: "text", nullable: false)
+                    SignedJwt = table.Column<string>(type: "text", nullable: false),
+                    SignerDid = table.Column<string>(type: "text", nullable: true)
                 },
                 constraints: table =>
                 {

@@ -61,6 +61,8 @@ public sealed class DeviceDelegationIssuerTests
 
         _statusList.Setup(s => s.AllocateIndexAsync(OrgId, OrgWallet, It.IsAny<CancellationToken>()))
             .ReturnsAsync((42, 1337));
+        _statusList.Setup(s => s.GetSignerDidAsync(OrgId, 42, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ListSigner);
         _statusList.Setup(s => s.BuildStatusListUri(OrgId, 42))
             .Returns($"https://verify.test/api/v1/wallet/status/{OrgId}/citizen-devices/42.statuslist+jwt");
 
@@ -69,6 +71,8 @@ public sealed class DeviceDelegationIssuerTests
             _statusList.Object,
             Mock.Of<ILogger<DeviceDelegationIssuer>>());
     }
+
+    private const string ListSigner = "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK";
 
     private static EcP256PublicJwk MakeDeviceJwk()
     {
@@ -170,6 +174,59 @@ public sealed class DeviceDelegationIssuerTests
 
         payload.GetProperty("exp").GetInt64()
             .Should().BeGreaterThan(payload.GetProperty("iat").GetInt64());
+    }
+
+    [Fact]
+    public async Task IssueAsync_NamesTheSignerOfItsStatusList_InsideTheHolderSignedPayload()
+    {
+        // #1759 — the delegation's issuer is the HOLDER, but its status list is signed by the org's
+        // status signer. Naming that signer in the holder-signed payload is what lets a verifier pin
+        // the list to it: a forged list signed by anyone else no longer satisfies the check.
+        var result = await IssueAsync();
+        var payload = JsonDocument.Parse(Decode(result.CompactJwt.Split('.')[1])).RootElement;
+
+        payload.GetProperty("status_issuer").GetString().Should().Be(ListSigner);
+    }
+
+    [Fact]
+    public async Task IssueAsync_StatusListHasNoRecordedSigner_RefusesToIssue()
+    {
+        _statusList.Setup(s => s.GetSignerDidAsync(OrgId, 42, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+
+        var act = () => IssueAsync();
+
+        // A delegation whose status can never be authenticated would fail closed at every verifier.
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task IssueAsync_PayloadValidatesAgainstTheEmbeddedSchema()
+    {
+        // The schema is the published contract for this credential. It had drifted — `jti` was emitted
+        // but not declared, under additionalProperties:false — because nothing checked the real output.
+        var schemaText = ReadEmbeddedSchema();
+        var schema = Json.Schema.JsonSchema.FromText(schemaText);
+        var result = await IssueAsync();
+        var payload = JsonSerializer.Deserialize<JsonElement>(Decode(result.CompactJwt.Split('.')[1]));
+
+        var evaluation = schema.Evaluate(payload, new Json.Schema.EvaluationOptions
+        {
+            OutputFormat = Json.Schema.OutputFormat.List,
+            RequireFormatValidation = true,
+        });
+
+        evaluation.IsValid.Should().BeTrue(string.Join("; ",
+            (evaluation.Details ?? []).Where(d => d.Errors is not null)
+                .SelectMany(d => d.Errors!.Select(e => $"{d.InstanceLocation}: {e.Value}"))));
+    }
+
+    private static string ReadEmbeddedSchema()
+    {
+        var assembly = typeof(VctUris).Assembly;
+        var name = assembly.GetManifestResourceNames().Single(n => n.EndsWith("device-delegation-credential.v1.json"));
+        using var reader = new StreamReader(assembly.GetManifestResourceStream(name)!);
+        return reader.ReadToEnd();
     }
 
     [Fact]

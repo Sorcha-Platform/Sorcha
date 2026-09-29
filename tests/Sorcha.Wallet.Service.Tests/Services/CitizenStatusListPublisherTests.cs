@@ -15,28 +15,38 @@ using Sorcha.Wallet.Core.Data;
 using Sorcha.Wallet.Core.Domain.ValueObjects;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Core.Services.Interfaces;
+using Microsoft.Extensions.Logging.Abstractions;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Crypto.Signers;
+using Sorcha.Cryptography.Core;
+using Sorcha.ServiceClients.Did;
 using Sorcha.Wallet.Service.Services.Implementation;
+using Sorcha.Wallet.Service.Services.Interfaces;
 using Xunit;
 using WalletEntity = Sorcha.Wallet.Core.Domain.Entities.Wallet;
 
 namespace Sorcha.Wallet.Service.Tests.Services;
 
 /// <summary>
-/// Tests for <see cref="CitizenStatusListPublisher"/> (Feature 114).
-/// Uses an EF Core in-memory provider for the WalletDbContext slice and stubs
-/// the wallet repository / key management to provide a real ECDSA P-256 key
-/// pair so signed JWTs round-trip-verify against the derived public key.
+/// Tests for <see cref="CitizenStatusListPublisher"/> (Feature 114, #1759).
 /// </summary>
+/// <remarks>
+/// #1759: every list must be signed under a DID a verifier can resolve to the key that signed it —
+/// the org's issuer DID when it has a VC-issuance key, otherwise a did:key of its status key. Keys
+/// come from the real <see cref="CryptoModule"/> (the format derivation actually returns); the fixture
+/// used to hand the publisher a DER P-256 blob the real derivation never produces. Signatures are
+/// checked by resolving the list's OWN iss through the real <see cref="KeyDidResolver"/>.
+/// </remarks>
 public sealed class CitizenStatusListPublisherTests : IDisposable
 {
     private readonly TestCitizenWalletDbContext _db;
     private readonly Mock<IWalletRepository> _repoMock = new();
     private readonly Mock<IKeyManagementService> _keyMgmtMock = new();
+    private readonly Mock<IIssuanceKeyService> _issuanceKeys = new();
     private readonly IConfiguration _configuration;
     private readonly CitizenStatusListPublisher _publisher;
 
-    private readonly byte[] _signingPrivate;
-    private readonly byte[] _signingPublic;
+    private KeySet _statusKey;
     private const string SigningWalletAddress = "ws1qstatuslist1";
 
     public CitizenStatusListPublisherTests()
@@ -53,10 +63,32 @@ public sealed class CitizenStatusListPublisherTests : IDisposable
             })
             .Build();
 
-        // Real ECDSA P-256 keys so signatures verify in tests
-        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        _signingPrivate = ecdsa.ExportECPrivateKey();
-        _signingPublic = ecdsa.ExportSubjectPublicKeyInfo();
+        UseStatusWallet("ED25519");
+
+        _keyMgmtMock
+            .Setup(k => k.DecryptPrivateKeyAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new byte[64]);
+
+        // A keyless org by default: no VC-issuance key, so lists are signed under a did:key.
+        _issuanceKeys
+            .Setup(k => k.GetActiveSigningMaterialAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IssuanceSigningMaterial?)null);
+
+        _publisher = new CitizenStatusListPublisher(
+            _db,
+            _repoMock.Object,
+            _keyMgmtMock.Object,
+            _issuanceKeys.Object,
+            TimeProvider.System,
+            _configuration,
+            Mock.Of<ILogger<CitizenStatusListPublisher>>());
+    }
+
+    /// <summary>The org's status wallet uses <paramref name="algorithm"/>; derivation returns a real key of it.</summary>
+    private void UseStatusWallet(string algorithm)
+    {
+        var network = algorithm == "ED25519" ? WalletNetworks.ED25519 : WalletNetworks.NISTP256;
+        _statusKey = new CryptoModule().GenerateKeySetAsync(network).GetAwaiter().GetResult().Value!;
 
         _repoMock
             .Setup(r => r.GetByAddressAsync(SigningWalletAddress, false, false, false, It.IsAny<CancellationToken>()))
@@ -65,28 +97,28 @@ public sealed class CitizenStatusListPublisherTests : IDisposable
                 Address = SigningWalletAddress,
                 EncryptedPrivateKey = "encrypted-master",
                 EncryptionKeyId = "k",
-                Algorithm = "ES256",
+                Algorithm = algorithm,
                 Owner = "org-1",
                 Tenant = "tenant-1",
                 Name = "Org Status Signer"
             });
 
+        // A fresh copy per call — the publisher zeroises the private key after signing.
         _keyMgmtMock
-            .Setup(k => k.DecryptPrivateKeyAsync(It.IsAny<string>(), It.IsAny<string>()))
-            .ReturnsAsync(new byte[64]);
+            .Setup(k => k.DeriveKeyAtPathAsync(It.IsAny<byte[]>(), It.IsAny<DerivationPath>(), algorithm))
+            .ReturnsAsync(() => ((byte[])_statusKey.PrivateKey.Key!.Clone(), (byte[])_statusKey.PublicKey.Key!.Clone()));
+    }
 
-        // Return a fresh copy per call — the publisher zeroises the private key after
-        // signing, so a shared array reference would be wiped between invocations.
-        _keyMgmtMock
-            .Setup(k => k.DeriveKeyAtPathAsync(It.IsAny<byte[]>(), It.IsAny<DerivationPath>(), "ES256"))
-            .ReturnsAsync(() => ((byte[])_signingPrivate.Clone(), _signingPublic));
-
-        _publisher = new CitizenStatusListPublisher(
-            _db,
-            _repoMock.Object,
-            _keyMgmtMock.Object,
-            _configuration,
-            Mock.Of<ILogger<CitizenStatusListPublisher>>());
+    /// <summary>Gives the org an active VC-issuance key (a real Ed25519 key) and returns its public key.</summary>
+    private byte[] GiveOrgAnIssuanceKey(Guid orgId, string issuerDid = "did:sorcha:org:ws11qorg")
+    {
+        var keys = new CryptoModule().GenerateKeySetAsync(WalletNetworks.ED25519).GetAwaiter().GetResult().Value!;
+        _issuanceKeys
+            .Setup(k => k.GetActiveSigningMaterialAsync(orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new IssuanceSigningMaterial(
+                orgId, issuerDid, issuerDid + "#vc-issuance-0",
+                (byte[])keys.PrivateKey.Key!.Clone(), "ED25519", 0));
+        return keys.PublicKey.Key!;
     }
 
     [Fact]
@@ -167,44 +199,95 @@ public sealed class CitizenStatusListPublisherTests : IDisposable
     }
 
     [Fact]
-    public async Task SignedJwt_HasExpectedHeader_AndStatusListClaim()
+    public async Task SignedJwt_KeylessOrg_IsAStatusListSignedUnderADidKey()
     {
         var orgId = Guid.NewGuid();
         await _publisher.AllocateIndexAsync(orgId, SigningWalletAddress);
-        var jwt = (await _publisher.GetSignedListAsync(orgId, 0))!;
+        var (header, payload) = Parts((await _publisher.GetSignedListAsync(orgId, 0))!);
 
-        var parts = jwt.Split('.');
-        parts.Should().HaveCount(3);
-
-        var header = JsonDocument.Parse(Decode(parts[0])).RootElement;
-        header.GetProperty("alg").GetString().Should().Be("ES256");
+        header.GetProperty("alg").GetString().Should().Be("EdDSA");
         header.GetProperty("typ").GetString().Should().Be("statuslist+jwt");
+        var iss = payload.GetProperty("iss").GetString()!;
+        iss.Should().StartWith("did:key:z6Mk", "an org with no issuer DID signs as a did:key of its status key");
+        header.GetProperty("kid").GetString().Should().StartWith(iss + "#");
+        (await _publisher.GetSignerDidAsync(orgId, 0)).Should().Be(iss);
 
-        var payload = JsonDocument.Parse(Decode(parts[1])).RootElement;
-        payload.GetProperty("iss").GetString().Should().StartWith("did:sorcha:org:");
-        payload.GetProperty("sub").GetString().Should().StartWith("https://verify.test/api/v1/wallet/status/");
+        payload.GetProperty("sub").GetString().Should().Be(_publisher.BuildStatusListUri(orgId, 0));
         payload.GetProperty("status_list").GetProperty("bits").GetInt32().Should().Be(1);
-        payload.GetProperty("status_list").GetProperty("lst").GetString().Should().NotBeNullOrEmpty();
-        payload.GetProperty("exp").GetInt64()
-            .Should().BeGreaterThan(payload.GetProperty("iat").GetInt64());
+        payload.GetProperty("exp").GetInt64().Should().BeGreaterThan(payload.GetProperty("iat").GetInt64());
+    }
+
+    [Theory]
+    [InlineData("ED25519")]
+    [InlineData("NISTP256")]
+    public async Task SignedJwt_KeylessOrg_VerifiesAgainstTheKeyItsOwnIssResolvesTo(string statusWalletAlgorithm)
+    {
+        UseStatusWallet(statusWalletAlgorithm);
+        var orgId = Guid.NewGuid();
+        await _publisher.AllocateIndexAsync(orgId, SigningWalletAddress);
+        var jwt = (await _publisher.GetSignedListAsync(orgId, 0))!;
+        var (header, payload) = Parts(jwt);
+
+        // What a verifier does: resolve the list's iss, take the verification method its kid names.
+        var doc = await new KeyDidResolver(NullLogger<KeyDidResolver>.Instance)
+            .ResolveAsync(payload.GetProperty("iss").GetString()!);
+        doc.Should().NotBeNull();
+        var vm = doc!.VerificationMethod.Single(v => v.Id == header.GetProperty("kid").GetString());
+
+        VerifiesWith(jwt, vm.PublicKeyJwk!.Value).Should().BeTrue();
     }
 
     [Fact]
-    public async Task SignedJwt_SignatureVerifies_AgainstSigningPublicKey()
+    public async Task SignedJwt_OrgWithIssuanceKey_IsSignedUnderTheOrgsIssuerDidAndKey()
     {
         var orgId = Guid.NewGuid();
+        var orgPublicKey = GiveOrgAnIssuanceKey(orgId);
+
         await _publisher.AllocateIndexAsync(orgId, SigningWalletAddress);
         var jwt = (await _publisher.GetSignedListAsync(orgId, 0))!;
+        var (header, payload) = Parts(jwt);
 
-        var parts = jwt.Split('.');
-        var signingInput = Encoding.ASCII.GetBytes($"{parts[0]}.{parts[1]}");
-        var signature = Base64Url.DecodeFromChars(parts[2]);
+        payload.GetProperty("iss").GetString().Should().Be("did:sorcha:org:ws11qorg",
+            "a device-bound copy's list must carry the same iss as the copy");
+        header.GetProperty("kid").GetString().Should().Be("did:sorcha:org:ws11qorg#vc-issuance-0");
+        VerifiesWith(jwt, OkpJwk(orgPublicKey)).Should().BeTrue();
+    }
 
-        using var verifier = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        verifier.ImportSubjectPublicKeyInfo(_signingPublic, out _);
+    [Fact]
+    public async Task AllocateIndexAsync_OrgGainsAnIssuanceKey_OpensANewListAndTheOldOneKeepsItsSigner()
+    {
+        var orgId = Guid.NewGuid();
+        var (oldList, oldIdx) = await _publisher.AllocateIndexAsync(orgId, SigningWalletAddress);
+        var oldSigner = await _publisher.GetSignerDidAsync(orgId, oldList);
 
-        verifier.VerifyData(signingInput, signature, HashAlgorithmName.SHA256)
-            .Should().BeTrue();
+        GiveOrgAnIssuanceKey(orgId);
+        var (newList, _) = await _publisher.AllocateIndexAsync(orgId, SigningWalletAddress);
+
+        newList.Should().Be(oldList + 1, "a list's signer is fixed, so a new signer needs a new list");
+        (await _publisher.GetSignerDidAsync(orgId, newList)).Should().Be("did:sorcha:org:ws11qorg");
+
+        // Credentials already pointing at the old list must keep resolving the signer they were given.
+        await _publisher.FlipAsync(orgId, oldList, oldIdx, SigningWalletAddress);
+        var (_, payload) = Parts((await _publisher.GetSignedListAsync(orgId, oldList))!);
+        payload.GetProperty("iss").GetString().Should().Be(oldSigner);
+    }
+
+    [Fact]
+    public async Task FlipAsync_OrgSignedListWhoseKeyIsGone_FailsClosedAndKeepsThePreviousToken()
+    {
+        var orgId = Guid.NewGuid();
+        GiveOrgAnIssuanceKey(orgId);
+        var (listId, idx) = await _publisher.AllocateIndexAsync(orgId, SigningWalletAddress);
+        var before = await _publisher.GetSignedListAsync(orgId, listId);
+
+        _issuanceKeys
+            .Setup(k => k.GetActiveSigningMaterialAsync(orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IssuanceSigningMaterial?)null);
+        var act = () => _publisher.FlipAsync(orgId, listId, idx, SigningWalletAddress);
+
+        // Never re-sign under a different key: credentials pin to the recorded signer.
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        (await _publisher.GetSignedListAsync(orgId, listId)).Should().Be(before);
     }
 
     [Fact]
@@ -273,6 +356,92 @@ public sealed class CitizenStatusListPublisherTests : IDisposable
         var act = () => _publisher.FlipAsync(Guid.NewGuid(), 0, 0, SigningWalletAddress);
 
         await act.Should().ThrowAsync<KeyNotFoundException>();
+    }
+
+    [Fact]
+    public async Task FlipAsync_OrgKeyNowSignsUnderADifferentIssuerDid_FailsClosed()
+    {
+        var orgId = Guid.NewGuid();
+        GiveOrgAnIssuanceKey(orgId, "did:sorcha:org:ws11qorg");
+        var (listId, idx) = await _publisher.AllocateIndexAsync(orgId, SigningWalletAddress);
+
+        GiveOrgAnIssuanceKey(orgId, "did:sorcha:org:ws11qsomeoneelse");
+        var act = () => _publisher.FlipAsync(orgId, listId, idx, SigningWalletAddress);
+
+        await act.Should().ThrowAsync<InvalidOperationException>(
+            "credentials pin this list to did:sorcha:org:ws11qorg; a list signed as anyone else is useless to them");
+    }
+
+    [Fact]
+    public async Task FlipAsync_StatusKeyNoLongerDerivesTheRecordedDidKey_FailsClosed()
+    {
+        var orgId = Guid.NewGuid();
+        var (listId, idx) = await _publisher.AllocateIndexAsync(orgId, SigningWalletAddress);
+
+        UseStatusWallet("ED25519"); // a different key now comes out of derivation
+        var act = () => _publisher.FlipAsync(orgId, listId, idx, SigningWalletAddress);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task StatusSignerDidKey_P256_BothYParities_ResolveToTheKeyTheyCameFrom()
+    {
+        // Point compression encodes y's parity in the prefix byte. A random key per run would test one
+        // parity at a time, so a parity bug would fail only half the runs — search seeds for both.
+        var resolver = new KeyDidResolver(NullLogger<KeyDidResolver>.Instance);
+        var seen = new HashSet<int>();
+        for (byte seed = 1; seen.Count < 2 && seed < 64; seed++)
+        {
+            var keys = (await new CryptoModule().GenerateKeySetAsync(
+                WalletNetworks.NISTP256, Enumerable.Repeat(seed, 32).ToArray())).Value!;
+            var pub = keys.PublicKey.Key!;
+            if (!seen.Add(pub[63] & 1)) continue;
+
+            var (did, kid) = StatusSignerDidKey.FromPublicKey("NISTP256", pub);
+            var jwk = (await resolver.ResolveAsync(did))!.VerificationMethod.Single(v => v.Id == kid).PublicKeyJwk!.Value;
+
+            Base64Url.DecodeFromChars(jwk.GetProperty("x").GetString()).Should().Equal(pub[..32]);
+            Base64Url.DecodeFromChars(jwk.GetProperty("y").GetString()).Should().Equal(pub[32..64]);
+        }
+        seen.Should().HaveCount(2, "the test must exercise both y parities");
+    }
+
+    private static (JsonElement Header, JsonElement Payload) Parts(string jwt)
+    {
+        var parts = jwt.Split('.');
+        parts.Should().HaveCount(3);
+        return (JsonDocument.Parse(Decode(parts[0])).RootElement, JsonDocument.Parse(Decode(parts[1])).RootElement);
+    }
+
+    private static JsonElement OkpJwk(byte[] publicKey) => JsonSerializer.SerializeToElement(new
+    {
+        kty = "OKP", crv = "Ed25519", x = Base64Url.EncodeToString(publicKey)
+    });
+
+    /// <summary>Independent verification (BouncyCastle / BCL) — never the publisher's own code.</summary>
+    private static bool VerifiesWith(string jwt, JsonElement jwk)
+    {
+        var parts = jwt.Split('.');
+        var input = Encoding.ASCII.GetBytes($"{parts[0]}.{parts[1]}");
+        var sig = Base64Url.DecodeFromChars(parts[2]);
+        if (jwk.GetProperty("kty").GetString() == "OKP")
+        {
+            var v = new Ed25519Signer();
+            v.Init(false, new Ed25519PublicKeyParameters(Base64Url.DecodeFromChars(jwk.GetProperty("x").GetString()), 0));
+            v.BlockUpdate(input, 0, input.Length);
+            return v.VerifySignature(sig);
+        }
+        using var ecdsa = ECDsa.Create(new ECParameters
+        {
+            Curve = ECCurve.NamedCurves.nistP256,
+            Q = new ECPoint
+            {
+                X = Base64Url.DecodeFromChars(jwk.GetProperty("x").GetString()),
+                Y = Base64Url.DecodeFromChars(jwk.GetProperty("y").GetString()),
+            },
+        });
+        return ecdsa.VerifyData(input, sig, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
     }
 
     private static string Decode(string base64Url)

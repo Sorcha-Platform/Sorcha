@@ -1001,6 +1001,9 @@ public class WalletDbContext : DbContext
                 .HasColumnType("text")
                 .IsRequired();
 
+            entity.Property(e => e.SignerDid)
+                .HasColumnType("text");
+
             entity.HasIndex(e => new { e.OrganizationId, e.ListId })
                 .IsUnique()
                 .HasDatabaseName("IX_CitizenDeviceStatusLists_Org_ListId");

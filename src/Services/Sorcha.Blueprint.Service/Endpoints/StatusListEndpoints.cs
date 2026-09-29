@@ -106,12 +106,24 @@ public static class StatusListEndpoints
             : Results.Ok(response);
     }
 
-    private static async Task<IResult> GetIetfStatusList(
+    /// <summary>
+    /// Serves a list's IETF Token Status List view, signed by the issuing organisation's VC-issuance
+    /// key inside the Wallet Service (TODO(095) / #1759). Internal so the endpoint tests can invoke it.
+    /// </summary>
+    /// <remarks>
+    /// There is no configured key and no ephemeral fallback. A list is served signed by the key a
+    /// verifier resolves from the issuer's DID, or not at all: 409 when no such key exists, 503 when
+    /// signing fails. An unverifiable list reads as "nothing is revoked" to a careless verifier and as
+    /// an outage to a careful one — it is worse than none.
+    /// </remarks>
+    internal static async Task<IResult> GetIetfStatusList(
         string listId,
         IStatusListManager statusListManager,
-        IIetfTokenStatusListSerializer serializer,
+        Sorcha.ServiceClients.Wallet.IWalletServiceClient walletClient,
+        IetfStatusListTokenCache tokenCache,
         IConfiguration configuration,
         Sorcha.Blueprint.Service.Configuration.StatusListUrls.Resolved urls,
+        TimeProvider clock,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -121,18 +133,23 @@ public static class StatusListEndpoints
         if (list == null)
             return Results.NotFound(new { error = $"Status list '{listId}' not found" });
 
-        var rawBytes = await statusListManager.GetRawBitstringBytesAsync(listId, cancellationToken);
-        if (rawBytes == null)
-            return Results.NotFound(new { error = $"Status list '{listId}' bitstring not available" });
+        if (list.IssuerOrganizationId is not { } organizationId)
+        {
+            logger.LogWarning(
+                "IETF status list {ListId} has no issuing organisation recorded, so no key can sign it", listId);
+            return Results.Problem(
+                "This status list has no issuing organisation recorded, so it cannot be signed verifiably.",
+                statusCode: StatusCodes.Status409Conflict);
+        }
 
         // IETF models suspension as a VALUE inside one list, where W3C uses a separate list per
         // purpose. So the IETF view is a PROJECTION of Sorcha's two 1-bit lists into one 2-bit
         // array — never the 1-bit array relabelled, which would make a reader take entry N from
         // bits 2N..2N+1 and report a status for a credential nobody touched.
-        var bitsPerEntry = 1;
         // #1761 — the IETF view is always a PROJECTION in the IETF byte layout, even at 1 bit: the
-        // W3C bytes above are MSB-first and IETF is LSB-first, so they cannot be passed through.
-        rawBytes = IetfStatusListPacker.PackOneBit(list, list.Size);
+        // W3C bytes are MSB-first and IETF is LSB-first, so they cannot be passed through.
+        var bitsPerEntry = 1;
+        var entries = IetfStatusListPacker.PackOneBit(list, list.Size);
         var suspensionListId = CredentialEndpoints.RetargetListIdToPurpose(listId, "suspension");
         var suspensionList = await statusListManager.GetListAsync(suspensionListId, cancellationToken);
 
@@ -143,43 +160,50 @@ public static class StatusListEndpoints
                                  ?? list;
 
             bitsPerEntry = 2;
-            rawBytes = IetfStatusListPacker.PackTwoBit(revocationList, suspensionList, revocationList.Size);
+            entries = IetfStatusListPacker.PackTwoBit(revocationList, suspensionList, revocationList.Size);
         }
 
-        // Build the full sub URL per IETF Token Status List spec
-        var subUrl = $"{urls.IetfBaseUrl}/{listId}";
-
-        // Signing key: configurable for production, ephemeral fallback for dev.
-        // The ephemeral key fallback is intentional for pre-release — no startup validation
-        // is needed until the production deployment guide exists. The runtime warning below
-        // is sufficient to flag misconfiguration during development.
-        // TODO(095): Wire real signing key from issuer wallet via IHaipIssuerCoKeyService
-        var signingKeyBase64 = configuration.GetValue<string>("StatusList:IetfSigningKey");
-        var algorithm = configuration.GetValue<string>("StatusList:IetfSigningAlgorithm") ?? "ES256";
-
-        byte[] signingKey;
-        if (!string.IsNullOrWhiteSpace(signingKeyBase64))
+        var maxAge = configuration.GetValue<int>("StatusList:CacheMaxAgeSeconds", 300);
+        var contentKey = IetfStatusListTokenCache.ContentKey(organizationId, bitsPerEntry, entries);
+        if (tokenCache.TryGet(listId, contentKey, out var cachedJwt, out var remaining))
         {
-            signingKey = Convert.FromBase64String(signingKeyBase64);
+            return new CachedResult(Results.Text(cachedJwt, "application/statuslist+jwt"), remaining);
         }
-        else
+
+        Sorcha.Wallet.Contracts.Models.SignStatusListTokenResponse? signed;
+        try
+        {
+            signed = await walletClient.SignStatusListTokenAsync(
+                new Sorcha.Wallet.Contracts.Models.SignStatusListTokenRequest
+                {
+                    OrganizationId = organizationId,
+                    // sub MUST equal the status_list.uri credentials carry (RFC 9972 §5.1).
+                    Subject = $"{urls.IetfBaseUrl}/{listId}",
+                    Bits = bitsPerEntry,
+                    EntriesBase64 = Convert.ToBase64String(entries),
+                    TtlSeconds = maxAge,
+                },
+                cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Signing IETF status list {ListId} for organisation {OrgId} failed", listId, organizationId);
+            return Results.Problem(
+                "The status list could not be signed right now. Retry shortly.",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        if (signed is null)
         {
             logger.LogWarning(
-                "IETF Token Status List endpoint using ephemeral signing key for list {ListId}. " +
-                "Set StatusList:IetfSigningKey in production — JWTs signed with ephemeral keys are unverifiable.",
-                listId);
-            using var ecdsa = System.Security.Cryptography.ECDsa.Create(
-                System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
-            signingKey = ecdsa.ExportECPrivateKey();
+                "IETF status list {ListId}: organisation {OrgId} has no active VC-issuance key", listId, organizationId);
+            return Results.Problem(
+                "The issuing organisation has no active VC-issuance key, so its status list cannot be signed.",
+                statusCode: StatusCodes.Status409Conflict);
         }
 
-        var issuerDid = $"did:sorcha:org:{list.IssuerWallet}";
-        var maxAge = configuration.GetValue<int>("StatusList:CacheMaxAgeSeconds", 300);
-        var jwt = serializer.Serialize(rawBytes, subUrl, issuerDid, bitsPerEntry, signingKey, algorithm, maxAge);
-
-        // Return as application/statuslist+jwt with cache headers
-        var result = Results.Text(jwt, "application/statuslist+jwt", statusCode: 200);
-        return new CachedResult(result, maxAge);
+        tokenCache.Put(listId, contentKey, signed.Jwt, maxAge);
+        return new CachedResult(Results.Text(signed.Jwt, "application/statuslist+jwt"), maxAge);
     }
 
     private static async Task<IResult> AllocateIndex(

@@ -17,7 +17,8 @@ public sealed class StatusListTokenSigner : IStatusListTokenSigner
     public const string MediaType = "statuslist+jwt";
 
     private const int MinTtlSeconds = 60;
-    private const int MaxTtlSeconds = 86_400;
+    /// <summary>The longest lifetime a status list token may declare (24 hours).</summary>
+    public const int MaxTtlSeconds = 86_400;
 
     private readonly IIssuanceKeyService _issuanceKeys;
     private readonly TimeProvider _clock;
@@ -49,43 +50,56 @@ public sealed class StatusListTokenSigner : IStatusListTokenSigner
 
         try
         {
-            var joseAlg = ToJoseAlgorithm(material.Algorithm);
-            var now = _clock.GetUtcNow().ToUnixTimeSeconds();
-
-            var header = new Dictionary<string, object>
-            {
-                ["alg"] = joseAlg,
-                ["kid"] = material.Kid,
-                ["typ"] = MediaType,
-            };
-            var payload = new Dictionary<string, object>
-            {
-                ["iss"] = material.IssuerDid,
-                ["sub"] = request.Subject,
-                ["iat"] = now,
-                ["exp"] = now + request.TtlSeconds,
-                ["ttl"] = request.TtlSeconds,
-                ["status_list"] = new Dictionary<string, object>
-                {
-                    ["bits"] = request.Bits,
-                    ["lst"] = Base64Url.EncodeToString(Deflate(request.Entries)),
-                },
-            };
-
-            var headerB64 = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(header));
-            var payloadB64 = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(payload));
-            var signingInput = Encoding.ASCII.GetBytes($"{headerB64}.{payloadB64}");
-            var signature = Sign(signingInput, material.PrivateKey, joseAlg);
-
-            return new StatusListToken(
-                $"{headerB64}.{payloadB64}.{Base64Url.EncodeToString(signature)}",
-                material.IssuerDid,
-                material.Kid);
+            var jwt = BuildAndSign(
+                new StatusListSigningKey(material.IssuerDid, material.Kid, material.PrivateKey, material.Algorithm),
+                request, _clock.GetUtcNow());
+            return new StatusListToken(jwt, material.IssuerDid, material.Kid);
         }
         finally
         {
             CryptographicOperations.ZeroMemory(material.PrivateKey);
         }
+    }
+
+    /// <summary>
+    /// Builds and signs a status list token with an explicit key. The one place a
+    /// <c>statuslist+jwt</c> is assembled in the Wallet Service — the org-key path above and the
+    /// citizen-device publisher both come through here. Does NOT wipe <paramref name="key"/>.
+    /// </summary>
+    public static string BuildAndSign(StatusListSigningKey key, StatusListTokenSignRequest request, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(request);
+        Validate(request);
+
+        var joseAlg = ToJoseAlgorithm(key.Algorithm);
+        var iat = now.ToUnixTimeSeconds();
+
+        var header = new Dictionary<string, object>
+        {
+            ["alg"] = joseAlg,
+            ["kid"] = key.Kid,
+            ["typ"] = MediaType,
+        };
+        var payload = new Dictionary<string, object>
+        {
+            ["iss"] = key.IssuerDid,
+            ["sub"] = request.Subject,
+            ["iat"] = iat,
+            ["exp"] = iat + request.TtlSeconds,
+            ["ttl"] = request.TtlSeconds,
+            ["status_list"] = new Dictionary<string, object>
+            {
+                ["bits"] = request.Bits,
+                ["lst"] = Base64Url.EncodeToString(Deflate(request.Entries)),
+            },
+        };
+
+        var headerB64 = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(header));
+        var payloadB64 = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(payload));
+        var signingInput = Encoding.ASCII.GetBytes($"{headerB64}.{payloadB64}");
+        var signature = Sign(signingInput, key.PrivateKey, joseAlg);
+        return $"{headerB64}.{payloadB64}.{Base64Url.EncodeToString(signature)}";
     }
 
     private static void Validate(StatusListTokenSignRequest request)
@@ -135,3 +149,10 @@ public sealed class StatusListTokenSigner : IStatusListTokenSigner
         return output.ToArray();
     }
 }
+
+/// <summary>A key to sign a status list token with, and the identity it signs under.</summary>
+/// <param name="IssuerDid">The token's <c>iss</c>.</param>
+/// <param name="Kid">The token's <c>kid</c> — must resolve through <paramref name="IssuerDid"/> to this key.</param>
+/// <param name="PrivateKey">Raw private key bytes in the wallet's format.</param>
+/// <param name="Algorithm">The wallet algorithm name (e.g. <c>ED25519</c>, <c>NISTP256</c>).</param>
+public sealed record StatusListSigningKey(string IssuerDid, string Kid, byte[] PrivateKey, string Algorithm);

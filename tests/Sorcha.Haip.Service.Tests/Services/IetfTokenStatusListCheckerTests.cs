@@ -20,7 +20,7 @@ namespace Sorcha.Haip.Service.Tests.Services;
 /// <summary>
 /// Feature 095 US4 — verifies <see cref="IetfTokenStatusListChecker"/> can round-
 /// trip a signed envelope produced by the issuer-side
-/// <see cref="Sorcha.Blueprint.Service.Services.IetfTokenStatusListSerializer"/>.
+/// the Blueprint Service's IETF status list endpoint.
 /// The signature verification closes the real security boundary — malicious
 /// endpoints cannot fake a revocation state.
 /// </summary>

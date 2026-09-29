@@ -64,4 +64,11 @@ public interface ICitizenStatusListPublisher
     /// embedding in delegation credentials' <c>status.status_list.uri</c>.
     /// </summary>
     string BuildStatusListUri(Guid organizationId, int listId);
+
+    /// <summary>
+    /// The DID the given list is signed under (its <c>iss</c>), fixed when the list was created (#1759).
+    /// Credentials pointing at the list carry it so a verifier knows whose signature to require.
+    /// </summary>
+    /// <returns>The signer DID, or null for an unknown list (or one created before #1759 and never re-signed).</returns>
+    Task<string?> GetSignerDidAsync(Guid organizationId, int listId, CancellationToken ct = default);
 }
