@@ -8,7 +8,7 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
-> **▶ 2026-09-29 — #1759 + TODO(095) + #1768 (branch `feature/1759-status-list-org-key`):** every IETF status list
+> **▶ 2026-09-29 — #1759 + TODO(095) + #1768 — ✅ MERGED + LIVE on n1 and tiny (#1770, #1772):** every IETF status list
 > is now signed under a DID a verifier can resolve — Blueprint lists by the issuing org's VC-issuance key inside the
 > Wallet Service (no ephemeral key), citizen-device lists by a per-list recorded signer (org DID, or `did:key` of
 > slot 109 for orgs with no wallet); delegations name it in `status_issuer`. One `StatusListTokenVerifier` serves
@@ -19,6 +19,11 @@
 > could never verify; P-256 `did:key`s never resolved (varint 0x80 0x24); a StopHost race turned 45 Blueprint
 > integration tests red. Follow-ups: **#1769** (retire W3C `credentialStatus`; the W3C lists are unsigned).
 > **Existing credentials without IETF status are refused at SorchaWallet gates — re-issue.**
+> **Live proof (n1):** CredentialLifecycle 39/39; AIAS cyber 5/5, where new path 5 has a REVOKED Assured Identity
+> declined at the SorchaWallet gate with the sealed outcome reason `Revoked`; core suite 18/18; an org-signed list
+> verified independently with OpenSSL against the org's published DID key. The live run found that the gateway had
+> no anonymous route for `/api/v1/credentials/ietf-status-lists/**` (401 for everyone), fixed in #1772. Also filed:
+> **#1771** (P-256 organisations cannot issue: SdJwtService signing).
 > **▶ 2026-09-26 - Issue loop: 22 issues closed (13 were stale-open, verified against source, and 9 fixed).**
 > **2026-09-28 — critical-issue loop (all live on n1+tiny, core suite 18/18):** #1689 (every wallet algorithm
 > derives from its recovery phrase; five of seven used to return a random key per derivation; RSA wallets refused),
