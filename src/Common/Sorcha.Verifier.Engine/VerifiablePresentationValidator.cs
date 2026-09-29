@@ -263,6 +263,20 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
                 layerState.IssuerSignature = IssuerLayer.UnresolvedNotRequired;
             }
 
+            // ── 4c. The PRIMARY credential's own status (#1759) ─────────────────────
+            //   Only the delegation's status used to be checked, so a credential its issuer had revoked
+            //   was accepted while the wrapping delegation stayed active. The list is pinned to the
+            //   credential's own issuer and authenticated against the key that issuer's DID resolves to.
+            //   Anything but a verified Active refuses. A credential whose only reference is a W3C
+            //   credentialStatus is refused too: that list is served unsigned (#1769), so its answer
+            //   cannot be authenticated, and accepting it would accept a status nobody checked.
+            var primaryStatusError = await CheckPrimaryStatusAsync(credentialPayload.Value, issuer, layerState, ct);
+            if (primaryStatusError is not null)
+            {
+                errors.Add(primaryStatusError);
+                return Failure(errors, BuildLayers(false));
+            }
+
             // ── 5. Verify KB-JWT signature ────────────────────────────────────────
             //   Delegation model → the delegation's device key; server-custody → the credential's
             //   own cnf holder key. VerifyJwsSignature dispatches on the KB-JWT header alg
@@ -561,6 +575,51 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             }
         }
         return disclosed;
+    }
+
+    /// <summary>
+    /// Checks the presented credential's own status reference (#1759). Returns null when it may be
+    /// accepted — no reference at all, or a verified Active IETF entry — else the refusal message.
+    /// </summary>
+    private async Task<string?> CheckPrimaryStatusAsync(
+        JsonElement credentialPayload, string issuer, LayerState layerState, CancellationToken ct)
+    {
+        if (credentialPayload.TryGetProperty("status", out var status)
+            && status.ValueKind == JsonValueKind.Object
+            && status.TryGetProperty("status_list", out var sl)
+            && sl.ValueKind == JsonValueKind.Object
+            && sl.TryGetProperty("uri", out var uriEl) && uriEl.ValueKind == JsonValueKind.String
+            && sl.TryGetProperty("idx", out var idxEl) && idxEl.ValueKind == JsonValueKind.Number)
+        {
+            var verdict = await _statusListCache.CheckAsync(uriEl.GetString()!, idxEl.GetInt32(), issuer, ct);
+            RecordRevocation(layerState, verdict, uriEl.GetString(), idxEl.GetInt32());
+            return verdict switch
+            {
+                StatusListVerdict.Active => null,
+                StatusListVerdict.Revoked => "Credential has been revoked via status list.",
+                _ => "Credential status list could not be authenticated; failing closed.",
+            };
+        }
+
+        if (credentialPayload.TryGetProperty("credentialStatus", out _))
+        {
+            RecordRevocation(layerState, StatusListVerdict.Unverifiable, uri: null, idx: null);
+            return "Credential carries only a W3C credentialStatus, which cannot be authenticated; failing closed.";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Records the primary credential's status on the Revocation layer. It replaces the delegation's:
+    /// a delegation whose status is anything but Active has already refused the presentation before
+    /// this step runs, so the only verdict it can overwrite is an Active one.
+    /// </summary>
+    private static void RecordRevocation(LayerState layerState, StatusListVerdict verdict, string? uri, int? idx)
+    {
+        layerState.Revocation = verdict;
+        layerState.StatusListUri = uri;
+        layerState.StatusListIndex = idx;
     }
 
     // ─────────────────────────── delegation chain ────────────────────────────────

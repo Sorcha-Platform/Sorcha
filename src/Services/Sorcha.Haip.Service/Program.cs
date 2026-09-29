@@ -119,7 +119,7 @@ builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustResolverReg
     new Sorcha.Blueprint.Engine.Credentials.TrustResolverRegistry(
         sp.GetServices<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>()));
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.IStatusListChecker>(sp =>
-    sp.GetRequiredService<IetfTokenStatusListChecker>());
+    sp.GetRequiredService<Sorcha.Blueprint.Engine.Credentials.IetfTokenStatusListChecker>());
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustEvaluator,
     Sorcha.Blueprint.Engine.Credentials.TrustEvaluator>();
 builder.Services.AddScoped<HaipPresentationVerifier>(sp => new HaipPresentationVerifier(
@@ -158,7 +158,7 @@ builder.Services.AddSingleton<RequestObjectSigner>();
 // Feature 095 US4: status list fetch for the verifier. Registered as HttpClient-
 // backed so the underlying connection pool is shared and timeouts are governed
 // by the standard .NET HTTP resilience pipeline.
-builder.Services.AddHttpClient<IetfTokenStatusListChecker>(client =>
+builder.Services.AddHttpClient<Sorcha.Blueprint.Engine.Credentials.IetfTokenStatusListChecker>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);
 });

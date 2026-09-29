@@ -422,6 +422,7 @@ public class WalletServiceClient : IWalletServiceClient
         string? displayName = null,
         string? registerId = null,
         string? suspensionStatusListUrl = null,
+        string? ietfStatusListUrl = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -445,6 +446,7 @@ public class WalletServiceClient : IWalletServiceClient
                 statusListPurpose,
                 registerId,
                 suspensionStatusListUrl,
+                ietfStatusListUrl,
                 skipRecipientStore,
                 issuerOrgName,
                 tenantId,

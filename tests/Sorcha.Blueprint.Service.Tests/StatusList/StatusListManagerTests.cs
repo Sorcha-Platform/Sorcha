@@ -217,6 +217,18 @@ public class StatusListManagerTests
     }
 
     [Fact]
+    public async Task AllocateIndexAsync_ReturnsTheIetfViewOfTheSameList()
+    {
+        // #1759 — the IETF view is served per revocation list id and projects BOTH purposes, so the
+        // credential's status_list.uri is the IETF endpoint for the revocation list. It must equal the
+        // sub the endpoint signs, or every verifier rejects the list (RFC 9972 §5.1).
+        var alloc = await _manager.AllocateIndexAsync("issuer-ietf", "register-1", null, OrgA);
+
+        alloc.IetfStatusListUrl.Should().Be(
+            $"https://test.example/api/v1/credentials/ietf-status-lists/{alloc.ListId}");
+    }
+
+    [Fact]
     public async Task AllocateIndexAsync_ListBelongsToAnotherOrganization_IsRefusedWithoutConsumingAnIndex()
     {
         var first = await _manager.AllocateIndexAsync("issuer-shared", "register-1", null, OrgA);

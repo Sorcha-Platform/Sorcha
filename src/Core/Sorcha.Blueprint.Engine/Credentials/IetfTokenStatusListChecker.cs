@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Microsoft.Extensions.Logging;
 using Sorcha.Verifier.Engine;
 
-using CredentialStatusValue = Sorcha.Blueprint.Engine.Credentials.CredentialStatusValue;
-using EngineCredentials = Sorcha.Blueprint.Engine.Credentials;
-
-namespace Sorcha.Haip.Service.Services;
+namespace Sorcha.Blueprint.Engine.Credentials;
 
 /// <summary>
-/// Feature 095 US4 — HAIP's reader for IETF Token Status Lists: fetches the list and reads the
+/// Feature 095 US4 — the reader for IETF Token Status Lists, used by HAIP and the Blueprint Service: fetches the list and reads the
 /// credential's entry, after the engine's shared <see cref="StatusListTokenVerifier"/> has decided
 /// the list may be believed.
 /// </summary>
@@ -19,7 +17,7 @@ namespace Sorcha.Haip.Service.Services;
 /// it. The key now comes from the credential issuer's DID by <c>kid</c>, and <c>iss</c>/<c>sub</c> are
 /// pinned — the same rule the engine's status cache applies, because it is the same code.
 /// </remarks>
-public sealed class IetfTokenStatusListChecker : EngineCredentials.IStatusListChecker
+public sealed class IetfTokenStatusListChecker : IStatusListChecker
 {
     private readonly HttpClient _httpClient;
     private readonly StatusListTokenVerifier _verifier;
@@ -40,7 +38,7 @@ public sealed class IetfTokenStatusListChecker : EngineCredentials.IStatusListCh
     /// runs FailClosed.
     /// </summary>
     public async Task<CredentialStatusValue> CheckAsync(
-        EngineCredentials.StatusReference statusRef, CancellationToken cancellationToken = default)
+        StatusReference statusRef, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(statusRef);
         if (string.IsNullOrWhiteSpace(statusRef.Uri) || statusRef.Index < 0)

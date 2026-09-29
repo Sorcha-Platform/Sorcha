@@ -245,6 +245,7 @@ public interface IWalletServiceClient
         // reversible, so a credential needs an entry per purpose — sharing one bit reports a
         // suspended credential as revoked.
         string? suspensionStatusListUrl = null,
+        string? ietfStatusListUrl = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

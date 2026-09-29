@@ -69,6 +69,40 @@ public class StatusReference
     /// against the key resolved from this DID; without it the list cannot be authenticated.
     /// </summary>
     public string? ExpectedIssuer { get; set; }
+
+    /// <summary>
+    /// Which status-list format the reference points at. The two are read by different checkers
+    /// (<see cref="RoutingStatusListChecker"/>); an IETF list handed to the W3C reader fails to parse.
+    /// </summary>
+    public StatusListKind Kind { get; set; } = StatusListKind.W3cBitstring;
+}
+
+/// <summary>The status-list format a <see cref="StatusReference"/> points at.</summary>
+public enum StatusListKind
+{
+    /// <summary>W3C Bitstring Status List (<c>credentialStatus</c>, a JSON credential, MSB-first).</summary>
+    W3cBitstring = 0,
+
+    /// <summary>IETF Token Status List (<c>status.status_list</c>, a signed JWT, LSB-first).</summary>
+    IetfTokenStatusList = 1,
+}
+
+/// <summary>
+/// Sends each status reference to the checker that can read its format (#1759). Credentials carry both
+/// shapes while the W3C rail is retired (#1769); without routing, the W3C reader is handed an IETF JWT,
+/// reports Unresolved, and a fail-closed gate refuses a credential in good standing.
+/// </summary>
+public sealed class RoutingStatusListChecker(IStatusListChecker w3cBitstring, IStatusListChecker ietfTokenStatusList)
+    : IStatusListChecker
+{
+    /// <inheritdoc />
+    public Task<CredentialStatusValue> CheckAsync(StatusReference statusRef, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(statusRef);
+        return statusRef.Kind == StatusListKind.IetfTokenStatusList
+            ? ietfTokenStatusList.CheckAsync(statusRef, cancellationToken)
+            : w3cBitstring.CheckAsync(statusRef, cancellationToken);
+    }
 }
 
 /// <summary>

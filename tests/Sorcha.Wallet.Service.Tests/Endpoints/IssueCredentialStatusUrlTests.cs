@@ -103,7 +103,7 @@ public sealed class IssueCredentialStatusUrlTests
             .Returns(Task.CompletedTask);
     }
 
-    private static IssueCredentialRequest Request(string? statusUrl, int? statusIndex) => new()
+    private static IssueCredentialRequest Request(string? statusUrl, int? statusIndex, string? ietfUrl = null) => new()
     {
         CredentialType = "CyberEssentialsUacCredential",
         Claims = new Dictionary<string, object> { ["level"] = "silver" },
@@ -113,6 +113,7 @@ public sealed class IssueCredentialStatusUrlTests
         StatusListUrl = statusUrl,
         StatusListIndex = statusIndex,
         StatusListPurpose = statusUrl is null ? null : "revocation",
+        IetfStatusListUrl = ietfUrl,
     };
 
     [Fact]
@@ -149,6 +150,38 @@ public sealed class IssueCredentialStatusUrlTests
         status["statusListCredential"].Should().Be(url);
         status["statusListIndex"].Should().Be("3");
         status["statusPurpose"].Should().Be("revocation");
+    }
+
+    [Fact]
+    public async Task IssueCredential_WithIetfStatusUrl_EmbedsBothShapesAtTheSameIndex()
+    {
+        // #1759 — an SD-JWT VC's native status mechanism is the IETF Token Status List
+        // (status.status_list). The W3C entry stays beside it until the internal verifier moves (#1769).
+        var w3c = "https://n1.sorcha.dev/api/v1/credentials/status-lists/ws1qissuer1-r1-revocation-1";
+        var ietf = "https://n1.sorcha.dev/api/v1/credentials/ietf-status-lists/ws1qissuer1-r1-revocation-1";
+
+        var result = await InvokeAsync(WalletAddress, Request(w3c, 3, ietf));
+
+        result.GetType().Name.Should().Contain("Ok");
+        _signedClaims!.Should().ContainKey("credentialStatus");
+        var statusList = _signedClaims["status"].Should().BeOfType<Dictionary<string, object>>().Subject["status_list"]
+            .Should().BeOfType<Dictionary<string, object>>().Subject;
+        statusList["uri"].Should().Be(ietf);
+        statusList["idx"].Should().Be(3, "both shapes address the same entry");
+    }
+
+    [Theory]
+    [InlineData("http://n1.sorcha.dev/api/v1/credentials/ietf-status-lists/x")]
+    [InlineData("https://sorcha.example/api/v1/credentials/ietf-status-lists/x")]
+    [InlineData("not a url")]
+    public async Task IssueCredential_UnusableIetfStatusUrl_IsRefusedBeforeSigning(string ietf)
+    {
+        var w3c = "https://n1.sorcha.dev/api/v1/credentials/status-lists/ws1qissuer1-r1-revocation-1";
+
+        var result = await InvokeAsync(WalletAddress, Request(w3c, 3, ietf));
+
+        result.GetType().Name.Should().Contain("BadRequest", "a status URL is signed into the credential for good");
+        _stored.Should().BeEmpty();
     }
 
     private async Task<IResult> InvokeAsync(string walletAddress, IssueCredentialRequest request)

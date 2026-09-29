@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
+using Sorcha.Blueprint.Engine.Credentials;
 using Sorcha.Haip.Service.Services;
 
 using Xunit;
@@ -26,7 +27,7 @@ public sealed class StatusCheckerCompositionTests
     [Fact]
     public void Program_ResolvesTheIssuerPinnedIetfStatusChecker()
     {
-        using var factory = new WebApplicationFactory<IetfTokenStatusListChecker>().WithWebHostBuilder(b =>
+        using var factory = new WebApplicationFactory<HaipPresentationVerifier>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Development");
             b.UseSetting("ConnectionStrings:redis", "localhost:6379,abortConnect=false");

@@ -67,12 +67,17 @@ public interface IStatusListManager
 /// suspension then clears a revocation bit the spec says can never be cleared. One index is
 /// reserved across both lists so a credential carries one entry per purpose.
 /// </remarks>
+/// <param name="IetfStatusListUrl">
+/// The IETF Token Status List view of the same entry (#1759) — the revocation list's id on the IETF
+/// endpoint, which projects both purposes into one 2-bit list. Equals the <c>sub</c> that endpoint signs.
+/// </param>
 public record StatusListAllocation(
     string ListId,
     int Index,
     string StatusListUrl,
     string SuspensionListId,
-    string SuspensionListUrl);
+    string SuspensionListUrl,
+    string? IetfStatusListUrl = null);
 
 /// <summary>
 /// Result of setting a bit in a status list.
@@ -96,6 +101,7 @@ public class StatusListManager : IStatusListManager, IDisposable
     private readonly StatusListLedgerReconciler _reconciler;
     private readonly ILogger<StatusListManager> _logger;
     private readonly string _baseUrl;
+    private readonly string _ietfBaseUrl;
 
     public StatusListManager(
         ILogger<StatusListManager> logger,
@@ -109,6 +115,7 @@ public class StatusListManager : IStatusListManager, IDisposable
         _store = store;
         _reconciler = reconciler;
         _baseUrl = urls.BaseUrl;
+        _ietfBaseUrl = urls.IetfBaseUrl;
     }
 
     /// <summary>
@@ -264,7 +271,8 @@ public class StatusListManager : IStatusListManager, IDisposable
 
             var url = $"{_baseUrl}/{list.Id}";
             var suspensionUrl = $"{_baseUrl}/{suspension.Id}";
-            return new StatusListAllocation(list.Id, index, url, suspension.Id, suspensionUrl);
+            return new StatusListAllocation(
+                list.Id, index, url, suspension.Id, suspensionUrl, $"{_ietfBaseUrl}/{list.Id}");
         }
         finally
         {

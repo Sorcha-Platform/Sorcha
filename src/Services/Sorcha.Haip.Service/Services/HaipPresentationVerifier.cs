@@ -395,7 +395,10 @@ public class HaipPresentationVerifier
         // issuer's DID resolves to, never by a key the list carries itself.
         var (ietfUri, ietfIdx) = TryExtractIetfStatusList(claims);
         if (ietfUri is not null && ietfIdx.HasValue)
-            return new StatusReference { Uri = ietfUri, Index = ietfIdx.Value, ExpectedIssuer = issuer };
+            return new StatusReference
+            {
+                Uri = ietfUri, Index = ietfIdx.Value, ExpectedIssuer = issuer, Kind = StatusListKind.IetfTokenStatusList,
+            };
 
         var (w3cUri, w3cIdx, w3cPurpose) = TryExtractW3cCredentialStatus(claims);
         if (w3cUri is not null && w3cIdx.HasValue)

@@ -16,7 +16,7 @@ using Org.BouncyCastle.Crypto.Signers;
 using Org.BouncyCastle.Security;
 using SimpleBase;
 
-using Sorcha.Haip.Service.Services;
+using Sorcha.Blueprint.Engine.Credentials;
 using Sorcha.ServiceClients.Did;
 using Sorcha.Verifier.Engine;
 
@@ -25,7 +25,7 @@ using Xunit;
 using CredentialStatusValue = Sorcha.Blueprint.Engine.Credentials.CredentialStatusValue;
 using StatusReference = Sorcha.Blueprint.Engine.Credentials.StatusReference;
 
-namespace Sorcha.Haip.Service.Tests.Services;
+namespace Sorcha.Blueprint.Engine.Tests.Credentials;
 
 /// <summary>
 /// #1768 — HAIP's IETF status checker verified a list against the JWK embedded in THAT LIST's own
@@ -117,7 +117,7 @@ public sealed class IetfTokenStatusListCheckerTests
         return new IetfTokenStatusListChecker(http, verifier, NullLogger<IetfTokenStatusListChecker>.Instance);
     }
 
-    private static HttpClient Serve(string body, HttpStatusCode status = HttpStatusCode.OK, Action? onRequest = null)
+    private static HttpClient Serve(string body, HttpStatusCode status = HttpStatusCode.OK, System.Action? onRequest = null)
     {
         var handler = new Mock<HttpMessageHandler>();
         handler.Protected()

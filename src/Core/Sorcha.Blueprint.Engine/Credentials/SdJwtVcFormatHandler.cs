@@ -200,7 +200,7 @@ public class SdJwtVcFormatHandler : ICredentialFormatHandler
             if (uri is not null && idx is not null)
                 return new StatusReference
                 {
-                    Uri = uri, Index = idx.Value,
+                    Uri = uri, Index = idx.Value, Kind = StatusListKind.IetfTokenStatusList,
                     ExpectedIssuer = string.IsNullOrEmpty(issuerId) ? null : issuerId,
                 };
         }
@@ -293,7 +293,14 @@ public class SdJwtVcFormatHandler : ICredentialFormatHandler
             var uri = ReadString(sl, "uri");
             var idx = ReadInt(sl, "idx");
             if (uri is not null && idx is not null)
-                all.Add(new StatusReference { Uri = uri, Index = idx.Value });
+                all.Add(new StatusReference
+                {
+                    Uri = uri, Index = idx.Value, Kind = StatusListKind.IetfTokenStatusList,
+                    // #1759 — an IETF list is believed only when signed by the credential's own issuer.
+                    ExpectedIssuer = payload.TryGetProperty("iss", out var iss) && iss.ValueKind == JsonValueKind.String
+                        ? iss.GetString()
+                        : null,
+                });
         }
 
         if (payload.TryGetProperty("credentialStatus", out var w3c))
