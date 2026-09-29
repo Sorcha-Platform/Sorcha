@@ -30,6 +30,9 @@
 #       no-portrait -> the SAME perfect card, but presenting an Assured Identity issued WITHOUT a
 #                      portrait -> the agent hard-rejects before scoring; NO credential; the inbox
 #                      decision notice matches the 'no-portrait' catalogue entry.
+#       revoked     -> an Assured Identity its issuer has REVOKED is presented -> the SorchaWallet
+#                      gate declines it (#1759: the engine checks the presented credential's own
+#                      org-signed IETF status list); NO cyber credential.
 #     Each cyber path first mints (and, where required, portrait-strips) its own Assured Identity
 #     credential on the IDENTITY register, then presents it into the Cyber register's questionnaire
 #     action — the one new cross-register assumption M2 introduces (credential issued on one
@@ -844,6 +847,44 @@ try {
     $failures += "CYBER NO PORTRAIT: threw — $($_.Exception.Message)"
 }
 
+
+# ---------------------------------------------------------------------------
+# Cyber rehearsal 5/5 — REVOKED (a revoked credential is refused AT THE GATE, #1759)
+# ---------------------------------------------------------------------------
+# The other four paths prove the same presentation mechanics are ACCEPTED for a credential in good
+# standing — the counterfactual this path needs. Here the issuer revokes first, so the only thing that
+# differs is the credential's own status list entry, which the engine now checks (org-signed IETF list,
+# pinned to the credential's issuer, fail-closed). Before #1759 this presentation was accepted.
+Write-WtBanner "AIAS-Cyber rehearsal 5/5 — REVOKED (the issuer revoked the presented identity)"
+try {
+    $mint = New-CyberIdentityApplicant -Tag "cyber-revoked"
+
+    $secrets = Import-DemoSecrets
+    $node = [pscustomobject]@{ id = $state.target; adminEmail = 'admin@sorcha.local'; gateway = $gateway }
+    $issuerAdmin = Connect-SorchaUser -TenantUrl $api -Email "verification-admin@aias.local" `
+        -Password (Get-DemoAdminPassword -Node $node -Secrets $secrets) -OrganizationId $state.organizationId
+    $null = Invoke-SorchaApi -Method POST -Uri "$api/v1/credentials/$($mint.Credential.id)/revoke" `
+        -Body @{ issuerWallet = $state.agentWallet; reason = "AIAS rehearsal — revoked credential must be refused (#1759)" } `
+        -Headers $issuerAdmin.Headers
+    Write-WtInfo "issuer revoked the Assured Identity $($mint.Credential.id)"
+
+    $declined = $false
+    try {
+        $null = Submit-CyberQuestionnaire -Applicant $mint.Applicant -Answers $script:CyberAnswersPerfect -Credential $mint.Credential
+    } catch {
+        if ($_.Exception.Message -match "kind='Decline'") { $declined = $true }
+        else { throw }
+    }
+
+    if (-not $declined) { $failures += "CYBER REVOKED: the gate ACCEPTED a credential its issuer revoked (#1759)." }
+    else { Write-WtSuccess "the SorchaWallet gate declined the revoked credential" }
+
+    $delivered = Test-CyberCredentialDelivered -Applicant $mint.Applicant
+    if ($delivered) { $failures += "CYBER REVOKED: a CyberLevelCredential was delivered for a revoked identity." }
+    else { Write-WtSuccess "no CyberLevelCredential issued (correct)" }
+} catch {
+    $failures += "CYBER REVOKED: threw — $($_.Exception.Message)"
+}
 }
 
 # ---------------------------------------------------------------------------
@@ -851,7 +892,7 @@ try {
 # ---------------------------------------------------------------------------
 if ($failures.Count -eq 0) {
     if ($Scenario -eq 'cyber') {
-        Write-WtBanner "AIAS-Cyber rehearsal PASSED — Platinum and Silver both delivered (the spread is real), Fail and No-Portrait both blocked correctly."
+        Write-WtBanner "AIAS-Cyber rehearsal PASSED — Platinum and Silver both delivered (the spread is real), Fail, No-Portrait and Revoked all blocked correctly."
     } else {
         Write-WtBanner "AIAS rehearsal PASSED — approval issued a credential; both rejections recorded with no credential."
     }
