@@ -44,6 +44,15 @@ public class CitizenDeviceStatusList
     /// <summary>UTC expiry of the current signed JWT (default <see cref="GeneratedAt"/> + 24h).</summary>
     public DateTimeOffset ExpiresAt { get; set; } = DateTimeOffset.UtcNow.AddHours(24);
 
-    /// <summary>Compact-serialised Token Status List 2024 JWT, signed with the org's <c>sorcha:citizen-status-signing</c> key.</summary>
+    /// <summary>Compact-serialised IETF Token Status List JWT, signed under <see cref="SignerDid"/>.</summary>
     public string SignedJwt { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The DID this list is signed under — its <c>iss</c> — fixed when the list is created (#1759):
+    /// the organisation's issuer DID (<c>did:sorcha:org:{wallet}</c>, signed with its VC-issuance key)
+    /// when the org has one, otherwise a <c>did:key</c> of the org's <c>sorcha:citizen-status-signing</c>
+    /// key. Fixed so every credential pointing at the list keeps resolving the same signer. Null only
+    /// on a list created before #1759; assigned on its next regeneration.
+    /// </summary>
+    public string? SignerDid { get; set; }
 }

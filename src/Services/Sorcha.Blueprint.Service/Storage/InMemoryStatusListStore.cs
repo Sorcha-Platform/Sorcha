@@ -48,6 +48,7 @@ public class InMemoryStatusListStore : IStatusListStore
     {
         Id = m.Id,
         IssuerWallet = m.IssuerWallet,
+        IssuerOrganizationId = m.IssuerOrganizationId,
         RegisterId = m.RegisterId,
         Purpose = m.Purpose,
         EncodedList = m.EncodedList,

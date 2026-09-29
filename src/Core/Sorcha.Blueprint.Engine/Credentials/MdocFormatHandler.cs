@@ -100,7 +100,11 @@ public sealed class MdocFormatHandler : ICredentialFormatHandler
             Format = CredentialFormat.MsoMdoc,
             SignatureVerified = true,
             X5cChain = mdoc.X5cChain,
-            Status = mdoc.Status is null ? null : new StatusReference { Uri = mdoc.Status.Uri, Index = (int)mdoc.Status.Idx },
+            // ISO mdoc status references an IETF Token Status List (#1759 routes it to that reader).
+            Status = mdoc.Status is null ? null : new StatusReference
+            {
+                Uri = mdoc.Status.Uri, Index = (int)mdoc.Status.Idx, Kind = StatusListKind.IetfTokenStatusList,
+            },
             RevocationPolicy = requirement.RevocationCheckPolicy
         };
 

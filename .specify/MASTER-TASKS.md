@@ -3,11 +3,22 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.38
-**Last Updated:** 2026-09-26
+**Version:** 7.39
+**Last Updated:** 2026-09-29
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
+> **▶ 2026-09-29 — #1759 + TODO(095) + #1768 (branch `feature/1759-status-list-org-key`):** every IETF status list
+> is now signed under a DID a verifier can resolve — Blueprint lists by the issuing org's VC-issuance key inside the
+> Wallet Service (no ephemeral key), citizen-device lists by a per-list recorded signer (org DID, or `did:key` of
+> slot 109 for orgs with no wallet); delegations name it in `status_issuer`. One `StatusListTokenVerifier` serves
+> the engine and HAIP (key from the issuer DID by kid; `sub` == `status_list.uri`). The engine now checks the
+> PRIMARY credential's status, fail-closed; SD-JWTs carry IETF `status.status_list` beside W3C. Found and fixed on
+> the way: **HAIP never extracted any SD-JWT status** (object claims arrive as JSON text) so revoked credentials
+> passed it; HAIP trusted a key the list carried itself (#1768); delegation lists were pinned to the holder DID and
+> could never verify; P-256 `did:key`s never resolved (varint 0x80 0x24); a StopHost race turned 45 Blueprint
+> integration tests red. Follow-ups: **#1769** (retire W3C `credentialStatus`; the W3C lists are unsigned).
+> **Existing credentials without IETF status are refused at SorchaWallet gates — re-issue.**
 > **▶ 2026-09-26 - Issue loop: 22 issues closed (13 were stale-open, verified against source, and 9 fixed).**
 > **2026-09-28 — critical-issue loop (all live on n1+tiny, core suite 18/18):** #1689 (every wallet algorithm
 > derives from its recovery phrase; five of seven used to return a random key per derivation; RSA wallets refused),

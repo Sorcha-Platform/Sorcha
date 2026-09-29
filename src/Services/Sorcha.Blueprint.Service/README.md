@@ -375,6 +375,17 @@ execution and query paths share one disclosure implementation. Consumed by the a
 (it sets each pending action's previous payload from `disclosedFields` before running its checks, and holds
 fail-closed when the fetch is unavailable) and by the MCP `sorcha_disclosed_data` participant tool.
 
+### Credential status lists (Feature 095, #1759)
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/api/v1/credentials/status-lists/{listId}` | W3C Bitstring Status List credential (unsigned — being retired, #1769) |
+| GET | `/api/v1/credentials/ietf-status-lists/{listId}` | IETF Token Status List, `application/statuslist+jwt`: the 2-bit projection of the revocation + suspension lists |
+
+Each list records the organisation whose credentials it reports on (`IssuerOrganizationId`, from the issuing caller's `org_id`). The IETF view is signed **by that organisation's VC-issuance key inside the Wallet Service** (`POST /api/internal/status-lists/ietf/sign`), so its `iss` and `kid` are the ones the org's credentials carry; `sub` equals the `status_list.uri` credentials embed. No organisation recorded, or no key → `409`; signing failure → `503`. There is no configured signing key and no ephemeral fallback. A signed token is cached per node while the list's content is unchanged and for at most half its lifetime, so a revocation is re-signed on the next fetch; `Cache-Control: max-age` reports the served token's remaining life.
+
+Internal gates check both shapes: `RoutingStatusListChecker` sends W3C references to `BitstringStatusListChecker` and IETF references to the issuer-resolved `IetfTokenStatusListChecker` (`Sorcha.Blueprint.Engine`, shared with HAIP).
+
 ### File Chunk Submission (Feature 085)
 
 | Method | Endpoint | Description |

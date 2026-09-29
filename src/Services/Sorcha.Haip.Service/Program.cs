@@ -119,7 +119,7 @@ builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustResolverReg
     new Sorcha.Blueprint.Engine.Credentials.TrustResolverRegistry(
         sp.GetServices<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>()));
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.IStatusListChecker>(sp =>
-    sp.GetRequiredService<IetfTokenStatusListChecker>());
+    sp.GetRequiredService<Sorcha.Blueprint.Engine.Credentials.IetfTokenStatusListChecker>());
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustEvaluator,
     Sorcha.Blueprint.Engine.Credentials.TrustEvaluator>();
 builder.Services.AddScoped<HaipPresentationVerifier>(sp => new HaipPresentationVerifier(
@@ -158,10 +158,23 @@ builder.Services.AddSingleton<RequestObjectSigner>();
 // Feature 095 US4: status list fetch for the verifier. Registered as HttpClient-
 // backed so the underlying connection pool is shared and timeouts are governed
 // by the standard .NET HTTP resilience pipeline.
-builder.Services.AddHttpClient<IetfTokenStatusListChecker>(client =>
+builder.Services.AddHttpClient<Sorcha.Blueprint.Engine.Credentials.IetfTokenStatusListChecker>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);
 });
+
+// #1768 — the list is believed only if signed by the key the CREDENTIAL ISSUER's DID resolves to
+// (never a key the list carries itself), via the engine's shared StatusListTokenVerifier. Scoped:
+// the DID-backed resolver consumes the scoped IDidResolverRegistry, whose did:sorcha resolver is the
+// published-document variant registered below.
+Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions
+    .TryAddSingleton(builder.Services, TimeProvider.System);
+builder.Services.AddScoped<Sorcha.Verifier.Engine.IIssuerKeyResolver,
+    Sorcha.Verifier.Engine.DidResolverBackedIssuerKeyResolver>();
+builder.Services.AddScoped(sp => new Sorcha.Verifier.Engine.StatusListTokenVerifier(
+    sp.GetRequiredService<Sorcha.Verifier.Engine.IIssuerKeyResolver>(),
+    sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<Sorcha.Verifier.Engine.StatusListTokenVerifier>>()));
 
 // Feature 111 — HAIP as a consumer of the Timebound Presentation Lifecycle.
 builder.Services.AddSingleton<Sorcha.PresentationLifecycle.Abstractions.IPresentationConsumer,

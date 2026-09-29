@@ -41,6 +41,7 @@ public class EfCoreStatusListStore(IDbContextFactory<BlueprintDbContext> context
             // Field-by-field, deliberately: ReconciledToDocket is owned by the replay and must NOT
             // be clobbered by a plain save. Every other field is the list's own state.
             existing.IssuerWallet = list.IssuerWallet;
+            existing.IssuerOrganizationId = list.IssuerOrganizationId;
             existing.RegisterId = list.RegisterId;
             existing.Purpose = list.Purpose;
             existing.EncodedList = list.EncodedList;
@@ -78,6 +79,7 @@ public class EfCoreStatusListStore(IDbContextFactory<BlueprintDbContext> context
     {
         Id = e.Id,
         IssuerWallet = e.IssuerWallet,
+        IssuerOrganizationId = e.IssuerOrganizationId,
         RegisterId = e.RegisterId,
         Purpose = e.Purpose,
         EncodedList = e.EncodedList,
@@ -91,6 +93,7 @@ public class EfCoreStatusListStore(IDbContextFactory<BlueprintDbContext> context
     {
         Id = m.Id,
         IssuerWallet = m.IssuerWallet,
+        IssuerOrganizationId = m.IssuerOrganizationId,
         RegisterId = m.RegisterId,
         Purpose = m.Purpose,
         EncodedList = m.EncodedList,

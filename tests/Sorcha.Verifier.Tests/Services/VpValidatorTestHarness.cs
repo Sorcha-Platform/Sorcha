@@ -27,7 +27,8 @@ internal static class VpValidatorTestHarness
         StatusListVerdict statusVerdict = StatusListVerdict.Active,
         TimeProvider? clock = null,
         TimeSpan? clockSkew = null,
-        TimeSpan? kbJwtMaxLifetime = null)
+        TimeSpan? kbJwtMaxLifetime = null,
+        IStatusListCache? statusListCache = null)
     {
         var statusList = new Mock<IStatusListCache>();
         statusList
@@ -36,7 +37,7 @@ internal static class VpValidatorTestHarness
             .ReturnsAsync(statusVerdict);
 
         return new VerifiablePresentationValidator(
-            statusList.Object,
+            statusListCache ?? statusList.Object,
             new OptOutIssuerKeyResolver(),
             clock ?? TimeProvider.System,
             NullLogger<VerifiablePresentationValidator>.Instance,

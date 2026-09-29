@@ -634,6 +634,18 @@ public static class CredentialEndpoints
             });
         }
 
+        // #1759 — the IETF status_list.uri is signed in just the same, so it earns the same two guards.
+        if (!string.IsNullOrWhiteSpace(request.IetfStatusListUrl)
+            && (!Uri.TryCreate(request.IetfStatusListUrl, UriKind.Absolute, out var ietfStatusUri)
+                || ietfStatusUri.Scheme != Uri.UriSchemeHttps
+                || ietfStatusUri.Host.Equals("sorcha.example", StringComparison.OrdinalIgnoreCase)))
+        {
+            return Results.BadRequest(new
+            {
+                error = "ietfStatusListUrl must be an absolute HTTPS URL on a real host when supplied"
+            });
+        }
+
         if (request.StatusListIndex.HasValue && request.StatusListIndex.Value < 0)
         {
             return Results.BadRequest(new
@@ -867,6 +879,20 @@ public static class CredentialEndpoints
                 else
                 {
                     claims["credentialStatus"] = revocationEntry;
+                }
+
+                // #1759 — the SD-JWT VC's native status mechanism: the IETF Token Status List view of
+                // the SAME entry, signed by the issuing org. W3C stays beside it until #1769 retires it.
+                if (!string.IsNullOrWhiteSpace(request.IetfStatusListUrl))
+                {
+                    claims["status"] = new Dictionary<string, object>
+                    {
+                        ["status_list"] = new Dictionary<string, object>
+                        {
+                            ["uri"] = request.IetfStatusListUrl!,
+                            ["idx"] = effectiveStatusListIndex.Value,
+                        },
+                    };
                 }
             }
         }
@@ -1160,6 +1186,14 @@ public class IssueCredentialRequest
     /// revoked, and lifting the suspension clears a revocation bit that must never clear.
     /// </remarks>
     public string? SuspensionStatusListUrl { get; init; }
+
+    /// <summary>
+    /// The IETF Token Status List view of the same entry (#1759). When supplied alongside
+    /// <see cref="StatusListUrl"/>, the credential also carries <c>status.status_list</c> — the SD-JWT VC's
+    /// native status mechanism — at <see cref="StatusListIndex"/>. Ignored for a device-bound copy, whose
+    /// status is its citizen-device list.
+    /// </summary>
+    public string? IetfStatusListUrl { get; init; }
 
     /// <summary>
     /// Optional pre-allocated status list index. See <see cref="StatusListUrl"/>.

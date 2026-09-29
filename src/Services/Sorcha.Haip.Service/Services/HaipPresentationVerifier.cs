@@ -102,7 +102,7 @@ public class HaipPresentationVerifier
             result.VerifiedClaims = sdJwtResult.Claims;
 
             // Step 3: Route the trust decision through the unified evaluator.
-            var statusRef = ExtractStatusReference(sdJwtResult.Claims);
+            var statusRef = ExtractStatusReference(sdJwtResult.Claims, sdJwtResult.Issuer);
             var issuer = new IssuerContext
             {
                 IssuerId = sdJwtResult.Issuer ?? string.Empty,
@@ -389,11 +389,16 @@ public class HaipPresentationVerifier
     /// Reads the credential's status reference (IETF <c>status.status_list</c> preferred, W3C
     /// <c>credentialStatus</c> fallback) into a <see cref="StatusReference"/> for the evaluator.
     /// </summary>
-    private static StatusReference? ExtractStatusReference(Dictionary<string, object> claims)
+    private static StatusReference? ExtractStatusReference(Dictionary<string, object> claims, string? issuer)
     {
+        // #1768 — the list is pinned to the credential's own issuer: it must be signed by the key that
+        // issuer's DID resolves to, never by a key the list carries itself.
         var (ietfUri, ietfIdx) = TryExtractIetfStatusList(claims);
         if (ietfUri is not null && ietfIdx.HasValue)
-            return new StatusReference { Uri = ietfUri, Index = ietfIdx.Value };
+            return new StatusReference
+            {
+                Uri = ietfUri, Index = ietfIdx.Value, ExpectedIssuer = issuer, Kind = StatusListKind.IetfTokenStatusList,
+            };
 
         var (w3cUri, w3cIdx, w3cPurpose) = TryExtractW3cCredentialStatus(claims);
         if (w3cUri is not null && w3cIdx.HasValue)
@@ -418,8 +423,32 @@ public class HaipPresentationVerifier
         return (TryReadString(raw, "statusListCredential"), TryReadInt(raw, "statusListIndex"), TryReadString(raw, "statusPurpose"));
     }
 
+    /// <summary>
+    /// The SD-JWT verifier projects an object- or array-valued claim as its raw JSON TEXT. Read as an
+    /// object, a string matched nothing, so every credential's <c>status</c> (and <c>credentialStatus</c>)
+    /// was silently skipped — no reference, which the trust evaluator treats as active (#1768). Parse
+    /// it here, once, for every reader below.
+    /// </summary>
+    private static object AsObject(object container)
+    {
+        if (container is string text && text.TrimStart().StartsWith('{'))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(text);
+                return doc.RootElement.Clone();
+            }
+            catch (JsonException)
+            {
+                return container;
+            }
+        }
+        return container;
+    }
+
     private static bool TryGetObjectProperty(object container, string name, out object value)
     {
+        container = AsObject(container);
         if (container is Dictionary<string, object> dict && dict.TryGetValue(name, out var v) && v is not null)
         {
             value = v;
@@ -437,6 +466,7 @@ public class HaipPresentationVerifier
 
     private static string? TryReadString(object container, string name)
     {
+        container = AsObject(container);
         if (container is Dictionary<string, object> dict && dict.TryGetValue(name, out var v))
             return v?.ToString();
         if (container is JsonElement element && element.ValueKind == JsonValueKind.Object
@@ -447,6 +477,7 @@ public class HaipPresentationVerifier
 
     private static int? TryReadInt(object container, string name)
     {
+        container = AsObject(container);
         if (container is Dictionary<string, object> dict && dict.TryGetValue(name, out var v))
         {
             return v switch

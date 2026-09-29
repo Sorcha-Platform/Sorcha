@@ -199,6 +199,59 @@ public class StatusListManagerTests
         result.Should().BeNull();
     }
 
+    // ===== Issuing organisation (TODO(095) / #1759) =====
+    // The IETF view of a list is signed with the issuing ORGANISATION's key. The list's IssuerWallet
+    // is the wallet that submitted the issuing action — often a person or agent — so the org must be
+    // recorded on the list itself, on BOTH purpose lists, which share one numbering space.
+
+    private static readonly Guid OrgA = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001");
+    private static readonly Guid OrgB = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000002");
+
+    [Fact]
+    public async Task AllocateIndexAsync_WithOrganization_RecordsItOnBothPurposeLists()
+    {
+        var alloc = await _manager.AllocateIndexAsync("issuer-org", "register-1", null, OrgA);
+
+        (await _manager.GetListAsync(alloc.ListId))!.IssuerOrganizationId.Should().Be(OrgA);
+        (await _manager.GetListAsync(alloc.SuspensionListId))!.IssuerOrganizationId.Should().Be(OrgA);
+    }
+
+    [Fact]
+    public async Task AllocateIndexAsync_ReturnsTheIetfViewOfTheSameList()
+    {
+        // #1759 — the IETF view is served per revocation list id and projects BOTH purposes, so the
+        // credential's status_list.uri is the IETF endpoint for the revocation list. It must equal the
+        // sub the endpoint signs, or every verifier rejects the list (RFC 9972 §5.1).
+        var alloc = await _manager.AllocateIndexAsync("issuer-ietf", "register-1", null, OrgA);
+
+        alloc.IetfStatusListUrl.Should().Be(
+            $"https://test.example/api/v1/credentials/ietf-status-lists/{alloc.ListId}");
+    }
+
+    [Fact]
+    public async Task AllocateIndexAsync_ListBelongsToAnotherOrganization_IsRefusedWithoutConsumingAnIndex()
+    {
+        var first = await _manager.AllocateIndexAsync("issuer-shared", "register-1", null, OrgA);
+
+        var act = () => _manager.AllocateIndexAsync("issuer-shared", "register-1", null, OrgB);
+
+        // One list, one signature: a second organisation's credentials on it would be signed with
+        // the first organisation's key, and every verifier would pin them to the wrong issuer.
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        (await _manager.GetListAsync(first.ListId))!.NextAvailableIndex.Should().Be(first.Index + 1);
+        (await _manager.GetListAsync(first.ListId))!.IssuerOrganizationId.Should().Be(OrgA);
+    }
+
+    [Fact]
+    public async Task AllocateIndexAsync_WithoutOrganization_LeavesARecordedOrganizationUntouched()
+    {
+        await _manager.AllocateIndexAsync("issuer-keep", "register-1", null, OrgA);
+
+        var alloc = await _manager.AllocateIndexAsync("issuer-keep", "register-1", "cred-x");
+
+        (await _manager.GetListAsync(alloc.ListId))!.IssuerOrganizationId.Should().Be(OrgA);
+    }
+
     // ===== Thread Safety Tests =====
 
     [Fact]

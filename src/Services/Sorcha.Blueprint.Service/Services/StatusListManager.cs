@@ -27,8 +27,14 @@ public interface IStatusListManager
     /// context for logging only and is NOT stored or used as a key; pass <c>null</c> when allocating
     /// before the credential is signed (pre-allocation), rather than a synthetic placeholder (issue #220).
     /// </summary>
+    /// <param name="issuerOrganizationId">
+    /// The organisation whose credentials the list reports on; its VC-issuance key signs the list's IETF
+    /// view (#1759). Recorded on first use. A list already recorded for a DIFFERENT organisation is
+    /// refused — one list carries one signature, so it cannot speak for two issuers.
+    /// </param>
     Task<StatusListAllocation> AllocateIndexAsync(
-        string issuerWallet, string registerId, string? credentialId, CancellationToken ct = default);
+        string issuerWallet, string registerId, string? credentialId,
+        Guid? issuerOrganizationId = null, CancellationToken ct = default);
 
     /// <summary>
     /// Sets or clears a bit at the given index.
@@ -61,12 +67,17 @@ public interface IStatusListManager
 /// suspension then clears a revocation bit the spec says can never be cleared. One index is
 /// reserved across both lists so a credential carries one entry per purpose.
 /// </remarks>
+/// <param name="IetfStatusListUrl">
+/// The IETF Token Status List view of the same entry (#1759) — the revocation list's id on the IETF
+/// endpoint, which projects both purposes into one 2-bit list. Equals the <c>sub</c> that endpoint signs.
+/// </param>
 public record StatusListAllocation(
     string ListId,
     int Index,
     string StatusListUrl,
     string SuspensionListId,
-    string SuspensionListUrl);
+    string SuspensionListUrl,
+    string? IetfStatusListUrl = null);
 
 /// <summary>
 /// Result of setting a bit in a status list.
@@ -90,6 +101,7 @@ public class StatusListManager : IStatusListManager, IDisposable
     private readonly StatusListLedgerReconciler _reconciler;
     private readonly ILogger<StatusListManager> _logger;
     private readonly string _baseUrl;
+    private readonly string _ietfBaseUrl;
 
     public StatusListManager(
         ILogger<StatusListManager> logger,
@@ -103,6 +115,7 @@ public class StatusListManager : IStatusListManager, IDisposable
         _store = store;
         _reconciler = reconciler;
         _baseUrl = urls.BaseUrl;
+        _ietfBaseUrl = urls.IetfBaseUrl;
     }
 
     /// <summary>
@@ -184,7 +197,8 @@ public class StatusListManager : IStatusListManager, IDisposable
 
     /// <inheritdoc />
     public async Task<StatusListAllocation> AllocateIndexAsync(
-        string issuerWallet, string registerId, string? credentialId, CancellationToken ct = default)
+        string issuerWallet, string registerId, string? credentialId,
+        Guid? issuerOrganizationId = null, CancellationToken ct = default)
     {
         var list = await GetOrCreateListAsync(issuerWallet, registerId, "revocation", ct);
         var suspension = await GetOrCreateListAsync(issuerWallet, registerId, "suspension", ct);
@@ -203,6 +217,24 @@ public class StatusListManager : IStatusListManager, IDisposable
             // sibling's numbering. Skipping numbers in it is harmless — an index no credential
             // references simply has a clear bit, which reads as "in good standing", and no
             // credential is ever issued against it.
+            // #1759 — decided BEFORE anything is reserved, so a refusal consumes no index.
+            foreach (var purposeList in new[] { list, suspension })
+            {
+                if (issuerOrganizationId is { } org
+                    && purposeList.IssuerOrganizationId is { } recorded
+                    && recorded != org)
+                {
+                    throw new InvalidOperationException(
+                        $"Status list {purposeList.Id} reports on organisation {recorded}'s credentials; it cannot "
+                        + $"also carry organisation {org}'s, because the list is signed with one organisation's key.");
+                }
+            }
+            if (issuerOrganizationId is { } adopt)
+            {
+                list.IssuerOrganizationId ??= adopt;
+                suspension.IssuerOrganizationId ??= adopt;
+            }
+
             var index = Math.Max(list.NextAvailableIndex, suspension.NextAvailableIndex);
 
             if (index >= list.Size || index >= suspension.Size)
@@ -239,7 +271,8 @@ public class StatusListManager : IStatusListManager, IDisposable
 
             var url = $"{_baseUrl}/{list.Id}";
             var suspensionUrl = $"{_baseUrl}/{suspension.Id}";
-            return new StatusListAllocation(list.Id, index, url, suspension.Id, suspensionUrl);
+            return new StatusListAllocation(
+                list.Id, index, url, suspension.Id, suspensionUrl, $"{_ietfBaseUrl}/{list.Id}");
         }
         finally
         {

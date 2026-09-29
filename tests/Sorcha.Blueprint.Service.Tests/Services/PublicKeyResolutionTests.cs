@@ -19,6 +19,7 @@ using Sorcha.Blueprint.Service.Storage;
 using Sorcha.Cryptography.Enums;
 using Sorcha.TransactionHandler.Encryption;
 using Sorcha.TransactionHandler.Encryption.Models;
+using Sorcha.Blueprint.Service.Services;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 using ActionModel = Sorcha.Blueprint.Models.Action;
 using ParticipantModel = Sorcha.Blueprint.Models.Participant;
@@ -68,7 +69,7 @@ public class PublicKeyResolutionTests
             .ReturnsAsync((string?)null);
     }
 
-    private ActionExecutionService CreateService()
+    private ActionExecutionService CreateService(IStatusListManager? statusListManager = null)
     {
         return new ActionExecutionService(
             _mockActionResolver.Object,
@@ -86,7 +87,7 @@ public class PublicKeyResolutionTests
             new ConfigurationBuilder().Build(),
             credentialVerifier: null,
             confirmationOptions: null,
-            statusListManager: null,
+            statusListManager: statusListManager,
             encryptionPipeline: _mockEncryptionPipeline.Object);
     }
 
@@ -560,7 +561,7 @@ public class PublicKeyResolutionTests
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(),
             It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<List<string>?>(), It.IsAny<string?>(),
             It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<bool>(),
-            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<JsonElement?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<JsonElement?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
             Times.Never, "fail-closed must issue zero credentials (SC-004)");
     }
 
@@ -597,7 +598,7 @@ public class PublicKeyResolutionTests
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(),
                 It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<List<string>?>(), It.IsAny<string?>(),
                 It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<bool>(),
-                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<JsonElement?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<JsonElement?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .Callback(new InvocationAction(inv => capturedHolderJwk = (JsonElement?)inv.Arguments[13]))
             .ReturnsAsync(new CredentialIssuanceResult
             {
@@ -649,6 +650,82 @@ public class PublicKeyResolutionTests
         recipient.Should().NotBeNull();
         recipient!.Source.Should().Be(KeySource.External);
         recipient.PublicKey.Should().BeEquivalentTo(encKeyBytes);
+    }
+
+    [Fact]
+    public async Task SorchaLocalWallet_IssuedCredential_CarriesTheIetfViewOfItsStatusEntry()
+    {
+        // #1759 — issuance forwards the allocation's IETF view so the credential carries the SD-JWT VC's
+        // native status mechanism (status.status_list) beside the W3C entry. An unforwarded field
+        // compiles, passes every other test, and leaves every credential without it.
+        const string ietfUrl = "https://n1.sorcha.dev/api/v1/credentials/ietf-status-lists/L1";
+        var statusLists = new Mock<IStatusListManager>();
+        statusLists
+            .Setup(m => m.AllocateIndexAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(),
+                It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StatusListAllocation(
+                "L1", 9, "https://n1.sorcha.dev/api/v1/credentials/status-lists/L1",
+                "L1s", "https://n1.sorcha.dev/api/v1/credentials/status-lists/L1s", ietfUrl));
+        var service = CreateService(statusLists.Object);
+        const string instanceId = "status-instance";
+        const string registerId = "register-s";
+        const string citizenWallet = "ws1qcitizen3";
+
+        var blueprint = CreateSorchaLocalWalletBlueprint(citizenWallet);
+        var action = blueprint.Actions!.First(a => a.Id == 1);
+        var instance = CreateTestInstance(instanceId, blueprint.Id, registerId,
+            new Dictionary<string, string> { ["citizen"] = citizenWallet });
+        SetupCommonMocks(instanceId, instance, blueprint, action);
+        SetupRoutingAndDisclosure(blueprint, action);
+        SetupFullTransactionFlow(instance);
+        _mockRegisterClient
+            .Setup(x => x.ResolvePublicKeyAsync(registerId, citizenWallet, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PublicKeyResolution?)null);
+
+        object?[]? issueArgs = null;
+        _mockWalletClient
+            .Setup(x => x.IssueCredentialAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<List<string>?>(), It.IsAny<string?>(),
+                It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<bool>(),
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<JsonElement?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Callback(new InvocationAction(inv => issueArgs = inv.Arguments.ToArray()))
+            .ReturnsAsync(new CredentialIssuanceResult
+            {
+                CredentialId = "urn:uuid:cred-s",
+                Type = "AssuredIdentityCredential",
+                IssuerDid = citizenWallet,
+                SubjectDid = citizenWallet,
+                Claims = new Dictionary<string, object>(),
+                RawToken = "eyJ.tok.en",
+                IssuedAt = DateTimeOffset.UtcNow
+            });
+        _mockEncryptionPipeline
+            .Setup(x => x.EncryptDisclosedPayloadsAsync(It.IsAny<DisclosureGroup[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(EncryptionResult.Succeeded(CreateTestEncryptedGroups(citizenWallet)));
+
+        var encKey = Convert.ToBase64String(new byte[32]);
+        await service.ExecuteAsync(instanceId, 1, new ActionSubmissionRequest
+        {
+            BlueprintId = blueprint.Id,
+            ActionId = "1",
+            SenderWallet = citizenWallet,
+            RegisterAddress = registerId,
+            PayloadData = new Dictionary<string, object>
+            {
+                ["field1"] = "value1",
+                ["holderKeys"] = new Dictionary<string, object>
+                {
+                    ["holderJwk"] = new Dictionary<string, object> { ["kty"] = "EC", ["crv"] = "P-256", ["x"] = "AAA", ["y"] = "BBB" },
+                    ["encryptionPublicKey"] = encKey,
+                    ["algorithm"] = "ED25519"
+                }
+            }
+        }, "test-token");
+
+        issueArgs.Should().NotBeNull("a credential must have been issued");
+        issueArgs![8].Should().Be(9, "both shapes address the allocated entry");
+        issueArgs[19].Should().Be(ietfUrl);
     }
 
     private static BlueprintModel CreateSorchaLocalWalletBlueprint(string citizenWallet)

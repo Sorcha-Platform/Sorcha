@@ -45,7 +45,8 @@ public class HaipPresentationVerifierTests
     /// (when supplied) via the x509-tenant source. The register/did-allowlist sources resolve the
     /// issuer only when <paramref name="resolveIssuer"/> is true.
     /// </summary>
-    private HaipPresentationVerifier CreateVerifier(byte[]? trustedRootDer = null, bool resolveIssuer = false)
+    private HaipPresentationVerifier CreateVerifier(
+        byte[]? trustedRootDer = null, bool resolveIssuer = false, IStatusListChecker? statusChecker = null)
     {
         var anchors = trustedRootDer is null
             ? null
@@ -57,7 +58,7 @@ public class HaipPresentationVerifierTests
             new RegisterTrustSourceResolver(directory),
             new DidAllowlistTrustSourceResolver(directory)
         });
-        var evaluator = new TrustEvaluator(registry, statusChecker: null);
+        var evaluator = new TrustEvaluator(registry, statusChecker: statusChecker);
         return new HaipPresentationVerifier(_sdJwtService, evaluator, Mock.Of<ILogger<HaipPresentationVerifier>>());
     }
 
@@ -87,7 +88,7 @@ public class HaipPresentationVerifierTests
     /// returning the presentation plus the root cert DER for the trust anchor.
     /// </summary>
     private async Task<(string presentation, byte[] rootCertDer)> CreatePresentationWithX5cAsync(
-        string audience, string nonce, string? vct = null)
+        string audience, string nonce, string? vct = null, (string Uri, int Idx)? statusList = null)
     {
         var (rootCertDer, rootPrivateKey, _) = X509CertificateBuilder.BuildSelfSignedRoot("ES256", "CN=Test Root CA");
 
@@ -102,6 +103,13 @@ public class HaipPresentationVerifierTests
         var holderJwk = CreateHolderJwk(holderPublic);
 
         var claims = new Dictionary<string, object> { ["licenseType"] = "ClassA", ["holder"] = "Alice" };
+        if (statusList is { } sl)
+        {
+            claims["status"] = new Dictionary<string, object>
+            {
+                ["status_list"] = new Dictionary<string, object> { ["uri"] = sl.Uri, ["idx"] = sl.Idx },
+            };
+        }
         if (vct is not null)
         {
             // vct is the SD-JWT VC type identifier: a plain payload claim, never selectively
@@ -193,6 +201,56 @@ public class HaipPresentationVerifierTests
         result.Issuer.Should().Be("did:sorcha:org:ws1qtest");
         result.TrustEvidence.Should().NotBeNull();
         result.TrustEvidence!.VouchingSource.Should().Be(TrustSourceKind.X509Tenant);
+    }
+
+    [Fact]
+    public async Task Verify_CredentialWithIetfStatus_PinsTheStatusListToTheCredentialsIssuer()
+    {
+        // #1768 — the checker can only authenticate a list against the issuer it is told to expect.
+        // Dropping the issuer here compiles and passes everything else, and then refuses every live
+        // presentation that carries a status reference (HAIP runs FailClosed).
+        var (presentation, rootCertDer) = await CreatePresentationWithX5cAsync(
+            "https://verifier.example.com", "test-nonce-s",
+            statusList: ("https://n1.sorcha.dev/api/v1/credentials/ietf-status-lists/l1", 5));
+        var checker = new CapturingStatusChecker();
+        var verifier = CreateVerifier(trustedRootDer: rootCertDer, statusChecker: checker);
+
+        var result = await verifier.VerifyAsync(
+            presentation, expectedNonce: "test-nonce-s", expectedAudience: "https://verifier.example.com");
+
+        result.IsValid.Should().BeTrue(string.Join("; ", result.Errors));
+        checker.Seen.Should().ContainSingle();
+        checker.Seen[0].Uri.Should().Be("https://n1.sorcha.dev/api/v1/credentials/ietf-status-lists/l1");
+        checker.Seen[0].Index.Should().Be(5);
+        checker.Seen[0].ExpectedIssuer.Should().Be("did:sorcha:org:ws1qtest");
+    }
+
+    [Fact]
+    public async Task Verify_CredentialWhoseStatusListSaysRevoked_IsRefused()
+    {
+        // The end-to-end consequence: HAIP used to extract no status reference from any real SD-JWT
+        // (the claim arrives as JSON text), so a revoked credential passed. It must be refused.
+        var (presentation, rootCertDer) = await CreatePresentationWithX5cAsync(
+            "https://verifier.example.com", "test-nonce-r",
+            statusList: ("https://n1.sorcha.dev/api/v1/credentials/ietf-status-lists/l1", 5));
+        var checker = new CapturingStatusChecker(CredentialStatusValue.Invalid);
+        var verifier = CreateVerifier(trustedRootDer: rootCertDer, statusChecker: checker);
+
+        var result = await verifier.VerifyAsync(
+            presentation, expectedNonce: "test-nonce-r", expectedAudience: "https://verifier.example.com");
+
+        result.IsValid.Should().BeFalse("the issuer has revoked this credential");
+    }
+
+    private sealed class CapturingStatusChecker(CredentialStatusValue answer = CredentialStatusValue.Valid) : IStatusListChecker
+    {
+        public List<StatusReference> Seen { get; } = [];
+
+        public Task<CredentialStatusValue> CheckAsync(StatusReference statusRef, CancellationToken cancellationToken = default)
+        {
+            Seen.Add(statusRef);
+            return Task.FromResult(answer);
+        }
     }
 
     [Fact]

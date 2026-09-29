@@ -98,6 +98,9 @@ namespace Sorcha.Wallet.Core.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("SignerDid")
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
                     b.HasIndex("OrganizationId", "ListId")

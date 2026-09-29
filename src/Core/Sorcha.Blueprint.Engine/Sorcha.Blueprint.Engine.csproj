@@ -15,6 +15,7 @@
     <ProjectReference Include="..\..\Common\Sorcha.Blueprint.Models\Sorcha.Blueprint.Models.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Cryptography\Sorcha.Cryptography.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Mdoc\Sorcha.Mdoc.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.Verifier.Engine\Sorcha.Verifier.Engine.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,4 +28,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sorcha.Blueprint.Engine.Tests" />
+  </ItemGroup>
 </Project>

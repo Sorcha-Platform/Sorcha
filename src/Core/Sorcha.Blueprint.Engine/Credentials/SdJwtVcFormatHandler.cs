@@ -180,7 +180,7 @@ public class SdJwtVcFormatHandler : ICredentialFormatHandler
                 ? iss.GetString() ?? string.Empty
                 : string.Empty;
 
-            return (issuerId, ExtractStatusReference(payload));
+            return (issuerId, ExtractStatusReference(payload, issuerId));
         }
         catch
         {
@@ -188,7 +188,7 @@ public class SdJwtVcFormatHandler : ICredentialFormatHandler
         }
     }
 
-    private static StatusReference? ExtractStatusReference(JsonElement payload)
+    private static StatusReference? ExtractStatusReference(JsonElement payload, string issuerId)
     {
         // IETF Token Status List — status.status_list { uri, idx }.
         if (payload.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.Object
@@ -196,8 +196,13 @@ public class SdJwtVcFormatHandler : ICredentialFormatHandler
         {
             var uri = ReadString(statusList, "uri");
             var idx = ReadInt(statusList, "idx");
+            // #1759 — an IETF list is believed only when signed by the credential's own issuer.
             if (uri is not null && idx is not null)
-                return new StatusReference { Uri = uri, Index = idx.Value };
+                return new StatusReference
+                {
+                    Uri = uri, Index = idx.Value, Kind = StatusListKind.IetfTokenStatusList,
+                    ExpectedIssuer = string.IsNullOrEmpty(issuerId) ? null : issuerId,
+                };
         }
 
         // W3C Bitstring Status List — credentialStatus { statusListCredential, statusListIndex, statusPurpose }.
@@ -288,7 +293,14 @@ public class SdJwtVcFormatHandler : ICredentialFormatHandler
             var uri = ReadString(sl, "uri");
             var idx = ReadInt(sl, "idx");
             if (uri is not null && idx is not null)
-                all.Add(new StatusReference { Uri = uri, Index = idx.Value });
+                all.Add(new StatusReference
+                {
+                    Uri = uri, Index = idx.Value, Kind = StatusListKind.IetfTokenStatusList,
+                    // #1759 — an IETF list is believed only when signed by the credential's own issuer.
+                    ExpectedIssuer = payload.TryGetProperty("iss", out var iss) && iss.ValueKind == JsonValueKind.String
+                        ? iss.GetString()
+                        : null,
+                });
         }
 
         if (payload.TryGetProperty("credentialStatus", out var w3c))

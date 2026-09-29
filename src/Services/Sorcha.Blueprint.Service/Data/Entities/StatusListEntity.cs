@@ -39,6 +39,9 @@ public class StatusListEntity
     [Required]
     public string IssuerWallet { get; set; } = default!;
 
+    /// <summary>The organisation whose VC-issuance key signs the IETF view of this list (#1759).</summary>
+    public Guid? IssuerOrganizationId { get; set; }
+
     /// <summary>Register the credentials in this list were issued against.</summary>
     [Required]
     public string RegisterId { get; set; } = default!;

@@ -289,6 +289,56 @@ public class WalletServiceClientIssueCredentialTests
         regEl.GetString().Should().Be("2141b08339d34c27824536ec250b025e");
     }
 
+    [Fact]
+    public async Task IssueCredentialAsync_WithIetfStatusListUrl_PutsItOnTheWire()
+    {
+        // #1759 — the Wallet embeds status.status_list only if the URL arrives; an unsent field
+        // leaves every credential without the SD-JWT VC's native status mechanism, silently.
+        string? capturedBody = null;
+        var handler = new Mock<HttpMessageHandler>();
+        handler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .Returns<HttpRequestMessage, CancellationToken>(async (req, ct) =>
+            {
+                capturedBody = req.Content is null ? null : await req.Content.ReadAsStringAsync(ct);
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        JsonSerializer.Serialize(new
+                        {
+                            credentialId = "urn:uuid:test",
+                            type = "TestCredential",
+                            issuerDid = "did:sorcha:w:issuer",
+                            subjectDid = "did:sorcha:w:recipient",
+                            claims = new Dictionary<string, object> { ["foo"] = "bar" },
+                            issuedAt = DateTimeOffset.UtcNow,
+                            rawToken = "eyJ.test.token",
+                        }, JsonOptions),
+                        System.Text.Encoding.UTF8,
+                        "application/json"),
+                };
+            });
+
+        var client = BuildClient(handler);
+
+        await client.IssueCredentialAsync(
+            issuerWalletAddress: "ws1qissuer",
+            credentialType: "TestCredential",
+            claims: new Dictionary<string, object> { ["foo"] = "bar" },
+            recipientWallet: "ws1qrecipient",
+            statusListUrl: "https://n1.sorcha.dev/api/v1/credentials/status-lists/L1",
+            statusListIndex: 3,
+            ietfStatusListUrl: "https://n1.sorcha.dev/api/v1/credentials/ietf-status-lists/L1");
+
+        capturedBody.Should().NotBeNullOrEmpty();
+        using var doc = JsonDocument.Parse(capturedBody!);
+        doc.RootElement.GetProperty("ietfStatusListUrl").GetString()
+            .Should().Be("https://n1.sorcha.dev/api/v1/credentials/ietf-status-lists/L1");
+    }
+
     private static WalletServiceClient BuildClient(Mock<HttpMessageHandler> handler)
     {
         var http = new HttpClient(handler.Object);

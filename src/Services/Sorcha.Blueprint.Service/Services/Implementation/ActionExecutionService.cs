@@ -2684,6 +2684,8 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         // W3C treats revocation (not reversible) and suspension (reversible) as different
         // statuses, so the credential carries one entry per purpose at the same index.
         string? preAllocatedSuspensionListUrl = null;
+        // #1759 — the IETF view of the same entry: the SD-JWT VC's native status mechanism.
+        string? preAllocatedIetfStatusListUrl = null;
 
         if (_statusListManager != null && _credentialStatusEmbeddingEnabled)
         {
@@ -2693,11 +2695,17 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                 // urn:uuid: id doesn't exist until the wallet signs the credential below. Pass null
                 // rather than a synthetic "pending-{guid}" so a future persistent status-list store
                 // can't mistake the placeholder for a real credential key.
+                // #1759 — record the issuing organisation: the SAME org id the Wallet Service resolves
+                // the credential-signing key from (tenantId below), so the list's IETF view is signed
+                // under the same iss/kid as the credentials it reports on.
                 var allocation = await _statusListManager.AllocateIndexAsync(
-                    senderWallet, instance.RegisterId, credentialId: null, cancellationToken);
+                    senderWallet, instance.RegisterId, credentialId: null,
+                    Guid.TryParse(issuerTenantId, out var issuerOrgId) ? issuerOrgId : null,
+                    cancellationToken);
                 preAllocatedStatusListUrl = allocation.StatusListUrl;
                 preAllocatedStatusListIndex = allocation.Index;
                 preAllocatedSuspensionListUrl = allocation.SuspensionListUrl;
+                preAllocatedIetfStatusListUrl = allocation.IetfStatusListUrl;
 
                 _logger.LogInformation(
                     "Pre-allocated status list index {Index} in list {ListId} for upcoming credential issuance",
@@ -2742,6 +2750,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                 statusListIndex: preAllocatedStatusListIndex,
                 statusListPurpose: preAllocatedStatusListUrl != null ? "revocation" : null,
                 suspensionStatusListUrl: preAllocatedSuspensionListUrl,
+                ietfStatusListUrl: preAllocatedIetfStatusListUrl,
 #pragma warning disable CS0618 // accept deprecated SorchaInternal for backward-compat (treated as local-wallet delivery)
                 skipRecipientStore: config.TargetAudience is TargetAudience.SorchaLocalWallet or TargetAudience.SorchaInternal,
 #pragma warning restore CS0618

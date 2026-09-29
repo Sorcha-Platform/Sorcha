@@ -368,6 +368,9 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("IssuerOrganizationId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("IssuerWallet")
                         .IsRequired()
                         .HasColumnType("text");

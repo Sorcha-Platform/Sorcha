@@ -21,24 +21,6 @@ public sealed class StatusListCacheTests
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-05-25T12:00:00Z");
 
     [Fact]
-    public void ParseJwt_ValidPayload_DecodesBitstringAndClaims()
-    {
-        var key = StatusListTestHelpers.NewKey();
-        var bits = new byte[32];
-        bits[5] = 0b0000_0010; // index 41 set (5*8 + 1)
-        var jwt = StatusListTestHelpers.BuildSignedList(bits, Now.AddHours(24), key);
-
-        var parsed = StatusListCache.ParseJwt(jwt);
-
-        parsed.Bitstring.Length.Should().Be(32);
-        parsed.Bitstring[5].Should().Be(0b0000_0010);
-        parsed.Issuer.Should().Be(StatusListTestHelpers.Issuer);
-        parsed.Alg.Should().Be("ES256");
-        parsed.Kid.Should().Be("did:sorcha:org:abc#citizen-status-signing");
-        parsed.ExpiresAt.Should().NotBeNull();
-    }
-
-    [Fact]
     public async Task CheckAsync_BitSet_ReturnsRevoked_BitClear_ReturnsActive()
     {
         var key = StatusListTestHelpers.NewKey();

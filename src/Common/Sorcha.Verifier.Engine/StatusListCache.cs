@@ -61,7 +61,7 @@ public sealed class StatusListCache : IStatusListCache
     private static readonly TimeSpan DefaultClockSkew = TimeSpan.FromSeconds(60);
 
     private readonly HttpClient _httpClient;
-    private readonly IIssuerKeyResolver _issuerKeys;
+    private readonly StatusListTokenVerifier _verifier;
     private readonly TimeProvider _clock;
     private readonly TimeSpan _clockSkew;
     private readonly ILogger<StatusListCache> _logger;
@@ -79,11 +79,13 @@ public sealed class StatusListCache : IStatusListCache
         TimeSpan? clockSkew = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-        _issuerKeys = issuerKeys ?? throw new ArgumentNullException(nameof(issuerKeys));
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _metrics = metrics;
         _clockSkew = clockSkew ?? DefaultClockSkew;
+        // #1759 — the one implementation of "may this list be believed", shared with HAIP.
+        _verifier = new StatusListTokenVerifier(
+            issuerKeys ?? throw new ArgumentNullException(nameof(issuerKeys)), clock, logger, _clockSkew);
     }
 
     /// <inheritdoc />
@@ -116,9 +118,8 @@ public sealed class StatusListCache : IStatusListCache
             return StatusListVerdict.Unverifiable;
         }
 
-        var startBit = (long)index * bits;
-        var endBit = startBit + bits;
-        if (endBit > (long)entry.Bitstring.Length * 8)
+        var value = StatusListTokenVerifier.ReadEntry(entry.Bitstring, bits, index);
+        if (value is null)
         {
             // Index outside the list. The list is authentic but says nothing about this credential —
             // an out-of-range index is itself suspicious. Fail closed.
@@ -126,20 +127,6 @@ public sealed class StatusListCache : IStatusListCache
                 "StatusListCache: index {Index} outside list length {Length} for {Uri} — failing closed",
                 index, entry.Bitstring.Length * 8 / bits, statusListUri);
             return StatusListVerdict.Unverifiable;
-        }
-
-        // LSB-first per draft-ietf-oauth-status-list §4.1: entry `index`'s value occupies bits
-        // [index*bits, index*bits+bits) counting from bit 0 (least significant) of byte 0 upward, and
-        // within that range bit `index*bits + b` carries value-bit `b` (weight 2^b). This is the
-        // OPPOSITE convention to W3C Bitstring Status List's MSB-first packing — see the class remarks.
-        var value = 0;
-        for (var b = 0; b < bits; b++)
-        {
-            var globalBit = startBit + b;
-            var byteIndex = (int)(globalBit / 8);
-            var bitOffset = (int)(globalBit % 8);
-            var isSet = (entry.Bitstring[byteIndex] & (1 << bitOffset)) != 0;
-            if (isSet) value |= 1 << b;
         }
 
         // StatusListVerdict has no SUSPENDED state (that is #1498's open follow-up, deliberately out
@@ -198,170 +185,23 @@ public sealed class StatusListCache : IStatusListCache
 
     private async Task<CachedList?> VerifyAsync(string compactJwt, string uri, string expectedIssuer, CancellationToken ct)
     {
-        ParsedList parsed;
-        try
+        var result = await _verifier.VerifyAsync(compactJwt, uri, expectedIssuer, ct);
+        if (!result.IsVerified)
         {
-            parsed = ParseJwt(compactJwt);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "StatusListCache: malformed status list for {Uri} — failing closed", uri);
-            _metrics?.StatusListRejected("signature");
+            _metrics?.StatusListRejected(result.Rejection switch
+            {
+                StatusListTokenRejection.IssuerMismatch or StatusListTokenRejection.SubjectMismatch => "issuer",
+                StatusListTokenRejection.KeyUnresolved => "unresolved",
+                StatusListTokenRejection.Expired => "expired",
+                _ => "signature",
+            });
             return null;
         }
 
-        // ── Issuer pinning (FR-002) ───────────────────────────────────────────────
-        if (string.IsNullOrEmpty(parsed.Issuer)
-            || !string.Equals(parsed.Issuer, expectedIssuer, StringComparison.Ordinal))
-        {
-            _logger.LogWarning(
-                "StatusListCache: issuer mismatch for {Uri} — list iss '{Actual}' ≠ expected '{Expected}'",
-                uri, parsed.Issuer, expectedIssuer);
-            _metrics?.StatusListRejected("issuer");
-            return null;
-        }
-
-        // ── Resolve the issuing org's key from sealed state (FR-001) ──────────────
-        var jwk = await _issuerKeys.ResolveAsync(expectedIssuer, parsed.Kid, ct);
-        if (jwk is null)
-        {
-            _logger.LogWarning(
-                "StatusListCache: no key resolved for issuer '{Issuer}' (kid '{Kid}') for {Uri} — failing closed",
-                expectedIssuer, parsed.Kid, uri);
-            _metrics?.StatusListRejected("unresolved");
-            return null;
-        }
-
-        // ── Signature verification (FR-001) ───────────────────────────────────────
-        if (!VerifyListSignature(parsed, jwk.Value))
-        {
-            _logger.LogWarning(
-                "StatusListCache: signature verification failed for {Uri} against issuer '{Issuer}' key",
-                uri, expectedIssuer);
-            _metrics?.StatusListRejected("signature");
-            return null;
-        }
-
-        // ── Freshness (FR-004) — list MUST carry exp and MUST be fresh within skew ─
-        if (parsed.ExpiresAt is null)
-        {
-            _logger.LogWarning("StatusListCache: status list for {Uri} has no exp — failing closed", uri);
-            _metrics?.StatusListRejected("expired");
-            return null;
-        }
-        if (ClockSkewExpired(parsed.ExpiresAt.Value, _clock.GetUtcNow()))
-        {
-            _logger.LogWarning(
-                "StatusListCache: status list for {Uri} expired at {Exp:O} — failing closed",
-                uri, parsed.ExpiresAt.Value);
-            _metrics?.StatusListRejected("expired");
-            return null;
-        }
-
-        return new CachedList(parsed.Bitstring, parsed.ExpiresAt.Value, expectedIssuer, parsed.Bits);
+        return new CachedList(result.Entries, result.ExpiresAt, expectedIssuer, result.Bits);
     }
 
     private bool ClockSkewExpired(DateTimeOffset expiresAt, DateTimeOffset now) => now > expiresAt + _clockSkew;
-
-    /// <summary>
-    /// Verifies a status-list JWS signature against a public JWK. ES256 (P-256) only — any other
-    /// algorithm fails closed, consistent with the engine's ES256-only JWS posture.
-    /// </summary>
-    private static bool VerifyListSignature(ParsedList parsed, JsonElement jwk)
-    {
-        try
-        {
-            if (!string.Equals(parsed.Alg, "ES256", StringComparison.Ordinal)) return false;
-            if (!jwk.TryGetProperty("x", out var xEl) || !jwk.TryGetProperty("y", out var yEl)) return false;
-            var x = xEl.GetString();
-            var y = yEl.GetString();
-            if (x is null || y is null) return false;
-
-            using var ecdsa = ECDsa.Create(new ECParameters
-            {
-                Curve = ECCurve.NamedCurves.nistP256,
-                Q = new ECPoint
-                {
-                    X = Base64Url.DecodeFromChars(x),
-                    Y = Base64Url.DecodeFromChars(y),
-                },
-            });
-
-            // Citizen wallet signs with raw ECDSA → IEEE P1363 fixed-field concatenation; accept DER too.
-            return ecdsa.VerifyData(parsed.SigningInput, parsed.Signature, HashAlgorithmName.SHA256,
-                       DSASignatureFormat.IeeeP1363FixedFieldConcatenation)
-                || ecdsa.VerifyData(parsed.SigningInput, parsed.Signature, HashAlgorithmName.SHA256);
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// Parses a Token Status List 2024 JWT into a <see cref="ParsedList"/> — bitstring, claims, and the
-    /// signing input + signature needed to authenticate it. Public for unit testing — production code
-    /// goes through <see cref="CheckAsync"/>. Does NOT verify the signature (the cache does that).
-    /// </summary>
-    internal static ParsedList ParseJwt(string compactJwt)
-    {
-        var parts = compactJwt.Split('.');
-        if (parts.Length != 3)
-        {
-            throw new FormatException("Status list JWT must have three parts.");
-        }
-
-        var headerJson = JsonSerializer.Deserialize<JsonElement>(Base64Url.DecodeFromChars(parts[0]));
-        var alg = headerJson.TryGetProperty("alg", out var algEl) && algEl.ValueKind == JsonValueKind.String
-            ? algEl.GetString() ?? string.Empty
-            : string.Empty;
-        var kid = headerJson.TryGetProperty("kid", out var kidEl) && kidEl.ValueKind == JsonValueKind.String
-            ? kidEl.GetString()
-            : null;
-
-        var payloadJson = JsonSerializer.Deserialize<JsonElement>(Base64Url.DecodeFromChars(parts[1]));
-
-        var statusList = payloadJson.GetProperty("status_list");
-        var lstB64 = statusList.GetProperty("lst").GetString()
-            ?? throw new FormatException("status_list.lst missing");
-
-        var compressed = Base64Url.DecodeFromChars(lstB64);
-        using var ms = new MemoryStream(compressed);
-        using var inflater = new ZLibStream(ms, CompressionMode.Decompress);
-        using var output = new MemoryStream();
-        inflater.CopyTo(output);
-
-        // #1499: honour the declared entry width instead of assuming 1-bit entries. Every list this
-        // rail has published so far omits `bits` (implicitly 1) or sets it to 1 explicitly, so the
-        // default preserves every already-published list's meaning exactly.
-        var bits = statusList.TryGetProperty("bits", out var bitsEl) && bitsEl.TryGetInt32(out var b)
-            ? b : 1;
-
-        // No +24h default — a list with no exp is rejected by the freshness gate (FR-004).
-        DateTimeOffset? exp = payloadJson.TryGetProperty("exp", out var expEl) && expEl.ValueKind == JsonValueKind.Number
-            ? DateTimeOffset.FromUnixTimeSeconds(expEl.GetInt64())
-            : null;
-
-        var issuer = payloadJson.TryGetProperty("iss", out var issEl) && issEl.ValueKind == JsonValueKind.String
-            ? issEl.GetString()
-            : null;
-
-        var signingInput = Encoding.ASCII.GetBytes($"{parts[0]}.{parts[1]}");
-        var signature = Base64Url.DecodeFromChars(parts[2]);
-
-        return new ParsedList(output.ToArray(), exp, issuer, alg, kid, signingInput, signature, bits);
-    }
-
-    /// <summary>Parsed-but-unverified status list: bitstring, claims, and the material to authenticate it.</summary>
-    internal sealed record ParsedList(
-        byte[] Bitstring,
-        DateTimeOffset? ExpiresAt,
-        string? Issuer,
-        string Alg,
-        string? Kid,
-        byte[] SigningInput,
-        byte[] Signature,
-        int Bits);
 
     /// <summary>Internal cache entry — only ever holds a verified list. Issuer recorded for pinning re-check.</summary>
     internal sealed record CachedList(byte[] Bitstring, DateTimeOffset ExpiresAt, string Issuer, int Bits);

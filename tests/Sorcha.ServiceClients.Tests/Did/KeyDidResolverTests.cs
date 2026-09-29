@@ -53,22 +53,96 @@ public class KeyDidResolverTests
     }
 
     [Fact]
-    public async Task ResolveAsync_P256Key_ReturnsJsonWebKey2020()
+    public async Task ResolveAsync_P256Key_ReturnsJsonWebKey2020WithTheKeysCoordinates()
     {
-        // Build a valid P-256 did:key
-        // Multicodec: 0x1200 + 33 bytes of compressed key
-        var keyBytes = new byte[33];
-        keyBytes[0] = 0x02; // Compressed point prefix
-        Array.Fill(keyBytes, (byte)0xCD, 1, 32);
-        var encoded = new byte[] { 0x12, 0x00 }.Concat(keyBytes).ToArray();
-        var multibase = "z" + Base58.Bitcoin.Encode(encoded);
-        var did = $"did:key:{multibase}";
+        // A REAL P-256 key (BCL), compressed per the did:key spec, behind multicodec 0x1200 as an
+        // unsigned varint (0x80 0x24 — the prefix the spec's own example decodes to). The x/y the resolver publishes
+        // must be the ones the key actually has, or no signature by it will ever verify.
+        using var ecdsa = System.Security.Cryptography.ECDsa.Create(
+            System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+        var q = ecdsa.ExportParameters(false).Q;
+        var compressed = new byte[33];
+        compressed[0] = (byte)(0x02 | (q.Y![31] & 1));
+        q.X!.CopyTo(compressed, 1);
+        var did = "did:key:z" + Base58.Bitcoin.Encode(new byte[] { 0x80, 0x24 }.Concat(compressed).ToArray());
 
         var doc = await _resolver.ResolveAsync(did);
 
         doc.Should().NotBeNull();
         doc!.Id.Should().Be(did);
-        doc.VerificationMethod[0].Type.Should().Be("JsonWebKey2020");
+        var vm = doc.VerificationMethod[0];
+        vm.Type.Should().Be("JsonWebKey2020");
+        var jwk = vm.PublicKeyJwk!.Value;
+        jwk.GetProperty("kty").GetString().Should().Be("EC");
+        jwk.GetProperty("crv").GetString().Should().Be("P-256");
+        System.Buffers.Text.Base64Url.DecodeFromChars(jwk.GetProperty("x").GetString()).Should().Equal(q.X);
+        System.Buffers.Text.Base64Url.DecodeFromChars(jwk.GetProperty("y").GetString()).Should().Equal(q.Y);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_Ed25519Key_PublishesAnOkpJwkForTheSameKey()
+    {
+        // The issuer-key resolvers consume publicKeyJwk, not multibase. Without it an Ed25519
+        // did:key issuer resolves to a document whose key no verifier can use.
+        var (publicKey, _) = Ed25519KeyPair();
+        var did = "did:key:z" + Base58.Bitcoin.Encode(new byte[] { 0xed, 0x01 }.Concat(publicKey).ToArray());
+
+        var doc = await _resolver.ResolveAsync(did);
+
+        var jwk = doc!.VerificationMethod[0].PublicKeyJwk!.Value;
+        jwk.GetProperty("kty").GetString().Should().Be("OKP");
+        jwk.GetProperty("crv").GetString().Should().Be("Ed25519");
+        System.Buffers.Text.Base64Url.DecodeFromChars(jwk.GetProperty("x").GetString()).Should().Equal(publicKey);
+    }
+
+    [Theory]
+    // Published examples in the did:key spec (w3c-ccg.github.io/did-key-spec, v0.9).
+    [InlineData("did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK", "OKP")]
+    [InlineData("did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP", "OKP")]
+    [InlineData("did:key:zDnaerx9CtbPJ1q36T5Ln5wYt3MQYeGRG5ehnPAmxcf5mDZpv", "EC")]
+    public async Task ResolveAsync_SpecExamples_PublishAUsableJwk(string did, string kty)
+    {
+        var doc = await _resolver.ResolveAsync(did);
+
+        var jwk = doc!.VerificationMethod[0].PublicKeyJwk!.Value;
+        jwk.GetProperty("kty").GetString().Should().Be(kty);
+        if (kty == "EC")
+        {
+            // A decompression bug yields a point that is not on the curve; the BCL refuses those.
+            var act = () => System.Security.Cryptography.ECDsa.Create(new System.Security.Cryptography.ECParameters
+            {
+                Curve = System.Security.Cryptography.ECCurve.NamedCurves.nistP256,
+                Q = new System.Security.Cryptography.ECPoint
+                {
+                    X = System.Buffers.Text.Base64Url.DecodeFromChars(jwk.GetProperty("x").GetString()),
+                    Y = System.Buffers.Text.Base64Url.DecodeFromChars(jwk.GetProperty("y").GetString()),
+                },
+            });
+            act.Should().NotThrow();
+        }
+    }
+
+    [Fact]
+    public async Task ResolveAsync_P256BytesThatAreNotACurvePoint_ReturnsNull()
+    {
+        var keyBytes = new byte[33];
+        keyBytes[0] = 0x02;
+        Array.Fill(keyBytes, (byte)0xFF, 1, 32); // x >= p: no such point
+        var did = "did:key:z" + Base58.Bitcoin.Encode(new byte[] { 0x80, 0x24 }.Concat(keyBytes).ToArray());
+
+        var doc = await _resolver.ResolveAsync(did);
+
+        doc.Should().BeNull("a key that cannot exist must not resolve to a verification method");
+    }
+
+    private static (byte[] PublicKey, byte[] PrivateKey) Ed25519KeyPair()
+    {
+        var gen = new Org.BouncyCastle.Crypto.Generators.Ed25519KeyPairGenerator();
+        gen.Init(new Org.BouncyCastle.Crypto.Parameters.Ed25519KeyGenerationParameters(
+            new Org.BouncyCastle.Security.SecureRandom()));
+        var pair = gen.GenerateKeyPair();
+        return (((Org.BouncyCastle.Crypto.Parameters.Ed25519PublicKeyParameters)pair.Public).GetEncoded(),
+                ((Org.BouncyCastle.Crypto.Parameters.Ed25519PrivateKeyParameters)pair.Private).GetEncoded());
     }
 
     [Fact]

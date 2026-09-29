@@ -36,6 +36,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Moq" />
+    <PackageReference Include="JsonSchema.Net" />
     <PackageReference Include="FluentAssertions" />
     <PackageReference Include="AutoFixture" />
     <PackageReference Include="AutoFixture.Xunit3" />

@@ -4,11 +4,10 @@
 using FluentAssertions;
 
 using Sorcha.Blueprint.Engine.Credentials;
-using Sorcha.Haip.Service.Services;
 
 using Xunit;
 
-namespace Sorcha.Haip.Service.Tests.Services;
+namespace Sorcha.Blueprint.Engine.Tests.Credentials;
 
 /// <summary>
 /// Feature 192 — the READ half of the IETF Token Status List two-bit encoding.

@@ -152,6 +152,13 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHaipIssuer
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IOrgIssuerCertKeyService,
     Sorcha.Wallet.Service.Services.Implementation.OrgIssuerCertKeyService>();
 
+// TODO(095) / #1759: IETF status lists are signed with the issuing org's VC-issuance key, so the
+// list's kid resolves through did:sorcha:org:{wallet} exactly as its credentials' kid does.
+Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions
+    .TryAddSingleton(builder.Services, TimeProvider.System);
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IStatusListTokenSigner,
+    Sorcha.Wallet.Service.Services.Implementation.StatusListTokenSigner>();
+
 // Feature 114: Citizen wallet holder key (per-citizen identity for offline OID4VP wallets)
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHolderKeyService,
     Sorcha.Wallet.Service.Services.Implementation.HolderKeyService>();
@@ -410,6 +417,9 @@ app.MapCitizenStatusListInternalEndpoints();
 
 // Feature 181 US4: org P-256 cert-issuing key resolve + sign (Tenant Service consumes these).
 app.MapIssuerCertKeyInternalEndpoints();
+
+// TODO(095) / #1759: sign IETF status lists with the issuing org's key (Blueprint Service only).
+app.MapStatusListSigningInternalEndpoints();
 
 // Feature 124: Pending-application notice endpoints (Set / Get / Clear)
 app.MapPendingApplicationEndpoints();

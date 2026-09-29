@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.OutputCaching;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -58,6 +59,16 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
 
         builder.ConfigureServices(services =>
         {
+            // The .NET default BackgroundServiceExceptionBehavior is StopHost. Blueprint's background
+            // services crash inside the test host (no Mongo, no Redis stream), and the first crash
+            // stops the host and disposes the SHARED server — so every test in a class that happens to
+            // run after that moment fails with ObjectDisposedException(IServiceProvider). Whether a
+            // test runs before or after it is a scheduling race: adding an unrelated test class to the
+            // assembly was enough to flip 45 tests red (#1759). SignalRIntegrationTests and
+            // ChatHubIntegrationTests each worked around this locally; it belongs here, once.
+            services.Configure<HostOptions>(opt =>
+                opt.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore);
+
             // Remove the real Redis output caching
             services.RemoveAll<IDistributedCache>();
 
