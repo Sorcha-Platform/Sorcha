@@ -62,6 +62,13 @@ public class StatusReference
 
     /// <summary>Status purpose where the list distinguishes it ("revocation" / "suspension").</summary>
     public string? Purpose { get; set; }
+
+    /// <summary>
+    /// The DID whose signature the list must carry — the referencing credential's own issuer (#1759,
+    /// #1768). An IETF Token Status List is believed only if its <c>iss</c> equals this and it verifies
+    /// against the key resolved from this DID; without it the list cannot be authenticated.
+    /// </summary>
+    public string? ExpectedIssuer { get; set; }
 }
 
 /// <summary>

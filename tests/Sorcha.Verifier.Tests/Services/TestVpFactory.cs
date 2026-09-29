@@ -33,6 +33,9 @@ internal static class TestVpFactory
         string StatusListUri,
         int StatusListIndex);
 
+    /// <summary>The signer a minted delegation names for its status list (#1759).</summary>
+    public const string StatusIssuer = "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK";
+
     public static Bundle Mint(
         string vct,
         Dictionary<string, JsonElement> disclosedClaims,
@@ -41,6 +44,7 @@ internal static class TestVpFactory
         DateTimeOffset? delegationExpiresAt = null,
         string statusListUri = "https://verify.test/status/00000000000000000000000000000000/citizen-devices/0.statuslist+jwt",
         int statusListIndex = 7,
+        string? statusIssuer = StatusIssuer,
         DateTimeOffset? kbJwtIssuedAt = null,
         DateTimeOffset? kbJwtExpiresAt = null,
         bool omitKbJwtExp = false,
@@ -115,6 +119,8 @@ internal static class TestVpFactory
                 },
             },
         };
+        // #1759 — the Wallet names its list's signer in the holder-signed payload; null omits it.
+        if (statusIssuer is not null) delegationPayload["status_issuer"] = statusIssuer;
         var delegation = SignEs256(
             new Dictionary<string, object> { ["alg"] = "ES256", ["typ"] = "dc+sd-jwt" },
             delegationPayload, holder);
@@ -163,7 +169,8 @@ internal static class TestVpFactory
         string verifierNonce,
         DateTimeOffset? delegationExpiresAt = null,
         string statusListUri = "https://verify.test/status/00000000000000000000000000000000/citizen-devices/0.statuslist+jwt",
-        int statusListIndex = 7)
+        int statusListIndex = 7,
+        string? statusIssuer = StatusIssuer)
     {
         var issuer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var device = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -220,6 +227,8 @@ internal static class TestVpFactory
                 },
             },
         };
+        // #1759 — the Wallet names its list's signer in the holder-signed payload; null omits it.
+        if (statusIssuer is not null) delegationPayload["status_issuer"] = statusIssuer;
         // Honest EdDSA header — the holder key is Ed25519, so the delegation JWS is an EdDSA signature.
         var delegation = SignEdDsa(
             new Dictionary<string, object> { ["alg"] = "EdDSA", ["typ"] = "dc+sd-jwt" },

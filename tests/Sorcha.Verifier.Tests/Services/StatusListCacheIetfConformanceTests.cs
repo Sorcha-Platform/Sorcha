@@ -126,16 +126,21 @@ public sealed class StatusListCacheIetfConformanceTests
     }
 
     [Fact]
-    public async Task ParseJwt_NoBitsClaim_DefaultsToOne()
+    public async Task CheckAsync_NoBitsClaim_ReadsAsOneBitEntries()
     {
         // Back-compat: every list this rail has published before #1499 either omits `bits` or sets
         // it to 1 explicitly. Both MUST keep reading as 1-bit entries — no republish is required.
-        var jwt = StatusListTestHelpers.BuildSignedList(
-            SpecVectorBits1, Now.AddHours(24), StatusListTestHelpers.NewKey(), omitBits: true);
+        // Spec vector statuses: index 1 = 0, index 3 = 1. Read at any other width, those differ.
+        var key = StatusListTestHelpers.NewKey();
+        var cache = StatusListTestHelpers.BuildCache(
+            StatusListTestHelpers.BuildSignedList(SpecVectorBits1, Now.AddHours(24), key, omitBits: true),
+            StatusListTestHelpers.ResolverFor(key.PublicJwk),
+            new FixedTimeProvider(Now));
 
-        var parsed = StatusListCache.ParseJwt(jwt);
-
-        parsed.Bits.Should().Be(1);
+        (await cache.CheckAsync(StatusListTestHelpers.ListUri, 1, StatusListTestHelpers.Issuer))
+            .Should().Be(StatusListVerdict.Active);
+        (await cache.CheckAsync(StatusListTestHelpers.ListUri, 3, StatusListTestHelpers.Issuer))
+            .Should().Be(StatusListVerdict.Revoked);
     }
 
     [Fact]

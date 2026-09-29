@@ -613,11 +613,16 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             layerState.StatusListUri = uriEl.GetString();
             layerState.StatusListIndex = idxEl.GetInt32();
 
-            var expectedIssuer = TryGetString(payload.Value, "iss");
-            if (string.IsNullOrEmpty(expectedIssuer))
+            // #1759 — the delegation's iss is the HOLDER, but its status list is signed by the org's
+            // status signer, which the delegation names in its holder-signed status_issuer. Pinning to
+            // iss could never match a real list. Only a DID is accepted: the list's key is resolved
+            // through it, so anything else could not be authenticated.
+            var expectedIssuer = TryGetString(payload.Value, "status_issuer");
+            if (string.IsNullOrEmpty(expectedIssuer)
+                || !expectedIssuer.StartsWith("did:", StringComparison.Ordinal))
             {
-                // No issuer to pin the status list to — cannot authenticate revocation. Fail closed.
-                errors.Add("Delegation credential is missing iss; cannot authenticate its status list.");
+                // No signer to pin the status list to — cannot authenticate revocation. Fail closed.
+                errors.Add("Delegation credential names no status_issuer DID; cannot authenticate its status list.");
                 _metrics?.PresentationReplayRejected("revoked_at_verify");
                 layerState.Revocation = StatusListVerdict.Unverifiable;
                 return errors;

@@ -2,168 +2,184 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Buffers.Text;
-using System.IO.Compression;
-using System.Security.Cryptography;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 
 using FluentAssertions;
-
-using Sorcha.Blueprint.Engine.Credentials;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using Moq.Protected;
+using Org.BouncyCastle.Crypto.Generators;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Crypto.Signers;
+using Org.BouncyCastle.Security;
+using SimpleBase;
 
 using Sorcha.Haip.Service.Services;
+using Sorcha.ServiceClients.Did;
+using Sorcha.Verifier.Engine;
 
 using Xunit;
+
+using CredentialStatusValue = Sorcha.Blueprint.Engine.Credentials.CredentialStatusValue;
+using StatusReference = Sorcha.Blueprint.Engine.Credentials.StatusReference;
 
 namespace Sorcha.Haip.Service.Tests.Services;
 
 /// <summary>
-/// Feature 095 US4 — verifies <see cref="IetfTokenStatusListChecker"/> can round-
-/// trip a signed envelope produced by the issuer-side
-/// the Blueprint Service's IETF status list endpoint.
-/// The signature verification closes the real security boundary — malicious
-/// endpoints cannot fake a revocation state.
+/// #1768 — HAIP's IETF status checker verified a list against the JWK embedded in THAT LIST's own
+/// header, so a forger could sign an all-VALID list with any key and embed it; and it never pinned the
+/// list to the credential's issuer. It now delegates to the engine's shared
+/// <see cref="StatusListTokenVerifier"/>: key resolved from the credential issuer's DID by kid, iss and
+/// sub pinned. Keys resolve through the REAL did:key resolver; entries are the IETF draft's own example.
 /// </summary>
-public class IetfTokenStatusListCheckerTests
+public sealed class IetfTokenStatusListCheckerTests
 {
-    [Fact]
-    public void ParseAndReadBit_NotSet_WhenBitAtIdxIsZero()
+    private const string Uri = "https://n1.sorcha.dev/api/v1/credentials/ietf-status-lists/list-1";
+
+    // draft-ietf-oauth-status-list §4.1, bits=2: statuses 1,2,0,3,0,1,0,1,1,2,3,3.
+    private const string SpecLst2Bit = "eNo76fITAAPfAgc";
+
+    [Theory]
+    [InlineData(0, CredentialStatusValue.Invalid)]
+    [InlineData(1, CredentialStatusValue.Suspended)]
+    [InlineData(2, CredentialStatusValue.Valid)]
+    [InlineData(3, CredentialStatusValue.Unresolved)] // 0x03 is application-specific: not a status
+    public async Task CheckAsync_ListSignedByTheIssuersResolvableKey_ReadsTheEntry(int idx, CredentialStatusValue expected)
     {
-        // Single-bit list of 128 bits, all zero — every index should read NotSet.
-        var jwt = BuildSignedEnvelope(new byte[16], bitsPerEntry: 1);
+        var issuer = Key.New();
+        var checker = Checker(Serve(Build(issuer, issuer)));
 
-        var bit = IetfTokenStatusListChecker.ParseAndReadBit(jwt, idx: 42);
+        var status = await checker.CheckAsync(Ref(idx, issuer.Did));
 
-        bit.Should().Be(CredentialStatusValue.Valid);
+        status.Should().Be(expected);
     }
 
     [Fact]
-    public void ParseAndReadBit_Set_WhenBitAtIdxIsOne()
+    public async Task CheckAsync_ForgedListCarryingItsOwnJwk_IsUnresolved()
     {
-        // Set the bit at index 42 to 1. LSB-first within a byte (RFC 9972): bit 42 → byte 5, bit 2.
-        var raw = new byte[16];
-        SetBit(raw, 42);
-        var jwt = BuildSignedEnvelope(raw, bitsPerEntry: 1);
+        // The #1768 attack: claim to be the issuer, sign with your own key, and embed that key.
+        var issuer = Key.New();
+        var forger = Key.New();
+        var forged = Build(signer: forger, claimedIssuer: issuer, embedJwkOf: forger);
 
-        var bit = IetfTokenStatusListChecker.ParseAndReadBit(jwt, idx: 42);
+        var status = await Checker(Serve(forged)).CheckAsync(Ref(2, issuer.Did));
 
-        bit.Should().Be(CredentialStatusValue.Invalid);
-        IetfTokenStatusListChecker.ParseAndReadBit(jwt, idx: 41).Should().Be(CredentialStatusValue.Valid);
-        IetfTokenStatusListChecker.ParseAndReadBit(jwt, idx: 43).Should().Be(CredentialStatusValue.Valid);
+        status.Should().Be(CredentialStatusValue.Unresolved, "only the key resolved from the issuer's DID counts");
     }
 
     [Fact]
-    public void ParseAndReadBit_Unknown_WhenSignatureInvalid()
+    public async Task CheckAsync_GenuineListFromAnotherIssuer_IsUnresolved()
     {
-        var jwt = BuildSignedEnvelope(new byte[16], bitsPerEntry: 1);
-        // Flip the last byte of the signature segment to invalidate it.
-        var parts = jwt.Split('.');
-        var sigBytes = Base64Url.DecodeFromChars(parts[2]);
-        sigBytes[^1] ^= 0xFF;
-        var tamperedJwt = $"{parts[0]}.{parts[1]}.{Base64Url.EncodeToString(sigBytes)}";
+        var other = Key.New();
+        var credentialIssuer = Key.New();
 
-        var bit = IetfTokenStatusListChecker.ParseAndReadBit(tamperedJwt, idx: 0);
+        var status = await Checker(Serve(Build(other, other))).CheckAsync(Ref(2, credentialIssuer.Did));
 
-        bit.Should().Be(CredentialStatusValue.Unresolved,
-            "a tampered signature MUST cause the status read to be treated as Unknown, never Active");
+        status.Should().Be(CredentialStatusValue.Unresolved);
     }
 
     [Fact]
-    public void ParseAndReadBit_Unknown_WhenTypHeaderWrong()
+    public async Task CheckAsync_ReferenceWithNoExpectedIssuer_IsUnresolvedWithoutFetching()
     {
-        // Rebuild an envelope with typ="jwt" instead of statuslist+jwt — verifier
-        // must refuse because it wasn't meant as a status list.
-        var jwt = BuildSignedEnvelope(new byte[16], bitsPerEntry: 1, typ: "jwt");
+        var fetched = false;
+        var checker = Checker(Serve("unused", onRequest: () => fetched = true));
 
-        var bit = IetfTokenStatusListChecker.ParseAndReadBit(jwt, idx: 0);
+        var status = await checker.CheckAsync(new StatusReference { Uri = Uri, Index = 0 });
 
-        bit.Should().Be(CredentialStatusValue.Unresolved);
+        status.Should().Be(CredentialStatusValue.Unresolved, "an unpinned list cannot be authenticated");
+        fetched.Should().BeFalse();
     }
 
     [Fact]
-    public void ParseAndReadBit_Unknown_WhenIdxOutOfRange()
+    public async Task CheckAsync_FetchFails_IsUnresolved()
     {
-        var jwt = BuildSignedEnvelope(new byte[16], bitsPerEntry: 1);
+        var issuer = Key.New();
 
-        IetfTokenStatusListChecker.ParseAndReadBit(jwt, idx: 128).Should().Be(CredentialStatusValue.Unresolved);
-        IetfTokenStatusListChecker.ParseAndReadBit(jwt, idx: 10_000).Should().Be(CredentialStatusValue.Unresolved);
+        var status = await Checker(Serve("", HttpStatusCode.ServiceUnavailable)).CheckAsync(Ref(0, issuer.Did));
+
+        status.Should().Be(CredentialStatusValue.Unresolved);
     }
 
-    [Fact]
-    public void ReadBit_TwoBitList_ReadsAcrossBoundary()
-    {
-        // 2-bit list: entry 0 occupies bits 0-1, entry 1 occupies 2-3, etc.
-        // Entry 3 (bits 6-7, counted from the least significant bit) = 0b01 — IETF 0x01 INVALID.
-        var raw = new byte[2];
-        raw[0] = 0b0100_0000;
+    // ── helpers ──────────────────────────────────────────────────────────────
 
-        IetfTokenStatusListChecker.ReadBit(raw, idx: 3, bitsPerEntry: 2)
-            .Should().Be(CredentialStatusValue.Invalid);
-        IetfTokenStatusListChecker.ReadBit(raw, idx: 0, bitsPerEntry: 2)
-            .Should().Be(CredentialStatusValue.Valid);
+    private static StatusReference Ref(int idx, string issuer) =>
+        new() { Uri = Uri, Index = idx, ExpectedIssuer = issuer };
+
+    private static IetfTokenStatusListChecker Checker(HttpClient http)
+    {
+        var registry = new DidResolverRegistry(NullLogger<DidResolverRegistry>.Instance);
+        registry.Register(new KeyDidResolver(NullLogger<KeyDidResolver>.Instance));
+        var keys = new DidResolverBackedIssuerKeyResolver(
+            registry, new TestMeterFactory(), NullLogger<DidResolverBackedIssuerKeyResolver>.Instance);
+        var verifier = new StatusListTokenVerifier(keys, TimeProvider.System, NullLogger<StatusListTokenVerifier>.Instance);
+        return new IetfTokenStatusListChecker(http, verifier, NullLogger<IetfTokenStatusListChecker>.Instance);
     }
 
-    // --- Test helpers ---
-
-    private static void SetBit(byte[] raw, int idx)
+    private static HttpClient Serve(string body, HttpStatusCode status = HttpStatusCode.OK, Action? onRequest = null)
     {
-        var byteIdx = idx / 8;
-        var bitIdx = idx % 8;
-        raw[byteIdx] |= (byte)(1 << bitIdx);   // IETF: least significant bit first (#1761)
+        var handler = new Mock<HttpMessageHandler>();
+        handler.Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .Returns<HttpRequestMessage, CancellationToken>((_, _) =>
+            {
+                onRequest?.Invoke();
+                return Task.FromResult(new HttpResponseMessage(status)
+                {
+                    Content = new StringContent(body, Encoding.UTF8, "application/statuslist+jwt"),
+                });
+            });
+        return new HttpClient(handler.Object);
     }
 
-    private static string BuildSignedEnvelope(byte[] rawBitstring, int bitsPerEntry, string typ = "statuslist+jwt")
+    private static string Build(Key signer, Key claimedIssuer, Key? embedJwkOf = null)
     {
-        // Mirror what IetfTokenStatusListSerializer produces: zlib-compress the raw
-        // bits, base64url, build header+payload, sign with ES256, embed the JWK so
-        // the checker can self-resolve the key (dev phase; pre-x5c).
-        var compressed = ZLibCompress(rawBitstring);
-        var lst = Base64Url.EncodeToString(compressed);
-
-        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var parameters = ecdsa.ExportParameters(includePrivateParameters: false);
-
         var header = new Dictionary<string, object>
         {
-            ["alg"] = "ES256",
-            ["typ"] = typ,
-            ["jwk"] = new Dictionary<string, string>
-            {
-                ["kty"] = "EC",
-                ["crv"] = "P-256",
-                ["x"] = Base64Url.EncodeToString(parameters.Q.X!),
-                ["y"] = Base64Url.EncodeToString(parameters.Q.Y!),
-            },
+            ["alg"] = "EdDSA",
+            ["kid"] = claimedIssuer.Kid,
+            ["typ"] = "statuslist+jwt",
         };
+        if (embedJwkOf is not null)
+            header["jwk"] = new { kty = "OKP", crv = "Ed25519", x = Base64Url.EncodeToString(embedJwkOf.Public) };
 
-        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var now = DateTimeOffset.UtcNow;
         var payload = new Dictionary<string, object>
         {
-            ["iss"] = "did:sorcha:test:issuer",
-            ["sub"] = "https://test/list/1",
-            ["iat"] = now,
-            ["exp"] = now + 3600,
-            ["status_list"] = new Dictionary<string, object>
-            {
-                ["bits"] = bitsPerEntry,
-                ["lst"] = lst,
-            },
+            ["iss"] = claimedIssuer.Did,
+            ["sub"] = Uri,
+            ["iat"] = now.ToUnixTimeSeconds(),
+            ["exp"] = now.AddMinutes(5).ToUnixTimeSeconds(),
+            ["status_list"] = new Dictionary<string, object> { ["bits"] = 2, ["lst"] = SpecLst2Bit },
         };
 
-        var headerB64 = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(header));
-        var payloadB64 = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(payload));
-        var signingInput = Encoding.UTF8.GetBytes($"{headerB64}.{payloadB64}");
-        var signature = ecdsa.SignData(signingInput, HashAlgorithmName.SHA256);
-        return $"{headerB64}.{payloadB64}.{Base64Url.EncodeToString(signature)}";
+        var h = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(header));
+        var p = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(payload));
+        var input = Encoding.ASCII.GetBytes($"{h}.{p}");
+        var ed = new Ed25519Signer();
+        ed.Init(true, signer.Private);
+        ed.BlockUpdate(input, 0, input.Length);
+        return $"{h}.{p}.{Base64Url.EncodeToString(ed.GenerateSignature())}";
     }
 
-    private static byte[] ZLibCompress(byte[] data)
+    private sealed record Key(Ed25519PrivateKeyParameters Private, byte[] Public, string Did, string Kid)
     {
-        using var output = new MemoryStream();
-        using (var zlib = new ZLibStream(output, CompressionLevel.Optimal))
+        public static Key New()
         {
-            zlib.Write(data, 0, data.Length);
+            var gen = new Ed25519KeyPairGenerator();
+            gen.Init(new Ed25519KeyGenerationParameters(new SecureRandom()));
+            var pair = gen.GenerateKeyPair();
+            var pub = ((Ed25519PublicKeyParameters)pair.Public).GetEncoded();
+            var multibase = "z" + Base58.Bitcoin.Encode(new byte[] { 0xed, 0x01 }.Concat(pub).ToArray());
+            return new Key((Ed25519PrivateKeyParameters)pair.Private, pub, "did:key:" + multibase,
+                "did:key:" + multibase + "#" + multibase);
         }
-        return output.ToArray();
+    }
+
+    private sealed class TestMeterFactory : System.Diagnostics.Metrics.IMeterFactory
+    {
+        public System.Diagnostics.Metrics.Meter Create(System.Diagnostics.Metrics.MeterOptions options) => new(options);
+        public void Dispose() { }
     }
 }
