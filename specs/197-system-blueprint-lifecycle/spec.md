@@ -202,8 +202,10 @@ operator action on that node.
   be able to supply the definition's content.
 - **FR-010**: A publish MUST support a preview mode that submits nothing and reports current and candidate
   versions.
-- **FR-011**: A publish MUST be refused when the definition is already current (reported as a no-op), when
-  it would roll the network back, or when the operator's stated expected-current version is not current.
+- **FR-011**: A publish MUST be refused when it would roll the network back, when the operator's stated
+  expected-current version is not current (409), when the current state cannot be determined (503, retryable),
+  or when the Validator rejects the submission (502, sanitized). A definition that is **already current** is
+  treated as a no-op (200, not a refusal, not audited).
 - **FR-012**: Every refused publish MUST be recorded in the audit log with its reason, and every successful
   publish MUST be recorded with the previous and new version and the publishing node.
 - **FR-013**: The command-line tool MUST offer drift reporting and publishing (including preview and
