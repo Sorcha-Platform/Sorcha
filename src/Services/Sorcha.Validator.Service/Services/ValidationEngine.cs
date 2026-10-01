@@ -13,6 +13,10 @@ using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
 using Sorcha.Cryptography.Utilities;
 using Sorcha.Register.Models.Constants;
+using ControlTransactionPayload = Sorcha.Register.Models.ControlTransactionPayload;
+using GovernanceBlueprint = Sorcha.Register.Models.GovernanceBlueprint;
+using GovernanceDefinitionPin = Sorcha.Register.Models.GovernanceDefinitionPin;
+using PinResolution = Sorcha.Register.Models.PinResolution;
 using Sorcha.ServiceClients.Register;
 using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Diagnostics;
@@ -621,7 +625,49 @@ public class ValidationEngine : IValidationEngine
 
             // Get the blueprint — the definition this transaction's INSTANCE is pinned to
             // (Feature 194), not whichever definition happens to be latest.
-            var carriedPin = ReadCarriedExecDefHash(transaction);
+            //
+            // Feature 197: a GOVERNANCE action is pinned by the proposal it belongs to, not by a
+            // routing decision (it carries none). Reading the carried pin here would take the
+            // latest-definition path for every governance step, so a definition published between
+            // a proposal's raise and its approval would silently re-judge the approval.
+            string? carriedPin;
+            string pinField;
+            var governancePinned = false;
+            if (TransactionTypeClassifier.IsGovernanceActionTransaction(transaction))
+            {
+                var governancePin = await ResolveGovernancePinAsync(transaction, ct);
+                pinField = "payload.governanceDefinitionTxId";
+                switch (governancePin)
+                {
+                    case PinResolution.Pinned pinned:
+                        carriedPin = pinned.DefinitionTxId;
+                        governancePinned = true;
+                        break;
+                    case PinResolution.Legacy legacy:
+                        carriedPin = null;
+                        FederationValidatorMetrics.GovernanceDefinitionPinFallback(legacy.Step);
+                        _logger.LogWarning(
+                            "Governance {Step} {TransactionId} belongs to a proposal with no definition pin; "
+                            + "validating against the CURRENT governance definition (pre-Feature-197 proposal)",
+                            legacy.Step, transaction.TransactionId);
+                        break;
+                    case PinResolution.Unresolvable unresolvable:
+                        errors.Add(CreateError("VAL_BP_VERSION_001",
+                            "The governance definition governing this transaction cannot be determined: "
+                            + $"{unresolvable.Reason}. The transaction is refused; it is NOT validated "
+                            + "against a different definition.",
+                            ValidationErrorCategory.Blueprint, pinField, true));
+                        return CreateFailureResult(transaction, sw.Elapsed, errors);
+                    default:
+                        throw new InvalidOperationException("Unhandled governance pin resolution.");
+                }
+            }
+            else
+            {
+                carriedPin = ReadCarriedExecDefHash(transaction);
+                pinField = "routingDecision.blueprintDefinitionTxId";
+            }
+
             var blueprint = await ResolveBlueprintAsync(
                 transaction.BlueprintId!, carriedPin, transaction.RegisterId, ct);
             if (blueprint == null)
@@ -634,10 +680,14 @@ public class ValidationEngine : IValidationEngine
                 if (!string.IsNullOrWhiteSpace(carriedPin))
                 {
                     errors.Add(CreateError("VAL_BP_VERSION_001",
-                        $"Blueprint '{transaction.BlueprintId}' definition '{carriedPin}' — the definition this "
-                        + "instance is pinned to — could not be resolved on this node. The transaction is "
-                        + "refused; it is NOT validated against a different definition.",
-                        ValidationErrorCategory.Blueprint, "routingDecision.blueprintDefinitionTxId", true));
+                        governancePinned
+                            ? $"Blueprint '{transaction.BlueprintId}' governance definition '{carriedPin}' — the "
+                              + "definition this governance proposal was raised under — is unresolvable on this "
+                              + "node. The transaction is refused; it is NOT validated against a different definition."
+                            : $"Blueprint '{transaction.BlueprintId}' definition '{carriedPin}' — the definition this "
+                              + "instance is pinned to — could not be resolved on this node. The transaction is "
+                              + "refused; it is NOT validated against a different definition.",
+                        ValidationErrorCategory.Blueprint, pinField, true));
                     return CreateFailureResult(transaction, sw.Elapsed, errors);
                 }
 
@@ -2538,6 +2588,85 @@ public class ValidationEngine : IValidationEngine
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Feature 197 — which <c>register-governance-v1</c> definition governs this governance step.
+    /// Reads the transaction's own control payload (proposal / enactment) and, for an approval or
+    /// enactment, the proposal it references, then defers to <see cref="GovernanceDefinitionPin"/>.
+    /// A proposal that cannot be read yields "unreadable" — never "unpinned".
+    /// </summary>
+    private async Task<PinResolution> ResolveGovernancePinAsync(Transaction transaction, CancellationToken ct)
+    {
+        if (!int.TryParse(transaction.ActionId, out var actionId))
+            return new PinResolution.Unresolvable("not a governance step");
+
+        // Approvals carry a GovernanceApprovalActionPayload, not a control payload.
+        ControlTransactionPayload? own = null;
+        if (actionId != GovernanceBlueprint.CollectQuorumActionId)
+        {
+            try
+            {
+                own = transaction.Payload.Deserialize<ControlTransactionPayload>();
+            }
+            catch (JsonException)
+            {
+                return new PinResolution.Unresolvable("payload unreadable");
+            }
+        }
+
+        string? proposalId = null;
+        if (own?.GovernanceDefinitionTxId is null)
+        {
+            proposalId = actionId == GovernanceBlueprint.CollectQuorumActionId
+                ? transaction.PreviousTransactionId
+                : own?.EnactsProposalId;
+        }
+
+        ControlTransactionPayload? proposal = null;
+        var readable = true;
+        if (!string.IsNullOrWhiteSpace(proposalId))
+        {
+            (proposal, readable) = await TryReadProposalPayloadAsync(transaction.RegisterId, proposalId, ct);
+        }
+        else if (actionId != GovernanceBlueprint.ProposeChangeActionId && own?.GovernanceDefinitionTxId is null)
+        {
+            readable = false;   // an approval/enactment that names no proposal
+        }
+
+        return GovernanceDefinitionPin.Resolve(actionId, own, proposal, readable);
+    }
+
+    private async Task<(ControlTransactionPayload? Payload, bool Readable)> TryReadProposalPayloadAsync(
+        string registerId, string proposalId, CancellationToken ct)
+    {
+        try
+        {
+            var tx = await _registerClient.GetTransactionAsync(registerId, proposalId, ct);
+            var data = tx?.Payloads?.FirstOrDefault()?.Data;
+            if (string.IsNullOrEmpty(data))
+                return (null, false);
+
+            string json;
+            try
+            {
+                json = Encoding.UTF8.GetString(Base64Url.DecodeFromChars(data.AsSpan()));
+            }
+            catch (FormatException)
+            {
+                json = data;   // already plain text
+            }
+
+            var payload = JsonSerializer.Deserialize<ControlTransactionPayload>(json);
+            return (payload, payload is not null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Could not read governance proposal {ProposalId} on register {RegisterId}",
+                proposalId, registerId);
+            return (null, false);
+        }
     }
 
     /// <summary>
