@@ -14,6 +14,7 @@ using Sorcha.Cryptography.Interfaces;
 using Sorcha.Cryptography.Utilities;
 using Sorcha.Register.Models.Constants;
 using ControlTransactionPayload = Sorcha.Register.Models.ControlTransactionPayload;
+using GovernanceApprovalActionPayload = Sorcha.Register.Models.GovernanceApprovalActionPayload;
 using GovernanceBlueprint = Sorcha.Register.Models.GovernanceBlueprint;
 using GovernanceDefinitionPin = Sorcha.Register.Models.GovernanceDefinitionPin;
 using PinResolution = Sorcha.Register.Models.PinResolution;
@@ -2682,11 +2683,37 @@ public class ValidationEngine : IValidationEngine
         }
 
         string? proposalId = null;
-        if (own?.GovernanceDefinitionTxId is null || own.EnactsProposalId is not null)
+        if (actionId == GovernanceBlueprint.CollectQuorumActionId)
         {
-            proposalId = actionId == GovernanceBlueprint.CollectQuorumActionId
-                ? transaction.PreviousTransactionId
-                : own?.EnactsProposalId;
+            // The proposal an approval belongs to is the one its SIGNED payload names — the same
+            // ProposalId the quorum tally counts it under. PreviousTransactionId is outside the
+            // signature; following it would let a submitter have an approval judged under one
+            // proposal's pin while it counts towards another's quorum.
+            GovernanceApprovalActionPayload? approval;
+            try
+            {
+                approval = transaction.Payload.Deserialize<GovernanceApprovalActionPayload>(
+                    GovernanceApprovalActionPayload.CanonicalJsonOptions);
+            }
+            catch (JsonException)
+            {
+                return new PinResolution.Unresolvable("approval payload unreadable");
+            }
+
+            if (string.IsNullOrWhiteSpace(approval?.ProposalId))
+                return new PinResolution.Unresolvable("approval names no proposal");
+
+            if (!string.IsNullOrEmpty(transaction.PreviousTransactionId)
+                && !string.Equals(transaction.PreviousTransactionId, approval.ProposalId, StringComparison.Ordinal))
+            {
+                return new PinResolution.Unresolvable("approval references a different proposal than it signs");
+            }
+
+            proposalId = approval.ProposalId;
+        }
+        else if (own?.GovernanceDefinitionTxId is null || own.EnactsProposalId is not null)
+        {
+            proposalId = own?.EnactsProposalId;
         }
 
         ControlTransactionPayload? proposal = null;

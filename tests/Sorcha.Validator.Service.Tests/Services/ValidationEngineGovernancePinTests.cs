@@ -109,12 +109,12 @@ public class ValidationEngineGovernancePinTests
         return id4;
     }
 
-    private void ServeProposal(string? pin)
+    private void ServeProposal(string? pin, string proposalTxId = ProposalTxId)
     {
         var payload = new JsonObject { ["version"] = 1, ["roster"] = null, ["enactsProposalId"] = null };
         if (pin is not null) payload["governanceDefinitionTxId"] = pin;
-        _registerClient.Setup(r => r.GetTransactionAsync(Register, ProposalTxId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Tx(Register, ProposalTxId, payload.ToJsonString(),
+        _registerClient.Setup(r => r.GetTransactionAsync(Register, proposalTxId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Tx(Register, proposalTxId, payload.ToJsonString(),
                 GovernanceBlueprint.BlueprintId, (uint)GovernanceBlueprint.ProposeChangeActionId));
     }
 
@@ -336,22 +336,82 @@ public class ValidationEngineGovernancePinTests
         result.Errors.Should().Contain(e => e.Code == "VAL_BP_VERSION_001");
     }
 
-    [Fact]
-    public async Task ValidateSchema_ApprovalNamingNoProposal_Refused()
+    /// <summary>An approval as <see cref="Approval"/>, with a different envelope reference and/or signed proposal id.</summary>
+    private static Transaction ApprovalWith(string? previousTransactionId, string signedProposalId)
     {
-        ServeDefinitions();
         var approval = Approval();
-        approval = new Transaction
+        var payload = JsonNode.Parse(ApprovalJson)!.AsObject();
+        payload["proposalId"] = signedProposalId;
+        return new Transaction
         {
             TransactionId = approval.TransactionId, RegisterId = approval.RegisterId,
             BlueprintId = approval.BlueprintId, ActionId = approval.ActionId,
-            PreviousTransactionId = null, PayloadHash = approval.PayloadHash,
-            CreatedAt = approval.CreatedAt, Payload = approval.Payload, Signatures = approval.Signatures,
+            PreviousTransactionId = previousTransactionId, PayloadHash = approval.PayloadHash,
+            CreatedAt = approval.CreatedAt,
+            Payload = JsonSerializer.Deserialize<JsonElement>(payload.ToJsonString()),
+            Signatures = approval.Signatures,
         };
+    }
 
-        var result = await CreateEngine().ValidateSchemaAsync(approval);
+    [Fact]
+    public async Task ValidateSchema_ApprovalNamingNoProposal_Refused()
+    {
+        // The signed payload names no proposal: nothing to be judged under, whatever the envelope says.
+        var v4Id = ServeDefinitions();
+        ServeProposal(v4Id);
+
+        var result = await CreateEngine().ValidateSchemaAsync(ApprovalWith(ProposalTxId, signedProposalId: ""));
 
         result.Errors.Should().Contain(e => e.Code == "VAL_BP_VERSION_001");
+    }
+
+    private const string OtherProposalTxId = "2c1f6b0e3f7a4d8c9b5e1a2f3d4c5b6a7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b";
+
+    [Fact]
+    public async Task ValidateSchema_ApprovalEnvelopeReferencesDifferentProposalThanItSigns_Refused()
+    {
+        // Both proposals are readable and pinned to a definition the approval satisfies, so the ONLY
+        // reason to refuse is the disagreement between the unsigned reference and the signed one.
+        var v4Id = ServeDefinitions();
+        ServeProposal(v4Id);
+        ServeProposal(v4Id, OtherProposalTxId);
+
+        var result = await CreateEngine().ValidateSchemaAsync(
+            ApprovalWith(previousTransactionId: OtherProposalTxId, signedProposalId: ProposalTxId));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().ContainSingle(e => e.Code == "VAL_BP_VERSION_001"
+            && e.Message.Contains("approval references a different proposal than it signs"));
+    }
+
+    [Fact]
+    public async Task ValidateSchema_ApprovalWithoutEnvelopeReference_JudgedBySignedProposalsPin()
+    {
+        // The signed ProposalId alone locates the proposal; its v4 pin governs even with v5 latest.
+        var v4Id = ServeDefinitions();
+        ServeProposal(v4Id);
+
+        var result = await CreateEngine().ValidateSchemaAsync(
+            ApprovalWith(previousTransactionId: null, signedProposalId: ProposalTxId));
+
+        result.Errors.Should().BeEmpty();
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ValidateSchema_ApprovalMatchingReference_JudgedByThatProposalsPin()
+    {
+        // Signed and envelope references agree; that proposal is pinned to a definition this node
+        // cannot produce, so the approval is refused — NOT judged by latest (v5) or by any other proposal.
+        var v4Id = ServeDefinitions();
+        ServeProposal(new string('c', 64));
+        ServeProposal(v4Id, OtherProposalTxId);
+
+        var result = await CreateEngine().ValidateSchemaAsync(
+            ApprovalWith(previousTransactionId: ProposalTxId, signedProposalId: ProposalTxId));
+
+        result.Errors.Should().ContainSingle(e => e.Code == "VAL_BP_VERSION_001"
+            && e.Field == "payload.governanceDefinitionTxId");
     }
 
     [Fact]
