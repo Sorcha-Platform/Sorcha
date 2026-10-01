@@ -354,6 +354,9 @@ builder.Services.AddSingleton<Sorcha.Register.Service.Services.ISystemBlueprintD
     sp => sp.GetRequiredService<Sorcha.Register.Service.Services.SystemBlueprintDriftMonitor>());
 builder.Services.AddHostedService(
     sp => sp.GetRequiredService<Sorcha.Register.Service.Services.SystemBlueprintDriftMonitor>());
+builder.Services.AddHealthChecks()
+    .AddCheck<Sorcha.Register.Service.Services.SystemBlueprintsHealthCheck>(
+        Sorcha.Register.Service.Services.SystemBlueprintsHealthCheck.Name);
 
 // Participant index service (in-memory address → participant mapping)
 builder.Services.AddSingleton<ParticipantIndexService>();
