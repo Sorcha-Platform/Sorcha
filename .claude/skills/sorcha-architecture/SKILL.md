@@ -2876,8 +2876,10 @@ tool — control *config* blueprints, returns `ResolvedControlBlueprintVersion`,
 
 ⚠ **A node's SSR is as old as its genesis.** n1's copy predated T053 and declared **no `dataSchemas`**,
 and FR-006 skips validation when an action declares none — so the live gate would have gone green
-while checking nothing. Publish the version under test to the SSR first
-(`POST /api/system-register/publish`; the newest by timestamp wins) and verify it landed.
+while checking nothing. The version under test must be the SSR's **current** publication before
+the gate means anything: build an image carrying it and run
+`sorcha system-register publish <id>` (F197 — there is no raw-body publish any more), then confirm
+`sorcha system-register drift` reads `in-sync`.
 
 Note for when it is built: a predicate used to **withdraw** an exemption may safely key on unsigned
 fields (`BlueprintId`/`ActionId`/metadata) — forging it true buys more validation, forging it false
@@ -3015,18 +3017,63 @@ property added to the type is carried forward on the day it is added. Guarded by
 `ApplyOperationPreservesRegisterConfigurationTests`, which asserts **by reflection**. Registers that
 already enacted a change keep the truncated roster; the ledger is immutable.
 
-### A node's seeded system blueprints are never updated
+### A node's seeded system blueprints are never updated — except by an operator (Feature 197, #1466)
 
 `SeedBlueprintsIfMissingAsync` skips a blueprint that already **exists**, so redeploying does not
 refresh it: the image's catalogue at `/app/blueprints/templates/{id}.json` and the SSR's published
-copy drift apart with nothing checking. n1 served the pre-T054 `register-governance-v1` from its
-2026-08-07 genesis until 2026-08-17, and once SSR-ledger blueprint resolution went live that refused
-**every governance proposal on every register** with `VAL_SCHEMA_004` — behind a `202 Accepted`.
+copy drift apart. n1 served the pre-T054 `register-governance-v1` from its 2026-08-07 genesis until
+2026-08-17, and once SSR-ledger blueprint resolution went live that refused **every governance
+proposal on every register** with `VAL_SCHEMA_004` — behind a `202 Accepted`. F197 makes the drift
+visible and the upgrade a deliberate act; it is **never** an auto-republish.
 
-**Republishing alone is not enough** — `BlueprintCache` is Redis-backed with an in-process L1. The
-remedy is three steps: `POST /api/system-register/publish` with the image's own catalogue body
-(extract via `docker cp`; the containers are chiseled and have no shell), then
-`redis-cli DEL sorcha:validator:blueprint:{id}`, then recreate the validator. Issue **#1466**.
+- **See it:** `GET /api/system-register/drift` / `sorcha system-register drift` — per catalogue id,
+  `in-sync | image-behind | image-ahead | missing | unknown` (kebab-case, platform `SorchaJson`).
+  Health check `system-blueprints` (Degraded, never Unhealthy; `missing` on a `SyncOnly` node is
+  Healthy) and gauge `sorcha_system_blueprint_drift{blueprint,state}` on meter `Sorcha.SystemBlueprints`.
+- **Fix it:** on the node holding the SSR's `sorcha:blueprint-publish` roster key,
+  `sorcha system-register publish <id> [--dry-run] [--expected-current <txid>]` —
+  `POST /api/system-register/blueprints/{id}/publish`, `RequireSystemAdmin` + `RequirePlatformAudience`.
+  **Catalogue-only**: the definition comes from the node's image, never the request body, so the
+  old `POST /api/system-register/publish` is gone. Build an image to change a system blueprint.
+- **Refusals:** 403 no key / policy, 404 unknown id, 409 `rollback` (image is behind) or `concurrency`
+  (`expectedCurrent` stale), 503 state-unknown (`Retry-After`), 502 validator rejected. **Audited**
+  (action `system-blueprint.publish`): policy 403, no-key 403, 409 either reason, 503, 502.
+  **Not audited**: 401, 404 (an unknown id is not a refused publish) and the `200` no-op (already
+  current is not a refusal).
+- **"Current" is ledger order** — `(DocketNumber, index in DocketHeader.TransactionIds)` — never
+  `TimeStamp`, which is unsigned. `Version` is the ledger ordinal. The newest-timestamp-wins rule
+  T054 relied on is retired.
+- **The validator cache is no longer a manual step:** it evicts the by-id entry for all four
+  catalogue ids on every SSR `docket:confirmed`, on every node. No `redis-cli DEL`, no recreate.
+- **A `missing`/`unknown` is not a pass.** `unknown` means the node cannot tell which side is right
+  (e.g. image lacks the template while publications exist); publishing is refused (503) rather than
+  risk a rollback.
+
+### Governance pinning (Feature 197)
+
+A governance transaction is validated under the `register-governance-v1` definition its **proposal**
+was raised under, so publishing a new governance definition cannot reinterpret in-flight proposals.
+
+- **Carrier:** `ControlTransactionPayload.governanceDefinitionTxId` — the SSR publication id
+  (pattern 22), stamped on proposals and Owner-override. **Omit-when-null, not `null`**: genesis and
+  enactment canonical bytes must not move, and a serialised `null` would change every one of them.
+  If the current definition cannot be read the raise is `503`, never submitted unpinned.
+- **Inheritance:** approvals follow `PreviousTransactionId`'s proposal; enactments follow
+  `EnactsProposalId`'s proposal. An enactment carrying its own pin is refused. The referenced
+  transaction **must be a governance proposal** (`register-governance-v1`, action 1) — a pin read off
+  any other transaction is refused. A blank pin is malformed (refused), not "unpinned".
+- **Legacy:** a proposal with no pin validates under latest and increments
+  `sorcha_governance_definition_pin_fallback{step}`. A pin that is present but unresolvable never
+  falls back to latest.
+- **Validator SSR arm:** `ResolveBlueprintAsync` gained a system-register step that recomputes the
+  publication id with the SSR register id and verifies it equals the pin.
+- **`VAL_GOV_DEF_001`** (validator-local; read **uncached**): a *raise* under a superseded
+  definition is refused; approvals and enactments are never held to "current". An unreadable
+  current on a raise is refused, not waved through.
+- **Trap:** the pin lives in the signed payload, which is why it may drive resolution. Never move it
+  to `Metadata` (unsigned, pattern 23).
+- **Proposal detail** reports `governingDefinitionTxId`, `governingDefinitionVersion`,
+  `governingDefinitionLegacy`.
 
 ### ⚠ R-006 — an approval proves custody, not organisational intent. NOT SOLVED.
 

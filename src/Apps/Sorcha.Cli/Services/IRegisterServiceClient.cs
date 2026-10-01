@@ -259,6 +259,18 @@ public interface IRegisterServiceClient
     [Get("/api/system-register/blueprints")]
     Task<HttpResponseMessage> GetSystemRegisterBlueprintsAsync([Query] int? page, [Query] int? pageSize, [Header("Authorization")] string authorization);
 
+    /// <summary>
+    /// Gets the drift report between this node's system blueprint catalogue and the system register (Feature 197).
+    /// </summary>
+    [Get("/api/system-register/drift")]
+    Task<HttpResponseMessage> GetSystemBlueprintDriftAsync([Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Publishes this node's catalogued definition of a system blueprint (Feature 197).
+    /// </summary>
+    [Post("/api/system-register/blueprints/{blueprintId}/publish")]
+    Task<HttpResponseMessage> PublishSystemBlueprintAsync(string blueprintId, [Body] SystemBlueprintPublishRequestDto request, [Header("Authorization")] string authorization);
+
     // --- Sync Diagnostics (Feature 108) ---
 
     /// <summary>

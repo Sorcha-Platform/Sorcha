@@ -154,6 +154,9 @@ public static class Extensions
                 // count usually means missing evidence rather than tampering, and the two must stay
                 // distinguishable. No subject data on any dimension.
                 metrics.AddMeter("Sorcha.Provenance");
+
+                // Feature 197 — system blueprint drift / seed / governance-pin outcomes (#1466).
+                metrics.AddMeter("Sorcha.SystemBlueprints");
             })
             .WithTracing(tracing =>
             {

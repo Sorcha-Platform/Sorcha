@@ -305,10 +305,29 @@ public class SystemRegisterBlueprintPollutionTests
 
     private static DateTime Day(int n) => new DateTime(2026, 8, 19, 0, 0, 0, DateTimeKind.Utc).AddMinutes(n);
 
-    private void GivenLedger(params TransactionModel[] transactions) =>
+    private void GivenLedger(params TransactionModel[] transactions)
+    {
+        // Currency is ledger order (Feature 197), so every fixture transaction must be SEALED in a
+        // docket. One transaction per docket; the docket number follows the fixture's Day(n) order,
+        // which is the order these tests have always meant.
+        foreach (var tx in transactions)
+        {
+            var docketNumber = (ulong)(tx.TimeStamp - Day(0)).TotalMinutes + 1;
+            tx.DocketNumber = docketNumber;
+            _repository
+                .Setup(r => r.GetDocketAsync(SystemRegisterConstants.SystemRegisterId, docketNumber, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new DocketHeader
+                {
+                    Id = docketNumber,
+                    RegisterId = SystemRegisterConstants.SystemRegisterId,
+                    TransactionIds = new List<string> { tx.TxId }
+                });
+        }
+
         _repository
             .Setup(r => r.GetTransactionsAsync(SystemRegisterConstants.SystemRegisterId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(transactions.AsQueryable());
+    }
 
     /// <summary>A genuine blueprint publication, shaped as the bootstrapper writes it.</summary>
     private static TransactionModel Publication(string blueprintId, DateTime timestamp)

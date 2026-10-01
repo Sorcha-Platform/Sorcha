@@ -250,6 +250,11 @@ builder.Services.AddScoped<Sorcha.Provenance.Engine.Seams.IMerkleRootCalculator,
 // Register wallet service client
 builder.Services.AddServiceClients(builder.Configuration);
 
+// Reports policy 403s on endpoints carrying SystemBlueprintPublishAuditMetadata (Feature 197 SC-004);
+// every other endpoint passes straight through to the default handler.
+builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationMiddlewareResultHandler,
+    Sorcha.Register.Service.Authorization.AuditingAuthorizationResultHandler>();
+
 // Tenant Service internal subscription client. After finalising a register, the
 // Register Service immediately subscribes the owning organisation via a
 // service-to-service call — this removes the old client-side admin-gated hop
@@ -329,6 +334,15 @@ builder.Services.AddScoped<Sorcha.Register.Core.Services.IRegisterPolicyService,
 
 // Register system register services (scoped — will use ledger-backed dependencies)
 builder.Services.AddScoped<SystemRegisterService>();
+builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceDefinitionPinSource,
+    Sorcha.Register.Service.Services.GovernanceDefinitionPinSource>();
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.ISystemBlueprintCatalogSource,
+    Sorcha.Register.Service.Services.SystemBlueprintCatalogSource>();
+Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton(builder.Services, TimeProvider.System);
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.ISystemBlueprintDriftReporter,
+    Sorcha.Register.Service.Services.SystemBlueprintDriftReporter>();
+builder.Services.AddScoped<Sorcha.Register.Service.Services.ISystemBlueprintPublishService,
+    Sorcha.Register.Service.Services.SystemBlueprintPublishService>();
 builder.Services.AddSingleton<StructuralDiffService>();
 
 // Feature 099: Genesis trust anchor — load pre-signed genesis, verify signature
@@ -337,7 +351,21 @@ builder.Services.Configure<Sorcha.ServiceDefaults.SystemRegisterOptions>(
 builder.Services.AddScoped<GenesisIngestionService>();
 
 // System register bootstrap — ingests pre-signed genesis (never creates at runtime)
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.ISystemRegisterBootstrapStatus,
+    Sorcha.Register.Service.Services.SystemRegisterBootstrapStatus>();
 builder.Services.AddHostedService<SystemRegisterBootstrapper>();
+
+// Feature 197: periodic drift between the image's system blueprints and the system register
+builder.Services.Configure<Sorcha.Register.Service.Services.SystemBlueprintOptions>(
+    builder.Configuration.GetSection(Sorcha.Register.Service.Services.SystemBlueprintOptions.SectionName));
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.SystemBlueprintDriftMonitor>();
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.ISystemBlueprintDriftSnapshot>(
+    sp => sp.GetRequiredService<Sorcha.Register.Service.Services.SystemBlueprintDriftMonitor>());
+builder.Services.AddHostedService(
+    sp => sp.GetRequiredService<Sorcha.Register.Service.Services.SystemBlueprintDriftMonitor>());
+builder.Services.AddHealthChecks()
+    .AddCheck<Sorcha.Register.Service.Services.SystemBlueprintsHealthCheck>(
+        Sorcha.Register.Service.Services.SystemBlueprintsHealthCheck.Name);
 
 // Participant index service (in-memory address → participant mapping)
 builder.Services.AddSingleton<ParticipantIndexService>();
@@ -2420,7 +2448,9 @@ governanceGroup.MapPost("/propose", async (
     IHashProvider hashProvider,
     Sorcha.ServiceClients.Validator.IValidatorServiceClient validatorClient,
     IGovernanceSigningService signingService,
-    Sorcha.Validator.Core.Validators.ISeatAcceptanceVerifier seatAcceptanceVerifier) =>
+    Sorcha.Validator.Core.Validators.ISeatAcceptanceVerifier seatAcceptanceVerifier,
+    Sorcha.Register.Service.Services.IGovernanceDefinitionPinSource definitionPinSource,
+    CancellationToken ct) =>
 {
     // 1. Verify register exists
     var register = await repository.GetRegisterAsync(registerId);
@@ -2515,6 +2545,19 @@ governanceGroup.MapPost("/propose", async (
 
     // Chain linking from the latest Control TX. Read once so both paths chain identically.
     string? previousControlTxId = roster.LastControlTxId;
+
+    // Feature 197 (#1466): every proposal is pinned to the governance definition current when it is
+    // raised, so a later republish cannot change the rules an open proposal is judged against. With
+    // no readable definition there is nothing to pin to — refuse before anything is signed or
+    // submitted rather than raise an unpinned proposal.
+    var governanceDefinitionTxId = await definitionPinSource.GetCurrentAsync(ct);
+    if (governanceDefinitionTxId is null)
+    {
+        return Results.Problem(
+            title: "Governance definition unavailable",
+            detail: "The current governance blueprint definition could not be read from the system register, so a proposal cannot be pinned to it. Retry shortly.",
+            statusCode: 503);
+    }
 
     // One canonicalisation, one signing site, one submission — used by both the pending-proposal and
     // the enacting path. Keeping them separate is how the two would drift into producing different
@@ -2629,7 +2672,13 @@ governanceGroup.MapPost("/propose", async (
         // would invalidate it the instant it sealed. That is exactly what the pre-split
         // propose-and-enact transaction did, and why no approval could ever attach to one.
         var pending = await SubmitGovernanceControlAsync(
-            new ControlTransactionPayload { Version = 1, Roster = null, Operation = operation },
+            new ControlTransactionPayload
+            {
+                Version = 1,
+                Roster = null,
+                Operation = operation,
+                GovernanceDefinitionTxId = governanceDefinitionTxId
+            },
             operation);
 
         if (!pending.Ok)
@@ -2737,7 +2786,13 @@ governanceGroup.MapPost("/propose", async (
     // gate) at risk for no security gain — the override has no approvals to collect.
     var opType = operation.OperationType.ToString().ToLowerInvariant();
     var enacted = await SubmitGovernanceControlAsync(
-        new ControlTransactionPayload { Version = 1, Roster = updatedRoster, Operation = operation },
+        new ControlTransactionPayload
+        {
+            Version = 1,
+            Roster = updatedRoster,
+            Operation = operation,
+            GovernanceDefinitionTxId = governanceDefinitionTxId
+        },
         operation);
 
     if (!enacted.Ok)
@@ -2777,7 +2832,8 @@ governanceGroup.MapPost("/propose", async (
 .Produces(StatusCodes.Status404NotFound)
 .Produces(StatusCodes.Status400BadRequest)
 .ProducesValidationProblem()
-.Produces(StatusCodes.Status401Unauthorized);
+.Produces(StatusCodes.Status401Unauthorized)
+.ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
 // <summary>
 // List governance proposals from Control TX history
@@ -3149,7 +3205,7 @@ governanceGroup.MapGet("/proposals/{proposalId}", async (
     "Returns the proposal, the roster snapshot it was raised against, the quorum rule captured at "
     + "raise time, each approval individually attributed, the approvals that cannot count and why, "
     + "and the terminal outcome with its reason. Status is derived from sealed content on every read.")
-.Produces<object>(StatusCodes.Status200OK)
+.Produces<Sorcha.Register.Service.Services.GovernanceProposalView>(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status404NotFound)
 .Produces(StatusCodes.Status401Unauthorized);
 

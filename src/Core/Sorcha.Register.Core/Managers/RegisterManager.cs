@@ -110,6 +110,18 @@ public class RegisterManager
     }
 
     /// <summary>
+    /// Gets a sealed docket header by register and docket number, or null if unknown.
+    /// </summary>
+    public async Task<DocketHeader?> GetDocketAsync(
+        string registerId,
+        ulong docketId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        return await _repository.GetDocketAsync(registerId, docketId, cancellationToken);
+    }
+
+    /// <summary>
     /// Gets all registers
     /// </summary>
     public async Task<IEnumerable<Models.Register>> GetAllRegistersAsync(

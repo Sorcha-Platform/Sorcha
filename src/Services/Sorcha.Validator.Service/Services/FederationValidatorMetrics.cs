@@ -34,6 +34,30 @@ public sealed class FederationValidatorMetrics
         unit: "{transaction}",
         description: "Transactions evicted from the unverified pool after exceeding the max retry bound (#787) — could not be sealed and were dropped rather than re-submitted forever.");
 
+    private static readonly Counter<long> _governancePinFallback = _meter.CreateCounter<long>(
+        "sorcha_governance_definition_pin_fallback",
+        unit: "{transaction}",
+        description: "Governance transactions validated against the CURRENT governance definition because the proposal they belong to carries no definition pin (Feature 197), by step.");
+
+    private static readonly Counter<long> _systemBlueprintCacheEvictions = _meter.CreateCounter<long>(
+        "sorcha_system_blueprint_cache_evictions_total",
+        unit: "{eviction}",
+        description: "System blueprint cache entries evicted because a docket sealed on the system register (Feature 197), by outcome.");
+
+    /// <summary>
+    /// Record a system blueprint cache eviction (Feature 197). <paramref name="outcome"/> is
+    /// <c>evicted</c> or <c>failed</c>.
+    /// </summary>
+    public static void SystemBlueprintCacheEviction(string outcome) =>
+        _systemBlueprintCacheEvictions.Add(1, new KeyValuePair<string, object?>("outcome", outcome));
+
+    /// <summary>
+    /// Record a governance step that fell back to the current definition (Feature 197).
+    /// <paramref name="step"/> is one of <c>proposal</c>, <c>approval</c>, <c>enactment</c>.
+    /// </summary>
+    public static void GovernanceDefinitionPinFallback(string step) =>
+        _governancePinFallback.Add(1, new KeyValuePair<string, object?>("step", step));
+
     /// <summary>
     /// Record a transaction evicted from the unverified pool after exceeding
     /// <c>TransactionPoolPollerConfiguration.MaxTransactionRetries</c> (#787). Static so the poller

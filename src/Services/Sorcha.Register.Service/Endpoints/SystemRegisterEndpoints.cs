@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-#pragma warning disable ASPDEPR002 // WithOpenApi is deprecated; using it for co-located endpoint examples until transformer API stabilizes
-
-using System.ComponentModel.DataAnnotations;
+using System.Security.Claims;
 using System.Text.Json;
 
 using Sorcha.Blueprint.Models;
+using Sorcha.Register.Service.Authorization;
 using Sorcha.Register.Service.Services;
+using Sorcha.ServiceClients.Audit;
 
 namespace Sorcha.Register.Service.Endpoints;
 
@@ -41,6 +41,141 @@ public static class SystemRegisterEndpoints
         .Produces<object>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized);
 
+        group.MapGet("/drift", async (
+            ISystemBlueprintDriftReporter reporter,
+            TimeProvider time,
+            CancellationToken ct) =>
+        {
+            // Always computed on demand, never the monitor's snapshot: an operator reads /drift right
+            // after a publish or a deploy to decide the next step, and a snapshot up to one monitor
+            // cycle old would report the state BEFORE that action. The computation is cheap and the
+            // route is SystemAdmin-only. The health check and the gauge keep the snapshot.
+            var entries = await reporter.ComputeAsync(ct);
+
+            var checkedAt = entries.Count > 0 ? entries.Max(e => e.CheckedAt) : time.GetUtcNow();
+            return Results.Ok(new SystemBlueprintDriftReport { CheckedAt = checkedAt, Entries = entries });
+        })
+        // Stricter than the group's CanManageRegisters (both apply): SystemAdmin on the platform tier only.
+        .RequireAuthorization("RequireSystemAdmin", "RequirePlatformAudience")
+        .WithName("GetSystemBlueprintDrift")
+        .WithSummary("Report drift between this node's system blueprints and the system register")
+        .WithDescription(
+            "Returns one entry per catalogued system blueprint, classifying the definition shipped in this " +
+            "node's image against the system register's current publication (in-sync, image-behind, image-ahead, " +
+            "missing, unknown). Computed on demand at request time, so it reflects a publish or deploy made " +
+            "moments earlier. Requires a SystemAdmin on a platform-tier token.")
+        .Produces<SystemBlueprintDriftReport>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden);
+
+        group.MapPost("/blueprints/{blueprintId}/publish", async (
+            string blueprintId,
+            SystemBlueprintPublishRequest? request,
+            ISystemBlueprintPublishService publisher,
+            HttpContext http,
+            ILogger<Program> logger,
+            CancellationToken ct) =>
+        {
+            var operatorId = OperatorIdentity.Resolve(http.User);
+            if (string.IsNullOrWhiteSpace(operatorId))
+            {
+                return Results.Unauthorized();
+            }
+
+            PublishDecision decision;
+            try
+            {
+                decision = await publisher.PublishAsync(
+                    blueprintId, request?.DryRun ?? false, request?.ExpectedCurrent, operatorId, ct);
+            }
+            catch (ValidatorRejectedSubmissionException ex)
+            {
+                // Thrown only where the validator rejects the submission (SystemRegisterService.PublishBlueprintAsync);
+                // Anything else is unexpected and falls through to the sanitized exception handler (CLAUDE.md 20).
+                logger.LogError(ex, "System blueprint {BlueprintId} publish submission was rejected", blueprintId);
+                SystemBlueprintMetrics.RecordPublish(PublishOutcomeNames.Rejected);
+                await SystemBlueprintRefusalAudit.ReportAsync(
+                    http, RefusalAuditActions.SystemBlueprintPublish, blueprintId, "validator rejected the submission");
+                return Results.Problem(
+                    title: "publish submission rejected",
+                    detail: "the publication was rejected by the validator; see the register-service log",
+                    statusCode: StatusCodes.Status502BadGateway);
+            }
+
+            SystemBlueprintPublishResult Body(SystemBlueprintPublishResultOutcome outcome) => new(
+                blueprintId, outcome, decision.DriftState ?? SystemBlueprintDriftState.Unknown,
+                decision.CurrentPublicationTxId, decision.CandidatePublicationTxId, decision.TransactionId);
+
+            IResult Refused(int status, string title, string reason)
+            {
+                if (status == StatusCodes.Status503ServiceUnavailable)
+                {
+                    http.Response.Headers.RetryAfter = "30";
+                }
+
+                return Results.Problem(
+                    title: title,
+                    detail: decision.Reason,
+                    statusCode: status,
+                    extensions: new Dictionary<string, object?> { ["reason"] = reason });
+            }
+
+            async Task<IResult> AuditedAsync(int status, string title, string reason)
+            {
+                await SystemBlueprintRefusalAudit.ReportAsync(
+                    http, RefusalAuditActions.SystemBlueprintPublish, blueprintId, decision.Reason);
+                return Refused(status, title, reason);
+            }
+
+            switch (decision.Outcome)
+            {
+                case SystemBlueprintPublishOutcome.DryRun:
+                    return Results.Json(Body(SystemBlueprintPublishResultOutcome.DryRun));
+                case SystemBlueprintPublishOutcome.Noop:
+                    return Results.Json(Body(SystemBlueprintPublishResultOutcome.Noop));
+                case SystemBlueprintPublishOutcome.Submitted:
+                    logger.LogInformation(
+                        "SystemBlueprintPublished {BlueprintId} {PreviousTxId} v{PreviousVersion} -> {NewTxId} "
+                        + "v{NewVersion} by {Operator} via publishing wallet {PublisherWalletAddress}",
+                        blueprintId, decision.CurrentPublicationTxId, decision.PreviousVersion,
+                        decision.TransactionId, decision.NewVersion, operatorId, decision.PublisherWalletAddress);
+                    return Results.Json(
+                        Body(SystemBlueprintPublishResultOutcome.Submitted), statusCode: StatusCodes.Status202Accepted);
+                case SystemBlueprintPublishOutcome.NotFound:
+                    // Intentionally not audited: an unknown id is not a refused publish.
+                    return Refused(StatusCodes.Status404NotFound, "system blueprint not found", "not-found");
+                case SystemBlueprintPublishOutcome.NoPublishingKey:
+                    return await AuditedAsync(StatusCodes.Status403Forbidden, "no publishing key", "no-publishing-key");
+                case SystemBlueprintPublishOutcome.RefusedRollback:
+                    return await AuditedAsync(StatusCodes.Status409Conflict, "publish refused", "rollback");
+                case SystemBlueprintPublishOutcome.RefusedConcurrency:
+                    return await AuditedAsync(StatusCodes.Status409Conflict, "publish refused", "concurrency");
+                default:
+                    return await AuditedAsync(
+                        StatusCodes.Status503ServiceUnavailable, "system register state unknown", "state-unknown");
+            }
+        })
+        // Same gate as /drift (both apply with the group's CanManageRegisters). The policy 403 never reaches
+        // this handler, so the marker has the auditing authorisation result handler report it (SC-004).
+        .RequireAuthorization("RequireSystemAdmin", "RequirePlatformAudience")
+        .WithMetadata(new SystemBlueprintPublishAuditMetadata(RefusalAuditActions.SystemBlueprintPublish))
+        .WithName("PublishSystemBlueprintFromCatalogue")
+        .WithSummary("Publish this node's catalogued definition of a system blueprint")
+        .WithDescription(
+            "Loads the definition from this node's image catalogue (the request carries none) and submits it to " +
+            "the system register unless a guard refuses: rollback (409 reason rollback), expectedCurrent mismatch " +
+            "(409 reason concurrency), no active sorcha:blueprint-publish roster key on this node (403), unreadable " +
+            "register state (503). dryRun and an already-current definition return 200; a submission returns 202. " +
+            "Every refusal is reported to the caller's organisation audit log. Requires a SystemAdmin on a platform-tier token.")
+        .Produces<SystemBlueprintPublishResult>(StatusCodes.Status200OK)
+        .Produces<SystemBlueprintPublishResult>(StatusCodes.Status202Accepted)
+        .ProducesProblem(StatusCodes.Status403Forbidden)
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .ProducesProblem(StatusCodes.Status409Conflict)
+        .ProducesProblem(StatusCodes.Status502BadGateway)
+        .ProducesProblem(StatusCodes.Status503ServiceUnavailable)
+        .Produces(StatusCodes.Status401Unauthorized);
+
         group.MapPost("/initialize", async (
             SystemRegisterService service,
             ILogger<Program> logger,
@@ -71,94 +206,6 @@ public static class SystemRegisterEndpoints
         .Produces<object>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status500InternalServerError);
-
-        group.MapPost("/publish", async (
-            PublishBlueprintRequest request,
-            SystemRegisterService service,
-            ILogger<Program> logger,
-            CancellationToken ct) =>
-        {
-            if (string.IsNullOrWhiteSpace(request.BlueprintId))
-            {
-                return Results.BadRequest(new { error = "blueprintId is required" });
-            }
-
-            if (request.Blueprint.ValueKind == JsonValueKind.Undefined)
-            {
-                return Results.BadRequest(new { error = "blueprint is required" });
-            }
-
-            try
-            {
-                var entry = await service.PublishBlueprintAsync(
-                    request.BlueprintId,
-                    request.Blueprint,
-                    "api-user",
-                    request.Metadata,
-                    ct);
-
-                return Results.Created(
-                    $"/api/system-register/blueprints/{entry.BlueprintId}",
-                    new PublishBlueprintResponse
-                    {
-                        TransactionId = entry.PublicationTransactionId!,
-                        BlueprintId = entry.BlueprintId,
-                        Version = entry.Version,
-                        PublishedAt = entry.PublishedAt
-                    });
-            }
-            catch (InvalidOperationException ex)
-            {
-                logger.LogError(ex, "Failed to publish blueprint {BlueprintId}", request.BlueprintId);
-                return Results.Problem(
-                    detail: ex.Message,
-                    statusCode: StatusCodes.Status500InternalServerError);
-            }
-        })
-        .WithRequestValidation()
-        .WithName("PublishBlueprint")
-        .WithSummary("Publish a blueprint to the system register")
-        .WithDescription(
-            "Publishes a new blueprint to the system register as a signed control-chain transaction. " +
-            "The blueprint JSON is stored on the ledger with a deterministic transaction ID, " +
-            "signed by the system wallet. Returns the transaction ID and blueprint metadata on success.")
-        .Accepts<PublishBlueprintRequest>("application/json")
-        .Produces<PublishBlueprintResponse>(StatusCodes.Status201Created)
-        .Produces(StatusCodes.Status400BadRequest)
-        .Produces(StatusCodes.Status401Unauthorized)
-        .Produces(StatusCodes.Status500InternalServerError)
-        .WithOpenApi(operation =>
-        {
-            OpenApiExamples.SetRequestExample(operation, """
-                {
-                  "blueprintId": "construction-permit-v1",
-                  "blueprint": {
-                    "title": "Construction Permit Application",
-                    "participants": [
-                      { "role": "Applicant", "description": "The person applying for a permit" },
-                      { "role": "BuildingInspector", "description": "Reviews and approves the application" }
-                    ],
-                    "actions": [
-                      { "id": "submit-application", "actor": "Applicant", "type": "Submit" },
-                      { "id": "review-application", "actor": "BuildingInspector", "type": "Review" }
-                    ]
-                  },
-                  "metadata": {
-                    "changeType": "structural",
-                    "author": "admin@acme.corp"
-                  }
-                }
-                """);
-            OpenApiExamples.SetResponseExample(operation, "201", """
-                {
-                  "transactionId": "tx:system-register:construction-permit-v1:a1b2c3d4",
-                  "blueprintId": "construction-permit-v1",
-                  "version": 1,
-                  "publishedAt": "2026-03-15T10:30:00Z"
-                }
-                """);
-            return operation;
-        });
 
         group.MapGet("/blueprints", async (
             SystemRegisterService service,
@@ -403,44 +450,6 @@ public static class SystemRegisterEndpoints
     {
         /// <summary>The new blueprint JSON to compare against the current published version.</summary>
         public required JsonElement NewBlueprint { get; init; }
-    }
-
-    /// <summary>
-    /// Request body for publishing a blueprint to the system register.
-    /// </summary>
-    private record PublishBlueprintRequest
-    {
-        /// <summary>Unique blueprint identifier.</summary>
-        [Required(AllowEmptyStrings = false)]
-        [StringLength(200)]
-        public required string BlueprintId { get; init; }
-
-        /// <summary>Blueprint JSON document to publish.</summary>
-        public required JsonElement Blueprint { get; init; }
-
-        /// <summary>Optional previous transaction ID for explicit chain linking.</summary>
-        public string? PreviousTransactionId { get; init; }
-
-        /// <summary>Optional metadata key-value pairs.</summary>
-        public Dictionary<string, string>? Metadata { get; init; }
-    }
-
-    /// <summary>
-    /// Response returned after successfully publishing a blueprint.
-    /// </summary>
-    private record PublishBlueprintResponse
-    {
-        /// <summary>Transaction ID of the published blueprint.</summary>
-        public required string TransactionId { get; init; }
-
-        /// <summary>Blueprint identifier.</summary>
-        public required string BlueprintId { get; init; }
-
-        /// <summary>Version number assigned to the published blueprint.</summary>
-        public long Version { get; init; }
-
-        /// <summary>UTC timestamp when published.</summary>
-        public DateTime PublishedAt { get; init; }
     }
 
     /// <summary>

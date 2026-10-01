@@ -472,3 +472,15 @@ The platform is feature-complete for MVD but requires the following for producti
 ## Feature 150 — Unified Account Security Surface (2026-06-11)
 
 Status: **US1–US4 + T061 implemented** (PR #1001, branch `150-account-security`). Consolidated Security home (web `/app/security` + PWA `/wallet/security`), assurance-aware floor rule, always-notify, finished Passkey step-up proof, Email OTP (US2) and config-gated SMS OTP (US3) second factors. Full Tenant suite green (1313+). Runtime verification (email delivery, login-with-email-code, real SMS provider) pending the Docker stack / operator config; Playwright E2E + Re-OAuth in-browser redirect UX deferred. See `specs/150-account-security/` and the `sorcha-architecture` skill (Feature 150).
+
+## Feature 197 - System Blueprint Lifecycle (2026-10-01, #1466)
+
+Status: **implemented, live gate pending** (branch `197-system-blueprint-lifecycle`; ✅ only after T031 on n1/tiny).
+Operator-driven upgrade of a node's seeded system blueprints: `GET /api/system-register/drift`,
+`POST /api/system-register/blueprints/{id}/publish` (catalogue-only, SystemAdmin + platform tier,
+audited refusals; legacy `POST /api/system-register/publish` removed), CLI `sorcha system-register
+drift|publish`, `system-blueprints` health check and `Sorcha.SystemBlueprints` metrics. "Current" is
+ledger order. Governance proposals pin `register-governance-v1` (`governanceDefinitionTxId`);
+approvals and enactments inherit it; the Validator resolves pins from the SSR, raises
+`VAL_GOV_DEF_001` for a raise under a superseded definition and evicts its blueprint cache on every
+system-register docket. See the Register and Validator service READMEs.

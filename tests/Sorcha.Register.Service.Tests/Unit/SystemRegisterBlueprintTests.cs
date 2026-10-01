@@ -261,6 +261,9 @@ public class SystemRegisterBlueprintTests
         result.PublishedBy.Should().Be("admin-001");
         result.IsActive.Should().BeTrue();
         result.PublicationTransactionId.Should().NotBeNullOrEmpty();
+        // The returned entry carries what was submitted, as a read of the sealed transaction would —
+        // including the signing wallet the operator success log names as the publishing node.
+        result.Metadata.Should().ContainKey("SystemWalletAddress").WhoseValue.Should().Be("system-wallet-addr");
 
         _mockValidatorClient.Verify(v => v.SubmitTransactionAsync(
             It.Is<TransactionSubmission>(s =>
@@ -361,7 +364,7 @@ public class SystemRegisterBlueprintTests
             "test-bp", blueprintJson, "admin-001");
 
         // Assert
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<ValidatorRejectedSubmissionException>()
             .WithMessage("*Blueprint publish failed*");
     }
 
@@ -443,6 +446,7 @@ public class SystemRegisterBlueprintTests
             RegisterId = SystemRegisterConstants.SystemRegisterId,
             SenderWallet = "system",
             TimeStamp = timestamp,
+            DocketNumber = (ulong)(timestamp.Ticks / TimeSpan.TicksPerSecond), // sealed (Feature 197: currency is ledger order)
             MetaData = new TransactionMetaData
             {
                 RegisterId = SystemRegisterConstants.SystemRegisterId,

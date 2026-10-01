@@ -187,6 +187,12 @@
                 ],
                 "title": "Enacts proposal",
                 "description": "Always null on a proposal, and present as an explicit null rather than omitted — it is the discriminator that separates a proposal from the enactment that settles it, so it must travel on both."
+              },
+              "governanceDefinitionTxId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Governance definition pin",
+                "description": "The publication transaction id (64 lowercase hex) of the governance definition this proposal was raised under. Optional: omitted by proposals that predate the pin and by the pre-signed System Register genesis, so absence must stay valid."
               }
             }
           }

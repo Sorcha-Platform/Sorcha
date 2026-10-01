@@ -22,6 +22,8 @@ public class SystemRegisterBootstrapper : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<SystemRegisterBootstrapper> _logger;
     private readonly SystemRegisterOptions _options;
+    private readonly ISystemBlueprintCatalogSource _catalogSource;
+    private readonly ISystemRegisterBootstrapStatus? _bootstrapStatus;
     private const int AutoMaxRetries = 3;
     private static readonly TimeSpan GenesisTimeout = TimeSpan.FromSeconds(30);
 
@@ -37,8 +39,12 @@ public class SystemRegisterBootstrapper : BackgroundService
     public SystemRegisterBootstrapper(
         IServiceScopeFactory scopeFactory,
         ILogger<SystemRegisterBootstrapper> logger,
-        IOptions<SystemRegisterOptions> options)
+        IOptions<SystemRegisterOptions> options,
+        ISystemBlueprintCatalogSource? catalogSource = null,
+        ISystemRegisterBootstrapStatus? bootstrapStatus = null)
     {
+        _bootstrapStatus = bootstrapStatus;
+        _catalogSource = catalogSource ?? new SystemBlueprintCatalogSource();
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
@@ -90,6 +96,7 @@ public class SystemRegisterBootstrapper : BackgroundService
                 "System register bootstrap completed in {DurationMs}ms (Mode={BootstrapMode})",
                 (DateTimeOffset.UtcNow - startTime).TotalMilliseconds,
                 _options.BootstrapMode);
+            _bootstrapStatus?.MarkCompleted(_options.BootstrapMode);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -484,18 +491,7 @@ public class SystemRegisterBootstrapper : BackgroundService
         SystemRegisterService systemRegisterService,
         CancellationToken cancellationToken)
     {
-        var blueprints = new[]
-        {
-            "register-creation-v1",
-            "register-governance-v1",
-            "create-organisation-v1",
-            // Spec master Phase 2 US11 — audit-trail blueprint for private-register
-            // invitation lifecycle. Must be published before the first acceptance so
-            // RegisterInvitationService can submit an instance against it.
-            "join-private-register-v1",
-        };
-
-        foreach (var blueprintId in blueprints)
+        foreach (var blueprintId in SystemBlueprintCatalog.Ids)
         {
             if (await systemRegisterService.BlueprintExistsAsync(blueprintId, cancellationToken))
             {
@@ -503,7 +499,9 @@ public class SystemRegisterBootstrapper : BackgroundService
                 continue;
             }
 
-            var blueprint = LoadBlueprintFromCatalog(blueprintId);
+            var blueprint = _catalogSource.TryLoad(blueprintId)
+                ?? throw new FileNotFoundException(
+                    $"Blueprint template '{blueprintId}.json' not found in catalog.");
 
             // #917: wait for this publish to SEAL before submitting the next. Blueprint
             // publishes chain via previousTxId = the latest *sealed* transaction
@@ -587,36 +585,6 @@ public class SystemRegisterBootstrapper : BackgroundService
         }
 
         return false;
-    }
-
-    /// <summary>
-    /// Loads a seed blueprint from the template catalog (blueprints/templates/{id}.json).
-    /// </summary>
-    private static JsonElement LoadBlueprintFromCatalog(string blueprintId)
-    {
-        var paths = new[]
-        {
-            Path.Combine(AppContext.BaseDirectory, "blueprints", "templates", $"{blueprintId}.json"),
-            Path.Combine("/blueprints", "templates", $"{blueprintId}.json"),
-            Path.Combine(Directory.GetCurrentDirectory(), "blueprints", "templates", $"{blueprintId}.json")
-        };
-
-        foreach (var path in paths)
-        {
-            if (!File.Exists(path)) continue;
-
-            var json = File.ReadAllText(path);
-            using var doc = JsonDocument.Parse(json);
-
-            if (doc.RootElement.TryGetProperty("template", out var template))
-                return template.Clone();
-
-            return doc.RootElement.Clone();
-        }
-
-        throw new FileNotFoundException(
-            $"Blueprint template '{blueprintId}.json' not found in catalog. " +
-            $"Searched: {string.Join(", ", paths)}");
     }
 }
 

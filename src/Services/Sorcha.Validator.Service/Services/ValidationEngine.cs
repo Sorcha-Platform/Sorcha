@@ -13,6 +13,11 @@ using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
 using Sorcha.Cryptography.Utilities;
 using Sorcha.Register.Models.Constants;
+using ControlTransactionPayload = Sorcha.Register.Models.ControlTransactionPayload;
+using GovernanceApprovalActionPayload = Sorcha.Register.Models.GovernanceApprovalActionPayload;
+using GovernanceBlueprint = Sorcha.Register.Models.GovernanceBlueprint;
+using GovernanceDefinitionPin = Sorcha.Register.Models.GovernanceDefinitionPin;
+using PinResolution = Sorcha.Register.Models.PinResolution;
 using Sorcha.ServiceClients.Register;
 using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Diagnostics;
@@ -526,8 +531,8 @@ public class ValidationEngine : IValidationEngine
             // It withdraws ONLY the schema exemption. The other five riding on the same
             // discriminator stay, and two of them have to — see IsGovernanceActionTransaction.
             var schemaExemption = await ResolveExemptionAsync(transaction, ct);
-            if (schemaExemption.Granted
-                && !TransactionTypeClassifier.IsGovernanceActionTransaction(transaction))
+            var isGovernanceStep = IsGovernanceStep(transaction, schemaExemption);
+            if (schemaExemption.Granted && !isGovernanceStep)
             {
                 _logger.LogDebug("Validating signatures for genesis/control transaction {TransactionId}",
                     transaction.TransactionId);
@@ -621,9 +626,80 @@ public class ValidationEngine : IValidationEngine
 
             // Get the blueprint — the definition this transaction's INSTANCE is pinned to
             // (Feature 194), not whichever definition happens to be latest.
-            var carriedPin = ReadCarriedExecDefHash(transaction);
-            var blueprint = await ResolveBlueprintAsync(
-                transaction.BlueprintId!, carriedPin, transaction.RegisterId, ct);
+            //
+            // Feature 197: a GOVERNANCE action is pinned by the proposal it belongs to, not by a
+            // routing decision (it carries none). Reading the carried pin here would take the
+            // latest-definition path for every governance step, so a definition published between
+            // a proposal's raise and its approval would silently re-judge the approval.
+            string? carriedPin;
+            string pinField;
+            var governancePinned = false;
+            string? raisePin = null;
+            if (isGovernanceStep)
+            {
+                var governancePin = await ResolveGovernancePinAsync(transaction, ct);
+                pinField = "payload.governanceDefinitionTxId";
+                switch (governancePin)
+                {
+                    case PinResolution.Pinned pinned:
+                        carriedPin = pinned.DefinitionTxId;
+                        governancePinned = true;
+                        if (pinned.IsRaise) raisePin = pinned.DefinitionTxId;
+                        break;
+                    case PinResolution.Legacy legacy:
+                        carriedPin = null;
+                        FederationValidatorMetrics.GovernanceDefinitionPinFallback(legacy.Step);
+                        _logger.LogWarning(
+                            "Governance {Step} {TransactionId} belongs to a proposal with no definition pin; "
+                            + "validating against the CURRENT governance definition (pre-Feature-197 proposal)",
+                            legacy.Step, transaction.TransactionId);
+                        break;
+                    case PinResolution.Unresolvable unresolvable:
+                        errors.Add(CreateError("VAL_BP_VERSION_001",
+                            "The governance definition governing this transaction cannot be determined: "
+                            + $"{unresolvable.Reason}. The transaction is refused; it is NOT validated "
+                            + "against a different definition.",
+                            ValidationErrorCategory.Blueprint, pinField, true));
+                        return CreateFailureResult(transaction, sw.Elapsed, errors);
+                    default:
+                        throw new InvalidOperationException("Unhandled governance pin resolution.");
+                }
+            }
+            else
+            {
+                carriedPin = ReadCarriedExecDefHash(transaction);
+                pinField = "routingDecision.blueprintDefinitionTxId";
+            }
+
+            // Feature 197 (T016): a RAISE (proposal / Owner-override) must be made under the CURRENT
+            // governance definition — an old pin would let a proposer pick the rules that judge it.
+            // Approvals and enactments are deliberately never compared to current: they are judged
+            // under the definition their proposal was raised under, even after it is superseded.
+            // Checked before the blueprint is resolved: the refusal is the cheaper of the two.
+            if (raisePin is not null)
+            {
+                var current = await _registerClient.GetSystemRegisterBlueprintPublicationIdAsync(
+                    GovernanceBlueprint.BlueprintId, ct);
+                if (string.IsNullOrWhiteSpace(current))
+                {
+                    errors.Add(CreateError("VAL_BP_VERSION_001",
+                        "The current governance definition could not be read; the proposal is refused, not accepted.",
+                        ValidationErrorCategory.Blueprint, pinField, true));
+                    return CreateFailureResult(transaction, sw.Elapsed, errors);
+                }
+
+                if (!string.Equals(raisePin, current, StringComparison.OrdinalIgnoreCase))
+                {
+                    errors.Add(CreateError(GovernanceDefinitionSupersededCode,
+                        $"raised under a superseded governance definition '{raisePin}'; current is '{current}'",
+                        ValidationErrorCategory.Blueprint, pinField, true));
+                    return CreateFailureResult(transaction, sw.Elapsed, errors);
+                }
+            }
+
+            var blueprint = governancePinned
+                ? await ResolveGovernanceDefinitionAsync(transaction.BlueprintId!, carriedPin!, ct)
+                : await ResolveBlueprintAsync(transaction.BlueprintId!, carriedPin, transaction.RegisterId, ct);
             if (blueprint == null)
             {
                 // Distinguish "no such blueprint" from "this node cannot produce the DEFINITION the
@@ -634,10 +710,14 @@ public class ValidationEngine : IValidationEngine
                 if (!string.IsNullOrWhiteSpace(carriedPin))
                 {
                     errors.Add(CreateError("VAL_BP_VERSION_001",
-                        $"Blueprint '{transaction.BlueprintId}' definition '{carriedPin}' — the definition this "
-                        + "instance is pinned to — could not be resolved on this node. The transaction is "
-                        + "refused; it is NOT validated against a different definition.",
-                        ValidationErrorCategory.Blueprint, "routingDecision.blueprintDefinitionTxId", true));
+                        governancePinned
+                            ? $"Blueprint '{transaction.BlueprintId}' governance definition '{carriedPin}' — the "
+                              + "definition this governance proposal was raised under — is unresolvable on this "
+                              + "node. The transaction is refused; it is NOT validated against a different definition."
+                            : $"Blueprint '{transaction.BlueprintId}' definition '{carriedPin}' — the definition this "
+                              + "instance is pinned to — could not be resolved on this node. The transaction is "
+                              + "refused; it is NOT validated against a different definition.",
+                        ValidationErrorCategory.Blueprint, pinField, true));
                     return CreateFailureResult(transaction, sw.Elapsed, errors);
                 }
 
@@ -2407,6 +2487,9 @@ public class ValidationEngine : IValidationEngine
     /// </remarks>
     private const string DefaultSchemaDialect = SorchaSchemaDialect.Id;
 
+    /// <summary>Feature 197: a governance proposal raised under a superseded definition. Local by design (§16): no second project names it.</summary>
+    private const string GovernanceDefinitionSupersededCode = "VAL_GOV_DEF_001";
+
     /// <summary>
     /// Declares the JSON Schema dialect at the document root when the document does not declare one.
     /// </summary>
@@ -2541,6 +2624,157 @@ public class ValidationEngine : IValidationEngine
     }
 
     /// <summary>
+    /// Feature 197 — whether this transaction is a governance step (proposal, approval or enactment of
+    /// <see cref="GovernanceBlueprint"/>) and therefore judged under its proposal's definition pin.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Deliberately NOT <see cref="TransactionTypeClassifier.IsGovernanceActionTransaction"/>.</b>
+    /// That predicate returns false when the UNSIGNED <c>Metadata["transactionType"]</c> says
+    /// <c>BlueprintPublish</c>, which is sound only where it withdraws an exemption. Here a false
+    /// answer would take the routing-pin path (no pin, so latest) and skip <c>VAL_GOV_DEF_001</c> for
+    /// a raise signed under a superseded definition — an unsigned label switching enforcement OFF,
+    /// the CLAUDE.md §23 inversion.
+    /// </para>
+    /// <para>
+    /// The one genuine exception — a publication OF the governance blueprint, whose payload is the
+    /// definition and not a governance action — is recognised from PROVED authority: the exemption
+    /// resolver granted <see cref="ExemptionKind.BlueprintPublish"/> because the signer holds the
+    /// validator-roster publish key. A forged label without that authority is refused the exemption
+    /// and so stays a governance step.
+    /// </para>
+    /// </remarks>
+    private static bool IsGovernanceStep(Transaction transaction, ExemptionDecision exemption)
+    {
+        if (!string.Equals(transaction.BlueprintId, GovernanceBlueprint.BlueprintId, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (exemption is { Granted: true, Kind: ExemptionKind.BlueprintPublish })
+            return false;
+
+        return int.TryParse(transaction.ActionId, out var actionId)
+            && actionId is GovernanceBlueprint.ProposeChangeActionId
+                        or GovernanceBlueprint.CollectQuorumActionId
+                        or GovernanceBlueprint.RecordControlTransactionActionId;
+    }
+
+    /// <summary>
+    /// Feature 197 — which <c>register-governance-v1</c> definition governs this governance step.
+    /// Reads the transaction's own control payload (proposal / enactment) and, for an approval or
+    /// enactment, the proposal it references, then defers to <see cref="GovernanceDefinitionPin"/>.
+    /// A proposal that cannot be read yields "unreadable" — never "unpinned".
+    /// </summary>
+    private async Task<PinResolution> ResolveGovernancePinAsync(Transaction transaction, CancellationToken ct)
+    {
+        if (!int.TryParse(transaction.ActionId, out var actionId))
+            return new PinResolution.Unresolvable("not a governance step");
+
+        // Approvals carry a GovernanceApprovalActionPayload, not a control payload.
+        ControlTransactionPayload? own = null;
+        if (actionId != GovernanceBlueprint.CollectQuorumActionId)
+        {
+            try
+            {
+                own = transaction.Payload.Deserialize<ControlTransactionPayload>();
+            }
+            catch (JsonException)
+            {
+                return new PinResolution.Unresolvable("payload unreadable");
+            }
+        }
+
+        string? proposalId = null;
+        if (actionId == GovernanceBlueprint.CollectQuorumActionId)
+        {
+            // The proposal an approval belongs to is the one its SIGNED payload names — the same
+            // ProposalId the quorum tally counts it under. PreviousTransactionId is outside the
+            // signature; following it would let a submitter have an approval judged under one
+            // proposal's pin while it counts towards another's quorum.
+            GovernanceApprovalActionPayload? approval;
+            try
+            {
+                approval = transaction.Payload.Deserialize<GovernanceApprovalActionPayload>(
+                    GovernanceApprovalActionPayload.CanonicalJsonOptions);
+            }
+            catch (JsonException)
+            {
+                return new PinResolution.Unresolvable("approval payload unreadable");
+            }
+
+            if (string.IsNullOrWhiteSpace(approval?.ProposalId))
+                return new PinResolution.Unresolvable("approval names no proposal");
+
+            if (!string.IsNullOrEmpty(transaction.PreviousTransactionId)
+                && !string.Equals(transaction.PreviousTransactionId, approval.ProposalId, StringComparison.Ordinal))
+            {
+                return new PinResolution.Unresolvable("approval references a different proposal than it signs");
+            }
+
+            proposalId = approval.ProposalId;
+        }
+        else if (own?.GovernanceDefinitionTxId is null || own.EnactsProposalId is not null)
+        {
+            proposalId = own?.EnactsProposalId;
+        }
+
+        ControlTransactionPayload? proposal = null;
+        var readable = true;
+        if (!string.IsNullOrWhiteSpace(proposalId))
+        {
+            (proposal, readable) = await TryReadProposalPayloadAsync(transaction.RegisterId, proposalId, ct);
+        }
+        else if (actionId != GovernanceBlueprint.ProposeChangeActionId && own?.GovernanceDefinitionTxId is null)
+        {
+            readable = false;   // an approval/enactment that names no proposal
+        }
+
+        return GovernanceDefinitionPin.Resolve(actionId, own, proposal, readable);
+    }
+
+    private async Task<(ControlTransactionPayload? Payload, bool Readable)> TryReadProposalPayloadAsync(
+        string registerId, string proposalId, CancellationToken ct)
+    {
+        try
+        {
+            var tx = await _registerClient.GetTransactionAsync(registerId, proposalId, ct);
+
+            // The reference must name a governance PROPOSAL. Anything else (an unrelated tx, an
+            // approval) would deserialize to an all-null payload and read as "legacy, unpinned",
+            // failing open to the latest definition.
+            if (tx?.MetaData is not { } meta
+                || !string.Equals(meta.BlueprintId, GovernanceBlueprint.BlueprintId, StringComparison.OrdinalIgnoreCase)
+                || meta.ActionId != (uint)GovernanceBlueprint.ProposeChangeActionId)
+            {
+                return (null, false);
+            }
+
+            var data = tx.Payloads?.FirstOrDefault()?.Data;
+            if (string.IsNullOrEmpty(data))
+                return (null, false);
+
+            string json;
+            try
+            {
+                json = Encoding.UTF8.GetString(Base64Url.DecodeFromChars(data.AsSpan()));
+            }
+            catch (FormatException)
+            {
+                json = data;   // already plain text
+            }
+
+            var payload = JsonSerializer.Deserialize<ControlTransactionPayload>(json);
+            return (payload, payload is not null);
+        }
+        catch (Exception ex) when (!(ex is OperationCanceledException && ct.IsCancellationRequested))
+        {
+            _logger.LogWarning(ex,
+                "Could not read governance proposal {ProposalId} on register {RegisterId}",
+                proposalId, registerId);
+            return (null, false);
+        }
+    }
+
+    /// <summary>
     /// Feature 194 — reads the definition pin off the transaction's carried routing decision.
     /// </summary>
     /// <remarks>
@@ -2652,62 +2886,142 @@ public class ValidationEngine : IValidationEngine
         // The payload is verified against the transaction's own id before use: the id IS the digest
         // of the canonical definition, so a tampered payload cannot match the transaction carrying
         // it. Verification here is not optional politeness — this is an untrusted read.
-        try
+        var own = await TryResolveDefinitionFromRegisterAsync(registerId, blueprintId, definitionTxId, ct);
+        if (own.Tampered)
+            return null;   // evidence of tampering, not absence: never fall through to another register
+        if (own.Blueprint is not null)
+            return own.Blueprint;
+
+        // Feature 197 — SYSTEM-REGISTER ARM. A system blueprint is published once, on the system
+        // register (SSR), and a transaction on any other register may be pinned to that publication.
+        // The pin is the publication id, which is register-scoped, so the id is recomputed against
+        // the SSR — the register the definition was actually published on — not the transaction's.
+        // Reached only on a MISS above (no transaction / no payload / read failure); a payload that
+        // fails verification on the own register already returned null.
+        if (!string.Equals(registerId, SystemRegisterConstants.SystemRegisterId, StringComparison.Ordinal))
         {
-            var tx = await _registerClient.GetTransactionAsync(registerId, definitionTxId, ct);
-            var payload = tx?.Payloads?.FirstOrDefault()?.Data;
-
-            if (!string.IsNullOrEmpty(payload))
-            {
-                string definitionJson;
-                try
-                {
-                    definitionJson = Encoding.UTF8.GetString(Base64Url.DecodeFromChars(payload.AsSpan()));
-                }
-                catch (FormatException)
-                {
-                    definitionJson = payload;   // already plain text
-                }
-
-                var recomputed = BlueprintPublicationId.ComputeFromDefinition(
-                    registerId, blueprintId, definitionJson);
-
-                if (!string.Equals(recomputed, definitionTxId, StringComparison.OrdinalIgnoreCase))
-                {
-                    _logger.LogError(
-                        "Definition {DefinitionTxId} of blueprint {BlueprintId} read from register " +
-                        "{RegisterId} does not reproduce its own transaction id (recomputed {Recomputed}). " +
-                        "Refusing: the payload does not match the transaction that carried it.",
-                        definitionTxId, blueprintId, registerId, recomputed);
-                    return null;
-                }
-
-                var fromLedger = JsonSerializer.Deserialize<BlueprintModel>(definitionJson);
-                if (fromLedger is not null)
-                {
-                    await _blueprintCache.SetDefinitionAsync(fromLedger, definitionTxId, ct: ct);
-                    _logger.LogInformation(
-                        "Definition {DefinitionTxId} of blueprint {BlueprintId} resolved from the register ledger",
-                        definitionTxId, blueprintId);
-                    return fromLedger;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex,
-                "Failed to read definition {DefinitionTxId} of blueprint {BlueprintId} from register {RegisterId}",
-                definitionTxId, blueprintId, registerId);
+            var system = await TryResolveDefinitionFromRegisterAsync(
+                SystemRegisterConstants.SystemRegisterId, blueprintId, definitionTxId, ct);
+            if (system.Tampered)
+                return null;
+            if (system.Blueprint is not null)
+                return system.Blueprint;
         }
 
-        // Deliberately NO fallback to latest, and no system-register arm: system blueprints are
-        // resolved by id (they carry no instance pin), and a pinned lookup that reaches here means
-        // this node genuinely cannot produce the definition the instance runs.
+        // Deliberately NO fallback to latest. A pinned lookup that
+        // reaches here missed the Blueprint Service, the transaction's own register and (Feature 197)
+        // the system register: this node genuinely cannot produce the definition the instance runs.
         _logger.LogError(
             "Pinned definition {DefinitionTxId} of blueprint {BlueprintId} is UNRESOLVABLE on this node. " +
             "The transaction will be refused rather than validated against a different definition.",
             definitionTxId, blueprintId);
         return null;
+    }
+
+    /// <summary>
+    /// Feature 197 — resolves the <c>register-governance-v1</c> definition a governance step is pinned
+    /// to, from the SYSTEM REGISTER only.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why not <see cref="ResolvePinnedBlueprintAsync"/>.</b> That resolver also consults the
+    /// transaction's OWN register and the Blueprint Service's published store. Both hold
+    /// register-scoped publications a register owner controls: an owner could publish a lax
+    /// definition under the governance blueprint's id to their own register, and its register-scoped
+    /// publication id reproduces correctly against that register — so the own-register arm's
+    /// self-verification would accept it. The governance definition is published once, on the SSR,
+    /// and only an SSR publication may govern a governance step.
+    /// </para>
+    /// <para>
+    /// The content-keyed cache is safe to consult: a publication id is a digest over the register it
+    /// was published on, so an entry cached from any other register is stored under a different id
+    /// and can never be returned for an SSR pin. A miss here is refused by the caller
+    /// (<c>VAL_BP_VERSION_001</c>); there is no fallback to latest.
+    /// </para>
+    /// </remarks>
+    private async Task<BlueprintModel?> ResolveGovernanceDefinitionAsync(
+        string blueprintId, string definitionTxId, CancellationToken ct)
+    {
+        var cached = await _blueprintCache.GetDefinitionAsync(blueprintId, definitionTxId, ct);
+        if (cached != null)
+            return cached;
+
+        var system = await TryResolveDefinitionFromRegisterAsync(
+            SystemRegisterConstants.SystemRegisterId, blueprintId, definitionTxId, ct);
+        if (system.Blueprint is not null)
+            return system.Blueprint;
+
+        _logger.LogError(
+            "Governance definition {DefinitionTxId} of blueprint {BlueprintId} is UNRESOLVABLE from the system " +
+            "register. The transaction will be refused rather than validated against a different definition.",
+            definitionTxId, blueprintId);
+        return null;
+    }
+
+    /// <summary>
+    /// Outcome of reading one pinned definition off one register: resolved, a plain miss, or a payload
+    /// that does not reproduce the id of the transaction carrying it (tampered).
+    /// </summary>
+    private readonly record struct LedgerDefinitionRead(BlueprintModel? Blueprint, bool Tampered);
+
+    /// <summary>
+    /// Reads the publication transaction <paramref name="definitionTxId"/> from
+    /// <paramref name="sourceRegisterId"/>, verifies the payload reproduces that id (the id IS the
+    /// digest of the canonical definition, and this is an untrusted read), then caches it.
+    /// A miss (no transaction, empty payload, read failure) yields neither a blueprint nor tampering.
+    /// </summary>
+    private async Task<LedgerDefinitionRead> TryResolveDefinitionFromRegisterAsync(
+        string sourceRegisterId, string blueprintId, string definitionTxId, CancellationToken ct)
+    {
+        try
+        {
+            var tx = await _registerClient.GetTransactionAsync(sourceRegisterId, definitionTxId, ct);
+            var payload = tx?.Payloads?.FirstOrDefault()?.Data;
+
+            if (string.IsNullOrEmpty(payload))
+                return default;
+
+            string definitionJson;
+            try
+            {
+                definitionJson = Encoding.UTF8.GetString(Base64Url.DecodeFromChars(payload.AsSpan()));
+            }
+            catch (FormatException)
+            {
+                definitionJson = payload;   // already plain text
+            }
+
+            var recomputed = BlueprintPublicationId.ComputeFromDefinition(
+                sourceRegisterId, blueprintId, definitionJson);
+
+            if (!string.Equals(recomputed, definitionTxId, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogError(
+                    "Definition {DefinitionTxId} of blueprint {BlueprintId} read from register " +
+                    "{RegisterId} does not reproduce its own transaction id (recomputed {Recomputed}). " +
+                    "Refusing: the payload does not match the transaction that carried it.",
+                    definitionTxId, blueprintId, sourceRegisterId, recomputed);
+                return new LedgerDefinitionRead(null, Tampered: true);
+            }
+
+            var fromLedger = JsonSerializer.Deserialize<BlueprintModel>(definitionJson);
+            if (fromLedger is null)
+                return default;
+
+            await _blueprintCache.SetDefinitionAsync(fromLedger, definitionTxId, ct: ct);
+            _logger.LogInformation(
+                "Definition {DefinitionTxId} of blueprint {BlueprintId} resolved from the register ledger " +
+                "of {RegisterId}",
+                definitionTxId, blueprintId, sourceRegisterId);
+            return new LedgerDefinitionRead(fromLedger, Tampered: false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to read definition {DefinitionTxId} of blueprint {BlueprintId} from register {RegisterId}",
+                definitionTxId, blueprintId, sourceRegisterId);
+            return default;
+        }
     }
 
     /// <summary>

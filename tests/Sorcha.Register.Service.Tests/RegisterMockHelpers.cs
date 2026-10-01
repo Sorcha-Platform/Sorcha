@@ -35,5 +35,20 @@ internal static class RegisterMockHelpers
                 if (take > 0) q = q.Take(take);
                 return (IReadOnlyList<TransactionModel>)q.ToList();
             });
+
+        // Feature 197: system blueprint currency is ledger order, so a transaction that carries a
+        // DocketNumber must resolve to a docket that lists it. Derived at call time, like the above.
+        mock.Setup(r => r.GetDocketAsync(
+                It.IsAny<string>(),
+                It.IsAny<ulong>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(async (string rid, ulong id, CancellationToken ct) =>
+            {
+                var all = await mock.Object.GetTransactionsAsync(rid, ct);
+                var ids = all.Where(t => t.DocketNumber == id).Select(t => t.TxId).ToList();
+                return ids.Count == 0
+                    ? null
+                    : new DocketHeader { Id = id, RegisterId = rid, TransactionIds = ids };
+            });
     }
 }

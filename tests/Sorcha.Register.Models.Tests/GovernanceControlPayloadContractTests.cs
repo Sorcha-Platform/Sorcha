@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using FluentAssertions;
 using Json.Schema;
 using Sorcha.Register.Models;
@@ -43,6 +44,8 @@ namespace Sorcha.Register.Models.Tests;
 /// </remarks>
 public sealed class GovernanceControlPayloadContractTests
 {
+    private const string ValidPin = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
     /// <summary>
     /// The payload exactly as <c>SubmitGovernanceControlAsync</c> builds it for a pending proposal:
     /// a <see cref="ControlTransactionPayload"/> envelope carrying the operation, with a null roster
@@ -58,6 +61,7 @@ public sealed class GovernanceControlPayloadContractTests
         Version = 1,
         Roster = null,
         EnactsProposalId = null,
+        GovernanceDefinitionTxId = ValidPin,
         Operation = new GovernanceOperation
         {
             OperationType = GovernanceOperationType.AddValidator,
@@ -292,6 +296,33 @@ public sealed class GovernanceControlPayloadContractTests
             constructed.GetProperty("operation").TryGetProperty(property.Name, out _).Should().BeTrue(
                 "the sealed operation carries '{0}', so the model must emit it too", property.Name);
         }
+    }
+
+    [Fact]
+    public void TheSealedProposal_CarriesNoPin_AndTheSchemaDoesNotRequireOne()
+    {
+        // The pin is optional: every proposal sealed before it existed (and the pre-signed genesis)
+        // omits it, and must keep conforming. Declaring it required would reject all of them.
+        Sealed("proposal").TryGetProperty("governanceDefinitionTxId", out _).Should().BeFalse();
+        ProposalSchema().GetProperty("required").EnumerateArray().Select(e => e.GetString())
+            .Should().NotContain("governanceDefinitionTxId");
+        ProposalSchema().GetProperty("properties").TryGetProperty("governanceDefinitionTxId", out _)
+            .Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef0123456789")] // uppercase
+    [InlineData("0123456789abcdef")] // too short
+    [InlineData("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0")] // 65 chars
+    [InlineData("g123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")] // non-hex
+    public void AGovernanceDefinitionPin_ThatIsNot64LowercaseHex_IsRefused(string badPin)
+    {
+        var payload = JsonNode.Parse(EmittedProposal().GetRawText())!.AsObject();
+        payload["governanceDefinitionTxId"] = badPin;
+        var element = JsonDocument.Parse(payload.ToJsonString()).RootElement;
+
+        ValidatorSchemaEvaluation.Evaluate(ProposalSchema(), element).IsValid.Should().BeFalse(
+            "a pin must be exactly 64 lowercase hex characters");
     }
 
     [Fact]
