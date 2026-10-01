@@ -475,7 +475,7 @@ Status: **US1–US4 + T061 implemented** (PR #1001, branch `150-account-security
 
 ## Feature 197 - System Blueprint Lifecycle (2026-10-01, #1466)
 
-Status: **implemented, live gate pending** (branch `197-system-blueprint-lifecycle`; ✅ only after T031 on n1/tiny).
+Status: **✅ merged (PR #1774) and live on n1 + tiny** — live gate 8/8 PASS 2026-10-01 (governance change raised under v1 enacted after v2 published; tiny in-sync ~10s later).
 Operator-driven upgrade of a node's seeded system blueprints: `GET /api/system-register/drift`,
 `POST /api/system-register/blueprints/{id}/publish` (catalogue-only, SystemAdmin + platform tier,
 audited refusals; legacy `POST /api/system-register/publish` removed), CLI `sorcha system-register
