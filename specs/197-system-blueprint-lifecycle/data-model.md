@@ -71,7 +71,7 @@ publications exist but none match → `ImageAhead`; no publication → `Missing`
 | `Missing` on a SyncOnly node | Healthy |
 | any `Unknown` | Degraded |
 
-## GovernanceDefinitionPin (pure, `Sorcha.Validator.Core`)
+## GovernanceDefinitionPin (pure, `Sorcha.Register.Models`)
 
 Input: the governance step's action id, its own parsed `ControlTransactionPayload` (null for approvals),
 and the referenced proposal's parsed payload (fetched by the caller). Output: `PinResolution`:

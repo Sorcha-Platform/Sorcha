@@ -37,8 +37,8 @@ transaction fetch — proposals/approvals are rare.
 (genesis, enactment, pre-signed SSR genesis). Validator deploys before register-service. Fail closed on any
 unresolvable pin; never fall back to latest for a pinned transaction.
 
-**Scale/Scope**: 4 system blueprints; 3 services touched (Register, Validator, CLI) + 2 shared libraries
-(`Sorcha.Register.Models`, `Sorcha.Validator.Core`).
+**Scale/Scope**: 4 system blueprints; 3 services touched (Register, Validator, CLI) + 1 shared library
+(`Sorcha.Register.Models`).
 
 ## Constitution Check
 
@@ -81,10 +81,9 @@ specs/197-system-blueprint-lifecycle/
 ```text
 src/Common/Sorcha.Register.Models/
 ├── SystemBlueprintCatalog.cs                 # NEW — the 4 ids, one home
-└── GovernanceModels.cs                        # + ControlTransactionPayload.GovernanceDefinitionTxId
+├── GovernanceModels.cs                        # + ControlTransactionPayload.GovernanceDefinitionTxId
+└── GovernanceDefinitionPin.cs                 # NEW — pure "which definition governs this step" (beside GovernanceAuthorisationValidator)
 
-src/Common/Sorcha.Validator.Core/
-└── Governance/GovernanceDefinitionPin.cs      # NEW — pure "which definition governs this step"
 
 src/Services/Sorcha.Register.Service/
 ├── Services/SystemBlueprintCurrency.cs        # NEW — ledger-order current/version
@@ -92,7 +91,7 @@ src/Services/Sorcha.Register.Service/
 ├── Services/SystemBlueprintCatalogSource.cs   # NEW — load catalogue JSON (extracted from bootstrapper)
 ├── Services/SystemRegisterService.cs          # use currency resolver; publishedBy/seedReason
 ├── Services/SystemRegisterBootstrapper.cs     # use catalog + catalogue source
-├── HealthChecks/SystemBlueprintsHealthCheck.cs# NEW
+├── Services/SystemBlueprintsHealthCheck.cs    # NEW
 ├── Endpoints/SystemRegisterEndpoints.cs       # remove POST /publish; add drift + operator publish
 └── Program.cs                                 # stamp pin at the two proposal producers; DI
 
@@ -104,7 +103,7 @@ src/Apps/Sorcha.Cli/Commands/SystemRegisterCommands.cs   # + drift, publish comm
 
 blueprints/templates/register-governance-v1.json         # action 1: optional governanceDefinitionTxId
 
-tests/ (Register.Models.Tests, Register.Service.Tests, Validator.Service.Tests, Validator.Core.Tests,
+tests/ (Register.Models.Tests, Register.Service.Tests, Validator.Service.Tests, ServiceDefaults.Tests,
         Sorcha.Cli.Tests, Sorcha.Cli.ContractTests)
 ```
 
