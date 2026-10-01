@@ -270,7 +270,7 @@ public class SystemRegisterService
     /// <param name="metadata">Optional metadata</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Published blueprint entry</returns>
-    public async Task<SystemRegisterEntry> PublishBlueprintAsync(
+    public virtual async Task<SystemRegisterEntry> PublishBlueprintAsync(
         string blueprintId,
         JsonElement blueprintJson,
         string publishedBy,

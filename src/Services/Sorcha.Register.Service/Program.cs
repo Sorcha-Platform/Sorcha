@@ -336,6 +336,8 @@ builder.Services.AddSingleton<Sorcha.Register.Service.Services.ISystemBlueprintC
 Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton(builder.Services, TimeProvider.System);
 builder.Services.AddSingleton<Sorcha.Register.Service.Services.ISystemBlueprintDriftReporter,
     Sorcha.Register.Service.Services.SystemBlueprintDriftReporter>();
+builder.Services.AddScoped<Sorcha.Register.Service.Services.ISystemBlueprintPublishService,
+    Sorcha.Register.Service.Services.SystemBlueprintPublishService>();
 builder.Services.AddSingleton<StructuralDiffService>();
 
 // Feature 099: Genesis trust anchor — load pre-signed genesis, verify signature

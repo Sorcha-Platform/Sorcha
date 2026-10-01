@@ -15,4 +15,7 @@ public static class SystemBlueprintMetrics
 
     /// <summary>Observable gauge: 1 per blueprint for its current drift state.</summary>
     public const string DriftGaugeName = "sorcha_system_blueprint_drift";
+
+    /// <summary>Counter of operator publish attempts, tagged <c>outcome</c> (see <see cref="PublishOutcomeNames"/>).</summary>
+    public const string PublishCounterName = "sorcha_system_blueprint_publish_total";
 }
