@@ -65,6 +65,18 @@ public class SystemRegisterService
             .Canonicalise(JsonSerializer.Serialize(blueprintJson, CanonicalJsonOptions));
 
     /// <summary>
+    /// The publication id a publish of <paramref name="definition"/> under <paramref name="blueprintId"/>
+    /// produces on the system register. The single construction used by the publish path and by
+    /// <see cref="ISystemBlueprintCatalogSource"/> (Feature 197).
+    /// </summary>
+    /// <param name="blueprintId">The blueprint id.</param>
+    /// <param name="definition">The blueprint definition.</param>
+    /// <returns>The publication id.</returns>
+    public static string ComputePublicationId(string blueprintId, JsonElement definition) =>
+        Sorcha.Blueprint.Models.Canonical.BlueprintPublicationId.Compute(
+            SystemRegisterConstants.SystemRegisterId, blueprintId, CanonicaliseDefinition(definition));
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="SystemRegisterService"/> class
     /// </summary>
     /// <param name="logger">Logger instance</param>
@@ -294,8 +306,7 @@ public class SystemRegisterService
         // The definition's identity. Replaces SHA-256("blueprint-{blueprintId}-{unixMillis}"), which
         // minted a fresh id for byte-identical content on every call — so re-seeding an unchanged
         // system blueprint wrote a new transaction each time, and nothing could tell the two apart.
-        var txId = Sorcha.Blueprint.Models.Canonical.BlueprintPublicationId
-            .Compute(SystemRegisterConstants.SystemRegisterId, blueprintId, canonicalJson);
+        var txId = ComputePublicationId(blueprintId, blueprintJson);
 
         // Recorded on the submission and the entry. No longer part of the transaction id: an
         // identity derived from the clock mints a fresh id for byte-identical content, so re-seeding

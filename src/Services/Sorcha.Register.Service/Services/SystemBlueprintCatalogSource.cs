@@ -2,8 +2,6 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json;
-using Sorcha.Blueprint.Models.Canonical;
-using Sorcha.Register.Models.Constants;
 
 namespace Sorcha.Register.Service.Services;
 
@@ -59,8 +57,6 @@ public sealed class SystemBlueprintCatalogSource : ISystemBlueprintCatalogSource
     {
         if (TryLoad(id) is not { } definition) return null;
 
-        // Same canonicalisation the publish path uses, so the id equals what a publish produces.
-        var canonicalJson = SystemRegisterService.CanonicaliseDefinition(definition);
-        return BlueprintPublicationId.Compute(SystemRegisterConstants.SystemRegisterId, id, canonicalJson);
+        return SystemRegisterService.ComputePublicationId(id, definition);
     }
 }
