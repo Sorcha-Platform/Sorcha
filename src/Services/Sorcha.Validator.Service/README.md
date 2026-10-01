@@ -415,17 +415,24 @@ in-flight proposals (#1466). `GovernanceDefinitionPin` is the one resolver:
 | Step | Governing definition |
 |------|----------------------|
 | Proposal / Owner-override | its own `governanceDefinitionTxId` |
-| Approval | the pin of the proposal at `PreviousTransactionId` |
+| Approval | the pin of the proposal its **signed** payload names (`proposalId`, the value the quorum tally counts it under); a `PreviousTransactionId` that disagrees is refused |
 | Enactment | the pin of the proposal at payload `EnactsProposalId` |
 | Referenced proposal carries no pin (legacy) | the latest definition, counted by `sorcha_governance_definition_pin_fallback{step}` (`proposal`, `approval`, `enactment`; meter `Sorcha.Validator`) |
 
-Refused: a blank pin (malformed, never "absent"); an enactment carrying its own pin; a referenced
+Refused: a blank pin (malformed, never "absent"); an enactment or approval carrying its own pin; a referenced
 transaction that is not a governance proposal (`register-governance-v1`, action 1); an unreadable
 referenced proposal. A pin that does not resolve never falls back to latest (`VAL_BP_VERSION_001`).
 
-- **SSR resolution arm.** `ResolveBlueprintAsync` order is cache, Blueprint Service, the
-  transaction's own register, then the **system register**. The SSR read recomputes the publication
-  id with the SSR register id and verifies it equals the pin.
+- **Which transactions are governance steps.** `register-governance-v1` actions 1, 2 and 4 —
+  decided from `BlueprintId` + `ActionId`, **not** from the unsigned `transactionType` label. The only
+  exception is a publication of the governance blueprint whose `BlueprintPublish` exemption the
+  resolver *granted* from proved publish authority (CLAUDE.md §23); a forged label stays a governance
+  step and is held to its pin.
+- **Governance pins resolve from the SSR only.** Cache, then the **system register** — never the
+  transaction's own register or the Blueprint Service published store, which hold owner-controlled
+  register-scoped publications. The SSR read recomputes the publication id with the SSR register id
+  and verifies it equals the pin. (Ordinary instance pins keep `ResolveBlueprintAsync`'s order: cache,
+  Blueprint Service, own register, then the SSR.)
 - **`VAL_GOV_DEF_001`** (validator-local) — a governance **raise** whose pin is not the current SSR
   publication ("raised under a superseded governance definition"). "Current" is read **uncached**
   from the local Register Service. Only a superseded pin emits `VAL_GOV_DEF_001`; an unreadable
