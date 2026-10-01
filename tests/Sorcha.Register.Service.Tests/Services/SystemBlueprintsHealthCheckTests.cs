@@ -57,15 +57,15 @@ public class SystemBlueprintsHealthCheckTests
             BootstrapMode.Auto, completed: true);
 
         result.Status.Should().Be(HealthStatus.Healthy);
-        result.Data.Should().ContainKey("a").WhoseValue.Should().Be("InSync");
-        result.Data.Should().ContainKey("b").WhoseValue.Should().Be("InSync");
+        result.Data.Should().ContainKey("a").WhoseValue.Should().Be("in-sync");
+        result.Data.Should().ContainKey("b").WhoseValue.Should().Be("in-sync");
     }
 
     [Theory]
-    [InlineData(SystemBlueprintDriftState.ImageBehind)]
-    [InlineData(SystemBlueprintDriftState.ImageAhead)]
-    [InlineData(SystemBlueprintDriftState.Unknown)]
-    public async Task CheckHealthAsync_DriftOrUnknown_DegradedNamingOffender(SystemBlueprintDriftState state)
+    [InlineData(SystemBlueprintDriftState.ImageBehind, "image-behind")]
+    [InlineData(SystemBlueprintDriftState.ImageAhead, "image-ahead")]
+    [InlineData(SystemBlueprintDriftState.Unknown, "unknown")]
+    public async Task CheckHealthAsync_DriftOrUnknown_DegradedNamingOffender(SystemBlueprintDriftState state, string wireName)
     {
         var result = await RunAsync(
             [Entry("ok", SystemBlueprintDriftState.InSync), Entry("bad", state)],
@@ -73,8 +73,9 @@ public class SystemBlueprintsHealthCheckTests
 
         result.Status.Should().Be(HealthStatus.Degraded);
         result.Description.Should().Contain("bad").And.NotContain("ok (");
-        result.Data["bad"].Should().Be(state.ToString());
-        result.Data["ok"].Should().Be("InSync");
+        result.Data["bad"].Should().Be(wireName);
+        result.Description.Should().Contain($"bad ({wireName})");
+        result.Data["ok"].Should().Be("in-sync");
     }
 
     [Theory]
@@ -103,7 +104,7 @@ public class SystemBlueprintsHealthCheckTests
         var result = await RunAsync([Entry("gone", SystemBlueprintDriftState.Missing)], BootstrapMode.SyncOnly, completed: true);
 
         result.Status.Should().Be(HealthStatus.Healthy);
-        result.Data["gone"].Should().Be("Missing");
+        result.Data["gone"].Should().Be("missing");
     }
 
     [Fact]

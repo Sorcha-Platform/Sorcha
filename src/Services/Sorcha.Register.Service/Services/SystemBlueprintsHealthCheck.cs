@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
+
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Sorcha.Register.Service.Services;
@@ -25,7 +27,9 @@ public sealed class SystemBlueprintsHealthCheck(
         if (entries is null || entries.Count == 0)
             return Task.FromResult(HealthCheckResult.Healthy("System blueprint drift not yet computed"));
 
-        var data = entries.ToDictionary(e => e.BlueprintId, e => (object)e.State.ToString(), StringComparer.Ordinal);
+        // The platform wire name (in-sync, image-ahead, ...) — the same vocabulary as /drift and the gauge's
+        // state tag, so an operator correlating the three never translates between spellings.
+        var data = entries.ToDictionary(e => e.BlueprintId, e => (object)WireName(e.State), StringComparer.Ordinal);
 
         // A SyncOnly replica legitimately lacks blueprints until sync delivers them; an owner has
         // no such excuse once bootstrap has completed.
@@ -39,7 +43,7 @@ public sealed class SystemBlueprintsHealthCheck(
                 SystemBlueprintDriftState.Missing => missingIsDegraded,
                 _ => true, // ImageBehind, ImageAhead, Unknown
             })
-            .Select(e => $"{e.BlueprintId} ({e.State})")
+            .Select(e => $"{e.BlueprintId} ({WireName(e.State)})")
             .ToList();
 
         return Task.FromResult(offending.Count == 0
@@ -47,4 +51,7 @@ public sealed class SystemBlueprintsHealthCheck(
             : HealthCheckResult.Degraded(
                 $"System blueprints out of sync: {string.Join(", ", offending)}", data: data));
     }
+
+    private static string WireName(SystemBlueprintDriftState state)
+        => JsonNamingPolicy.KebabCaseLower.ConvertName(state.ToString());
 }
