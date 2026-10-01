@@ -41,6 +41,33 @@ public static class SystemRegisterEndpoints
         .Produces<object>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized);
 
+        group.MapGet("/drift", async (
+            ISystemBlueprintDriftSnapshot snapshot,
+            ISystemBlueprintDriftReporter reporter,
+            TimeProvider time,
+            CancellationToken ct) =>
+        {
+            // The monitor's snapshot is null until its first cycle completes; compute on demand then.
+            var entries = snapshot.Entries is { Count: > 0 } held
+                ? held
+                : await reporter.ComputeAsync(ct);
+
+            var checkedAt = entries.Count > 0 ? entries.Max(e => e.CheckedAt) : time.GetUtcNow();
+            return Results.Ok(new SystemBlueprintDriftReport { CheckedAt = checkedAt, Entries = entries });
+        })
+        // Stricter than the group's CanManageRegisters (both apply): SystemAdmin on the platform tier only.
+        .RequireAuthorization("RequireSystemAdmin", "RequirePlatformAudience")
+        .WithName("GetSystemBlueprintDrift")
+        .WithSummary("Report drift between this node's system blueprints and the system register")
+        .WithDescription(
+            "Returns one entry per catalogued system blueprint, classifying the definition shipped in this " +
+            "node's image against the system register's current publication (inSync, imageBehind, imageAhead, " +
+            "missing, unknown). Served from the background monitor's latest snapshot, computed on demand " +
+            "before the first cycle. Requires a SystemAdmin on a platform-tier token.")
+        .Produces<SystemBlueprintDriftReport>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden);
+
         group.MapPost("/initialize", async (
             SystemRegisterService service,
             ILogger<Program> logger,

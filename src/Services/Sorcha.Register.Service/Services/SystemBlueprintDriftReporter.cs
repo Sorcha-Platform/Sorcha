@@ -36,7 +36,7 @@ public enum SystemBlueprintDriftState
 
 /// <summary>Drift of one system blueprint.</summary>
 /// <param name="BlueprintId">Blueprint identifier.</param>
-/// <param name="State">Classification.</param>
+/// <param name="State">Classification. Property-level converter: a converter in the host's serializer options (kebab-case) outranks the enum's own attribute, a property attribute outranks both.</param>
 /// <param name="CurrentPublicationTxId">Current publication on the register; null when absent or unreadable.</param>
 /// <param name="CurrentVersion">1-based ordinal of the current publication.</param>
 /// <param name="ImagePublicationTxId">Id a publish of the image's definition would produce; null when the image lacks the file.</param>
@@ -44,7 +44,7 @@ public enum SystemBlueprintDriftState
 /// <param name="CheckedAt">When the comparison was made.</param>
 public sealed record SystemBlueprintDriftEntry(
     string BlueprintId,
-    SystemBlueprintDriftState State,
+    [property: JsonConverter(typeof(SystemBlueprintDriftStateConverter))] SystemBlueprintDriftState State,
     string? CurrentPublicationTxId,
     int? CurrentVersion,
     string? ImagePublicationTxId,
@@ -167,4 +167,14 @@ public sealed class SystemBlueprintDriftReporter : ISystemBlueprintDriftReporter
         return new SystemBlueprintDriftEntry(
             blueprintId, SystemBlueprintDriftState.ImageAhead, current.TxId, currentVersion, imagePublicationId, null, checkedAt);
     }
+}
+
+/// <summary>Response of <c>GET /api/system-register/drift</c>.</summary>
+public sealed record SystemBlueprintDriftReport
+{
+    /// <summary>The latest <see cref="SystemBlueprintDriftEntry.CheckedAt"/> across the entries.</summary>
+    public required DateTimeOffset CheckedAt { get; init; }
+
+    /// <summary>One entry per catalogued system blueprint.</summary>
+    public required IReadOnlyList<SystemBlueprintDriftEntry> Entries { get; init; }
 }
