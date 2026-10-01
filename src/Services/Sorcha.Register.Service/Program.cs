@@ -329,6 +329,8 @@ builder.Services.AddScoped<Sorcha.Register.Core.Services.IRegisterPolicyService,
 
 // Register system register services (scoped — will use ledger-backed dependencies)
 builder.Services.AddScoped<SystemRegisterService>();
+builder.Services.AddScoped<Sorcha.Register.Service.Services.IGovernanceDefinitionPinSource,
+    Sorcha.Register.Service.Services.GovernanceDefinitionPinSource>();
 builder.Services.AddSingleton<Sorcha.Register.Service.Services.ISystemBlueprintCatalogSource,
     Sorcha.Register.Service.Services.SystemBlueprintCatalogSource>();
 Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton(builder.Services, TimeProvider.System);
@@ -2439,7 +2441,9 @@ governanceGroup.MapPost("/propose", async (
     IHashProvider hashProvider,
     Sorcha.ServiceClients.Validator.IValidatorServiceClient validatorClient,
     IGovernanceSigningService signingService,
-    Sorcha.Validator.Core.Validators.ISeatAcceptanceVerifier seatAcceptanceVerifier) =>
+    Sorcha.Validator.Core.Validators.ISeatAcceptanceVerifier seatAcceptanceVerifier,
+    Sorcha.Register.Service.Services.IGovernanceDefinitionPinSource definitionPinSource,
+    CancellationToken ct) =>
 {
     // 1. Verify register exists
     var register = await repository.GetRegisterAsync(registerId);
@@ -2534,6 +2538,19 @@ governanceGroup.MapPost("/propose", async (
 
     // Chain linking from the latest Control TX. Read once so both paths chain identically.
     string? previousControlTxId = roster.LastControlTxId;
+
+    // Feature 197 (#1466): every proposal is pinned to the governance definition current when it is
+    // raised, so a later republish cannot change the rules an open proposal is judged against. With
+    // no readable definition there is nothing to pin to — refuse before anything is signed or
+    // submitted rather than raise an unpinned proposal.
+    var governanceDefinitionTxId = await definitionPinSource.GetCurrentAsync(ct);
+    if (governanceDefinitionTxId is null)
+    {
+        return Results.Problem(
+            title: "Governance definition unavailable",
+            detail: "The current governance blueprint definition could not be read from the system register, so a proposal cannot be pinned to it. Retry shortly.",
+            statusCode: 503);
+    }
 
     // One canonicalisation, one signing site, one submission — used by both the pending-proposal and
     // the enacting path. Keeping them separate is how the two would drift into producing different
@@ -2648,7 +2665,13 @@ governanceGroup.MapPost("/propose", async (
         // would invalidate it the instant it sealed. That is exactly what the pre-split
         // propose-and-enact transaction did, and why no approval could ever attach to one.
         var pending = await SubmitGovernanceControlAsync(
-            new ControlTransactionPayload { Version = 1, Roster = null, Operation = operation },
+            new ControlTransactionPayload
+            {
+                Version = 1,
+                Roster = null,
+                Operation = operation,
+                GovernanceDefinitionTxId = governanceDefinitionTxId
+            },
             operation);
 
         if (!pending.Ok)
@@ -2756,7 +2779,13 @@ governanceGroup.MapPost("/propose", async (
     // gate) at risk for no security gain — the override has no approvals to collect.
     var opType = operation.OperationType.ToString().ToLowerInvariant();
     var enacted = await SubmitGovernanceControlAsync(
-        new ControlTransactionPayload { Version = 1, Roster = updatedRoster, Operation = operation },
+        new ControlTransactionPayload
+        {
+            Version = 1,
+            Roster = updatedRoster,
+            Operation = operation,
+            GovernanceDefinitionTxId = governanceDefinitionTxId
+        },
         operation);
 
     if (!enacted.Ok)
@@ -2796,7 +2825,8 @@ governanceGroup.MapPost("/propose", async (
 .Produces(StatusCodes.Status404NotFound)
 .Produces(StatusCodes.Status400BadRequest)
 .ProducesValidationProblem()
-.Produces(StatusCodes.Status401Unauthorized);
+.Produces(StatusCodes.Status401Unauthorized)
+.ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
 // <summary>
 // List governance proposals from Control TX history
