@@ -65,6 +65,14 @@ public static class GovernanceDefinitionPin
         // absent would let a stripped pin degrade to Legacy (the current definition).
         if (ownPayload?.GovernanceDefinitionTxId is { } ownPin)
         {
+            // An approval is judged by the proposal it approves, exactly like an enactment. (Approvals
+            // carry a different payload type, so a caller passing one here is already wrong — but a
+            // pin there must still never be honoured as a raise.)
+            if (actionId == GovernanceBlueprint.CollectQuorumActionId)
+            {
+                return new PinResolution.Unresolvable("an approval must not carry its own pin");
+            }
+
             // An enactment is judged by the proposal it enacts. A pin of its own would let it choose
             // its own governing definition and escape the one its proposal was raised under.
             if (ownPayload.EnactsProposalId is not null)

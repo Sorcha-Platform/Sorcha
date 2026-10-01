@@ -163,4 +163,11 @@ public class GovernanceDefinitionPinTests
         GovernanceDefinitionPin.Resolve(Enact, Payload(PinA, "p1"), Payload(PinB), true)
             .Should().Be(new PinResolution.Unresolvable("an enactment must not carry its own pin"));
     }
+
+    [Fact]
+    public void Resolve_ApprovalCarryingOwnPin_Unresolvable()
+    {
+        GovernanceDefinitionPin.Resolve(Approve, Payload(PinA), Payload(PinB), true)
+            .Should().Be(new PinResolution.Unresolvable("an approval must not carry its own pin"));
+    }
 }
