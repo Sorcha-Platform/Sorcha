@@ -141,6 +141,14 @@ public sealed class CliWireContractTests
         // Sorcha.Tenant.Service.Models.Dtos.LoginRequest (POST /api/auth/login), so pair against
         // that type by name explicitly.
         ["UserLoginRequest"] = "LoginRequest",
+
+        // Feature 197 T021/T022 — operator system-blueprint drift/publish commands. The CLI DTOs
+        // carry a "Dto" suffix; the Register Service's wire types do not. Pair them explicitly so
+        // `system-register drift` / `publish` are checked rather than silently outside discovery.
+        ["SystemBlueprintDriftReportDto"] = "SystemBlueprintDriftReport",
+        ["SystemBlueprintDriftEntryDto"] = "SystemBlueprintDriftEntry",
+        ["SystemBlueprintPublishRequestDto"] = "SystemBlueprintPublishRequest",
+        ["SystemBlueprintPublishResultDto"] = "SystemBlueprintPublishResult",
     };
 
     /// <summary>
@@ -271,6 +279,37 @@ public sealed class CliWireContractTests
 
         requiredServerNames.Except(cliNames).Should().BeEmpty(
             "the CLI issue request may omit optional server fields, but never a required one");
+    }
+
+    [Fact]
+    public void SystemBlueprintOperatorDtos_AreCheckedAsWirePairs()
+    {
+        // Feature 197 T022. The CLI names carry a "Dto" suffix, so name-based discovery alone would
+        // never pair them; the explicit CounterpartTypeName entries must keep them in the checked set.
+        Pairs().Keys.Should().Contain(
+        [
+            "SystemBlueprintDriftReportDto",
+            "SystemBlueprintDriftEntryDto",
+            "SystemBlueprintPublishRequestDto",
+            "SystemBlueprintPublishResultDto",
+        ]);
+    }
+
+    [Theory]
+    [InlineData("SystemBlueprintDriftEntryDto", "State")]
+    [InlineData("SystemBlueprintPublishResultDto", "State")]
+    [InlineData("SystemBlueprintPublishResultDto", "Outcome")]
+    public void SystemBlueprintOperatorDtos_ReadServerEnumsAsStrings(string cliTypeName, string property)
+    {
+        // The server writes these enums as kebab-case NAMES (SorchaJson), never integers; the CLI
+        // reads them as display-only strings. A string reads a name but throws on a bare number, so
+        // pin that the server side really is an enum and the CLI side a string: if the server ever
+        // wrote integers the CLI would fail to bind, and this names the assumption being relied on.
+        var (cli, server) = Pairs()[cliTypeName];
+
+        cli.GetProperty(property)!.PropertyType.Should().Be<string>();
+        server.GetProperty(property)!.PropertyType.IsEnum.Should().BeTrue(
+            "the CLI reads '{0}' as a kebab-case string only because the server sends an enum by name", property);
     }
 
     // ---------------------------------------------------------------------------------------
