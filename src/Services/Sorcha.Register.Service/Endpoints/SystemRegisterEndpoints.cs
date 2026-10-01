@@ -42,15 +42,15 @@ public static class SystemRegisterEndpoints
         .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapGet("/drift", async (
-            ISystemBlueprintDriftSnapshot snapshot,
             ISystemBlueprintDriftReporter reporter,
             TimeProvider time,
             CancellationToken ct) =>
         {
-            // The monitor's snapshot is null until its first cycle completes; compute on demand then.
-            var entries = snapshot.Entries is { Count: > 0 } held
-                ? held
-                : await reporter.ComputeAsync(ct);
+            // Always computed on demand, never the monitor's snapshot: an operator reads /drift right
+            // after a publish or a deploy to decide the next step, and a snapshot up to one monitor
+            // cycle old would report the state BEFORE that action. The computation is cheap and the
+            // route is SystemAdmin-only. The health check and the gauge keep the snapshot.
+            var entries = await reporter.ComputeAsync(ct);
 
             var checkedAt = entries.Count > 0 ? entries.Max(e => e.CheckedAt) : time.GetUtcNow();
             return Results.Ok(new SystemBlueprintDriftReport { CheckedAt = checkedAt, Entries = entries });
@@ -62,8 +62,8 @@ public static class SystemRegisterEndpoints
         .WithDescription(
             "Returns one entry per catalogued system blueprint, classifying the definition shipped in this " +
             "node's image against the system register's current publication (in-sync, image-behind, image-ahead, " +
-            "missing, unknown). Served from the background monitor's latest snapshot, computed on demand " +
-            "before the first cycle. Requires a SystemAdmin on a platform-tier token.")
+            "missing, unknown). Computed on demand at request time, so it reflects a publish or deploy made " +
+            "moments earlier. Requires a SystemAdmin on a platform-tier token.")
         .Produces<SystemBlueprintDriftReport>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden);

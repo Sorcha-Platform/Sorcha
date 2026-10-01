@@ -396,7 +396,9 @@ no-op. A success records `publishedBy` = the operator and
 entry — never `Unhealthy` — except `missing` on a `SyncOnly` node or before bootstrap completes
 (Healthy). With no snapshot yet it is Healthy ("not yet computed"). `SystemBlueprints:DriftIntervalMinutes` (default `10`) sets the monitor
 cycle; it computes once after system-register bootstrap, then on that interval, and a failed cycle
-reports every entry `unknown`. Meter `Sorcha.SystemBlueprints`:
+reports every entry `unknown`. The monitor snapshot feeds only the health check and the gauge;
+`GET /api/system-register/drift` always computes at request time, so it reflects a publish or deploy
+immediately. Meter `Sorcha.SystemBlueprints`:
 `sorcha_system_blueprint_drift{blueprint,state}` and
 `sorcha_system_blueprint_publish_total{outcome}` — `published`, `noop`, `dry_run`,
 `refused_rollback`, `refused_concurrency`, `refused_no_key`, `refused_unknown`, `refused_auth`,

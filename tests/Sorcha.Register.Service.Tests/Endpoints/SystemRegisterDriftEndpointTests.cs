@@ -21,7 +21,8 @@ namespace Sorcha.Register.Service.Tests.Endpoints;
 
 /// <summary>
 /// <c>GET /api/system-register/drift</c> (Feature 197 T009): SystemAdmin on the platform tier only,
-/// state on the wire as its kebab-case name (platform wire form).
+/// state on the wire as its kebab-case name (platform wire form), computed at request time — never
+/// the monitor's (possibly stale) snapshot.
 /// </summary>
 [Collection("RegisterWebApp")]
 public class SystemRegisterDriftEndpointTests : IClassFixture<SystemRegisterDriftWebApplicationFactory>
@@ -38,7 +39,7 @@ public class SystemRegisterDriftEndpointTests : IClassFixture<SystemRegisterDrif
     }
 
     [Fact]
-    public async Task GetDrift_SystemAdminOnPlatformTier_Returns200WithStateAsCamelCaseString()
+    public async Task GetDrift_SystemAdminOnPlatformTier_Returns200WithStateAsKebabCaseString()
     {
         var response = await ClientAs("sysadmin-platform").GetAsync("/api/system-register/drift");
 
@@ -51,6 +52,33 @@ public class SystemRegisterDriftEndpointTests : IClassFixture<SystemRegisterDrif
         entry.GetProperty("blueprintId").GetString().Should().Be("register-creation-v1");
         entry.GetProperty("state").ValueKind.Should().Be(JsonValueKind.String);
         entry.GetProperty("state").GetString().Should().Be("image-ahead");
+    }
+
+    [Fact]
+    public async Task GetDrift_StateChangedSinceMonitorSnapshot_ReportsCurrentStateNotSnapshot()
+    {
+        // A publish has just landed: the reporter now computes in-sync, while the monitor's snapshot
+        // (taken before the publish) still says image-ahead. /drift must report the current state.
+        _factory.Reporter.Entries =
+        [
+            new SystemBlueprintDriftEntry(
+                "register-creation-v1", SystemBlueprintDriftState.InSync,
+                "tx-image", 2, "tx-image", null, SystemRegisterDriftWebApplicationFactory.CheckedAt.AddMinutes(1))
+        ];
+        try
+        {
+            var response = await ClientAs("sysadmin-platform").GetAsync("/api/system-register/drift");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            var body = JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync());
+            var entry = body.GetProperty("entries").EnumerateArray().Single();
+            entry.GetProperty("state").GetString().Should().Be("in-sync");
+            entry.GetProperty("currentVersion").GetInt32().Should().Be(2);
+        }
+        finally
+        {
+            _factory.Reporter.Entries = SystemRegisterDriftWebApplicationFactory.ImageAheadEntries();
+        }
     }
 
     [Fact]
@@ -79,10 +107,23 @@ public class SystemRegisterDriftEndpointTests : IClassFixture<SystemRegisterDrif
     }
 }
 
-/// <summary>Host with header-driven principals and a fixed drift snapshot.</summary>
+/// <summary>
+/// Host with header-driven principals, a drift reporter the test controls, and a monitor snapshot that
+/// deliberately disagrees with it (stale) — so a response served from the snapshot is detectable.
+/// </summary>
 public class SystemRegisterDriftWebApplicationFactory : RegisterServiceWebApplicationFactory
 {
     internal static readonly DateTimeOffset CheckedAt = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+
+    /// <summary>The reporter /drift must consult on every request.</summary>
+    internal MutableReporter Reporter { get; } = new();
+
+    internal static IReadOnlyList<SystemBlueprintDriftEntry> ImageAheadEntries() =>
+    [
+        new SystemBlueprintDriftEntry(
+            "register-creation-v1", SystemBlueprintDriftState.ImageAhead,
+            "tx-current", 1, "tx-image", null, CheckedAt)
+    ];
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -99,18 +140,29 @@ public class SystemRegisterDriftWebApplicationFactory : RegisterServiceWebApplic
                 DriftTestAuthHandler.SchemeName, _ => { });
 
             services.RemoveAll<ISystemBlueprintDriftSnapshot>();
-            services.AddSingleton<ISystemBlueprintDriftSnapshot>(new FixedSnapshot());
+            services.AddSingleton<ISystemBlueprintDriftSnapshot>(new StaleSnapshot());
+            services.RemoveAll<ISystemBlueprintDriftReporter>();
+            services.AddSingleton<ISystemBlueprintDriftReporter>(Reporter);
         });
     }
 
-    private sealed class FixedSnapshot : ISystemBlueprintDriftSnapshot
+    /// <summary>A snapshot from before the last change: a different state from the reporter's.</summary>
+    private sealed class StaleSnapshot : ISystemBlueprintDriftSnapshot
     {
         public IReadOnlyList<SystemBlueprintDriftEntry>? Entries { get; } =
         [
             new SystemBlueprintDriftEntry(
-                "register-creation-v1", SystemBlueprintDriftState.ImageAhead,
-                "tx-current", 1, "tx-image", null, CheckedAt)
+                "register-creation-v1", SystemBlueprintDriftState.Missing,
+                null, null, "tx-image", null, CheckedAt.AddHours(-1))
         ];
+    }
+
+    internal sealed class MutableReporter : ISystemBlueprintDriftReporter
+    {
+        public IReadOnlyList<SystemBlueprintDriftEntry> Entries { get; set; } = ImageAheadEntries();
+
+        public Task<IReadOnlyList<SystemBlueprintDriftEntry>> ComputeAsync(CancellationToken ct = default)
+            => Task.FromResult(Entries);
     }
 }
 

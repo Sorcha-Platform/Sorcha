@@ -2271,6 +2271,9 @@ GET /api/system-register/drift
 
 **Authorization:** `RequireSystemAdmin` + `RequirePlatformAudience`.
 
+Computed at request time (not served from the background monitor's snapshot), so it reflects a
+publish or deploy made moments earlier.
+
 **Response:** `200 OK`
 ```json
 {
