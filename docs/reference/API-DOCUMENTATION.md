@@ -2259,6 +2259,58 @@ GET /api/system-register/blueprints/{blueprintId}
 GET /api/system-register/blueprints/{blueprintId}/versions/{version}
 ```
 
+> `version` is the ledger ordinal of the publication; "current" is the last publication in ledger
+> order (docket number, then position in the docket), never the timestamp (Feature 197).
+> The former `POST /api/system-register/publish` (arbitrary body) was **removed** in Feature 197.
+
+##### Get System Blueprint Drift (Feature 197)
+
+```http
+GET /api/system-register/drift
+```
+
+**Authorization:** `RequireSystemAdmin` + `RequirePlatformAudience`.
+
+**Response:** `200 OK`
+```json
+{
+  "checkedAt": "2026-10-01T09:00:00Z",
+  "entries": [
+    { "blueprintId": "register-governance-v1", "state": "image-ahead",
+      "currentPublicationTxId": "...", "currentVersion": 1,
+      "imagePublicationTxId": "...", "imageMatchesVersion": null }
+  ]
+}
+```
+
+`state`: `in-sync`, `image-behind`, `image-ahead`, `missing`, `unknown`. `401` unauthenticated, `403`
+not SystemAdmin or not platform tier.
+
+##### Publish System Blueprint From Catalogue (Feature 197)
+
+```http
+POST /api/system-register/blueprints/{blueprintId}/publish
+Content-Type: application/json
+
+{ "dryRun": false, "expectedCurrent": null }
+```
+
+**Authorization:** `RequireSystemAdmin` + `RequirePlatformAudience`. Catalogue-only — the definition
+comes from the node's image; the node must hold an Active `sorcha:blueprint-publish` roster entry.
+
+| Status | Meaning |
+|--------|---------|
+| `200` | `outcome` `dry-run` or `noop` (already current; not a refusal) |
+| `202` | `outcome` `submitted` (`transactionId`, `candidatePublicationTxId`); current once sealed |
+| `403` | Not authorised, or this node holds no publishing key |
+| `404` | Unknown `blueprintId` |
+| `409` | `reason` = `rollback` (image is behind) or `concurrency` (`expectedCurrent` mismatch) |
+| `503` | State unknown; `Retry-After` set |
+| `502` | Validator rejected the submission |
+
+Every refusal is audited (`system-blueprint.publish`); a success records `publishedBy` = operator
+and `seedReason` = `operator`. Details: [Register Service README](../../src/Services/Sorcha.Register.Service/README.md).
+
 #### 6. Query Blueprint Version History (Feature 059)
 
 Returns semantic version history for a published blueprint.

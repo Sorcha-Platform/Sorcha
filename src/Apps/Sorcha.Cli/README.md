@@ -566,6 +566,8 @@ never printed or logged.
 | `sorcha system-register genesis` | Run the genesis ceremony |
 | `sorcha system-register import-validator-key` | Seat a validator signing wallet from a BIP39 mnemonic |
 | `sorcha system-register status` | Show system register status |
+| `sorcha system-register drift` | Report, per system blueprint, whether this node's image matches the system register (`in-sync`, `image-behind`, `image-ahead`, `missing`, `unknown`). SystemAdmin, platform tier |
+| `sorcha system-register publish <blueprintId> [--dry-run] [--expected-current <txid>]` | Publish this node's catalogued definition of a system blueprint. `--dry-run` decides and reports without submitting; `--expected-current` refuses (409) if that publication id is not current. Refused if it would roll back |
 
 ### Audit Commands
 
