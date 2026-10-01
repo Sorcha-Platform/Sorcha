@@ -61,10 +61,17 @@ public static class GovernanceDefinitionPin
         ControlTransactionPayload? referencedProposal,
         bool referencedProposalReadable)
     {
-        if (ownPayload is not null && !string.IsNullOrWhiteSpace(ownPayload.GovernanceDefinitionTxId))
+        // A present-but-blank pin is malformed, never absent: only null means "no pin". Treating blank as
+        // absent would let a stripped pin degrade to Legacy (the current definition).
+        if (ownPayload?.GovernanceDefinitionTxId is { } ownPin)
         {
+            if (string.IsNullOrWhiteSpace(ownPin))
+            {
+                return new PinResolution.Unresolvable("malformed pin");
+            }
+
             return new PinResolution.Pinned(
-                ownPayload.GovernanceDefinitionTxId, IsRaise: ownPayload.EnactsProposalId is null);
+                ownPin, IsRaise: ownPayload.EnactsProposalId is null);
         }
 
         if (actionId == GovernanceBlueprint.CollectQuorumActionId)
@@ -94,8 +101,13 @@ public static class GovernanceDefinitionPin
             return new PinResolution.Unresolvable("referenced proposal unreadable");
         }
 
-        return string.IsNullOrWhiteSpace(proposal.GovernanceDefinitionTxId)
-            ? new PinResolution.Legacy(step)
-            : new PinResolution.Pinned(proposal.GovernanceDefinitionTxId, IsRaise: false);
+        if (proposal.GovernanceDefinitionTxId is not { } pin)
+        {
+            return new PinResolution.Legacy(step);
+        }
+
+        return string.IsNullOrWhiteSpace(pin)
+            ? new PinResolution.Unresolvable("malformed pin")
+            : new PinResolution.Pinned(pin, IsRaise: false);
     }
 }

@@ -125,4 +125,42 @@ public class GovernanceDefinitionPinTests
         GovernanceDefinitionPin.Resolve(99, null, null, true)
             .Should().Be(new PinResolution.Unresolvable("not a governance step"));
     }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Resolve_OwnBlankPin_Malformed(string blank)
+    {
+        GovernanceDefinitionPin.Resolve(Propose, Payload(blank), null, true)
+            .Should().Be(new PinResolution.Unresolvable("malformed pin"));
+    }
+
+    [Theory]
+    [InlineData(Approve, "")]
+    [InlineData(Approve, " ")]
+    [InlineData(Enact, "")]
+    [InlineData(Enact, " ")]
+    public void Resolve_ReferencedProposalBlankPin_Malformed(int actionId, string blank)
+    {
+        var own = actionId == Enact ? Payload(enacts: "p1") : null;
+
+        GovernanceDefinitionPin.Resolve(actionId, own, Payload(blank), true)
+            .Should().Be(new PinResolution.Unresolvable("malformed pin"));
+    }
+
+    [Fact]
+    public void Resolve_ProposeActionWithEnactsProposalIdAndNoPin_UsesEnactmentBranch()
+    {
+        GovernanceDefinitionPin.Resolve(Propose, Payload(enacts: "p1"), Payload(PinA), true)
+            .Should().Be(new PinResolution.Pinned(PinA, false));
+        GovernanceDefinitionPin.Resolve(Propose, Payload(enacts: "p1"), Payload(), true)
+            .Should().Be(new PinResolution.Legacy("enactment"));
+    }
+
+    [Fact]
+    public void Resolve_OwnPinWithEnactsProposalId_PinnedNotRaise()
+    {
+        GovernanceDefinitionPin.Resolve(Enact, Payload(PinA, "p1"), Payload(PinB), true)
+            .Should().Be(new PinResolution.Pinned(PinA, false));
+    }
 }
