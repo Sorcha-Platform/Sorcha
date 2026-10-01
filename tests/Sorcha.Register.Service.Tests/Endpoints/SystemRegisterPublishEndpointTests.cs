@@ -171,16 +171,32 @@ public class SystemRegisterPublishEndpointTests : IClassFixture<SystemRegisterPu
     }
 
     [Fact]
-    public async Task Publish_SubmissionRejected_Returns502ProblemNotA500()
+    public async Task Publish_ValidatorRejection_Returns502SanitizedAndIsAudited()
     {
-        _factory.Publisher.Throw = new InvalidOperationException("validator said no");
+        _factory.Publisher.Throw = new InvalidOperationException("secret validator internals");
 
         var response = await ClientAs("sysadmin-platform").PostAsync(Url, null);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadGateway);
-        var problem = await Problem(response);
-        problem.GetProperty("title").GetString().Should().Be("publish submission rejected");
-        problem.GetProperty("detail").GetString().Should().Be("validator said no");
+        var raw = await response.Content.ReadAsStringAsync();
+        raw.Should().NotContain("secret validator internals");
+        JsonSerializer.Deserialize<JsonElement>(raw).GetProperty("title").GetString()
+            .Should().Be("publish submission rejected");
+        _factory.Audit.Reports.Should().ContainSingle()
+            .Which.Reason.Should().Be("validator rejected the submission");
+    }
+
+    [Fact]
+    public async Task Publish_OtherException_IsNotMappedTo502()
+    {
+        _factory.Publisher.Throw = new NullReferenceException("boom internals");
+
+        var response = await ClientAs("sysadmin-platform").PostAsync(Url, null);
+
+        response.StatusCode.Should().NotBe(HttpStatusCode.BadGateway);
+        response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+        (await response.Content.ReadAsStringAsync()).Should().NotContain("boom internals");
+        _factory.Audit.Reports.Should().BeEmpty();
     }
 
     private static async Task<JsonElement> Problem(HttpResponseMessage response)

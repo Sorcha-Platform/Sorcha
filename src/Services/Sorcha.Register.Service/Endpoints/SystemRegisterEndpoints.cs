@@ -76,9 +76,7 @@ public static class SystemRegisterEndpoints
             ILogger<Program> logger,
             CancellationToken ct) =>
         {
-            var operatorId = http.User.FindFirstValue("platform_user_id")
-                             ?? http.User.FindFirstValue("sub")
-                             ?? http.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var operatorId = OperatorIdentity.Resolve(http.User);
             if (string.IsNullOrWhiteSpace(operatorId))
             {
                 return Results.Unauthorized();
@@ -90,12 +88,17 @@ public static class SystemRegisterEndpoints
                 decision = await publisher.PublishAsync(
                     blueprintId, request?.DryRun ?? false, request?.ExpectedCurrent, operatorId, ct);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (InvalidOperationException ex)
             {
+                // SystemRegisterService.PublishBlueprintAsync throws this when the validator rejects the submission.
+                // Anything else is unexpected and falls through to the sanitized exception handler (CLAUDE.md 20).
                 logger.LogError(ex, "System blueprint {BlueprintId} publish submission was rejected", blueprintId);
+                SystemBlueprintMetrics.RecordPublish(PublishOutcomeNames.Rejected);
+                await SystemBlueprintRefusalAudit.ReportAsync(
+                    http, RefusalAuditActions.SystemBlueprintPublish, blueprintId, "validator rejected the submission");
                 return Results.Problem(
                     title: "publish submission rejected",
-                    detail: ex.Message,
+                    detail: "the publication was rejected by the validator; see the register-service log",
                     statusCode: StatusCodes.Status502BadGateway);
             }
 
@@ -137,6 +140,7 @@ public static class SystemRegisterEndpoints
                     return Results.Json(
                         Body(SystemBlueprintPublishResultOutcome.Submitted), statusCode: StatusCodes.Status202Accepted);
                 case SystemBlueprintPublishOutcome.NotFound:
+                    // Intentionally not audited: an unknown id is not a refused publish.
                     return Refused(StatusCodes.Status404NotFound, "system blueprint not found", "not-found");
                 case SystemBlueprintPublishOutcome.NoPublishingKey:
                     return await AuditedAsync(StatusCodes.Status403Forbidden, "no publishing key", "no-publishing-key");
@@ -152,7 +156,7 @@ public static class SystemRegisterEndpoints
         // Same gate as /drift (both apply with the group's CanManageRegisters). The policy 403 never reaches
         // this handler, so the marker has the auditing authorisation result handler report it (SC-004).
         .RequireAuthorization("RequireSystemAdmin", "RequirePlatformAudience")
-        .WithMetadata(new AuditAuthorizationRefusalMetadata(RefusalAuditActions.SystemBlueprintPublish))
+        .WithMetadata(new SystemBlueprintPublishAuditMetadata(RefusalAuditActions.SystemBlueprintPublish))
         .WithName("PublishSystemBlueprintFromCatalogue")
         .WithSummary("Publish this node's catalogued definition of a system blueprint")
         .WithDescription(

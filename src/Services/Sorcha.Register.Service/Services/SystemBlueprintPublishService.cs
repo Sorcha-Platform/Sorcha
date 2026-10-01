@@ -66,6 +66,9 @@ public static class PublishOutcomeNames
 
     /// <summary>The caller was refused by the authorisation policy before the publish ran.</summary>
     public const string RefusedAuth = "refused_auth";
+
+    /// <summary>The validator rejected the submitted publication.</summary>
+    public const string Rejected = "rejected";
 }
 
 /// <summary>The decision of a publish request.</summary>

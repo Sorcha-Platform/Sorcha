@@ -10,15 +10,17 @@ using Sorcha.ServiceClients.Audit;
 namespace Sorcha.Register.Service.Authorization;
 
 /// <summary>
-/// Endpoint metadata that opts an endpoint into refusal auditing of its authorisation-policy 403s.
-/// Apply with <c>.WithMetadata(new AuditAuthorizationRefusalMetadata(action))</c>.
+/// Endpoint metadata that opts the system blueprint publish endpoint into refusal auditing of its
+/// authorisation-policy 403s. Deliberately system-blueprint specific: the handler hard-codes this endpoint's
+/// reason, resource type and <c>blueprintId</c> route key, so it is named for what it serves.
+/// Apply with <c>.WithMetadata(new SystemBlueprintPublishAuditMetadata(action))</c>.
 /// </summary>
 /// <param name="Action">A <see cref="RefusalAuditActions"/> constant naming what was attempted.</param>
-public sealed record AuditAuthorizationRefusalMetadata(string Action);
+public sealed record SystemBlueprintPublishAuditMetadata(string Action);
 
 /// <summary>
 /// Reports an authorisation-policy refusal (403) to the caller's organisation audit log for endpoints
-/// carrying <see cref="AuditAuthorizationRefusalMetadata"/>, then defers to the default handler (#1648, SC-004).
+/// carrying <see cref="SystemBlueprintPublishAuditMetadata"/>, then defers to the default handler (#1648, SC-004).
 /// </summary>
 /// <remarks>
 /// A policy 403 never reaches the endpoint handler, so the handler cannot audit it itself. Challenges (401)
@@ -40,7 +42,7 @@ public sealed class AuditingAuthorizationResultHandler : IAuthorizationMiddlewar
         PolicyAuthorizationResult authorizeResult)
     {
         if (authorizeResult.Forbidden
-            && context.GetEndpoint()?.Metadata.GetMetadata<AuditAuthorizationRefusalMetadata>() is { } marker)
+            && context.GetEndpoint()?.Metadata.GetMetadata<SystemBlueprintPublishAuditMetadata>() is { } marker)
         {
             SystemBlueprintMetrics.RecordPublish(PublishOutcomeNames.RefusedAuth);
             await SystemBlueprintRefusalAudit.ReportAsync(
@@ -49,6 +51,17 @@ public sealed class AuditingAuthorizationResultHandler : IAuthorizationMiddlewar
 
         await _default.HandleAsync(next, context, policy, authorizeResult);
     }
+}
+
+/// <summary>The one place an operator's id is read from a token: <c>platform_user_id</c>, then <c>sub</c>, then the name identifier.</summary>
+public static class OperatorIdentity
+{
+    /// <summary>Returns the caller's operator id, or null when the token carries none.</summary>
+    /// <param name="user">The caller.</param>
+    public static string? Resolve(ClaimsPrincipal user)
+        => user.FindFirstValue("platform_user_id")
+           ?? user.FindFirstValue("sub")
+           ?? user.FindFirstValue(ClaimTypes.NameIdentifier);
 }
 
 /// <summary>Best-effort refusal reporting for the system blueprint operator endpoints (#1648 pattern).</summary>
@@ -78,10 +91,7 @@ public static class SystemBlueprintRefusalAudit
                 return;
             }
 
-            var user = http.User.FindFirstValue("platform_user_id")
-                       ?? http.User.FindFirstValue(ClaimTypes.NameIdentifier)
-                       ?? http.User.FindFirstValue("sub");
-            Guid? platformUserId = Guid.TryParse(user, out var id) && id != Guid.Empty ? id : null;
+            Guid? platformUserId = Guid.TryParse(OperatorIdentity.Resolve(http.User), out var id) && id != Guid.Empty ? id : null;
 
             await client.RecordAsync(new RefusalAuditReport
             {
