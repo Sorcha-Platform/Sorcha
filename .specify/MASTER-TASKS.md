@@ -8,15 +8,18 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
-> **🚧 2026-10-01 — #1466 system blueprint lifecycle (Feature 197) — IMPLEMENTED, live gate pending (T031):**
+> **▶ 2026-10-01 — #1466 system blueprint lifecycle (Feature 197) — ✅ MERGED + LIVE on n1 and tiny (#1774):**
 > `specs/197-system-blueprint-lifecycle/`. An upgrade is an explicit SystemAdmin operator act on the node holding the SSR's
 > `sorcha:blueprint-publish` key (`sorcha system-register publish <id>` / `POST /api/system-register/blueprints/{id}/publish`,
 > catalogue-only; legacy `POST /api/system-register/publish` removed); drift is visible (`GET /api/system-register/drift`,
 > `system-blueprints` health check, `Sorcha.SystemBlueprints` metrics); "current" is ledger order, not the unsigned timestamp;
 > governance proposals pin the governance definition at raise (`governanceDefinitionTxId`), approvals/enactment inherit it,
 > `VAL_GOV_DEF_001` refuses a raise under a superseded definition; the validator resolves pins from the SSR and evicts its
-> blueprint cache on every SSR docket. Not yet ✅: needs the live gate on n1/tiny (a real publish + a governance operation
-> across it) - the 18/18 suite exercises neither.
+> blueprint cache on every SSR docket. **Live gate 8/8 PASS:** a proposal raised under governance v1 was approved and enacted
+> after `register-governance-v1` v2 was published (SSR docket 5, tx `4b6c4c67…`); tiny flipped `image-ahead`→`in-sync` ~10s
+> later with no action on tiny; the next proposal pinned v2; zero pin fallbacks, zero VAL_GOV_DEF_001/VAL_BP_VERSION_001.
+> Note: the `system-blueprints` health check refreshes every 10 min, so it lags `/drift` after a publish. Follow-ups:
+> #1775 (multi-validator time-dependent raise check), #1776 (hardening), #1777 + #1778 (security, pre-existing class).
 > **▶ 2026-09-29 — #1759 + TODO(095) + #1768 — ✅ MERGED + LIVE on n1 and tiny (#1770, #1772):** every IETF status list
 > is now signed under a DID a verifier can resolve — Blueprint lists by the issuing org's VC-issuance key inside the
 > Wallet Service (no ephemeral key), citizen-device lists by a per-list recorded signer (org DID, or `did:key` of
