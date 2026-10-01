@@ -8,6 +8,13 @@
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
+> **📋 2026-10-01 — #1466 system blueprint lifecycle — DESIGN WRITTEN, awaiting review:**
+> `docs/superpowers/specs/2026-10-01-system-blueprint-lifecycle-design.md`. Decided: an upgrade is an explicit
+> SystemAdmin operator act on the node holding the system register's blueprint-publish key; publishing is from the image
+> catalogue only, never an auto-republish; drift is visible in four states (health, metric, endpoint); "current" goes by
+> ledger order, not the unsigned timestamp; governance proposals pin the governance definition at raise, and
+> approvals and the enactment inherit it; the validator gains a system-register pin-resolution arm and evicts its
+> cache on seal. Next: spec review, then the implementation plan.
 > **▶ 2026-09-29 — #1759 + TODO(095) + #1768 — ✅ MERGED + LIVE on n1 and tiny (#1770, #1772):** every IETF status list
 > is now signed under a DID a verifier can resolve — Blueprint lists by the issuing org's VC-issuance key inside the
 > Wallet Service (no ephemeral key), citizen-device lists by a per-list recorded signer (org DID, or `did:key` of

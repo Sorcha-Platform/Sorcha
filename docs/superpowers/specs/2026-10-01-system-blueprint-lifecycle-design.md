@@ -109,7 +109,11 @@ POST /api/system-register/blueprints/{blueprintId}/publish
 - **Precondition:** this node holds an Active SSR validator-roster entry under
   `sorcha:blueprint-publish`. Otherwise refused with a reason — never submitted to be refused at seal.
 - **Source:** the definition is loaded from this node's image catalogue
-  (`blueprints/templates/{id}.json`); the request carries no body. Unknown id → 404.
+  (`blueprints/templates/{id}.json`); the request carries no definition. Unknown id → 404.
+- **Consequence of catalogue-only (D5):** the only way to live-test a changed system blueprint is to
+  build an image containing it. The previous practice of publishing "the version under test" through the
+  raw-body endpoint (sorcha-architecture skill, F189 T054 note) ends; that note is updated with this
+  change.
 - **Refusals:** `InSync` (no-op, 200 with "already current"), `ImageBehind` (would roll back, 409),
   `expectedCurrent` mismatch (409 — optimistic concurrency between operators), no roster key (403).
 - **`dryRun`:** returns the drift state and current/candidate publication ids; submits nothing.
@@ -141,15 +145,22 @@ answers "which definition governs this governance transaction?":
 - approval → the pin of the proposal it chains from (`PreviousTransactionId`);
 - enactment → the pin of the proposal named by `EnactsProposalId`.
 
-`ValidationEngine` (schema/conformance) and `RightsEnforcementService` (quorum recount) both call it.
-Two implementations of one rule is how they would come to disagree.
+Every call site in `ValidationEngine` that resolves the governance blueprint (schema and conformance
+validation) goes through it. `RightsEnforcementService` does **not** resolve a definition today — it
+discriminates governance by blueprint id and recounts approvals against the roster — so it is
+unaffected; no new coupling is introduced there.
+
+The Owner-override propose-and-enact is one transaction that is both proposal and enactment: its own
+payload's pin applies (a transaction carrying a pin is governed by it; only a transaction without one
+follows a reference).
 
 **Validator rules.**
 
 1. *The pin must resolve.* `ResolvePinnedBlueprintAsync` gains an **SSR arm**: for a definition
    published on the system register, read the publication transaction from the SSR and recompute the id
-   with `SystemRegisterId`; refuse on mismatch. Unresolvable → `VAL_BP_VERSION_001` (fail closed;
-   retryable — e.g. a lagging replica). Never fall back to latest.
+   with `SystemRegisterId`; refuse on mismatch. Unresolvable → `VAL_BP_VERSION_001` (fail closed).
+   Never fall back to latest. Note that a refused proposal is not resubmitted — it must be **re-raised**
+   as a new transaction once the node's SSR replica has caught up.
 2. *At raise, the pin must be current.* A proposal whose pin is a resolvable but superseded publication
    is refused with **`VAL_GOV_DEF_001`** ("raised under a superseded governance definition"). This stops
    a member choosing an older, laxer definition. Approvals and enactments are **not** held to "current" —
@@ -217,6 +228,12 @@ Every guard is tested against the counterfactual it prevents, and mutation-check
 - Service scope enforcement (#1393).
 
 ## 7. Documentation to update with the implementation
+
+**The old route is a clean break.** `POST /api/system-register/publish` is referenced by:
+`src/Services/Sorcha.Register.Service/README.md`, `.claude/skills/sorcha-architecture/SKILL.md` (F189
+T054 / #1466 remediation notes), and historical specs (`specs/057-*`, `specs/059-*`, `specs/133-*`,
+`specs/189-*/tasks.md`). No `src/`, CLI or walkthrough code calls it. The README and skill are
+updated; historical specs are left as the record of their time.
 
 Register Service README (system-register endpoints, drift), Validator Service README (SSR arm,
 `VAL_GOV_DEF_001`), `docs/reference/API-DOCUMENTATION.md`, the `sorcha-architecture` skill (F189 section:
