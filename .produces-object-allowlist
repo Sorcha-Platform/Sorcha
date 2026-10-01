@@ -41,7 +41,7 @@ src/Services/Sorcha.Haip.Service/Endpoints/VerifierEndpoints.cs|1
 src/Services/Sorcha.Register.Service/Endpoints/RecoveryHealthEndpoints.cs|1
 src/Services/Sorcha.Register.Service/Endpoints/SystemRegisterEndpoints.cs|7
 src/Services/Sorcha.Register.Service/Endpoints/VerificationEndpoints.cs|3
-src/Services/Sorcha.Register.Service/Program.cs|35
+src/Services/Sorcha.Register.Service/Program.cs|34
 src/Services/Sorcha.Validator.Service/Endpoints/ThresholdEndpoints.cs|1
 src/Services/Sorcha.Validator.Service/Endpoints/ValidationEndpoints.cs|1
 src/Services/Sorcha.Validator.Service/Endpoints/ValidatorRegistrationEndpoints.cs|13

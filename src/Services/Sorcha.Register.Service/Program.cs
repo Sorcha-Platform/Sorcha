@@ -3198,7 +3198,7 @@ governanceGroup.MapGet("/proposals/{proposalId}", async (
     "Returns the proposal, the roster snapshot it was raised against, the quorum rule captured at "
     + "raise time, each approval individually attributed, the approvals that cannot count and why, "
     + "and the terminal outcome with its reason. Status is derived from sealed content on every read.")
-.Produces<object>(StatusCodes.Status200OK)
+.Produces<Sorcha.Register.Service.Services.GovernanceProposalView>(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status404NotFound)
 .Produces(StatusCodes.Status401Unauthorized);
 

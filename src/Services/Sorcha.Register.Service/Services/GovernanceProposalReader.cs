@@ -27,10 +27,15 @@ public enum ProposalReadOutcome
 /// <param name="Outcome">Whether it was found, and why not if it was not.</param>
 /// <param name="Operation">The stored operation. Non-null only when <paramref name="Outcome"/> is <c>Found</c>.</param>
 /// <param name="Transaction">The proposal transaction itself, for callers that need its seal state.</param>
+/// <param name="GovernanceDefinitionTxId">
+/// The governance-definition publication the proposal was pinned to when raised (Feature 197), read from
+/// its own sealed payload; <c>null</c> for a legacy proposal raised before pinning existed.
+/// </param>
 public sealed record GovernanceProposalRead(
     ProposalReadOutcome Outcome,
     GovernanceOperation? Operation,
-    TransactionModel? Transaction);
+    TransactionModel? Transaction,
+    string? GovernanceDefinitionTxId = null);
 
 /// <summary>Reads a governance proposal from the register's transaction log.</summary>
 public interface IGovernanceProposalReader
@@ -115,13 +120,15 @@ public sealed class GovernanceProposalReader : IGovernanceProposalReader
             return new GovernanceProposalRead(ProposalReadOutcome.NotAProposal, null, tx);
         }
 
-        var operation = TryDecodeOperation(tx);
+        var payload = TryDecodePayload(tx);
+        var operation = payload?.Operation;
 
         return operation is null
             // Refused rather than approximated: an approver must see exactly what their signature
             // binds, and a partially-reconstructed operation is the substitution risk in another form.
             ? new GovernanceProposalRead(ProposalReadOutcome.Unreadable, null, tx)
-            : new GovernanceProposalRead(ProposalReadOutcome.Found, operation, tx);
+            : new GovernanceProposalRead(
+                ProposalReadOutcome.Found, operation, tx, payload!.GovernanceDefinitionTxId);
     }
 
     /// <inheritdoc />
@@ -160,10 +167,11 @@ public sealed class GovernanceProposalReader : IGovernanceProposalReader
                 continue;
             }
 
-            var operation = TryDecodeOperation(tx);
-            if (operation is not null)
+            var payload = TryDecodePayload(tx);
+            if (payload?.Operation is { } operation)
             {
-                proposals.Add(new GovernanceProposalRead(ProposalReadOutcome.Found, operation, tx));
+                proposals.Add(new GovernanceProposalRead(
+                    ProposalReadOutcome.Found, operation, tx, payload.GovernanceDefinitionTxId));
             }
         }
 
@@ -193,37 +201,6 @@ public sealed class GovernanceProposalReader : IGovernanceProposalReader
 
         return !string.IsNullOrEmpty(enacts)
                && !string.Equals(enacts, tx.TxId, StringComparison.Ordinal);
-    }
-
-    private GovernanceOperation? TryDecodeOperation(TransactionModel tx)
-    {
-        try
-        {
-            var payloadData = tx.Payloads.Length > 0 ? tx.Payloads[0].Data : null;
-            if (string.IsNullOrWhiteSpace(payloadData))
-            {
-                return null;
-            }
-
-            // Same probe the genesis-attestation reader uses: Data is base64 or base64url depending
-            // on which producer wrote it.
-            var payloadBytes = payloadData.Contains('+') || payloadData.Contains('/') || payloadData.Contains('=')
-                ? Convert.FromBase64String(payloadData)
-                : System.Buffers.Text.Base64Url.DecodeFromChars(payloadData);
-
-            return System.Text.Json.JsonSerializer
-                .Deserialize<ControlTransactionPayload>(
-                    payloadBytes,
-                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                ?.Operation;
-        }
-        catch (Exception ex) when (ex is System.Text.Json.JsonException or FormatException)
-        {
-            _logger.LogWarning(ex,
-                "Proposal {TxId} on register {RegisterId} would not decode as a governance operation",
-                tx.TxId, tx.RegisterId);
-            return null;
-        }
     }
 
     /// <summary>Decodes the whole control payload, for callers that need more than the operation.</summary>

@@ -138,6 +138,25 @@ public sealed record GovernanceProposalView
     /// </para>
     /// </remarks>
     public IReadOnlyList<GovernanceRosterMemberView>? RosterDiff { get; init; }
+
+    /// <summary>
+    /// The governance-definition publication this proposal was raised under (Feature 197), read from the
+    /// proposal's own sealed pin — never from the latest publication. <c>null</c> for a legacy proposal.
+    /// </summary>
+    public string? GoverningDefinitionTxId { get; init; }
+
+    /// <summary>
+    /// The 1-based ledger-order version of <see cref="GoverningDefinitionTxId"/> among the governance
+    /// blueprint's publications. <c>null</c> for a legacy proposal, or when the pinned publication is
+    /// not among the placeable publications (the pin itself is still reported).
+    /// </summary>
+    public int? GoverningDefinitionVersion { get; init; }
+
+    /// <summary>
+    /// <c>true</c> when the proposal carries no pin (raised before definition pinning), so it is judged
+    /// under the current definition rather than a recorded one.
+    /// </summary>
+    public bool GoverningDefinitionLegacy { get; init; }
 }
 
 /// <summary>Reads governance proposals for the audit surface.</summary>
@@ -186,18 +205,21 @@ public sealed class GovernanceProposalViewService : IGovernanceProposalViewServi
     private readonly IGovernanceRosterService _rosterService;
     private readonly IReadOnlyRegisterRepository _repository;
     private readonly TimeProvider _timeProvider;
+    private readonly SystemRegisterService? _systemRegister;
 
     /// <summary>Initialises a new instance of the <see cref="GovernanceProposalViewService"/> class.</summary>
     public GovernanceProposalViewService(
         IGovernanceProposalReader reader,
         IGovernanceRosterService rosterService,
         IReadOnlyRegisterRepository repository,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        SystemRegisterService? systemRegister = null)
     {
         _reader = reader ?? throw new ArgumentNullException(nameof(reader));
         _rosterService = rosterService ?? throw new ArgumentNullException(nameof(rosterService));
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _systemRegister = systemRegister;
     }
 
     /// <inheritdoc />
@@ -280,7 +302,15 @@ public sealed class GovernanceProposalViewService : IGovernanceProposalViewServi
             Status = outcome.State,
             StatusReason = outcome.Reason,
             OutcomeTxId = outcome.OutcomeTxId,
+            GoverningDefinitionTxId = read.GovernanceDefinitionTxId,
+            GoverningDefinitionLegacy = read.GovernanceDefinitionTxId is null,
         };
+
+        // Only the detail surface pays for the publication scan; the list keeps the pin alone.
+        if (withDetail && read.GovernanceDefinitionTxId is { } pin)
+        {
+            view = view with { GoverningDefinitionVersion = await ResolveVersionAsync(pin, ct) };
+        }
 
         if (roster is null)
         {
@@ -327,6 +357,31 @@ public sealed class GovernanceProposalViewService : IGovernanceProposalViewServi
                     e.Refusal))
             ],
         };
+    }
+
+    /// <summary>
+    /// The pin's 1-based ordinal among the governance blueprint's publications, by ledger order — the
+    /// same ordering that decides which publication is current. Null when it cannot be placed.
+    /// </summary>
+    private async Task<int?> ResolveVersionAsync(string pin, CancellationToken ct)
+    {
+        if (_systemRegister is null)
+        {
+            return null;
+        }
+
+        var publications = await _systemRegister.GetPublicationsAsync(
+            SystemBlueprintCatalog.GovernanceBlueprintId, ct);
+
+        for (var i = 0; i < publications.Count; i++)
+        {
+            if (string.Equals(publications[i].TxId, pin, StringComparison.Ordinal))
+            {
+                return i + 1;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
