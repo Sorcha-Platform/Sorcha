@@ -342,7 +342,18 @@ builder.Services.Configure<Sorcha.ServiceDefaults.SystemRegisterOptions>(
 builder.Services.AddScoped<GenesisIngestionService>();
 
 // System register bootstrap — ingests pre-signed genesis (never creates at runtime)
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.ISystemRegisterBootstrapStatus,
+    Sorcha.Register.Service.Services.SystemRegisterBootstrapStatus>();
 builder.Services.AddHostedService<SystemRegisterBootstrapper>();
+
+// Feature 197: periodic drift between the image's system blueprints and the system register
+builder.Services.Configure<Sorcha.Register.Service.Services.SystemBlueprintOptions>(
+    builder.Configuration.GetSection(Sorcha.Register.Service.Services.SystemBlueprintOptions.SectionName));
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.SystemBlueprintDriftMonitor>();
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.ISystemBlueprintDriftSnapshot>(
+    sp => sp.GetRequiredService<Sorcha.Register.Service.Services.SystemBlueprintDriftMonitor>());
+builder.Services.AddHostedService(
+    sp => sp.GetRequiredService<Sorcha.Register.Service.Services.SystemBlueprintDriftMonitor>());
 
 // Participant index service (in-memory address → participant mapping)
 builder.Services.AddSingleton<ParticipantIndexService>();

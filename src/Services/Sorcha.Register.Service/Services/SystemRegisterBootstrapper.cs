@@ -23,6 +23,7 @@ public class SystemRegisterBootstrapper : BackgroundService
     private readonly ILogger<SystemRegisterBootstrapper> _logger;
     private readonly SystemRegisterOptions _options;
     private readonly ISystemBlueprintCatalogSource _catalogSource;
+    private readonly ISystemRegisterBootstrapStatus? _bootstrapStatus;
     private const int AutoMaxRetries = 3;
     private static readonly TimeSpan GenesisTimeout = TimeSpan.FromSeconds(30);
 
@@ -39,8 +40,10 @@ public class SystemRegisterBootstrapper : BackgroundService
         IServiceScopeFactory scopeFactory,
         ILogger<SystemRegisterBootstrapper> logger,
         IOptions<SystemRegisterOptions> options,
-        ISystemBlueprintCatalogSource? catalogSource = null)
+        ISystemBlueprintCatalogSource? catalogSource = null,
+        ISystemRegisterBootstrapStatus? bootstrapStatus = null)
     {
+        _bootstrapStatus = bootstrapStatus;
         _catalogSource = catalogSource ?? new SystemBlueprintCatalogSource();
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -93,6 +96,7 @@ public class SystemRegisterBootstrapper : BackgroundService
                 "System register bootstrap completed in {DurationMs}ms (Mode={BootstrapMode})",
                 (DateTimeOffset.UtcNow - startTime).TotalMilliseconds,
                 _options.BootstrapMode);
+            _bootstrapStatus?.MarkCompleted(_options.BootstrapMode);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
