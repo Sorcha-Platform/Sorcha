@@ -329,6 +329,8 @@ builder.Services.AddScoped<Sorcha.Register.Core.Services.IRegisterPolicyService,
 
 // Register system register services (scoped — will use ledger-backed dependencies)
 builder.Services.AddScoped<SystemRegisterService>();
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.ISystemBlueprintCatalogSource,
+    Sorcha.Register.Service.Services.SystemBlueprintCatalogSource>();
 builder.Services.AddSingleton<StructuralDiffService>();
 
 // Feature 099: Genesis trust anchor — load pre-signed genesis, verify signature

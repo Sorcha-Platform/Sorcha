@@ -54,6 +54,17 @@ public class SystemRegisterService
     };
 
     /// <summary>
+    /// The one canonical form of a system blueprint definition (RFC 8785, Feature 195). Used by the
+    /// publish path and by <see cref="ISystemBlueprintCatalogSource"/>, so the publication id a
+    /// shipped template WOULD get is, by construction, the id a publish of it produces (Feature 197).
+    /// </summary>
+    /// <param name="blueprintJson">The blueprint definition.</param>
+    /// <returns>The canonical JSON string.</returns>
+    public static string CanonicaliseDefinition(JsonElement blueprintJson) =>
+        Sorcha.Blueprint.Models.Canonical.BlueprintCanonicalJson
+            .Canonicalise(JsonSerializer.Serialize(blueprintJson, CanonicalJsonOptions));
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="SystemRegisterService"/> class
     /// </summary>
     /// <param name="logger">Logger instance</param>
@@ -254,8 +265,7 @@ public class SystemRegisterService
         // recovery would have needed a SECOND verification rule — precisely the two-rules-one-name
         // shape this feature exists to remove — and seeded system blueprints would otherwise fail the
         // new check on every restart.
-        var canonicalJson = Sorcha.Blueprint.Models.Canonical.BlueprintCanonicalJson
-            .Canonicalise(JsonSerializer.Serialize(blueprintJson, CanonicalJsonOptions));
+        var canonicalJson = CanonicaliseDefinition(blueprintJson);
 
         // Issue #1587 — TRANSMIT the canonical definition, and hash the bytes actually transmitted.
         //
