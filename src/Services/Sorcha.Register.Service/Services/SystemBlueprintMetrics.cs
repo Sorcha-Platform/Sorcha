@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Diagnostics.Metrics;
+
 namespace Sorcha.Register.Service.Services;
 
 /// <summary>
@@ -18,4 +20,14 @@ public static class SystemBlueprintMetrics
 
     /// <summary>Counter of operator publish attempts, tagged <c>outcome</c> (see <see cref="PublishOutcomeNames"/>).</summary>
     public const string PublishCounterName = "sorcha_system_blueprint_publish_total";
+
+    private static readonly Meter Meter = new(MeterName);
+    private static readonly Counter<long> PublishCounter = Meter.CreateCounter<long>(
+        PublishCounterName,
+        description: "Operator system blueprint publish attempts by outcome");
+
+    /// <summary>Counts one operator publish attempt under <paramref name="outcomeTag"/> (a <see cref="PublishOutcomeNames"/> value).</summary>
+    /// <param name="outcomeTag">The outcome tag value.</param>
+    public static void RecordPublish(string outcomeTag)
+        => PublishCounter.Add(1, new KeyValuePair<string, object?>("outcome", outcomeTag));
 }

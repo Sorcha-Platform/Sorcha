@@ -80,7 +80,7 @@ components:
       required: [blueprintId, outcome, state]
       properties:
         blueprintId: { type: string }
-        outcome: { type: string, enum: [dryRun, noop, submitted] }
+        outcome: { type: string, enum: [dry-run, noop, submitted] }
         state: { type: string, enum: [in-sync, image-behind, image-ahead, missing, unknown] }
         currentPublicationTxId: { type: [string, "null"] }
         candidatePublicationTxId: { type: [string, "null"] }

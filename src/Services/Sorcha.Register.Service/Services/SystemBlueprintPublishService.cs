@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Diagnostics.Metrics;
 using Sorcha.Register.Core.Services;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Constants;
@@ -64,6 +63,9 @@ public static class PublishOutcomeNames
 
     /// <summary>Not found.</summary>
     public const string NotFound = "not_found";
+
+    /// <summary>The caller was refused by the authorisation policy before the publish ran.</summary>
+    public const string RefusedAuth = "refused_auth";
 }
 
 /// <summary>The decision of a publish request.</summary>
@@ -104,11 +106,6 @@ public interface ISystemBlueprintPublishService
 /// <summary>Default <see cref="ISystemBlueprintPublishService"/>. Scoped.</summary>
 public sealed class SystemBlueprintPublishService : ISystemBlueprintPublishService
 {
-    private static readonly Meter Meter = new(SystemBlueprintMetrics.MeterName);
-    private static readonly Counter<long> PublishCounter = Meter.CreateCounter<long>(
-        SystemBlueprintMetrics.PublishCounterName,
-        description: "Operator system blueprint publish attempts by outcome");
-
     private const string ZeroHash = "0000000000000000000000000000000000000000000000000000000000000000";
 
     private readonly ISystemBlueprintCatalogSource _catalog;
@@ -232,7 +229,7 @@ public sealed class SystemBlueprintPublishService : ISystemBlueprintPublishServi
 
     private PublishDecision Decide(string outcomeTag, PublishDecision decision, string blueprintId)
     {
-        PublishCounter.Add(1, new KeyValuePair<string, object?>("outcome", outcomeTag));
+        SystemBlueprintMetrics.RecordPublish(outcomeTag);
         _logger.LogInformation(
             "System blueprint {BlueprintId} publish decided {Outcome}: {Reason}",
             blueprintId, decision.Outcome, decision.Reason);

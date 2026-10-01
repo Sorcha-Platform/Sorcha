@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Security.Claims;
 using System.Text.Json;
 
 using Sorcha.Blueprint.Models;
+using Sorcha.Register.Service.Authorization;
 using Sorcha.Register.Service.Services;
+using Sorcha.ServiceClients.Audit;
 
 namespace Sorcha.Register.Service.Endpoints;
 
@@ -64,6 +67,108 @@ public static class SystemRegisterEndpoints
         .Produces<SystemBlueprintDriftReport>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden);
+
+        group.MapPost("/blueprints/{blueprintId}/publish", async (
+            string blueprintId,
+            SystemBlueprintPublishRequest? request,
+            ISystemBlueprintPublishService publisher,
+            HttpContext http,
+            ILogger<Program> logger,
+            CancellationToken ct) =>
+        {
+            var operatorId = http.User.FindFirstValue("platform_user_id")
+                             ?? http.User.FindFirstValue("sub")
+                             ?? http.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrWhiteSpace(operatorId))
+            {
+                return Results.Unauthorized();
+            }
+
+            PublishDecision decision;
+            try
+            {
+                decision = await publisher.PublishAsync(
+                    blueprintId, request?.DryRun ?? false, request?.ExpectedCurrent, operatorId, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(ex, "System blueprint {BlueprintId} publish submission was rejected", blueprintId);
+                return Results.Problem(
+                    title: "publish submission rejected",
+                    detail: ex.Message,
+                    statusCode: StatusCodes.Status502BadGateway);
+            }
+
+            SystemBlueprintPublishResult Body(SystemBlueprintPublishResultOutcome outcome) => new(
+                blueprintId, outcome, decision.DriftState ?? SystemBlueprintDriftState.Unknown,
+                decision.CurrentPublicationTxId, decision.CandidatePublicationTxId, decision.TransactionId);
+
+            IResult Refused(int status, string title, string reason)
+            {
+                if (status == StatusCodes.Status503ServiceUnavailable)
+                {
+                    http.Response.Headers.RetryAfter = "30";
+                }
+
+                return Results.Problem(
+                    title: title,
+                    detail: decision.Reason,
+                    statusCode: status,
+                    extensions: new Dictionary<string, object?> { ["reason"] = reason });
+            }
+
+            async Task<IResult> AuditedAsync(int status, string title, string reason)
+            {
+                await SystemBlueprintRefusalAudit.ReportAsync(
+                    http, RefusalAuditActions.SystemBlueprintPublish, blueprintId, decision.Reason);
+                return Refused(status, title, reason);
+            }
+
+            switch (decision.Outcome)
+            {
+                case SystemBlueprintPublishOutcome.DryRun:
+                    return Results.Json(Body(SystemBlueprintPublishResultOutcome.DryRun));
+                case SystemBlueprintPublishOutcome.Noop:
+                    return Results.Json(Body(SystemBlueprintPublishResultOutcome.Noop));
+                case SystemBlueprintPublishOutcome.Submitted:
+                    logger.LogInformation(
+                        "SystemBlueprintPublished {BlueprintId} {PreviousTxId} {NewTxId} {Operator}",
+                        blueprintId, decision.CurrentPublicationTxId, decision.TransactionId, operatorId);
+                    return Results.Json(
+                        Body(SystemBlueprintPublishResultOutcome.Submitted), statusCode: StatusCodes.Status202Accepted);
+                case SystemBlueprintPublishOutcome.NotFound:
+                    return Refused(StatusCodes.Status404NotFound, "system blueprint not found", "not-found");
+                case SystemBlueprintPublishOutcome.NoPublishingKey:
+                    return await AuditedAsync(StatusCodes.Status403Forbidden, "no publishing key", "no-publishing-key");
+                case SystemBlueprintPublishOutcome.RefusedRollback:
+                    return await AuditedAsync(StatusCodes.Status409Conflict, "publish refused", "rollback");
+                case SystemBlueprintPublishOutcome.RefusedConcurrency:
+                    return await AuditedAsync(StatusCodes.Status409Conflict, "publish refused", "concurrency");
+                default:
+                    return await AuditedAsync(
+                        StatusCodes.Status503ServiceUnavailable, "system register state unknown", "state-unknown");
+            }
+        })
+        // Same gate as /drift (both apply with the group's CanManageRegisters). The policy 403 never reaches
+        // this handler, so the marker has the auditing authorisation result handler report it (SC-004).
+        .RequireAuthorization("RequireSystemAdmin", "RequirePlatformAudience")
+        .WithMetadata(new AuditAuthorizationRefusalMetadata(RefusalAuditActions.SystemBlueprintPublish))
+        .WithName("PublishSystemBlueprintFromCatalogue")
+        .WithSummary("Publish this node's catalogued definition of a system blueprint")
+        .WithDescription(
+            "Loads the definition from this node's image catalogue (the request carries none) and submits it to " +
+            "the system register unless a guard refuses: rollback (409 reason rollback), expectedCurrent mismatch " +
+            "(409 reason concurrency), no active sorcha:blueprint-publish roster key on this node (403), unreadable " +
+            "register state (503). dryRun and an already-current definition return 200; a submission returns 202. " +
+            "Every refusal is reported to the caller's organisation audit log. Requires a SystemAdmin on a platform-tier token.")
+        .Produces<SystemBlueprintPublishResult>(StatusCodes.Status200OK)
+        .Produces<SystemBlueprintPublishResult>(StatusCodes.Status202Accepted)
+        .ProducesProblem(StatusCodes.Status403Forbidden)
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .ProducesProblem(StatusCodes.Status409Conflict)
+        .ProducesProblem(StatusCodes.Status502BadGateway)
+        .ProducesProblem(StatusCodes.Status503ServiceUnavailable)
+        .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapPost("/initialize", async (
             SystemRegisterService service,

@@ -250,6 +250,11 @@ builder.Services.AddScoped<Sorcha.Provenance.Engine.Seams.IMerkleRootCalculator,
 // Register wallet service client
 builder.Services.AddServiceClients(builder.Configuration);
 
+// Reports policy 403s on endpoints carrying AuditAuthorizationRefusalMetadata (Feature 197 SC-004);
+// every other endpoint passes straight through to the default handler.
+builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationMiddlewareResultHandler,
+    Sorcha.Register.Service.Authorization.AuditingAuthorizationResultHandler>();
+
 // Tenant Service internal subscription client. After finalising a register, the
 // Register Service immediately subscribes the owning organisation via a
 // service-to-service call — this removes the old client-side admin-gated hop

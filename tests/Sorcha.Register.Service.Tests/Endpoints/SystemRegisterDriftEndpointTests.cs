@@ -123,6 +123,7 @@ internal sealed class DriftTestAuthHandler(
     internal const string SchemeName = "DriftTestScheme";
     internal const string PrincipalHeader = "X-Test-Principal";
     private const string SystemAdminOrg = "00000000-0000-0000-0000-000000000001";
+    internal const string OrgAdminOrg = "00000000-0000-0000-0000-0000000000a1";
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
@@ -153,7 +154,7 @@ internal sealed class DriftTestAuthHandler(
                 claims.Add(new Claim("aud", audiences.For(Tier.Consumer)));
                 break;
             case "org-admin":
-                claims.Add(new Claim("org_id", "test-org-001"));
+                claims.Add(new Claim("org_id", OrgAdminOrg));
                 claims.Add(new Claim(ClaimTypes.Role, "Administrator"));
                 claims.Add(new Claim("aud", audiences.For(Tier.Platform)));
                 break;

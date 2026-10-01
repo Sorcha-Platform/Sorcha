@@ -71,4 +71,7 @@ public static class RefusalAuditActions
 
     /// <summary>Amending (cloning) a published blueprint.</summary>
     public const string BlueprintAmend = "blueprint.amend";
+
+    /// <summary>Operator publish of a shipped system blueprint to the system register (Feature 197).</summary>
+    public const string SystemBlueprintPublish = "system-blueprint.publish";
 }
