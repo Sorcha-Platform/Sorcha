@@ -2278,7 +2278,8 @@ GET /api/system-register/drift
   "entries": [
     { "blueprintId": "register-governance-v1", "state": "image-ahead",
       "currentPublicationTxId": "...", "currentVersion": 1,
-      "imagePublicationTxId": "...", "imageMatchesVersion": null }
+      "imagePublicationTxId": "...", "imageMatchesVersion": null,
+      "checkedAt": "2026-10-01T09:00:00Z" }
   ]
 }
 ```
@@ -2308,7 +2309,7 @@ comes from the node's image; the node must hold an Active `sorcha:blueprint-publ
 | `503` | State unknown; `Retry-After` set |
 | `502` | Validator rejected the submission |
 
-Every refusal is audited (`system-blueprint.publish`); a success records `publishedBy` = operator
+Audited (`system-blueprint.publish`): policy 403, no-key 403, 409 (both reasons), 503, 502. Not audited: 401, 404 (unknown id is not a refused publish), 200 no-op. A success records `publishedBy` = operator
 and `seedReason` = `operator`. Details: [Register Service README](../../src/Services/Sorcha.Register.Service/README.md).
 
 #### 6. Query Blueprint Version History (Feature 059)

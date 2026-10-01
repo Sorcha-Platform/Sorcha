@@ -3035,10 +3035,11 @@ visible and the upgrade a deliberate act; it is **never** an auto-republish.
   `POST /api/system-register/blueprints/{id}/publish`, `RequireSystemAdmin` + `RequirePlatformAudience`.
   **Catalogue-only**: the definition comes from the node's image, never the request body, so the
   old `POST /api/system-register/publish` is gone. Build an image to change a system blueprint.
-- **Refusals** (each audited, action `system-blueprint.publish`): 403 no key / policy, 404 unknown id,
-  409 `rollback` (image is behind) or `concurrency` (`expectedCurrent` stale), 503 state-unknown
-  (`Retry-After`), 502 validator rejected. **Already current is a `200` no-op, not a refusal**, and
-  is not audited.
+- **Refusals:** 403 no key / policy, 404 unknown id, 409 `rollback` (image is behind) or `concurrency`
+  (`expectedCurrent` stale), 503 state-unknown (`Retry-After`), 502 validator rejected. **Audited**
+  (action `system-blueprint.publish`): policy 403, no-key 403, 409 either reason, 503, 502.
+  **Not audited**: 401, 404 (an unknown id is not a refused publish) and the `200` no-op (already
+  current is not a refusal).
 - **"Current" is ledger order** — `(DocketNumber, index in DocketHeader.TransactionIds)` — never
   `TimeStamp`, which is unsigned. `Version` is the ledger ordinal. The newest-timestamp-wins rule
   T054 relied on is retired.

@@ -428,7 +428,8 @@ referenced proposal. A pin that does not resolve never falls back to latest (`VA
   id with the SSR register id and verifies it equals the pin.
 - **`VAL_GOV_DEF_001`** (validator-local) — a governance **raise** whose pin is not the current SSR
   publication ("raised under a superseded governance definition"). "Current" is read **uncached**
-  from the local Register Service; if it cannot be read the raise is refused. Approvals and
+  from the local Register Service. Only a superseded pin emits `VAL_GOV_DEF_001`; an unreadable
+  current on a raise is refused with `VAL_BP_VERSION_001`. Approvals and
   enactments are never held to "current".
 - **Cache eviction.** On every `docket:confirmed` for the system register (all nodes) the validator
   evicts the by-id blueprint cache for all four catalogue ids; counted by

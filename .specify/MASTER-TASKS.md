@@ -3,8 +3,8 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.39
-**Last Updated:** 2026-09-29
+**Version:** 7.40
+**Last Updated:** 2026-10-01
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 

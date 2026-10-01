@@ -385,14 +385,16 @@ entry on the system register's validator roster.
 | `503` | State `unknown` — cannot prove it is not a rollback; `Retry-After` set |
 | `502` | The Validator rejected the submission (sanitized detail) |
 
-Every refusal is recorded through the #1648 refusal audit (action `system-blueprint.publish`),
-including policy-level 403s (an `IAuthorizationMiddlewareResultHandler` gated on endpoint metadata).
-`401` is not audited (no org). A success records `publishedBy` = the operator and
+Audited through the #1648 refusal audit (action `system-blueprint.publish`): policy 403s (an
+`IAuthorizationMiddlewareResultHandler` gated on endpoint metadata), no-key 403, both 409s, 503 and
+502. **Not** audited: `401` (no org), `404` (an unknown id is not a refused publish) and the `200`
+no-op. A success records `publishedBy` = the operator and
 `seedReason` = `operator` on the publication transaction. The publication id is computed only by
 `SystemRegisterService` (CLAUDE.md pattern 22); the endpoint reads it back.
 
 **Health + metrics.** Health check `system-blueprints` reports `Degraded` for any non-`in-sync`
-entry — never `Unhealthy`. `SystemBlueprints:DriftIntervalMinutes` (default `10`) sets the monitor
+entry — never `Unhealthy` — except `missing` on a `SyncOnly` node or before bootstrap completes
+(Healthy). With no snapshot yet it is Healthy ("not yet computed"). `SystemBlueprints:DriftIntervalMinutes` (default `10`) sets the monitor
 cycle; it computes once after system-register bootstrap, then on that interval, and a failed cycle
 reports every entry `unknown`. Meter `Sorcha.SystemBlueprints`:
 `sorcha_system_blueprint_drift{blueprint,state}` and
