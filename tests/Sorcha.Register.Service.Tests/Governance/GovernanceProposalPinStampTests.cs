@@ -7,6 +7,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Sorcha.Register.Core.Services;
@@ -157,6 +158,17 @@ public class GovernanceProposalPinStampTests : IClassFixture<GovernanceProposalP
 
             builder.ConfigureServices(services =>
             {
+                // The hosted bootstrapper ingests the embedded genesis through the same mocked
+                // validator client, racing the test and adding a genesis submission to the list.
+                // Nothing here needs it, and removing it makes "submits nothing" honest.
+                foreach (var d in services
+                             .Where(d => d.ServiceType == typeof(IHostedService)
+                                         && d.ImplementationType == typeof(SystemRegisterBootstrapper))
+                             .ToList())
+                {
+                    services.Remove(d);
+                }
+
                 var pin = new Mock<IGovernanceDefinitionPinSource>();
                 pin.Setup(p => p.GetCurrentAsync(It.IsAny<CancellationToken>()))
                     .ReturnsAsync(() => CurrentPin);
