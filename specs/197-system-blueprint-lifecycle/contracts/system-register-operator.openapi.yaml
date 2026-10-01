@@ -1,0 +1,87 @@
+openapi: 3.1.0
+info:
+  title: System register operator surface (Feature 197)
+  version: "1.0"
+  description: >
+    Drift report and catalogue-only operator publish for system blueprints. Both require the
+    RequireSystemAdmin policy composed with RequirePlatformAudience. Replaces (clean break)
+    POST /api/system-register/publish, which accepted an arbitrary body from any register manager.
+paths:
+  /api/system-register/drift:
+    get:
+      operationId: GetSystemBlueprintDrift
+      summary: Report drift between this node's catalogue and the system register
+      responses:
+        "200":
+          description: One entry per catalogued system blueprint.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries, checkedAt]
+                properties:
+                  checkedAt: { type: string, format: date-time }
+                  entries:
+                    type: array
+                    items: { $ref: "#/components/schemas/DriftEntry" }
+        "401": { description: Unauthenticated }
+        "403": { description: Not a SystemAdmin, or not platform tier }
+  /api/system-register/blueprints/{blueprintId}/publish:
+    post:
+      operationId: PublishSystemBlueprintFromCatalogue
+      summary: Publish this node's catalogued definition of a system blueprint
+      description: >
+        The definition is loaded from the node's image catalogue; the request carries no definition.
+        Requires the node to hold an Active sorcha:blueprint-publish entry on the system register's
+        validator roster. Every refusal is recorded via the refusal audit; a success records the
+        operator as publishedBy on the publication transaction.
+      parameters:
+        - { name: blueprintId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dryRun: { type: boolean, default: false }
+                expectedCurrent:
+                  type: [string, "null"]
+                  description: Publication id the operator believes is current; refused (409) if not.
+      responses:
+        "200":
+          description: dryRun result, or no-op because the catalogue definition is already current.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublishResult" }
+        "202":
+          description: Submitted; becomes current once sealed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublishResult" }
+        "401": { description: Unauthenticated }
+        "403": { description: Not SystemAdmin/platform tier, or this node holds no publishing key (problem+json with reason) }
+        "404": { description: blueprintId is not in this node's catalogue }
+        "409": { description: "Would roll back (ImageBehind), or expectedCurrent mismatch (problem+json, `reason` = rollback | concurrency)" }
+components:
+  schemas:
+    DriftEntry:
+      type: object
+      required: [blueprintId, state]
+      properties:
+        blueprintId: { type: string }
+        state: { type: string, enum: [inSync, imageBehind, imageAhead, missing, unknown] }
+        currentPublicationTxId: { type: [string, "null"] }
+        currentVersion: { type: [integer, "null"] }
+        imagePublicationTxId: { type: [string, "null"] }
+        imageMatchesVersion: { type: [integer, "null"] }
+    PublishResult:
+      type: object
+      required: [blueprintId, outcome, state]
+      properties:
+        blueprintId: { type: string }
+        outcome: { type: string, enum: [dryRun, noop, submitted] }
+        state: { type: string, enum: [inSync, imageBehind, imageAhead, missing, unknown] }
+        currentPublicationTxId: { type: [string, "null"] }
+        candidatePublicationTxId: { type: [string, "null"] }
+        transactionId: { type: [string, "null"], description: Set when outcome = submitted }

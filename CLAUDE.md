@@ -944,5 +944,5 @@ _(This revision number is for CLAUDE.md itself; it is unrelated to the platform'
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/196-validator-exemption-authority/plan.md`
+`specs/197-system-blueprint-lifecycle/plan.md`
 <!-- SPECKIT END -->
