@@ -94,11 +94,11 @@ public class SystemBlueprintDriftReporterTests
     }
 
     [Fact]
-    public void State_SerialisesAsCamelCaseName()
+    public void State_SerialisesAsKebabCaseName_UnderSorchaJson()
     {
         var entry = SystemBlueprintDriftReporter.Classify("bp", "b", [Tx("a"), Tx("b"), Tx("c")], Now);
 
-        JsonSerializer.Serialize(entry).Should().Contain("\"State\":\"imageBehind\"");
+        JsonSerializer.Serialize(entry, Sorcha.Serialization.SorchaJson.Options).Should().Contain("\"state\":\"image-behind\"");
     }
 
     private static SystemBlueprintDriftReporter BuildReporter(Func<string, IReadOnlyList<TransactionModel>> publications)

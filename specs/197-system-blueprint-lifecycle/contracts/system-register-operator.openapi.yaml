@@ -70,7 +70,7 @@ components:
       required: [blueprintId, state]
       properties:
         blueprintId: { type: string }
-        state: { type: string, enum: [inSync, imageBehind, imageAhead, missing, unknown] }
+        state: { type: string, enum: [in-sync, image-behind, image-ahead, missing, unknown] }
         currentPublicationTxId: { type: [string, "null"] }
         currentVersion: { type: [integer, "null"] }
         imagePublicationTxId: { type: [string, "null"] }
@@ -81,7 +81,7 @@ components:
       properties:
         blueprintId: { type: string }
         outcome: { type: string, enum: [dryRun, noop, submitted] }
-        state: { type: string, enum: [inSync, imageBehind, imageAhead, missing, unknown] }
+        state: { type: string, enum: [in-sync, image-behind, image-ahead, missing, unknown] }
         currentPublicationTxId: { type: [string, "null"] }
         candidatePublicationTxId: { type: [string, "null"] }
         transactionId: { type: [string, "null"], description: Set when outcome = submitted }

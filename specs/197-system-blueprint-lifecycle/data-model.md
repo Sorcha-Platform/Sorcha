@@ -51,7 +51,7 @@ as `InSync`).
 | Field | Type | Notes |
 |---|---|---|
 | `blueprintId` | string | |
-| `state` | `SystemBlueprintDriftState` | serialised by name |
+| `state` | `SystemBlueprintDriftState` | serialised by name in the platform kebab-case wire form (`in-sync`, `image-behind`, `image-ahead`, `missing`, `unknown`) |
 | `currentPublicationTxId` | string? | null when `Missing`/`Unknown` |
 | `currentVersion` | int? | |
 | `imagePublicationTxId` | string? | `BlueprintPublicationId.Compute(SSR, id, canonical(catalogue))`; null if the image lacks the file |

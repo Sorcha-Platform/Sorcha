@@ -21,7 +21,7 @@ namespace Sorcha.Register.Service.Tests.Endpoints;
 
 /// <summary>
 /// <c>GET /api/system-register/drift</c> (Feature 197 T009): SystemAdmin on the platform tier only,
-/// state on the wire as its camelCase name.
+/// state on the wire as its kebab-case name (platform wire form).
 /// </summary>
 [Collection("RegisterWebApp")]
 public class SystemRegisterDriftEndpointTests : IClassFixture<SystemRegisterDriftWebApplicationFactory>
@@ -50,7 +50,7 @@ public class SystemRegisterDriftEndpointTests : IClassFixture<SystemRegisterDrif
         var entry = body.GetProperty("entries").EnumerateArray().Single();
         entry.GetProperty("blueprintId").GetString().Should().Be("register-creation-v1");
         entry.GetProperty("state").ValueKind.Should().Be(JsonValueKind.String);
-        entry.GetProperty("state").GetString().Should().Be("imageAhead");
+        entry.GetProperty("state").GetString().Should().Be("image-ahead");
     }
 
     [Fact]

@@ -7,15 +7,10 @@ using Sorcha.Register.Models;
 
 namespace Sorcha.Register.Service.Services;
 
-/// <summary>Writes <see cref="SystemBlueprintDriftState"/> as its camelCase name.</summary>
-public sealed class SystemBlueprintDriftStateConverter()
-    : JsonStringEnumConverter<SystemBlueprintDriftState>(JsonNamingPolicy.CamelCase);
-
 /// <summary>
 /// How the system blueprint definitions shipped in this node's image compare with what the
 /// system register currently holds (Feature 197, #1466).
 /// </summary>
-[JsonConverter(typeof(SystemBlueprintDriftStateConverter))]
 public enum SystemBlueprintDriftState
 {
     /// <summary>The image's definition is the register's current publication.</summary>
@@ -36,7 +31,7 @@ public enum SystemBlueprintDriftState
 
 /// <summary>Drift of one system blueprint.</summary>
 /// <param name="BlueprintId">Blueprint identifier.</param>
-/// <param name="State">Classification. Property-level converter: a converter in the host's serializer options (kebab-case) outranks the enum's own attribute, a property attribute outranks both.</param>
+/// <param name="State">Classification; on the wire it is the platform kebab-case name (<c>image-ahead</c>).</param>
 /// <param name="CurrentPublicationTxId">Current publication on the register; null when absent or unreadable.</param>
 /// <param name="CurrentVersion">1-based ordinal of the current publication.</param>
 /// <param name="ImagePublicationTxId">Id a publish of the image's definition would produce; null when the image lacks the file.</param>
@@ -44,7 +39,7 @@ public enum SystemBlueprintDriftState
 /// <param name="CheckedAt">When the comparison was made.</param>
 public sealed record SystemBlueprintDriftEntry(
     string BlueprintId,
-    [property: JsonConverter(typeof(SystemBlueprintDriftStateConverter))] SystemBlueprintDriftState State,
+    SystemBlueprintDriftState State,
     string? CurrentPublicationTxId,
     int? CurrentVersion,
     string? ImagePublicationTxId,

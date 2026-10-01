@@ -145,8 +145,8 @@ public class SystemBlueprintDriftMonitorTests
 
         seen.Should().HaveCount(2);
         seen.Should().OnlyContain(m => m.Value == 1);
-        seen.Should().Contain(m => (string)m.Tags["blueprint"]! == "a" && (string)m.Tags["state"]! == "inSync");
-        seen.Should().Contain(m => (string)m.Tags["blueprint"]! == "b" && (string)m.Tags["state"]! == "imageBehind");
+        seen.Should().Contain(m => (string)m.Tags["blueprint"]! == "a" && (string)m.Tags["state"]! == "in-sync");
+        seen.Should().Contain(m => (string)m.Tags["blueprint"]! == "b" && (string)m.Tags["state"]! == "image-behind");
     }
 
     private sealed class ThrowOnceReporter(SystemBlueprintDriftEntry good) : ISystemBlueprintDriftReporter

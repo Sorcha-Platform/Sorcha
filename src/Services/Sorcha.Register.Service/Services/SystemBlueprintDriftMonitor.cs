@@ -82,7 +82,7 @@ public sealed class SystemBlueprintDriftMonitor : BackgroundService, ISystemBlue
     }
 
     private static string StateName(SystemBlueprintDriftState state)
-        => JsonNamingPolicy.CamelCase.ConvertName(state.ToString());
+        => JsonNamingPolicy.KebabCaseLower.ConvertName(state.ToString());
 
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
