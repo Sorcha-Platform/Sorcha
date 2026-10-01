@@ -454,7 +454,7 @@ public class ValidationEngineGovernancePinTests
 
     // ---- Feature 197 (T016): VAL_GOV_DEF_001 at raise -------------------------------------------
 
-    private static Transaction Raise(string pin) => new()
+    private static Transaction Raise(string pin, bool ownerOverride = false) => new()
     {
         TransactionId = "raise-tx",
         RegisterId = Register,
@@ -466,7 +466,11 @@ public class ValidationEngineGovernancePinTests
         Payload = JsonSerializer.Deserialize<JsonElement>(new JsonObject
         {
             ["version"] = 1,
-            ["roster"] = null,
+            // An Owner-override is one transaction that proposes AND enacts: it carries the updated
+            // roster and its own pin, with no EnactsProposalId (Program.cs, ProposeGovernanceOperation).
+            ["roster"] = ownerOverride
+                ? new JsonObject { ["registerId"] = Register, ["attestations"] = new JsonArray() }
+                : null,
             ["operation"] = new JsonObject
             {
                 ["operationType"] = "Add",
@@ -685,5 +689,32 @@ public class ValidationEngineGovernancePinTests
         result.Errors.Should().ContainSingle(e => e.Code == "VAL_BP_VERSION_001");
         fetcher.Verify(f => f.FetchBlueprintByPublicationAsync(
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ---- Final review (seam #15): the Owner-override raise is held to the current definition ---
+
+    [Fact]
+    public async Task ValidateSchema_OwnerOverrideUnderSupersededDefinition_RefusedWithGovDef001()
+    {
+        var v4Id = ServeDefinitions();
+        ServeCurrent(V5Id());
+
+        var result = await CreateEngine().ValidateSchemaAsync(Raise(v4Id, ownerOverride: true));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().ContainSingle(e => e.Code == "VAL_GOV_DEF_001"
+            && e.Field == "payload.governanceDefinitionTxId");
+    }
+
+    [Fact]
+    public async Task ValidateSchema_OwnerOverrideUnderCurrentDefinition_Passes()
+    {
+        var v4Id = ServeDefinitions();
+        ServeCurrent(v4Id);
+
+        var result = await CreateEngine().ValidateSchemaAsync(Raise(v4Id, ownerOverride: true));
+
+        result.Errors.Should().BeEmpty();
+        result.IsValid.Should().BeTrue();
     }
 }
