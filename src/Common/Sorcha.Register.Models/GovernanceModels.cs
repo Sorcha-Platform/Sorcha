@@ -436,6 +436,29 @@ public class ControlTransactionPayload
     public string? EnactsProposalId { get; set; }
 
     /// <summary>
+    /// Publication id of the <c>register-governance-v1</c> definition (on the System Register) that a
+    /// governance <b>proposal</b> was raised under, or <c>null</c> when this is not a proposal.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Part of the <b>signed</b> payload (Feature 197): the pin is covered by the payload hash and the
+    /// envelope signature, so a proposal's governing definition cannot be changed after the fact.
+    /// Approvals and enactments resolve the definition from the proposal they reference rather than
+    /// carrying their own pin.
+    /// </para>
+    /// <para>
+    /// <b>Omitted when null, not written as <c>null</c>.</b> <see cref="CanonicalJsonOptions"/> writes
+    /// nulls explicitly, so a plain nullable property would append <c>"governanceDefinitionTxId":null</c>
+    /// to every payload — changing the canonical bytes of register genesis, enactments and the
+    /// pre-signed System Register genesis, all of which are hashed and signed. Omission keeps those
+    /// byte-identical (pinned by <c>ControlTransactionPayloadPinWireTests</c>).
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("governanceDefinitionTxId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? GovernanceDefinitionTxId { get; init; }
+
+    /// <summary>
     /// The exact options every producer of this payload serialises with.
     /// </summary>
     /// <remarks>
