@@ -24,14 +24,18 @@ never raised unpinned by a post-feature producer.
 | Governance step | Governing definition |
 |---|---|
 | Proposal / Owner-override (own pin present) | its own pin |
-| Approval (action 2) | pin of the proposal at `PreviousTransactionId` |
+| Approval (action 2) | pin of the proposal named by the **signed** payload `proposalId`; a disagreeing `PreviousTransactionId` → refuse; an own pin → refuse |
 | Enactment | pin of the proposal named by payload `enactsProposalId` |
 | Referenced proposal has no pin | legacy: current definition, counted |
 | Referenced proposal unreadable | refuse |
 
 ## Validator rules
 
-1. Pinned definition resolves via cache → Blueprint Service → transaction's register → **SSR** (new arm);
+0. A governance step is `register-governance-v1` action 1, 2 or 4 by `BlueprintId` + `ActionId` — never
+   switched off by the unsigned `transactionType` label; only a `BlueprintPublish` exemption *granted*
+   from proved publish authority makes it a publication instead (CLAUDE.md §23).
+1. A governance pin resolves via cache → **SSR** only (never the transaction's own register or the
+   Blueprint Service published store — both hold owner-controlled register-scoped publications);
    the SSR read recomputes `BlueprintPublicationId.Compute(SSR, blueprintId, canonical)` and must equal
    the pin. Failure → `VAL_BP_VERSION_001`. No fallback to latest.
 2. Raise only: pin ≠ current SSR publication → `VAL_GOV_DEF_001` ("raised under a superseded governance
