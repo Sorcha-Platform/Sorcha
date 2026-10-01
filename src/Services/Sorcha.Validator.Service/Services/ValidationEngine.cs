@@ -633,6 +633,7 @@ public class ValidationEngine : IValidationEngine
             string? carriedPin;
             string pinField;
             var governancePinned = false;
+            string? raisePin = null;
             if (TransactionTypeClassifier.IsGovernanceActionTransaction(transaction))
             {
                 var governancePin = await ResolveGovernancePinAsync(transaction, ct);
@@ -642,6 +643,7 @@ public class ValidationEngine : IValidationEngine
                     case PinResolution.Pinned pinned:
                         carriedPin = pinned.DefinitionTxId;
                         governancePinned = true;
+                        if (pinned.IsRaise) raisePin = pinned.DefinitionTxId;
                         break;
                     case PinResolution.Legacy legacy:
                         carriedPin = null;
@@ -666,6 +668,32 @@ public class ValidationEngine : IValidationEngine
             {
                 carriedPin = ReadCarriedExecDefHash(transaction);
                 pinField = "routingDecision.blueprintDefinitionTxId";
+            }
+
+            // Feature 197 (T016): a RAISE (proposal / Owner-override) must be made under the CURRENT
+            // governance definition — an old pin would let a proposer pick the rules that judge it.
+            // Approvals and enactments are deliberately never compared to current: they are judged
+            // under the definition their proposal was raised under, even after it is superseded.
+            // Checked before the blueprint is resolved: the refusal is the cheaper of the two.
+            if (raisePin is not null)
+            {
+                var current = await _registerClient.GetSystemRegisterBlueprintPublicationIdAsync(
+                    GovernanceBlueprint.BlueprintId, ct);
+                if (string.IsNullOrWhiteSpace(current))
+                {
+                    errors.Add(CreateError("VAL_BP_VERSION_001",
+                        "The current governance definition could not be read; the proposal is refused, not accepted.",
+                        ValidationErrorCategory.Blueprint, pinField, true));
+                    return CreateFailureResult(transaction, sw.Elapsed, errors);
+                }
+
+                if (!string.Equals(raisePin, current, StringComparison.OrdinalIgnoreCase))
+                {
+                    errors.Add(CreateError(GovernanceDefinitionSupersededCode,
+                        $"raised under a superseded governance definition '{raisePin}'; current is '{current}'",
+                        ValidationErrorCategory.Blueprint, pinField, true));
+                    return CreateFailureResult(transaction, sw.Elapsed, errors);
+                }
             }
 
             var blueprint = await ResolveBlueprintAsync(
@@ -2456,6 +2484,9 @@ public class ValidationEngine : IValidationEngine
     /// not display, so it is enforced here. See <see cref="SorchaSchemaDialect"/>.
     /// </remarks>
     private const string DefaultSchemaDialect = SorchaSchemaDialect.Id;
+
+    /// <summary>Feature 197: a governance proposal raised under a superseded definition. Local by design (§16): no second project names it.</summary>
+    private const string GovernanceDefinitionSupersededCode = "VAL_GOV_DEF_001";
 
     /// <summary>
     /// Declares the JSON Schema dialect at the document root when the document does not declare one.

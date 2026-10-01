@@ -410,6 +410,18 @@ public interface IRegisterServiceClient
         string blueprintId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Gets the publication transaction id of the CURRENT system-register definition of a blueprint
+    /// (<c>SystemRegisterEntry.PublicationTransactionId</c>). Uncached by design — the caller compares
+    /// a pin to what is current right now.
+    /// </summary>
+    /// <param name="blueprintId">Blueprint identifier as published to the system register.</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The publication id, or null when absent, unreadable or unreachable.</returns>
+    Task<string?> GetSystemRegisterBlueprintPublicationIdAsync(
+        string blueprintId,
+        CancellationToken cancellationToken = default);
+
     // =========================================================================
     // Recovery / Internal Discovery
     // =========================================================================

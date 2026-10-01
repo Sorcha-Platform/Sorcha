@@ -1067,6 +1067,55 @@ public class RegisterServiceClient : IRegisterServiceClient
         }
     }
 
+    /// <inheritdoc />
+    public async Task<string?> GetSystemRegisterBlueprintPublicationIdAsync(
+        string blueprintId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.GetAsync(
+                $"api/system-register/blueprints/{Uri.EscapeDataString(blueprintId)}",
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogDebug(
+                    "System register has no blueprint {BlueprintId} ({StatusCode})",
+                    blueprintId, response.StatusCode);
+                return null;
+            }
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(body)) return null;
+
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return null;
+
+            foreach (var property in doc.RootElement.EnumerateObject())
+            {
+                if (!string.Equals(property.Name, "publicationTransactionId", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                return property.Value.ValueKind == JsonValueKind.String
+                    && !string.IsNullOrWhiteSpace(property.Value.GetString())
+                        ? property.Value.GetString()
+                        : null;
+            }
+
+            return null;
+        }
+        catch (Exception ex) when (!(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
+        {
+            _logger.LogWarning(ex,
+                "Failed to read the publication id of blueprint {BlueprintId} from the system register",
+                blueprintId);
+            return null;
+        }
+    }
+
     // =========================================================================
     // Register Management
     // =========================================================================

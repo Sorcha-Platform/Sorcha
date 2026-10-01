@@ -40,6 +40,7 @@ public class ValidationEngineGovernancePinTests
 
     private readonly Mock<IBlueprintCache> _cache = new();
     private readonly Mock<IRegisterServiceClient> _registerClient = new();
+    private string _v5Id = string.Empty;
 
     private static string TemplatePath()
     {
@@ -96,6 +97,7 @@ public class ValidationEngineGovernancePinTests
         var v5 = Definition(true);
         var id4 = PublicationId(v4, out var v4Json);
         var id5 = PublicationId(v5, out var v5Json);
+        _v5Id = id5;
         var sys = SystemRegisterConstants.SystemRegisterId;
         _registerClient.Setup(r => r.GetTransactionAsync(sys, id4, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Tx(sys, id4, v4Json));
@@ -387,5 +389,117 @@ public class ValidationEngineGovernancePinTests
         var result = await CreateEngine().ValidateSchemaAsync(Approval(), cts.Token);
 
         result.Errors.Should().NotContain(e => e.Code == "VAL_BP_VERSION_001");
+    }
+
+    // ---- Feature 197 (T016): VAL_GOV_DEF_001 at raise -------------------------------------------
+
+    private static Transaction Raise(string pin) => new()
+    {
+        TransactionId = "raise-tx",
+        RegisterId = Register,
+        BlueprintId = GovernanceBlueprint.BlueprintId,
+        ActionId = GovernanceBlueprint.ProposeChangeActionId.ToString(),
+        PreviousTransactionId = "prev",
+        PayloadHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        CreatedAt = DateTimeOffset.UtcNow,
+        Payload = JsonSerializer.Deserialize<JsonElement>(new JsonObject
+        {
+            ["version"] = 1,
+            ["roster"] = null,
+            ["operation"] = new JsonObject
+            {
+                ["operationType"] = "Add",
+                ["proposerDid"] = "did:sorcha:w:proposer",
+                ["proposedAt"] = "2026-10-01T00:00:00Z",
+                ["rosterSnapshotId"] = "snap",
+                ["quorumFormulaAtRaise"] = "StrictMajority",
+            },
+            ["enactsProposalId"] = null,
+            ["governanceDefinitionTxId"] = pin,
+        }.ToJsonString()),
+        Signatures =
+        [
+            new RegisterSignature
+            {
+                PublicKey = new byte[32], SignatureValue = new byte[64],
+                Algorithm = "ED25519", SignedAt = DateTimeOffset.UtcNow,
+            },
+        ],
+    };
+
+    private void ServeCurrent(string? currentId) =>
+        _registerClient.Setup(r => r.GetSystemRegisterBlueprintPublicationIdAsync(
+                GovernanceBlueprint.BlueprintId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(currentId);
+
+    // Definition() is not byte-stable across calls, so reuse the id ServeDefinitions() published.
+    private string V5Id() => _v5Id;
+
+    [Fact]
+    public async Task ValidateSchema_RaiseUnderSupersededDefinition_RefusedWithGovDef001()
+    {
+        var v4Id = ServeDefinitions();
+        ServeCurrent(V5Id());
+
+        var result = await CreateEngine().ValidateSchemaAsync(Raise(v4Id));
+
+        result.IsValid.Should().BeFalse();
+        var error = result.Errors.Should().ContainSingle(e => e.Code == "VAL_GOV_DEF_001").Subject;
+        error.Field.Should().Be("payload.governanceDefinitionTxId");
+        error.Message.Should().Be(
+            $"raised under a superseded governance definition '{v4Id}'; current is '{V5Id()}'");
+    }
+
+    [Fact]
+    public async Task ValidateSchema_RaiseUnderCurrentDefinition_Passes()
+    {
+        var v4Id = ServeDefinitions();
+        ServeCurrent(v4Id);
+
+        var result = await CreateEngine().ValidateSchemaAsync(Raise(v4Id));
+
+        result.Errors.Should().BeEmpty();
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ValidateSchema_ApprovalOfSupersededProposal_NotComparedToCurrent()
+    {
+        // v4-pinned proposal, v5 current: the approval is judged by v4 and is NOT a stale raise.
+        var v4Id = ServeDefinitions();
+        ServeProposal(v4Id);
+        ServeCurrent(V5Id());
+
+        var result = await CreateEngine().ValidateSchemaAsync(Approval());
+
+        result.Errors.Should().NotContain(e => e.Code == "VAL_GOV_DEF_001");
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ValidateSchema_EnactmentOfSupersededProposal_NotComparedToCurrent()
+    {
+        var v4Id = ServeDefinitions();
+        ServeProposal(v4Id);
+        ServeCurrent(V5Id());
+
+        var result = await CreateEngine().ValidateSchemaAsync(Enactment(EnactPayload()));
+
+        result.Errors.Should().NotContain(e => e.Code == "VAL_GOV_DEF_001");
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ValidateSchema_RaiseWhenCurrentUnreadable_RefusedNotAccepted()
+    {
+        var v4Id = ServeDefinitions();
+        ServeCurrent(null);
+
+        var result = await CreateEngine().ValidateSchemaAsync(Raise(v4Id));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Code == "VAL_BP_VERSION_001"
+            && e.Field == "payload.governanceDefinitionTxId");
+        result.Errors.Should().NotContain(e => e.Code == "VAL_GOV_DEF_001");
     }
 }

@@ -89,6 +89,50 @@ public class RegisterServiceClientRecoveryTests
         return handlerMock;
     }
 
+    #region GetSystemRegisterBlueprintPublicationIdAsync
+
+    [Fact]
+    public async Task GetSystemRegisterBlueprintPublicationIdAsync_Success_ReturnsPublicationId()
+    {
+        string? requested = null;
+        var handler = CreateMockHandlerWithCallback(req =>
+        {
+            requested = req.RequestUri!.AbsolutePath;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"blueprintId\":\"register-governance-v1\",\"publicationTransactionId\":\"abc123\",\"document\":{}}",
+                    System.Text.Encoding.UTF8, "application/json")
+            };
+        });
+
+        var result = await CreateClient(handler).GetSystemRegisterBlueprintPublicationIdAsync("register-governance-v1");
+
+        result.Should().Be("abc123");
+        requested.Should().Be("/api/system-register/blueprints/register-governance-v1");
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    public async Task GetSystemRegisterBlueprintPublicationIdAsync_NonSuccess_ReturnsNull(HttpStatusCode status)
+    {
+        var result = await CreateClient(CreateMockHandler(status)).GetSystemRegisterBlueprintPublicationIdAsync("x");
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetSystemRegisterBlueprintPublicationIdAsync_MissingOrNullField_ReturnsNull()
+    {
+        (await CreateClient(CreateMockHandler(HttpStatusCode.OK, new { blueprintId = "x" }))
+            .GetSystemRegisterBlueprintPublicationIdAsync("x")).Should().BeNull();
+        (await CreateClient(CreateMockHandler(HttpStatusCode.OK, new { publicationTransactionId = (string?)null }))
+            .GetSystemRegisterBlueprintPublicationIdAsync("x")).Should().BeNull();
+    }
+
+    #endregion
+
     #region GetInternalRegistersAsync
 
     [Fact]
