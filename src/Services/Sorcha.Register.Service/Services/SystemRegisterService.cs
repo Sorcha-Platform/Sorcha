@@ -395,7 +395,7 @@ public class SystemRegisterService
             _logger.LogError(
                 "Failed to publish blueprint {BlueprintId} to system register: {Error}",
                 blueprintId, submissionResult.ErrorMessage);
-            throw new InvalidOperationException(
+            throw new ValidatorRejectedSubmissionException(
                 $"Blueprint publish failed for {blueprintId}: {submissionResult.ErrorMessage}");
         }
 

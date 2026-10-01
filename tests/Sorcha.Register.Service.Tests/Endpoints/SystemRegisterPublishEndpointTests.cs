@@ -173,7 +173,7 @@ public class SystemRegisterPublishEndpointTests : IClassFixture<SystemRegisterPu
     [Fact]
     public async Task Publish_ValidatorRejection_Returns502SanitizedAndIsAudited()
     {
-        _factory.Publisher.Throw = new InvalidOperationException("secret validator internals");
+        _factory.Publisher.Throw = new ValidatorRejectedSubmissionException("secret validator internals");
 
         var response = await ClientAs("sysadmin-platform").PostAsync(Url, null);
 
@@ -184,6 +184,32 @@ public class SystemRegisterPublishEndpointTests : IClassFixture<SystemRegisterPu
             .Should().Be("publish submission rejected");
         _factory.Audit.Reports.Should().ContainSingle()
             .Which.Reason.Should().Be("validator rejected the submission");
+    }
+
+    /// <summary>A signing or canonicalisation failure is also an InvalidOperationException; it is not a validator rejection.</summary>
+    [Fact]
+    public async Task Publish_PlainInvalidOperation_Returns500NotAuditedAndNotCountedAsRejected()
+    {
+        _factory.Publisher.Throw = new InvalidOperationException("signing wallet unavailable");
+        var rejected = 0;
+        using var listener = new System.Diagnostics.Metrics.MeterListener();
+        listener.InstrumentPublished = (i, l) =>
+        {
+            if (i.Name == SystemBlueprintMetrics.PublishCounterName) l.EnableMeasurementEvents(i);
+        };
+        listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
+        {
+            foreach (var t in tags)
+                if (t.Key == "outcome" && Equals(t.Value, PublishOutcomeNames.Rejected)) Interlocked.Increment(ref rejected);
+        });
+        listener.Start();
+
+        var response = await ClientAs("sysadmin-platform").PostAsync(Url, null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+        (await response.Content.ReadAsStringAsync()).Should().NotContain("signing wallet unavailable");
+        _factory.Audit.Reports.Should().BeEmpty();
+        rejected.Should().Be(0);
     }
 
     [Fact]

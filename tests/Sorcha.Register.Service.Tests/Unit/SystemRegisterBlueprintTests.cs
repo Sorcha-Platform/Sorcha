@@ -361,7 +361,7 @@ public class SystemRegisterBlueprintTests
             "test-bp", blueprintJson, "admin-001");
 
         // Assert
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<ValidatorRejectedSubmissionException>()
             .WithMessage("*Blueprint publish failed*");
     }
 

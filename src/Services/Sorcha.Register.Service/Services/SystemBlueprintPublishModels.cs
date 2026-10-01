@@ -35,3 +35,15 @@ public sealed record SystemBlueprintPublishResult(
     string? CurrentPublicationTxId,
     string? CandidatePublicationTxId,
     string? TransactionId);
+
+/// <summary>
+/// The validator rejected a system blueprint publication submission. Derives from
+/// <see cref="InvalidOperationException"/> so existing callers' handling is unchanged; thrown ONLY at the
+/// validator-rejection site, so the operator endpoint can tell it from signing or canonicalisation failures.
+/// </summary>
+public sealed class ValidatorRejectedSubmissionException : InvalidOperationException
+{
+    /// <summary>Creates the exception.</summary>
+    /// <param name="message">What the validator reported.</param>
+    public ValidatorRejectedSubmissionException(string message) : base(message) { }
+}

@@ -88,9 +88,9 @@ public static class SystemRegisterEndpoints
                 decision = await publisher.PublishAsync(
                     blueprintId, request?.DryRun ?? false, request?.ExpectedCurrent, operatorId, ct);
             }
-            catch (InvalidOperationException ex)
+            catch (ValidatorRejectedSubmissionException ex)
             {
-                // SystemRegisterService.PublishBlueprintAsync throws this when the validator rejects the submission.
+                // Thrown only where the validator rejects the submission (SystemRegisterService.PublishBlueprintAsync);
                 // Anything else is unexpected and falls through to the sanitized exception handler (CLAUDE.md 20).
                 logger.LogError(ex, "System blueprint {BlueprintId} publish submission was rejected", blueprintId);
                 SystemBlueprintMetrics.RecordPublish(PublishOutcomeNames.Rejected);
