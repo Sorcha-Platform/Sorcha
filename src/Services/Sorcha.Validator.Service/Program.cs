@@ -228,6 +228,7 @@ builder.Services.AddHostedService<Sorcha.Validator.Service.Services.DocketBuildT
 
 // Feature 108 — roster-driven monitoring bootstrap
 builder.Services.AddHostedService<Sorcha.Validator.Service.Services.RegisterMonitoringBootstrap>();
+builder.Services.AddHostedService<Sorcha.Validator.Service.Services.SystemBlueprintCacheEvictionService>();
 
 // Add metrics support services (VAL-9.45)
 // PendingDocketStore and ExceptionResponseHandler have no deep dependencies.
