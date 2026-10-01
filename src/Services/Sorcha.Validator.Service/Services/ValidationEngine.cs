@@ -2652,62 +2652,102 @@ public class ValidationEngine : IValidationEngine
         // The payload is verified against the transaction's own id before use: the id IS the digest
         // of the canonical definition, so a tampered payload cannot match the transaction carrying
         // it. Verification here is not optional politeness — this is an untrusted read.
-        try
+        var own = await TryResolveDefinitionFromRegisterAsync(registerId, blueprintId, definitionTxId, ct);
+        if (own.Tampered)
+            return null;   // evidence of tampering, not absence: never fall through to another register
+        if (own.Blueprint is not null)
+            return own.Blueprint;
+
+        // Feature 197 — SYSTEM-REGISTER ARM. A system blueprint is published once, on the system
+        // register (SSR), and a transaction on any other register may be pinned to that publication.
+        // The pin is the publication id, which is register-scoped, so the id is recomputed against
+        // the SSR — the register the definition was actually published on — not the transaction's.
+        // Reached only on a MISS above (no transaction / no payload / read failure); a payload that
+        // fails verification on the own register already returned null.
+        if (!string.Equals(registerId, SystemRegisterConstants.SystemRegisterId, StringComparison.Ordinal))
         {
-            var tx = await _registerClient.GetTransactionAsync(registerId, definitionTxId, ct);
-            var payload = tx?.Payloads?.FirstOrDefault()?.Data;
-
-            if (!string.IsNullOrEmpty(payload))
-            {
-                string definitionJson;
-                try
-                {
-                    definitionJson = Encoding.UTF8.GetString(Base64Url.DecodeFromChars(payload.AsSpan()));
-                }
-                catch (FormatException)
-                {
-                    definitionJson = payload;   // already plain text
-                }
-
-                var recomputed = BlueprintPublicationId.ComputeFromDefinition(
-                    registerId, blueprintId, definitionJson);
-
-                if (!string.Equals(recomputed, definitionTxId, StringComparison.OrdinalIgnoreCase))
-                {
-                    _logger.LogError(
-                        "Definition {DefinitionTxId} of blueprint {BlueprintId} read from register " +
-                        "{RegisterId} does not reproduce its own transaction id (recomputed {Recomputed}). " +
-                        "Refusing: the payload does not match the transaction that carried it.",
-                        definitionTxId, blueprintId, registerId, recomputed);
-                    return null;
-                }
-
-                var fromLedger = JsonSerializer.Deserialize<BlueprintModel>(definitionJson);
-                if (fromLedger is not null)
-                {
-                    await _blueprintCache.SetDefinitionAsync(fromLedger, definitionTxId, ct: ct);
-                    _logger.LogInformation(
-                        "Definition {DefinitionTxId} of blueprint {BlueprintId} resolved from the register ledger",
-                        definitionTxId, blueprintId);
-                    return fromLedger;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex,
-                "Failed to read definition {DefinitionTxId} of blueprint {BlueprintId} from register {RegisterId}",
-                definitionTxId, blueprintId, registerId);
+            var system = await TryResolveDefinitionFromRegisterAsync(
+                SystemRegisterConstants.SystemRegisterId, blueprintId, definitionTxId, ct);
+            if (system.Tampered)
+                return null;
+            if (system.Blueprint is not null)
+                return system.Blueprint;
         }
 
-        // Deliberately NO fallback to latest, and no system-register arm: system blueprints are
-        // resolved by id (they carry no instance pin), and a pinned lookup that reaches here means
-        // this node genuinely cannot produce the definition the instance runs.
+        // Deliberately NO fallback to latest. A pinned lookup that
+        // reaches here missed the Blueprint Service, the transaction's own register and (Feature 197)
+        // the system register: this node genuinely cannot produce the definition the instance runs.
         _logger.LogError(
             "Pinned definition {DefinitionTxId} of blueprint {BlueprintId} is UNRESOLVABLE on this node. " +
             "The transaction will be refused rather than validated against a different definition.",
             definitionTxId, blueprintId);
         return null;
+    }
+
+    /// <summary>
+    /// Outcome of reading one pinned definition off one register: resolved, a plain miss, or a payload
+    /// that does not reproduce the id of the transaction carrying it (tampered).
+    /// </summary>
+    private readonly record struct LedgerDefinitionRead(BlueprintModel? Blueprint, bool Tampered);
+
+    /// <summary>
+    /// Reads the publication transaction <paramref name="definitionTxId"/> from
+    /// <paramref name="sourceRegisterId"/>, verifies the payload reproduces that id (the id IS the
+    /// digest of the canonical definition, and this is an untrusted read), then caches it.
+    /// A miss (no transaction, empty payload, read failure) yields neither a blueprint nor tampering.
+    /// </summary>
+    private async Task<LedgerDefinitionRead> TryResolveDefinitionFromRegisterAsync(
+        string sourceRegisterId, string blueprintId, string definitionTxId, CancellationToken ct)
+    {
+        try
+        {
+            var tx = await _registerClient.GetTransactionAsync(sourceRegisterId, definitionTxId, ct);
+            var payload = tx?.Payloads?.FirstOrDefault()?.Data;
+
+            if (string.IsNullOrEmpty(payload))
+                return default;
+
+            string definitionJson;
+            try
+            {
+                definitionJson = Encoding.UTF8.GetString(Base64Url.DecodeFromChars(payload.AsSpan()));
+            }
+            catch (FormatException)
+            {
+                definitionJson = payload;   // already plain text
+            }
+
+            var recomputed = BlueprintPublicationId.ComputeFromDefinition(
+                sourceRegisterId, blueprintId, definitionJson);
+
+            if (!string.Equals(recomputed, definitionTxId, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogError(
+                    "Definition {DefinitionTxId} of blueprint {BlueprintId} read from register " +
+                    "{RegisterId} does not reproduce its own transaction id (recomputed {Recomputed}). " +
+                    "Refusing: the payload does not match the transaction that carried it.",
+                    definitionTxId, blueprintId, sourceRegisterId, recomputed);
+                return new LedgerDefinitionRead(null, Tampered: true);
+            }
+
+            var fromLedger = JsonSerializer.Deserialize<BlueprintModel>(definitionJson);
+            if (fromLedger is null)
+                return default;
+
+            await _blueprintCache.SetDefinitionAsync(fromLedger, definitionTxId, ct: ct);
+            _logger.LogInformation(
+                "Definition {DefinitionTxId} of blueprint {BlueprintId} resolved from the register ledger " +
+                "of {RegisterId}",
+                definitionTxId, blueprintId, sourceRegisterId);
+            return new LedgerDefinitionRead(fromLedger, Tampered: false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to read definition {DefinitionTxId} of blueprint {BlueprintId} from register {RegisterId}",
+                definitionTxId, blueprintId, sourceRegisterId);
+            return default;
+        }
     }
 
     /// <summary>
