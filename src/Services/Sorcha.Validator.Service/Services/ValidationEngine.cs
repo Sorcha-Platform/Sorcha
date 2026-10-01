@@ -697,8 +697,9 @@ public class ValidationEngine : IValidationEngine
                 }
             }
 
-            var blueprint = await ResolveBlueprintAsync(
-                transaction.BlueprintId!, carriedPin, transaction.RegisterId, ct);
+            var blueprint = governancePinned
+                ? await ResolveGovernanceDefinitionAsync(transaction.BlueprintId!, carriedPin!, ct)
+                : await ResolveBlueprintAsync(transaction.BlueprintId!, carriedPin, transaction.RegisterId, ct);
             if (blueprint == null)
             {
                 // Distinguish "no such blueprint" from "this node cannot produce the DEFINITION the
@@ -2913,6 +2914,46 @@ public class ValidationEngine : IValidationEngine
         _logger.LogError(
             "Pinned definition {DefinitionTxId} of blueprint {BlueprintId} is UNRESOLVABLE on this node. " +
             "The transaction will be refused rather than validated against a different definition.",
+            definitionTxId, blueprintId);
+        return null;
+    }
+
+    /// <summary>
+    /// Feature 197 — resolves the <c>register-governance-v1</c> definition a governance step is pinned
+    /// to, from the SYSTEM REGISTER only.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why not <see cref="ResolvePinnedBlueprintAsync"/>.</b> That resolver also consults the
+    /// transaction's OWN register and the Blueprint Service's published store. Both hold
+    /// register-scoped publications a register owner controls: an owner could publish a lax
+    /// definition under the governance blueprint's id to their own register, and its register-scoped
+    /// publication id reproduces correctly against that register — so the own-register arm's
+    /// self-verification would accept it. The governance definition is published once, on the SSR,
+    /// and only an SSR publication may govern a governance step.
+    /// </para>
+    /// <para>
+    /// The content-keyed cache is safe to consult: a publication id is a digest over the register it
+    /// was published on, so an entry cached from any other register is stored under a different id
+    /// and can never be returned for an SSR pin. A miss here is refused by the caller
+    /// (<c>VAL_BP_VERSION_001</c>); there is no fallback to latest.
+    /// </para>
+    /// </remarks>
+    private async Task<BlueprintModel?> ResolveGovernanceDefinitionAsync(
+        string blueprintId, string definitionTxId, CancellationToken ct)
+    {
+        var cached = await _blueprintCache.GetDefinitionAsync(blueprintId, definitionTxId, ct);
+        if (cached != null)
+            return cached;
+
+        var system = await TryResolveDefinitionFromRegisterAsync(
+            SystemRegisterConstants.SystemRegisterId, blueprintId, definitionTxId, ct);
+        if (system.Blueprint is not null)
+            return system.Blueprint;
+
+        _logger.LogError(
+            "Governance definition {DefinitionTxId} of blueprint {BlueprintId} is UNRESOLVABLE from the system " +
+            "register. The transaction will be refused rather than validated against a different definition.",
             definitionTxId, blueprintId);
         return null;
     }

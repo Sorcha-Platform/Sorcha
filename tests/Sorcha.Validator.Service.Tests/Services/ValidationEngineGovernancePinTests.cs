@@ -633,4 +633,57 @@ public class ValidationEngineGovernancePinTests
         _registerClient.Verify(r => r.GetSystemRegisterBlueprintPublicationIdAsync(
             It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    // ---- Final review (Important 3): a governance pin resolves from the SSR only ---------------
+
+    [Fact]
+    public async Task ValidateSchema_GovernancePinPublishedOnlyOnOwnRegister_RefusedAsUnresolvable()
+    {
+        // A register owner publishes a governance-id definition to THEIR register. Its register-scoped
+        // id reproduces against that register, so the own-register arm would verify and accept it.
+        // An approval is used (not a raise) so the currency check cannot mask the resolution arm.
+        ServeDefinitions();
+        var lax = Definition(false);
+        var laxJson = JsonSerializer.Serialize(lax);
+        var laxId = BlueprintPublicationId.ComputeFromDefinition(Register, GovernanceBlueprint.BlueprintId, laxJson);
+        _registerClient.Setup(r => r.GetTransactionAsync(Register, laxId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Tx(Register, laxId, laxJson));
+        ServeProposal(laxId);
+
+        var result = await CreateEngine().ValidateSchemaAsync(Approval());
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().ContainSingle(e => e.Code == "VAL_BP_VERSION_001"
+            && e.Field == "payload.governanceDefinitionTxId");
+        _registerClient.Verify(r => r.GetTransactionAsync(Register, laxId, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ValidateSchema_GovernancePin_NeverConsultsBlueprintServicePublishedStore()
+    {
+        // The Blueprint Service's published store holds register-scoped publications; for a governance
+        // pin it must not be asked, even when it would answer.
+        ServeDefinitions();
+        var fetcher = new Mock<IBlueprintFetcher>();
+        fetcher.Setup(f => f.FetchBlueprintByPublicationAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Definition(false));
+        var pin = new string('d', 64);
+        ServeProposal(pin);
+
+        var hash = new Mock<IHashProvider>();
+        hash.Setup(h => h.ComputeHash(It.IsAny<byte[]>(), HashType.SHA256)).Returns(new byte[32]);
+        var engine = new ValidationEngine(
+            Options.Create(new ValidationEngineConfiguration()),
+            _cache.Object, hash.Object, Mock.Of<ICryptoModule>(), Mock.Of<IWalletUtilities>(),
+            _registerClient.Object, Mock.Of<IRightsEnforcementService>(), Mock.Of<ILogger<ValidationEngine>>(),
+            blueprintFetcher: fetcher.Object,
+            governanceRosterService: Mock.Of<IGovernanceRosterService>());
+
+        var result = await engine.ValidateSchemaAsync(Approval());
+
+        result.Errors.Should().ContainSingle(e => e.Code == "VAL_BP_VERSION_001");
+        fetcher.Verify(f => f.FetchBlueprintByPublicationAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }
