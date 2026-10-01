@@ -530,8 +530,8 @@ public class ValidationEngine : IValidationEngine
             // It withdraws ONLY the schema exemption. The other five riding on the same
             // discriminator stay, and two of them have to — see IsGovernanceActionTransaction.
             var schemaExemption = await ResolveExemptionAsync(transaction, ct);
-            if (schemaExemption.Granted
-                && !TransactionTypeClassifier.IsGovernanceActionTransaction(transaction))
+            var isGovernanceStep = IsGovernanceStep(transaction, schemaExemption);
+            if (schemaExemption.Granted && !isGovernanceStep)
             {
                 _logger.LogDebug("Validating signatures for genesis/control transaction {TransactionId}",
                     transaction.TransactionId);
@@ -634,7 +634,7 @@ public class ValidationEngine : IValidationEngine
             string pinField;
             var governancePinned = false;
             string? raisePin = null;
-            if (TransactionTypeClassifier.IsGovernanceActionTransaction(transaction))
+            if (isGovernanceStep)
             {
                 var governancePin = await ResolveGovernancePinAsync(transaction, ct);
                 pinField = "payload.governanceDefinitionTxId";
@@ -2619,6 +2619,41 @@ public class ValidationEngine : IValidationEngine
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Feature 197 — whether this transaction is a governance step (proposal, approval or enactment of
+    /// <see cref="GovernanceBlueprint"/>) and therefore judged under its proposal's definition pin.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Deliberately NOT <see cref="TransactionTypeClassifier.IsGovernanceActionTransaction"/>.</b>
+    /// That predicate returns false when the UNSIGNED <c>Metadata["transactionType"]</c> says
+    /// <c>BlueprintPublish</c>, which is sound only where it withdraws an exemption. Here a false
+    /// answer would take the routing-pin path (no pin, so latest) and skip <c>VAL_GOV_DEF_001</c> for
+    /// a raise signed under a superseded definition — an unsigned label switching enforcement OFF,
+    /// the CLAUDE.md §23 inversion.
+    /// </para>
+    /// <para>
+    /// The one genuine exception — a publication OF the governance blueprint, whose payload is the
+    /// definition and not a governance action — is recognised from PROVED authority: the exemption
+    /// resolver granted <see cref="ExemptionKind.BlueprintPublish"/> because the signer holds the
+    /// validator-roster publish key. A forged label without that authority is refused the exemption
+    /// and so stays a governance step.
+    /// </para>
+    /// </remarks>
+    private static bool IsGovernanceStep(Transaction transaction, ExemptionDecision exemption)
+    {
+        if (!string.Equals(transaction.BlueprintId, GovernanceBlueprint.BlueprintId, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (exemption is { Granted: true, Kind: ExemptionKind.BlueprintPublish })
+            return false;
+
+        return int.TryParse(transaction.ActionId, out var actionId)
+            && actionId is GovernanceBlueprint.ProposeChangeActionId
+                        or GovernanceBlueprint.CollectQuorumActionId
+                        or GovernanceBlueprint.RecordControlTransactionActionId;
     }
 
     /// <summary>

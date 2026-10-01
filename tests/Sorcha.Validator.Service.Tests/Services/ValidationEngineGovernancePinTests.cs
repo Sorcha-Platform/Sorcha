@@ -118,7 +118,7 @@ public class ValidationEngineGovernancePinTests
                 GovernanceBlueprint.BlueprintId, (uint)GovernanceBlueprint.ProposeChangeActionId));
     }
 
-    private ValidationEngine CreateEngine()
+    private ValidationEngine CreateEngine(IExemptionAuthorityResolver? exemptionResolver = null)
     {
         var hash = new Mock<IHashProvider>();
         hash.Setup(h => h.ComputeHash(It.IsAny<byte[]>(), HashType.SHA256)).Returns(new byte[32]);
@@ -131,7 +131,8 @@ public class ValidationEngineGovernancePinTests
             _registerClient.Object,
             Mock.Of<IRightsEnforcementService>(),
             Mock.Of<ILogger<ValidationEngine>>(),
-            governanceRosterService: Mock.Of<IGovernanceRosterService>());
+            governanceRosterService: Mock.Of<IGovernanceRosterService>(),
+            exemptionResolver: exemptionResolver);
     }
 
     private const string ApprovalJson = """
@@ -501,5 +502,75 @@ public class ValidationEngineGovernancePinTests
         result.Errors.Should().Contain(e => e.Code == "VAL_BP_VERSION_001"
             && e.Field == "payload.governanceDefinitionTxId");
         result.Errors.Should().NotContain(e => e.Code == "VAL_GOV_DEF_001");
+    }
+
+    // ---- Final review (Important 1): an unsigned label cannot switch pin enforcement off -------
+
+    private static Transaction WithMetadata(Transaction tx, Dictionary<string, string> metadata) => new()
+    {
+        TransactionId = tx.TransactionId, RegisterId = tx.RegisterId,
+        BlueprintId = tx.BlueprintId, ActionId = tx.ActionId,
+        PreviousTransactionId = tx.PreviousTransactionId, PayloadHash = tx.PayloadHash,
+        CreatedAt = tx.CreatedAt, Payload = tx.Payload, Signatures = tx.Signatures,
+        Metadata = metadata,
+    };
+
+    private static Dictionary<string, string> ForgedPublishLabel() => new()
+    {
+        ["Type"] = "Control",
+        ["transactionType"] = "BlueprintPublish",
+    };
+
+    private static IExemptionAuthorityResolver Resolver(ExemptionDecision decision)
+    {
+        var resolver = new Mock<IExemptionAuthorityResolver>();
+        resolver.Setup(r => r.ResolveAsync(It.IsAny<Transaction>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(decision);
+        return resolver.Object;
+    }
+
+    [Fact]
+    public async Task ValidateSchema_StaleRaiseWithForgedPublishLabel_NoProvedAuthority_RefusedWithGovDef001()
+    {
+        // The label is unsigned. The signer holds no publish key, so the resolver refuses the
+        // BlueprintPublish claim — and the raise must still be held to the CURRENT definition.
+        var v4Id = ServeDefinitions();
+        ServeCurrent(V5Id());
+        var claim = new ExemptionClaim(ExemptionKind.BlueprintPublish, ExemptionClaimRoute.TypeLabel, "Control");
+        var engine = CreateEngine(Resolver(ExemptionDecision.NotEntitled(claim, "not on the validator roster")));
+
+        var result = await engine.ValidateSchemaAsync(WithMetadata(Raise(v4Id), ForgedPublishLabel()));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().ContainSingle(e => e.Code == "VAL_GOV_DEF_001");
+    }
+
+    [Fact]
+    public async Task ValidateSchema_StaleRaiseWithForgedPublishLabel_NoResolver_RefusedWithGovDef001()
+    {
+        var v4Id = ServeDefinitions();
+        ServeCurrent(V5Id());
+
+        var result = await CreateEngine().ValidateSchemaAsync(WithMetadata(Raise(v4Id), ForgedPublishLabel()));
+
+        result.Errors.Should().ContainSingle(e => e.Code == "VAL_GOV_DEF_001");
+    }
+
+    [Fact]
+    public async Task ValidateSchema_GovernanceBlueprintPublicationWithProvedPublishAuthority_NotTreatedAsGovernanceStep()
+    {
+        // The genuine exception: a publication OF the governance blueprint, signed by a node holding
+        // the publish key. It is not a governance action, so no governance pin is read or compared.
+        var v4Id = ServeDefinitions();
+        ServeCurrent(V5Id());
+        var claim = new ExemptionClaim(ExemptionKind.BlueprintPublish, ExemptionClaimRoute.TypeLabel, "Control");
+        var engine = CreateEngine(Resolver(ExemptionDecision.Grant(ExemptionKind.BlueprintPublish, claim)));
+
+        var result = await engine.ValidateSchemaAsync(WithMetadata(Raise(v4Id), ForgedPublishLabel()));
+
+        result.Errors.Should().BeEmpty();
+        result.IsValid.Should().BeTrue();
+        _registerClient.Verify(r => r.GetSystemRegisterBlueprintPublicationIdAsync(
+            It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }
