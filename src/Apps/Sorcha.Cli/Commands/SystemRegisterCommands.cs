@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using NBitcoin;
 using Sorcha.Cli.Infrastructure;
+using Sorcha.Cli.Models;
 using Sorcha.Cli.Services;
 using Sorcha.Cryptography.Core;
 using Sorcha.Cryptography.Enums;
@@ -17,6 +18,7 @@ using Sorcha.Register.Models;
 using Sorcha.Register.Models.Constants;
 using Sorcha.Register.Models.Genesis;
 using Sorcha.Wallet.Contracts.Constants;
+using Spectre.Console;
 
 namespace Sorcha.Cli.Commands;
 
@@ -34,6 +36,8 @@ public class SystemRegisterGenesisCommand : Command
         Subcommands.Add(new SystemRegisterCreateCommand());
         Subcommands.Add(new SystemRegisterVerifyCommand());
         Subcommands.Add(new SystemRegisterImportValidatorKeyCommand(clientFactory, authService, configService));
+        Subcommands.Add(new SystemRegisterDriftCommand(clientFactory, authService, configService));
+        Subcommands.Add(new SystemRegisterPublishCommand(clientFactory, authService, configService));
     }
 }
 
@@ -744,5 +748,258 @@ public class SystemRegisterImportValidatorKeyCommand : Command
                 return ExitCodes.GeneralError;
             }
         });
+    }
+}
+
+/// <summary>
+/// Shared helpers for the Feature 197 operator commands (drift, publish): output of problem+json
+/// failures and exit-code mapping, so both commands refuse the same way.
+/// </summary>
+internal static class SystemRegisterOperatorOutput
+{
+    /// <summary>Shortens a publication id for table display.</summary>
+    internal static string Short(string? id) =>
+        string.IsNullOrEmpty(id) ? "-" : id.Length <= 12 ? id : id[..12] + "...";
+
+    /// <summary>
+    /// Prints the problem <c>detail</c> (and <c>reason</c>, when present) of a non-2xx response and returns
+    /// the matching exit code.
+    /// </summary>
+    internal static int WriteFailure(IAnsiConsole console, System.Net.HttpStatusCode status, string body)
+    {
+        string? detail = null, reason = null, title = null;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                detail = ReadString(doc.RootElement, "detail");
+                reason = ReadString(doc.RootElement, "reason");
+                title = ReadString(doc.RootElement, "title");
+            }
+        }
+        catch (JsonException)
+        {
+            // Not a problem document (proxy error page, empty body) - fall back to the raw body below.
+        }
+
+        var message = detail ?? title ?? (string.IsNullOrWhiteSpace(body) ? "no detail returned" : body);
+        console.MarkupLine($"[red]Error ({(int)status} {status}):[/] {Markup.Escape(message)}");
+        if (reason is not null)
+            console.MarkupLine($"  [dim]reason:[/] {Markup.Escape(reason)}");
+
+        return status switch
+        {
+            System.Net.HttpStatusCode.Unauthorized => ExitCodes.AuthenticationError,
+            System.Net.HttpStatusCode.Forbidden => ExitCodes.AuthorizationError,
+            System.Net.HttpStatusCode.NotFound => ExitCodes.NotFound,
+            _ => ExitCodes.ServiceError
+        };
+    }
+
+    private static string? ReadString(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    /// <summary>Resolves the active profile name and its access token (null when not authenticated).</summary>
+    internal static async Task<(string ProfileName, string? Token)> GetTokenAsync(
+        IAuthenticationService authService, IConfigurationService configService)
+    {
+        var profile = await configService.GetActiveProfileAsync();
+        var profileName = profile?.Name ?? "dev";
+        return (profileName, await authService.GetAccessTokenAsync(profileName));
+    }
+
+    /// <summary>Maps transport-level failures to an exit code, shared by both commands.</summary>
+    internal static int HandleException(Exception ex, IAnsiConsole console)
+    {
+        if (ex is HttpRequestException)
+        {
+            console.MarkupLine("[red]Cannot reach Register Service. Ensure services are running.[/]");
+            return ExitCodes.NetworkError;
+        }
+
+        console.MarkupLine($"[red]Command failed:[/] {Markup.Escape(ex.Message)}");
+        return ExitCodes.GeneralError;
+    }
+}
+
+/// <summary>
+/// Reports drift between this node's system blueprint catalogue and the system register (Feature 197).
+/// </summary>
+public class SystemRegisterDriftCommand : Command
+{
+    private static readonly JsonSerializerOptions WireOptions = new(JsonSerializerDefaults.Web);
+
+    public SystemRegisterDriftCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("drift", "Report drift between this node's system blueprints and the system register")
+    {
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var console = AnsiConsole.Console;
+            try
+            {
+                var (profileName, token) = await SystemRegisterOperatorOutput.GetTokenAsync(authService, configService);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateRegisterServiceClientAsync(profileName);
+                var structured = OutputHelper.IsStructuredFormat(OutputHelper.GetOutputFormat(parseResult));
+                return await ExecuteAsync(client, token, structured, console, ct);
+            }
+            catch (Exception ex)
+            {
+                return SystemRegisterOperatorOutput.HandleException(ex, console);
+            }
+        });
+    }
+
+    internal static async Task<int> ExecuteAsync(
+        IRegisterServiceClient client, string token, bool structuredOutput, IAnsiConsole console, CancellationToken ct)
+    {
+        using var response = await client.GetSystemBlueprintDriftAsync($"Bearer {token}");
+        var content = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+            return SystemRegisterOperatorOutput.WriteFailure(console, response.StatusCode, content);
+
+        if (structuredOutput)
+        {
+            Console.WriteLine(content);
+            return ExitCodes.Success;
+        }
+
+        var report = JsonSerializer.Deserialize<SystemBlueprintDriftReportDto>(content, WireOptions)
+                     ?? new SystemBlueprintDriftReportDto();
+
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Blueprint");
+        table.AddColumn("State");
+        table.AddColumn("Current version");
+        table.AddColumn("Current id");
+        table.AddColumn("Image id");
+        table.AddColumn("Image matches version");
+
+        foreach (var e in report.Entries)
+        {
+            table.AddRow(
+                Markup.Escape(e.BlueprintId),
+                Markup.Escape(e.State),
+                e.CurrentVersion?.ToString() ?? "-",
+                Markup.Escape(SystemRegisterOperatorOutput.Short(e.CurrentPublicationTxId)),
+                Markup.Escape(SystemRegisterOperatorOutput.Short(e.ImagePublicationTxId)),
+                e.ImageMatchesVersion?.ToString() ?? "-");
+        }
+
+        console.Write(table);
+        if (report.CheckedAt is { } checkedAt)
+            console.MarkupLine($"[dim]Checked at {checkedAt:O}[/]");
+
+        return ExitCodes.Success;
+    }
+}
+
+/// <summary>
+/// Publishes this node's catalogued definition of a system blueprint to the system register (Feature 197).
+/// The request carries no definition - the server loads it from the node's image catalogue.
+/// </summary>
+public class SystemRegisterPublishCommand : Command
+{
+    private static readonly JsonSerializerOptions WireOptions = new(JsonSerializerDefaults.Web);
+
+    public SystemRegisterPublishCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("publish", "Publish this node's catalogued definition of a system blueprint")
+    {
+        var blueprintArgument = new Argument<string>("blueprintId")
+        {
+            Description = "The system blueprint id to publish"
+        };
+        var dryRunOption = new Option<bool>("--dry-run")
+        {
+            Description = "Decide and report, but submit nothing"
+        };
+        var expectedCurrentOption = new Option<string?>("--expected-current")
+        {
+            Description = "Publication id you believe is current; the publish is refused (409) if it is not"
+        };
+
+        Arguments.Add(blueprintArgument);
+        Options.Add(dryRunOption);
+        Options.Add(expectedCurrentOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var console = AnsiConsole.Console;
+            var blueprintId = parseResult.GetValue(blueprintArgument)!;
+            var dryRun = parseResult.GetValue(dryRunOption);
+            var expectedCurrent = parseResult.GetValue(expectedCurrentOption);
+
+            try
+            {
+                var (profileName, token) = await SystemRegisterOperatorOutput.GetTokenAsync(authService, configService);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateRegisterServiceClientAsync(profileName);
+                var structured = OutputHelper.IsStructuredFormat(OutputHelper.GetOutputFormat(parseResult));
+                return await ExecuteAsync(client, token, blueprintId, dryRun, expectedCurrent, structured, console, ct);
+            }
+            catch (Exception ex)
+            {
+                return SystemRegisterOperatorOutput.HandleException(ex, console);
+            }
+        });
+    }
+
+    internal static async Task<int> ExecuteAsync(
+        IRegisterServiceClient client,
+        string token,
+        string blueprintId,
+        bool dryRun,
+        string? expectedCurrent,
+        bool structuredOutput,
+        IAnsiConsole console,
+        CancellationToken ct)
+    {
+        var request = new SystemBlueprintPublishRequestDto { DryRun = dryRun, ExpectedCurrent = expectedCurrent };
+        using var response = await client.PublishSystemBlueprintAsync(blueprintId, request, $"Bearer {token}");
+        var content = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+            return SystemRegisterOperatorOutput.WriteFailure(console, response.StatusCode, content);
+
+        if (structuredOutput)
+        {
+            Console.WriteLine(content);
+            return ExitCodes.Success;
+        }
+
+        var result = JsonSerializer.Deserialize<SystemBlueprintPublishResultDto>(content, WireOptions)
+                     ?? new SystemBlueprintPublishResultDto();
+
+        var grid = new Grid().AddColumn().AddColumn();
+        grid.AddRow("Blueprint", Markup.Escape(result.BlueprintId));
+        grid.AddRow("Outcome", Markup.Escape(result.Outcome));
+        grid.AddRow("State", Markup.Escape(result.State));
+        grid.AddRow("Current id", Markup.Escape(result.CurrentPublicationTxId ?? "-"));
+        grid.AddRow("Candidate id", Markup.Escape(result.CandidatePublicationTxId ?? "-"));
+        if (result.TransactionId is not null)
+            grid.AddRow("Transaction", Markup.Escape(result.TransactionId));
+
+        console.Write(new Panel(grid).Header("System blueprint publish").Border(BoxBorder.Rounded));
+        return ExitCodes.Success;
     }
 }
