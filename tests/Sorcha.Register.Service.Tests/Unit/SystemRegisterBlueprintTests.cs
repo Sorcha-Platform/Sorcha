@@ -261,6 +261,9 @@ public class SystemRegisterBlueprintTests
         result.PublishedBy.Should().Be("admin-001");
         result.IsActive.Should().BeTrue();
         result.PublicationTransactionId.Should().NotBeNullOrEmpty();
+        // The returned entry carries what was submitted, as a read of the sealed transaction would —
+        // including the signing wallet the operator success log names as the publishing node.
+        result.Metadata.Should().ContainKey("SystemWalletAddress").WhoseValue.Should().Be("system-wallet-addr");
 
         _mockValidatorClient.Verify(v => v.SubmitTransactionAsync(
             It.Is<TransactionSubmission>(s =>

@@ -135,8 +135,10 @@ public static class SystemRegisterEndpoints
                     return Results.Json(Body(SystemBlueprintPublishResultOutcome.Noop));
                 case SystemBlueprintPublishOutcome.Submitted:
                     logger.LogInformation(
-                        "SystemBlueprintPublished {BlueprintId} {PreviousTxId} {NewTxId} {Operator}",
-                        blueprintId, decision.CurrentPublicationTxId, decision.TransactionId, operatorId);
+                        "SystemBlueprintPublished {BlueprintId} {PreviousTxId} v{PreviousVersion} -> {NewTxId} "
+                        + "v{NewVersion} by {Operator} via publishing wallet {PublisherWalletAddress}",
+                        blueprintId, decision.CurrentPublicationTxId, decision.PreviousVersion,
+                        decision.TransactionId, decision.NewVersion, operatorId, decision.PublisherWalletAddress);
                     return Results.Json(
                         Body(SystemBlueprintPublishResultOutcome.Submitted), statusCode: StatusCodes.Status202Accepted);
                 case SystemBlueprintPublishOutcome.NotFound:

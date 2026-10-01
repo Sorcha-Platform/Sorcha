@@ -78,13 +78,22 @@ public static class PublishOutcomeNames
 /// <param name="CandidatePublicationTxId">The id a publish of the image's definition produces, when known.</param>
 /// <param name="TransactionId">The submitted publication's transaction id; set only for <see cref="SystemBlueprintPublishOutcome.Submitted"/>.</param>
 /// <param name="Reason">Human-readable reason, for problem details and the refusal audit.</param>
+/// <param name="PreviousVersion">Ledger-order version of the publication being superseded; set only for a submission (null when missing).</param>
+/// <param name="NewVersion">Ledger-order version of the submitted publication; set only for a submission.</param>
+/// <param name="PublisherWalletAddress">
+/// Address of the node wallet that signed the submission (its <c>SystemWalletAddress</c> metadata);
+/// set only for a submission. Identifies the publishing node for the operator log.
+/// </param>
 public sealed record PublishDecision(
     SystemBlueprintPublishOutcome Outcome,
     SystemBlueprintDriftState? DriftState,
     string? CurrentPublicationTxId,
     string? CandidatePublicationTxId,
     string? TransactionId,
-    string Reason);
+    string Reason,
+    int? PreviousVersion = null,
+    long? NewVersion = null,
+    string? PublisherWalletAddress = null);
 
 /// <summary>Operator-initiated publish of a shipped system blueprint (Feature 197, #1466).</summary>
 public interface ISystemBlueprintPublishService
@@ -226,7 +235,12 @@ public sealed class SystemBlueprintPublishService : ISystemBlueprintPublishServi
             cancellationToken);
 
         return Decide(PublishOutcomeNames.Published,
-            Result(SystemBlueprintPublishOutcome.Submitted, "Submitted.", entry.PublicationTransactionId),
+            Result(SystemBlueprintPublishOutcome.Submitted, "Submitted.", entry.PublicationTransactionId) with
+            {
+                PreviousVersion = drift.CurrentVersion,
+                NewVersion = entry.Version,
+                PublisherWalletAddress = entry.Metadata?.GetValueOrDefault("SystemWalletAddress"),
+            },
             blueprintId);
     }
 

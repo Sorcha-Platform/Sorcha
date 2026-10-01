@@ -435,7 +435,9 @@ public class SystemRegisterService
             IsActive = true,
             PublicationTransactionId = txId,
             Checksum = payloadHashHex,
-            Metadata = metadata
+            // What was submitted — the same metadata a read of the sealed transaction maps back
+            // (MapTransactionToEntry reads TrackingData), including the signing SystemWalletAddress.
+            Metadata = submissionMetadata
         };
     }
 

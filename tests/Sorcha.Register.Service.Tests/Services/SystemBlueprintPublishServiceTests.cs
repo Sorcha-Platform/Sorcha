@@ -245,6 +245,27 @@ public class SystemBlueprintPublishServiceTests
     }
 
     [Fact]
+    public async Task PublishAsync_Submitted_CarriesVersionsAndPublishingWalletForTheSuccessLog()
+    {
+        _publications = [Tx("v1-tx")];
+        _register.Setup(r => r.PublishBlueprintAsync(
+                It.IsAny<string>(), It.IsAny<JsonElement>(), It.IsAny<string>(),
+                It.IsAny<Dictionary<string, string>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SystemRegisterEntry
+            {
+                BlueprintId = Bp, PublicationTransactionId = "new-tx", Version = 2,
+                Metadata = new Dictionary<string, string> { ["SystemWalletAddress"] = "node-wallet" },
+            });
+
+        var d = await Build().PublishAsync(Bp, false, null, "op");
+
+        d.Outcome.Should().Be(SystemBlueprintPublishOutcome.Submitted);
+        d.PreviousVersion.Should().Be(1);
+        d.NewVersion.Should().Be(2);
+        d.PublisherWalletAddress.Should().Be("node-wallet");
+    }
+
+    [Fact]
     public async Task PublishAsync_Missing_Submits()
     {
         _publications = [];
