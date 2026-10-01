@@ -336,14 +336,79 @@ GET /odata/Transactions?$filter=contains(SenderWallet,'1A2B') and TimeStamp gt 2
 | GET | `/api/system-register/blueprints` | List system blueprints (paginated) |
 | GET | `/api/system-register/blueprints/{blueprintId}` | Get specific system blueprint |
 | GET | `/api/system-register/blueprints/{blueprintId}/versions/{version}` | Get specific blueprint version |
-| POST | `/api/system-register/publish` | Publish a new blueprint to the system register |
+| GET | `/api/system-register/drift` | Drift between this node's image catalogue and the system register (`RequireSystemAdmin` + `RequirePlatformAudience`) |
+| POST | `/api/system-register/blueprints/{blueprintId}/publish` | Publish this node's **catalogued** definition of a system blueprint (`RequireSystemAdmin` + `RequirePlatformAudience`) |
 
 > The **System Register** is a real register backed by the standard ledger infrastructure. It is bootstrapped on first startup using a pre-signed genesis block. Blueprint entries are stored as control-chain transactions on the well-known system register (ID: `aebf26362e079087571ac0932d4db973`).
 
-**What `version` means.** It is a count of how many times *that* blueprint has been published — the
-first publication is `1`. It is not a docket number and not a position in the register's transaction
+**What `version` means.** It is the ledger ordinal of that blueprint's publication — the first
+publication is `1`. It is not a docket number and not a position in the register's transaction
 list. A blueprint published once stays at version 1 no matter how much other activity the system
 register accumulates.
+
+**What "current" means (Feature 197).** The current publication of a system blueprint is the last
+one in **ledger order** — `(DocketNumber, then index in DocketHeader.TransactionIds)` — never
+`TimeStamp`, which is unsigned and caller-settable. `Version` is the same ordinal.
+
+#### System blueprint lifecycle (Feature 197, #1466)
+
+A node's seeded system blueprints are not refreshed by redeploying (`SeedBlueprintsIfMissingAsync`
+skips ones that exist). Upgrading is an explicit operator act, and the legacy
+`POST /api/system-register/publish` (arbitrary body, any register manager) is **removed**.
+
+**`GET /api/system-register/drift`** — `{ checkedAt, entries[] }`, one entry per blueprint in the
+node's image catalogue (`SystemBlueprintCatalog`). `state` is kebab-case:
+
+| `state` | Meaning |
+|---------|---------|
+| `in-sync` | The image's definition is the current publication |
+| `image-behind` | The image matches an older publication — publishing would roll back |
+| `image-ahead` | The image differs from every publication — publish to upgrade |
+| `missing` | Nothing published yet (Healthy on a `SyncOnly` node, which waits for peers) |
+| `unknown` | The node cannot tell (register unreadable, image lacks the template while publications exist, or a drift cycle failed) |
+
+Entries also carry `currentPublicationTxId`, `currentVersion`, `imagePublicationTxId`,
+`imageMatchesVersion`. Auth: `RequireSystemAdmin` composed with `RequirePlatformAudience`.
+
+**`POST /api/system-register/blueprints/{blueprintId}/publish`** — body `{ "dryRun": false,
+"expectedCurrent": null }` (both optional). **Catalogue-only**: the definition is loaded from the
+node's image; the request carries none. The node must hold an Active `sorcha:blueprint-publish`
+entry on the system register's validator roster.
+
+| Status | When |
+|--------|------|
+| `200` | `outcome` = `dry-run` (decided, nothing submitted) or `noop` (already current — **not** a refusal, not audited) |
+| `202` | `outcome` = `submitted`; becomes current once sealed. Body carries `transactionId`, `candidatePublicationTxId` |
+| `403` | Not SystemAdmin / not platform tier, or this node holds no publishing key (problem+json `reason`) |
+| `404` | `blueprintId` not in this node's catalogue |
+| `409` | problem+json `reason` = `rollback` (state `image-behind`) or `concurrency` (`expectedCurrent` is not current) |
+| `503` | State `unknown` — cannot prove it is not a rollback; `Retry-After` set |
+| `502` | The Validator rejected the submission (sanitized detail) |
+
+Every refusal is recorded through the #1648 refusal audit (action `system-blueprint.publish`),
+including policy-level 403s (an `IAuthorizationMiddlewareResultHandler` gated on endpoint metadata).
+`401` is not audited (no org). A success records `publishedBy` = the operator and
+`seedReason` = `operator` on the publication transaction. The publication id is computed only by
+`SystemRegisterService` (CLAUDE.md pattern 22); the endpoint reads it back.
+
+**Health + metrics.** Health check `system-blueprints` reports `Degraded` for any non-`in-sync`
+entry — never `Unhealthy`. `SystemBlueprints:DriftIntervalMinutes` (default `10`) sets the monitor
+cycle; it computes once after system-register bootstrap, then on that interval, and a failed cycle
+reports every entry `unknown`. Meter `Sorcha.SystemBlueprints`:
+`sorcha_system_blueprint_drift{blueprint,state}` and
+`sorcha_system_blueprint_publish_total{outcome}` — `published`, `noop`, `dry_run`,
+`refused_rollback`, `refused_concurrency`, `refused_no_key`, `refused_unknown`, `refused_auth`,
+`rejected`, `not_found`.
+
+**Governance pin stamping.** Governance **proposals** and Owner-override (propose-and-enact)
+transactions are stamped with `ControlTransactionPayload.governanceDefinitionTxId` — the current
+SSR publication id of `register-governance-v1`. The field is omit-when-null, so genesis and
+enactment bytes are unchanged. If the current publication cannot be read the raise returns `503`
+rather than submitting an unpinned proposal. The proposal detail view adds `governingDefinitionTxId`,
+`governingDefinitionVersion` and `governingDefinitionLegacy`. Validator side:
+[Validator README](../Sorcha.Validator.Service/README.md#governance-pinning-feature-197).
+
+Live-testing a changed system blueprint now needs an image build — there is no raw-body publish.
 
 Only transactions that *publish* a blueprint are indexed. Governance transactions carry
 `BlueprintId = register-governance-v1` too — a proposal, an approval and an enactment are all action
