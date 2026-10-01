@@ -231,7 +231,7 @@ public class SystemRegisterService
     /// <param name="blueprintId">Blueprint identifier</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Publications in ledger order; the last is the current one</returns>
-    public async Task<IReadOnlyList<TransactionModel>> GetPublicationsAsync(
+    public virtual async Task<IReadOnlyList<TransactionModel>> GetPublicationsAsync(
         string blueprintId, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(blueprintId);
