@@ -56,8 +56,17 @@ public sealed class GovernanceProposalViewDefinitionTests
         ProposedAt = DateTimeOffset.UnixEpoch,
     };
 
-    private GovernanceProposalViewService Service(string? pin)
+    private GovernanceProposalViewService Service(string? pin, bool misCasePinProperty = false)
     {
+        var payloadJson = JsonSerializer.Serialize(new ControlTransactionPayload
+        {
+            Version = 1,
+            Operation = Operation(),
+            GovernanceDefinitionTxId = pin,
+        });
+        if (misCasePinProperty)
+            payloadJson = payloadJson.Replace("\"governanceDefinitionTxId\"", "\"GovernanceDefinitionTxId\"");
+
         var tx = new TransactionModel
         {
             TxId = ProposalTx,
@@ -70,13 +79,7 @@ public sealed class GovernanceProposalViewDefinitionTests
             [
                 new PayloadModel
                 {
-                    Data = Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(
-                        new ControlTransactionPayload
-                        {
-                            Version = 1,
-                            Operation = Operation(),
-                            GovernanceDefinitionTxId = pin,
-                        }))
+                    Data = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(payloadJson))
                 }
             ],
         };
@@ -138,6 +141,18 @@ public sealed class GovernanceProposalViewDefinitionTests
 
         view!.GoverningDefinitionTxId.Should().BeNull();
         view.GoverningDefinitionVersion.Should().BeNull();
+        view.GoverningDefinitionLegacy.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetAsync_PinUnderWrongCasePropertyName_IsLegacyLikeTheValidatorSeesIt()
+    {
+        // The Validator decodes the pin case-sensitively, so "GovernanceDefinitionTxId" is no pin to it
+        // and the proposal was judged as legacy. The audit view must report the same.
+        var view = await Service(PinV2, misCasePinProperty: true).GetAsync(RegisterId, ProposalTx);
+
+        view.Should().NotBeNull();
+        view!.GoverningDefinitionTxId.Should().BeNull();
         view.GoverningDefinitionLegacy.Should().BeTrue();
     }
 

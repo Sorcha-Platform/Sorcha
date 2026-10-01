@@ -218,9 +218,12 @@ public sealed class GovernanceProposalReader : IGovernanceProposalReader
                 ? Convert.FromBase64String(payloadData)
                 : System.Buffers.Text.Base64Url.DecodeFromChars(payloadData);
 
+            // Read exactly as the Validator reads it — case-SENSITIVE, the payload's own canonical
+            // options. A case-insensitive read would show a proposal as pinned (to a mis-cased
+            // "GovernanceDefinitionTxId") that the Validator judged as legacy: the audit view and the
+            // rule that actually governed the proposal would disagree about the same sealed bytes.
             return System.Text.Json.JsonSerializer.Deserialize<ControlTransactionPayload>(
-                payloadBytes,
-                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                payloadBytes, ControlTransactionPayload.CanonicalJsonOptions);
         }
         catch (Exception ex) when (ex is System.Text.Json.JsonException or FormatException)
         {
