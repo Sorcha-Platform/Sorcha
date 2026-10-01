@@ -163,22 +163,23 @@ public class SystemRegisterService
     {
         _logger.LogDebug("GetAllBlueprintsAsync: querying system register ledger");
 
-        var transactions = await GetBlueprintTransactionsAsync(cancellationToken);
+        var transactions = (await GetBlueprintTransactionsAsync(cancellationToken))
+            .Where(t => !string.IsNullOrEmpty(GetBlueprintIdFromTransaction(t)))
+            .ToList();
         var entries = new List<SystemRegisterEntry>();
 
         // Version counts publications OF THE SAME BLUEPRINT, not position in the combined list.
         // A shared running counter made a blueprint's version depend on how many times some OTHER
         // blueprint had been published, which is why register-governance-v1 was reported as v2 and
         // then v5 on n1 without anyone ever republishing it (#1515).
+        //
+        // Order is the ledger's (docket, then position in the docket), ordered once here; the
+        // per-blueprint ordinal is then read off that single list (Feature 197).
         var publicationCounts = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var tx in transactions.OrderBy(t => t.TimeStamp))
+        foreach (var tx in await OrderByLedgerAsync(transactions, cancellationToken))
         {
-            var blueprintId = GetBlueprintIdFromTransaction(tx);
-            if (string.IsNullOrEmpty(blueprintId))
-            {
-                continue;
-            }
+            var blueprintId = GetBlueprintIdFromTransaction(tx)!;
 
             publicationCounts.TryGetValue(blueprintId, out var version);
             publicationCounts[blueprintId] = ++version;
@@ -205,13 +206,10 @@ public class SystemRegisterService
         ArgumentException.ThrowIfNullOrWhiteSpace(blueprintId);
         _logger.LogDebug("GetBlueprintAsync({BlueprintId}): querying system register ledger", blueprintId);
 
-        var transactions = await GetBlueprintTransactionsAsync(cancellationToken);
+        var ordered = await GetPublicationsAsync(blueprintId, cancellationToken);
 
-        // Find the transaction matching this blueprint ID
-        var matchingTx = transactions
-            .Where(t => GetBlueprintIdFromTransaction(t) == blueprintId)
-            .OrderByDescending(t => t.TimeStamp)
-            .FirstOrDefault();
+        // The current publication is the newest by ledger position, never by TimeStamp (Feature 197).
+        var matchingTx = ordered.LastOrDefault();
 
         if (matchingTx is null)
         {
@@ -219,12 +217,29 @@ public class SystemRegisterService
             return null;
         }
 
-        // Version = how many times THIS blueprint has been published, up to and including the match.
-        var version = transactions.Count(t =>
-            GetBlueprintIdFromTransaction(t) == blueprintId
-            && t.TimeStamp <= matchingTx.TimeStamp);
+        // Version = the current publication's 1-based ordinal among THIS blueprint's publications.
+        var version = ordered.Count;
 
         return MapTransactionToEntry(matchingTx, version);
+    }
+
+    /// <summary>
+    /// Gets every placeable publication of one blueprint, oldest to newest in ledger order
+    /// (docket number, then position within the docket). Publications that cannot be placed in a
+    /// sealed docket are excluded and logged.
+    /// </summary>
+    /// <param name="blueprintId">Blueprint identifier</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Publications in ledger order; the last is the current one</returns>
+    public async Task<IReadOnlyList<TransactionModel>> GetPublicationsAsync(
+        string blueprintId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(blueprintId);
+
+        var transactions = await GetBlueprintTransactionsAsync(cancellationToken);
+        return await OrderByLedgerAsync(
+            transactions.Where(t => GetBlueprintIdFromTransaction(t) == blueprintId),
+            cancellationToken);
     }
 
     /// <summary>
@@ -396,13 +411,20 @@ public class SystemRegisterService
         // validator seals it, which is not this method's business to know. So count what is there and
         // add this publication only if it is not among them — correct under either timing, rather
         // than correct under the one that happens to hold today.
-        var publications = await GetBlueprintTransactionsAsync(cancellationToken);
-        var ofThisBlueprint = publications
-            .Where(t => GetBlueprintIdFromTransaction(t) == blueprintId)
-            .ToList();
-        var alreadyVisible = ofThisBlueprint
-            .Any(t => string.Equals(t.TxId, txId, StringComparison.OrdinalIgnoreCase));
-        var version = ofThisBlueprint.Count + (alreadyVisible ? 0 : 1);
+        var ofThisBlueprint = await GetPublicationsAsync(blueprintId, cancellationToken);
+        var position = -1;
+        for (var i = 0; i < ofThisBlueprint.Count; i++)
+        {
+            if (string.Equals(ofThisBlueprint[i].TxId, txId, StringComparison.OrdinalIgnoreCase))
+            {
+                position = i;
+                break;
+            }
+        }
+
+        // Already sealed and visible: its own ledger ordinal. Not yet placeable (unsealed, or not
+        // yet visible): it will be the newest, so one past what is placed (Feature 197).
+        var version = position >= 0 ? position + 1 : ofThisBlueprint.Count + 1;
 
         return new SystemRegisterEntry
         {
@@ -472,7 +494,9 @@ public class SystemRegisterService
     }
 
     /// <summary>
-    /// Queries the transactions on the system register that PUBLISH a blueprint.
+    /// Queries the transactions on the system register that PUBLISH a blueprint. The result is
+    /// de-duplicated by transaction id and deliberately NOT ordered: callers order by ledger
+    /// position via <see cref="OrderByLedgerAsync"/>, never by <c>TimeStamp</c>.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -528,8 +552,29 @@ public class SystemRegisterService
 
         return byPublish.Concat(byControl)
             .Where(BlueprintPublicationFilter.IsPublication)
-            .OrderByDescending(t => t.TimeStamp)
+            .DistinctBy(t => t.TxId, StringComparer.Ordinal)
             .ToList();
+    }
+
+    /// <summary>
+    /// Orders publications by ledger position (Feature 197), resolving each distinct docket once.
+    /// Callers order once per call path and derive current/version from the single result, so an
+    /// excluded publication is logged once, not once per derived value.
+    /// </summary>
+    private async Task<IReadOnlyList<TransactionModel>> OrderByLedgerAsync(
+        IEnumerable<TransactionModel> publications, CancellationToken cancellationToken)
+    {
+        var unique = publications.DistinctBy(t => t.TxId, StringComparer.Ordinal).ToList();
+
+        var dockets = new Dictionary<ulong, DocketHeader?>();
+        foreach (var number in unique.Where(t => t.DocketNumber.HasValue).Select(t => t.DocketNumber!.Value).Distinct())
+        {
+            dockets[number] = await _registerManager.GetDocketAsync(
+                SystemRegisterConstants.SystemRegisterId, number, cancellationToken);
+        }
+
+        return SystemBlueprintCurrency.OrderByLedger(
+            unique, n => dockets.GetValueOrDefault(n), _logger);
     }
 
     /// <summary>

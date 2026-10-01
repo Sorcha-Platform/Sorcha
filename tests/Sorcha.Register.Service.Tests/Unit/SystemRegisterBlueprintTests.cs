@@ -443,6 +443,7 @@ public class SystemRegisterBlueprintTests
             RegisterId = SystemRegisterConstants.SystemRegisterId,
             SenderWallet = "system",
             TimeStamp = timestamp,
+            DocketNumber = (ulong)(timestamp.Ticks / TimeSpan.TicksPerSecond), // sealed (Feature 197: currency is ledger order)
             MetaData = new TransactionMetaData
             {
                 RegisterId = SystemRegisterConstants.SystemRegisterId,
