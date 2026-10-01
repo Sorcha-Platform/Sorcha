@@ -158,9 +158,9 @@ public class GovernanceDefinitionPinTests
     }
 
     [Fact]
-    public void Resolve_OwnPinWithEnactsProposalId_PinnedNotRaise()
+    public void Resolve_OwnPinWithEnactsProposalId_Unresolvable()
     {
         GovernanceDefinitionPin.Resolve(Enact, Payload(PinA, "p1"), Payload(PinB), true)
-            .Should().Be(new PinResolution.Pinned(PinA, false));
+            .Should().Be(new PinResolution.Unresolvable("an enactment must not carry its own pin"));
     }
 }

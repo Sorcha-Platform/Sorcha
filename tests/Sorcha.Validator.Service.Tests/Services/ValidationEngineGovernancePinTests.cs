@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Diagnostics.Metrics;
+using System.Buffers.Text;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -76,11 +77,17 @@ public class ValidationEngineGovernancePinTests
             SystemRegisterConstants.SystemRegisterId, GovernanceBlueprint.BlueprintId, json);
     }
 
-    private static TransactionModel Tx(string registerId, string txId, string payloadJson) => new()
+    private static TransactionModel Tx(
+        string registerId, string txId, string payloadJson,
+        string? blueprintId = null, uint? actionId = null) => new()
     {
         RegisterId = registerId,
         TxId = txId,
-        Payloads = [new PayloadModel { Data = Convert.ToBase64String(Encoding.UTF8.GetBytes(payloadJson)) }],
+        MetaData = blueprintId is null ? null : new TransactionMetaData
+        {
+            RegisterId = registerId, BlueprintId = blueprintId, ActionId = actionId,
+        },
+        Payloads = [new PayloadModel { Data = Base64Url.EncodeToString(Encoding.UTF8.GetBytes(payloadJson)) }],
     };
 
     private string ServeDefinitions()
@@ -105,7 +112,8 @@ public class ValidationEngineGovernancePinTests
         var payload = new JsonObject { ["version"] = 1, ["roster"] = null, ["enactsProposalId"] = null };
         if (pin is not null) payload["governanceDefinitionTxId"] = pin;
         _registerClient.Setup(r => r.GetTransactionAsync(Register, ProposalTxId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Tx(Register, ProposalTxId, payload.ToJsonString()));
+            .ReturnsAsync(Tx(Register, ProposalTxId, payload.ToJsonString(),
+                GovernanceBlueprint.BlueprintId, (uint)GovernanceBlueprint.ProposeChangeActionId));
     }
 
     private ValidationEngine CreateEngine()
@@ -229,7 +237,9 @@ public class ValidationEngineGovernancePinTests
         using var listener = new MeterListener();
         listener.InstrumentPublished = (inst, l) =>
         {
-            if (inst.Name == "sorcha_governance_definition_pin_fallback") l.EnableMeasurementEvents(inst);
+            if (inst.Meter.Name == FederationValidatorMetrics.MeterName
+                && inst.Name == "sorcha_governance_definition_pin_fallback")
+                l.EnableMeasurementEvents(inst);
         };
         listener.SetMeasurementEventCallback<long>((_, _, _, _) => Interlocked.Increment(ref count));
         listener.Start();
@@ -277,5 +287,105 @@ public class ValidationEngineGovernancePinTests
         var error = result.Errors.Should().ContainSingle(e => e.Code == "VAL_BP_VERSION_001").Subject;
         error.Field.Should().Be("payload.governanceDefinitionTxId");
         result.Errors.Should().NotContain(e => e.Code.StartsWith("VAL_SCHEMA_"));
+    }
+
+    private static Transaction Enactment(string payloadJson) => new()
+    {
+        TransactionId = "enact-tx",
+        RegisterId = Register,
+        BlueprintId = GovernanceBlueprint.BlueprintId,
+        ActionId = GovernanceBlueprint.RecordControlTransactionActionId.ToString(),
+        PreviousTransactionId = "prev",
+        PayloadHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        CreatedAt = DateTimeOffset.UtcNow,
+        Payload = JsonSerializer.Deserialize<JsonElement>(payloadJson),
+        Signatures =
+        [
+            new RegisterSignature
+            {
+                PublicKey = new byte[32], SignatureValue = new byte[64],
+                Algorithm = "ED25519", SignedAt = DateTimeOffset.UtcNow,
+            },
+        ],
+    };
+
+    private static string EnactPayload(string? ownPin = null) =>
+        new JsonObject
+        {
+            ["version"] = 1,
+            ["roster"] = null,
+            ["enactsProposalId"] = ProposalTxId,
+            ["governanceDefinitionTxId"] = ownPin,
+        }.ToJsonString();
+
+    [Fact]
+    public async Task ValidateSchema_ApprovalReferencesNonProposalTransaction_Refused()
+    {
+        // A same-register tx that is NOT a governance proposal, whose payload even carries a
+        // genuine older pin: it must not be read as a (legacy or pinned) proposal.
+        var v4Id = ServeDefinitions();
+        var payload = new JsonObject { ["version"] = 1, ["governanceDefinitionTxId"] = v4Id }.ToJsonString();
+        _registerClient.Setup(r => r.GetTransactionAsync(Register, ProposalTxId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Tx(Register, ProposalTxId, payload, "some-other-blueprint", 1));
+
+        var result = await CreateEngine().ValidateSchemaAsync(Approval());
+
+        result.Errors.Should().Contain(e => e.Code == "VAL_BP_VERSION_001");
+    }
+
+    [Fact]
+    public async Task ValidateSchema_ApprovalNamingNoProposal_Refused()
+    {
+        ServeDefinitions();
+        var approval = Approval();
+        approval = new Transaction
+        {
+            TransactionId = approval.TransactionId, RegisterId = approval.RegisterId,
+            BlueprintId = approval.BlueprintId, ActionId = approval.ActionId,
+            PreviousTransactionId = null, PayloadHash = approval.PayloadHash,
+            CreatedAt = approval.CreatedAt, Payload = approval.Payload, Signatures = approval.Signatures,
+        };
+
+        var result = await CreateEngine().ValidateSchemaAsync(approval);
+
+        result.Errors.Should().Contain(e => e.Code == "VAL_BP_VERSION_001");
+    }
+
+    [Fact]
+    public async Task ValidateSchema_SelfPinnedEnactment_Refused()
+    {
+        var v4Id = ServeDefinitions();
+        ServeProposal(v4Id);
+
+        var result = await CreateEngine().ValidateSchemaAsync(Enactment(EnactPayload(ownPin: v4Id)));
+
+        result.Errors.Should().Contain(e => e.Code == "VAL_BP_VERSION_001");
+    }
+
+    [Fact]
+    public async Task ValidateSchema_EnactmentWithoutOwnPin_JudgedByItsProposalsPin()
+    {
+        var v4Id = ServeDefinitions();
+        ServeProposal(v4Id);
+        (await CreateEngine().ValidateSchemaAsync(Enactment(EnactPayload()))).IsValid.Should().BeTrue();
+
+        // Proposal pinned to a definition this node cannot produce: refused, NOT judged by latest.
+        ServeProposal(new string('b', 64));
+        var result = await CreateEngine().ValidateSchemaAsync(Enactment(EnactPayload()));
+        result.Errors.Should().Contain(e => e.Code == "VAL_BP_VERSION_001"
+            && e.Field == "payload.governanceDefinitionTxId");
+    }
+
+    [Fact]
+    public async Task ValidateSchema_CancellationDuringProposalFetch_NotMappedToGovernanceRefusal()
+    {
+        ServeDefinitions();
+        using var cts = new CancellationTokenSource();
+        _registerClient.Setup(r => r.GetTransactionAsync(Register, ProposalTxId, It.IsAny<CancellationToken>()))
+            .Returns(() => { cts.Cancel(); throw new OperationCanceledException(cts.Token); });
+
+        var result = await CreateEngine().ValidateSchemaAsync(Approval(), cts.Token);
+
+        result.Errors.Should().NotContain(e => e.Code == "VAL_BP_VERSION_001");
     }
 }

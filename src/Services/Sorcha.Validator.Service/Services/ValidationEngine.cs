@@ -2616,7 +2616,7 @@ public class ValidationEngine : IValidationEngine
         }
 
         string? proposalId = null;
-        if (own?.GovernanceDefinitionTxId is null)
+        if (own?.GovernanceDefinitionTxId is null || own.EnactsProposalId is not null)
         {
             proposalId = actionId == GovernanceBlueprint.CollectQuorumActionId
                 ? transaction.PreviousTransactionId
@@ -2643,7 +2643,18 @@ public class ValidationEngine : IValidationEngine
         try
         {
             var tx = await _registerClient.GetTransactionAsync(registerId, proposalId, ct);
-            var data = tx?.Payloads?.FirstOrDefault()?.Data;
+
+            // The reference must name a governance PROPOSAL. Anything else (an unrelated tx, an
+            // approval) would deserialize to an all-null payload and read as "legacy, unpinned",
+            // failing open to the latest definition.
+            if (tx?.MetaData is not { } meta
+                || !string.Equals(meta.BlueprintId, GovernanceBlueprint.BlueprintId, StringComparison.OrdinalIgnoreCase)
+                || meta.ActionId != (uint)GovernanceBlueprint.ProposeChangeActionId)
+            {
+                return (null, false);
+            }
+
+            var data = tx.Payloads?.FirstOrDefault()?.Data;
             if (string.IsNullOrEmpty(data))
                 return (null, false);
 
@@ -2660,7 +2671,7 @@ public class ValidationEngine : IValidationEngine
             var payload = JsonSerializer.Deserialize<ControlTransactionPayload>(json);
             return (payload, payload is not null);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!(ex is OperationCanceledException && ct.IsCancellationRequested))
         {
             _logger.LogWarning(ex,
                 "Could not read governance proposal {ProposalId} on register {RegisterId}",

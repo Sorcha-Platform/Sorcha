@@ -34,10 +34,10 @@ public abstract record PinResolution
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Own pin first.</b> An Owner-override propose-and-enact is one transaction that carries its own pin,
+/// <b>Own pin first, on a raise only.</b> An enactment (non-null <c>EnactsProposalId</c>) that carries a pin is refused: it is judged by its proposal's pin. An Owner-override propose-and-enact is one transaction that carries its own pin,
 /// a roster and a null <c>EnactsProposalId</c>. It references no earlier proposal, so consulting a
-/// reference first would either find nothing or find an unrelated one. A transaction's own signed pin is
-/// the strongest evidence available and always wins.
+/// reference first would either find nothing or find an unrelated one. On a raise, the transaction's own signed pin
+/// is the strongest evidence available and wins.
 /// </para>
 /// <para>
 /// <b>Unreadable is never Legacy.</b> "Legacy" means the referenced proposal was read and carries no pin.
@@ -65,13 +65,19 @@ public static class GovernanceDefinitionPin
         // absent would let a stripped pin degrade to Legacy (the current definition).
         if (ownPayload?.GovernanceDefinitionTxId is { } ownPin)
         {
+            // An enactment is judged by the proposal it enacts. A pin of its own would let it choose
+            // its own governing definition and escape the one its proposal was raised under.
+            if (ownPayload.EnactsProposalId is not null)
+            {
+                return new PinResolution.Unresolvable("an enactment must not carry its own pin");
+            }
+
             if (string.IsNullOrWhiteSpace(ownPin))
             {
                 return new PinResolution.Unresolvable("malformed pin");
             }
 
-            return new PinResolution.Pinned(
-                ownPin, IsRaise: ownPayload.EnactsProposalId is null);
+            return new PinResolution.Pinned(ownPin, IsRaise: true);
         }
 
         if (actionId == GovernanceBlueprint.CollectQuorumActionId)
