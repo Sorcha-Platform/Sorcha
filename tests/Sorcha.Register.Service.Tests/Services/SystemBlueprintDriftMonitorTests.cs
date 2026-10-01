@@ -5,6 +5,7 @@ using System.Diagnostics.Metrics;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Sorcha.Register.Models;
 using Sorcha.Register.Service.Services;
 using Sorcha.ServiceDefaults;
 using Xunit;
@@ -146,6 +147,46 @@ public class SystemBlueprintDriftMonitorTests
         seen.Should().OnlyContain(m => m.Value == 1);
         seen.Should().Contain(m => (string)m.Tags["blueprint"]! == "a" && (string)m.Tags["state"]! == "inSync");
         seen.Should().Contain(m => (string)m.Tags["blueprint"]! == "b" && (string)m.Tags["state"]! == "imageBehind");
+    }
+
+    private sealed class ThrowOnceReporter(SystemBlueprintDriftEntry good) : ISystemBlueprintDriftReporter
+    {
+        private int _calls;
+
+        public Task<IReadOnlyList<SystemBlueprintDriftEntry>> ComputeAsync(CancellationToken cancellationToken = default)
+            => Interlocked.Increment(ref _calls) == 1
+                ? Task.FromResult<IReadOnlyList<SystemBlueprintDriftEntry>>([good])
+                : throw new InvalidOperationException("register unreachable");
+    }
+
+    [Fact]
+    public async Task RunOnceAsync_ReporterThrows_ReportsAllUnknownNotStaleInSync()
+    {
+        var logger = new ListLogger();
+        using var monitor = Create(
+            new ThrowOnceReporter(Entry(SystemBlueprintCatalog.Ids[0], SystemBlueprintDriftState.InSync)), logger);
+        await monitor.RunOnceAsync(CancellationToken.None);
+        logger.Entries.Clear();
+
+        await monitor.RunOnceAsync(CancellationToken.None);
+
+        var entries = ((ISystemBlueprintDriftSnapshot)monitor).Entries!;
+        entries.Select(e => e.BlueprintId).Should().Equal(SystemBlueprintCatalog.Ids);
+        entries.Should().OnlyContain(e => e.State == SystemBlueprintDriftState.Unknown
+            && e.CurrentPublicationTxId == null && e.CurrentVersion == null && e.ImagePublicationTxId == null);
+        logger.Entries.Count(l => l.Level == LogLevel.Warning).Should().Be(SystemBlueprintCatalog.Ids.Count);
+
+        var states = new List<string>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (inst, l) =>
+        {
+            if (inst.Meter.Name == SystemBlueprintMetrics.MeterName) l.EnableMeasurementEvents(inst);
+        };
+        listener.SetMeasurementEventCallback<int>((inst, value, tags, _) =>
+            states.Add((string)tags.ToArray().Single(t => t.Key == "state").Value!));
+        listener.Start();
+        listener.RecordObservableInstruments();
+        states.Should().HaveCount(SystemBlueprintCatalog.Ids.Count).And.OnlyContain(x => x == "unknown");
     }
 
     [Fact]

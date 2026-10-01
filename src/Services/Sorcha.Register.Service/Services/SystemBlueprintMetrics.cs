@@ -4,8 +4,8 @@
 namespace Sorcha.Register.Service.Services;
 
 /// <summary>
-/// Telemetry names for the system blueprint lifecycle (Feature 197, #1466). The instruments are
-/// added by later tasks; the meter name is fixed here so the OpenTelemetry export list in
+/// Telemetry names for the system blueprint lifecycle (Feature 197, #1466). The drift gauge is registered by
+/// <see cref="SystemBlueprintDriftMonitor"/>; the meter name is fixed here so the OpenTelemetry export list in
 /// <c>Sorcha.ServiceDefaults</c> and the instruments cannot drift apart.
 /// </summary>
 public static class SystemBlueprintMetrics

@@ -4,6 +4,7 @@
 using System.Diagnostics.Metrics;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using Sorcha.Register.Models;
 
 namespace Sorcha.Register.Service.Services;
 
@@ -118,8 +119,13 @@ public sealed class SystemBlueprintDriftMonitor : BackgroundService, ISystemBlue
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "System blueprint drift computation failed; keeping the previous report");
-            return;
+            // Never keep a previous (possibly InSync) report: an unreadable register is Unknown.
+            _logger.LogError(ex, "System blueprint drift computation failed; reporting every blueprint as unknown");
+            var checkedAt = _time.GetUtcNow();
+            entries = SystemBlueprintCatalog.Ids
+                .Select(id => new SystemBlueprintDriftEntry(
+                    id, SystemBlueprintDriftState.Unknown, null, null, null, null, checkedAt))
+                .ToList();
         }
 
         _entries = entries;
