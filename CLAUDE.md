@@ -828,7 +828,11 @@ sorcha system-register publish register-governance-v1 --dry-run --expected-curre
 - **Trap — an unsigned label must never select the path.** Governance steps are chosen by
   `BlueprintId` + action 1/2/4, not by `Metadata["transactionType"]`; the sole carve-out is a
   `BlueprintPublish` exemption the resolver *granted* from proved authority (pattern 23). Reading
-  the label there would let a forged `BlueprintPublish` switch pin enforcement off.
+  the label there would let a forged `BlueprintPublish` switch pin enforcement off. ⚠ `BlueprintId`
+  and `ActionId` are unsigned too (pattern 23), so this closes the forged-label route only; it does not
+  prove a transaction relabelled AWAY from the governance blueprint is harmless — rights enforcement
+  still treats `Metadata["Type"]=="Control"` as governance whatever its `BlueprintId`. The remaining
+  label paths (including the Participant/Rejection early exits) are tracked in #1777.
 - **Trap — health lags `/drift`.** `/drift` computes on demand; the `system-blueprints` health check
   and the drift gauge read the monitor snapshot (default 10 min). Degraded right after a publish is
   the snapshot, not a failed publish — check `/drift`.
