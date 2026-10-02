@@ -1129,6 +1129,15 @@ Uses JSON-e expressions (`$eval`, `$if`, `$flattenDeep`) in the `template` field
 Republishing a blueprint to a register it is already on is accepted and creates a **new definition
 alongside the old one**. It does **not** change any instance that is already running.
 
+> **System blueprints are different (Feature 197).** The four catalogue ids in
+> `blueprints/templates/` (`register-creation-v1`, `register-governance-v1`, `create-organisation-v1`,
+> `join-private-register-v1`) live on the system register and are **not** published through
+> `POST /api/blueprints/{id}/publish`. They ship in the image and change only when a SystemAdmin runs
+> `sorcha system-register publish <id>` on the node holding the SSR publishing key (check
+> `sorcha system-register drift` first). Editing one therefore needs an image build, and an open
+> governance proposal keeps the `register-governance-v1` definition it was raised under. See CLAUDE.md
+> pattern 27.
+
 - **An in-progress instance runs the definition it started on, for its whole life.** A participant
   is never presented with an action, schema or routing rule that did not exist when they joined.
   This is a hard platform rule, not a per-upgrade choice, and migrating a running instance forward

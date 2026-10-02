@@ -2272,7 +2272,10 @@ GET /api/system-register/drift
 **Authorization:** `RequireSystemAdmin` + `RequirePlatformAudience`.
 
 Computed at request time (not served from the background monitor's snapshot), so it reflects a
-publish or deploy made moments earlier.
+publish or deploy made moments earlier. The `system-blueprints` health check and the
+`sorcha_system_blueprint_drift` gauge **do** read the snapshot (`SystemBlueprints:DriftIntervalMinutes`,
+default 10), so health can still report `Degraded` for up to one cycle after a publish that `/drift`
+already shows as `in-sync`.
 
 **Response:** `200 OK`
 ```json
@@ -2445,6 +2448,7 @@ enactment changes the roster.
 | GET | `/roster` | `CanReadTransactions` | Current roster, reconstructed from the control chain |
 | GET | `/history` | `CanReadTransactions` | Paginated control transactions |
 | GET | `/proposals` | `CanReadTransactions` | Governance operations recorded on the register |
+| GET | `/proposals/{proposalId}` | `CanReadTransactions` | One proposal with its approvals and governing definition |
 | POST | `/propose` | `CanSubmitTransactions` | Raise an operation |
 | GET | `/proposals/{proposalId}/signing-request` | `CanReadTransactions` | What an approver must sign |
 | POST | `/proposals/{proposalId}/approve` | `CanSubmitTransactions` | Submit a detached approval |
@@ -2482,6 +2486,16 @@ Two outcomes, and they are not interchangeable:
 
 A pending proposal deliberately carries no roster, so it does not become the roster head — otherwise
 its own `RosterSnapshotId` would stop matching and it would invalidate itself the instant it sealed.
+
+**Definition pin (Feature 197).** Every raise (pending proposal or Owner override) is stamped with
+`governanceDefinitionTxId` — the system register's current publication id of `register-governance-v1`
+— inside the signed control payload. If that cannot be read, `/propose` returns **`503`** and submits
+nothing; it never raises an unpinned proposal. The Validator judges the proposal, its approvals and its
+enactment under that pinned definition even after a newer one is published, and refuses a raise
+pinned to a superseded definition with `VAL_GOV_DEF_001`. `GET /proposals/{proposalId}` reports
+`governingDefinitionTxId`, `governingDefinitionVersion` (ledger ordinal) and
+`governingDefinitionLegacy` (`true` for a proposal that predates pinning); the `/proposals` list
+carries the pin and the legacy flag but not the version.
 
 ### GET `/proposals/{proposalId}/signing-request?approverDid=…`
 
