@@ -819,7 +819,8 @@ sorcha system-register publish register-governance-v1 --dry-run --expected-curre
   own pin; an approval uses the proposal named by its **signed** `proposalId` (a differing envelope
   `PreviousTransactionId` is refused); an enactment uses `EnactsProposalId`'s proposal. An approval or
   enactment carrying its own pin, a blank pin, or an unreadable proposal is refused
-  (`VAL_BP_VERSION_001`). A raise pinned to a superseded definition is `VAL_GOV_DEF_001`; approvals
+  (`VAL_BP_VERSION_001`). A raise pinned to a superseded definition is `VAL_GOV_DEF_001` (a raise whose
+  "current" cannot be read is refused too, with `VAL_BP_VERSION_001` — never waved through); approvals
   and enactments are never held to "current". A legacy (unpinned) proposal runs under latest and is
   counted (`sorcha_governance_definition_pin_fallback`).
 - **Governance pins resolve from the SSR only** (cache → SSR) — never the transaction's own register
