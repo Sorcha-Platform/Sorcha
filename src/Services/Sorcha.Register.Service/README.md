@@ -387,7 +387,7 @@ entry on the system register's validator roster.
 
 Audited through the #1648 refusal audit (action `system-blueprint.publish`): policy 403s (an
 `IAuthorizationMiddlewareResultHandler` gated on endpoint metadata), no-key 403, both 409s, 503 and
-502. **Not** audited: `401` (no org), `404` (an unknown id is not a refused publish) and the `200`
+502. **Not** audited: `401` (unauthenticated, or a token with no operator id), `404` (an unknown id is not a refused publish) and the `200`
 no-op. A success records `publishedBy` = the operator and
 `seedReason` = `operator` on the publication transaction. The publication id is computed only by
 `SystemRegisterService` (CLAUDE.md pattern 22); the endpoint reads it back.
@@ -398,7 +398,9 @@ entry — never `Unhealthy` — except `missing` on a `SyncOnly` node or before 
 cycle; it computes once after system-register bootstrap, then on that interval, and a failed cycle
 reports every entry `unknown`. The monitor snapshot feeds only the health check and the gauge;
 `GET /api/system-register/drift` always computes at request time, so it reflects a publish or deploy
-immediately. Meter `Sorcha.SystemBlueprints`:
+immediately. The two can therefore disagree for up to one monitor cycle: right after a
+publish the health check may still report `Degraded` while `/drift` already reads `in-sync`. Health
+`data` values use the same kebab-case state names as `/drift`. Meter `Sorcha.SystemBlueprints`:
 `sorcha_system_blueprint_drift{blueprint,state}` and
 `sorcha_system_blueprint_publish_total{outcome}` — `published`, `noop`, `dry_run`,
 `refused_rollback`, `refused_concurrency`, `refused_no_key`, `refused_unknown`, `refused_auth`,
@@ -1057,7 +1059,7 @@ genesis** and may only ever be promoted **DevMode → Normal**, never the revers
 transactions, used by both `POST /api/registers/{id}/disable-dev-mode` and
 `POST /api/registers/{id}/governance/crypto-policy`. It submits via
 `IValidatorServiceClient.SubmitTransactionAsync`, exactly like genesis ingestion, register creation
-and system-register publish.
+and system-blueprint publish.
 
 **Never write a control transaction with `TransactionManager.StoreTransactionAsync`.** That is a
 direct store write, and it is the shape of a bug that shipped and stayed invisible:

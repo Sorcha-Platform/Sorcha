@@ -91,6 +91,25 @@ curl http://localhost/validator/health
 curl http://localhost/peer/health
 ```
 
+#### Step 6a: Check System Blueprint Drift
+
+An upgraded image can ship a newer definition of a system blueprint (`register-creation-v1`,
+`register-governance-v1`, `create-organisation-v1`, `join-private-register-v1`). Upgrading does
+**not** republish it — the system register keeps its current publication until an operator publishes.
+
+```bash
+sorcha system-register drift                       # per blueprint: in-sync | image-behind | image-ahead | missing | unknown
+sorcha system-register publish <blueprintId> --dry-run
+sorcha system-register publish <blueprintId>       # on the node holding the system register's publishing key
+```
+
+Requires a SystemAdmin on a platform-tier session, run against the node that holds the system
+register's `sorcha:blueprint-publish` roster key. The definition always comes from that node's
+image — there is no way to publish an arbitrary body. `image-behind` is refused (it would roll back).
+The register's `system-blueprints` health check may stay `Degraded` for up to 10 minutes after a
+publish; `drift` is computed live and is authoritative. Full reference:
+[Register Service README](../../src/Services/Sorcha.Register.Service/README.md#system-blueprint-lifecycle-feature-197-1466).
+
 #### Step 7: Smoke Test
 
 - Log in with admin credentials

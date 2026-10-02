@@ -3017,7 +3017,7 @@ property added to the type is carried forward on the day it is added. Guarded by
 `ApplyOperationPreservesRegisterConfigurationTests`, which asserts **by reflection**. Registers that
 already enacted a change keep the truncated roster; the ledger is immutable.
 
-### A node's seeded system blueprints are never updated — except by an operator (Feature 197, #1466)
+### A node's seeded system blueprints change only by an explicit operator publish (Feature 197, #1466)
 
 `SeedBlueprintsIfMissingAsync` skips a blueprint that already **exists**, so redeploying does not
 refresh it: the image's catalogue at `/app/blueprints/templates/{id}.json` and the SSR's published
@@ -3030,6 +3030,10 @@ visible and the upgrade a deliberate act; it is **never** an auto-republish.
   `in-sync | image-behind | image-ahead | missing | unknown` (kebab-case, platform `SorchaJson`).
   Health check `system-blueprints` (Degraded, never Unhealthy; `missing` on a `SyncOnly` node is
   Healthy) and gauge `sorcha_system_blueprint_drift{blueprint,state}` on meter `Sorcha.SystemBlueprints`.
+  **`/drift` computes on demand; the health check and gauge read the monitor snapshot**
+  (`SystemBlueprints:DriftIntervalMinutes`, default 10) — so right after a publish health can say
+  `Degraded` for up to one cycle while `/drift` already says `in-sync`. Trust `/drift`. Health `data`
+  uses the same kebab-case state names.
 - **Fix it:** on the node holding the SSR's `sorcha:blueprint-publish` roster key,
   `sorcha system-register publish <id> [--dry-run] [--expected-current <txid>]` —
   `POST /api/system-register/blueprints/{id}/publish`, `RequireSystemAdmin` + `RequirePlatformAudience`.
@@ -3058,22 +3062,38 @@ was raised under, so publishing a new governance definition cannot reinterpret i
   (pattern 22), stamped on proposals and Owner-override. **Omit-when-null, not `null`**: genesis and
   enactment canonical bytes must not move, and a serialised `null` would change every one of them.
   If the current definition cannot be read the raise is `503`, never submitted unpinned.
-- **Inheritance:** approvals follow `PreviousTransactionId`'s proposal; enactments follow
-  `EnactsProposalId`'s proposal. An enactment carrying its own pin is refused. The referenced
-  transaction **must be a governance proposal** (`register-governance-v1`, action 1) — a pin read off
-  any other transaction is refused. A blank pin is malformed (refused), not "unpinned".
+- **Which transactions are governance steps:** `BlueprintId == register-governance-v1` and numeric
+  action 1 (propose), 2 (approve) or 4 (enact) — **never** the unsigned `transactionType` label
+  (pattern 23). The one exception is a publication of the governance blueprint whose
+  `BlueprintPublish` exemption the resolver *granted* from proved publish authority; a forged label
+  stays a governance step and is held to its pin (`ValidationEngine.IsGovernanceStep`).
+- **Inheritance:** an approval follows the proposal its **signed** approval payload names
+  (`proposalId` — the value the quorum tally counts it under), not `PreviousTransactionId`, which is
+  outside the signature. An envelope `PreviousTransactionId` that is present and names a *different*
+  proposal is refused; a null one is allowed. Enactments follow `EnactsProposalId`'s proposal. An
+  approval or an enactment carrying its own pin is refused. The referenced transaction **must be a
+  governance proposal** (`register-governance-v1`, action 1) — a pin read off any other transaction
+  is refused. A blank pin is malformed (refused), not "unpinned". All refusals are `VAL_BP_VERSION_001`.
 - **Legacy:** a proposal with no pin validates under latest and increments
   `sorcha_governance_definition_pin_fallback{step}`. A pin that is present but unresolvable never
   falls back to latest.
-- **Validator SSR arm:** `ResolveBlueprintAsync` gained a system-register step that recomputes the
+- **Governance pins resolve from the SSR only** (`ResolveGovernanceDefinitionAsync`: cache → system
+  register). Never the transaction's own register or the Blueprint Service store: both hold
+  register-scoped publications an owner controls, so an owner could publish a lax definition under the
+  governance id to their own register and it would self-verify there. The SSR read recomputes the
   publication id with the SSR register id and verifies it equals the pin.
+- **Validator SSR arm (ordinary instance pins):** `ResolveBlueprintAsync` keeps cache → Blueprint
+  Service → own register, and gained a last system-register step for a transaction pinned to an SSR
+  publication.
 - **`VAL_GOV_DEF_001`** (validator-local; read **uncached**): a *raise* under a superseded
   definition is refused; approvals and enactments are never held to "current". An unreadable
   current on a raise is refused, not waved through.
 - **Trap:** the pin lives in the signed payload, which is why it may drive resolution. Never move it
   to `Metadata` (unsigned, pattern 23).
 - **Proposal detail** reports `governingDefinitionTxId`, `governingDefinitionVersion`,
-  `governingDefinitionLegacy`.
+  `governingDefinitionLegacy`. `GovernanceProposalReader` decodes the payload with
+  `ControlTransactionPayload.CanonicalJsonOptions` — **case-sensitive property names**, as the Validator
+  does — so a mis-cased `GovernanceDefinitionTxId` shows as legacy, matching how it was judged.
 
 ### ⚠ R-006 — an approval proves custody, not organisational intent. NOT SOLVED.
 

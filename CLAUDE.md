@@ -793,6 +793,56 @@ UserId = caller?.FindFirst(ClaimTypes.NameIdentifier)?.Value,
 
 ---
 
+### 27. A system blueprint is upgraded by an explicit operator publish, and a governance change keeps the definition it was raised under (Feature 197, #1466)
+
+Redeploying never refreshes a node's seeded system blueprints (`SeedBlueprintsIfMissingAsync` skips
+any that exist), so the image catalogue and the system register (SSR) drift apart. Drift is made
+**visible** and the upgrade is a **deliberate operator act** — never an auto-republish.
+
+```bash
+sorcha system-register drift                                   # GET /api/system-register/drift
+sorcha system-register publish register-governance-v1 --dry-run --expected-current <txid>
+```
+
+- **Catalogue-only.** `POST /api/system-register/blueprints/{id}/publish` loads the definition from
+  the node's own image; the request carries none. The old raw-body `POST /api/system-register/publish`
+  is gone — changing a system blueprint, even to live-test it, means building an image. SystemAdmin
+  on a platform-tier token, on the node holding the SSR's `sorcha:blueprint-publish` roster key.
+  Rollback (`image-behind`) and a stale `expectedCurrent` are refused (409); unknown state is 503.
+- **"Current" is ledger order** — docket number, then index in `DocketHeader.TransactionIds` —
+  **never `TimeStamp`**, which is unsigned and caller-settable. `Version` is the same ordinal.
+- **The pin carrier is the SIGNED control payload**: `ControlTransactionPayload.governanceDefinitionTxId`
+  (an SSR publication id, pattern 22), stamped on every raise. **Omit-when-null** — writing `null`
+  would move the canonical bytes of every genesis and enactment payload. No readable current
+  definition ⇒ `/propose` returns 503; it never raises an unpinned proposal.
+- **Resolution** (`GovernanceDefinitionPin`, the one resolver): a proposal / Owner-override uses its
+  own pin; an approval uses the proposal named by its **signed** `proposalId` (a differing envelope
+  `PreviousTransactionId` is refused); an enactment uses `EnactsProposalId`'s proposal. An approval or
+  enactment carrying its own pin, a blank pin, or an unreadable proposal is refused
+  (`VAL_BP_VERSION_001`). A raise pinned to a superseded definition is `VAL_GOV_DEF_001` (a raise whose
+  "current" cannot be read is refused too, with `VAL_BP_VERSION_001` — never waved through); approvals
+  and enactments are never held to "current". A legacy (unpinned) proposal runs under latest and is
+  counted (`sorcha_governance_definition_pin_fallback`).
+- **Governance pins resolve from the SSR only** (cache → SSR) — never the transaction's own register
+  or the Blueprint Service store, where an owner could publish a lax definition under the governance
+  id that self-verifies against their register.
+- **Trap — an unsigned label must never select the path.** Governance steps are chosen by
+  `BlueprintId` + action 1/2/4, not by `Metadata["transactionType"]`; the sole carve-out is a
+  `BlueprintPublish` exemption the resolver *granted* from proved authority (pattern 23). Reading
+  the label there would let a forged `BlueprintPublish` switch pin enforcement off. ⚠ `BlueprintId`
+  and `ActionId` are unsigned too (pattern 23), so this closes the forged-label route only; it does not
+  prove a transaction relabelled AWAY from the governance blueprint is harmless — rights enforcement
+  still treats `Metadata["Type"]=="Control"` as governance whatever its `BlueprintId`. The remaining
+  label paths (including the Participant/Rejection early exits) are tracked in #1777.
+- **Trap — health lags `/drift`.** `/drift` computes on demand; the `system-blueprints` health check
+  and the drift gauge read the monitor snapshot (default 10 min). Degraded right after a publish is
+  the snapshot, not a failed publish — check `/drift`.
+
+Full reference: Register / Validator service READMEs and the **`sorcha-architecture`** skill · spec
+`specs/197-system-blueprint-lifecycle/`.
+
+---
+
 ## Key Documentation
 
 | Document | Purpose |
@@ -938,7 +988,7 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 
 ---
 
-**This guide — revision 3.2 | Updated: 2026-08-24** | Built with .NET 10 and .NET Aspire
+**This guide — revision 3.3 | Updated: 2026-10-02** | Built with .NET 10 and .NET Aspire
 _(This revision number is for CLAUDE.md itself; it is unrelated to the platform's build-derived `2.x` version — see §14.)_
 
 <!-- SPECKIT START -->
