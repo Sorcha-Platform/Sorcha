@@ -39,7 +39,7 @@ function New-SorchaStorageProbe {
         Friendly node name used in output ("n1", "tiny", "local").
     .PARAMETER SshHost
         Omit for a MongoDB reachable through docker on THIS machine. Otherwise the ssh target,
-        e.g. "sorcha@51.105.7.135" or "tiny".
+        e.g. "ubuntu@n1.sorcha.dev" or "tiny".
     .PARAMETER Container
         The mongod container name. Same on every Sorcha node.
     .PARAMETER MongoUser / MongoPassword / AuthDatabase

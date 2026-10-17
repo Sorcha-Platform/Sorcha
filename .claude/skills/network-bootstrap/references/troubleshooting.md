@@ -88,9 +88,9 @@ if (register == null)
 
 ## SSH to n1: Permission Denied
 
-**Symptom:** `Permission denied (publickey)` when SSH-ing to `sorcha@51.105.7.135`.
+**Symptom:** `Permission denied (publickey)` when SSH-ing to `ubuntu@n1.sorcha.dev`.
 
-**Workaround:** Use `az vm run-command invoke` for all remote operations:
+**Fix:** n1 moved to OVH on 2026-10-17 and the user is now `ubuntu`, not `sorcha`. If the key is still refused, add it via the OVH control panel (SSH is key-only; password login is disabled). The `az vm run-command` route below is historical — the Azure VM is retired:
 
 ```bash
 az vm run-command invoke --resource-group sorcha-n1-uk --name sorcha-n1-vm \
@@ -142,7 +142,7 @@ Gateway does not route `/api/internal/*`, so a curl from outside n1 (even agains
 `https://n1.sorcha.dev`) will 404. Run it from inside the trust network instead, e.g. via SSH:
 
 ```bash
-ssh sorcha@n1.sorcha.dev "docker compose exec -T tenant-service curl -s -X POST \
+ssh ubuntu@n1.sorcha.dev "docker compose exec -T tenant-service curl -s -X POST \
   http://localhost:8080/api/internal/service-auth/token \
   -H 'Content-Type: application/x-www-form-urlencoded' \
   -d 'grant_type=client_credentials&client_id=<ID>&client_secret=<SECRET>'"

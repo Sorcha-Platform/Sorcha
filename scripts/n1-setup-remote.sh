@@ -333,7 +333,7 @@ else
 
     if [ -z "$HEALTH_RESPONSE" ]; then
         warn "Cannot reach services for bootstrap. You can bootstrap manually later:"
-        warn "  ssh sorcha@n1.sorcha.dev"
+        warn "  ssh ubuntu@n1.sorcha.dev"
         warn "  cd /opt/sorcha && ./n1-setup-remote.sh --skip-bootstrap"
         warn "  # Then use CLI: sorcha bootstrap --profile n1"
     else

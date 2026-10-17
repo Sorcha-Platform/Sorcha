@@ -35,7 +35,7 @@
         route without decrypting; a field VALUE in the clear is the defect.
 
 .PARAMETER OwnerSshHost
-    ssh target for the node that OWNS the register ("sorcha@51.105.7.135"). Omit when its MongoDB
+    ssh target for the node that OWNS the register ("ubuntu@n1.sorcha.dev"). Omit when its MongoDB
     is reachable through docker on this machine.
 
 .PARAMETER ReplicaSshHost
@@ -154,7 +154,7 @@ $sorchaEnv = if ($GatewayUrl) { Initialize-SorchaEnvironment -GatewayUrl $Gatewa
 # run-all.ps1 with the same -Profile/-GatewayUrl arguments every other step takes. An explicit
 # -OwnerSshHost always wins.
 if (-not $PSBoundParameters.ContainsKey('OwnerSshHost')) {
-    $OwnerSshHost = if ($sorchaEnv.GatewayUrl -match 'n1\.sorcha\.dev') { 'sorcha@51.105.7.135' } else { '' }
+    $OwnerSshHost = if ($sorchaEnv.GatewayUrl -match 'n1\.sorcha\.dev') { 'ubuntu@n1.sorcha.dev' } else { '' }
 }
 
 Write-WtBanner "Encryption at rest — conformance (#1580 / #1579)"

@@ -66,16 +66,15 @@ Wait for the Docker Publish workflow to complete (rebuilds ALL images since `Com
 gh run list --workflow=docker-publish.yml --branch=master --limit 1
 ```
 
-### Step 3: Reset n1 — **use SSH; the Azure route is DEAD (verified 2026-08-29)**
+### Step 3: Reset n1 — **over SSH (n1 is not on Azure)**
 
-> ⚠ **`az vm run-command` no longer reaches n1.** `sorcha-n1-vm` exists in **neither** subscription on
-> this account, and the `sorcha-n1-uk` resource group is **empty** — while n1 serves normally at
-> 51.105.7.135. The VM has been moved, recreated outside these subscriptions, or is no longer
-> Azure-hosted. Every `az vm` command below will fail with `ResourceNotFound`.
+> ⚠ **n1 moved to an OVH VPS on 2026-10-17** (Erith/London, `51.75.160.72`, user `ubuntu`,
+> compose at `/opt/sorcha`). It was a lift-and-shift: same genesis anchor, same data. Every `az vm`
+> command below is historical and will fail — the old Azure VM is stopped pending deletion.
 >
-> **SSH works and is currently the only route**, despite the note this skill used to carry:
+> **SSH is the only route.** Use the hostname, not the IP, so a future host move needs no edits:
 > ```bash
-> ssh sorcha@51.105.7.135 "cd /opt/sorcha && docker compose ... "
+> ssh ubuntu@n1.sorcha.dev "cd /opt/sorcha && docker compose ... "
 > ssh tiny "cd /home/stuart/sorcha-test && docker compose ... "
 > ```
 >
@@ -307,7 +306,7 @@ Expected output includes:
 
 ```bash
 # docket 0 must have a non-empty TransactionIds carrying the genesis tx
-ssh sorcha@51.105.7.135 'docker exec sorcha-mongodb mongosh -u sorcha -p sorcha_dev_password --authenticationDatabase admin --quiet --eval "
+ssh ubuntu@n1.sorcha.dev 'docker exec sorcha-mongodb mongosh -u sorcha -p sorcha_dev_password --authenticationDatabase admin --quiet --eval "
 db=db.getSiblingDB(\"sorcha_register_aebf26362e079087571ac0932d4db973\");
 db.dockets.find({}).sort({TimeStamp:1}).forEach(d=>print(\"State=\"+d.State+\" nTx=\"+(d.TransactionIds?d.TransactionIds.length:0)));"'
 # GOOD: first docket nTx>=1 (genesis control tx in docket 0).
@@ -367,9 +366,10 @@ Consult `references/troubleshooting.md` for common bootstrap failures and fixes.
 
 | Resource | Value |
 |----------|-------|
-| Azure RG | `sorcha-n1-uk` (NOT `sorcha-n1`) |
-| VM Name | `sorcha-n1-vm` |
-| Public IP | `51.105.7.135` |
+| Host | OVH VPS-3 (6 vCPU / 12 GB / 100 GB), Erith UK — since 2026-10-17 |
+| SSH | `ubuntu@n1.sorcha.dev` (key-only) |
+| Public IP | `51.75.160.72` (old Azure VM `51.105.7.135` retired) |
+| Firewall | `ufw` 22/80/443/50051 **plus** a `DOCKER-USER` DROP on `ens3` — Docker-published ports (5432, 27017, 16379, 18888, …) are localhost-only by design, not broken |
 | Compose path on VM | `/opt/sorcha/` |
 | DockerHub images | `sorchadev/*:latest` |
 | API Gateway (n1) | Port 8880 (behind Caddy TLS) |
