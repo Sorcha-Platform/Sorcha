@@ -72,7 +72,19 @@ x-sorcha-connections: &sorcha-connections
 # - tmpfs /tmp         → ASP.NET / .NET runtime needs /tmp for HTTP request bodies,
 #                        Razor pre-compile caches, etc. Sized to 64m (well above
 #                        observed steady-state usage; bump per-service if needed).
+# Bounded container logs. Docker's json-file driver is UNBOUNDED by default, and
+# every service logs to stdout only, so without this the logs grow until the disk
+# is full: n1 filled its 29 GB disk twice this way (the second time an 18 GB pile
+# of logs took MongoDB down for 6 days). 3 x 50 MB keeps ~150 MB per container;
+# older history lives in the OTLP pipeline (aspire-dashboard), not on disk.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
 x-app-hardening: &app-hardening
+  logging: *default-logging
   read_only: true
   cap_drop:
     - ALL
@@ -86,6 +98,7 @@ x-app-hardening: &app-hardening
 # These images run init scripts as root and chown data directories, so cap_drop:ALL
 # and read_only break them. no-new-privileges is the one universally safe knob.
 x-infra-hardening: &infra-hardening
+  logging: *default-logging
   security_opt:
     - no-new-privileges:true
 
@@ -757,6 +770,7 @@ services:
     image: sorchadev/wallet-pwa:latest
     container_name: sorcha-wallet-pwa
     restart: unless-stopped
+    logging: *default-logging
     mem_limit: 128m
     # Reachable internally via http://sorcha-wallet-pwa:8080 (gateway routes /wallet/*).
     # Optionally pin a host port for direct dev access.
