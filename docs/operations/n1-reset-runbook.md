@@ -45,16 +45,12 @@ exposed on the host at **`:8090`**.
 
 ## 2. Preconditions
 
-- **SSH access to n1**: `sorcha@51.105.7.135` (RG `sorcha-n1-uk`, VM `sorcha-n1-vm`). The box clock
-  is **UTC** — mind this when reasoning about the 1-hour window. `az` CLI access to this RG is
-  useful for starting the VM after auto-shutdown (11pm GMT daily) or fixing the SSH NSG rule if
-  your IP changed, but is **not required** to run the reset itself — everything below is driven
-  over SSH (the n1-deploy skill notes `az` is TLS-blocked on this machine's corporate proxy; SSH is
-  not).
+- **SSH access to n1**: `ubuntu@n1.sorcha.dev` (OVH VPS since 2026-10-17; the Azure VM is retired). The box clock
+  is **UTC** — mind this when reasoning about the 1-hour window. Everything below is driven over
+  SSH; there is no cloud CLI step, no auto-shutdown and no NSG — the host firewall is `ufw`, and
+  Docker-published ports are localhost-only by design (`DOCKER-USER` DROP on the public interface).
 - **SSH access to `tiny`**: `ssh tiny` (already configured; no IP/NSG juggling documented here —
   see the n1-deploy skill / MEMORY.md `prodexec-project` topic if `tiny` needs infra changes).
-- **Confirm the VM is running**: if idle past 11pm GMT, start it (`az vm start …`) before doing
-  anything else — every command below will otherwise hang or fail opaquely.
 - **Images**: n1 runs `sorchadev/*:latest` from DockerHub, built by the CI "Docker Publish"
   workflow on every `master` push. Confirm you're deploying what you think you are by checking the
   **`sorcha-ui-web`** footer / `info.version` after the stack is back up — it must read
@@ -88,7 +84,7 @@ with the old container quietly left running).
 
 ```bash
 C="docker compose -f docker-compose.yml -f docker-compose.n1.yml -f docker-compose.ports.yml"
-ssh sorcha@51.105.7.135 "cd /opt/sorcha && $C down -v --remove-orphans"
+ssh ubuntu@n1.sorcha.dev "cd /opt/sorcha && $C down -v --remove-orphans"
 ```
 
 **Known trap (n1-deploy skill, hit live 2026-08-10): `down -v` does not reliably remove n1's named
@@ -98,7 +94,7 @@ in with `A platform user with email assure-id-agent@aias.local already exists`, 
 demo bug and is actually a dirty teardown. **Explicitly remove the volumes by name and verify:**
 
 ```bash
-ssh sorcha@51.105.7.135 '
+ssh ubuntu@n1.sorcha.dev '
 for v in sorcha_postgres-data sorcha_mongodb-data sorcha_redis-data sorcha_dataprotection-keys; do
   docker volume rm -f "$v"
 done
@@ -125,9 +121,9 @@ sorcha system-register create --network-id <NETWORK_ID> --output <scratch>/syste
 # deterministically aebf26362e079087571ac0932d4db973 regardless of network-id.
 
 # 2. scp both to the box, then run the on-box ceremony:
-scp <scratch>/system-register-genesis.json  sorcha@51.105.7.135:/opt/sorcha/genesis-fresh.json
-scp <scratch>/genesis-validator-key.json    sorcha@51.105.7.135:/opt/sorcha/genesis-validator-key.json
-ssh sorcha@51.105.7.135 'cd /opt/sorcha && bash n1-regenesis-fixed.sh'
+scp <scratch>/system-register-genesis.json  ubuntu@n1.sorcha.dev:/opt/sorcha/genesis-fresh.json
+scp <scratch>/genesis-validator-key.json    ubuntu@n1.sorcha.dev:/opt/sorcha/genesis-validator-key.json
+ssh ubuntu@n1.sorcha.dev 'cd /opt/sorcha && bash n1-regenesis-fixed.sh'
 ```
 
 `n1-regenesis-fixed.sh` (already on the box) does: `down -v` → pull `:latest` → bring up
@@ -196,7 +192,7 @@ docket 0 was taken by the first blueprint-seed publish instead. That is not hypo
 happened on 2026-08-17 and the run reported success (see the trap below). Ask for the txId:
 
 ```bash
-ssh sorcha@51.105.7.135 'docker exec sorcha-mongodb mongosh -u sorcha -p sorcha_dev_password --authenticationDatabase admin --quiet --eval "
+ssh ubuntu@n1.sorcha.dev 'docker exec sorcha-mongodb mongosh -u sorcha -p sorcha_dev_password --authenticationDatabase admin --quiet --eval "
 var d=db.getSiblingDB(\"sorcha_register_aebf26362e079087571ac0932d4db973\");
 d.transactions.find({},{_id:0,TxId:1,DocketNumber:1,\"MetaData.TrackingData\":1}).forEach(function(t){
   var td=(t.MetaData&&t.MetaData.TrackingData)||{};
@@ -332,8 +328,8 @@ Supporting health checks (n1-deploy skill):
 
 ```bash
 C="docker compose -f docker-compose.yml -f docker-compose.n1.yml -f docker-compose.ports.yml"
-ssh sorcha@51.105.7.135 "cd /opt/sorcha && $C ps --format '{{.Name}} {{.Status}}'"
-ssh sorcha@51.105.7.135 'df -h / && docker system df'          # disk headroom (29GB total on n1 — prune before pulling if tight)
+ssh ubuntu@n1.sorcha.dev "cd /opt/sorcha && $C ps --format '{{.Name}} {{.Status}}'"
+ssh ubuntu@n1.sorcha.dev 'df -h / && docker system df'          # disk headroom (29GB total on n1 — prune before pulling if tight)
 curl -s -o /dev/null -w '%{http_code}\n' https://n1.sorcha.dev/api/health   # expect 200
 ```
 

@@ -18,7 +18,7 @@
 param(
     [string]$StatePath = (Join-Path $PSScriptRoot 'state.json'),
     [switch]$SkipRestart,
-    [string]$SshTarget = 'sorcha@51.105.7.135',
+    [string]$SshTarget = 'ubuntu@n1.sorcha.dev',
     # Compose -f list used to recreate blueprint-service in step 6. It must match how the target
     # node was brought up, or the restart quietly swaps the image out from under the test.
     [string]$ComposeFiles = '-f docker-compose.yml -f docker-compose.n1.yml -f docker-compose.seed.yml -f docker-compose.smtp.yml -f docker-compose.ports.yml'
